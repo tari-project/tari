@@ -46,7 +46,7 @@ use crate::{
     test_utils::builders::{add_block_and_update_header, create_default_db, create_test_kernel, create_utxo},
 };
 use croaring::Bitmap;
-use futures::{executor::block_on, StreamExt};
+use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, executor::block_on, StreamExt};
 use tari_broadcast_channel::bounded;
 use tari_mmr::MutableMmrLeafNodes;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
@@ -81,7 +81,7 @@ fn new_mempool() -> (
 #[test]
 fn outbound_get_metadata() {
     let (request_sender, mut request_receiver) = reply_channel::unbounded();
-    let (block_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = futures_mpsc_channel_unbounded();
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
@@ -109,7 +109,11 @@ fn inbound_get_metadata() {
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let consensus_manager = ConsensusManager::default();
     assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
-    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store, mempool, consensus_manager);
+    let (request_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = futures_mpsc_channel_unbounded();
+    let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender.clone());
+    let inbound_nch =
+        InboundNodeCommsHandlers::new(block_event_publisher, store, mempool, consensus_manager, outbound_nci);
 
     test_async(move |rt| {
         rt.spawn(async move {
@@ -129,7 +133,7 @@ fn inbound_get_metadata() {
 #[test]
 fn outbound_fetch_kernels() {
     let (request_sender, mut request_receiver) = reply_channel::unbounded();
-    let (block_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = futures_mpsc_channel_unbounded();
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
@@ -153,7 +157,16 @@ fn inbound_fetch_kernels() {
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let consensus_manager = ConsensusManager::default();
     assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
-    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone(), mempool, consensus_manager);
+    let (request_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = futures_mpsc_channel_unbounded();
+    let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
+    let inbound_nch = InboundNodeCommsHandlers::new(
+        block_event_publisher,
+        store.clone(),
+        mempool,
+        consensus_manager,
+        outbound_nci,
+    );
 
     let kernel = create_test_kernel(5.into(), 0);
     let hash = kernel.hash();
@@ -179,7 +192,7 @@ fn inbound_fetch_kernels() {
 #[test]
 fn outbound_fetch_headers() {
     let (request_sender, mut request_receiver) = reply_channel::unbounded();
-    let (block_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = futures_mpsc_channel_unbounded();
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
@@ -203,7 +216,16 @@ fn inbound_fetch_headers() {
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let consensus_manager = ConsensusManager::default();
     assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
-    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone(), mempool, consensus_manager);
+    let (request_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = futures_mpsc_channel_unbounded();
+    let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
+    let inbound_nch = InboundNodeCommsHandlers::new(
+        block_event_publisher,
+        store.clone(),
+        mempool,
+        consensus_manager,
+        outbound_nci,
+    );
 
     let mut header = BlockHeader::new(0);
     header.height = 0;
@@ -230,7 +252,7 @@ fn inbound_fetch_headers() {
 fn outbound_fetch_utxos() {
     let factories = CryptoFactories::default();
     let (request_sender, mut request_receiver) = reply_channel::unbounded();
-    let (block_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = futures_mpsc_channel_unbounded();
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
@@ -255,7 +277,16 @@ fn inbound_fetch_utxos() {
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let consensus_manager = ConsensusManager::default();
     assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
-    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone(), mempool, consensus_manager);
+    let (request_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = futures_mpsc_channel_unbounded();
+    let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
+    let inbound_nch = InboundNodeCommsHandlers::new(
+        block_event_publisher,
+        store.clone(),
+        mempool,
+        consensus_manager,
+        outbound_nci,
+    );
 
     let (utxo, _) = create_utxo(MicroTari(10_000), &factories);
     let hash = utxo.hash();
@@ -281,7 +312,7 @@ fn inbound_fetch_utxos() {
 #[test]
 fn outbound_fetch_blocks() {
     let (request_sender, mut request_receiver) = reply_channel::unbounded();
-    let (block_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = futures_mpsc_channel_unbounded();
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
@@ -304,7 +335,16 @@ fn inbound_fetch_blocks() {
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let consensus_manager = ConsensusManager::default();
     assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
-    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store.clone(), mempool, consensus_manager);
+    let (request_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = futures_mpsc_channel_unbounded();
+    let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
+    let inbound_nch = InboundNodeCommsHandlers::new(
+        block_event_publisher,
+        store.clone(),
+        mempool,
+        consensus_manager,
+        outbound_nci,
+    );
 
     let block = add_block_and_update_header(&store, get_genesis_block());
 
@@ -326,7 +366,7 @@ fn inbound_fetch_blocks() {
 #[test]
 fn outbound_fetch_mmr_state() {
     let (request_sender, mut request_receiver) = reply_channel::unbounded();
-    let (block_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = futures_mpsc_channel_unbounded();
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
@@ -351,7 +391,11 @@ fn inbound_fetch_mmr_state() {
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let consensus_manager = ConsensusManager::default();
     let _ = consensus_manager.set_diff_manager(diff_adj_manager);
-    let inbound_nch = InboundNodeCommsHandlers::new(block_event_publisher, store, mempool, consensus_manager);
+    let (request_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = futures_mpsc_channel_unbounded();
+    let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
+    let inbound_nch =
+        InboundNodeCommsHandlers::new(block_event_publisher, store, mempool, consensus_manager, outbound_nci);
 
     test_async(move |rt| {
         rt.spawn(async move {

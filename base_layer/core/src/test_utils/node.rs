@@ -300,7 +300,7 @@ fn random_string(len: usize) -> String {
 }
 
 // Helper function for creating a random node indentity.
-fn random_node_identity() -> Arc<NodeIdentity> {
+pub fn random_node_identity() -> Arc<NodeIdentity> {
     let mut rng = OsRng::new().unwrap();
     Arc::new(
         NodeIdentity::random(

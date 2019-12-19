@@ -31,6 +31,8 @@ use crate::{
     blocks::{blockheader::BlockHeader, Block},
     chain_storage::{ChainMetadata, HistoricalBlock, MmrTree, MutableMmrState},
 };
+use futures::channel::mpsc::UnboundedSender;
+use tari_comms::types::CommsPublicKey;
 use tari_service_framework::reply_channel::SenderService;
 use tari_transactions::{
     transaction::{TransactionKernel, TransactionOutput},
@@ -43,7 +45,7 @@ use tower_service::Service;
 pub struct OutboundNodeCommsInterface {
     request_sender:
         SenderService<(NodeCommsRequest, NodeCommsRequestType), Result<Vec<NodeCommsResponse>, CommsInterfaceError>>,
-    block_sender: SenderService<Block, Result<(), CommsInterfaceError>>,
+    block_sender: UnboundedSender<(Block, Vec<CommsPublicKey>)>,
 }
 
 impl OutboundNodeCommsInterface {
@@ -53,7 +55,7 @@ impl OutboundNodeCommsInterface {
             (NodeCommsRequest, NodeCommsRequestType),
             Result<Vec<NodeCommsResponse>, CommsInterfaceError>,
         >,
-        block_sender: SenderService<Block, Result<(), CommsInterfaceError>>,
+        block_sender: UnboundedSender<(Block, Vec<CommsPublicKey>)>,
     ) -> Self
     {
         Self {
@@ -164,8 +166,15 @@ impl OutboundNodeCommsInterface {
         }
     }
 
-    /// Transmit the a block to remote base nodes.
-    pub async fn propagate_block(&mut self, block: Block) -> Result<(), CommsInterfaceError> {
-        self.block_sender.call(block).await?
+    /// Transmit a block to remote base nodes, excluding the provided peers.
+    pub async fn propagate_block(
+        &mut self,
+        block: Block,
+        exclude_peers: Vec<CommsPublicKey>,
+    ) -> Result<(), CommsInterfaceError>
+    {
+        self.block_sender
+            .unbounded_send((block, exclude_peers))
+            .map_err(|_| CommsInterfaceError::BroadcastFailed)
     }
 }
