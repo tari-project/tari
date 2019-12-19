@@ -63,6 +63,9 @@ pub trait OutputManagerBackend: Send + Sync {
     /// This method must run through all the `PendingTransactionOutputs` and test if any have existed for longer that
     /// the specified duration. If they have they should be cancelled.
     fn timeout_pending_transactions(&mut self, period: Duration) -> Result<(), OutputManagerStorageError>;
+    /// This method will increment the currently stored key index for the key manager config. Increment this after eac
+    /// key is generated
+    fn increment_key_index(&mut self) -> Result<(), OutputManagerStorageError>;
 }
 
 /// Holds the outputs that have been selected for a given pending transaction waiting for confirmation
@@ -74,6 +77,14 @@ pub struct PendingTransactionOutputs {
     pub timestamp: NaiveDateTime,
 }
 
+/// Holds the state of the KeyManager being used by the Output Manager Service
+#[derive(Clone, Debug, PartialEq)]
+pub struct KeyManagerState {
+    pub master_seed: PrivateKey,
+    pub branch_seed: String,
+    pub primary_key_index: usize,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum DbKey {
     SpentOutput(BlindingFactor),
@@ -82,6 +93,7 @@ pub enum DbKey {
     UnspentOutputs,
     SpentOutputs,
     AllPendingTransactionOutputs,
+    KeyManagerState,
 }
 
 #[derive(Debug)]
@@ -92,12 +104,14 @@ pub enum DbValue {
     UnspentOutputs(Vec<UnblindedOutput>),
     SpentOutputs(Vec<UnblindedOutput>),
     AllPendingTransactionOutputs(HashMap<TxId, PendingTransactionOutputs>),
+    KeyManagerState(KeyManagerState),
 }
 
 pub enum DbKeyValuePair {
     SpentOutput(BlindingFactor, Box<UnblindedOutput>),
     UnspentOutput(BlindingFactor, Box<UnblindedOutput>),
     PendingTransactionOutputs(TxId, Box<PendingTransactionOutputs>),
+    KeyManagerState(KeyManagerState),
 }
 
 pub enum WriteOperation {
@@ -131,6 +145,27 @@ where T: OutputManagerBackend
 {
     pub fn new(db: T) -> Self {
         Self { db }
+    }
+
+    pub fn get_key_manager_state(&self) -> Result<Option<KeyManagerState>, OutputManagerStorageError> {
+        match self.db.fetch(&DbKey::KeyManagerState) {
+            Ok(None) => Ok(None),
+            Ok(Some(DbValue::KeyManagerState(c))) => Ok(Some(c)),
+            Ok(Some(other)) => unexpected_result(DbKey::KeyManagerState, other),
+            Err(e) => log_error(DbKey::KeyManagerState, e),
+        }
+    }
+
+    pub fn set_key_manager_state(&mut self, state: KeyManagerState) -> Result<(), OutputManagerStorageError> {
+        self.db
+            .write(WriteOperation::Insert(DbKeyValuePair::KeyManagerState(state)))?;
+
+        Ok(())
+    }
+
+    pub fn increment_key_index(&mut self) -> Result<(), OutputManagerStorageError> {
+        self.db.increment_key_index()?;
+        Ok(())
     }
 
     pub fn add_unspent_output(&mut self, output: UnblindedOutput) -> Result<(), OutputManagerStorageError> {
@@ -330,6 +365,7 @@ impl Display for DbKey {
             DbKey::UnspentOutputs => f.write_str(&format!("Unspent Outputs Key")),
             DbKey::SpentOutputs => f.write_str(&format!("Spent Outputs Key")),
             DbKey::AllPendingTransactionOutputs => f.write_str(&format!("All Pending Transaction Outputs")),
+            DbKey::KeyManagerState => f.write_str(&format!("Key Manager State")),
         }
     }
 }
@@ -343,6 +379,7 @@ impl Display for DbValue {
             DbValue::UnspentOutputs(_) => f.write_str("Unspent Outputs"),
             DbValue::SpentOutputs(_) => f.write_str("Spent Outputs"),
             DbValue::AllPendingTransactionOutputs(_) => f.write_str("All Pending Transaction Outputs"),
+            DbValue::KeyManagerState(_) => f.write_str(&format!("Key Manager State")),
         }
     }
 }

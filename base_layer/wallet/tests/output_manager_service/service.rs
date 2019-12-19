@@ -23,11 +23,7 @@
 use crate::support::utils::{make_input, random_string, TestParams};
 use rand::RngCore;
 use std::{thread, time::Duration};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    range_proof::RangeProofService,
-};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey, range_proof::RangeProofService};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::Shutdown;
 use tari_transactions::{
@@ -35,18 +31,17 @@ use tari_transactions::{
     tari_amount::MicroTari,
     transaction::{KernelFeatures, OutputFeatures, TransactionOutput, UnblindedOutput},
     transaction_protocol::single_receiver::SingleReceiverTransactionProtocol,
-    types::{CryptoFactories, PrivateKey, PublicKey, RangeProof},
+    types::{CryptoFactories, PrivateKey, RangeProof},
 };
 use tari_utilities::ByteArray;
 use tari_wallet::output_manager_service::{
     error::{OutputManagerError, OutputManagerStorageError},
     handle::OutputManagerHandle,
     storage::{
-        database::OutputManagerBackend,
+        database::{DbKey, DbValue, OutputManagerBackend},
         memory_db::OutputManagerMemoryDatabase,
         sqlite_db::OutputManagerSqliteDatabase,
     },
-    OutputManagerConfig,
     OutputManagerServiceInitializer,
 };
 use tempdir::TempDir;
@@ -54,14 +49,13 @@ use tokio::runtime::Runtime;
 
 pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     runtime: &Runtime,
-    config: OutputManagerConfig,
     backend: T,
 ) -> (OutputManagerHandle, Shutdown)
 {
     let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();
     let fut = StackBuilder::new(runtime.executor(), shutdown.to_signal())
-        .add_initializer(OutputManagerServiceInitializer::new(config, backend, factories))
+        .add_initializer(OutputManagerServiceInitializer::new(backend, factories))
         .finish();
 
     let handles = runtime.block_on(fut).expect("Service initialization failed");
@@ -71,22 +65,13 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     (oms_api, shutdown)
 }
 
-fn sending_transaction_and_confirmation<T: OutputManagerBackend + 'static>(backend: T) {
+fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'static>(backend: T) {
     let mut rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
-    let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
     let runtime = Runtime::new().unwrap();
 
-    let (mut oms, _shutdown) = setup_output_manager_service(
-        &runtime,
-        OutputManagerConfig {
-            master_seed: secret_key,
-            branch_seed: "".to_string(),
-            primary_key_index: 0,
-        },
-        backend,
-    );
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, backend.clone());
 
     let (_ti, uo) = make_input(
         &mut rng.clone(),
@@ -155,6 +140,12 @@ fn sending_transaction_and_confirmation<T: OutputManagerBackend + 'static>(backe
         runtime.block_on(oms.get_unspent_outputs()).unwrap().len(),
         num_outputs + 1 - runtime.block_on(oms.get_spent_outputs()).unwrap().len() + num_change
     );
+
+    if let DbValue::KeyManagerState(km) = backend.fetch(&DbKey::KeyManagerState).unwrap().unwrap() {
+        assert_eq!(km.primary_key_index, 1);
+    } else {
+        assert!(false, "No Key Manager set");
+    }
 }
 
 #[test]
@@ -174,19 +165,10 @@ fn sending_transaction_and_confirmation_sqlite_db() {
 fn send_not_enough_funds<T: OutputManagerBackend + 'static>(backend: T) {
     let mut rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
-    let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
     let runtime = Runtime::new().unwrap();
 
-    let (mut oms, _shutdown) = setup_output_manager_service(
-        &runtime,
-        OutputManagerConfig {
-            master_seed: secret_key,
-            branch_seed: "".to_string(),
-            primary_key_index: 0,
-        },
-        backend,
-    );
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, backend);
     let num_outputs = 20;
     for _i in 0..num_outputs {
         let (_ti, uo) = make_input(
@@ -225,19 +207,10 @@ fn send_not_enough_funds_sqlite_db() {
 fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
     let mut rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
-    let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
     let runtime = Runtime::new().unwrap();
 
-    let (mut oms, _shutdown) = setup_output_manager_service(
-        &runtime,
-        OutputManagerConfig {
-            master_seed: secret_key,
-            branch_seed: "".to_string(),
-            primary_key_index: 0,
-        },
-        backend,
-    );
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, backend);
 
     let fee_per_gram = MicroTari::from(20);
     let fee_without_change = Fee::calculate(fee_per_gram, 2, 1);
@@ -308,19 +281,10 @@ fn send_no_change_sqlite_db() {
 
 fn send_not_enough_for_change<T: OutputManagerBackend + 'static>(backend: T) {
     let mut rng = rand::OsRng::new().unwrap();
-    let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
     let runtime = Runtime::new().unwrap();
 
-    let (mut oms, _shutdown) = setup_output_manager_service(
-        &runtime,
-        OutputManagerConfig {
-            master_seed: secret_key,
-            branch_seed: "".to_string(),
-            primary_key_index: 0,
-        },
-        backend,
-    );
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, backend);
 
     let fee_per_gram = MicroTari::from(20);
     let fee_without_change = Fee::calculate(fee_per_gram, 2, 1);
@@ -361,21 +325,11 @@ fn send_not_enough_for_change_sqlite_db() {
 }
 
 fn receiving_and_confirmation<T: OutputManagerBackend + 'static>(backend: T) {
-    let mut rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
-    let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
     let runtime = Runtime::new().unwrap();
 
-    let (mut oms, _shutdown) = setup_output_manager_service(
-        &runtime,
-        OutputManagerConfig {
-            master_seed: secret_key,
-            branch_seed: "".to_string(),
-            primary_key_index: 0,
-        },
-        backend,
-    );
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, backend);
 
     let value = MicroTari::from(5000);
     let recv_key = runtime.block_on(oms.get_recipient_spending_key(1, value)).unwrap();
@@ -413,19 +367,10 @@ fn receiving_and_confirmation_sqlite_db() {
 fn cancel_transaction<T: OutputManagerBackend + 'static>(backend: T) {
     let mut rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
-    let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
     let runtime = Runtime::new().unwrap();
 
-    let (mut oms, _shutdown) = setup_output_manager_service(
-        &runtime,
-        OutputManagerConfig {
-            master_seed: secret_key,
-            branch_seed: "".to_string(),
-            primary_key_index: 0,
-        },
-        backend,
-    );
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, backend);
 
     let num_outputs = 20;
     for _i in 0..num_outputs {
@@ -471,18 +416,9 @@ fn cancel_transaction_sqlite_db() {
 fn timeout_transaction<T: OutputManagerBackend + 'static>(backend: T) {
     let mut rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
-    let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
     let runtime = Runtime::new().unwrap();
-    let (mut oms, _shutdown) = setup_output_manager_service(
-        &runtime,
-        OutputManagerConfig {
-            master_seed: secret_key,
-            branch_seed: "".to_string(),
-            primary_key_index: 0,
-        },
-        backend,
-    );
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, backend);
 
     let num_outputs = 20;
     for _i in 0..num_outputs {
@@ -532,21 +468,11 @@ fn timeout_transaction_sqlite_db() {
 }
 
 fn test_get_balance<T: OutputManagerBackend + 'static>(backend: T) {
-    let mut rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
-    let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
-
+    let rng = rand::OsRng::new().unwrap();
     let runtime = Runtime::new().unwrap();
 
-    let (mut oms, _shutdown) = setup_output_manager_service(
-        &runtime,
-        OutputManagerConfig {
-            master_seed: secret_key,
-            branch_seed: "".to_string(),
-            primary_key_index: 0,
-        },
-        backend,
-    );
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, backend);
 
     let balance = runtime.block_on(oms.get_balance()).unwrap();
 
@@ -594,21 +520,11 @@ fn test_get_balance_sqlite_db() {
 }
 
 fn test_confirming_received_output<T: OutputManagerBackend + 'static>(backend: T) {
-    let mut rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
-    let (secret_key, _public_key) = PublicKey::random_keypair(&mut rng);
 
     let runtime = Runtime::new().unwrap();
 
-    let (mut oms, _shutdown) = setup_output_manager_service(
-        &runtime,
-        OutputManagerConfig {
-            master_seed: secret_key,
-            branch_seed: "".to_string(),
-            primary_key_index: 0,
-        },
-        backend,
-    );
+    let (mut oms, _shutdown) = setup_output_manager_service(&runtime, backend);
 
     let value = MicroTari::from(5000);
     let recv_key = runtime.block_on(oms.get_recipient_spending_key(1, value)).unwrap();

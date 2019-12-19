@@ -20,19 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{data::create_temporary_sqlite_path, utils::make_input};
+use crate::support::utils::{make_input, random_string};
 use chrono::{Duration as ChronoDuration, Utc};
 use rand::RngCore;
 use std::time::Duration;
-use tari_transactions::{tari_amount::MicroTari, types::CryptoFactories};
+use tari_crypto::keys::SecretKey;
+use tari_transactions::{
+    tari_amount::MicroTari,
+    types::{CryptoFactories, PrivateKey},
+};
 use tari_wallet::output_manager_service::{
     service::Balance,
     storage::{
-        database::{OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
+        database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
         memory_db::OutputManagerMemoryDatabase,
         sqlite_db::OutputManagerSqliteDatabase,
     },
 };
+use tempdir::TempDir;
 
 pub fn test_db_backend<T: OutputManagerBackend>(backend: T) {
     let mut db = OutputManagerDatabase::new(backend);
@@ -246,5 +251,56 @@ pub fn test_output_manager_memory_db() {
 
 #[test]
 pub fn test_output_manager_sqlite_db() {
-    test_db_backend(OutputManagerSqliteDatabase::new(create_temporary_sqlite_path()).unwrap());
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = temp_dir.path().to_str().unwrap().to_string();
+    test_db_backend(OutputManagerSqliteDatabase::new(format!("{}/{}", db_folder, db_name).to_string()).unwrap());
+}
+
+pub fn test_key_manager_crud<T: OutputManagerBackend>(backend: T) {
+    let mut db = OutputManagerDatabase::new(backend);
+    let mut rng = rand::OsRng::new().unwrap();
+
+    assert_eq!(db.get_key_manager_state().unwrap(), None);
+    assert!(db.increment_key_index().is_err());
+
+    let state1 = KeyManagerState {
+        master_seed: PrivateKey::random(&mut rng),
+        branch_seed: "blah".to_string(),
+        primary_key_index: 0,
+    };
+
+    db.set_key_manager_state(state1.clone()).unwrap();
+
+    let read_state1 = db.get_key_manager_state().unwrap().unwrap();
+    assert_eq!(state1, read_state1);
+
+    let state2 = KeyManagerState {
+        master_seed: PrivateKey::random(&mut rng),
+        branch_seed: "blah2".to_string(),
+        primary_key_index: 0,
+    };
+
+    db.set_key_manager_state(state2.clone()).unwrap();
+
+    let read_state2 = db.get_key_manager_state().unwrap().unwrap();
+    assert_eq!(state2, read_state2);
+
+    db.increment_key_index().unwrap();
+    db.increment_key_index().unwrap();
+
+    let read_state3 = db.get_key_manager_state().unwrap().unwrap();
+    assert_eq!(read_state3.primary_key_index, 2);
+}
+#[test]
+pub fn test_key_manager_crud_memory_db() {
+    test_key_manager_crud(OutputManagerMemoryDatabase::new());
+}
+
+#[test]
+pub fn test_key_manager_crud_sqlite_db() {
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = temp_dir.path().to_str().unwrap().to_string();
+    test_key_manager_crud(OutputManagerSqliteDatabase::new(format!("{}/{}", db_folder, db_name).to_string()).unwrap());
 }
