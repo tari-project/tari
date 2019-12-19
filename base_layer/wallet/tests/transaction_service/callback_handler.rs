@@ -27,13 +27,9 @@ use crate::{
 use rand::OsRng;
 use std::{sync::Mutex, time::Duration};
 use tari_comms::peer_manager::{NodeIdentity, PeerFeatures};
-use tari_crypto::keys::SecretKey;
 use tari_shutdown::Shutdown;
 use tari_test_utils::collect_stream;
-use tari_transactions::{
-    tari_amount::MicroTari,
-    types::{CryptoFactories, PrivateKey},
-};
+use tari_transactions::{tari_amount::MicroTari, types::CryptoFactories};
 use tari_wallet::transaction_service::{
     callback_handler::CallbackHandler,
     handle::TransactionEvent,
@@ -132,7 +128,6 @@ fn test_callback_handler() {
     CALLBACK_STATE.lock().unwrap().reset();
 
     // Alice's parameters
-    let alice_seed = PrivateKey::random(&mut rng);
     let alice_node_identity = NodeIdentity::random(
         &mut rng,
         "/ip4/127.0.0.1/tcp/33101".parse().unwrap(),
@@ -141,7 +136,6 @@ fn test_callback_handler() {
     .unwrap();
 
     // Bob's parameters
-    let bob_seed = PrivateKey::random(&mut rng);
     let bob_node_identity = NodeIdentity::random(
         &mut rng,
         "/ip4/127.0.0.1/tcp/33102".parse().unwrap(),
@@ -150,7 +144,6 @@ fn test_callback_handler() {
     .unwrap();
 
     // Carols's parameters
-    let carol_seed = PrivateKey::random(&mut rng);
     let carol_node_identity = NodeIdentity::random(
         &mut rng,
         "/ip4/127.0.0.1/tcp/33103".parse().unwrap(),
@@ -163,7 +156,6 @@ fn test_callback_handler() {
     let alice_db = TransactionMemoryDatabase::new();
     let (mut alice_ts, mut alice_oms, _alice_comms) = setup_transaction_service(
         &runtime,
-        alice_seed,
         alice_node_identity.clone(),
         vec![bob_node_identity.clone()],
         factories.clone(),
@@ -188,7 +180,6 @@ fn test_callback_handler() {
 
     let (mut bob_ts, mut bob_oms, _bob_comms) = setup_transaction_service(
         &runtime,
-        bob_seed,
         bob_node_identity.clone(),
         vec![alice_node_identity.clone(), carol_node_identity.clone()],
         factories.clone(),
@@ -199,7 +190,6 @@ fn test_callback_handler() {
 
     let (_carol_ts, _carol_oms, _carol_comms) = setup_transaction_service(
         &runtime,
-        carol_seed,
         carol_node_identity.clone(),
         vec![bob_node_identity.clone()],
         factories.clone(),

@@ -19,22 +19,26 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
+#[cfg(feature = "c_integration")]
+use crate::output_manager_service::TxId;
+#[cfg(feature = "c_integration")]
+use crate::transaction_service::callback_handler::CallbackHandler;
+#[cfg(feature = "c_integration")]
+use crate::transaction_service::storage::database::TransactionDatabase;
+#[cfg(feature = "c_integration")]
+use crate::transaction_service::storage::database::{CompletedTransaction, InboundTransaction};
 use crate::{
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::WalletError,
     output_manager_service::{
         handle::OutputManagerHandle,
         storage::database::OutputManagerBackend,
-        OutputManagerConfig,
         OutputManagerServiceInitializer,
-        TxId,
     },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
-        callback_handler::CallbackHandler,
         handle::TransactionServiceHandle,
-        storage::database::{CompletedTransaction, InboundTransaction, TransactionBackend, TransactionDatabase},
+        storage::database::TransactionBackend,
         TransactionServiceInitializer,
     },
 };
@@ -50,10 +54,9 @@ use tari_comms::{
     builder::CommsNode,
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-    types::{CommsPublicKey, CommsSecretKey},
+    types::CommsPublicKey,
 };
 use tari_comms_dht::Dht;
-use tari_crypto::keys::PublicKey;
 use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization::{initialize_comms, CommsConfig},
@@ -130,17 +133,6 @@ where
             log_handle = Some(log4rs::init_config(config)?);
         }
 
-        // TODO: Determine if there is KeyManager data stored in persistence and if so then construct the
-        // OutputManagerConfig from that data At this stage a new random master key will be generated every
-        // time the wallet starts up.
-        let mut rng = rand::OsRng::new().unwrap();
-        let (secret_key, _public_key): (CommsSecretKey, CommsPublicKey) = PublicKey::random_keypair(&mut rng);
-
-        let oms_config = OutputManagerConfig {
-            master_seed: secret_key,
-            branch_seed: "".to_string(),
-            primary_key_index: 0,
-        };
         let factories = config.factories;
         let (publisher, subscription_factory) =
             pubsub_connector(runtime.executor(), config.comms_config.inbound_buffer_size);
@@ -156,7 +148,6 @@ where
                 dht.dht_requester(),
             ))
             .add_initializer(OutputManagerServiceInitializer::new(
-                oms_config,
                 output_manager_backend,
                 factories.clone(),
             ))

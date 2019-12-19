@@ -14,3 +14,11 @@ CREATE TABLE pending_transaction_outputs (
     tx_id INTEGER PRIMARY KEY NOT NULL,
     timestamp DATETIME NOT NULL
 );
+
+CREATE TABLE key_manager_states (
+    id INTEGER PRIMARY KEY,
+    master_seed BLOB NOT NULL,
+    branch_seed TEXT NOT NULL,
+    primary_key_index INTEGER NOT NULL,
+    timestamp DATETIME NOT NULL
+);

@@ -27,13 +27,14 @@ use crate::{
             DbKey,
             DbKeyValuePair,
             DbValue,
+            KeyManagerState,
             OutputManagerBackend,
             PendingTransactionOutputs,
             WriteOperation,
         },
         TxId,
     },
-    schema::{outputs, pending_transaction_outputs},
+    schema::{key_manager_states, outputs, pending_transaction_outputs},
 };
 use chrono::{Duration as ChronoDuration, NaiveDateTime, Utc};
 use diesel::{
@@ -53,6 +54,7 @@ use tari_utilities::ByteArray;
 const DATABASE_CONNECTION_TIMEOUT_MS: u64 = 2000;
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
+#[derive(Clone)]
 pub struct OutputManagerSqliteDatabase {
     database_connection_pool: Pool<ConnectionManager<SqliteConnection>>,
 }
@@ -155,6 +157,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 }
                 Some(DbValue::AllPendingTransactionOutputs(pending_txs))
             },
+            DbKey::KeyManagerState => match KeyManagerStateSql::get_state(&conn).ok() {
+                None => None,
+                Some(km) => Some(DbValue::KeyManagerState(KeyManagerState::try_from(km)?)),
+            },
         };
 
         Ok(result)
@@ -193,6 +199,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         OutputSql::new(o.clone(), false, true, true, Some(p.tx_id.clone())).commit(&conn)?;
                     }
                 },
+                DbKeyValuePair::KeyManagerState(km) => KeyManagerStateSql::set_state(km, &conn)?,
             },
             WriteOperation::Remove(k) => match k {
                 DbKey::SpentOutput(s) => match OutputSql::find_spent(&s.to_vec(), true, &conn) {
@@ -241,6 +248,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 DbKey::UnspentOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::SpentOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::AllPendingTransactionOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::KeyManagerState => return Err(OutputManagerStorageError::OperationNotSupported),
             },
         }
 
@@ -398,6 +406,18 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         for ptx in older_pending_txs {
             self.cancel_pending_transaction(ptx.tx_id.clone() as u64)?;
         }
+        Ok(())
+    }
+
+    fn increment_key_index(&mut self) -> Result<(), OutputManagerStorageError> {
+        let conn = self
+            .database_connection_pool
+            .clone()
+            .get()
+            .map_err(|_| OutputManagerStorageError::R2d2Error)?;
+
+        KeyManagerStateSql::increment_index(&conn)?;
+
         Ok(())
     }
 }
@@ -716,13 +736,148 @@ impl PendingTransactionOutputSql {
     }
 }
 
+#[derive(Clone, Debug, Queryable, Insertable)]
+#[table_name = "key_manager_states"]
+struct KeyManagerStateSql {
+    id: Option<i64>,
+    master_seed: Vec<u8>,
+    branch_seed: String,
+    primary_key_index: i64,
+    timestamp: NaiveDateTime,
+}
+
+impl From<KeyManagerState> for KeyManagerStateSql {
+    fn from(km: KeyManagerState) -> Self {
+        Self {
+            id: None,
+            master_seed: km.master_seed.to_vec(),
+            branch_seed: km.branch_seed,
+            primary_key_index: km.primary_key_index as i64,
+            timestamp: Utc::now().naive_utc(),
+        }
+    }
+}
+
+impl TryFrom<KeyManagerStateSql> for KeyManagerState {
+    type Error = OutputManagerStorageError;
+
+    fn try_from(km: KeyManagerStateSql) -> Result<Self, Self::Error> {
+        Ok(Self {
+            master_seed: PrivateKey::from_vec(&km.master_seed)
+                .map_err(|_| OutputManagerStorageError::ConversionError)?,
+            branch_seed: km.branch_seed,
+            primary_key_index: km.primary_key_index as usize,
+        })
+    }
+}
+
+impl KeyManagerStateSql {
+    fn commit(
+        &self,
+        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<(), OutputManagerStorageError>
+    {
+        diesel::insert_into(key_manager_states::table)
+            .values(self.clone())
+            .execute(conn)?;
+        Ok(())
+    }
+
+    pub fn get_state(
+        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<KeyManagerStateSql, OutputManagerStorageError> {
+        Ok(key_manager_states::table
+            .first::<KeyManagerStateSql>(conn)
+            .map_err(|_| OutputManagerStorageError::KeyManagerNotInitialized)?)
+    }
+
+    pub fn set_state(
+        key_manager_state: KeyManagerState,
+        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<(), OutputManagerStorageError>
+    {
+        match KeyManagerStateSql::get_state(conn) {
+            Ok(km) => {
+                let update = KeyManagerStateUpdate {
+                    master_seed: Some(key_manager_state.master_seed),
+                    branch_seed: Some(key_manager_state.branch_seed),
+                    primary_key_index: Some(key_manager_state.primary_key_index),
+                };
+
+                let num_updated = diesel::update(key_manager_states::table.filter(key_manager_states::id.eq(&km.id)))
+                    .set(KeyManagerStateUpdateSql::from(update))
+                    .execute(conn)?;
+                if num_updated == 0 {
+                    return Err(OutputManagerStorageError::UnexpectedResult(
+                        "Database update error".to_string(),
+                    ));
+                }
+            },
+            Err(_) => KeyManagerStateSql::from(key_manager_state).commit(conn)?,
+        }
+        Ok(())
+    }
+
+    pub fn increment_index(
+        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<usize, OutputManagerStorageError> {
+        Ok(match KeyManagerStateSql::get_state(conn) {
+            Ok(km) => {
+                let current_index = (km.primary_key_index + 1) as usize;
+                let update = KeyManagerStateUpdate {
+                    master_seed: None,
+                    branch_seed: None,
+                    primary_key_index: Some(current_index),
+                };
+                let num_updated = diesel::update(key_manager_states::table.filter(key_manager_states::id.eq(&km.id)))
+                    .set(KeyManagerStateUpdateSql::from(update))
+                    .execute(conn)?;
+                if num_updated == 0 {
+                    return Err(OutputManagerStorageError::UnexpectedResult(
+                        "Database update error".to_string(),
+                    ));
+                }
+                current_index
+            },
+            Err(_) => return Err(OutputManagerStorageError::KeyManagerNotInitialized),
+        })
+    }
+}
+
+struct KeyManagerStateUpdate {
+    master_seed: Option<PrivateKey>,
+    branch_seed: Option<String>,
+    primary_key_index: Option<usize>,
+}
+
+#[derive(AsChangeset)]
+#[table_name = "key_manager_states"]
+struct KeyManagerStateUpdateSql {
+    master_seed: Option<Vec<u8>>,
+    branch_seed: Option<String>,
+    primary_key_index: Option<i64>,
+}
+
+impl From<KeyManagerStateUpdate> for KeyManagerStateUpdateSql {
+    fn from(km: KeyManagerStateUpdate) -> Self {
+        Self {
+            master_seed: km.master_seed.map(|ms| ms.to_vec()),
+            branch_seed: km.branch_seed,
+            primary_key_index: km.primary_key_index.map(|i| i as i64),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use crate::output_manager_service::storage::sqlite_db::{OutputSql, PendingTransactionOutputSql, UpdateOutput};
+    use crate::output_manager_service::storage::{
+        database::KeyManagerState,
+        sqlite_db::{KeyManagerStateSql, OutputSql, PendingTransactionOutputSql, UpdateOutput},
+    };
     use chrono::{Duration as ChronoDuration, Utc};
     use diesel::{r2d2::ConnectionManager, Connection, SqliteConnection};
     use rand::{distributions::Alphanumeric, CryptoRng, OsRng, Rng, RngCore};
-    use std::{iter, time::Duration};
+    use std::{convert::TryFrom, iter, time::Duration};
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
     use tari_transactions::{
         tari_amount::MicroTari,
@@ -749,12 +904,8 @@ mod test {
         let mut rng = rand::OsRng::new().unwrap();
 
         let db_name = format!("{}.sqlite3", random_string(8).as_str());
-        let db_folder = TempDir::new(random_string(8).as_str())
-            .unwrap()
-            .path()
-            .to_str()
-            .unwrap()
-            .to_string();
+        let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+        let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
 
         embed_migrations!("./migrations");
@@ -887,5 +1038,59 @@ mod test {
         )
         .unwrap();
         assert_eq!(pending_older2.len(), 1);
+    }
+
+    #[test]
+    fn test_key_manager_crud() {
+        let mut rng = rand::OsRng::new().unwrap();
+
+        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+        let db_folder = temp_dir.path().to_str().unwrap().to_string();
+        let db_path = format!("{}{}", db_folder, db_name);
+
+        embed_migrations!("./migrations");
+        let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+
+        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+
+        let manager = ConnectionManager::<SqliteConnection>::new(db_path);
+        let pool = diesel::r2d2::Pool::builder().max_size(1).build(manager).unwrap();
+
+        let conn = pool.get().unwrap();
+        conn.execute("PRAGMA foreign_keys = ON").unwrap();
+
+        assert!(KeyManagerStateSql::get_state(&conn).is_err());
+
+        let state1 = KeyManagerState {
+            master_seed: PrivateKey::random(&mut rng),
+            branch_seed: random_string(8),
+            primary_key_index: 0,
+        };
+
+        KeyManagerStateSql::set_state(state1.clone(), &conn).unwrap();
+
+        let state1_read = KeyManagerStateSql::get_state(&conn).unwrap();
+
+        assert_eq!(state1, KeyManagerState::try_from(state1_read).unwrap());
+
+        let state2 = KeyManagerState {
+            master_seed: PrivateKey::random(&mut rng),
+            branch_seed: random_string(8),
+            primary_key_index: 0,
+        };
+
+        KeyManagerStateSql::set_state(state2.clone(), &conn).unwrap();
+
+        let state2_read = KeyManagerStateSql::get_state(&conn).unwrap();
+
+        assert_eq!(state2, KeyManagerState::try_from(state2_read).unwrap());
+
+        KeyManagerStateSql::increment_index(&conn).unwrap();
+        KeyManagerStateSql::increment_index(&conn).unwrap();
+
+        let state3_read = KeyManagerStateSql::get_state(&conn).unwrap();
+
+        assert_eq!(state3_read.primary_key_index, 2);
     }
 }

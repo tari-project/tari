@@ -59,6 +59,8 @@ use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 #[cfg(feature = "test_harness")]
 use tari_transactions::tari_amount::T;
+#[cfg(feature = "test_harness")]
+use tari_transactions::types::BlindingFactor;
 use tari_transactions::{
     tari_amount::MicroTari,
     transaction::{KernelFeatures, OutputFeatures, Transaction},
@@ -67,7 +69,7 @@ use tari_transactions::{
         recipient::{RecipientSignedMessage, RecipientState},
         sender::TransactionSenderMessage,
     },
-    types::{BlindingFactor, CryptoFactories, PrivateKey},
+    types::{CryptoFactories, PrivateKey},
     ReceiverTransactionProtocol,
 };
 
@@ -744,22 +746,13 @@ where
         use crate::output_manager_service::{
             service::OutputManagerService,
             storage::{database::OutputManagerDatabase, memory_db::OutputManagerMemoryDatabase},
-            OutputManagerConfig,
         };
-        use tari_comms::types::CommsSecretKey;
-        use tari_crypto::keys::PublicKey;
 
         let (_sender, receiver) = reply_channel::unbounded();
         let mut rng = rand::OsRng::new().unwrap();
-        let (secret_key, _public_key): (CommsSecretKey, CommsPublicKey) = PublicKey::random_keypair(&mut rng);
 
         let mut fake_oms = OutputManagerService::new(
             receiver,
-            OutputManagerConfig {
-                master_seed: secret_key,
-                branch_seed: "".to_string(),
-                primary_key_index: 0,
-            },
             OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
             self.factories.clone(),
         )?;

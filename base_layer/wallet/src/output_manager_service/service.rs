@@ -24,8 +24,7 @@ use crate::{
     output_manager_service::{
         error::OutputManagerError,
         handle::{OutputManagerRequest, OutputManagerResponse},
-        storage::database::{OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
-        OutputManagerConfig,
+        storage::database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
         TxId,
     },
     types::{HashDigest, KeyDigest, TransactionRng},
@@ -71,16 +70,30 @@ where T: OutputManagerBackend
             OutputManagerRequest,
             Result<OutputManagerResponse, OutputManagerError>,
         >,
-        config: OutputManagerConfig,
-        db: OutputManagerDatabase<T>,
+        mut db: OutputManagerDatabase<T>,
         factories: CryptoFactories,
     ) -> Result<OutputManagerService<T>, OutputManagerError>
     {
+        let mut rng = rand::OsRng::new().unwrap();
+        // Check to see if there is any persisted state, otherwise start fresh
+        let key_manager_state = match db.get_key_manager_state()? {
+            None => {
+                let starting_state = KeyManagerState {
+                    master_seed: PrivateKey::random(&mut rng),
+                    branch_seed: "".to_string(),
+                    primary_key_index: 0,
+                };
+                db.set_key_manager_state(starting_state.clone())?;
+                starting_state
+            },
+            Some(km) => km,
+        };
+
         Ok(OutputManagerService {
             key_manager: Mutex::new(KeyManager::<PrivateKey, KeyDigest>::from(
-                config.master_seed,
-                config.branch_seed,
-                config.primary_key_index,
+                key_manager_state.master_seed,
+                key_manager_state.branch_seed,
+                key_manager_state.primary_key_index,
             )),
             db,
             request_stream: Some(request_stream),
@@ -178,7 +191,7 @@ where T: OutputManagerBackend
         let mut km = acquire_lock!(self.key_manager);
 
         let key = km.next_key()?.k;
-
+        self.db.increment_key_index()?;
         self.db.accept_incoming_pending_transaction(&tx_id, &amount, &key)?;
 
         Ok(key)
@@ -250,6 +263,7 @@ where T: OutputManagerBackend
         if total > amount + fee_without_change {
             let mut km = acquire_lock!(self.key_manager);
             let key = km.next_key()?.k;
+            self.db.increment_key_index()?;
             change_key = Some(key.clone());
             builder.with_change_secret(key);
         }

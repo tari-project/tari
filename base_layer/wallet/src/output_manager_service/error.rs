@@ -74,6 +74,8 @@ pub enum OutputManagerStorageError {
     ConversionError,
     /// Output has already been spent
     OutputAlreadySpent,
+    /// Key Manager not initialized
+    KeyManagerNotInitialized,
     OutOfRangeError(OutOfRangeError),
     R2d2Error,
     DieselError(DieselError),

@@ -31,6 +31,16 @@ table! {
 }
 
 table! {
+    key_manager_states (id) {
+        id -> Nullable<BigInt>,
+        master_seed -> Binary,
+        branch_seed -> Text,
+        primary_key_index -> BigInt,
+        timestamp -> Timestamp,
+    }
+}
+
+table! {
     outbound_transactions (tx_id) {
         tx_id -> BigInt,
         destination_public_key -> Binary,
@@ -75,6 +85,7 @@ allow_tables_to_appear_in_same_query!(
     completed_transactions,
     contacts,
     inbound_transactions,
+    key_manager_states,
     outbound_transactions,
     outputs,
     peers,

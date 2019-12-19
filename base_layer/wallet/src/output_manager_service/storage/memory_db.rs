@@ -26,6 +26,7 @@ use crate::output_manager_service::{
         DbKey,
         DbKeyValuePair,
         DbValue,
+        KeyManagerState,
         OutputManagerBackend,
         PendingTransactionOutputs,
         WriteOperation,
@@ -46,6 +47,7 @@ pub struct InnerDatabase {
     unspent_outputs: Vec<UnblindedOutput>,
     spent_outputs: Vec<UnblindedOutput>,
     pending_transactions: HashMap<TxId, PendingTransactionOutputs>,
+    key_manager_state: Option<KeyManagerState>,
 }
 
 impl InnerDatabase {
@@ -54,10 +56,12 @@ impl InnerDatabase {
             unspent_outputs: Vec::new(),
             spent_outputs: Vec::new(),
             pending_transactions: HashMap::new(),
+            key_manager_state: None,
         }
     }
 }
 
+#[derive(Clone)]
 pub struct OutputManagerMemoryDatabase {
     db: Arc<RwLock<InnerDatabase>>,
 }
@@ -93,6 +97,10 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             DbKey::AllPendingTransactionOutputs => {
                 Some(DbValue::AllPendingTransactionOutputs(db.pending_transactions.clone()))
             },
+            DbKey::KeyManagerState => db
+                .key_manager_state
+                .as_ref()
+                .map(|km| DbValue::KeyManagerState(km.clone())),
         };
 
         Ok(result)
@@ -121,6 +129,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                 DbKeyValuePair::PendingTransactionOutputs(t, p) => {
                     db.pending_transactions.insert(t, *p);
                 },
+                DbKeyValuePair::KeyManagerState(km) => db.key_manager_state = Some(km),
             },
             WriteOperation::Remove(k) => match k {
                 DbKey::SpentOutput(k) => match db.spent_outputs.iter().position(|v| v.spending_key == k) {
@@ -147,6 +156,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                 DbKey::UnspentOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::SpentOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::AllPendingTransactionOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::KeyManagerState => return Err(OutputManagerStorageError::OperationNotSupported),
             },
         }
         Ok(None)
@@ -234,6 +244,20 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         for t in transactions_to_be_cancelled {
             self.cancel_pending_transaction(t.clone())?;
         }
+
+        Ok(())
+    }
+
+    fn increment_key_index(&mut self) -> Result<(), OutputManagerStorageError> {
+        let mut db = acquire_write_lock!(self.db);
+
+        if db.key_manager_state.is_none() {
+            return Err(OutputManagerStorageError::KeyManagerNotInitialized);
+        }
+        db.key_manager_state = db.key_manager_state.clone().map(|mut state| {
+            state.primary_key_index += 1;
+            state
+        });
 
         Ok(())
     }

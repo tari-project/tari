@@ -32,7 +32,7 @@ use tari_service_framework::{
     ServiceInitializer,
 };
 use tari_shutdown::ShutdownSignal;
-use tari_transactions::types::{CryptoFactories, PrivateKey};
+use tari_transactions::types::CryptoFactories;
 use tokio::runtime::TaskExecutor;
 
 pub mod error;
@@ -44,17 +44,9 @@ const LOG_TARGET: &'static str = "wallet::output_manager_service::initializer";
 
 pub type TxId = u64;
 
-#[derive(Clone)]
-pub struct OutputManagerConfig {
-    pub master_seed: PrivateKey,
-    pub branch_seed: String,
-    pub primary_key_index: usize,
-}
-
 pub struct OutputManagerServiceInitializer<T>
 where T: OutputManagerBackend
 {
-    config: Option<OutputManagerConfig>,
     backend: Option<T>,
     factories: CryptoFactories,
 }
@@ -62,9 +54,8 @@ where T: OutputManagerBackend
 impl<T> OutputManagerServiceInitializer<T>
 where T: OutputManagerBackend
 {
-    pub fn new(config: OutputManagerConfig, backend: T, factories: CryptoFactories) -> Self {
+    pub fn new(backend: T, factories: CryptoFactories) -> Self {
         Self {
-            config: Some(config),
             backend: Some(backend),
             factories,
         }
@@ -83,11 +74,6 @@ where T: OutputManagerBackend + 'static
         shutdown: ShutdownSignal,
     ) -> Self::Future
     {
-        let config = self
-            .config
-            .take()
-            .expect("Output Manager Service initializer already called");
-
         let (sender, receiver) = reply_channel::unbounded();
 
         let oms_handle = OutputManagerHandle::new(sender);
@@ -101,7 +87,7 @@ where T: OutputManagerBackend + 'static
             .expect("Cannot start Output Manager Service without setting a storage backend");
         let factories = self.factories.clone();
         executor.spawn(async move {
-            let service = OutputManagerService::new(receiver, config, OutputManagerDatabase::new(backend), factories)
+            let service = OutputManagerService::new(receiver, OutputManagerDatabase::new(backend), factories)
                 .expect("Could not initialize Output Manager Service")
                 .start();
 

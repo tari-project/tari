@@ -38,25 +38,23 @@ use tari_p2p::initialization::CommsConfig;
 use tari_test_utils::{collect_stream, paths::with_temp_dir};
 use tari_transactions::{tari_amount::MicroTari, types::CryptoFactories};
 #[cfg(feature = "test_harness")]
+use tari_wallet::testnet_utils::broadcast_transaction;
+#[cfg(feature = "test_harness")]
 use tari_wallet::testnet_utils::finalize_received_transaction;
+#[cfg(feature = "test_harness")]
+use tari_wallet::transaction_service::storage::database::{CompletedTransaction, InboundTransaction};
 use tari_wallet::{
     contacts_service::storage::{database::Contact, memory_db::ContactsServiceMemoryDatabase},
     output_manager_service::storage::memory_db::OutputManagerMemoryDatabase,
     storage::memory_db::WalletMemoryDatabase,
-    testnet_utils::broadcast_transaction,
-    transaction_service::{
-        handle::TransactionEvent,
-        storage::{
-            database::{CompletedTransaction, InboundTransaction},
-            memory_db::TransactionMemoryDatabase,
-        },
-    },
+    transaction_service::{handle::TransactionEvent, storage::memory_db::TransactionMemoryDatabase},
     wallet::WalletConfig,
     Wallet,
 };
 #[cfg(feature = "test_harness")]
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
+
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(
         public_key.clone(),
@@ -334,26 +332,25 @@ impl CallbackState {
         self.discovery_send_callback_called = false;
     }
 }
-
 lazy_static! {
     static ref CALLBACK_STATE_HARNESS: Mutex<CallbackState> = {
         let c = Mutex::new(CallbackState::new());
         c
     };
 }
-
+#[cfg(feature = "test_harness")]
 unsafe extern "C" fn received_tx_callback(_tx: *mut InboundTransaction) {
     assert_eq!(_tx.is_null(), false);
     CALLBACK_STATE_HARNESS.lock().unwrap().received_tx_callback_called = true;
     Box::from_raw(_tx);
 }
-
+#[cfg(feature = "test_harness")]
 unsafe extern "C" fn received_tx_reply_callback(_tx: *mut CompletedTransaction) {
     assert_eq!(_tx.is_null(), false);
     CALLBACK_STATE_HARNESS.lock().unwrap().received_tx_reply_callback_called = true;
     Box::from_raw(_tx);
 }
-
+#[cfg(feature = "test_harness")]
 unsafe extern "C" fn received_finalized_tx_callback(_tx: *mut CompletedTransaction) {
     assert_eq!(_tx.is_null(), false);
     CALLBACK_STATE_HARNESS
@@ -362,19 +359,19 @@ unsafe extern "C" fn received_finalized_tx_callback(_tx: *mut CompletedTransacti
         .received_finalized_tx_callback_called = true;
     Box::from_raw(_tx);
 }
-
+#[cfg(feature = "test_harness")]
 unsafe extern "C" fn broadcast_tx_callback(_tx: *mut CompletedTransaction) {
     assert_eq!(_tx.is_null(), false);
     CALLBACK_STATE_HARNESS.lock().unwrap().broadcast_tx_callback_called = true;
     Box::from_raw(_tx);
 }
-
+#[cfg(feature = "test_harness")]
 unsafe extern "C" fn mined_tx_callback(_tx: *mut CompletedTransaction) {
     assert_eq!(_tx.is_null(), false);
     CALLBACK_STATE_HARNESS.lock().unwrap().mined_tx_callback_called = true;
     Box::from_raw(_tx);
 }
-
+#[cfg(feature = "test_harness")]
 unsafe extern "C" fn discovery_send_callback(_tx_id: u64, _result: bool) {
     CALLBACK_STATE_HARNESS.lock().unwrap().discovery_send_callback_called = true;
     assert!(true);

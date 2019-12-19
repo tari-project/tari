@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{data::create_temporary_sqlite_path, utils::random_string};
+use crate::support::utils::random_string;
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_service_framework::StackBuilder;
 use tari_shutdown::Shutdown;
@@ -35,6 +35,7 @@ use tari_wallet::contacts_service::{
     },
     ContactsServiceInitializer,
 };
+use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
 pub fn setup_contacts_service<T: ContactsBackend + 'static>(
@@ -164,5 +165,10 @@ fn contacts_service_memory_db() {
 
 #[test]
 fn contacts_service_sqlite_db() {
-    test_contacts_service(ContactsServiceSqliteDatabase::new(create_temporary_sqlite_path()).unwrap());
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = temp_dir.path().to_str().unwrap().to_string();
+    test_contacts_service(
+        ContactsServiceSqliteDatabase::new(format!("{}/{}", db_folder, db_name).to_string()).unwrap(),
+    );
 }

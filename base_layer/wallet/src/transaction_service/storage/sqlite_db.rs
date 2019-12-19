@@ -688,14 +688,11 @@ impl From<UpdateCompletedTransaction> for UpdateCompletedTransactionSql {
 
 #[cfg(test)]
 mod test {
+    #[cfg(feature = "test_harness")]
+    use crate::transaction_service::storage::sqlite_db::UpdateCompletedTransaction;
     use crate::transaction_service::storage::{
         database::{CompletedTransaction, InboundTransaction, OutboundTransaction, TransactionStatus},
-        sqlite_db::{
-            CompletedTransactionSql,
-            InboundTransactionSql,
-            OutboundTransactionSql,
-            UpdateCompletedTransaction,
-        },
+        sqlite_db::{CompletedTransactionSql, InboundTransactionSql, OutboundTransactionSql},
     };
     use chrono::Utc;
     use diesel::{r2d2::ConnectionManager, Connection, SqliteConnection};
