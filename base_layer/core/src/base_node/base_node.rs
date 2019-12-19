@@ -24,7 +24,7 @@ use crate::{
     base_node::{
         comms_interface::OutboundNodeCommsInterface,
         states,
-        states::{BaseNodeState, HorizonInfo, HorizonSyncConfig, ListeningInfo, StateEvent},
+        states::{BaseNodeState, BlockSyncConfig, HorizonInfo, HorizonSyncConfig, ListeningInfo, StateEvent},
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
 };
@@ -38,12 +38,14 @@ const LOG_TARGET: &str = "core::base_node";
 #[derive(Clone, Copy)]
 pub struct BaseNodeStateMachineConfig {
     pub horizon_sync_config: HorizonSyncConfig,
+    pub block_sync_config: BlockSyncConfig,
 }
 
 impl Default for BaseNodeStateMachineConfig {
     fn default() -> Self {
         Self {
             horizon_sync_config: HorizonSyncConfig::default(),
+            block_sync_config: BlockSyncConfig::default(),
         }
     }
 }
@@ -119,7 +121,7 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
                 Starting(s) => s.next_event(&mut shared_state).await,
                 InitialSync(s) => s.next_event(&mut shared_state).await,
                 FetchingHorizonState(s) => s.next_event(&mut shared_state).await,
-                BlockSync(s) => s.next_event().await,
+                BlockSync(s) => s.next_event(&mut shared_state).await,
                 Listening(s) => s.next_event(&mut shared_state).await,
                 Shutdown(_) => break,
             };

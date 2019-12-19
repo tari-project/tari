@@ -142,7 +142,7 @@ mod listening;
 mod shutdown_state;
 mod starting_state;
 
-pub use block_sync::BlockSyncInfo;
+pub use block_sync::{BlockSyncConfig, BlockSyncInfo};
 pub use fetching_horizon_state::{HorizonInfo, HorizonSyncConfig};
 pub use initial_sync::InitialSync;
 pub use listening::ListeningInfo;
