@@ -21,7 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
+    base_node::{
+        comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
+        OutboundNodeCommsInterface,
+    },
     blocks::{blockheader::BlockHeader, Block, BlockBuilder, NewBlockTemplate},
     chain_storage::{
         async_db,
@@ -37,6 +40,7 @@ use crate::{
 };
 use futures::SinkExt;
 use tari_broadcast_channel::Publisher;
+use tari_comms::types::CommsPublicKey;
 use tari_transactions::{
     transaction::{TransactionKernel, TransactionOutput},
     types::HashOutput,
@@ -58,6 +62,7 @@ where T: BlockchainBackend
     blockchain_db: BlockchainDatabase<T>,
     mempool: Mempool<T>,
     consensus_manager: ConsensusManager<T>,
+    outbound_nci: OutboundNodeCommsInterface,
 }
 
 impl<T> InboundNodeCommsHandlers<T>
@@ -69,6 +74,7 @@ where T: BlockchainBackend
         blockchain_db: BlockchainDatabase<T>,
         mempool: Mempool<T>,
         consensus_manager: ConsensusManager<T>,
+        outbound_nci: OutboundNodeCommsInterface,
     ) -> Self
     {
         Self {
@@ -76,6 +82,7 @@ where T: BlockchainBackend
             blockchain_db,
             mempool,
             consensus_manager,
+            outbound_nci,
         }
     }
 
@@ -190,14 +197,27 @@ where T: BlockchainBackend
     }
 
     /// Handle inbound blocks from remote nodes and local services.
-    pub async fn handle_block(&mut self, block: &Block) -> Result<(), CommsInterfaceError> {
-        let block_event = match self.blockchain_db.add_block(block.clone()) {
+    pub async fn handle_block(
+        &mut self,
+        block: &Block,
+        source_peer: Option<CommsPublicKey>,
+    ) -> Result<(), CommsInterfaceError>
+    {
+        let add_block_result = self.blockchain_db.add_block(block.clone());
+        // Create block event on block event stream
+        let block_event = match add_block_result.clone() {
             Ok(block_add_result) => BlockEvent::Verified((block.clone(), block_add_result)),
             Err(e) => BlockEvent::Invalid((block.clone(), e)),
         };
         self.event_publisher
             .send(block_event)
             .await
-            .map_err(|_| CommsInterfaceError::EventStreamError)
+            .map_err(|_| CommsInterfaceError::EventStreamError)?;
+        // Propagate verified block to remote nodes
+        if let Ok(BlockAddResult::Ok(_)) = add_block_result {
+            let exclude_peers = source_peer.map_or_else(|| vec![], |comms_public_key| vec![comms_public_key]);
+            self.outbound_nci.propagate_block(block.clone(), exclude_peers).await?;
+        }
+        Ok(())
     }
 }

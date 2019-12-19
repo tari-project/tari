@@ -32,7 +32,7 @@ use crate::{
     mempool::Mempool,
     proto as shared_protos,
 };
-use futures::{future, Future, Stream, StreamExt};
+use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, future, Future, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
 use tari_broadcast_channel::bounded;
@@ -160,11 +160,11 @@ where T: BlockchainBackend + 'static
         let inbound_block_stream = self.inbound_block_stream();
         // Connect InboundNodeCommsInterface and OutboundNodeCommsInterface to BaseNodeService
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
-        let (outbound_block_sender_service, outbound_block_stream) = reply_channel::unbounded();
+        let (outbound_block_sender_service, outbound_block_stream) = futures_mpsc_channel_unbounded();
         let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
         let (local_block_sender_service, local_block_stream) = reply_channel::unbounded();
         let outbound_nci =
-            OutboundNodeCommsInterface::new(outbound_request_sender_service, outbound_block_sender_service);
+            OutboundNodeCommsInterface::new(outbound_request_sender_service, outbound_block_sender_service.clone());
         let (block_event_publisher, block_event_subscriber) = bounded(100);
         let local_nci = LocalNodeCommsInterface::new(
             local_request_sender_service,
@@ -176,6 +176,7 @@ where T: BlockchainBackend + 'static
             self.blockchain_db.clone(),
             self.mempool.clone(),
             self.consensus_manager.clone(),
+            outbound_nci.clone(),
         );
         let executer_clone = executor.clone(); // Give BaseNodeService access to the executor
         let config = self.config.clone();

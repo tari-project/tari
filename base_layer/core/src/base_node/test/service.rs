@@ -37,6 +37,7 @@ use crate::{
             create_network_with_2_base_nodes_with_config,
             create_network_with_3_base_nodes,
             create_network_with_3_base_nodes_with_config,
+            random_node_identity,
             BaseNodeBuilder,
         },
     },
@@ -377,11 +378,41 @@ where TStream: Stream + FusedStream + Unpin {
 }
 
 #[test]
-fn propagate_valid_block() {
+fn propagate_and_forward_valid_block() {
     let runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut alice_node, bob_node, carol_node) =
-        create_network_with_3_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
+    // Alice will propagate block to bob, bob will receive it, verify it and then propagate it to carol and dan. Dan and
+    // Carol will also try to propagate the block to each other, as they dont know that bob sent it to the other node.
+    // These duplicate blocks will be discarded and wont be propagated again.
+    //              /-> carol <-\
+    //             /             |
+    // alice -> bob             |
+    //             \             |
+    //              \->  dan  <-/
+    let alice_node_identity = random_node_identity();
+    let bob_node_identity = random_node_identity();
+    let carol_node_identity = random_node_identity();
+    let dan_node_identity = random_node_identity();
+    let mut alice_node = BaseNodeBuilder::new()
+        .with_node_identity(alice_node_identity.clone())
+        .with_peers(vec![bob_node_identity.clone()])
+        .start(&runtime, temp_dir.path().to_str().unwrap());
+    let bob_node = BaseNodeBuilder::new()
+        .with_node_identity(bob_node_identity.clone())
+        .with_peers(vec![
+            alice_node_identity,
+            carol_node_identity.clone(),
+            dan_node_identity.clone(),
+        ])
+        .start(&runtime, temp_dir.path().to_str().unwrap());
+    let carol_node = BaseNodeBuilder::new()
+        .with_node_identity(carol_node_identity.clone())
+        .with_peers(vec![bob_node_identity.clone(), dan_node_identity.clone()])
+        .start(&runtime, temp_dir.path().to_str().unwrap());
+    let dan_node = BaseNodeBuilder::new()
+        .with_node_identity(dan_node_identity)
+        .with_peers(vec![bob_node_identity, carol_node_identity])
+        .start(&runtime, temp_dir.path().to_str().unwrap());
 
     let block0 = add_block_and_update_header(&alice_node.blockchain_db, get_genesis_block());
     let mut block1 = chain_block(&block0, vec![]);
@@ -390,17 +421,27 @@ fn propagate_valid_block() {
 
     bob_node.blockchain_db.add_new_block(block0.clone()).unwrap();
     carol_node.blockchain_db.add_new_block(block0.clone()).unwrap();
+    dan_node.blockchain_db.add_new_block(block0.clone()).unwrap();
 
     runtime.block_on(async {
-        assert!(alice_node.outbound_nci.propagate_block(block1.clone()).await.is_ok());
+        // Alice will start the propagation. Bob, Carol and Dan will propagate based on the logic in their inbound
+        // handle_block handlers
+        assert!(alice_node
+            .outbound_nci
+            .propagate_block(block1.clone(), vec![])
+            .await
+            .is_ok());
 
         let bob_block_event_stream = bob_node.local_nci.get_block_event_stream_fused();
         let bob_block_event_fut = event_stream_next(bob_block_event_stream, Duration::from_millis(20000));
         let carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
         let carol_block_event_fut = event_stream_next(carol_block_event_stream, Duration::from_millis(20000));
-        let (bob_block_event, carol_block_event) = join!(bob_block_event_fut, carol_block_event_fut);
+        let dan_block_event_stream = dan_node.local_nci.get_block_event_stream_fused();
+        let dan_block_event_fut = event_stream_next(dan_block_event_stream, Duration::from_millis(20000));
+        let (bob_block_event, carol_block_event, dan_block_event) =
+            join!(bob_block_event_fut, carol_block_event_fut, dan_block_event_fut);
 
-        if let BlockEvent::Verified((received_block, _block_add_result)) = &*bob_block_event.unwrap() {
+        if let BlockEvent::Verified((received_block, _)) = &*bob_block_event.unwrap() {
             assert_eq!(received_block.hash(), block1_hash);
         } else {
             assert!(false);
@@ -410,19 +451,50 @@ fn propagate_valid_block() {
         } else {
             assert!(false);
         }
+        if let BlockEvent::Verified((received_block, _block_add_result)) = &*dan_block_event.unwrap() {
+            assert_eq!(received_block.hash(), block1_hash);
+        } else {
+            assert!(false);
+        }
     });
 
     alice_node.comms.shutdown().unwrap();
     bob_node.comms.shutdown().unwrap();
     carol_node.comms.shutdown().unwrap();
+    dan_node.comms.shutdown().unwrap();
 }
 
 #[test]
-fn propagate_invalid_block() {
+fn propagate_and_forward_invalid_block() {
     let runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut alice_node, bob_node, carol_node) =
-        create_network_with_3_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
+    // Alice will propagate an invalid block to Carol and Bob, they will check the received block and not propagate the
+    // block to dan.
+    //       /->  bob  -\
+    //      /            \
+    // alice              -> dan
+    //      \            /
+    //       \-> carol -/
+    let alice_node_identity = random_node_identity();
+    let bob_node_identity = random_node_identity();
+    let carol_node_identity = random_node_identity();
+    let dan_node_identity = random_node_identity();
+    let mut alice_node = BaseNodeBuilder::new()
+        .with_node_identity(alice_node_identity.clone())
+        .with_peers(vec![bob_node_identity.clone(), carol_node_identity.clone()])
+        .start(&runtime, temp_dir.path().to_str().unwrap());
+    let bob_node = BaseNodeBuilder::new()
+        .with_node_identity(bob_node_identity.clone())
+        .with_peers(vec![alice_node_identity.clone(), dan_node_identity.clone()])
+        .start(&runtime, temp_dir.path().to_str().unwrap());
+    let carol_node = BaseNodeBuilder::new()
+        .with_node_identity(carol_node_identity.clone())
+        .with_peers(vec![alice_node_identity, dan_node_identity.clone()])
+        .start(&runtime, temp_dir.path().to_str().unwrap());
+    let dan_node = BaseNodeBuilder::new()
+        .with_node_identity(dan_node_identity)
+        .with_peers(vec![bob_node_identity, carol_node_identity])
+        .start(&runtime, temp_dir.path().to_str().unwrap());
 
     let block0 = add_block_and_update_header(&alice_node.blockchain_db, get_genesis_block());
     let block1 = chain_block(&block0, vec![]);
@@ -432,13 +504,20 @@ fn propagate_invalid_block() {
     carol_node.blockchain_db.add_new_block(block0.clone()).unwrap();
 
     runtime.block_on(async {
-        assert!(alice_node.outbound_nci.propagate_block(block1.clone()).await.is_ok());
+        assert!(alice_node
+            .outbound_nci
+            .propagate_block(block1.clone(), vec![])
+            .await
+            .is_ok());
 
         let bob_block_event_stream = bob_node.local_nci.get_block_event_stream_fused();
         let bob_block_event_fut = event_stream_next(bob_block_event_stream, Duration::from_millis(20000));
         let carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
         let carol_block_event_fut = event_stream_next(carol_block_event_stream, Duration::from_millis(20000));
-        let (bob_block_event, carol_block_event) = join!(bob_block_event_fut, carol_block_event_fut);
+        let dan_block_event_stream = dan_node.local_nci.get_block_event_stream_fused();
+        let dan_block_event_fut = event_stream_next(dan_block_event_stream, Duration::from_millis(5000));
+        let (bob_block_event, carol_block_event, dan_block_event) =
+            join!(bob_block_event_fut, carol_block_event_fut, dan_block_event_fut);
 
         if let BlockEvent::Invalid((received_block, err)) = &*bob_block_event.unwrap() {
             assert_eq!(received_block.hash(), block1_hash);
@@ -452,11 +531,13 @@ fn propagate_invalid_block() {
         } else {
             assert!(false);
         }
+        assert!(dan_block_event.is_none());
     });
 
     alice_node.comms.shutdown().unwrap();
     bob_node.comms.shutdown().unwrap();
     carol_node.comms.shutdown().unwrap();
+    dan_node.comms.shutdown().unwrap();
 }
 
 #[test]
