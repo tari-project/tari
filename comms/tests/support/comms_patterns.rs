@@ -27,7 +27,7 @@ use std::{
 };
 use tari_comms::{
     connection::{
-        types::{Direction, SocketType},
+        types::{ConnectionDirection, SocketType},
         zmq::{CurvePublicKey, CurveSecretKey, ZmqEndpoint},
         CurveEncryption,
         ZmqContext,
@@ -41,7 +41,7 @@ const THREAD_STACK_SIZE: usize = 32 * 1024; // 32kb
 /// Creates an [AsyncRequestReplyPattern].
 ///
 /// [AsyncRequestReplyPattern]: struct.AsyncRequestReplyPattern.html
-pub fn async_request_reply<T>(direction: Direction) -> AsyncRequestReplyPattern<T>
+pub fn async_request_reply<T>(direction: ConnectionDirection) -> AsyncRequestReplyPattern<T>
 where
     T: ZmqEndpoint + Clone + Send + Sync + 'static,
     T::Error: Debug,
@@ -54,7 +54,7 @@ where
 /// Once a response is received, the thread exits. This can be used to write functional
 /// tests for request/reply flows.
 pub struct AsyncRequestReplyPattern<T: ZmqEndpoint + Clone + Send + Sync + 'static> {
-    direction: Direction,
+    direction: ConnectionDirection,
     endpoint: Option<T>,
     identity: Option<String>,
     secret_key: Option<CurveSecretKey>,
@@ -68,7 +68,7 @@ where
     T::Error: Debug,
 {
     /// Create a new AsyncRequestReplyPattern
-    pub fn new(direction: Direction) -> Self {
+    pub fn new(direction: ConnectionDirection) -> Self {
         AsyncRequestReplyPattern {
             direction,
             endpoint: None,
@@ -131,7 +131,7 @@ where
                 socket.set_linger(100).unwrap();
 
                 match direction {
-                    Direction::Inbound => {
+                    ConnectionDirection::Inbound => {
                         if let Some(sk) = secret_key {
                             socket.set_curve_server(true).unwrap();
                             socket.set_curve_secretkey(&sk.into_inner()).unwrap();
@@ -148,7 +148,7 @@ where
                         tx.send(()).unwrap();
                     },
 
-                    Direction::Outbound => {
+                    ConnectionDirection::Outbound => {
                         if let Some(spk) = server_public_key {
                             socket.set_curve_serverkey(&spk.into_inner()).unwrap();
                             let keypair = CurveEncryption::generate_keypair().unwrap();

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection::Direction;
+use crate::connection::ConnectionDirection;
 use futures::{
     io::{AsyncRead, AsyncWrite},
     stream::BoxStream,
@@ -60,10 +60,10 @@ where TSocket: AsyncRead + AsyncWrite + Send + Unpin + 'static
     }
 
     /// Upgrade the underlying socket to use yamux
-    pub async fn upgrade_connection(socket: TSocket, direction: Direction) -> io::Result<Self> {
+    pub async fn upgrade_connection(socket: TSocket, direction: ConnectionDirection) -> io::Result<Self> {
         let mode = match direction {
-            Direction::Inbound => Mode::Server,
-            Direction::Outbound => Mode::Client,
+            ConnectionDirection::Inbound => Mode::Server,
+            ConnectionDirection::Outbound => Mode::Client,
         };
 
         Ok(Self::new(socket, mode))

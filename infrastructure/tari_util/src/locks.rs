@@ -26,7 +26,10 @@ macro_rules! recover_lock {
     ($e:expr) => {
         match $e {
             Ok(lock) => lock,
-            Err(poisoned) => poisoned.into_inner(),
+            Err(poisoned) => {
+                log::warn!(target: "tari_util", "Lock has been POISONED and will be silently recovered");
+                poisoned.into_inner()
+            },
         }
     };
 }

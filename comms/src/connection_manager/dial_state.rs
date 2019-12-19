@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,11 +20,53 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod error;
-pub mod hmap_database;
-pub mod key_val_store;
-pub mod lmdb_database;
+use crate::{
+    connection_manager::{error::ConnectionManagerError, peer_connection::PeerConnection},
+    peer_manager::Peer,
+};
+use futures::channel::oneshot;
+use tari_shutdown::ShutdownSignal;
 
-pub use error::KeyValStoreError;
-pub use hmap_database::HashmapDatabase;
-pub use key_val_store::KeyValueStore;
+/// The state of the dial request
+pub struct DialState {
+    /// Number of dial attempts
+    attempts: usize,
+    /// This peer being dialed
+    pub peer: Peer,
+    /// Cancel signal
+    cancel_signal: ShutdownSignal,
+    /// Reply channel for a connection result
+    pub reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
+}
+
+impl DialState {
+    /// Create a new DialState for the given NodeId
+    pub fn new(
+        peer: Peer,
+        reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
+        cancel_signal: ShutdownSignal,
+    ) -> Self
+    {
+        Self {
+            peer,
+            attempts: 0,
+            reply_tx,
+            cancel_signal,
+        }
+    }
+
+    /// Take ownership of the cancel receiver if this DialState has ownership of one
+    pub fn get_cancel_signal(&self) -> ShutdownSignal {
+        self.cancel_signal.clone()
+    }
+
+    /// Increment the number of attempts
+    pub fn inc_attempts(&mut self) -> &mut Self {
+        self.attempts += 1;
+        self
+    }
+
+    pub fn num_attempts(&self) -> usize {
+        self.attempts
+    }
+}

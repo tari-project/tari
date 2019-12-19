@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,11 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod error;
-pub mod hmap_database;
-pub mod key_val_store;
-pub mod lmdb_database;
+use tari_utilities::{hex::to_hex, ByteArray};
 
-pub use error::KeyValStoreError;
-pub use hmap_database::HashmapDatabase;
-pub use key_val_store::KeyValueStore;
+pub fn short_str<B: ByteArray>(object: &B) -> String {
+    to_hex(&object.as_bytes()[..8])
+}

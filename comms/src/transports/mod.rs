@@ -20,26 +20,34 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// Much of this module is inspired or (more or less) verbatim from the Libra codebase.
+// Copyright (c) The Libra Core Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use futures::{Future, Stream};
 use multiaddr::Multiaddr;
 
+mod noise;
 mod socks;
 mod tcp;
 
-pub use tcp::TcpSocket;
+pub use noise::NoiseTransport;
+pub use tcp::{TcpSocket, TcpTransport};
 
 pub trait Transport {
     /// The output of the transport after a connection is established
     type Output;
     /// Transport error type
-    type Error: std::error::Error;
-    /// A stream which emits `Self::Output` whenever a successful inbound connection is made
-    type Inbound: Stream<Item = Result<Self::Output, Self::Error>> + Send;
+    type Error: std::error::Error + Send + Sync;
+    /// A future which resolves to `Self::Output`
+    type Inbound: Future<Output = Result<Self::Output, Self::Error>> + Send;
+    /// A stream which emits `Self::InboundFuture` whenever a successful inbound connection is made
+    type Listener: Stream<Item = Result<Self::Inbound, Self::Error>> + Send + Unpin;
 
     /// The future returned from the `listen` method.
-    type ListenFuture: Future<Output = Result<(Self::Inbound, Multiaddr), Self::Error>>;
+    type ListenFuture: Future<Output = Result<(Self::Listener, Multiaddr), Self::Error>> + Send + Unpin;
     /// The future returned from the `dial` method.
-    type DialFuture: Future<Output = Result<Self::Output, Self::Error>>;
+    type DialFuture: Future<Output = Result<Self::Output, Self::Error>> + Send + Unpin;
 
     /// Listen for connections on the given multiaddr
     fn listen(&self, addr: Multiaddr) -> Self::ListenFuture;
@@ -47,3 +55,5 @@ pub trait Transport {
     /// Connect (dial) to the given multiaddr
     fn dial(&self, addr: Multiaddr) -> Self::DialFuture;
 }
+
+trait TransportExt: Transport {}

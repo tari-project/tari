@@ -25,7 +25,7 @@ use super::{
     ControlServiceError,
 };
 use crate::{
-    connection::{Direction, EstablishedConnection},
+    connection::{ConnectionDirection, EstablishedConnection},
     message::{Envelope, EnvelopeBody, MessageExt, MessageFlags},
     peer_manager::{NodeId, NodeIdentity, PeerFeatures},
     types::CommsPublicKey,
@@ -129,7 +129,7 @@ impl ControlServiceClient {
     pub fn receive_envelope(&self, timeout: Duration) -> Result<Option<Envelope>, ControlServiceError> {
         match connection_try!(self.connection.receive(timeout.as_millis() as u32)) {
             Some(mut frames) => {
-                if self.connection.direction() == &Direction::Inbound {
+                if self.connection.direction() == &ConnectionDirection::Inbound {
                     frames.remove(0);
                 }
                 let envelope_frame = frames.get(0).ok_or(ControlServiceError::InvalidEnvelope)?;
@@ -194,7 +194,7 @@ impl ControlServiceClient {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::connection::{Connection, Direction, InprocAddress, ZmqContext};
+    use crate::connection::{Connection, ConnectionDirection, InprocAddress, ZmqContext};
     use rand::rngs::OsRng;
     use tari_crypto::keys::PublicKey;
 
@@ -202,7 +202,9 @@ mod test {
     fn construct_envelope() {
         let addr = InprocAddress::random();
         let context = ZmqContext::new();
-        let conn = Connection::new(&context, Direction::Outbound).establish(&addr).unwrap();
+        let conn = Connection::new(&context, ConnectionDirection::Outbound)
+            .establish(&addr)
+            .unwrap();
         let node_identity = Arc::new(NodeIdentity::random_for_test(
             Some("/ip4/127.0.0.1/tcp/9000".parse().unwrap()),
             PeerFeatures::empty(),

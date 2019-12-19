@@ -26,7 +26,7 @@ use crate::{
         connection_stats::PeerConnectionStats,
         node_id::{NodeDistance, NodeId},
         peer::{Peer, PeerFlags},
-        peer_key::{generate_peer_key, PeerKey},
+        peer_id::{generate_peer_key, PeerId},
         PeerFeatures,
         PeerManagerError,
         PeerQuery,
@@ -45,15 +45,15 @@ const LOG_TARGET: &str = "comms::peer_manager::peer_storage";
 /// using the node_id, public key or net_address of a peer.
 pub struct PeerStorage<DS> {
     pub(crate) peer_db: DS,
-    public_key_index: HashMap<CommsPublicKey, PeerKey>,
-    node_id_index: HashMap<NodeId, PeerKey>,
+    public_key_index: HashMap<CommsPublicKey, PeerId>,
+    node_id_index: HashMap<NodeId, PeerId>,
 }
 
 impl<DS> PeerStorage<DS>
-where DS: KeyValueStore<PeerKey, Peer>
+where DS: KeyValueStore<PeerId, Peer>
 {
-    /// Constructs a new empty PeerStorage system
-    pub fn new(database: DS) -> Result<PeerStorage<DS>, PeerManagerError> {
+    /// Constructs a new PeerStorage, with indexes populated from the given datastore
+    pub fn new_indexed(database: DS) -> Result<PeerStorage<DS>, PeerManagerError> {
         // Restore peers and hashmap links from database
         let mut public_key_index = HashMap::new();
         let mut node_id_index = HashMap::new();
@@ -82,7 +82,7 @@ where DS: KeyValueStore<PeerKey, Peer>
 
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exists, the stored version will be replaced with the newly provided peer.
-    pub fn add_peer(&mut self, mut peer: Peer) -> Result<PeerKey, PeerManagerError> {
+    pub fn add_peer(&mut self, mut peer: Peer) -> Result<PeerId, PeerManagerError> {
         let (public_key, node_id) = (peer.public_key.clone(), peer.node_id.clone());
         match self.public_key_index.get(&peer.public_key).map(|k| *k) {
             Some(peer_key) => {
@@ -160,13 +160,13 @@ where DS: KeyValueStore<PeerKey, Peer>
     }
 
     /// Add key pairs to the search hashmaps for a newly added or moved peer
-    fn add_index_links(&mut self, peer_key: PeerKey, public_key: CommsPublicKey, node_id: NodeId) {
+    fn add_index_links(&mut self, peer_key: PeerId, public_key: CommsPublicKey, node_id: NodeId) {
         self.node_id_index.insert(node_id, peer_key);
         self.public_key_index.insert(public_key, peer_key);
     }
 
     /// Remove the peer specified by a given index from the database and remove hashmap keys
-    fn remove_index_links(&mut self, peer_key: PeerKey) {
+    fn remove_index_links(&mut self, peer_key: PeerId) {
         let initial_size_pk = self.public_key_index.len();
         let initial_size_node_id = self.node_id_index.len();
         self.public_key_index = self.public_key_index.drain().filter(|(_, k)| k != &peer_key).collect();
@@ -410,7 +410,7 @@ mod test {
         peer_manager::{peer::PeerFlags, PeerFeatures},
     };
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::HMapDatabase;
+    use tari_storage::HashmapDatabase;
 
     #[test]
     fn test_restore() {
@@ -441,9 +441,9 @@ mod test {
         let peer3 = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), PeerFeatures::empty());
 
         // Create new datastore with a peer database
-        let mut db = Some(HMapDatabase::new());
+        let mut db = Some(HashmapDatabase::new());
         {
-            let mut peer_storage = PeerStorage::new(db.take().unwrap()).unwrap();
+            let mut peer_storage = PeerStorage::new_indexed(db.take().unwrap()).unwrap();
 
             // Test adding and searching for peers
             assert!(peer_storage.add_peer(peer1.clone()).is_ok());
@@ -457,7 +457,7 @@ mod test {
             db = Some(peer_storage.peer_db);
         }
         // Restore from existing database
-        let peer_storage = PeerStorage::new(db.take().unwrap()).unwrap();
+        let peer_storage = PeerStorage::new_indexed(db.take().unwrap()).unwrap();
 
         assert_eq!(peer_storage.peer_db.size().unwrap(), 3);
         assert!(peer_storage.find_by_public_key(&peer1.public_key).is_ok());
@@ -467,7 +467,7 @@ mod test {
 
     #[test]
     fn test_add_delete_find_peer() {
-        let mut peer_storage = PeerStorage::new(HMapDatabase::new()).unwrap();
+        let mut peer_storage = PeerStorage::new_indexed(HashmapDatabase::new()).unwrap();
 
         // Create Peers
         let mut rng = rand::OsRng::new().unwrap();

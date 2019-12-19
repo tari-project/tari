@@ -22,7 +22,7 @@
 
 use super::Transport;
 use crate::utils::multiaddr::{multiaddr_to_socketaddr, socketaddr_to_multiaddr};
-use futures::{io::Error, ready, stream::BoxStream, AsyncRead, AsyncWrite, Future, Poll, Stream, StreamExt};
+use futures::{future, io::Error, ready, stream::BoxStream, AsyncRead, AsyncWrite, Future, Poll, Stream, StreamExt};
 use multiaddr::Multiaddr;
 use std::{io, pin::Pin, task::Context, time::Duration};
 use tokio::{
@@ -89,11 +89,12 @@ impl TcpTransport {
 
 impl Transport for TcpTransport {
     type Error = io::Error;
-    type Inbound = TcpInbound<'static>;
+    type Inbound = future::Ready<io::Result<(TcpSocket, Multiaddr)>>;
+    type Listener = TcpInbound<'static>;
     type Output = (TcpSocket, Multiaddr);
 
     type DialFuture = impl Future<Output = io::Result<Self::Output>>;
-    type ListenFuture = impl Future<Output = io::Result<(Self::Inbound, Multiaddr)>>;
+    type ListenFuture = impl Future<Output = io::Result<(Self::Listener, Multiaddr)>>;
 
     fn listen(&self, addr: Multiaddr) -> Self::ListenFuture {
         let config = self.clone();
@@ -131,7 +132,7 @@ pub struct TcpInbound<'a> {
 }
 
 impl Stream for TcpInbound<'_> {
-    type Item = io::Result<(TcpSocket, Multiaddr)>;
+    type Item = io::Result<future::Ready<io::Result<(TcpSocket, Multiaddr)>>>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match ready!(self.incoming.poll_next_unpin(cx)) {
@@ -139,7 +140,8 @@ impl Stream for TcpInbound<'_> {
                 // Configure each socket
                 self.config.configure(&stream)?;
                 let peer_addr = socketaddr_to_multiaddr(&stream.peer_addr()?);
-                Poll::Ready(Some(Ok((TcpSocket::new(stream), peer_addr))))
+                let result = future::ready(Ok((TcpSocket::new(stream), peer_addr)));
+                Poll::Ready(Some(Ok(result)))
             },
             Some(Err(err)) => Poll::Ready(Some(Err(err))),
             None => Poll::Ready(None),

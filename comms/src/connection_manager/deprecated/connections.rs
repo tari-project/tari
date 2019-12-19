@@ -1,24 +1,24 @@
-//  Copyright 2019 The Tari Project
+// Copyright 2019, The Tari Project
 //
-//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-//  following conditions are met:
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
 //
-//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-//  disclaimer.
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
 //
-//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-//  following disclaimer in the documentation and/or other materials provided with the distribution.
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
 //
-//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-//  products derived from this software without specific prior written permission.
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
 //
-//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{
     error::ConnectionManagerError,
@@ -26,7 +26,7 @@ use super::{
     Result,
 };
 use crate::{
-    connection::{peer_connection::PeerConnectionJoinHandle, Direction, PeerConnection, PeerConnectionError},
+    connection::{peer_connection::PeerConnectionJoinHandle, ConnectionDirection, PeerConnection, PeerConnectionError},
     peer_manager::node_id::NodeId,
 };
 use log::*;
@@ -150,12 +150,12 @@ impl LivePeerConnections {
             }
 
             match conn.direction() {
-                Direction::Inbound => {
+                ConnectionDirection::Inbound => {
                     // Deny this node id permission to connect inbound
                     conn.deny_identity(node_id.to_vec())?;
                     Ok((conn, None))
                 },
-                Direction::Outbound => {
+                ConnectionDirection::Outbound => {
                     let handle = acquire_write_lock!(self.connection_thread_handles)
                         .remove(node_id)
                         .expect(

@@ -29,7 +29,7 @@ use std::time::Duration;
 use tari_comms::connection::{
     connection::Connection,
     error::ConnectionError,
-    types::{Direction, Linger},
+    types::{ConnectionDirection, Linger},
     CurveEncryption,
     InprocAddress,
     ZmqContext,
@@ -41,7 +41,7 @@ fn inbound_receive_timeout() {
 
     let addr = InprocAddress::random();
 
-    let conn = Connection::new(&ctx, Direction::Inbound)
+    let conn = Connection::new(&ctx, ConnectionDirection::Inbound)
         .set_linger(Linger::Indefinitely)
         .establish(&addr)
         .unwrap();
@@ -61,9 +61,9 @@ fn inbound_recv_send_inproc() {
 
     let addr = InprocAddress::random();
 
-    let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Outbound);
+    let req_rep_pattern = support::comms_patterns::async_request_reply(ConnectionDirection::Outbound);
 
-    let conn = Connection::new(&ctx, Direction::Inbound)
+    let conn = Connection::new(&ctx, ConnectionDirection::Inbound)
         .set_linger(Linger::Indefinitely)
         .establish(&addr)
         .unwrap();
@@ -97,11 +97,11 @@ fn inbound_recv_send_encrypted_tcp() {
 
     let addr = factories::net_address::create().use_os_port().build().unwrap();
 
-    let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Outbound);
+    let req_rep_pattern = support::comms_patterns::async_request_reply(ConnectionDirection::Outbound);
 
     let (sk, pk) = CurveEncryption::generate_keypair().unwrap();
 
-    let conn = Connection::new(&ctx, Direction::Inbound)
+    let conn = Connection::new(&ctx, ConnectionDirection::Inbound)
         .set_linger(Linger::Indefinitely)
         .set_curve_encryption(CurveEncryption::Server { secret_key: sk })
         .establish(&addr)
@@ -131,14 +131,14 @@ fn outbound_send_recv_inproc() {
 
     let addr = InprocAddress::random();
 
-    let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Inbound);
+    let req_rep_pattern = support::comms_patterns::async_request_reply(ConnectionDirection::Inbound);
 
     let signal = req_rep_pattern
         .set_endpoint(addr.clone())
         .set_send_data(vec!["OK".as_bytes().to_vec()])
         .run(ctx.clone());
 
-    let conn = Connection::new(&ctx, Direction::Outbound)
+    let conn = Connection::new(&ctx, ConnectionDirection::Outbound)
         .set_linger(Linger::Indefinitely)
         .set_identity(b"identity")
         .establish(&addr)
@@ -161,7 +161,7 @@ fn outbound_send_recv_encrypted_tcp() {
 
     let addr = factories::net_address::create().build().unwrap();
 
-    let req_rep_pattern = support::comms_patterns::async_request_reply(Direction::Inbound);
+    let req_rep_pattern = support::comms_patterns::async_request_reply(ConnectionDirection::Inbound);
 
     let (sk, spk) = CurveEncryption::generate_keypair().unwrap();
     let (csk, cpk) = CurveEncryption::generate_keypair().unwrap();
@@ -172,7 +172,7 @@ fn outbound_send_recv_encrypted_tcp() {
         .set_send_data(vec!["OK".as_bytes().to_vec()])
         .run(ctx.clone());
 
-    let conn = Connection::new(&ctx, Direction::Outbound)
+    let conn = Connection::new(&ctx, ConnectionDirection::Outbound)
         .set_linger(Linger::Indefinitely)
         .set_curve_encryption(CurveEncryption::Client {
             secret_key: csk,

@@ -26,7 +26,7 @@ use std::{thread, time::Duration};
 use tari_comms::connection::{
     connection::Connection,
     monitor::{ConnectionMonitor, SocketEventType},
-    types::Direction,
+    types::ConnectionDirection,
     zmq::{ZmqContext, ZmqEndpoint},
     InprocAddress,
 };
@@ -39,7 +39,7 @@ fn recv_socket_events() {
 
     let monitor = ConnectionMonitor::connect(&ctx, &monitor_addr).unwrap();
 
-    let conn_in = Connection::new(&ctx, Direction::Inbound)
+    let conn_in = Connection::new(&ctx, ConnectionDirection::Inbound)
         .set_monitor_addr(monitor_addr.clone())
         .establish(&address)
         .unwrap();
@@ -47,7 +47,7 @@ fn recv_socket_events() {
 
     {
         // Connect and disconnect
-        let conn_out = Connection::new(&ctx, Direction::Outbound)
+        let conn_out = Connection::new(&ctx, ConnectionDirection::Outbound)
             .establish(&connected_address)
             .unwrap();
         conn_out.send(&["test".as_bytes()]).unwrap();

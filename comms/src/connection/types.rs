@@ -57,32 +57,32 @@ impl Default for Linger {
     }
 }
 
-/// Direction of the connection
+/// Direction of the connection relative to this node
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
-pub enum Direction {
+pub enum ConnectionDirection {
     /// Connection listens for incoming connections
     Inbound,
     /// Connection establishes an outbound connection
     Outbound,
 }
 
-impl Direction {
+impl ConnectionDirection {
     pub fn is_inbound(&self) -> bool {
         match self {
-            Direction::Inbound => true,
+            ConnectionDirection::Inbound => true,
             _ => false,
         }
     }
 
     pub fn is_outbound(&self) -> bool {
         match self {
-            Direction::Outbound => true,
+            ConnectionDirection::Outbound => true,
             _ => false,
         }
     }
 }
 
-impl fmt::Display for Direction {
+impl fmt::Display for ConnectionDirection {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
     }

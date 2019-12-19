@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019 The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,11 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod error;
-pub mod hmap_database;
-pub mod key_val_store;
-pub mod lmdb_database;
+use crate::{
+    consts::COMMS_RNG,
+    peer_manager::{NodeIdentity, PeerFeatures},
+};
+use std::sync::Arc;
+use tari_test_utils::address::get_next_local_address;
 
-pub use error::KeyValStoreError;
-pub use hmap_database::HashmapDatabase;
-pub use key_val_store::KeyValueStore;
+pub fn build_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
+    let public_addr = get_next_local_address().parse().unwrap();
+    COMMS_RNG
+        .with(|rng| NodeIdentity::random(&mut *rng.borrow_mut(), public_addr, features))
+        .map(Arc::new)
+        .unwrap()
+}

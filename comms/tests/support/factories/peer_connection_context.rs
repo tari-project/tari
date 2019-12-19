@@ -29,10 +29,10 @@ use tari_comms::{
         peer_connection::PeerConnectionContext,
         types::Linger,
         zmq::ZmqIdentity,
+        ConnectionDirection,
         CurveEncryption,
         CurvePublicKey,
         CurveSecretKey,
-        Direction,
         PeerConnectionContextBuilder,
         ZmqContext,
     },
@@ -45,7 +45,7 @@ pub fn create<'c>() -> PeerConnectionContextFactory<'c> {
 
 #[derive(Default)]
 pub struct PeerConnectionContextFactory<'c> {
-    direction: Option<Direction>,
+    direction: Option<ConnectionDirection>,
     context: Option<&'c ZmqContext>,
     connection_identity: Option<ZmqIdentity>,
     peer_identity: Option<ZmqIdentity>,
@@ -57,7 +57,7 @@ pub struct PeerConnectionContextFactory<'c> {
 }
 
 impl<'c> PeerConnectionContextFactory<'c> {
-    factory_setter!(with_direction, direction, Option<Direction>);
+    factory_setter!(with_direction, direction, Option<ConnectionDirection>);
 
     factory_setter!(with_connection_identity, connection_identity, Option<ZmqIdentity>);
 
@@ -120,12 +120,12 @@ impl<'c> TestFactory for PeerConnectionContextFactory<'c> {
             .unwrap_or(CurveEncryption::generate_keypair().map_err(TestFactoryError::build_failed())?);
 
         match direction {
-            Direction::Inbound => {
+            ConnectionDirection::Inbound => {
                 builder = builder.set_curve_encryption(CurveEncryption::Server {
                     secret_key: secret_key.clone(),
                 });
             },
-            Direction::Outbound => {
+            ConnectionDirection::Outbound => {
                 let server_public_key = self.server_public_key.or(Some(public_key.clone())).unwrap();
                 builder = builder.set_curve_encryption(CurveEncryption::Client {
                     secret_key: secret_key.clone(),

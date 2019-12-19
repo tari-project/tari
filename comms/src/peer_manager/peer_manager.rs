@@ -25,7 +25,7 @@ use crate::{
         connection_stats::PeerConnectionStats,
         node_id::NodeId,
         peer::{Peer, PeerFlags},
-        peer_key::PeerKey,
+        peer_id::PeerId,
         peer_storage::PeerStorage,
         PeerFeatures,
         PeerManagerError,
@@ -47,13 +47,13 @@ impl PeerManager {
     /// Constructs a new empty PeerManager
     pub fn new(database: CommsDatabase) -> Result<PeerManager, PeerManagerError> {
         Ok(Self {
-            peer_storage: RwLock::new(PeerStorage::new(database)?),
+            peer_storage: RwLock::new(PeerStorage::new_indexed(database)?),
         })
     }
 
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exist, the stored version will be replaced with the newly provided peer.
-    pub fn add_peer(&self, peer: Peer) -> Result<PeerKey, PeerManagerError> {
+    pub fn add_peer(&self, peer: Peer) -> Result<PeerId, PeerManagerError> {
         acquire_write_lock!(self.peer_storage).add_peer(peer)
     }
 
@@ -203,7 +203,7 @@ mod test {
     };
     use rand::OsRng;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::HMapDatabase;
+    use tari_storage::HashmapDatabase;
 
     fn create_test_peer(rng: &mut OsRng, ban_flag: bool) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(rng);
@@ -223,7 +223,7 @@ mod test {
     #[test]
     fn test_get_broadcast_identities() {
         // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HMapDatabase::new()).unwrap();
+        let peer_manager = PeerManager::new(HashmapDatabase::new()).unwrap();
         let mut test_peers: Vec<Peer> = Vec::new();
         // Create 20 peers were the 1st and last one is bad
         let mut rng = rand::OsRng::new().unwrap();
@@ -324,7 +324,7 @@ mod test {
     fn test_in_network_region() {
         let mut rng = rand::OsRng::new().unwrap();
         // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HMapDatabase::new()).unwrap();
+        let peer_manager = PeerManager::new(HashmapDatabase::new()).unwrap();
         let network_region_node_id = create_test_peer(&mut rng, false).node_id;
         // Create peers
         let mut test_peers: Vec<Peer> = Vec::new();

@@ -27,7 +27,7 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
-    connection::{zmq::ZmqEndpoint, Connection, Direction, ZmqContext},
+    connection::{zmq::ZmqEndpoint, Connection, ConnectionDirection, ZmqContext},
     message::FrameSet,
 };
 
@@ -93,7 +93,7 @@ impl<'c> ConnectionMessageCounter<'c> {
             .name("connection-message-counter-thread".to_string())
             .stack_size(THREAD_STACK_SIZE)
             .spawn(move || {
-                let connection = Connection::new(&context, Direction::Inbound)
+                let connection = Connection::new(&context, ConnectionDirection::Inbound)
                     .set_name("Message Counter")
                     .establish(&address)
                     .unwrap();

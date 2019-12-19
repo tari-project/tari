@@ -1,5 +1,5 @@
 use crate::connection::net_address::net_address_with_stats::NetAddressWithStats;
-use chrono::prelude::*;
+use chrono::{DateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 use std::{ops::Index, time::Duration};

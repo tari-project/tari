@@ -20,11 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::peer_manager::{peer_key::PeerKey, Peer};
+use crate::peer_manager::{Peer, PeerId};
 use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
 use tari_storage::lmdb_store::LMDBStore;
 #[cfg(test)]
-use tari_storage::HMapDatabase;
+use tari_storage::HashmapDatabase;
 #[cfg(not(test))]
 use tari_storage::LMDBWrapper;
 use tari_utilities::ciphers::chacha20::ChaCha20;
@@ -50,6 +50,6 @@ pub type CommsCipher = ChaCha20;
 pub type CommsDataStore = LMDBStore;
 
 #[cfg(not(test))]
-pub type CommsDatabase = LMDBWrapper<PeerKey, Peer>;
+pub type CommsDatabase = LMDBWrapper<PeerId, Peer>;
 #[cfg(test)]
-pub type CommsDatabase = HMapDatabase<PeerKey, Peer>;
+pub type CommsDatabase = HashmapDatabase<PeerId, Peer>;

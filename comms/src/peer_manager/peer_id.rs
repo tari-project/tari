@@ -23,8 +23,8 @@
 use crate::consts::COMMS_RNG;
 use rand::RngCore;
 
-pub type PeerKey = u64;
+pub type PeerId = u64;
 
-pub fn generate_peer_key() -> PeerKey {
+pub fn generate_peer_key() -> PeerId {
     COMMS_RNG.with(|rng| rng.borrow_mut().next_u64())
 }

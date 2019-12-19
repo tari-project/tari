@@ -63,7 +63,7 @@ fn create_peer_storage(peers: Vec<Peer>) -> CommsDatabase {
 
     let peer_database = datastore.get_handle(&database_name).unwrap();
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
-    let mut storage = PeerStorage::new(peer_database).unwrap();
+    let mut storage = PeerStorage::new_indexed(peer_database).unwrap();
     for peer in peers {
         storage.add_peer(peer).unwrap();
     }

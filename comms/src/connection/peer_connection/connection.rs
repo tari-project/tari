@@ -31,7 +31,7 @@ use super::{
     PeerConnectionJoinHandle,
 };
 use crate::{
-    connection::{types::Linger, zmq::ZmqIdentity, ConnectionError, Direction},
+    connection::{types::Linger, zmq::ZmqIdentity, ConnectionDirection, ConnectionError},
     message::{Frame, FrameSet},
     utils::multiaddr::multiaddr_to_socketaddr,
 };
@@ -193,7 +193,7 @@ impl Default for PeerConnectionStats {
 ///    .set_peer_identity(b"peer-identifier-bytes".to_vec())
 ///    .set_connection_identity(b"zmq-identity-to-use-for-conn".to_vec())
 ///    .set_context(&ctx)
-///    .set_direction(Direction::Outbound)
+///    .set_direction(ConnectionDirection::Outbound)
 ///    .set_message_sink_channel(message_sink_tx)
 ///    .set_address(addr)
 ///    .finish()
@@ -220,7 +220,7 @@ impl Default for PeerConnectionStats {
 pub struct PeerConnection {
     state: Arc<Mutex<PeerConnectionState>>,
     connection_stats: Arc<RwLock<PeerConnectionStats>>,
-    direction: Direction,
+    direction: ConnectionDirection,
     peer_address: Multiaddr,
     state_var: Arc<Condvar>,
 }
@@ -255,7 +255,7 @@ impl PeerConnection {
     /// `context` - The PeerConnectionContext which is owned by the underlying thread
     pub fn connect(context: PeerConnectionContext) -> Result<(Self, PeerConnectionJoinHandle), PeerConnectionError> {
         let conn = Self {
-            direction: Direction::Outbound,
+            direction: ConnectionDirection::Outbound,
             peer_address: context.peer_address.clone(),
             state_var: Arc::new(Condvar::new()),
             state: Arc::new(Mutex::new(PeerConnectionState::Initial)),
@@ -283,7 +283,7 @@ impl PeerConnection {
     /// `context` - The PeerConnectionContext which is owned by the underlying thread
     pub fn listen(context: PeerConnectionContext) -> Result<(Self, PeerConnectionJoinHandle), PeerConnectionError> {
         let conn = Self {
-            direction: Direction::Inbound,
+            direction: ConnectionDirection::Inbound,
             peer_address: context.peer_address.clone(),
             state_var: Arc::new(Condvar::new()),
             state: Arc::new(Mutex::new(PeerConnectionState::Initial)),
@@ -523,7 +523,7 @@ impl PeerConnection {
     }
 
     /// Gets the direction for this peer connection
-    pub fn direction(&self) -> Direction {
+    pub fn direction(&self) -> ConnectionDirection {
         self.direction
     }
 
@@ -553,7 +553,7 @@ impl PeerConnection {
         (
             Self {
                 state: Arc::new(Mutex::new(PeerConnectionState::Connecting(Arc::new(tx.into())))),
-                direction: Direction::Outbound,
+                direction: ConnectionDirection::Outbound,
                 state_var: Arc::new(Condvar::new()),
                 connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
                 peer_address,
@@ -697,7 +697,7 @@ mod test {
         let conn = PeerConnection {
             state: Arc::new(Mutex::new(PeerConnectionState::Connected(Arc::new(info)))),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
-            direction: Direction::Outbound,
+            direction: ConnectionDirection::Outbound,
             peer_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             state_var: Default::default(),
         };
@@ -721,7 +721,7 @@ mod test {
         let conn = PeerConnection {
             state: Arc::new(Mutex::new(PeerConnectionState::Listening(Arc::new(info)))),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
-            direction: Direction::Outbound,
+            direction: ConnectionDirection::Outbound,
             peer_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             state_var: Default::default(),
         };
@@ -741,7 +741,7 @@ mod test {
         let conn = PeerConnection {
             state: Arc::new(Mutex::new(PeerConnectionState::Connecting(thread_ctl))),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
-            direction: Direction::Outbound,
+            direction: ConnectionDirection::Outbound,
             peer_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             state_var: Default::default(),
         };
@@ -761,7 +761,7 @@ mod test {
         let conn = PeerConnection {
             state: Arc::new(Mutex::new(PeerConnectionState::Connecting(thread_ctl))),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
-            direction: Direction::Outbound,
+            direction: ConnectionDirection::Outbound,
             peer_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             state_var: Default::default(),
         };
@@ -781,7 +781,7 @@ mod test {
                 PeerConnectionError::ConnectFailed,
             ))),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
-            direction: Direction::Outbound,
+            direction: ConnectionDirection::Outbound,
             peer_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             state_var: Default::default(),
         };
@@ -799,7 +799,7 @@ mod test {
         let conn = PeerConnection {
             state: Arc::new(Mutex::new(PeerConnectionState::Disconnected)),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
-            direction: Direction::Outbound,
+            direction: ConnectionDirection::Outbound,
             peer_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             state_var: Default::default(),
         };
@@ -817,7 +817,7 @@ mod test {
         let conn = PeerConnection {
             state: Arc::new(Mutex::new(PeerConnectionState::Shutdown)),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
-            direction: Direction::Outbound,
+            direction: ConnectionDirection::Outbound,
             peer_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             state_var: Default::default(),
         };
@@ -839,7 +839,7 @@ mod test {
         let conn = PeerConnection {
             state: Arc::new(Mutex::new(PeerConnectionState::Connected(Arc::new(info)))),
             connection_stats: Arc::new(RwLock::new(PeerConnectionStats::new())),
-            direction: Direction::Outbound,
+            direction: ConnectionDirection::Outbound,
             peer_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             state_var: Default::default(),
         };

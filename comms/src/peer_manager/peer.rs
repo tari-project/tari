@@ -23,7 +23,7 @@
 use super::node_id::deserialize_node_id_from_hex;
 use crate::{
     connection::net_address::NetAddressesWithStats,
-    peer_manager::{connection_stats::PeerConnectionStats, node_id::NodeId, peer_key::PeerKey, PeerFeatures},
+    peer_manager::{connection_stats::PeerConnectionStats, node_id::NodeId, peer_id::PeerId, PeerFeatures},
     types::CommsPublicKey,
 };
 use bitflags::bitflags;
@@ -39,12 +39,18 @@ bitflags! {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeerIdentity {
+    pub node_id: NodeId,
+    pub public_key: CommsPublicKey,
+}
+
 /// A Peer represents a communication peer that is identified by a Public Key and NodeId. The Peer struct maintains a
 /// collection of the NetAddressesWithStats that this Peer can be reached by. The struct also maintains a set of flags
 /// describing the status of the Peer.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Peer {
-    id: Option<PeerKey>,
+    id: Option<PeerId>,
     pub public_key: CommsPublicKey,
     #[serde(serialize_with = "serialize_to_hex")]
     #[serde(deserialize_with = "deserialize_node_id_from_hex")]
@@ -78,12 +84,21 @@ impl Peer {
         }
     }
 
-    /// Returns the peers local id if this peer is persisted, otherwise None
-    pub fn id(&self) -> Option<PeerKey> {
-        self.id
+    /// Returns the peers local id if this peer is persisted.
+    ///
+    /// This method panics if the peer is not persisted and therefore, does not have a PeerId.
+    /// If the caller should be sure that the peer is persisted before calling this function.
+    /// This can be checked by using `Peer::is_persisted`.
+    #[inline]
+    pub fn id(&self) -> PeerId {
+        self.id.expect("call to Peer::key() when peer is not persisted")
     }
 
-    pub(super) fn set_id(&mut self, id: PeerKey) {
+    pub fn is_persisted(&self) -> bool {
+        self.id.is_some()
+    }
+
+    pub(super) fn set_id(&mut self, id: PeerId) {
         debug_assert!(self.id.is_none());
         self.id = Some(id);
     }

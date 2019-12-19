@@ -26,3 +26,6 @@ mod config;
 mod crypto_resolver;
 mod error;
 mod socket;
+
+pub use config::NoiseConfig;
+pub use socket::NoiseSocket;

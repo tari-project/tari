@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,11 +20,41 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod error;
-pub mod hmap_database;
-pub mod key_val_store;
-pub mod lmdb_database;
+use super::{error::ConnectionManagerError, peer_connection::PeerConnection};
+use crate::peer_manager::NodeId;
+use futures::{
+    channel::{mpsc, oneshot},
+    SinkExt,
+};
 
-pub use error::KeyValStoreError;
-pub use hmap_database::HashmapDatabase;
-pub use key_val_store::KeyValueStore;
+/// Requests which are handled by the ConnectionManagerService
+pub enum ConnectionManagerRequest {
+    DialPeer(NodeId, oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>),
+}
+
+/// Responsible for constructing requests to the ConnectionManagerService
+#[derive(Clone)]
+pub struct ConnectionManagerRequester {
+    sender: mpsc::Sender<ConnectionManagerRequest>,
+}
+
+impl ConnectionManagerRequester {
+    /// Create a new ConnectionManagerRequester
+    pub fn new(sender: mpsc::Sender<ConnectionManagerRequest>) -> Self {
+        Self { sender }
+    }
+}
+
+impl ConnectionManagerRequester {
+    /// Attempt to connect to a remote peer
+    pub async fn dial_peer(&mut self, node_id: NodeId) -> Result<PeerConnection, ConnectionManagerError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(ConnectionManagerRequest::DialPeer(node_id, reply_tx))
+            .await
+            .map_err(|_| ConnectionManagerError::SendToActorFailed)?;
+        reply_rx
+            .await
+            .map_err(|_| ConnectionManagerError::ActorRequestCanceled)?
+    }
+}

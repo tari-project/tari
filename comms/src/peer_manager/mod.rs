@@ -68,10 +68,16 @@ mod error;
 pub mod node_id;
 pub mod node_identity;
 pub mod peer;
-pub mod peer_key;
+mod peer_id;
 mod peer_manager;
 mod peer_query;
 pub mod peer_storage;
+
+cfg_next! {
+    mod async_peer_manager;
+
+    pub use async_peer_manager::AsyncPeerManager;
+}
 
 pub use self::{
     error::PeerManagerError,
@@ -79,6 +85,7 @@ pub use self::{
     node_identity::NodeIdentity,
     peer::{Peer, PeerFlags},
     peer_features::PeerFeatures,
+    peer_id::PeerId,
     peer_manager::PeerManager,
     peer_query::{PeerQuery, PeerQuerySortBy},
 };

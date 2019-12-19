@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,11 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod error;
-pub mod hmap_database;
-pub mod key_val_store;
-pub mod lmdb_database;
+use crate::peer_manager::{NodeId, Peer, PeerManager, PeerManagerError};
+use std::sync::Arc;
+use tokio_executor::blocking;
 
-pub use error::KeyValStoreError;
-pub use hmap_database::HashmapDatabase;
-pub use key_val_store::KeyValueStore;
+#[derive(Clone)]
+pub struct AsyncPeerManager {
+    peer_manager: Arc<PeerManager>,
+}
+
+impl AsyncPeerManager {
+    pub fn new(peer_manager: Arc<PeerManager>) -> Self {
+        Self { peer_manager }
+    }
+
+    pub async fn find_by_node_id(&self, node_id: &NodeId) -> Result<Peer, PeerManagerError> {
+        let node_id = node_id.clone();
+        let peer_manager = Arc::clone(&self.peer_manager);
+        blocking::run(move || peer_manager.find_by_node_id(&node_id)).await
+    }
+}
+
+impl From<Arc<PeerManager>> for AsyncPeerManager {
+    fn from(peer_manager: Arc<PeerManager>) -> Self {
+        Self { peer_manager }
+    }
+}

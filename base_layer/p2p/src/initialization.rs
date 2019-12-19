@@ -26,11 +26,11 @@ use futures::{channel::mpsc, Sink};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::{error::Error, iter, net::SocketAddr, sync::Arc, time::Duration};
 use tari_comms::{
+    backoff::ConstantBackoff,
     builder::{CommsBuilderError, CommsError, CommsNode},
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
     multiaddr::Multiaddr,
-    outbound_message_service::ConstantBackoff,
     peer_manager::{node_identity::NodeIdentityError, NodeIdentity},
     CommsBuilder,
 };

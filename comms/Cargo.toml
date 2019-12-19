@@ -8,6 +8,9 @@ license = "BSD-3-Clause"
 version = "0.0.5"
 edition = "2018"
 
+[features]
+next = ["yamux", "snow"]
+
 [dependencies]
 tari_crypto = { version="^0.0",  path = "../infrastructure/crypto" }
 tari_storage = { version="^0.0", path = "../infrastructure/storage" }
@@ -30,12 +33,12 @@ rand = "0.5.5"
 serde = "1.0.90"
 serde_derive = "1.0.90"
 serde_repr = "0.1.5"
-snow = {version="0.6.1", features=["default-resolver"]}
+snow = {git="https://github.com/tari-project/snow.git", branch="sb-make-builder-send", features=["default-resolver"], optional = true}
 time = "0.1.42"
 tokio = "0.2.0-alpha.6"
 tokio-executor = { version ="^0.2.0-alpha.6", features = ["threadpool"] }
 ttl_cache = "0.5.1"
-yamux = {path="./yamux"}
+yamux = {path="./yamux", optional = true}
 zmq = "0.9.2"
 
 [dev-dependencies]

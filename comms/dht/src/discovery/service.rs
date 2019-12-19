@@ -121,8 +121,8 @@ impl DhtDiscoveryService {
                 let (request, reply_tx) = *boxed;
                 log_if_error!(
                     target: LOG_TARGET,
-                    "Failed to initiate a discovery request because '{}'",
-                    self.initiate_peer_discovery(request, reply_tx).await
+                    self.initiate_peer_discovery(request, reply_tx).await,
+                    "Failed to initiate a discovery request because '{error}'",
                 );
             },
 
@@ -161,10 +161,10 @@ impl DhtDiscoveryService {
         );
         if let Some(request) = log_if_error!(
             target: LOG_TARGET,
-            "{}",
             self.inflight_discoveries
                 .remove(&discovery_msg.nonce)
-                .ok_or(DhtDiscoveryError::InflightDiscoveryRequestNotFound)
+                .ok_or(DhtDiscoveryError::InflightDiscoveryRequestNotFound),
+            "{error}",
         ) {
             let DiscoveryRequestState { public_key, reply_tx } = request;
 

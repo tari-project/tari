@@ -24,7 +24,7 @@ use crate::support::factories::{self, TestFactory};
 use futures::channel::mpsc::{channel, Sender};
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
-    connection::{types::Direction, Connection, CurvePublicKey, ZmqContext},
+    connection::{types::ConnectionDirection, Connection, CurvePublicKey, ZmqContext},
     connection_manager::ConnectionManager,
     control_service::{messages::RequestConnectionOutcome, ControlService, ControlServiceClient, ControlServiceConfig},
     message::FrameSet,
@@ -107,7 +107,7 @@ fn request_connection() {
         .map(Arc::new)
         .unwrap();
     // --- Client connection for the destination peer's control service
-    let client_conn = Connection::new(&context, Direction::Outbound)
+    let client_conn = Connection::new(&context, ConnectionDirection::Outbound)
         .establish(&listener_address)
         .unwrap();
     let client = ControlServiceClient::new(
@@ -145,7 +145,7 @@ fn request_connection() {
                 .with_peer_identity(peer.node_id.to_vec())
                 .with_connection_identity(outcome.identity)
                 .with_context(&context)
-                .with_direction(Direction::Outbound)
+                .with_direction(ConnectionDirection::Outbound)
                 .with_address(outcome.address.parse().unwrap())
                 .with_message_sink_channel(message_sink_tx2)
                 .with_server_public_key(CurvePublicKey::from_bytes(&outcome.curve_public_key).unwrap()),
@@ -180,7 +180,7 @@ fn ping_pong() {
     .serve(connection_manager)
     .unwrap();
 
-    let client_conn = Connection::new(&context, Direction::Outbound)
+    let client_conn = Connection::new(&context, ConnectionDirection::Outbound)
         .establish(&listener_address)
         .unwrap();
 

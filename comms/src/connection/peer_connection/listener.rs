@@ -32,7 +32,7 @@ use crate::{
         connection::{Connection, EstablishedConnection},
         monitor::{ConnectionMonitor, SocketEvent, SocketEventType},
         peer_connection::types::PeerConnectionJoinHandle,
-        types::Direction,
+        types::ConnectionDirection,
         zmq::ZmqIdentity,
         InprocAddress,
     },
@@ -54,7 +54,7 @@ use std::{
     thread,
     time::Duration,
 };
-use tari_utilities::hex::Hex;
+use tari_utilities::hex::{to_hex, Hex};
 
 const LOG_TARGET: &str = "comms::connection::peer_connection::worker";
 
@@ -243,9 +243,8 @@ impl PeerConnectionListener {
                             "Executing TestConnection for identity '{}'",
                             peer_identity.to_hex()
                         );
-                        log_if_error!(
+                        log_if_error_fmt!(
                             target: LOG_TARGET,
-                            "Error result back for TestConnection query",
                             reply_tx.send(
                                 self.send_payload(
                                     &peer_conn,
@@ -255,7 +254,8 @@ impl PeerConnectionListener {
                                 )
                                 .map_err(|err| PeerConnectionError::ConnectionTestFailed(err.to_string())),
                             ),
-                            no_fmt
+                            "Error result back for TestConnection query for identity '{}'",
+                            to_hex(&peer_identity)
                         );
                         debug!(target: LOG_TARGET, "TestConnection complete");
                     },
@@ -472,9 +472,10 @@ impl PeerConnectionListener {
 
                         let payload = self.construct_sink_payload(peer_identity, frames);
                         log_if_error!(
+                            level: error,
                             target: LOG_TARGET,
+                            self.send_to_sink(payload),
                             "Failed to send to sink because '{}'",
-                            self.send_to_sink(payload)
                         );
                     },
                     PeerConnectionProtocolMessage::Ping => {
@@ -596,7 +597,7 @@ impl PeerConnectionListener {
     /// Establish the connection to the peer address
     fn establish_peer_connection(&self) -> Result<EstablishedConnection, PeerConnectionError> {
         let context = &self.context;
-        Connection::new(&context.context, Direction::Inbound)
+        Connection::new(&context.context, ConnectionDirection::Inbound)
             .set_name(format!("peer-conn-inbound-{}", self.context.peer_address).as_str())
             .set_linger(context.linger.clone())
             .set_heartbeat_interval(Duration::from_millis(1000))

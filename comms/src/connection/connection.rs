@@ -22,7 +22,7 @@
 
 use crate::{
     connection::{
-        types::{Direction, Linger, Result, SocketEstablishment, SocketType},
+        types::{ConnectionDirection, Linger, Result, SocketEstablishment, SocketType},
         zmq::{CurveEncryption, InprocAddress, ZmqContext, ZmqEndpoint, ZmqIdentity},
         ConnectionError,
     },
@@ -40,7 +40,7 @@ const LOG_TARGET: &str = "comms::connection::Connection";
 /// # use tari_comms::connection::{
 /// #   zmq::{ZmqContext, InprocAddress, CurveEncryption},
 /// #   connection::Connection,
-/// #   types::{Linger, Direction},
+/// #   types::{Linger, ConnectionDirection},
 /// # };
 ///
 ///  let ctx  = ZmqContext::new();
@@ -49,7 +49,7 @@ const LOG_TARGET: &str = "comms::connection::Connection";
 ///
 ///  let addr = "inproc://docs-comms-inbound-connection".parse::<InprocAddress>().unwrap();
 ///
-///  let conn = Connection::new(&ctx, Direction::Inbound)
+///  let conn = Connection::new(&ctx, ConnectionDirection::Inbound)
 ///         .set_curve_encryption(CurveEncryption::Server {secret_key})
 ///         .set_linger(Linger::Never)
 ///         .set_max_message_size(Some(123))
@@ -67,7 +67,7 @@ pub struct Connection<'a> {
     pub(super) context: &'a ZmqContext,
     pub(super) name: String,
     pub(super) curve_encryption: CurveEncryption,
-    pub(super) direction: Direction,
+    pub(super) direction: ConnectionDirection,
     pub(super) identity: Option<ZmqIdentity>,
     pub(super) linger: Linger,
     pub(super) max_message_size: Option<u64>,
@@ -85,7 +85,7 @@ pub struct Connection<'a> {
 
 impl<'a> Connection<'a> {
     /// Create a new InboundConnection
-    pub fn new(context: &'a ZmqContext, direction: Direction) -> Self {
+    pub fn new(context: &'a ZmqContext, direction: ConnectionDirection) -> Self {
         Self {
             context,
             name: "Unnamed".to_string(),
@@ -217,13 +217,13 @@ impl<'a> Connection<'a> {
         ConnectionError: From<T::Error>,
     {
         let socket = match self.direction {
-            Direction::Inbound => self.context.socket(SocketType::Router).unwrap(),
-            Direction::Outbound => self.context.socket(SocketType::Dealer).unwrap(),
+            ConnectionDirection::Inbound => self.context.socket(SocketType::Router).unwrap(),
+            ConnectionDirection::Outbound => self.context.socket(SocketType::Dealer).unwrap(),
         };
 
         let config_error_mapper = |e| ConnectionError::SocketError(format!("Unable to configure socket: {}", e));
 
-        if self.direction == Direction::Inbound {
+        if self.direction == ConnectionDirection::Inbound {
             socket.set_router_mandatory(true).map_err(config_error_mapper)?;
         }
 
@@ -316,8 +316,8 @@ impl<'a> Connection<'a> {
             SocketEstablishment::Bind => socket.bind(endpoint),
             SocketEstablishment::Connect => socket.connect(endpoint),
             SocketEstablishment::Auto => match self.direction {
-                Direction::Inbound => socket.bind(endpoint),
-                Direction::Outbound => socket.connect(endpoint),
+                ConnectionDirection::Inbound => socket.bind(endpoint),
+                ConnectionDirection::Outbound => socket.connect(endpoint),
             },
         }
         .map_err(|e| ConnectionError::SocketError(format!("Failed to establish socket: {}", e)))?;
@@ -361,7 +361,7 @@ pub struct EstablishedConnection {
     // If the connection is a TCP connection, it will be stored here, otherwise it is None
     connected_address: Option<SocketAddr>,
     name: String,
-    direction: Direction,
+    direction: ConnectionDirection,
 }
 
 impl EstablishedConnection {
@@ -465,7 +465,7 @@ impl EstablishedConnection {
         &self.socket
     }
 
-    pub fn direction(&self) -> &Direction {
+    pub fn direction(&self) -> &ConnectionDirection {
         &self.direction
     }
 }
@@ -511,7 +511,7 @@ mod test {
         let addr = InprocAddress::random();
         let monitor_addr = InprocAddress::random();
 
-        let conn = Connection::new(&ctx, Direction::Inbound)
+        let conn = Connection::new(&ctx, ConnectionDirection::Inbound)
             .set_name("dummy")
             .set_heartbeat_remote_ttl(Duration::from_millis(1000))
             .set_heartbeat_timeout(Duration::from_millis(1001))
@@ -550,7 +550,7 @@ mod test {
         let (sk, _) = CurveEncryption::generate_keypair().unwrap();
         let expected_sk = sk.clone();
 
-        let conn = Connection::new(&ctx, Direction::Inbound)
+        let conn = Connection::new(&ctx, ConnectionDirection::Inbound)
             .set_curve_encryption(CurveEncryption::Server { secret_key: sk })
             .establish(&addr)
             .unwrap();
@@ -572,7 +572,7 @@ mod test {
         let expected_pk = pk.clone();
         let expected_spk = spk.clone();
 
-        let conn = Connection::new(&ctx, Direction::Inbound)
+        let conn = Connection::new(&ctx, ConnectionDirection::Inbound)
             .set_curve_encryption(CurveEncryption::Client {
                 secret_key: sk,
                 public_key: pk,
