@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::service::BaseNodeServiceConfig,
+    base_node::{service::BaseNodeServiceConfig, InboundNodeCommsHandlersConfig},
     mempool::{
         service::{MempoolServiceConfig, MempoolServiceError},
         TxStorageResponse,
@@ -229,6 +229,7 @@ fn service_request_timeout() {
     let (mut alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
         &runtime,
         BaseNodeServiceConfig::default(),
+        InboundNodeCommsHandlersConfig::default(),
         mct_config,
         mempool_service_config,
         temp_dir.path().to_str().unwrap(),

@@ -26,6 +26,7 @@ use crate::{
         states::{BlockSyncConfig, BlockSyncInfo, HorizonInfo, HorizonSyncConfig, StateEvent},
         BaseNodeStateMachine,
         BaseNodeStateMachineConfig,
+        InboundNodeCommsHandlersConfig,
     },
     blocks::genesis_block::get_genesis_block,
     chain_storage::{DbTransaction, MmrTree},
@@ -54,6 +55,7 @@ fn test_horizon_state_sync() {
     let (alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
         &runtime,
         BaseNodeServiceConfig::default(),
+        InboundNodeCommsHandlersConfig::default(),
         mct_config,
         MempoolServiceConfig::default(),
         temp_dir.path().to_str().unwrap(),
@@ -162,14 +164,23 @@ fn test_block_sync_from_horizon() {
         min_history_len: 2,
         max_history_len: 4,
     };
+    let inbound_handlers_config = InboundNodeCommsHandlersConfig {
+        max_block_response_batch_size: 2,
+    };
     let (alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
         &runtime,
         BaseNodeServiceConfig::default(),
+        inbound_handlers_config,
         mct_config,
         MempoolServiceConfig::default(),
         temp_dir.path().to_str().unwrap(),
     );
-    let state_machine_config = BaseNodeStateMachineConfig::default();
+    let state_machine_config = BaseNodeStateMachineConfig {
+        horizon_sync_config: HorizonSyncConfig::default(),
+        block_sync_config: BlockSyncConfig {
+            max_block_request_batch_size: 3,
+        },
+    };
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.outbound_nci,
@@ -252,14 +263,23 @@ fn test_lagging_block_sync() {
         min_history_len: 10,
         max_history_len: 20,
     };
+    let inbound_handlers_config = InboundNodeCommsHandlersConfig {
+        max_block_response_batch_size: 1,
+    };
     let (alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
         &runtime,
         BaseNodeServiceConfig::default(),
+        inbound_handlers_config,
         mct_config,
         MempoolServiceConfig::default(),
         temp_dir.path().to_str().unwrap(),
     );
-    let state_machine_config = BaseNodeStateMachineConfig::default();
+    let state_machine_config = BaseNodeStateMachineConfig {
+        horizon_sync_config: HorizonSyncConfig::default(),
+        block_sync_config: BlockSyncConfig {
+            max_block_request_batch_size: 2,
+        },
+    };
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.outbound_nci,
