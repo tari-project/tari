@@ -22,7 +22,12 @@
 
 use crate::{
     base_node::{
-        comms_interface::{InboundNodeCommsHandlers, LocalNodeCommsInterface, OutboundNodeCommsInterface},
+        comms_interface::{
+            InboundNodeCommsHandlers,
+            InboundNodeCommsHandlersConfig,
+            LocalNodeCommsInterface,
+            OutboundNodeCommsInterface,
+        },
         proto,
         service::service::{BaseNodeService, BaseNodeServiceConfig, BaseNodeStreams},
     },
@@ -63,7 +68,8 @@ where T: BlockchainBackend
     blockchain_db: BlockchainDatabase<T>,
     mempool: Mempool<T>,
     consensus_manager: ConsensusManager<T>,
-    config: BaseNodeServiceConfig,
+    base_node_service_config: BaseNodeServiceConfig,
+    inbound_node_comms_handlers_config: InboundNodeCommsHandlersConfig,
 }
 
 impl<T> BaseNodeServiceInitializer<T>
@@ -75,7 +81,8 @@ where T: BlockchainBackend
         blockchain_db: BlockchainDatabase<T>,
         mempool: Mempool<T>,
         consensus_manager: ConsensusManager<T>,
-        config: BaseNodeServiceConfig,
+        base_node_service_config: BaseNodeServiceConfig,
+        inbound_node_comms_handlers_config: InboundNodeCommsHandlersConfig,
     ) -> Self
     {
         Self {
@@ -83,7 +90,8 @@ where T: BlockchainBackend
             blockchain_db,
             mempool,
             consensus_manager,
-            config,
+            base_node_service_config,
+            inbound_node_comms_handlers_config,
         }
     }
 
@@ -177,9 +185,10 @@ where T: BlockchainBackend + 'static
             self.mempool.clone(),
             self.consensus_manager.clone(),
             outbound_nci.clone(),
+            self.inbound_node_comms_handlers_config,
         );
         let executer_clone = executor.clone(); // Give BaseNodeService access to the executor
-        let config = self.config.clone();
+        let base_node_service_config = self.base_node_service_config.clone();
 
         // Register handle to OutboundNodeCommsInterface before waiting for handles to be ready
         handles_fut.register(outbound_nci);
@@ -201,8 +210,13 @@ where T: BlockchainBackend + 'static
                 local_request_stream,
                 local_block_stream,
             );
-            let service =
-                BaseNodeService::new(executer_clone, outbound_message_service, inbound_nch, config).start(streams);
+            let service = BaseNodeService::new(
+                executer_clone,
+                outbound_message_service,
+                inbound_nch,
+                base_node_service_config,
+            )
+            .start(streams);
             futures::pin_mut!(service);
             future::select(service, shutdown).await;
             info!(target: LOG_TARGET, "Base Node Service shutdown");

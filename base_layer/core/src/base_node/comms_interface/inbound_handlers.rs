@@ -39,6 +39,7 @@ use crate::{
     mempool::Mempool,
 };
 use futures::SinkExt;
+use std::cmp::{max, min};
 use tari_broadcast_channel::Publisher;
 use tari_comms::types::CommsPublicKey;
 use tari_transactions::{
@@ -47,11 +48,28 @@ use tari_transactions::{
 };
 use tari_utilities::Hashable;
 
+// The maximum number of Blocks that this node will provide in response to a single block fetch request.
+const MAX_BLOCK_RESPONSE_BATCH_SIZE: usize = 1;
+
 /// Events that can be published on the Validated Block Event Stream
 #[derive(Debug)]
 pub enum BlockEvent {
     Verified((Block, BlockAddResult)),
     Invalid((Block, ChainStorageError)),
+}
+
+/// Configuration for the InboundNodeCommsHandlers.
+#[derive(Clone, Copy)]
+pub struct InboundNodeCommsHandlersConfig {
+    pub max_block_response_batch_size: usize,
+}
+
+impl Default for InboundNodeCommsHandlersConfig {
+    fn default() -> Self {
+        Self {
+            max_block_response_batch_size: MAX_BLOCK_RESPONSE_BATCH_SIZE,
+        }
+    }
 }
 
 /// The InboundNodeCommsInterface is used to handle all received inbound requests from remote nodes.
@@ -63,6 +81,7 @@ where T: BlockchainBackend
     mempool: Mempool<T>,
     consensus_manager: ConsensusManager<T>,
     outbound_nci: OutboundNodeCommsInterface,
+    config: InboundNodeCommsHandlersConfig,
 }
 
 impl<T> InboundNodeCommsHandlers<T>
@@ -75,6 +94,7 @@ where T: BlockchainBackend
         mempool: Mempool<T>,
         consensus_manager: ConsensusManager<T>,
         outbound_nci: OutboundNodeCommsInterface,
+        config: InboundNodeCommsHandlersConfig,
     ) -> Self
     {
         Self {
@@ -83,6 +103,7 @@ where T: BlockchainBackend
             mempool,
             consensus_manager,
             outbound_nci,
+            config,
         }
     }
 
@@ -120,9 +141,14 @@ where T: BlockchainBackend
                 Ok(NodeCommsResponse::TransactionOutputs(utxos))
             },
             NodeCommsRequest::FetchBlocks(block_nums) => {
+                let mut block_nums = block_nums.clone();
+                let batch_size = max(1, self.config.max_block_response_batch_size);
+                let batch_size = min(block_nums.len(), batch_size);
+                block_nums.truncate(batch_size);
+
                 let mut blocks = Vec::<HistoricalBlock>::with_capacity(block_nums.len());
                 for block_num in block_nums {
-                    if let Ok(block) = async_db::fetch_block(self.blockchain_db.clone(), *block_num).await {
+                    if let Ok(block) = async_db::fetch_block(self.blockchain_db.clone(), block_num).await {
                         blocks.push(block);
                     }
                 }

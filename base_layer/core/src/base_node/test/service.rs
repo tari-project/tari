@@ -24,6 +24,7 @@ use crate::{
     base_node::{
         comms_interface::{BlockEvent, CommsInterfaceError},
         service::BaseNodeServiceConfig,
+        InboundNodeCommsHandlersConfig,
     },
     blocks::{genesis_block::get_genesis_block, BlockHeader},
     chain_storage::{ChainStorageError, DbTransaction, MmrTree},
@@ -213,25 +214,43 @@ fn request_and_response_fetch_utxos() {
 fn request_and_response_fetch_blocks() {
     let runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut alice_node, bob_node, carol_node) =
-        create_network_with_3_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let inbound_handlers_config = InboundNodeCommsHandlersConfig {
+        max_block_response_batch_size: 2,
+    };
+    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes_with_config(
+        &runtime,
+        BaseNodeServiceConfig::default(),
+        inbound_handlers_config,
+        mct_config,
+        MempoolServiceConfig::default(),
+        temp_dir.path().to_str().unwrap(),
+    );
 
     let block0 = add_block_and_update_header(&bob_node.blockchain_db, get_genesis_block());
     let mut block1 = chain_block(&block0, vec![]);
     block1 = add_block_and_update_header(&bob_node.blockchain_db, block1);
     let mut block2 = chain_block(&block1, vec![]);
     block2 = add_block_and_update_header(&bob_node.blockchain_db, block2);
+    let mut block3 = chain_block(&block2, vec![]);
+    block3 = add_block_and_update_header(&bob_node.blockchain_db, block3);
 
     carol_node.blockchain_db.add_new_block(block0.clone()).unwrap();
     carol_node.blockchain_db.add_new_block(block1.clone()).unwrap();
     carol_node.blockchain_db.add_new_block(block2.clone()).unwrap();
+    carol_node.blockchain_db.add_new_block(block3.clone()).unwrap();
 
     runtime.block_on(async {
         let received_blocks = alice_node.outbound_nci.fetch_blocks(vec![0]).await.unwrap();
         assert_eq!(received_blocks.len(), 1);
         assert_eq!(*received_blocks[0].block(), block0);
 
-        let received_blocks = alice_node.outbound_nci.fetch_blocks(vec![0, 1]).await.unwrap();
+        // Alice is requesting more blocks than what Bob or Carol is willing to provide. Alice or Carol will only
+        // respond with 2 of the 3 blocks.
+        let received_blocks = alice_node.outbound_nci.fetch_blocks(vec![0, 1, 2]).await.unwrap();
         assert_eq!(received_blocks.len(), 2);
         assert_ne!(*received_blocks[0].block(), *received_blocks[1].block());
         assert!((*received_blocks[0].block() == block0) || (*received_blocks[1].block() == block0));
@@ -255,6 +274,7 @@ fn request_and_response_fetch_mmr_state() {
     let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes_with_config(
         &runtime,
         BaseNodeServiceConfig::default(),
+        InboundNodeCommsHandlersConfig::default(),
         mct_config,
         MempoolServiceConfig::default(),
         temp_dir.path().to_str().unwrap(),
@@ -555,6 +575,7 @@ fn service_request_timeout() {
     let (mut alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
         &runtime,
         base_node_service_config,
+        InboundNodeCommsHandlersConfig::default(),
         mct_config,
         MempoolServiceConfig::default(),
         temp_dir.path().to_str().unwrap(),

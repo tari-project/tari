@@ -24,6 +24,7 @@ use crate::{
     base_node::comms_interface::{
         CommsInterfaceError,
         InboundNodeCommsHandlers,
+        InboundNodeCommsHandlersConfig,
         MmrStateRequest,
         NodeCommsRequest,
         NodeCommsRequestType,
@@ -112,8 +113,14 @@ fn inbound_get_metadata() {
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender.clone());
-    let inbound_nch =
-        InboundNodeCommsHandlers::new(block_event_publisher, store, mempool, consensus_manager, outbound_nci);
+    let inbound_nch = InboundNodeCommsHandlers::new(
+        block_event_publisher,
+        store,
+        mempool,
+        consensus_manager,
+        outbound_nci,
+        InboundNodeCommsHandlersConfig::default(),
+    );
 
     test_async(move |rt| {
         rt.spawn(async move {
@@ -166,6 +173,7 @@ fn inbound_fetch_kernels() {
         mempool,
         consensus_manager,
         outbound_nci,
+        InboundNodeCommsHandlersConfig::default(),
     );
 
     let kernel = create_test_kernel(5.into(), 0);
@@ -225,6 +233,7 @@ fn inbound_fetch_headers() {
         mempool,
         consensus_manager,
         outbound_nci,
+        InboundNodeCommsHandlersConfig::default(),
     );
 
     let mut header = BlockHeader::new(0);
@@ -286,6 +295,7 @@ fn inbound_fetch_utxos() {
         mempool,
         consensus_manager,
         outbound_nci,
+        InboundNodeCommsHandlersConfig::default(),
     );
 
     let (utxo, _) = create_utxo(MicroTari(10_000), &factories);
@@ -344,6 +354,7 @@ fn inbound_fetch_blocks() {
         mempool,
         consensus_manager,
         outbound_nci,
+        InboundNodeCommsHandlersConfig::default(),
     );
 
     let block = add_block_and_update_header(&store, get_genesis_block());
@@ -394,8 +405,14 @@ fn inbound_fetch_mmr_state() {
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
-    let inbound_nch =
-        InboundNodeCommsHandlers::new(block_event_publisher, store, mempool, consensus_manager, outbound_nci);
+    let inbound_nch = InboundNodeCommsHandlers::new(
+        block_event_publisher,
+        store,
+        mempool,
+        consensus_manager,
+        outbound_nci,
+        InboundNodeCommsHandlersConfig::default(),
+    );
 
     test_async(move |rt| {
         rt.spawn(async move {

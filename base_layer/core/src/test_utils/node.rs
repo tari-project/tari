@@ -23,6 +23,7 @@
 use crate::{
     base_node::{
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
+        InboundNodeCommsHandlersConfig,
         LocalNodeCommsInterface,
         OutboundNodeCommsInterface,
     },
@@ -77,6 +78,7 @@ pub struct BaseNodeBuilder {
     node_identity: Option<Arc<NodeIdentity>>,
     peers: Option<Vec<Arc<NodeIdentity>>>,
     base_node_service_config: Option<BaseNodeServiceConfig>,
+    inbound_node_comms_handlers_config: Option<InboundNodeCommsHandlersConfig>,
     mct_config: Option<MerkleChangeTrackerConfig>,
     mempool_config: Option<MempoolConfig>,
     mempool_service_config: Option<MempoolServiceConfig>,
@@ -90,6 +92,7 @@ impl BaseNodeBuilder {
             node_identity: None,
             peers: None,
             base_node_service_config: None,
+            inbound_node_comms_handlers_config: None,
             mct_config: None,
             mempool_config: None,
             mempool_service_config: None,
@@ -112,6 +115,12 @@ impl BaseNodeBuilder {
     /// Set the configuration of the Base Node Service
     pub fn with_base_node_service_config(mut self, config: BaseNodeServiceConfig) -> Self {
         self.base_node_service_config = Some(config);
+        self
+    }
+
+    /// Set the configuration of the inbound node comms handlers.
+    pub fn with_inbound_node_comms_handlers_config(mut self, config: InboundNodeCommsHandlersConfig) -> Self {
+        self.inbound_node_comms_handlers_config = Some(config);
         self
     }
 
@@ -173,6 +182,8 @@ impl BaseNodeBuilder {
                 consensus_manager,
                 self.base_node_service_config
                     .unwrap_or(BaseNodeServiceConfig::default()),
+                self.inbound_node_comms_handlers_config
+                    .unwrap_or(InboundNodeCommsHandlersConfig::default()),
                 self.mempool_service_config.unwrap_or(MempoolServiceConfig::default()),
                 data_path,
             );
@@ -211,6 +222,7 @@ pub fn create_network_with_2_base_nodes(runtime: &Runtime, data_path: &str) -> (
 pub fn create_network_with_2_base_nodes_with_config(
     runtime: &Runtime,
     base_node_service_config: BaseNodeServiceConfig,
+    inbound_node_comms_handlers_config: InboundNodeCommsHandlersConfig,
     mct_config: MerkleChangeTrackerConfig,
     mempool_service_config: MempoolServiceConfig,
     data_path: &str,
@@ -223,6 +235,7 @@ pub fn create_network_with_2_base_nodes_with_config(
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
+        .with_inbound_node_comms_handlers_config(inbound_node_comms_handlers_config)
         .with_merkle_change_tracker_config(mct_config)
         .with_mempool_service_config(mempool_service_config)
         .start(&runtime, data_path);
@@ -230,6 +243,7 @@ pub fn create_network_with_2_base_nodes_with_config(
         .with_node_identity(bob_node_identity)
         .with_peers(vec![alice_node_identity])
         .with_base_node_service_config(base_node_service_config)
+        .with_inbound_node_comms_handlers_config(inbound_node_comms_handlers_config)
         .with_merkle_change_tracker_config(mct_config)
         .with_mempool_service_config(mempool_service_config)
         .start(&runtime, data_path);
@@ -250,6 +264,7 @@ pub fn create_network_with_3_base_nodes(
     create_network_with_3_base_nodes_with_config(
         runtime,
         BaseNodeServiceConfig::default(),
+        InboundNodeCommsHandlersConfig::default(),
         mct_config,
         MempoolServiceConfig::default(),
         data_path,
@@ -260,6 +275,7 @@ pub fn create_network_with_3_base_nodes(
 pub fn create_network_with_3_base_nodes_with_config(
     runtime: &Runtime,
     base_node_service_config: BaseNodeServiceConfig,
+    inbound_node_comms_handlers_config: InboundNodeCommsHandlersConfig,
     mct_config: MerkleChangeTrackerConfig,
     mempool_service_config: MempoolServiceConfig,
     data_path: &str,
@@ -273,6 +289,7 @@ pub fn create_network_with_3_base_nodes_with_config(
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone(), carol_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
+        .with_inbound_node_comms_handlers_config(inbound_node_comms_handlers_config)
         .with_merkle_change_tracker_config(mct_config)
         .with_mempool_service_config(mempool_service_config)
         .start(&runtime, data_path);
@@ -280,6 +297,7 @@ pub fn create_network_with_3_base_nodes_with_config(
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![alice_node_identity.clone(), carol_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
+        .with_inbound_node_comms_handlers_config(inbound_node_comms_handlers_config)
         .with_merkle_change_tracker_config(mct_config)
         .with_mempool_service_config(mempool_service_config)
         .start(&runtime, data_path);
@@ -287,6 +305,7 @@ pub fn create_network_with_3_base_nodes_with_config(
         .with_node_identity(carol_node_identity.clone())
         .with_peers(vec![alice_node_identity, bob_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
+        .with_inbound_node_comms_handlers_config(inbound_node_comms_handlers_config)
         .with_merkle_change_tracker_config(mct_config)
         .with_mempool_service_config(mempool_service_config)
         .start(&runtime, data_path);
@@ -370,6 +389,7 @@ fn setup_base_node_services(
     mempool: Mempool<MemoryDatabase<HashDigest>>,
     consensus_manager: ConsensusManager<MemoryDatabase<HashDigest>>,
     base_node_service_config: BaseNodeServiceConfig,
+    inbound_node_comms_handlers_config: InboundNodeCommsHandlersConfig,
     mempool_service_config: MempoolServiceConfig,
     data_path: &str,
 ) -> (
@@ -392,6 +412,7 @@ fn setup_base_node_services(
             mempool.clone(),
             consensus_manager,
             base_node_service_config,
+            inbound_node_comms_handlers_config,
         ))
         .add_initializer(MempoolServiceInitializer::new(
             subscription_factory,

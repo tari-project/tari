@@ -38,6 +38,7 @@ use tari_core::{
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
         BaseNodeStateMachine,
         BaseNodeStateMachineConfig,
+        InboundNodeCommsHandlersConfig,
         OutboundNodeCommsInterface,
     },
     chain_storage::{
@@ -291,6 +292,7 @@ where
     T: BlockchainBackend + 'static,
 {
     let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
+    let inbound_node_comms_handlers_config = InboundNodeCommsHandlersConfig::default(); // TODO - make this configurable
     let (publisher, subscription_factory) = pubsub_connector(rt.executor(), 100);
     let subscription_factory = Arc::new(subscription_factory);
     let comms_config = CommsConfig {
@@ -327,6 +329,7 @@ where
             mempool,
             consensus_manager,
             node_config,
+            inbound_node_comms_handlers_config,
         ))
         .finish();
 
