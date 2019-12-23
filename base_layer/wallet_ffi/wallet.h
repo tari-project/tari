@@ -257,7 +257,6 @@ struct TariPendingInboundTransaction *pending_inbound_transactions_get_at(struct
 void pending_inbound_transactions_destroy(struct TariPendingInboundTransactions *transactions);
 
 /// -------------------------------- TariCommsConfig ----------------------------------------------- ///
-
 // Creates a TariCommsConfig
 struct TariCommsConfig *comms_config_create(char *control_service_address,
                                      char *listener_address,
@@ -274,12 +273,12 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 // Creates a TariWallet
 struct TariWallet *wallet_create(struct TariWalletConfig *config,
                                     char *log_path,
-                                    void (*call)(struct TariPendingInboundTransaction*),
-                                    void (*call)(struct TariCompletedTransaction*),
-                                    void (*call)(struct TariCompletedTransaction*),
-                                    void (*call)(struct TariCompletedTransaction*),
-                                    void (*call)(struct TariCompletedTransaction*),
-                                    void (*call)(unsigned long long, bool),
+                                    void (*callback_received_transaction)(struct TariPendingInboundTransaction*),
+                                    void (*callback_received_transaction_reply)(struct TariCompletedTransaction*),
+                                    void (*callback_received_finalized_transaction)(struct TariCompletedTransaction*),
+                                    void (*callback_transaction_broadcast)(struct TariCompletedTransaction*),
+                                    void (*callback_transaction_mined)(struct TariCompletedTransaction*),
+                                    void (*callback_discovery_process_complete)(unsigned long long, bool),
                                     int* error_out);
 
 /// Generates test data
@@ -316,7 +315,7 @@ struct TariCompletedTransactions *wallet_get_completed_transactions(struct TariW
 struct TariPendingOutboundTransactions *wallet_get_pending_outbound_transactions(struct TariWallet *wallet,int* error_out);
 
 // Get the TariPublicKey from a TariCommsConfig
-struct TariPublicKey *wallet_get_public_key(struct TariWallet *wallet);
+struct TariPublicKey *wallet_get_public_key(struct TariWallet *wallet,int* error_out);
 
 // Get the TariPendingInboundTransactions from a TariWallet
 struct TariPendingInboundTransactions *wallet_get_pending_inbound_transactions(struct TariWallet *wallet,int* error_out);
