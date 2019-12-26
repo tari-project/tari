@@ -21,21 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use crate::{
+use crate::helpers::block_builders::{create_genesis_block, generate_new_block};
+use tari_core::{
     blocks::Block,
-    chain_storage::{BlockAddResult, BlockchainDatabase, ChainStorageError, MemoryDatabase, Validators},
-    test_utils::builders::{
-        add_block_and_update_header,
-        chain_block,
-        create_genesis_block,
-        spend_utxos,
-        TransactionSchema,
-    },
+    chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
     validation::mocks::MockValidator,
 };
 use tari_transactions::{
     tari_amount::{uT, T},
-    transaction::{Transaction, UnblindedOutput},
+    transaction::UnblindedOutput,
+    txn_schema,
     types::{CryptoFactories, HashDigest},
 };
 
@@ -133,50 +128,9 @@ pub fn create_new_blockchain() -> (
     let mut outputs = Vec::new();
     let mut blocks = Vec::new();
     // Genesis Block
-    let (mut block0, utxo) = create_genesis_block(&factories);
-    block0 = add_block_and_update_header(&db, block0);
+    let (block0, utxo) = create_genesis_block(&db, &factories);
+    db.add_block(block0.clone()).unwrap();
     blocks.push(block0);
     outputs.push(vec![utxo]);
     (db, blocks, outputs)
-}
-
-/// Generate a new block using the given transaction schema and add it to the provided database.
-/// The blocks and UTXO vectors are also updated with the info from the new block.
-pub fn generate_new_block(
-    db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
-    blocks: &mut Vec<Block>,
-    outputs: &mut Vec<Vec<UnblindedOutput>>,
-    schemas: Vec<TransactionSchema>,
-) -> Result<BlockAddResult, ChainStorageError>
-{
-    let mut txns = Vec::new();
-    let mut block_utxos = Vec::new();
-    let mut keys = Vec::new();
-    for schema in schemas {
-        let (tx, mut utxos, param) = spend_utxos(schema);
-        txns.push(tx);
-        block_utxos.append(&mut utxos);
-        keys.push(param);
-    }
-    outputs.push(block_utxos);
-    generate_block(db, blocks, txns)
-}
-
-/// Generate a block and add it to the database using the transactions provided. The header will be updated with the
-/// correct MMR roots.
-/// This function is not able to determine the unblinded outputs of a transaction, so if you are mixing using this
-/// with [generate_new_block], you must update the unblinded UTXO vector  yourself.
-pub fn generate_block(
-    db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
-    blocks: &mut Vec<Block>,
-    transactions: Vec<Transaction>,
-) -> Result<BlockAddResult, ChainStorageError>
-{
-    let mut new_block = chain_block(&blocks.last().unwrap(), transactions);
-    let result = db.add_new_block(new_block.clone());
-    if let Ok(BlockAddResult::Ok(h)) = result.clone() {
-        new_block.header = h;
-    }
-    blocks.push(new_block);
-    result
 }

@@ -20,39 +20,46 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
+#[allow(dead_code)]
+mod helpers;
+
+use futures::{future, future::Either, join, stream::FusedStream, FutureExt, Stream, StreamExt};
+use helpers::{
+    block_builders::{
+        append_block,
+        chain_block,
+        create_genesis_block,
+        create_genesis_block_with_utxos,
+        generate_block,
+        generate_new_block,
+    },
+    nodes::{
+        create_network_with_2_base_nodes_with_config,
+        create_network_with_3_base_nodes,
+        random_node_identity,
+        BaseNodeBuilder,
+    },
+};
+use std::time::{Duration, Instant};
+use tari_core::{
     base_node::{
         comms_interface::{BlockEvent, CommsInterfaceError},
         service::BaseNodeServiceConfig,
-        InboundNodeCommsHandlersConfig,
     },
-    blocks::{genesis_block::get_genesis_block, BlockHeader},
-    chain_storage::{ChainStorageError, DbTransaction, MmrTree},
+    blocks::BlockHeader,
+    chain_storage::{BlockAddResult, ChainStorageError, DbTransaction, MmrTree},
     consensus::ConsensusConstants,
     consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
     mempool::MempoolServiceConfig,
     proof_of_work::{Difficulty, PowAlgorithm},
-    test_utils::{
-        builders::{add_block_and_update_header, chain_block, create_genesis_block, create_test_kernel, create_utxo},
-        node::{
-            create_network_with_2_base_nodes_with_config,
-            create_network_with_3_base_nodes,
-            create_network_with_3_base_nodes_with_config,
-            random_node_identity,
-            BaseNodeBuilder,
-        },
-    },
-    tx,
-};
-use futures::{future, future::Either, join, stream::FusedStream, FutureExt, Stream, StreamExt};
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
+    validation::mocks::MockValidator,
 };
 use tari_mmr::MerkleChangeTrackerConfig;
 use tari_test_utils::random::string;
 use tari_transactions::{
-    tari_amount::{uT, MicroTari},
+    helpers::{create_test_kernel, create_utxo, schema_to_transaction},
+    tari_amount::{uT, MicroTari, T},
+    txn_schema,
     types::CryptoFactories,
 };
 use tari_utilities::hash::Hashable;
@@ -66,9 +73,8 @@ fn request_response_get_metadata() {
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let (mut alice_node, bob_node, carol_node) =
         create_network_with_3_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
-
-    add_block_and_update_header(&bob_node.blockchain_db, create_genesis_block(&factories).0);
-
+    let (block0, _) = create_genesis_block(&bob_node.blockchain_db, &factories);
+    bob_node.blockchain_db.add_block(block0).unwrap();
     runtime.block_on(async {
         let received_metadata = alice_node.outbound_nci.get_metadata().await.unwrap();
         assert_eq!(received_metadata.len(), 2);
@@ -214,47 +220,31 @@ fn request_and_response_fetch_utxos() {
 fn request_and_response_fetch_blocks() {
     let runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let mct_config = MerkleChangeTrackerConfig {
-        min_history_len: 10,
-        max_history_len: 20,
-    };
-    let inbound_handlers_config = InboundNodeCommsHandlersConfig {
-        max_block_response_batch_size: 2,
-    };
-    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes_with_config(
-        &runtime,
-        BaseNodeServiceConfig::default(),
-        inbound_handlers_config,
-        mct_config,
-        MempoolServiceConfig::default(),
-        temp_dir.path().to_str().unwrap(),
-    );
+    let (mut alice_node, mut bob_node, carol_node) =
+        create_network_with_3_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
+    let factories = CryptoFactories::default();
+    let db = &mut bob_node.blockchain_db;
+    let (block0, _) = create_genesis_block(db, &factories);
+    db.add_block(block0.clone()).expect("Could not add Genesis block");
+    let mut blocks = vec![block0];
+    generate_block(db, &mut blocks, vec![]).unwrap();
+    generate_block(db, &mut blocks, vec![]).unwrap();
+    generate_block(db, &mut blocks, vec![]).unwrap();
 
-    let block0 = add_block_and_update_header(&bob_node.blockchain_db, get_genesis_block());
-    let mut block1 = chain_block(&block0, vec![]);
-    block1 = add_block_and_update_header(&bob_node.blockchain_db, block1);
-    let mut block2 = chain_block(&block1, vec![]);
-    block2 = add_block_and_update_header(&bob_node.blockchain_db, block2);
-    let mut block3 = chain_block(&block2, vec![]);
-    block3 = add_block_and_update_header(&bob_node.blockchain_db, block3);
-
-    carol_node.blockchain_db.add_new_block(block0.clone()).unwrap();
-    carol_node.blockchain_db.add_new_block(block1.clone()).unwrap();
-    carol_node.blockchain_db.add_new_block(block2.clone()).unwrap();
-    carol_node.blockchain_db.add_new_block(block3.clone()).unwrap();
+    carol_node.blockchain_db.add_block(blocks[0].clone()).unwrap();
+    carol_node.blockchain_db.add_block(blocks[1].clone()).unwrap();
+    carol_node.blockchain_db.add_block(blocks[2].clone()).unwrap();
 
     runtime.block_on(async {
         let received_blocks = alice_node.outbound_nci.fetch_blocks(vec![0]).await.unwrap();
         assert_eq!(received_blocks.len(), 1);
-        assert_eq!(*received_blocks[0].block(), block0);
+        assert_eq!(*received_blocks[0].block(), blocks[0]);
 
-        // Alice is requesting more blocks than what Bob or Carol is willing to provide. Alice or Carol will only
-        // respond with 2 of the 3 blocks.
-        let received_blocks = alice_node.outbound_nci.fetch_blocks(vec![0, 1, 2]).await.unwrap();
+        let received_blocks = alice_node.outbound_nci.fetch_blocks(vec![0, 1]).await.unwrap();
         assert_eq!(received_blocks.len(), 2);
         assert_ne!(*received_blocks[0].block(), *received_blocks[1].block());
-        assert!((*received_blocks[0].block() == block0) || (*received_blocks[1].block() == block0));
-        assert!((*received_blocks[0].block() == block1) || (*received_blocks[1].block() == block1));
+        assert!((*received_blocks[0].block() == blocks[0]) || (*received_blocks[1].block() == blocks[0]));
+        assert!((*received_blocks[0].block() == blocks[1]) || (*received_blocks[1].block() == blocks[1]));
     });
 
     alice_node.comms.shutdown().unwrap();
@@ -271,116 +261,83 @@ fn request_and_response_fetch_mmr_state() {
         max_history_len: 3,
     };
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes_with_config(
+    let (mut alice, mut bob) = create_network_with_2_base_nodes_with_config(
         &runtime,
         BaseNodeServiceConfig::default(),
-        InboundNodeCommsHandlersConfig::default(),
         mct_config,
         MempoolServiceConfig::default(),
         temp_dir.path().to_str().unwrap(),
     );
 
-    let (tx1, inputs1, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
-    let (tx2, inputs2, _) = tx!(10_000*uT, fee: 20*uT, inputs: 1, outputs: 1);
-    let (_, inputs3, _) = tx!(10_000*uT, fee: 25*uT, inputs: 1, outputs: 1);
-
-    let block0 = add_block_and_update_header(&bob_node.blockchain_db, get_genesis_block());
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap(), true);
-    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap(), true);
-    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap(), true);
-    assert!(bob_node.blockchain_db.commit(txn).is_ok());
-    let mut block1 = chain_block(&block0, vec![tx1.clone()]);
-    block1 = add_block_and_update_header(&bob_node.blockchain_db, block1);
-    let mut block2 = chain_block(&block1, vec![]);
-    block2 = add_block_and_update_header(&bob_node.blockchain_db, block2);
-    let block3 = chain_block(&block2, vec![tx2.clone()]);
-    bob_node.blockchain_db.add_new_block(block3.clone()).unwrap();
-
-    let block0 = add_block_and_update_header(&carol_node.blockchain_db, get_genesis_block());
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap(), true);
-    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap(), true);
-    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap(), true);
-    assert!(carol_node.blockchain_db.commit(txn).is_ok());
-    let mut block1 = chain_block(&block0, vec![tx1.clone()]);
-    block1 = add_block_and_update_header(&carol_node.blockchain_db, block1);
-    let mut block2 = chain_block(&block1, vec![]);
-    block2 = add_block_and_update_header(&carol_node.blockchain_db, block2);
-    let block3 = chain_block(&block2, vec![tx2.clone()]);
-    carol_node.blockchain_db.add_new_block(block3.clone()).unwrap();
-
+    let db = &mut bob.blockchain_db;
+    let (block0, utxos) = create_genesis_block_with_utxos(db, &factories, &[2 * T, 1 * T]);
+    let mut blocks = vec![block0];
+    let mut utxos = vec![utxos];
+    assert_eq!(db.add_block(blocks[0].clone()), Ok(BlockAddResult::Ok));
+    let schema = vec![
+        txn_schema!(from: vec![utxos[0][1].clone()], to: vec![50_000 * uT, 500_000 * uT]),
+        txn_schema!(from: vec![utxos[0][2].clone()], to: vec![30_000 * uT, 300_000 * uT]),
+    ];
+    assert_eq!(
+        generate_new_block(db, &mut blocks, &mut utxos, schema),
+        Ok(BlockAddResult::Ok)
+    );
+    assert_eq!(
+        generate_new_block(db, &mut blocks, &mut utxos, vec![]),
+        Ok(BlockAddResult::Ok)
+    );
+    let schema = vec![txn_schema!(from: vec![utxos[1][1].clone()], to: vec![20_000 * uT])];
+    assert_eq!(
+        generate_new_block(db, &mut blocks, &mut utxos, schema),
+        Ok(BlockAddResult::Ok)
+    );
+    // Blockchain state summary as of now:
+    // 4 blocks
+    // 3 transactions / kernels (0-2-0-1)
+    // 11 TXOs (3(2 spent)-6(1)-0-2)
+    // tracking horizon ---------^
     runtime.block_on(async {
         // Partial queries
-        let received_mmr_state = alice_node
-            .outbound_nci
-            .fetch_mmr_state(MmrTree::Utxo, 1, 2)
-            .await
-            .unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 4);
+        let received_mmr_state = alice.outbound_nci.fetch_mmr_state(MmrTree::Kernel, 2, 3).await.unwrap();
+        assert_eq!(received_mmr_state.total_leaf_count, 3);
+        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 1); // request out of range
+
+        let received_mmr_state = alice.outbound_nci.fetch_mmr_state(MmrTree::Utxo, 1, 2).await.unwrap();
+        assert_eq!(received_mmr_state.total_leaf_count, 9); // Base leaf count returned
         assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 2);
 
-        let received_mmr_state = alice_node
-            .outbound_nci
-            .fetch_mmr_state(MmrTree::Kernel, 1, 2)
-            .await
-            .unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 1);
-        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 0); // request out of range
-
-        let received_mmr_state = alice_node
+        let received_mmr_state = alice
             .outbound_nci
             .fetch_mmr_state(MmrTree::RangeProof, 1, 2)
             .await
             .unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 4);
-        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 2);
-
-        let received_mmr_state = alice_node
-            .outbound_nci
-            .fetch_mmr_state(MmrTree::Header, 1, 2)
-            .await
-            .unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 3);
+        assert_eq!(received_mmr_state.total_leaf_count, 9);
         assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 2);
 
         // Comprehensive queries
-        let received_mmr_state = alice_node
-            .outbound_nci
-            .fetch_mmr_state(MmrTree::Utxo, 0, 100)
-            .await
-            .unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 4);
-        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 4);
+        let received_mmr_state = alice.outbound_nci.fetch_mmr_state(MmrTree::Utxo, 0, 100).await.unwrap();
+        assert_eq!(received_mmr_state.total_leaf_count, 9);
+        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 9);
 
-        let received_mmr_state = alice_node
+        let received_mmr_state = alice
             .outbound_nci
             .fetch_mmr_state(MmrTree::Kernel, 0, 100)
             .await
             .unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 1);
-        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 1);
+        assert_eq!(received_mmr_state.total_leaf_count, 3);
+        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 3);
 
-        let received_mmr_state = alice_node
+        let received_mmr_state = alice
             .outbound_nci
             .fetch_mmr_state(MmrTree::RangeProof, 0, 100)
             .await
             .unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 4);
-        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 4);
-
-        let received_mmr_state = alice_node
-            .outbound_nci
-            .fetch_mmr_state(MmrTree::Header, 0, 100)
-            .await
-            .unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 3);
-        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 3);
+        assert_eq!(received_mmr_state.total_leaf_count, 9);
+        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 9);
     });
 
-    alice_node.comms.shutdown().unwrap();
-    bob_node.comms.shutdown().unwrap();
-    carol_node.comms.shutdown().unwrap();
+    alice.comms.shutdown().unwrap();
+    bob.comms.shutdown().unwrap();
 }
 
 pub async fn event_stream_next<TStream>(mut stream: TStream, timeout: Duration) -> Option<TStream::Item>
@@ -401,6 +358,7 @@ where TStream: Stream + FusedStream + Unpin {
 fn propagate_and_forward_valid_block() {
     let runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let factories = CryptoFactories::default();
     // Alice will propagate block to bob, bob will receive it, verify it and then propagate it to carol and dan. Dan and
     // Carol will also try to propagate the block to each other, as they dont know that bob sent it to the other node.
     // These duplicate blocks will be discarded and wont be propagated again.
@@ -434,14 +392,15 @@ fn propagate_and_forward_valid_block() {
         .with_peers(vec![bob_node_identity, carol_node_identity])
         .start(&runtime, temp_dir.path().to_str().unwrap());
 
-    let block0 = add_block_and_update_header(&alice_node.blockchain_db, get_genesis_block());
-    let mut block1 = chain_block(&block0, vec![]);
-    block1 = add_block_and_update_header(&alice_node.blockchain_db, block1);
+    let db = &alice_node.blockchain_db;
+    let (block0, _) = create_genesis_block(db, &factories);
+    db.add_block(block0.clone()).unwrap();
+    let block1 = append_block(db, &block0, vec![]).unwrap();
     let block1_hash = block1.hash();
 
-    bob_node.blockchain_db.add_new_block(block0.clone()).unwrap();
-    carol_node.blockchain_db.add_new_block(block0.clone()).unwrap();
-    dan_node.blockchain_db.add_new_block(block0.clone()).unwrap();
+    bob_node.blockchain_db.add_block(block0.clone()).unwrap();
+    carol_node.blockchain_db.add_block(block0.clone()).unwrap();
+    dan_node.blockchain_db.add_block(block0.clone()).unwrap();
 
     runtime.block_on(async {
         // Alice will start the propagation. Bob, Carol and Dan will propagate based on the logic in their inbound
@@ -464,17 +423,17 @@ fn propagate_and_forward_valid_block() {
         if let BlockEvent::Verified((received_block, _)) = &*bob_block_event.unwrap() {
             assert_eq!(received_block.hash(), block1_hash);
         } else {
-            assert!(false);
+            panic!("Bob's node did not receive and validate the expected block");
         }
         if let BlockEvent::Verified((received_block, _block_add_result)) = &*carol_block_event.unwrap() {
             assert_eq!(received_block.hash(), block1_hash);
         } else {
-            assert!(false);
+            panic!("Carol's node did not receive and validate the expected block");
         }
         if let BlockEvent::Verified((received_block, _block_add_result)) = &*dan_block_event.unwrap() {
             assert_eq!(received_block.hash(), block1_hash);
         } else {
-            assert!(false);
+            panic!("Dan's node did not receive and validate the expected block");
         }
     });
 
@@ -488,6 +447,7 @@ fn propagate_and_forward_valid_block() {
 fn propagate_and_forward_invalid_block() {
     let runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let factories = CryptoFactories::default();
     // Alice will propagate an invalid block to Carol and Bob, they will check the received block and not propagate the
     // block to dan.
     //       /->  bob  -\
@@ -516,13 +476,17 @@ fn propagate_and_forward_invalid_block() {
         .with_peers(vec![bob_node_identity, carol_node_identity])
         .start(&runtime, temp_dir.path().to_str().unwrap());
 
-    let block0 = add_block_and_update_header(&alice_node.blockchain_db, get_genesis_block());
-    let block1 = chain_block(&block0, vec![]);
+    let db = &alice_node.blockchain_db;
+    let (block0, _) = create_genesis_block(db, &factories);
+    db.add_block(block0.clone()).unwrap();
+    let mut block1 = append_block(db, &block0, vec![]).unwrap();
+
+    bob_node.blockchain_db.add_block(block0.clone()).unwrap();
+    carol_node.blockchain_db.add_block(block0.clone()).unwrap();
+
+    // Make block 1 invalid
+    block1.header.height = 0;
     let block1_hash = block1.hash();
-
-    bob_node.blockchain_db.add_new_block(block0.clone()).unwrap();
-    carol_node.blockchain_db.add_new_block(block0.clone()).unwrap();
-
     runtime.block_on(async {
         assert!(alice_node
             .outbound_nci
@@ -539,21 +503,18 @@ fn propagate_and_forward_invalid_block() {
         let (bob_block_event, carol_block_event, dan_block_event) =
             join!(bob_block_event_fut, carol_block_event_fut, dan_block_event_fut);
 
-        if let BlockEvent::Invalid((received_block, err)) = &*bob_block_event.unwrap() {
+        if let BlockEvent::Invalid((received_block, _err)) = &*bob_block_event.unwrap() {
             assert_eq!(received_block.hash(), block1_hash);
-            assert_eq!(*err, ChainStorageError::MismatchedMmrRoot(MmrTree::Kernel));
         } else {
-            assert!(false);
+            panic!("Bob's node should have detected an invalid block");
         }
-        if let BlockEvent::Invalid((received_block, err)) = &*carol_block_event.unwrap() {
+        if let BlockEvent::Invalid((received_block, _err)) = &*carol_block_event.unwrap() {
             assert_eq!(received_block.hash(), block1_hash);
-            assert_eq!(*err, ChainStorageError::MismatchedMmrRoot(MmrTree::Kernel));
         } else {
-            assert!(false);
+            panic!("Carol's node should have detected an invalid block");
         }
         assert!(dan_block_event.is_none());
     });
-
     alice_node.comms.shutdown().unwrap();
     bob_node.comms.shutdown().unwrap();
     carol_node.comms.shutdown().unwrap();
@@ -575,7 +536,6 @@ fn service_request_timeout() {
     let (mut alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
         &runtime,
         base_node_service_config,
-        InboundNodeCommsHandlersConfig::default(),
         mct_config,
         MempoolServiceConfig::default(),
         temp_dir.path().to_str().unwrap(),
@@ -596,13 +556,13 @@ fn service_request_timeout() {
 fn local_get_metadata() {
     let runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let factories = CryptoFactories::default();
     let mut node = BaseNodeBuilder::new().start(&runtime, temp_dir.path().to_str().unwrap());
-
-    let block0 = add_block_and_update_header(&node.blockchain_db, get_genesis_block());
-    let mut block1 = chain_block(&block0, vec![]);
-    block1 = add_block_and_update_header(&node.blockchain_db, block1);
-    let mut block2 = chain_block(&block1, vec![]);
-    block2 = add_block_and_update_header(&node.blockchain_db, block2);
+    let db = &node.blockchain_db;
+    let (block0, _) = create_genesis_block(db, &factories);
+    db.add_block(block0.clone()).unwrap();
+    let block1 = append_block(db, &block0, vec![]).unwrap();
+    let block2 = append_block(db, &block1, vec![]).unwrap();
 
     runtime.block_on(async {
         let metadata = node.local_nci.get_metadata().await.unwrap();
@@ -620,23 +580,22 @@ fn local_get_new_block_template_and_get_new_block() {
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let mut node = BaseNodeBuilder::new().start(&runtime, temp_dir.path().to_str().unwrap());
 
-    add_block_and_update_header(&node.blockchain_db, get_genesis_block());
-    let (tx1, inputs1, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
-    let (tx2, inputs2, _) = tx!(10_000*uT, fee: 20*uT, inputs: 1, outputs: 1);
-    let (tx3, inputs3, _) = tx!(10_000*uT, fee: 30*uT, inputs: 1, outputs: 1);
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap(), true);
-    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap(), true);
-    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap(), true);
-    assert!(node.blockchain_db.commit(txn).is_ok());
-    assert!(node.mempool.insert(Arc::new(tx1)).is_ok());
-    assert!(node.mempool.insert(Arc::new(tx2)).is_ok());
-    assert!(node.mempool.insert(Arc::new(tx3)).is_ok());
+    let db = &node.blockchain_db;
+    let (block0, outputs) = create_genesis_block_with_utxos(db, &factories, &[T, T]);
+    // Override coinbase maturity. This only works here because we're using mock validators
+    db.add_block(block0.clone()).unwrap();
+    let schema = [
+        txn_schema!(from: vec![outputs[1].clone()], to: vec![10_000 * uT, 20_000 * uT]),
+        txn_schema!(from: vec![outputs[2].clone()], to: vec![30_000 * uT, 40_000 * uT]),
+    ];
+    let (txs, _) = schema_to_transaction(&schema);
+    assert!(node.mempool.insert(txs[0].clone()).is_ok());
+    assert!(node.mempool.insert(txs[1].clone()).is_ok());
 
     runtime.block_on(async {
         let block_template = node.local_nci.get_new_block_template().await.unwrap();
         assert_eq!(block_template.header.height, 1);
-        assert_eq!(block_template.body.kernels().len(), 3);
+        assert_eq!(block_template.body.kernels().len(), 2);
 
         let mut block = node.local_nci.get_new_block(block_template.clone()).await.unwrap();
         block.header.pow.accumulated_blake_difficulty = Difficulty::from(100);
@@ -653,9 +612,12 @@ fn local_get_new_block_template_and_get_new_block() {
 fn local_get_target_difficulty() {
     let runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let factories = CryptoFactories::default();
     let mut node = BaseNodeBuilder::new().start(&runtime, temp_dir.path().to_str().unwrap());
 
-    let block0 = add_block_and_update_header(&node.blockchain_db, get_genesis_block());
+    let db = &node.blockchain_db;
+    let (block0, _) = create_genesis_block(db, &factories);
+    db.add_block(block0.clone()).unwrap();
     assert_eq!(node.blockchain_db.get_height(), Ok(Some(0)));
 
     runtime.block_on(async {
@@ -668,13 +630,14 @@ fn local_get_target_difficulty() {
         assert_ne!(monero_target_difficulty1, Difficulty::from(0));
         assert_ne!(blake_target_difficulty1, Difficulty::from(0));
 
-        let mut block1 = chain_block(&block0, Vec::new());
+        let block1 = chain_block(&block0, Vec::new());
+        let mut block1 = node.blockchain_db.calculate_mmr_roots(block1).unwrap();
         block1.header.timestamp = block0
             .header
             .timestamp
             .increase(ConsensusConstants::current().get_target_block_interval());
         block1.header.pow.pow_algo = PowAlgorithm::Blake;
-        add_block_and_update_header(&node.blockchain_db, block1);
+        node.blockchain_db.add_block(block1).unwrap();
         assert_eq!(node.blockchain_db.get_height(), Ok(Some(1)));
 
         let monero_target_difficulty2 = node
@@ -694,23 +657,24 @@ fn local_get_target_difficulty() {
 fn local_submit_block() {
     let runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let factories = CryptoFactories::default();
     let mut node = BaseNodeBuilder::new().start(&runtime, temp_dir.path().to_str().unwrap());
 
-    let block0 = add_block_and_update_header(&node.blockchain_db, get_genesis_block());
-    let mut block1 = chain_block(&block0, vec![]);
-    block1.header.height = 1;
-
+    let db = &node.blockchain_db;
+    let (block0, _) = create_genesis_block(db, &factories);
+    db.add_block(block0.clone()).unwrap();
+    let block1 = db.calculate_mmr_roots(chain_block(&block0, vec![])).unwrap();
     runtime.block_on(async {
         assert!(node.local_nci.submit_block(block1.clone()).await.is_ok());
 
-        let block_event_stream = node.local_nci.get_block_event_stream_fused();
-        let bob_block_event = event_stream_next(block_event_stream, Duration::from_millis(20000)).await;
+        let event_stream = node.local_nci.get_block_event_stream_fused();
+        let event = event_stream_next(event_stream, Duration::from_millis(20000)).await;
 
-        if let BlockEvent::Invalid((received_block, err)) = &*bob_block_event.unwrap() {
+        if let BlockEvent::Verified((received_block, result)) = &*event.unwrap() {
             assert_eq!(received_block.hash(), block1.hash());
-            assert_eq!(*err, ChainStorageError::MismatchedMmrRoot(MmrTree::Kernel));
+            assert_eq!(*result, BlockAddResult::Ok);
         } else {
-            assert!(false);
+            panic!("Block validation failed");
         }
     });
 

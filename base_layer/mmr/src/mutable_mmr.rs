@@ -67,9 +67,9 @@ where
         }
     }
 
-    /// Reset the MutableMmr and restore the MMR state from the set of leaf_hashes and deleted nodes.
-    pub fn restore(&mut self, state: MutableMmrLeafNodes) -> Result<(), MerkleMountainRangeError> {
-        self.mmr.restore(state.leaf_hashes)?;
+    /// Clear the MutableMmr and assign the MMR state from the set of leaf_hashes and deleted nodes given in `state`.
+    pub fn assign(&mut self, state: MutableMmrLeafNodes) -> Result<(), MerkleMountainRangeError> {
+        self.mmr.assign(state.leaf_hashes)?;
         self.deleted = state.deleted;
         self.size = self.mmr.get_leaf_count()? as u32;
         Ok(())

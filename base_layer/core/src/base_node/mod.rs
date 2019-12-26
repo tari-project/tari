@@ -35,15 +35,13 @@
 mod backoff;
 mod base_node;
 mod chain_metadata_service;
-mod comms_interface;
 mod proto;
-#[cfg(test)]
-mod test;
 
+pub mod comms_interface;
 pub mod service;
 pub mod states;
 
 // Public re-exports
 pub use backoff::BackOff;
 pub use base_node::{BaseNodeStateMachine, BaseNodeStateMachineConfig};
-pub use comms_interface::{InboundNodeCommsHandlersConfig, LocalNodeCommsInterface, OutboundNodeCommsInterface};
+pub use comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface};

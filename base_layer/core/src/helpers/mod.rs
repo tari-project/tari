@@ -20,27 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::types::{PrivateKey, PublicKey};
-use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
+//! Common test helper functions that are small and useful enough to be included in the main crate, rather than the
+//! integration test folder.
 
-pub struct TestParams {
-    pub spend_key: PrivateKey,
-    pub change_key: PrivateKey,
-    pub offset: PrivateKey,
-    pub nonce: PrivateKey,
-    pub public_nonce: PublicKey,
+mod mock_backend;
+
+use crate::{
+    blocks::{Block, BlockBuilder, BlockHeader},
+    chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
+    validation::mocks::MockValidator,
+};
+use tari_transactions::{transaction::Transaction, types::HashDigest};
+
+pub use mock_backend::MockBackend;
+
+/// Create a partially constructed block using the provided set of transactions
+/// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument
+pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>) -> Block {
+    let mut header = BlockHeader::new(0);
+    header.height = block_height;
+    BlockBuilder::new()
+        .with_header(header)
+        .with_transactions(transactions)
+        .build()
 }
 
-impl TestParams {
-    pub fn new() -> TestParams {
-        let mut rng = rand::OsRng::new().unwrap();
-        let r = PrivateKey::random(&mut rng);
-        TestParams {
-            spend_key: PrivateKey::random(&mut rng),
-            change_key: PrivateKey::random(&mut rng),
-            offset: PrivateKey::random(&mut rng),
-            public_nonce: PublicKey::from_secret_key(&r),
-            nonce: r,
-        }
-    }
+pub fn create_mem_db() -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let db = MemoryDatabase::<HashDigest>::default();
+    BlockchainDatabase::new(db, validators).unwrap()
 }

@@ -144,6 +144,10 @@ impl OutboundNodeCommsInterface {
     }
 
     /// Fetch the base MMR state of the specified merkle mountain range.
+    /// # Parameters
+    /// * `tree`: The Merkle tree to fetch data from (kernel, utxo or range proof)
+    /// * `index`: leaf nodes will be returned from the `index`-th node
+    /// * `count`: up to count leaf nodes will be returned
     pub async fn fetch_mmr_state(
         &mut self,
         tree: MmrTree,

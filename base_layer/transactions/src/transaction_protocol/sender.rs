@@ -496,8 +496,8 @@ impl SenderState {
 mod test {
     use crate::{
         fee::Fee,
+        helpers::{make_input, TestParams},
         tari_amount::*,
-        test_utils::{builders::make_input, primitives::TestParams},
         transaction::{KernelFeatures, OutputFeatures, UnblindedOutput},
         transaction_protocol::{
             sender::SenderTransactionProtocol,

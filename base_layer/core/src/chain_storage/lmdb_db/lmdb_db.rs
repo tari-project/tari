@@ -753,7 +753,7 @@ where D: Digest + Send + Sync
     }
 
     fn fetch_mmr_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
-        let pruning_horizon = self.fetch_pruning_horizon()?;
+        let pruning_horizon = self.fetch_horizon_block_height()?;
         if height < pruning_horizon {
             return Err(ChainStorageError::BeyondPruningHorizon);
         }
@@ -917,28 +917,28 @@ where D: Digest + Send + Sync
         Ok(mmr_state)
     }
 
-    fn restore_mmr(&self, tree: MmrTree, base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError> {
+    fn assign_mmr(&self, tree: MmrTree, base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError> {
         match tree {
             MmrTree::Kernel => self
                 .kernel_mmr
                 .write()
                 .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                .restore(base_state)?,
+                .assign(base_state)?,
             MmrTree::Header => self
                 .header_mmr
                 .write()
                 .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                .restore(base_state)?,
+                .assign(base_state)?,
             MmrTree::Utxo => self
                 .utxo_mmr
                 .write()
                 .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                .restore(base_state)?,
+                .assign(base_state)?,
             MmrTree::RangeProof => self
                 .range_proof_mmr
                 .write()
                 .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                .restore(base_state)?,
+                .assign(base_state)?,
         };
         Ok(())
     }
@@ -949,7 +949,7 @@ where D: Digest + Send + Sync
         lmdb_for_each::<F, HashOutput, Block>(&self.env, &self.orphans_db, f)
     }
 
-    fn fetch_pruning_horizon(&self) -> Result<u64, ChainStorageError> {
+    fn fetch_horizon_block_height(&self) -> Result<u64, ChainStorageError> {
         let tip_height = lmdb_len(&self.env, &self.headers_db)?;
         let checkpoint_count = self
             .kernel_mmr

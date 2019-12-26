@@ -33,43 +33,23 @@ use crate::{
         BlockchainDatabase,
         ChainStorageError,
         HistoricalBlock,
-        MmrTree,
     },
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::Mempool,
 };
 use futures::SinkExt;
-use std::cmp::{max, min};
+use log::*;
 use tari_broadcast_channel::Publisher;
 use tari_comms::types::CommsPublicKey;
-use tari_transactions::{
-    transaction::{TransactionKernel, TransactionOutput},
-    types::HashOutput,
-};
-use tari_utilities::Hashable;
+use tari_transactions::transaction::{TransactionKernel, TransactionOutput};
 
-// The maximum number of Blocks that this node will provide in response to a single block fetch request.
-const MAX_BLOCK_RESPONSE_BATCH_SIZE: usize = 1;
+const LOG_TARGET: &str = "base_node::comms_interface::inbound_handler";
 
 /// Events that can be published on the Validated Block Event Stream
 #[derive(Debug)]
 pub enum BlockEvent {
     Verified((Block, BlockAddResult)),
     Invalid((Block, ChainStorageError)),
-}
-
-/// Configuration for the InboundNodeCommsHandlers.
-#[derive(Clone, Copy)]
-pub struct InboundNodeCommsHandlersConfig {
-    pub max_block_response_batch_size: usize,
-}
-
-impl Default for InboundNodeCommsHandlersConfig {
-    fn default() -> Self {
-        Self {
-            max_block_response_batch_size: MAX_BLOCK_RESPONSE_BATCH_SIZE,
-        }
-    }
 }
 
 /// The InboundNodeCommsInterface is used to handle all received inbound requests from remote nodes.
@@ -81,7 +61,6 @@ where T: BlockchainBackend
     mempool: Mempool<T>,
     consensus_manager: ConsensusManager<T>,
     outbound_nci: OutboundNodeCommsInterface,
-    config: InboundNodeCommsHandlersConfig,
 }
 
 impl<T> InboundNodeCommsHandlers<T>
@@ -94,7 +73,6 @@ where T: BlockchainBackend
         mempool: Mempool<T>,
         consensus_manager: ConsensusManager<T>,
         outbound_nci: OutboundNodeCommsInterface,
-        config: InboundNodeCommsHandlersConfig,
     ) -> Self
     {
         Self {
@@ -103,7 +81,6 @@ where T: BlockchainBackend
             mempool,
             consensus_manager,
             outbound_nci,
-            config,
         }
     }
 
@@ -141,15 +118,17 @@ where T: BlockchainBackend
                 Ok(NodeCommsResponse::TransactionOutputs(utxos))
             },
             NodeCommsRequest::FetchBlocks(block_nums) => {
-                let mut block_nums = block_nums.clone();
-                let batch_size = max(1, self.config.max_block_response_batch_size);
-                let batch_size = min(block_nums.len(), batch_size);
-                block_nums.truncate(batch_size);
-
                 let mut blocks = Vec::<HistoricalBlock>::with_capacity(block_nums.len());
                 for block_num in block_nums {
-                    if let Ok(block) = async_db::fetch_block(self.blockchain_db.clone(), block_num).await {
-                        blocks.push(block);
+                    debug!(target: LOG_TARGET, "A peer has requested block {}", block_num);
+                    match async_db::fetch_block(self.blockchain_db.clone(), *block_num).await {
+                        Ok(block) => blocks.push(block),
+                        Err(e) => info!(
+                            target: LOG_TARGET,
+                            "Could not provide requested block {} to peer because: {}",
+                            block_num,
+                            e.to_string()
+                        ),
                     }
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
@@ -188,33 +167,8 @@ where T: BlockchainBackend
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {
-                let NewBlockTemplate { header, body } = block_template.clone();
-
-                let kernel_hashes: Vec<HashOutput> = body.kernels().iter().map(|k| k.hash()).collect();
-                let out_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.hash()).collect();
-                let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.proof().hash()).collect();
-                let inp_hashes: Vec<HashOutput> = body.inputs().iter().map(|inp| inp.hash()).collect();
-
-                let mut header = BlockHeader::from(header);
-                header.kernel_mr = async_db::calculate_mmr_root(
-                    self.blockchain_db.clone(),
-                    MmrTree::Kernel,
-                    kernel_hashes,
-                    Vec::new(),
-                )
-                .await?;
-                header.output_mr =
-                    async_db::calculate_mmr_root(self.blockchain_db.clone(), MmrTree::Utxo, out_hashes, inp_hashes)
-                        .await?;
-                header.range_proof_mr = async_db::calculate_mmr_root(
-                    self.blockchain_db.clone(),
-                    MmrTree::RangeProof,
-                    rp_hashes,
-                    Vec::new(),
-                )
-                .await?;
-
-                Ok(NodeCommsResponse::NewBlock(Block { header, body }))
+                let block = async_db::calculate_mmr_roots(self.blockchain_db.clone(), block_template.clone()).await?;
+                Ok(NodeCommsResponse::NewBlock(block))
             },
             NodeCommsRequest::GetTargetDifficulty(pow_algo) => Ok(NodeCommsResponse::TargetDifficulty(
                 self.consensus_manager.get_target_difficulty(pow_algo)?,
@@ -240,7 +194,7 @@ where T: BlockchainBackend
             .await
             .map_err(|_| CommsInterfaceError::EventStreamError)?;
         // Propagate verified block to remote nodes
-        if let Ok(BlockAddResult::Ok(_)) = add_block_result {
+        if let Ok(BlockAddResult::Ok) = add_block_result {
             let exclude_peers = source_peer.map_or_else(|| vec![], |comms_public_key| vec![comms_public_key]);
             self.outbound_nci.propagate_block(block.clone(), exclude_peers).await?;
         }

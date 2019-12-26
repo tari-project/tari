@@ -129,9 +129,9 @@ impl Clone for ReorgPool {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{test_utils::builders::create_test_block, tx};
+    use crate::helpers::create_orphan_block;
     use std::{thread, time::Duration};
-    use tari_transactions::tari_amount::MicroTari;
+    use tari_transactions::{tari_amount::MicroTari, tx};
 
     #[test]
     fn test_insert_rlu_and_ttl() {
@@ -280,8 +280,8 @@ mod test {
         );
 
         let reorg_blocks = vec![
-            create_test_block(3000, None, vec![(*tx3).clone(), (*tx4).clone()]),
-            create_test_block(4000, None, vec![(*tx1).clone(), (*tx2).clone()]),
+            create_orphan_block(3000, vec![(*tx3).clone(), (*tx4).clone()]),
+            create_orphan_block(4000, vec![(*tx1).clone(), (*tx2).clone()]),
         ];
 
         let removed_txs = reorg_pool.scan_for_and_remove_reorged_txs(reorg_blocks).unwrap();

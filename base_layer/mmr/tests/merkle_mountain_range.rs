@@ -145,7 +145,7 @@ fn restore_from_leaf_hashes() {
     assert!(mmr.push(&int_to_hash(5)).is_ok());
     assert_eq!(mmr.len(), Ok(10));
 
-    assert!(mmr.restore(leaf_hashes).is_ok());
+    assert!(mmr.assign(leaf_hashes).is_ok());
     assert_eq!(mmr.len(), Ok(7));
     assert_eq!(mmr.get_leaf_hash(0), Ok(Some(h0)));
     assert_eq!(mmr.get_leaf_hash(1), Ok(Some(h1)));

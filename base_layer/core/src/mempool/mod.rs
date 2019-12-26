@@ -28,11 +28,14 @@ mod priority;
 mod proto;
 mod reorg_pool;
 mod service;
-#[cfg(test)]
-mod test;
 mod unconfirmed_pool;
 
 // Public re-exports
 pub use error::MempoolError;
 pub use mempool::{Mempool, MempoolConfig, TxStorageResponse};
-pub use service::{MempoolServiceConfig, MempoolServiceInitializer, OutboundMempoolServiceInterface};
+pub use service::{
+    MempoolServiceConfig,
+    MempoolServiceError,
+    MempoolServiceInitializer,
+    OutboundMempoolServiceInterface,
+};

@@ -51,6 +51,8 @@ pub enum BlockValidationError {
     InputMaturity,
     // Invalid coinbase maturity in block or more than one coinbase
     InvalidCoinbase,
+    // Mismatched MMR roots
+    MismatchedMmrRoots,
     // Invalid timestamp received on the block
     InvalidTimestamp,
 }

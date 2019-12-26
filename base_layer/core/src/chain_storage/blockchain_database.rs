@@ -22,7 +22,7 @@
 //
 
 use crate::{
-    blocks::{Block, BlockBuilder, BlockHeader},
+    blocks::{Block, BlockBuilder, BlockHeader, NewBlockTemplate},
     chain_storage::{
         db_transaction::{DbKey, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree},
         error::ChainStorageError,
@@ -50,7 +50,7 @@ const LOG_TARGET: &str = "core::chain_storage::database";
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BlockAddResult {
-    Ok(BlockHeader),
+    Ok,
     BlockExists,
     OrphanBlock,
     ChainReorg,
@@ -127,8 +127,6 @@ pub trait BlockchainBackend: Send + Sync {
     /// Fetches the MMR checkpoint corresponding to the provided height, the checkpoint consist of the list of nodes
     /// added & deleted for the given Merkle tree. When a height is provided that is less than the pruning horizon, then
     /// a BeyondPruningHorizon error will be produced.
-    // TODO: Fix conflicting definitions for fetch_mmr_checkpoint where some functions require checkpoint offset, and
-    // the others take block height.
     fn fetch_mmr_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError>;
     /// Fetches the leaf node hash and its deletion status for the nth leaf node in the given MMR tree.
     fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Hash, bool), ChainStorageError>;
@@ -144,14 +142,14 @@ pub trait BlockchainBackend: Send + Sync {
     /// Returns the number of leaf nodes in the base MMR of the specified tree.
     fn fetch_mmr_base_leaf_node_count(&self, tree: MmrTree) -> Result<usize, ChainStorageError>;
     /// Resets and restores the state of the specified MMR tree using a set of leaf nodes.
-    fn restore_mmr(&self, tree: MmrTree, base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError>;
+    fn assign_mmr(&self, tree: MmrTree, base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError>;
     /// Performs the function F for each orphan block in the orphan pool.
     fn for_each_orphan<F>(&self, f: F) -> Result<(), ChainStorageError>
     where
         Self: Sized,
         F: FnMut(Result<(HashOutput, Block), ChainStorageError>);
-    /// Returns the height of the pruning horizon.
-    fn fetch_pruning_horizon(&self) -> Result<u64, ChainStorageError>;
+    /// Returns the height of earliest block that the backend can provide full data for.
+    fn fetch_horizon_block_height(&self) -> Result<u64, ChainStorageError>;
     /// Returns the stored header with the highest corresponding height.
     fn fetch_last_header(&self) -> Result<Option<BlockHeader>, ChainStorageError>;
 }
@@ -380,6 +378,25 @@ where T: BlockchainBackend
         self.db.calculate_mmr_root(tree, additions, deletions)
     }
 
+    /// `calculate_mmr_roots` takes a block template and calculates the MMR roots for a hypothetical new block that
+    /// would be built onto the chain tip. Note that _no checks_ are made to determine whether the template would
+    /// actually be a valid extension to the chain; only the new MMR roots are calculated
+    pub fn calculate_mmr_roots(&self, template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
+        let NewBlockTemplate { header, mut body } = template;
+        // Make sure the body components are sorted. If they already are, this is a very cheap call.
+        body.sort();
+        let kernel_hashes: Vec<HashOutput> = body.kernels().iter().map(|k| k.hash()).collect();
+        let out_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.hash()).collect();
+        let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.proof().hash()).collect();
+        let inp_hashes: Vec<HashOutput> = body.inputs().iter().map(|inp| inp.hash()).collect();
+
+        let mut header = BlockHeader::from(header);
+        header.kernel_mr = self.calculate_mmr_root(MmrTree::Kernel, kernel_hashes, vec![])?;
+        header.output_mr = self.calculate_mmr_root(MmrTree::Utxo, out_hashes, inp_hashes)?;
+        header.range_proof_mr = self.calculate_mmr_root(MmrTree::RangeProof, rp_hashes, vec![])?;
+        Ok(Block { header, body })
+    }
+
     /// Fetch a Merklish proof for the given hash, tree and position in the MMR
     pub fn fetch_mmr_proof(&self, tree: MmrTree, pos: usize) -> Result<MerkleProof, ChainStorageError> {
         self.db.fetch_mmr_proof(tree, pos)
@@ -404,26 +421,26 @@ where T: BlockchainBackend
     }
 
     /// Resets the specified MMR and restores it with the provided state.
-    pub fn restore_mmr(&self, tree: MmrTree, base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError> {
-        self.db.restore_mmr(tree, base_state)
+    pub fn assign_mmr(&self, tree: MmrTree, base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError> {
+        self.db.assign_mmr(tree, base_state)
     }
 
-    /// Add a block to the longest chain. This function does some basic checks to maintain the chain integrity, but
-    /// does not perform a full block validation (this should have been done by this point).
+    /// Tries to add a block to the longest chain.
     ///
-    /// On completion, this function will have
-    ///   * Checked that the previous block builds on the longest chain.
-    ///       * If not - add orphan block and possibly re-org
-    ///   * That the total accumulated work has increased.
-    ///   * Mark all inputs in the block as spent.
-    ///   * Updated the database metadata
-    ///   * Checked the MMR roots
+    /// The block is added to the longest chain if and only if
+    ///   * Block block is not already in the database, AND
+    ///   * The block is next in the chain, AND
+    ///   * The Validator passes
+    ///   * There are no problems with the database backend (e.g. disk full)
+    ///
+    /// If the block is _not_ next in the chain, the block will be added to the orphan pool if the orphan validator
+    /// passes, and then the database is checked for whether there has been a chain re-organisation.
     ///
     /// # Returns
     ///
     /// An error is returned if
     /// * there was a problem accessing the database,
-    /// * if an invalid input tries to be spent,
+    /// * the validation fails
     ///
     /// Otherwise the function returns successfully.
     /// A successful return value can be one of
@@ -431,43 +448,15 @@ where T: BlockchainBackend
     ///   * `Ok`: The block was added and all validation checks passed
     ///   * `OrphanBlock`: The block did not form part of the main chain and was added as an orphan.
     ///   * `ChainReorg`: The block was added, which resulted in a chain-reorg.
-    /// The block header is returned with the result, which will have been updated with the MMR roots if
-    /// `modify_header` was true.
     ///
     /// If an error does occur while writing the new block parts, all changes are reverted before returning.
     pub fn add_block(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
-        self.add_block_impl(block, false)
-    }
-
-    /// Add a new block and set the MMR roots in the header
-    ///
-    /// As for [add_block], but the block header will be modified to include the MMR roots for the kernels, outputs
-    /// and range proofs. Note that when making this call, the block *must* build onto the longest chain. We cannot
-    /// accept orphan blocks without valid MMR roots because there is no way that these can be correctly calculated
-    /// by this node. On the other hand, if the miner that _produced_ the block was honest, it would have been
-    /// building on _its_ longest chain, so this restriction wouldn't apply.
-    #[cfg(test)]
-    pub fn add_new_block(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
-        self.add_block_impl(block, true)
-    }
-
-    /// The actual add_block implementation
-    fn add_block_impl(&self, block: Block, modify_header: bool) -> Result<BlockAddResult, ChainStorageError> {
         let block_hash = block.hash();
         let block_height = block.header.height;
         if self.db.contains(&DbKey::BlockHash(block_hash.clone()))? {
             return Ok(BlockAddResult::BlockExists);
         }
         if !self.is_at_chain_tip(&block)? {
-            if modify_header {
-                info!(
-                    target: LOG_TARGET,
-                    "A new block with uninitialized MMR roots was submitted that does not build on the longest chain. \
-                     The MMR roots cannot be calculated, so rejecting this block."
-                );
-                debug!(target: LOG_TARGET, "{}", block);
-                return Err(ChainStorageError::InvalidBlock);
-            }
             info!(
                 target: LOG_TARGET,
                 "Candidate block {} does not build on chain tip. Checking for a possible re-org.",
@@ -481,76 +470,20 @@ where T: BlockchainBackend
             .block
             .validate(&block)
             .map_err(|e| ChainStorageError::ValidationError(e))?;
-        let header = self.store_new_block(block, block_height, modify_header)?;
-        Ok(BlockAddResult::Ok(header))
+        self.store_new_block(block)?;
+        self.update_metadata(block_height, block_hash)?;
+        Ok(BlockAddResult::Ok)
     }
 
-    fn store_new_block(
-        &self,
-        block: Block,
-        height: u64,
-        modify_header: bool,
-    ) -> Result<BlockHeader, ChainStorageError>
-    {
-        let (mut header, inputs, outputs, kernels) = block.dissolve();
-        // Insert the outputs and kernels first, calculate the new MMR roots; letting us roll back if necessary
-        self.commit_body(&inputs, &outputs, &kernels)?;
-        // TODO -- MMR root checking should move into the validation step
-        if let Err(e) = self.check_or_insert_mmr_roots(modify_header, &mut header) {
-            self.rollback_body_commit(&inputs, &outputs, &kernels, e, header.height)?;
-        }
-        // The header now has the correct MMR roots; we can go ahead and save the block header and tidy up.
+    fn store_new_block(&self, block: Block) -> Result<(), ChainStorageError> {
+        let (header, inputs, outputs, kernels) = block.dissolve();
+        // Build all the DB queries needed to add the block and the add it atomically
         let mut txn = DbTransaction::new();
-        txn.insert_header(header.clone(), true);
-        txn.commit_block();
-        // Uh oh. There was an error saving the header, so must revert the in/output and kernel commit.
-        if let Err(e) = self.commit(txn) {
-            self.rollback_body_commit(&inputs, &outputs, &kernels, e, header.height)?;
-        }
-        // This is a bit of a hack. The block hash *is* the header hash; so I just call header.hash here to avoid
-        // having to reconstruct the block. BUT, things will break if block.hash() changes.
-        let block_hash = header.hash();
-        self.update_metadata(height, block_hash)?;
-        Ok(header)
-    }
-
-    /// Checks the MMR roots for consistency (if `modify` is `false`) or else inserts the mmr roots into the header.
-    /// This method is called _after_ the new inputs, outputs and kernels have been added to the database.
-    fn check_or_insert_mmr_roots(&self, modify: bool, header: &mut BlockHeader) -> Result<(), ChainStorageError> {
-        let kernel_root = self.db.fetch_mmr_root(MmrTree::Kernel)?;
-        let utxo_root = self.db.fetch_mmr_root(MmrTree::Utxo)?;
-        let rp_root = self.db.fetch_mmr_root(MmrTree::RangeProof)?;
-        if modify {
-            header.kernel_mr = kernel_root;
-            header.output_mr = utxo_root;
-            header.range_proof_mr = rp_root;
-        } else {
-            if kernel_root != header.kernel_mr {
-                return Err(ChainStorageError::MismatchedMmrRoot(MmrTree::Kernel));
-            }
-            if utxo_root != header.output_mr {
-                return Err(ChainStorageError::MismatchedMmrRoot(MmrTree::Utxo));
-            }
-            if rp_root != header.range_proof_mr {
-                return Err(ChainStorageError::MismatchedMmrRoot(MmrTree::RangeProof));
-            }
-        }
-        Ok(())
-    }
-
-    /// Commits the outputs, inputs and kernels of a new block to the database. Inputs are also moved from the UTXO
-    /// set to the STXO set. If an input is not a valid UTXO, an error is returned
-    fn commit_body(
-        &self,
-        inputs: &[TransactionInput],
-        outputs: &[TransactionOutput],
-        kernels: &Vec<TransactionKernel>,
-    ) -> Result<(), ChainStorageError>
-    {
-        let mut txn = DbTransaction::new();
+        txn.insert_header(header, false);
         txn.spend_inputs(&inputs);
         outputs.iter().for_each(|utxo| txn.insert_utxo(utxo.clone(), true));
         kernels.iter().for_each(|k| txn.insert_kernel(k.clone(), true));
+        txn.commit_block();
         self.commit(txn)
     }
 
@@ -595,7 +528,7 @@ where T: BlockchainBackend
         let kernel_cp = self.fetch_mmr_checkpoint(MmrTree::Kernel, height)?;
         let (kernel_hashes, _) = kernel_cp.into_parts();
         let kernels = self.fetch_kernels(kernel_hashes)?;
-        let utxo_cp = self.db.fetch_mmr_checkpoint(MmrTree::Utxo, height)?;
+        let utxo_cp = self.fetch_mmr_checkpoint(MmrTree::Utxo, height)?;
         let (utxo_hashes, deleted_nodes) = utxo_cp.into_parts();
         let inputs = self.fetch_inputs(deleted_nodes)?;
         let (outputs, spent) = self.fetch_outputs(utxo_hashes)?;
@@ -617,7 +550,6 @@ where T: BlockchainBackend
         let db_height = metadata.height_of_longest_chain.ok_or(ChainStorageError::InvalidQuery(
             "Cannot retrieve block. Blockchain DB is empty".into(),
         ))?;
-
         if height > db_height {
             return Err(ChainStorageError::InvalidQuery(format!(
                 "Cannot get block at height {}. Chain tip is at {}",
@@ -675,19 +607,12 @@ where T: BlockchainBackend
     }
 
     fn fetch_mmr_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
-        let metadata = self.get_metadata()?;
-        let db_height = metadata.height_of_longest_chain.ok_or(ChainStorageError::InvalidQuery(
-            "Cannot retrieve block. Blockchain DB is empty".into(),
-        ))?;
-        let horizon_block = metadata.horizon_block(db_height);
-        let index = height
-            .checked_sub(horizon_block)
-            .ok_or(ChainStorageError::BeyondPruningHorizon)? as u64;
-        self.db.fetch_mmr_checkpoint(tree, index)
+        let _ = self.check_for_valid_height(height)?;
+        self.db.fetch_mmr_checkpoint(tree, height)
     }
 
     /// Atomically commit the provided transaction to the database backend. This function does not update the metadata.
-    pub(crate) fn commit(&self, txn: DbTransaction) -> Result<(), ChainStorageError> {
+    pub fn commit(&self, txn: DbTransaction) -> Result<(), ChainStorageError> {
         self.db.write(txn)
     }
 
@@ -879,37 +804,6 @@ where T: BlockchainBackend
         let mut tx = DbTransaction::new();
         tx.delete(DbKey::OrphanBlock(hash.clone()));
         self.commit(tx)
-    }
-
-    /// Reverses the recent insertion of spent outputs, utxos and kernels because MMR roots don't match.
-    fn rollback_body_commit(
-        &self,
-        inputs: &[TransactionInput],
-        outputs: &[TransactionOutput],
-        kernels: &[TransactionKernel],
-        err: ChainStorageError,
-        height: u64,
-    ) -> Result<(), ChainStorageError>
-    {
-        // TODO: Changes applied to the Kernel, UTXO and RP MMRs should also be reverted.
-        warn!(
-            target: LOG_TARGET,
-            "There was an error while adding block {} to the database. Aborting. {}",
-            height,
-            err.to_string()
-        );
-        let mut txn = DbTransaction::new();
-        inputs.iter().map(|inp| inp.hash()).for_each(|h| txn.unspend_stxo(h));
-        outputs
-            .iter()
-            .map(|out| out.hash())
-            .for_each(|h| txn.delete(DbKey::UnspentOutput(h)));
-        kernels
-            .iter()
-            .map(|k| k.hash())
-            .for_each(|h| txn.delete(DbKey::TransactionKernel(h)));
-        self.commit(txn)?;
-        Err(err)
     }
 
     // TODO debugging only. Remove before mainnet

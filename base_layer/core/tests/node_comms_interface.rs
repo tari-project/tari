@@ -19,19 +19,13 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 
-use crate::{
-    base_node::comms_interface::{
-        CommsInterfaceError,
-        InboundNodeCommsHandlers,
-        InboundNodeCommsHandlersConfig,
-        MmrStateRequest,
-        NodeCommsRequest,
-        NodeCommsRequestType,
-        NodeCommsResponse,
-        OutboundNodeCommsInterface,
-    },
-    blocks::{genesis_block::get_genesis_block, BlockHeader},
+#[allow(dead_code)]
+mod helpers;
+
+use tari_core::{
+    blocks::BlockHeader,
     chain_storage::{
         BlockchainDatabase,
         ChainMetadata,
@@ -44,15 +38,31 @@ use crate::{
     consensus::ConsensusManager,
     mempool::{Mempool, MempoolConfig},
     proof_of_work::DiffAdjManager,
-    test_utils::builders::{add_block_and_update_header, create_default_db, create_test_kernel, create_utxo},
 };
+
 use croaring::Bitmap;
 use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, executor::block_on, StreamExt};
 use tari_broadcast_channel::bounded;
+use tari_core::{
+    base_node::{
+        comms_interface::{
+            CommsInterfaceError,
+            InboundNodeCommsHandlers,
+            MmrStateRequest,
+            NodeCommsRequest,
+            NodeCommsRequestType,
+            NodeCommsResponse,
+        },
+        OutboundNodeCommsInterface,
+    },
+    blocks::BlockBuilder,
+    helpers::create_mem_db,
+};
 use tari_mmr::MutableMmrLeafNodes;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_test_utils::runtime::test_async;
 use tari_transactions::{
+    helpers::{create_test_kernel, create_utxo},
     tari_amount::MicroTari,
     types::{CryptoFactories, HashDigest},
 };
@@ -74,7 +84,7 @@ fn new_mempool() -> (
     Mempool<MemoryDatabase<HashDigest>>,
     BlockchainDatabase<MemoryDatabase<HashDigest>>,
 ) {
-    let store = create_default_db();
+    let store = create_mem_db();
     let mempool = Mempool::new(store.clone(), MempoolConfig::default());
     (mempool, store)
 }
@@ -113,14 +123,8 @@ fn inbound_get_metadata() {
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender.clone());
-    let inbound_nch = InboundNodeCommsHandlers::new(
-        block_event_publisher,
-        store,
-        mempool,
-        consensus_manager,
-        outbound_nci,
-        InboundNodeCommsHandlersConfig::default(),
-    );
+    let inbound_nch =
+        InboundNodeCommsHandlers::new(block_event_publisher, store, mempool, consensus_manager, outbound_nci);
 
     test_async(move |rt| {
         rt.spawn(async move {
@@ -173,7 +177,6 @@ fn inbound_fetch_kernels() {
         mempool,
         consensus_manager,
         outbound_nci,
-        InboundNodeCommsHandlersConfig::default(),
     );
 
     let kernel = create_test_kernel(5.into(), 0);
@@ -233,7 +236,6 @@ fn inbound_fetch_headers() {
         mempool,
         consensus_manager,
         outbound_nci,
-        InboundNodeCommsHandlersConfig::default(),
     );
 
     let mut header = BlockHeader::new(0);
@@ -295,7 +297,6 @@ fn inbound_fetch_utxos() {
         mempool,
         consensus_manager,
         outbound_nci,
-        InboundNodeCommsHandlersConfig::default(),
     );
 
     let (utxo, _) = create_utxo(MicroTari(10_000), &factories);
@@ -326,7 +327,8 @@ fn outbound_fetch_blocks() {
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
-        let block = HistoricalBlock::new(get_genesis_block(), 0, Vec::new());
+        let gb = BlockBuilder::new().build();
+        let block = HistoricalBlock::new(gb, 0, Vec::new());
         let block_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::HistoricalBlocks(vec![block.clone()])];
         let (received_blocks, _) = futures::join!(
             outbound_nci.fetch_blocks(vec![0]),
@@ -354,11 +356,9 @@ fn inbound_fetch_blocks() {
         mempool,
         consensus_manager,
         outbound_nci,
-        InboundNodeCommsHandlersConfig::default(),
     );
-
-    let block = add_block_and_update_header(&store, get_genesis_block());
-
+    let block = BlockBuilder::new().build();
+    store.add_block(block.clone()).expect("Could not add Genesis block");
     test_async(move |rt| {
         rt.spawn(async move {
             if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
@@ -405,14 +405,8 @@ fn inbound_fetch_mmr_state() {
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
-    let inbound_nch = InboundNodeCommsHandlers::new(
-        block_event_publisher,
-        store,
-        mempool,
-        consensus_manager,
-        outbound_nci,
-        InboundNodeCommsHandlersConfig::default(),
-    );
+    let inbound_nch =
+        InboundNodeCommsHandlers::new(block_event_publisher, store, mempool, consensus_manager, outbound_nci);
 
     test_async(move |rt| {
         rt.spawn(async move {

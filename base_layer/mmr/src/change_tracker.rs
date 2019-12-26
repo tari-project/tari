@@ -69,13 +69,19 @@ where
     D: Digest,
     BaseBackend: ArrayLike<Value = Hash>,
 {
+    // The base, or anchor point of the change tracker. A rewind always starts at this state
     base: MutableMmr<D, BaseBackend>,
+    // A pruned copy of base. Subsequent changes to the change tracker MMR get made on this structure
     mmr: PrunedMutableMmr<D>,
+    // Additions and deletions are periodically `commit`ed and stored in the checkpoint database. These hold the
+    // information required to handle rewinding and replaying off the MMR base.
     checkpoints: CpBackend,
     // The hashes added since the last commit
     current_additions: Vec<Hash>,
     // The deletions since the last commit
     current_deletions: Bitmap,
+    // The MMR base get periodically updated. Once we have `config.max` checkpoints, the base MMR will be replaced with
+    // the state represented by base + `config.min` commits.
     config: MerkleChangeTrackerConfig,
     hist_commit_count: usize,
 }
@@ -119,13 +125,12 @@ where
     }
 
     /// Reset the MerkleChangeTracker and restore the base MMR state.
-    pub fn restore(&mut self, base_state: MutableMmrLeafNodes) -> Result<(), MerkleMountainRangeError> {
+    pub fn assign(&mut self, base_state: MutableMmrLeafNodes) -> Result<(), MerkleMountainRangeError> {
         self.checkpoints
             .clear()
             .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
-        self.base.restore(base_state)?;
-        self.mmr = self.revert_mmr_to_base()?;
-        Ok(())
+        self.base.assign(base_state)?;
+        self.rewind_to_start()
     }
 
     /// Return the number of Checkpoints this change tracker has recorded

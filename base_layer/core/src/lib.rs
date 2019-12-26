@@ -28,9 +28,6 @@
 // Enable usage of Vec::shrink_to
 #![feature(shrink_to)]
 
-#[cfg(test)]
-pub mod test_utils;
-
 pub mod consensus;
 pub mod consts;
 pub mod mempool;
@@ -46,6 +43,8 @@ pub mod chain_storage;
 pub mod validation;
 
 pub mod mining;
+
+pub mod helpers;
 
 // Re-export the crypto crate to make exposing traits etc easier for clients of this crate
 pub use tari_crypto as crypto;

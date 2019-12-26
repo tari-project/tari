@@ -19,51 +19,32 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 
-use crate::{
-    blocks::Block,
-    chain_storage::{async_db, BlockAddResult, BlockchainDatabase, MemoryDatabase, MmrTree},
-    test_utils::{
-        builders::{chain_block, create_test_block, schema_to_transaction},
-        sample_blockchains::{create_blockchain_db_no_cut_through, create_new_blockchain},
-    },
-    txn_schema,
+#[allow(dead_code)]
+mod helpers;
+
+use helpers::{
+    block_builders::chain_block,
+    sample_blockchains::{create_blockchain_db_no_cut_through, create_new_blockchain},
 };
-use std::{fs::File, io::Write, ops::Deref};
+
+use std::ops::Deref;
+use tari_core::{
+    blocks::Block,
+    chain_storage::{async_db, BlockAddResult, MmrTree},
+    helpers::create_orphan_block,
+};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_test_utils::runtime::test_async;
 use tari_transactions::{
+    helpers::schema_to_transaction,
     tari_amount::T,
     transaction::{TransactionOutput, UnblindedOutput},
-    types::{CommitmentFactory, HashDigest},
+    txn_schema,
+    types::CommitmentFactory,
 };
 use tari_utilities::{hex::Hex, Hashable};
-
-fn write_logs(db: &BlockchainDatabase<MemoryDatabase<HashDigest>>, blocks: &[Block]) -> Result<(), std::io::Error> {
-    {
-        let mut block_output = File::create("block_output.txt")?;
-        for block in blocks.iter() {
-            block_output.write_all(format!("{}\n", block).as_bytes())?;
-        }
-    }
-    {
-        let mut db_output = File::create("db_output.txt")?;
-        db_output.write_all("---------  Metadata -------------\n".as_bytes())?;
-        let metadata = db.get_metadata().unwrap();
-        db_output.write_all(format!("{}", metadata).as_bytes())?;
-        db_output.write_all("\n---------  Database -------------\n".as_bytes())?;
-        let s = format!("{:?}", db.db());
-        db_output.write_all(s.as_bytes())?;
-    }
-    Ok(())
-}
-
-fn dump_logs(db: &BlockchainDatabase<MemoryDatabase<HashDigest>>, blocks: &[Block]) -> String {
-    match write_logs(db, blocks) {
-        Err(e) => e.to_string(),
-        Ok(()) => "Logs written".into(),
-    }
-}
 
 /// Finds the UTXO in a block corresponding to the unblinded output. We have to search for outputs because UTXOs get
 /// sorted in blocks, and so the order they were inserted in can change.
@@ -138,14 +119,14 @@ fn fetch_async_utxo() {
     test_async(move |rt| {
         let db = db.clone();
         let db2 = db.clone();
-        let blocks2 = blocks.clone();
+        let _blocks2 = blocks.clone();
         rt.spawn(async move {
             let utxo_check = async_db::fetch_utxo(db.clone(), utxo.hash()).await;
-            assert_eq!(utxo_check, Ok(utxo), "{}", dump_logs(&db, &blocks));
+            assert_eq!(utxo_check, Ok(utxo));
         });
         rt.spawn(async move {
             let stxo_check = async_db::fetch_stxo(db2.clone(), stxo.hash()).await;
-            assert_eq!(stxo_check, Ok(stxo), "{}", dump_logs(&db2, &blocks2));
+            assert_eq!(stxo_check, Ok(stxo));
         });
     });
 }
@@ -159,19 +140,19 @@ fn async_is_utxo() {
     let utxo = find_utxo(&outputs[4][0], &blocks[4], &factory).unwrap();
     let stxo = find_utxo(&outputs[1][0], &blocks[1], &factory).unwrap();
     // Check using sync functions
-    assert_eq!(db.is_utxo(utxo.hash()), Ok(true), "{}", dump_logs(&db, &blocks));
-    assert_eq!(db.is_utxo(stxo.hash()), Ok(false), "{}", dump_logs(&db, &blocks));
+    assert_eq!(db.is_utxo(utxo.hash()), Ok(true));
+    assert_eq!(db.is_utxo(stxo.hash()), Ok(false));
     test_async(move |rt| {
         let db = db.clone();
         let db2 = db.clone();
-        let blocks2 = blocks.clone();
+        let _blocks2 = blocks.clone();
         rt.spawn(async move {
             let is_utxo = async_db::is_utxo(db.clone(), utxo.hash()).await;
-            assert_eq!(is_utxo, Ok(true), "{}", dump_logs(&db, &blocks));
+            assert_eq!(is_utxo, Ok(true));
         });
         rt.spawn(async move {
             let is_utxo = async_db::is_utxo(db2.clone(), stxo.hash()).await;
-            assert_eq!(is_utxo, Ok(false), "{}", dump_logs(&db2, &blocks2));
+            assert_eq!(is_utxo, Ok(false));
         });
     });
 }
@@ -201,13 +182,14 @@ fn async_add_new_block() {
         .map(|t| t.deref().clone())
         .collect();
     let new_block = chain_block(&blocks.last().unwrap(), txns);
+    let new_block = db.calculate_mmr_roots(new_block).unwrap();
     test_async(|rt| {
         let dbc = db.clone();
         rt.spawn(async move {
-            let result = async_db::add_new_block(dbc.clone(), new_block.clone()).await.unwrap();
+            let result = async_db::add_block(dbc.clone(), new_block.clone()).await.unwrap();
             let block = async_db::fetch_block(dbc.clone(), 1).await.unwrap();
             match result {
-                BlockAddResult::Ok(h) => assert_eq!(Block::from(block).hash(), h.hash()),
+                BlockAddResult::Ok => assert_eq!(Block::from(block).hash(), new_block.hash()),
                 _ => panic!("Unexpected result"),
             }
         });
@@ -216,7 +198,7 @@ fn async_add_new_block() {
 
 #[test]
 fn fetch_async_mmr_roots() {
-    let (db, blocks, _) = create_blockchain_db_no_cut_through();
+    let (db, _blocks, _) = create_blockchain_db_no_cut_through();
     let metadata = db.get_metadata().unwrap();
     test_async(move |rt| {
         let dbc = db.clone();
@@ -229,7 +211,7 @@ fn fetch_async_mmr_roots() {
             let header = async_db::fetch_header(dbc.clone(), block_height).await.unwrap();
             let utxo_mmr = root.0.unwrap().to_hex();
             let kernel_mmr = root.1.unwrap().to_hex();
-            assert_eq!(utxo_mmr, header.output_mr.to_hex(), "{}", dump_logs(&dbc, &blocks));
+            assert_eq!(utxo_mmr, header.output_mr.to_hex());
             assert_eq!(kernel_mmr, header.kernel_mr.to_hex(), "Kernel MMR roots don't match");
         });
     });
@@ -239,7 +221,7 @@ fn fetch_async_mmr_roots() {
 fn async_add_block_fetch_orphan() {
     env_logger::init();
     let (db, _, _) = create_blockchain_db_no_cut_through();
-    let orphan = create_test_block(7, None, vec![]);
+    let orphan = create_orphan_block(7, vec![]);
     let block_hash = orphan.hash();
     test_async(move |rt| {
         let dbc = db.clone();

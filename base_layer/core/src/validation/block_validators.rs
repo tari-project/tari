@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{blockheader::BlockHeader, Block, BlockValidationError},
+    blocks::{blockheader::BlockHeader, Block, BlockValidationError, NewBlockTemplate},
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::PowError,
@@ -46,7 +46,7 @@ impl<B: BlockchainBackend> Validation<Block, B> for StatelessValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Is there precisely one Coinbase output and is it correctly defined?
     /// 1. Is the accounting correct?
-    /// 1. Are all inputs allowed to be spend (Are the feature flags satisfied)
+    /// 1. Are all inputs allowed to be spent (Are the feature flags satisfied)
     fn validate(&self, block: &Block) -> Result<(), ValidationError> {
         check_coinbase_output(block)?;
         // Check that the inputs are are allowed to be spent
@@ -119,7 +119,7 @@ fn check_coinbase_output(block: &Block) -> Result<(), ValidationError> {
     block.check_coinbase_output().map_err(ValidationError::from)
 }
 
-// This function checks that all inputs in the blocks are valid UTXO's to be spend
+/// This function checks that all inputs in the blocks are valid UTXO's to be spend
 fn check_inputs_are_utxos<B: BlockchainBackend>(
     block: &Block,
     db: BlockchainDatabase<B>,
@@ -169,4 +169,21 @@ fn check_timestamp_range<B: BlockchainBackend>(
         return Err(ValidationError::BlockError(BlockValidationError::InvalidTimestamp));
     }
     Ok(())
+}
+
+fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: BlockchainDatabase<B>) -> Result<(), ValidationError> {
+    let template = NewBlockTemplate::from(block.clone());
+    let tmp_block = db
+        .calculate_mmr_roots(template)
+        .map_err(|e| ValidationError::CustomError(e.to_string()))?;
+    let tmp_header = &tmp_block.header;
+    let header = &block.header;
+    if header.kernel_mr != tmp_header.kernel_mr ||
+        header.output_mr != tmp_header.output_mr ||
+        header.range_proof_mr != tmp_header.range_proof_mr
+    {
+        Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots))
+    } else {
+        Ok(())
+    }
 }
