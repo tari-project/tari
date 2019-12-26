@@ -316,8 +316,8 @@ impl SenderTransactionInitializer {
 mod test {
     use crate::{
         fee::{Fee, BASE_COST, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
+        helpers::{make_input, TestParams},
         tari_amount::*,
-        test_utils::{builders::make_input, primitives::TestParams},
         transaction::{UnblindedOutput, MAX_TRANSACTION_INPUTS},
         transaction_protocol::{
             sender::SenderState,

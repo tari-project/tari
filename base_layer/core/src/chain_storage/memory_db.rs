@@ -397,11 +397,11 @@ where D: Digest + Send + Sync
 
     fn fetch_mmr_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
         let db = self.db_access()?;
-        let pruning_horizon = self.fetch_pruning_horizon()?;
-        if height < pruning_horizon {
+        let horizon_block = self.fetch_horizon_block_height()?;
+        if height < horizon_block {
             return Err(ChainStorageError::BeyondPruningHorizon);
         }
-        let index = (height - pruning_horizon) as usize;
+        let index = (height - horizon_block) as usize;
         let cp = match tree {
             MmrTree::Kernel => db.kernel_mmr.get_checkpoint(index),
             MmrTree::Utxo => db.utxo_mmr.get_checkpoint(index),
@@ -468,16 +468,16 @@ where D: Digest + Send + Sync
         Ok(mmr_state)
     }
 
-    fn restore_mmr(&self, tree: MmrTree, base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError> {
+    fn assign_mmr(&self, tree: MmrTree, base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError> {
         let mut db = self
             .db
             .write()
             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
         match tree {
-            MmrTree::Kernel => db.kernel_mmr.restore(base_state)?,
-            MmrTree::Header => db.header_mmr.restore(base_state)?,
-            MmrTree::Utxo => db.utxo_mmr.restore(base_state)?,
-            MmrTree::RangeProof => db.range_proof_mmr.restore(base_state)?,
+            MmrTree::Kernel => db.kernel_mmr.assign(base_state)?,
+            MmrTree::Header => db.header_mmr.assign(base_state)?,
+            MmrTree::Utxo => db.utxo_mmr.assign(base_state)?,
+            MmrTree::RangeProof => db.range_proof_mmr.assign(base_state)?,
         };
         Ok(())
     }
@@ -492,7 +492,8 @@ where D: Digest + Send + Sync
         Ok(())
     }
 
-    fn fetch_pruning_horizon(&self) -> Result<u64, ChainStorageError> {
+    /// The horizon block is the earliest block that we can return all data to reconstruct a full block
+    fn fetch_horizon_block_height(&self) -> Result<u64, ChainStorageError> {
         let db = self.db_access()?;
         let tip_height = db.headers.len();
         let checkpoint_count = db.kernel_mmr.checkpoint_count()?;
@@ -573,5 +574,44 @@ fn unspend_stxo<D: Digest>(db: &mut RwLockWriteGuard<InnerDatabase<D>>, hash: Ha
             db.utxos.insert(hash, stxo);
             true
         },
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::chain_storage::{BlockchainBackend, MemoryDatabase, MmrTree};
+    use croaring::Bitmap;
+    use tari_mmr::{MerkleChangeTrackerConfig, MutableMmr, MutableMmrLeafNodes};
+    use tari_transactions::{tari_amount::uT, tx, types::HashDigest};
+    use tari_utilities::Hashable;
+
+    /// Test the ability to assign a given state to the database MMR
+    #[test]
+    fn assign_mmr() {
+        let mct = MerkleChangeTrackerConfig {
+            min_history_len: 2,
+            max_history_len: 3,
+        };
+        let db = MemoryDatabase::<HashDigest>::new(mct);
+        // Build an MMR of transaction kernels
+        let txs = vec![
+            tx!(100_000 * uT, fee: 100 * uT),
+            tx!(200_000 * uT, fee: 100 * uT),
+            tx!(300_000 * uT, fee: 100 * uT),
+            tx!(400_000 * uT, fee: 100 * uT),
+            tx!(500_000 * uT, fee: 100 * uT),
+        ];
+        let hashes = txs.iter().map(|(tx, _, _)| tx.body.kernels()[0].hash()).collect();
+        let mut deleted = Bitmap::create();
+        // We aren't allowed to delete kernels, but this demonstrates that the deletions are assigned too
+        deleted.add(3);
+        let state = MutableMmrLeafNodes::new(hashes, deleted);
+        // Create a local version of the MMR
+        let mut mmr = MutableMmr::<HashDigest, _>::new(Vec::new());
+        // Assign the state to the DB backend and compare roots
+        mmr.assign(state.clone());
+        let root = mmr.get_merkle_root().unwrap();
+        db.assign_mmr(MmrTree::Kernel, state).unwrap();
+        assert_eq!(db.fetch_mmr_root(MmrTree::Kernel).unwrap(), root);
     }
 }

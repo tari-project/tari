@@ -145,9 +145,12 @@ impl Clone for PendingPool {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{test_utils::builders::create_test_block, tx};
-    use tari_transactions::tari_amount::MicroTari;
+    use crate::{
+        helpers::create_orphan_block,
+        mempool::pending_pool::{PendingPool, PendingPoolConfig},
+    };
+    use std::sync::Arc;
+    use tari_transactions::{tari_amount::MicroTari, tx};
 
     #[test]
     fn test_insert_and_lru() {
@@ -248,7 +251,7 @@ mod test {
         assert!(snapshot_txs.contains(&tx5));
         assert!(snapshot_txs.contains(&tx6));
 
-        let published_block = create_test_block(1500, None, vec![(*tx6).clone()]);
+        let published_block = create_orphan_block(1500, vec![(*tx6).clone()]);
         let unlocked_txs = pending_pool
             .remove_unlocked_and_discard_double_spends(&published_block)
             .unwrap();

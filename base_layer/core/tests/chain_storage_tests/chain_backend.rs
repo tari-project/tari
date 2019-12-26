@@ -21,23 +21,28 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use crate::{
+use tari_core::{
     blocks::BlockHeader,
     chain_storage::{
-        blockchain_database::BlockchainBackend,
-        db_transaction::{DbKey, DbKeyValuePair, DbValue, MetadataKey, MetadataValue},
-        lmdb_db::create_lmdb_database,
+        create_lmdb_database,
+        BlockchainBackend,
+        DbKey,
+        DbKeyValuePair,
         DbTransaction,
+        DbValue,
         MemoryDatabase,
+        MetadataKey,
+        MetadataValue,
         MmrTree,
     },
-    test_utils::builders::{create_test_block, create_test_kernel, create_utxo},
-    tx,
+    helpers::create_orphan_block,
 };
 use tari_mmr::{Hash, MerkleChangeTrackerConfig, MutableMmr};
 use tari_test_utils::paths::create_temporary_data_path;
 use tari_transactions::{
+    helpers::{create_test_kernel, create_utxo},
     tari_amount::MicroTari,
+    tx,
     types::{CryptoFactories, HashDigest},
 };
 use tari_utilities::{hex::Hex, Hashable};
@@ -170,7 +175,7 @@ fn insert_contains_delete_and_fetch_orphan<T: BlockchainBackend>(db: T) {
         (tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0,
         (tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0,
     ];
-    let orphan = create_test_block(10, None, txs);
+    let orphan = create_orphan_block(10, txs);
     let hash = orphan.hash();
     assert_eq!(db.contains(&DbKey::OrphanBlock(hash.clone())), Ok(false));
 
@@ -806,15 +811,9 @@ fn lmdb_commit_block_and_create_fetch_checkpoint_and_rewind_mmr() {
 // TODO: Test Needed: fetch_mmr_node
 
 fn for_each_orphan<T: BlockchainBackend>(db: T) {
-    let orphan1 = create_test_block(5, None, vec![
-        (tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0,
-    ]);
-    let orphan2 = create_test_block(10, None, vec![
-        (tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0,
-    ]);
-    let orphan3 = create_test_block(15, None, vec![
-        (tx!(3000.into(), fee: 40.into(), inputs: 1, outputs: 2)).0,
-    ]);
+    let orphan1 = create_orphan_block(5, vec![(tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0]);
+    let orphan2 = create_orphan_block(10, vec![(tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0]);
+    let orphan3 = create_orphan_block(15, vec![(tx!(3000.into(), fee: 40.into(), inputs: 1, outputs: 2)).0]);
     let hash1 = orphan1.hash();
     let hash2 = orphan2.hash();
     let hash3 = orphan3.hash();
@@ -871,7 +870,7 @@ fn lmdb_backend_restore() {
     };
 
     let txs = vec![(tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0];
-    let orphan = create_test_block(10, None, txs);
+    let orphan = create_orphan_block(10, txs);
     let (utxo1, _) = create_utxo(MicroTari(10_000), &factories);
     let (utxo2, _) = create_utxo(MicroTari(15_000), &factories);
     let kernel = create_test_kernel(100.into(), 0);
@@ -1099,10 +1098,10 @@ fn fetch_mmr_base_leaf_nodes_and_restore<T: BlockchainBackend>(db: T) {
     assert_eq!(header_mmr_leaf_count, 8);
 
     // Restore previously retrieved MMR state
-    assert!(db.restore_mmr(MmrTree::Utxo, utxo_mmr_state.leaf_nodes).is_ok());
-    assert!(db.restore_mmr(MmrTree::Kernel, kernel_mmr_state.leaf_nodes).is_ok());
-    assert!(db.restore_mmr(MmrTree::RangeProof, rp_mmr_state.leaf_nodes).is_ok());
-    assert!(db.restore_mmr(MmrTree::Header, header_mmr_state.leaf_nodes).is_ok());
+    assert!(db.assign_mmr(MmrTree::Utxo, utxo_mmr_state.leaf_nodes).is_ok());
+    assert!(db.assign_mmr(MmrTree::Kernel, kernel_mmr_state.leaf_nodes).is_ok());
+    assert!(db.assign_mmr(MmrTree::RangeProof, rp_mmr_state.leaf_nodes).is_ok());
+    assert!(db.assign_mmr(MmrTree::Header, header_mmr_state.leaf_nodes).is_ok());
 
     let utxo_mmr_state = db.fetch_mmr_base_leaf_nodes(MmrTree::Utxo, 0, 100).unwrap();
     let kernel_mmr_state = db.fetch_mmr_base_leaf_nodes(MmrTree::Kernel, 0, 100).unwrap();

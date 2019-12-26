@@ -159,8 +159,8 @@ impl Clone for UnconfirmedPool {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{test_utils::builders::create_test_block, tx};
-    use tari_transactions::tari_amount::MicroTari;
+    use crate::helpers::create_orphan_block;
+    use tari_transactions::{tari_amount::MicroTari, tx};
 
     #[test]
     fn test_insert_and_retrieve_highest_priority_txs() {
@@ -248,7 +248,7 @@ mod test {
         assert!(snapshot_txs.contains(&tx4));
         assert!(snapshot_txs.contains(&tx5));
 
-        let published_block = create_test_block(0, None, vec![(*tx1).clone(), (*tx3).clone(), (*tx5).clone()]);
+        let published_block = create_orphan_block(0, vec![(*tx1).clone(), (*tx3).clone(), (*tx5).clone()]);
         let _ = unconfirmed_pool.remove_published_and_discard_double_spends(&published_block);
 
         assert_eq!(
@@ -321,7 +321,7 @@ mod test {
             .unwrap();
 
         // The publishing of tx1 and tx3 will be double-spends and orphan tx5 and tx6
-        let published_block = create_test_block(0, None, vec![(*tx1).clone(), (*tx2).clone(), (*tx3).clone()]);
+        let published_block = create_orphan_block(0, vec![(*tx1).clone(), (*tx2).clone(), (*tx3).clone()]);
 
         let _ = unconfirmed_pool
             .remove_published_and_discard_double_spends(&published_block)

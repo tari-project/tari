@@ -234,7 +234,7 @@ fn find_leaf_index() {
         hashes[3].clone(),
         hashes[4].clone(),
     ]);
-    assert!(mmr.restore(mmr_state).is_ok());
+    assert!(mmr.assign(mmr_state).is_ok());
     // Committed hashes in pruned MMR
     assert!(mmr.push(&hashes[5]).is_ok());
     assert!(mmr.push(&hashes[6]).is_ok());

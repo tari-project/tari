@@ -45,7 +45,7 @@ pub enum CoinbaseBuildError {
     MissingNonce,
     /// The spend key for this coinbase transaction wasn't provided
     MissingSpendKey,
-    /// An error ocurred building the final transaction
+    /// An error occurred building the final transaction
     #[error(msg_embedded, no_from, non_std)]
     BuildError(String),
     /// Some inconsistent data was given to the builder. This transaction is not valid
@@ -148,12 +148,13 @@ impl CoinbaseBuilder {
 mod test {
     use crate::{
         consensus::ConsensusManager,
+        helpers::MockBackend,
         mining::{coinbase_builder::CoinbaseBuildError, CoinbaseBuilder},
-        test_utils::{primitives::TestParams, test_common::MockBackend},
     };
     use std::sync::Arc;
     use tari_crypto::commitment::HomomorphicCommitmentFactory;
-    use tari_transactions::{tari_amount::uT, transaction::OutputFlags, types::CryptoFactories};
+    use tari_transactions::{helpers::TestParams, tari_amount::uT, transaction::OutputFlags, types::CryptoFactories};
+
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager<MockBackend>, Arc<CryptoFactories>) {
         let rules = ConsensusManager::default();
         let factories = Arc::new(CryptoFactories::default());

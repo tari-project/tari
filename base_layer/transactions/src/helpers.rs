@@ -21,22 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{blockheader::BlockHeader, Block, BlockBuilder},
-    chain_storage::{BlockAddResult, BlockchainDatabase, MemoryDatabase, Validators},
-    test_utils::{
-        primitives::{create_random_signature, generate_keys},
-        test_common::TestParams,
-    },
-    validation::mocks::MockValidator,
-};
-use std::sync::Arc;
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    common::Blake256,
-    keys::SecretKey,
-    range_proof::RangeProofService,
-};
-use tari_transactions::{
     fee::Fee,
     tari_amount::MicroTari,
     transaction::{
@@ -49,16 +33,97 @@ use tari_transactions::{
         TransactionOutput,
         UnblindedOutput,
     },
-    transaction_protocol::sender::SenderTransactionProtocol,
-    types::{Commitment, CommitmentFactory, CryptoFactories, HashDigest, PrivateKey, PublicKey},
+    transaction_protocol::{
+        build_challenge,
+        transaction_initializer::SenderTransactionInitializer,
+        TransactionMetadata,
+    },
+    types::{Commitment, CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, Signature},
+    SenderTransactionProtocol,
 };
+use rand::{CryptoRng, Rng};
+use std::sync::Arc;
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    common::Blake256,
+    keys::{PublicKey as PK, SecretKey},
+    range_proof::RangeProofService,
+};
+
+pub fn make_input<R: Rng + CryptoRng>(
+    rng: &mut R,
+    val: MicroTari,
+    factory: &CommitmentFactory,
+) -> (TransactionInput, UnblindedOutput)
+{
+    let key = PrivateKey::random(rng);
+    let v = PrivateKey::from(val);
+    let commitment = factory.commit(&key, &v);
+    let input = TransactionInput::new(OutputFeatures::default(), commitment);
+    (input, UnblindedOutput::new(val, key, None))
+}
+
+pub struct TestParams {
+    pub spend_key: PrivateKey,
+    pub change_key: PrivateKey,
+    pub offset: PrivateKey,
+    pub nonce: PrivateKey,
+    pub public_nonce: PublicKey,
+}
+
+impl TestParams {
+    pub fn new() -> TestParams {
+        let mut rng = rand::OsRng::new().unwrap();
+        let r = PrivateKey::random(&mut rng);
+        TestParams {
+            spend_key: PrivateKey::random(&mut rng),
+            change_key: PrivateKey::random(&mut rng),
+            offset: PrivateKey::random(&mut rng),
+            public_nonce: PublicKey::from_secret_key(&r),
+            nonce: r,
+        }
+    }
+}
+
+/// A convenience struct for a set of public-private keys and a public-private nonce
+pub struct TestKeySet {
+    pub k: PrivateKey,
+    pub pk: PublicKey,
+    pub r: PrivateKey,
+    pub pr: PublicKey,
+}
+
+/// Generate a new random key set. The key set includes
+/// * a public-private keypair (k, pk)
+/// * a public-private nonce keypair (r, pr)
+pub fn generate_keys() -> TestKeySet {
+    let mut rng = rand::thread_rng();
+    let (k, pk) = PublicKey::random_keypair(&mut rng);
+    let (r, pr) = PublicKey::random_keypair(&mut rng);
+    TestKeySet { k, pk, r, pr }
+}
+
+/// Generate a random transaction signature, returning the public key (excess) and the signature.
+pub fn create_random_signature(fee: MicroTari, lock_height: u64) -> (PublicKey, Signature) {
+    let mut rng = rand::thread_rng();
+    let r = PrivateKey::random(&mut rng);
+    let (k, p) = PublicKey::random_keypair(&mut rng);
+    let tx_meta = TransactionMetadata {
+        fee,
+        lock_height,
+        meta_info: None,
+        linked_kernel: None,
+    };
+    let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
+    (p, Signature::sign(k, r, &e).unwrap())
+}
 
 /// The tx macro is a convenience wrapper around the [create_tx] function, making the arguments optional and explicit
 /// via keywords.
 #[macro_export]
 macro_rules! tx {
   ($amount:expr, fee: $fee:expr, lock: $lock:expr, inputs: $n_in:expr, maturity: $mat:expr, outputs: $n_out:expr) => {{
-    use crate::test_utils::builders::create_tx;
+    use $crate::helpers::create_tx;
     create_tx($amount, $fee, $lock, $n_in, $mat, $n_out)
   }};
 
@@ -75,18 +140,10 @@ macro_rules! tx {
   }
 }
 
-/// A utility macro to help make it easy to build test transactions.
+/// A utility macro to help make it easy to build transactions.
 ///
 /// The full syntax allows maximum flexibility, but most arguments are optional with sane defaults
-/// ```edition2018
-/// use tari_core::txn_schema;
-/// use tari_core::transaction::{UnblindedOutput, OutputFeatures};
-/// use tari_core::tari_amount::{MicroTari, T, uT};
-/// use tari_transactions::transaction::UnblindedOutput;
-/// use tari_transactions::tari_amount::{MicroTari, T, uT};
-///
-///   let inputs: Vec<UnblindedOutput> = Vec::new();
-///   let outputs: Vec<MicroTari> = vec![2*T, 1*T, 500_000*uT];
+/// ```ignore
 ///   txn_schema!(from: inputs, to: outputs, fee: 50*uT, lock: 1250, OutputFeatures::with_maturity(1320));
 ///   txn_schema!(from: inputs, to: outputs, fee: 50*uT); // Uses default features and zero lock height
 ///   txn_schema!(from: inputs, to: outputs); // min fee of 25µT, zero lock height and default features
@@ -97,8 +154,7 @@ macro_rules! tx {
 #[macro_export]
 macro_rules! txn_schema {
     (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, $features:expr) => {{
-        use crate::test_utils::builders::TransactionSchema;
-        TransactionSchema {
+        $crate::helpers::TransactionSchema {
             from: $input.clone(),
             to: $outputs.clone(),
             fee: $fee,
@@ -108,17 +164,23 @@ macro_rules! txn_schema {
     }};
 
     (from: $input:expr, to: $outputs:expr, fee: $fee:expr) => {
-        txn_schema!(from: $input, to:$outputs, fee:$fee, lock:0, tari_transactions::transaction::OutputFeatures::default())
+        txn_schema!(
+            from: $input,
+            to:$outputs,
+            fee:$fee,
+            lock:0,
+            tari_transactions::transaction::OutputFeatures::default()
+        )
     };
 
     (from: $input:expr, to: $outputs:expr) => {
-        txn_schema!(from: $input, to:$outputs, fee: 25.into(), lock:0, tari_transactions::transaction::OutputFeatures::default())
+        txn_schema!(from: $input, to:$outputs, fee: 25.into())
     };
 
     // Spend inputs to ± half the first input value, with default fee and lock height
     (from: $input:expr) => {{
         let out_val = $input[0].value / 2u64;
-        txn_schema!(from: $input, to:vec![out_val])
+        txn_schema!(from: $input, to: vec![out_val])
     }};
 }
 
@@ -161,9 +223,8 @@ pub fn create_tx(
 ) -> (Transaction, Vec<UnblindedOutput>, Vec<UnblindedOutput>)
 {
     let factories = CryptoFactories::default();
-    let mut rng = rand::OsRng::new().unwrap();
-    let test_params = TestParams::new(&mut rng);
-    let mut stx_builder = SenderTransactionProtocol::builder(0);
+    let test_params = TestParams::new();
+    let mut stx_builder: SenderTransactionInitializer = SenderTransactionProtocol::builder(0);
     stx_builder
         .with_lock_height(lock_height)
         .with_fee_per_gram(fee_per_gram)
@@ -218,7 +279,7 @@ pub fn create_tx(
 pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutput>, TestParams) {
     let mut rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
-    let test_params = TestParams::new(&mut rng);
+    let test_params = TestParams::new();
     let mut stx_builder = SenderTransactionProtocol::builder(0);
     stx_builder
         .with_lock_height(schema.lock_height)
@@ -268,64 +329,6 @@ pub fn create_test_kernel(fee: MicroTari, lock_height: u64) -> TransactionKernel
         .unwrap()
 }
 
-/// Create a genesis block returning it with the spending key for the coinbase utxo
-///
-/// Right now this function does not use consensus rules to generate the block. The coinbase output has an arbitrary
-/// value, and the maturity is zero.
-pub fn create_genesis_block(factories: &CryptoFactories) -> (Block, UnblindedOutput) {
-    let header = BlockHeader::new(0);
-    let value = MicroTari::from(100_000_000);
-    let excess = Commitment::from_public_key(&PublicKey::default());
-    let (utxo, key) = create_utxo(value, &factories);
-    let (_pk, sig) = create_random_signature(0.into(), 0);
-    let kernel = KernelBuilder::new()
-        .with_signature(&sig)
-        .with_excess(&excess)
-        .with_features(KernelFeatures::COINBASE_KERNEL)
-        .build()
-        .unwrap();
-    let block = BlockBuilder::new()
-        .with_header(header)
-        .with_coinbase_utxo(utxo, kernel)
-        .build();
-    // TODO right now it matters not that it's not flagged as a Coinbase output
-    let output = UnblindedOutput::new(value, key, None);
-    (block, output)
-}
-
-pub fn add_block_and_update_header(store: &BlockchainDatabase<MemoryDatabase<HashDigest>>, mut block: Block) -> Block {
-    if let Ok(BlockAddResult::Ok(h)) = store.add_new_block(block.clone()) {
-        block.header = h;
-    } else {
-        panic!("Error adding block.\n{}", block);
-    }
-    block
-}
-
-/// Create a partially constructed block using the provided set of transactions
-/// TODO - as we move to creating ever more correct blocks in tests, maybe we should deprecate this method since there
-/// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument
-pub fn create_test_block(block_height: u64, prev_block: Option<Block>, transactions: Vec<Transaction>) -> Block {
-    let mut header = match prev_block {
-        None => BlockHeader::new(0),
-        Some(prev) => BlockHeader::from_previous(&prev.header),
-    };
-    header.height = block_height;
-    BlockBuilder::new()
-        .with_header(header)
-        .with_transactions(transactions)
-        .build()
-}
-
-/// Create a new block using the provided transactions that adds to the blockchain given in `prev_block`
-pub fn chain_block(prev_block: &Block, transactions: Vec<Transaction>) -> Block {
-    let header = BlockHeader::from_previous(&prev_block.header);
-    BlockBuilder::new()
-        .with_header(header)
-        .with_transactions(transactions)
-        .build()
-}
-
 /// Create a new UTXO for the specified value and return the output and spending key
 pub fn create_utxo(value: MicroTari, factories: &CryptoFactories) -> (TransactionOutput, PrivateKey) {
     let keys = generate_keys();
@@ -344,10 +347,4 @@ pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction
         utxos.append(&mut output);
     });
     (tx, utxos)
-}
-
-pub fn create_default_db() -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
-    let db = MemoryDatabase::<HashDigest>::default();
-    BlockchainDatabase::new(db, validators).unwrap()
 }

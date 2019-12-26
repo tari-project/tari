@@ -21,40 +21,34 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use crate::{
-    blocks::{genesis_block::get_genesis_block, Block, BlockHeader},
-    chain_storage::{
-        blockchain_database::BlockAddResult,
-        db_transaction::DbKey,
-        error::ChainStorageError,
-        BlockchainDatabase,
-        DbTransaction,
-        MemoryDatabase,
-        MmrTree,
-        Validators,
-    },
-    test_utils::{
-        builders::{
-            add_block_and_update_header,
-            chain_block,
-            create_default_db,
-            create_genesis_block,
-            create_test_block,
-            create_test_kernel,
-            create_utxo,
-            spend_utxos,
-        },
-        sample_blockchains::{create_new_blockchain, generate_new_block},
-    },
-    tx,
-    txn_schema,
-    validation::mocks::MockValidator,
+use crate::helpers::{
+    block_builders::{append_block, create_genesis_block, create_genesis_block_with_utxos, generate_new_block},
+    sample_blockchains::create_new_blockchain,
 };
 use env_logger;
 use std::thread;
+use tari_core::{
+    blocks::{genesis_block::get_genesis_block, Block, BlockHeader},
+    chain_storage::{
+        BlockAddResult,
+        BlockchainDatabase,
+        ChainStorageError,
+        DbKey,
+        DbTransaction,
+        MemoryDatabase,
+        MetadataKey,
+        MmrTree,
+        Validators,
+    },
+    helpers::{create_mem_db, create_orphan_block},
+    validation::mocks::MockValidator,
+};
 use tari_mmr::{MerkleChangeTrackerConfig, MutableMmr};
 use tari_transactions::{
+    helpers::{create_test_kernel, create_utxo, spend_utxos},
     tari_amount::{uT, MicroTari, T},
+    tx,
+    txn_schema,
     types::{CryptoFactories, HashDigest},
 };
 use tari_utilities::{hex::Hex, Hashable};
@@ -65,7 +59,7 @@ fn init_log() {
 
 #[test]
 fn fetch_nonexistent_kernel() {
-    let store = create_default_db();
+    let store = create_mem_db();
     let h = vec![0u8; 32];
     assert_eq!(
         store.fetch_kernel(h.clone()),
@@ -75,7 +69,7 @@ fn fetch_nonexistent_kernel() {
 
 #[test]
 fn insert_and_fetch_kernel() {
-    let store = create_default_db();
+    let store = create_mem_db();
     let kernel = create_test_kernel(5.into(), 0);
     let hash = kernel.hash();
 
@@ -87,7 +81,7 @@ fn insert_and_fetch_kernel() {
 
 #[test]
 fn fetch_nonexistent_header() {
-    let store = create_default_db();
+    let store = create_mem_db();
     assert_eq!(
         store.fetch_header(0),
         Err(ChainStorageError::ValueNotFound(DbKey::BlockHeader(0)))
@@ -96,7 +90,7 @@ fn fetch_nonexistent_header() {
 
 #[test]
 fn insert_and_fetch_header() {
-    let store = create_default_db();
+    let store = create_mem_db();
     let mut header = BlockHeader::new(0);
     header.height = 42;
 
@@ -113,7 +107,7 @@ fn insert_and_fetch_header() {
 #[test]
 fn insert_and_fetch_utxo() {
     let factories = CryptoFactories::default();
-    let store = create_default_db();
+    let store = create_mem_db();
     let (utxo, _) = create_utxo(MicroTari(10_000), &factories);
     let hash = utxo.hash();
     assert_eq!(store.is_utxo(hash.clone()).unwrap(), false);
@@ -126,12 +120,12 @@ fn insert_and_fetch_utxo() {
 
 #[test]
 fn insert_and_fetch_orphan() {
-    let store = create_default_db();
+    let store = create_mem_db();
     let txs = vec![
         (tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0,
         (tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0,
     ];
-    let orphan = create_test_block(10, None, txs);
+    let orphan = create_orphan_block(10, txs);
     let orphan_hash = orphan.hash();
     let mut txn = DbTransaction::new();
     txn.insert_orphan(orphan.clone());
@@ -141,7 +135,7 @@ fn insert_and_fetch_orphan() {
 
 #[test]
 fn multiple_threads() {
-    let store = create_default_db();
+    let store = create_mem_db();
     // Save a kernel in thread A
     let store_a = store.clone();
     let a = thread::spawn(move || {
@@ -173,7 +167,7 @@ fn multiple_threads() {
 
 #[test]
 fn utxo_and_rp_merkle_root() {
-    let store = create_default_db();
+    let store = create_mem_db();
     let factories = CryptoFactories::default();
     let root = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
     // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
@@ -205,7 +199,7 @@ fn utxo_and_rp_merkle_root() {
 
 #[test]
 fn header_merkle_root() {
-    let store = create_default_db();
+    let store = create_mem_db();
     let root = store.fetch_mmr_root(MmrTree::Header).unwrap();
     // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
     assert_eq!(
@@ -230,7 +224,7 @@ fn header_merkle_root() {
 
 #[test]
 fn kernel_merkle_root() {
-    let store = create_default_db();
+    let store = create_mem_db();
     let root = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
     // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
     assert_eq!(
@@ -258,7 +252,7 @@ fn kernel_merkle_root() {
 
 #[test]
 fn utxo_and_rp_future_merkle_root() {
-    let store = create_default_db();
+    let store = create_mem_db();
     let factories = CryptoFactories::default();
 
     let (utxo1, _) = create_utxo(MicroTari(10_000), &factories);
@@ -297,7 +291,7 @@ fn utxo_and_rp_future_merkle_root() {
 
 #[test]
 fn header_future_merkle_root() {
-    let store = create_default_db();
+    let store = create_mem_db();
 
     let header1 = BlockHeader::new(0);
     let mut header2 = BlockHeader::new(0);
@@ -323,7 +317,7 @@ fn header_future_merkle_root() {
 
 #[test]
 fn kernel_future_merkle_root() {
-    let store = create_default_db();
+    let store = create_mem_db();
 
     let kernel1 = create_test_kernel(100.into(), 0);
     let kernel2 = create_test_kernel(200.into(), 0);
@@ -348,7 +342,7 @@ fn kernel_future_merkle_root() {
 
 #[test]
 fn utxo_and_rp_mmr_proof() {
-    let store = create_default_db();
+    let store = create_mem_db();
     let factories = CryptoFactories::default();
 
     let (utxo1, _) = create_utxo(MicroTari(5_000), &factories);
@@ -374,7 +368,7 @@ fn utxo_and_rp_mmr_proof() {
 
 #[test]
 fn header_mmr_proof() {
-    let store = create_default_db();
+    let store = create_mem_db();
 
     let mut header1 = BlockHeader::new(0);
     header1.height = 1;
@@ -399,7 +393,7 @@ fn header_mmr_proof() {
 
 #[test]
 fn kernel_mmr_proof() {
-    let store = create_default_db();
+    let store = create_mem_db();
 
     let kernel1 = create_test_kernel(100.into(), 0);
     let kernel2 = create_test_kernel(200.into(), 1);
@@ -441,39 +435,38 @@ fn store_and_retrieve_block() {
 fn add_multiple_blocks() {
     init_log();
     // Create new database
-    let store = create_default_db();
+    let store = create_mem_db();
     let metadata = store.get_metadata().unwrap();
+    let factories = CryptoFactories::default();
     assert_eq!(metadata.height_of_longest_chain, None);
     assert_eq!(metadata.best_block, None);
     // Add the Genesis block
-    let block_gb = add_block_and_update_header(&store, get_genesis_block());
-    println!("{}\nHash={}", block_gb, block_gb.hash().to_hex());
+    let (block0, _) = create_genesis_block(&store, &factories);
+    store.add_block(block0.clone()).unwrap();
     // Add another block
-    let mut block = chain_block(&block_gb, vec![]);
-    println!("{}", block);
+    let block1 = append_block(&store, &block0, vec![]).unwrap();
     let metadata = store.get_metadata().unwrap();
-    println!("{}", metadata);
-    block = add_block_and_update_header(&store, block);
-    let hash = block.hash();
+    let hash = block1.hash();
+    assert_eq!(metadata.height_of_longest_chain, Some(1));
+    assert_eq!(metadata.best_block.unwrap(), hash);
     // Adding blocks is idempotent
-    assert_eq!(store.add_block(block.clone()), Ok(BlockAddResult::BlockExists));
+    assert_eq!(store.add_block(block1.clone()), Ok(BlockAddResult::BlockExists));
     // Check the metadata
     let metadata = store.get_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(1));
-    assert_eq!(metadata.best_block, Some(hash));
+    assert_eq!(metadata.best_block.unwrap(), hash);
 }
 
 #[test]
 fn test_checkpoints() {
     let factories = CryptoFactories::default();
-    let store = create_default_db();
+    let store = create_mem_db();
     // Add the Genesis block
-    let (mut block0, output) = create_genesis_block(&factories);
-    block0 = add_block_and_update_header(&store, block0);
+    let (block0, output) = create_genesis_block(&store, &factories);
+    store.add_block(block0.clone()).unwrap();
     let txn = txn_schema!(from: vec![output], to: vec![MicroTari(5_000), MicroTari(6_000)]);
     let (txn, _, _) = spend_utxos(txn);
-    let mut block1 = chain_block(&block0, vec![txn]);
-    block1 = add_block_and_update_header(&store, block1);
+    let block1 = append_block(&store, &block0, vec![txn]).unwrap();
     // Get the checkpoint
     let block_a = store.fetch_block(0).unwrap();
     assert_eq!(block_a.confirmations(), 2);
@@ -488,145 +481,48 @@ fn test_checkpoints() {
 #[test]
 fn rewind_to_height() {
     let factories = CryptoFactories::default();
-    let store = create_default_db();
-    let block0 = add_block_and_update_header(&store, create_genesis_block(&factories).0);
+    let mut db = create_mem_db();
+    let (block0, output) = create_genesis_block_with_utxos(&db, &factories, &[10 * T]);
+    db.add_block(block0.clone()).unwrap();
+    let mut blocks = vec![block0];
+    let mut outputs = vec![output];
+    // Block 1
+    let schema = vec![txn_schema!(from: vec![outputs[0][1].clone()], to: vec![6 * T, 3 * T])];
+    generate_new_block(&mut db, &mut blocks, &mut outputs, schema).unwrap();
+    // Block 2
+    let schema = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![3 * T, 1 * T])];
+    generate_new_block(&mut db, &mut blocks, &mut outputs, schema).unwrap();
+    // Block 3
+    let schema = vec![
+        txn_schema!(from: vec![outputs[2][0].clone()], to: vec![2 * T, 500_000 * uT]),
+        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![500_000 * uT]),
+    ];
+    generate_new_block(&mut db, &mut blocks, &mut outputs, schema).unwrap();
 
-    let (tx1, inputs1, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
-    let (tx2, inputs2, _) = tx!(10_000*uT, fee: 20*uT, inputs: 1, outputs: 1);
-    let (tx3, inputs3, _) = tx!(10_000*uT, fee: 100*uT, inputs: 1, outputs: 1);
-    let (tx4, inputs4, _) = tx!(10_000*uT, fee: 30*uT, inputs: 1, outputs: 1);
-    let (tx5, inputs5, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
-    let (tx6, inputs6, _) = tx!(10_000*uT, fee: 75*uT, inputs: 1, outputs: 1);
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap(), true);
-    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap(), true);
-    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap(), true);
-    txn.insert_utxo(inputs4[0].as_transaction_output(&factories).unwrap(), true);
-    txn.insert_utxo(inputs5[0].as_transaction_output(&factories).unwrap(), true);
-    txn.insert_utxo(inputs6[0].as_transaction_output(&factories).unwrap(), true);
-    assert!(store.commit(txn).is_ok());
-
-    let mut block1 = chain_block(&block0, vec![tx1.clone(), tx2.clone()]);
-    block1 = add_block_and_update_header(&store, block1);
-    let mut block2 = chain_block(&block1, vec![tx3.clone()]);
-    block2 = add_block_and_update_header(&store, block2);
-    let mut block3 = chain_block(&block2, vec![tx4.clone(), tx5.clone(), tx6.clone()]);
-    block3 = add_block_and_update_header(&store, block3);
-
-    assert!(store.rewind_to_height(3).is_ok());
-    assert!(store.rewind_to_height(4).is_err());
-
-    let tx1_input_hash = tx1.body.inputs()[0].hash();
-    let tx2_input_hash = tx2.body.inputs()[0].hash();
-    let tx3_input_hash = tx3.body.inputs()[0].hash();
-    let tx4_input_hash = tx4.body.inputs()[0].hash();
-    let tx5_input_hash = tx5.body.inputs()[0].hash();
-    let tx6_input_hash = tx6.body.inputs()[0].hash();
-    let tx1_output_hash = tx1.body.outputs()[0].hash();
-    let tx2_output_hash = tx2.body.outputs()[0].hash();
-    let tx3_output_hash = tx3.body.outputs()[0].hash();
-    let tx4_output_hash = tx4.body.outputs()[0].hash();
-    let tx5_output_hash = tx5.body.outputs()[0].hash();
-    let tx6_output_hash = tx6.body.outputs()[0].hash();
-    let tx1_kernel_hash = tx1.body.kernels()[0].hash();
-    let tx2_kernel_hash = tx2.body.kernels()[0].hash();
-    let tx3_kernel_hash = tx3.body.kernels()[0].hash();
-    let tx4_kernel_hash = tx4.body.kernels()[0].hash();
-    let tx5_kernel_hash = tx5.body.kernels()[0].hash();
-    let tx6_kernel_hash = tx6.body.kernels()[0].hash();
-    let block0_header_hash = block0.header.hash();
-    let block1_header_hash = block1.header.hash();
-    let block2_header_hash = block2.header.hash();
-    let block3_header_hash = block3.header.hash();
-
-    assert_eq!(store.fetch_header(0).unwrap().height, 0);
-    assert_eq!(store.fetch_header(1).unwrap().height, 1);
-    assert_eq!(store.fetch_header(2).unwrap().height, 2);
-    assert_eq!(store.fetch_header(3).unwrap().height, 3);
-    assert_eq!(store.fetch_header(4).is_ok(), false);
-
-    assert!(store.fetch_kernel(tx1_kernel_hash.clone()).is_ok());
-    assert!(store.fetch_kernel(tx2_kernel_hash.clone()).is_ok());
-    assert!(store.fetch_kernel(tx3_kernel_hash.clone()).is_ok());
-    assert!(store.fetch_kernel(tx4_kernel_hash.clone()).is_ok());
-    assert!(store.fetch_kernel(tx5_kernel_hash.clone()).is_ok());
-    assert!(store.fetch_kernel(tx6_kernel_hash.clone()).is_ok());
-
-    assert_eq!(store.is_utxo(tx1_input_hash.clone()), Ok(false));
-    assert_eq!(store.is_utxo(tx2_input_hash.clone()), Ok(false));
-    assert_eq!(store.is_utxo(tx3_input_hash.clone()), Ok(false));
-    assert_eq!(store.is_utxo(tx4_input_hash.clone()), Ok(false));
-    assert_eq!(store.is_utxo(tx5_input_hash.clone()), Ok(false));
-    assert_eq!(store.is_utxo(tx6_input_hash.clone()), Ok(false));
-    assert_eq!(store.is_utxo(tx1_output_hash.clone()), Ok(true));
-    assert_eq!(store.is_utxo(tx2_output_hash.clone()), Ok(true));
-    assert_eq!(store.is_utxo(tx3_output_hash.clone()), Ok(true));
-    assert_eq!(store.is_utxo(tx4_output_hash.clone()), Ok(true));
-    assert_eq!(store.is_utxo(tx5_output_hash.clone()), Ok(true));
-    assert_eq!(store.is_utxo(tx6_output_hash.clone()), Ok(true));
-
-    assert!(store.fetch_stxo(tx1_input_hash.clone()).is_ok());
-    assert!(store.fetch_stxo(tx2_input_hash.clone()).is_ok());
-    assert!(store.fetch_stxo(tx3_input_hash.clone()).is_ok());
-    assert!(store.fetch_stxo(tx4_input_hash.clone()).is_ok());
-    assert!(store.fetch_stxo(tx5_input_hash.clone()).is_ok());
-    assert!(store.fetch_stxo(tx6_input_hash.clone()).is_ok());
-    assert!(store.fetch_stxo(tx1_output_hash.clone()).is_err());
-    assert!(store.fetch_stxo(tx2_output_hash.clone()).is_err());
-    assert!(store.fetch_stxo(tx3_output_hash.clone()).is_err());
-    assert!(store.fetch_stxo(tx4_output_hash.clone()).is_err());
-    assert!(store.fetch_stxo(tx5_output_hash.clone()).is_err());
-    assert!(store.fetch_stxo(tx6_output_hash.clone()).is_err());
-
-    assert!(store.fetch_orphan(block0_header_hash.clone()).is_err());
-    assert!(store.fetch_orphan(block1_header_hash.clone()).is_err());
-    assert!(store.fetch_orphan(block2_header_hash.clone()).is_err());
-    assert!(store.fetch_orphan(block3_header_hash.clone()).is_err());
-
-    assert!(store.rewind_to_height(1).is_ok());
-
-    assert_eq!(store.fetch_header(0).unwrap().height, 0);
-    assert_eq!(store.fetch_header(1).unwrap().height, 1);
-    assert_eq!(store.fetch_header(2).is_ok(), false);
-    assert_eq!(store.fetch_header(3).is_ok(), false);
-
-    assert!(store.fetch_kernel(tx1_kernel_hash).is_ok());
-    assert!(store.fetch_kernel(tx2_kernel_hash).is_ok());
-    assert!(store.fetch_kernel(tx3_kernel_hash).is_err());
-    assert!(store.fetch_kernel(tx4_kernel_hash).is_err());
-    assert!(store.fetch_kernel(tx5_kernel_hash).is_err());
-    assert!(store.fetch_kernel(tx6_kernel_hash).is_err());
-
-    assert_eq!(store.is_utxo(tx1_input_hash.clone()), Ok(false));
-    assert_eq!(store.is_utxo(tx2_input_hash.clone()), Ok(false));
-    assert_eq!(store.is_utxo(tx3_input_hash.clone()), Ok(true));
-    assert_eq!(store.is_utxo(tx4_input_hash.clone()), Ok(true));
-    assert_eq!(store.is_utxo(tx5_input_hash.clone()), Ok(true));
-    assert_eq!(store.is_utxo(tx6_input_hash.clone()), Ok(true));
-    assert_eq!(store.is_utxo(tx1_output_hash.clone()), Ok(true));
-    assert_eq!(store.is_utxo(tx2_output_hash.clone()), Ok(true));
-    assert_eq!(store.is_utxo(tx3_output_hash.clone()), Ok(false));
-    assert_eq!(store.is_utxo(tx4_output_hash.clone()), Ok(false));
-    assert_eq!(store.is_utxo(tx5_output_hash.clone()), Ok(false));
-    assert_eq!(store.is_utxo(tx6_output_hash.clone()), Ok(false));
-
-    assert!(store.fetch_stxo(tx1_input_hash).is_ok());
-    assert!(store.fetch_stxo(tx2_input_hash).is_ok());
-    assert!(store.fetch_stxo(tx3_input_hash).is_err());
-    assert!(store.fetch_stxo(tx4_input_hash).is_err());
-    assert!(store.fetch_stxo(tx5_input_hash).is_err());
-    assert!(store.fetch_stxo(tx6_input_hash).is_err());
-    assert!(store.fetch_stxo(tx1_output_hash).is_err());
-    assert!(store.fetch_stxo(tx2_output_hash).is_err());
-    assert!(store.fetch_stxo(tx3_output_hash).is_err());
-    assert!(store.fetch_stxo(tx4_output_hash).is_err());
-    assert!(store.fetch_stxo(tx5_output_hash).is_err());
-    assert!(store.fetch_stxo(tx6_output_hash).is_err());
-
-    assert!(store.fetch_orphan(block0_header_hash).is_err());
-    assert!(store.fetch_orphan(block1_header_hash).is_err());
-    assert!(store.fetch_orphan(block2_header_hash).is_ok());
-    assert!(store.fetch_orphan(block3_header_hash).is_ok());
+    assert!(db.rewind_to_height(3).is_ok());
+    // Check MMRs are correct
+    let mmr_check = blocks[3].header.kernel_mr.clone();
+    let mmr = db.fetch_mmr_root(MmrTree::Kernel).unwrap();
+    assert_eq!(mmr, mmr_check);
+    let mmr_check = blocks[3].header.range_proof_mr.clone();
+    let mmr = db.fetch_mmr_root(MmrTree::RangeProof).unwrap();
+    assert_eq!(mmr, mmr_check);
+    let mmr_check = blocks[3].header.output_mr.clone();
+    let mmr = db.fetch_mmr_root(MmrTree::Utxo).unwrap();
+    assert_eq!(mmr, mmr_check);
+    // Invalid rewind
+    assert!(db.rewind_to_height(4).is_err());
+    assert!(db.rewind_to_height(1).is_ok());
+    // Check MMRs are correct
+    let mmr_check = blocks[1].header.kernel_mr.clone();
+    let mmr = db.fetch_mmr_root(MmrTree::Kernel).unwrap();
+    assert_eq!(mmr, mmr_check);
+    let mmr_check = blocks[1].header.range_proof_mr.clone();
+    let mmr = db.fetch_mmr_root(MmrTree::RangeProof).unwrap();
+    assert_eq!(mmr, mmr_check);
+    let mmr_check = blocks[1].header.output_mr.clone();
+    let mmr = db.fetch_mmr_root(MmrTree::Utxo).unwrap();
+    assert_eq!(mmr, mmr_check);
 }
 
 #[test]
@@ -639,7 +535,7 @@ fn handle_reorg() {
 
     let (mut store, mut blocks, mut outputs) = create_new_blockchain();
     // A parallel store that will "mine" the orphan chain
-    let mut orphan_store = create_default_db();
+    let mut orphan_store = create_mem_db();
     orphan_store.add_block(blocks[0].clone()).unwrap();
 
     // Block A1
@@ -685,102 +581,6 @@ fn handle_reorg() {
 }
 
 #[test]
-fn restore_mmr() {
-    let factories = CryptoFactories::default();
-    let mct_config = MerkleChangeTrackerConfig {
-        min_history_len: 2,
-        max_history_len: 3,
-    };
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
-    let db = MemoryDatabase::<HashDigest>::new(mct_config);
-    let store = BlockchainDatabase::new(db, validators).unwrap();
-
-    let block0 = add_block_and_update_header(&store, create_genesis_block(&factories).0);
-
-    let (tx1, inputs1, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
-    let (tx2, inputs2, _) = tx!(10_000*uT, fee: 20*uT, inputs: 1, outputs: 1);
-    let (tx3, inputs3, _) = tx!(10_000*uT, fee: 100*uT, inputs: 1, outputs: 1);
-    let (tx4, inputs4, _) = tx!(10_000*uT,   fee: 30*uT, inputs: 1, outputs: 1);
-    let (tx5, inputs5, _) = tx!(10_000*uT, fee: 50*uT, inputs: 1, outputs: 1);
-    let (tx6, inputs6, _) = tx!(10_000*uT, fee: 75*uT, inputs: 1, outputs: 1);
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(inputs1[0].as_transaction_output(&factories).unwrap(), true);
-    txn.insert_utxo(inputs2[0].as_transaction_output(&factories).unwrap(), true);
-    txn.insert_utxo(inputs3[0].as_transaction_output(&factories).unwrap(), true);
-    txn.insert_utxo(inputs4[0].as_transaction_output(&factories).unwrap(), true);
-    txn.insert_utxo(inputs5[0].as_transaction_output(&factories).unwrap(), true);
-    txn.insert_utxo(inputs6[0].as_transaction_output(&factories).unwrap(), true);
-    assert!(store.commit(txn).is_ok());
-
-    let mut block1 = chain_block(&block0, vec![tx1.clone(), tx2.clone()]);
-    block1 = add_block_and_update_header(&store, block1);
-    let mut block2 = chain_block(&block1, vec![tx3.clone()]);
-    block2 = add_block_and_update_header(&store, block2);
-    let mut block3 = chain_block(&block2, vec![tx4.clone()]);
-    block3 = add_block_and_update_header(&store, block3);
-
-    // Genesis block and block 1 has been added to base MMR
-    let utxo_mmr_state = store.fetch_mmr_base_leaf_nodes(MmrTree::Utxo, 0, 100).unwrap();
-    let kernel_mmr_state = store.fetch_mmr_base_leaf_nodes(MmrTree::Kernel, 0, 100).unwrap();
-    let rp_mmr_state = store.fetch_mmr_base_leaf_nodes(MmrTree::RangeProof, 0, 100).unwrap();
-    let header_mmr_state = store.fetch_mmr_base_leaf_nodes(MmrTree::Header, 0, 100).unwrap();
-
-    assert_eq!(utxo_mmr_state.total_leaf_count, 9);
-    assert_eq!(kernel_mmr_state.total_leaf_count, 3);
-    assert_eq!(rp_mmr_state.total_leaf_count, 9);
-    assert_eq!(header_mmr_state.total_leaf_count, 2);
-
-    let mut block4 = chain_block(&block3, vec![tx5.clone()]);
-    block4 = add_block_and_update_header(&store, block4);
-    let block5 = chain_block(&block4, vec![tx6.clone()]);
-    store.add_new_block(block5.clone()).unwrap();
-
-    let utxo_mmr_leaf_count = store
-        .fetch_mmr_base_leaf_nodes(MmrTree::Utxo, 0, 100)
-        .unwrap()
-        .total_leaf_count;
-    let kernel_mmr_leaf_count = store
-        .fetch_mmr_base_leaf_nodes(MmrTree::Kernel, 0, 100)
-        .unwrap()
-        .total_leaf_count;
-    let rp_mmr_leaf_count = store
-        .fetch_mmr_base_leaf_nodes(MmrTree::RangeProof, 0, 100)
-        .unwrap()
-        .total_leaf_count;
-    let header_mmr_leaf_count = store
-        .fetch_mmr_base_leaf_nodes(MmrTree::Header, 0, 100)
-        .unwrap()
-        .total_leaf_count;
-    assert_eq!(utxo_mmr_leaf_count, 11);
-    assert_eq!(kernel_mmr_leaf_count, 5);
-    assert_eq!(rp_mmr_leaf_count, 11);
-    assert_eq!(header_mmr_leaf_count, 4);
-
-    // Restore previously retrieved MMR state
-    assert!(store
-        .restore_mmr(MmrTree::Utxo, utxo_mmr_state.leaf_nodes.clone())
-        .is_ok());
-    assert!(store
-        .restore_mmr(MmrTree::Kernel, kernel_mmr_state.leaf_nodes.clone())
-        .is_ok());
-    assert!(store
-        .restore_mmr(MmrTree::RangeProof, rp_mmr_state.leaf_nodes.clone())
-        .is_ok());
-    assert!(store
-        .restore_mmr(MmrTree::Header, header_mmr_state.leaf_nodes.clone())
-        .is_ok());
-
-    let restore_utxo_mmr_state = store.fetch_mmr_base_leaf_nodes(MmrTree::Utxo, 0, 100).unwrap();
-    let restore_kernel_mmr_state = store.fetch_mmr_base_leaf_nodes(MmrTree::Kernel, 0, 100).unwrap();
-    let restore_rp_mmr_state = store.fetch_mmr_base_leaf_nodes(MmrTree::RangeProof, 0, 100).unwrap();
-    let restore_header_mmr_state = store.fetch_mmr_base_leaf_nodes(MmrTree::Header, 0, 100).unwrap();
-    assert_eq!(restore_utxo_mmr_state, utxo_mmr_state);
-    assert_eq!(restore_kernel_mmr_state, kernel_mmr_state);
-    assert_eq!(restore_rp_mmr_state, rp_mmr_state);
-    assert_eq!(restore_header_mmr_state, header_mmr_state);
-}
-
-#[test]
 fn store_and_retrieve_block_with_mmr_pruning_horizon() {
     let factories = CryptoFactories::default();
     let mct_config = MerkleChangeTrackerConfig {
@@ -791,11 +591,10 @@ fn store_and_retrieve_block_with_mmr_pruning_horizon() {
     let db = MemoryDatabase::<HashDigest>::new(mct_config);
     let store = BlockchainDatabase::new(db, validators).unwrap();
 
-    let block0 = add_block_and_update_header(&store, create_genesis_block(&factories).0);
-    let mut block1 = chain_block(&block0, vec![]);
-    block1 = add_block_and_update_header(&store, block1);
-    let mut block2 = chain_block(&block1, vec![]);
-    block2 = add_block_and_update_header(&store, block2);
+    let (block0, _) = create_genesis_block(&store, &factories);
+    store.add_block(block0.clone()).unwrap();
+    let block1 = append_block(&store, &block0, vec![]).unwrap();
+    let block2 = append_block(&store, &block1, vec![]).unwrap();
 
     assert_eq!(*store.fetch_block(0).unwrap().block(), block0);
     assert_eq!(*store.fetch_block(1).unwrap().block(), block1);
@@ -803,8 +602,7 @@ fn store_and_retrieve_block_with_mmr_pruning_horizon() {
 
     // When block3 is added then maximum history length would have been reached and block0 and block  will be committed
     // to the base MMR.
-    let mut block3 = chain_block(&block2, vec![]);
-    block3 = add_block_and_update_header(&store, block3);
+    let block3 = append_block(&store, &block2, vec![]).unwrap();
 
     assert!(store.fetch_block(0).is_err());
     assert!(store.fetch_block(1).is_err());

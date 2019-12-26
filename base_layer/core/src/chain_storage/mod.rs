@@ -33,15 +33,13 @@ mod historical_block;
 mod lmdb_db;
 mod memory_db;
 mod metadata;
-#[cfg(test)]
-mod test;
 
 // public modules
 pub mod async_db;
 
 // Public API exports
 pub use blockchain_database::{BlockAddResult, BlockchainBackend, BlockchainDatabase, MutableMmrState, Validators};
-pub use db_transaction::{DbKey, DbTransaction, DbValue, MmrTree};
+pub use db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree};
 pub use error::ChainStorageError;
 pub use historical_block::HistoricalBlock;
 pub use lmdb_db::{

@@ -28,24 +28,22 @@ use crate::{
     chain_storage::{BlockchainBackend, ChainMetadata},
 };
 use log::*;
-use std::cmp::min;
 
 const LOG_TARGET: &str = "base_node::block_sync";
 
-// The number of Blocks that will be requested in a single query from remote nodes. Note that the remote node might not
-// be willing to provided this many blocks in a single response.
-const MAX_BLOCK_REQUEST_BATCH_SIZE: usize = 2;
+// The number of Blocks that can be requested in a single query from remote nodes.
+const BLOCK_SYNC_CHUNK_SIZE: usize = 2;
 
 /// Configuration for the Block Synchronization.
 #[derive(Clone, Copy)]
 pub struct BlockSyncConfig {
-    pub max_block_request_batch_size: usize,
+    pub block_sync_chunk_size: usize,
 }
 
 impl Default for BlockSyncConfig {
     fn default() -> Self {
         Self {
-            max_block_request_batch_size: MAX_BLOCK_REQUEST_BATCH_SIZE,
+            block_sync_chunk_size: BLOCK_SYNC_CHUNK_SIZE,
         }
     }
 }
@@ -106,26 +104,26 @@ async fn network_chain_tip<B: BlockchainBackend>(shared: &mut BaseNodeStateMachi
 }
 
 async fn synchronize_blocks<B: BlockchainBackend>(shared: &mut BaseNodeStateMachine<B>) -> Result<(), String> {
-    let mut start_height = match shared.db.get_height().map_err(|e| e.to_string())? {
+    let start_height = match shared.db.get_height().map_err(|e| e.to_string())? {
         Some(height) => height + 1,
         None => 0u64,
     };
     let network_tip_height = network_chain_tip(shared).await?;
 
-    while start_height <= network_tip_height {
-        let end_height = min(
-            start_height + shared.config.block_sync_config.max_block_request_batch_size as u64,
-            network_tip_height + 1,
+    let height_indices = (start_height..=network_tip_height).collect::<Vec<u64>>();
+    for block_nums in height_indices.chunks(shared.config.block_sync_config.block_sync_chunk_size) {
+        debug!(
+            target: LOG_TARGET,
+            "Requesting blocks {}..{} from peers",
+            block_nums[0],
+            block_nums[block_nums.len() - 1]
         );
-        let block_nums = (start_height..end_height).collect::<Vec<u64>>();
-
         let hist_blocks = shared
             .comms
             .fetch_blocks(block_nums.to_vec())
             .await
             .map_err(|e| e.to_string())?;
-        start_height += hist_blocks.len() as u64;
-
+        debug!(target: LOG_TARGET, "Received {} blocks from peer", hist_blocks.len());
         for hist_block in hist_blocks {
             shared.db.add_block(hist_block.block).map_err(|e| e.to_string())?;
         }

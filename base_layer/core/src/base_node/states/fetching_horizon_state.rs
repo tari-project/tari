@@ -244,7 +244,7 @@ impl HorizonInfo {
         let base_state = self.download_mmr_base_state(shared, MmrTree::Kernel).await?;
         shared
             .db
-            .restore_mmr(MmrTree::Kernel, base_state)
+            .assign_mmr(MmrTree::Kernel, base_state)
             .map_err(|e| e.to_string())
     }
 
@@ -256,7 +256,7 @@ impl HorizonInfo {
         let base_state = self.download_mmr_base_state(shared, MmrTree::RangeProof).await?;
         shared
             .db
-            .restore_mmr(MmrTree::RangeProof, base_state)
+            .assign_mmr(MmrTree::RangeProof, base_state)
             .map_err(|e| e.to_string())
     }
 
@@ -268,7 +268,7 @@ impl HorizonInfo {
         let base_state = self.download_mmr_base_state(shared, MmrTree::Utxo).await?;
         shared
             .db
-            .restore_mmr(MmrTree::Utxo, base_state)
+            .assign_mmr(MmrTree::Utxo, base_state)
             .map_err(|e| e.to_string())
     }
 

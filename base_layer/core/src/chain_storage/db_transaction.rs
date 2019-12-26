@@ -78,7 +78,6 @@ impl DbTransaction {
         self.insert(DbKeyValuePair::UnspentOutput(hash, Box::new(utxo), update_mmr));
     }
 
-    #[cfg(test)]
     /// Adds a UTXO into the current transaction and update the TXO MMR. This is a test only function used to ensure we
     /// block duplicate entries. This function does not calculate the hash function but accepts one as a variable.
     pub fn insert_utxo_with_hash(&mut self, hash: Vec<u8>, utxo: TransactionOutput, update_mmr: bool) {

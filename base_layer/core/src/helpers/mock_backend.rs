@@ -19,58 +19,14 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-// Used in tests only
+//
 
 use crate::{
-    blocks::{blockheader::BlockHeader, Block},
+    blocks::{Block, BlockHeader},
     chain_storage::{BlockchainBackend, ChainStorageError, DbKey, DbTransaction, DbValue, MmrTree, MutableMmrState},
 };
-use rand::{CryptoRng, Rng};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PK, SecretKey},
-};
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof, MutableMmrLeafNodes};
-use tari_transactions::{
-    tari_amount::*,
-    transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-    types::{CommitmentFactory, HashOutput, PrivateKey, PublicKey},
-};
-
-pub struct TestParams {
-    pub spend_key: PrivateKey,
-    pub change_key: PrivateKey,
-    pub offset: PrivateKey,
-    pub nonce: PrivateKey,
-    pub public_nonce: PublicKey,
-}
-
-impl TestParams {
-    pub fn new<R: Rng + CryptoRng>(rng: &mut R) -> TestParams {
-        let r = PrivateKey::random(rng);
-        TestParams {
-            spend_key: PrivateKey::random(rng),
-            change_key: PrivateKey::random(rng),
-            offset: PrivateKey::random(rng),
-            public_nonce: PublicKey::from_secret_key(&r),
-            nonce: r,
-        }
-    }
-}
-
-pub fn make_input<R: Rng + CryptoRng>(
-    rng: &mut R,
-    val: MicroTari,
-    factory: &CommitmentFactory,
-) -> (TransactionInput, UnblindedOutput)
-{
-    let key = PrivateKey::random(rng);
-    let v = PrivateKey::from(val);
-    let commitment = factory.commit(&key, &v);
-    let input = TransactionInput::new(OutputFeatures::default(), commitment);
-    (input, UnblindedOutput::new(val, key, None))
-}
+use tari_transactions::types::HashOutput;
 
 // This is a test backend. This is used so that the ConsensusManager can be called without actually having a backend.
 // Calling this backend will result in a panic.
@@ -97,7 +53,7 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
-    fn fetch_pruning_horizon(&self) -> Result<u64, ChainStorageError> {
+    fn fetch_horizon_block_height(&self) -> Result<u64, ChainStorageError> {
         unimplemented!()
     }
 
@@ -137,7 +93,7 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
-    fn restore_mmr(&self, _tree: MmrTree, _base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError> {
+    fn assign_mmr(&self, _tree: MmrTree, _base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError> {
         unimplemented!()
     }
 

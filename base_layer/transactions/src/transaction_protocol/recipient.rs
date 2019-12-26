@@ -159,8 +159,8 @@ impl ReceiverTransactionProtocol {
 #[cfg(test)]
 mod test {
     use crate::{
+        helpers::TestParams,
         tari_amount::*,
-        test_utils::primitives::TestParams,
         transaction::OutputFeatures,
         transaction_protocol::{
             build_challenge,

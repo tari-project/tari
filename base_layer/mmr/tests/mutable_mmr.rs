@@ -173,7 +173,7 @@ fn restore_from_leaf_nodes() {
     assert!(mmr.delete_and_compress(3, true));
 
     // Restore from compact state
-    assert!(mmr.restore(mmr_state1.clone()).is_ok());
+    assert!(mmr.assign(mmr_state1.clone()).is_ok());
     assert_eq!(mmr.get_merkle_root(), mmr_root);
     let restored_mmr_state = mmr.to_leaf_nodes(0, mmr.get_leaf_count()).unwrap();
     assert_eq!(restored_mmr_state, mmr_state2);

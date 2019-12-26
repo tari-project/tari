@@ -27,9 +27,7 @@ prost-types = "0.5.0"
 bincode = "1.1.4"
 serde_json = "1.0"
 chrono = { version = "0.4.6"}
+rand = "0.5.5"
 
 [build-dependencies]
 tari_protobuf_build = { version = "^0.0", path="../../infrastructure/protobuf_build"}
-
-[dev-dependencies]
-rand = "0.5.5"

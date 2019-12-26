@@ -62,8 +62,8 @@ where
         }
     }
 
-    /// Clears the MMR and restores its state from a set of leaf hashes.
-    pub fn restore(&mut self, leaf_hashes: Vec<Hash>) -> Result<(), MerkleMountainRangeError> {
+    /// Clears the MMR and assigns its state from the list of leaf hashes given in `leaf_hashes`.
+    pub fn assign(&mut self, leaf_hashes: Vec<Hash>) -> Result<(), MerkleMountainRangeError> {
         self.hashes
             .clear()
             .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
