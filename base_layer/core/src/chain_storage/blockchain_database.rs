@@ -201,7 +201,8 @@ macro_rules! fetch {
 /// let db_backend = MemoryDatabase::<HashDigest>::default();
 /// let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
 /// let db = MemoryDatabase::<HashDigest>::default();
-/// let mut db = BlockchainDatabase::new(db_backend, validators).unwrap();
+/// let mut db = BlockchainDatabase::new(db_backend).unwrap();
+/// db.add_validators(validators);
 /// // Do stuff with db
 /// ```
 pub struct BlockchainDatabase<T>
@@ -209,20 +210,24 @@ where T: BlockchainBackend
 {
     metadata: Arc<RwLock<ChainMetadata>>,
     db: Arc<T>,
-    validators: Validators<T>,
+    validators: Option<Validators<T>>,
 }
 
 impl<T> BlockchainDatabase<T>
 where T: BlockchainBackend
 {
     /// Creates a new `BlockchainDatabase` using the provided backend.
-    pub fn new(db: T, validators: Validators<T>) -> Result<Self, ChainStorageError> {
+    pub fn new(db: T) -> Result<Self, ChainStorageError> {
         let metadata = Self::read_metadata(&db)?;
         Ok(BlockchainDatabase {
             metadata: Arc::new(RwLock::new(metadata)),
             db: Arc::new(db),
-            validators,
+            validators: None,
         })
+    }
+
+    pub fn add_validators(&mut self, validators: Validators<T>) {
+        self.validators = Some(validators);
     }
 
     /// Reads the blockchain metadata (block height etc) from the underlying backend and returns it.
@@ -467,6 +472,8 @@ where T: BlockchainBackend
         // Check that the block is valid. Once it passes this point, the block is building on the longest chain and has
         // satisfied all consensus rules
         self.validators
+            .as_ref()
+            .expect("No validators added")
             .block
             .validate(&block)
             .map_err(|e| ChainStorageError::ValidationError(e))?;
@@ -694,6 +701,8 @@ where T: BlockchainBackend
         }
         // Validate the orphan
         self.validators
+            .as_ref()
+            .expect("No validators added")
             .orphan
             .validate(&block)
             .map_err(|e| ChainStorageError::ValidationError(e))?;

@@ -589,7 +589,8 @@ fn store_and_retrieve_block_with_mmr_pruning_horizon() {
     };
     let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
     let db = MemoryDatabase::<HashDigest>::new(mct_config);
-    let store = BlockchainDatabase::new(db, validators).unwrap();
+    let mut store = BlockchainDatabase::new(db).unwrap();
+    store.add_validators(validators);
 
     let (block0, _) = create_genesis_block(&store, &factories);
     store.add_block(block0.clone()).unwrap();
