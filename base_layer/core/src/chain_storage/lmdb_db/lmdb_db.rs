@@ -31,8 +31,6 @@ use crate::{
             LMDBVec,
             LMDB_DB_BLOCK_HASHES,
             LMDB_DB_HEADERS,
-            LMDB_DB_HEADER_MMR_BASE_BACKEND,
-            LMDB_DB_HEADER_MMR_CP_BACKEND,
             LMDB_DB_KERNELS,
             LMDB_DB_KERNEL_MMR_BASE_BACKEND,
             LMDB_DB_KERNEL_MMR_CP_BACKEND,
@@ -87,7 +85,6 @@ where D: Digest
     kernels_db: DatabaseRef,
     orphans_db: DatabaseRef,
     utxo_mmr: RwLock<MerkleChangeTracker<D, LMDBVec<MmrHash>, LMDBVec<MerkleCheckPoint>>>,
-    header_mmr: RwLock<MerkleChangeTracker<D, LMDBVec<MmrHash>, LMDBVec<MerkleCheckPoint>>>,
     kernel_mmr: RwLock<MerkleChangeTracker<D, LMDBVec<MmrHash>, LMDBVec<MerkleCheckPoint>>>,
     range_proof_mmr: RwLock<MerkleChangeTracker<D, LMDBVec<MmrHash>, LMDBVec<MerkleCheckPoint>>>,
 }
@@ -108,22 +105,6 @@ where D: Digest + Send + Sync
             store.env(),
             store
                 .get_handle(LMDB_DB_UTXO_MMR_CP_BACKEND)
-                .ok_or(ChainStorageError::CriticalError)?
-                .db()
-                .clone(),
-        );
-        let header_mmr_base_backend = LMDBVec::new(
-            store.env(),
-            store
-                .get_handle(LMDB_DB_HEADER_MMR_BASE_BACKEND)
-                .ok_or(ChainStorageError::CriticalError)?
-                .db()
-                .clone(),
-        );
-        let header_mmr_cp_backend = LMDBVec::new(
-            store.env(),
-            store
-                .get_handle(LMDB_DB_HEADER_MMR_CP_BACKEND)
                 .ok_or(ChainStorageError::CriticalError)?
                 .db()
                 .clone(),
@@ -206,11 +187,6 @@ where D: Digest + Send + Sync
                 utxo_mmr_cp_backend,
                 mct_config,
             )?),
-            header_mmr: RwLock::new(MerkleChangeTracker::new(
-                MutableMmr::new(header_mmr_base_backend),
-                header_mmr_cp_backend,
-                mct_config,
-            )?),
             kernel_mmr: RwLock::new(MerkleChangeTracker::new(
                 MutableMmr::new(kernel_mmr_base_backend),
                 kernel_mmr_cp_backend,
@@ -232,15 +208,7 @@ where D: Digest + Send + Sync
         for op in tx.operations.iter() {
             match op {
                 WriteOperation::Insert(insert) => match insert {
-                    DbKeyValuePair::BlockHeader(_k, v, update_mmr) => {
-                        if *update_mmr {
-                            let hash = v.hash();
-                            self.header_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .push(&hash)?;
-                        }
-                    },
+                    DbKeyValuePair::BlockHeader(_, _) => {},
                     DbKeyValuePair::UnspentOutput(k, v, update_mmr) => {
                         if *update_mmr {
                             self.utxo_mmr
@@ -290,21 +258,6 @@ where D: Digest + Send + Sync
         for op in tx.operations.into_iter() {
             match op {
                 WriteOperation::RewindMmr(tree, steps_back) => match tree {
-                    MmrTree::Header => {
-                        if steps_back == 0 {
-                            self.header_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .reset()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-                        } else {
-                            self.header_mmr
-                                .write()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                                .rewind(steps_back)
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-                        }
-                    },
                     MmrTree::Kernel => {
                         if steps_back == 0 {
                             self.kernel_mmr
@@ -352,13 +305,6 @@ where D: Digest + Send + Sync
                     },
                 },
                 WriteOperation::CreateMmrCheckpoint(tree) => match tree {
-                    MmrTree::Header => {
-                        self.header_mmr
-                            .write()
-                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                            .commit()
-                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-                    },
                     MmrTree::Kernel => {
                         self.kernel_mmr
                             .write()
@@ -389,10 +335,6 @@ where D: Digest + Send + Sync
 
     // Reset any mmr txns that have been applied.
     fn reset_mmrs(&self) -> Result<(), ChainStorageError> {
-        self.header_mmr
-            .write()
-            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-            .reset()?;
         self.kernel_mmr
             .write()
             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
@@ -419,7 +361,7 @@ where D: Digest + Send + Sync
                         DbKeyValuePair::Metadata(k, v) => {
                             lmdb_insert(&txn, &self.metadata_db, &(k.clone() as u32), &v)?;
                         },
-                        DbKeyValuePair::BlockHeader(k, v, _) => {
+                        DbKeyValuePair::BlockHeader(k, v) => {
                             let hash = v.hash();
                             lmdb_insert(&txn, &self.block_hashes_db, &hash, &k)?;
                             lmdb_insert(&txn, &self.headers_db, &k, &v)?;
@@ -531,8 +473,6 @@ pub fn create_lmdb_database(
         .add_database(LMDB_DB_ORPHANS, flags)
         .add_database(LMDB_DB_UTXO_MMR_BASE_BACKEND, flags)
         .add_database(LMDB_DB_UTXO_MMR_CP_BACKEND, flags)
-        .add_database(LMDB_DB_HEADER_MMR_BASE_BACKEND, flags)
-        .add_database(LMDB_DB_HEADER_MMR_CP_BACKEND, flags)
         .add_database(LMDB_DB_KERNEL_MMR_BASE_BACKEND, flags)
         .add_database(LMDB_DB_KERNEL_MMR_CP_BACKEND, flags)
         .add_database(LMDB_DB_RANGE_PROOF_MMR_BASE_BACKEND, flags)
@@ -631,11 +571,6 @@ where D: Digest + Send + Sync
                 .read()
                 .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
                 .get_merkle_root()?,
-            MmrTree::Header => self
-                .header_mmr
-                .read()
-                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                .get_merkle_root()?,
         };
         Ok(root)
     }
@@ -654,11 +589,6 @@ where D: Digest + Send + Sync
                 .get_mmr_only_root()?,
             MmrTree::RangeProof => self
                 .range_proof_mmr
-                .read()
-                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                .get_mmr_only_root()?,
-            MmrTree::Header => self
-                .header_mmr
                 .read()
                 .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
                 .get_mmr_only_root()?,
@@ -689,12 +619,6 @@ where D: Digest + Send + Sync
             MmrTree::RangeProof => prune_mutable_mmr(
                 &*self
                     .range_proof_mmr
-                    .read()
-                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
-            )?,
-            MmrTree::Header => prune_mutable_mmr(
-                &*self
-                    .header_mmr
                     .read()
                     .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
             )?,
@@ -740,14 +664,6 @@ where D: Digest + Send + Sync
                     .mmr(),
                 leaf_pos,
             )?,
-            MmrTree::Header => MerkleProof::for_leaf_node(
-                &self
-                    .header_mmr
-                    .read()
-                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                    .mmr(),
-                leaf_pos,
-            )?,
         };
         Ok(proof)
     }
@@ -774,11 +690,6 @@ where D: Digest + Send + Sync
                 .read()
                 .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
                 .get_checkpoint(index),
-            MmrTree::Header => self
-                .header_mmr
-                .read()
-                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                .get_checkpoint(index),
         };
         cp.map_err(|e| ChainStorageError::AccessError(format!("MMR Checkpoint error: {}", e.to_string())))
     }
@@ -787,11 +698,6 @@ where D: Digest + Send + Sync
         let (hash, deleted) = match tree {
             MmrTree::Kernel => self
                 .kernel_mmr
-                .read()
-                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                .get_leaf_status(pos)?,
-            MmrTree::Header => self
-                .header_mmr
                 .read()
                 .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
                 .get_leaf_status(pos)?,
@@ -831,22 +737,6 @@ where D: Digest + Send + Sync
                     .get_base_leaf_count();
                 let leaf_nodes = self
                     .kernel_mmr
-                    .read()
-                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                    .to_base_leaf_nodes(index, count)?;
-                MutableMmrState {
-                    total_leaf_count,
-                    leaf_nodes,
-                }
-            },
-            MmrTree::Header => {
-                let total_leaf_count = self
-                    .header_mmr
-                    .read()
-                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                    .get_base_leaf_count();
-                let leaf_nodes = self
-                    .header_mmr
                     .read()
                     .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
                     .to_base_leaf_nodes(index, count)?;
@@ -898,11 +788,6 @@ where D: Digest + Send + Sync
                 .read()
                 .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
                 .get_base_leaf_count(),
-            MmrTree::Header => self
-                .header_mmr
-                .read()
-                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                .get_base_leaf_count(),
             MmrTree::Utxo => self
                 .utxo_mmr
                 .read()
@@ -921,11 +806,6 @@ where D: Digest + Send + Sync
         match tree {
             MmrTree::Kernel => self
                 .kernel_mmr
-                .write()
-                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                .assign(base_state)?,
-            MmrTree::Header => self
-                .header_mmr
                 .write()
                 .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
                 .assign(base_state)?,

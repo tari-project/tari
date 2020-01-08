@@ -47,12 +47,11 @@ use tari_core::{
         service::BaseNodeServiceConfig,
     },
     blocks::BlockHeader,
-    chain_storage::{BlockAddResult, ChainStorageError, DbTransaction, MmrTree},
+    chain_storage::{BlockAddResult, DbTransaction, MmrTree},
     consensus::ConsensusConstants,
     consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
     mempool::MempoolServiceConfig,
     proof_of_work::{Difficulty, PowAlgorithm},
-    validation::mocks::MockValidator,
 };
 use tari_mmr::MerkleChangeTrackerConfig;
 use tari_test_utils::random::string;
@@ -105,8 +104,8 @@ fn request_and_response_fetch_headers() {
     let mut headerb2 = BlockHeader::new(0);
     headerb2.height = 2;
     let mut txn = DbTransaction::new();
-    txn.insert_header(headerb1.clone(), true);
-    txn.insert_header(headerb2.clone(), true);
+    txn.insert_header(headerb1.clone());
+    txn.insert_header(headerb2.clone());
     assert!(bob_node.blockchain_db.commit(txn).is_ok());
 
     let mut headerc1 = BlockHeader::new(0);
@@ -114,8 +113,8 @@ fn request_and_response_fetch_headers() {
     let mut headerc2 = BlockHeader::new(0);
     headerc2.height = 2;
     let mut txn = DbTransaction::new();
-    txn.insert_header(headerc1.clone(), true);
-    txn.insert_header(headerc2.clone(), true);
+    txn.insert_header(headerc1.clone());
+    txn.insert_header(headerc2.clone());
     assert!(carol_node.blockchain_db.commit(txn).is_ok());
 
     // The request is sent to a random remote base node so the returned headers can be from bob or carol
@@ -364,7 +363,7 @@ fn propagate_and_forward_valid_block() {
     // These duplicate blocks will be discarded and wont be propagated again.
     //              /-> carol <-\
     //             /             |
-    // alice -> bob             |
+    // alice -> bob              |
     //             \             |
     //              \->  dan  <-/
     let alice_node_identity = random_node_identity();

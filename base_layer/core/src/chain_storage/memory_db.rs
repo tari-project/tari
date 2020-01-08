@@ -72,7 +72,6 @@ where D: Digest
     orphans: HashMap<HashOutput, Block>,
     // Define MMRs to use both a memory-backed base and a memory-backed pruned MMR
     utxo_mmr: MerkleChangeTracker<D, Vec<MmrHash>, Vec<MerkleCheckPoint>>,
-    header_mmr: MerkleChangeTracker<D, Vec<MmrHash>, Vec<MerkleCheckPoint>>,
     kernel_mmr: MerkleChangeTracker<D, Vec<MmrHash>, Vec<MerkleCheckPoint>>,
     range_proof_mmr: MerkleChangeTracker<D, Vec<MmrHash>, Vec<MerkleCheckPoint>>,
 }
@@ -93,8 +92,6 @@ where D: Digest
     pub fn new(mct_config: MerkleChangeTrackerConfig) -> Self {
         let utxo_mmr =
             MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new(), mct_config).unwrap();
-        let header_mmr =
-            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new(), mct_config).unwrap();
         let kernel_mmr =
             MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new(), mct_config).unwrap();
         let range_proof_mmr =
@@ -109,7 +106,6 @@ where D: Digest
                 kernels: HashMap::default(),
                 orphans: HashMap::default(),
                 utxo_mmr,
-                header_mmr,
                 kernel_mmr,
                 range_proof_mmr,
             })),
@@ -143,15 +139,11 @@ where D: Digest + Send + Sync
                         }
                         db.metadata.insert(key, v);
                     },
-                    DbKeyValuePair::BlockHeader(k, v, update_mmr) => {
+                    DbKeyValuePair::BlockHeader(k, v) => {
                         if db.headers.contains_key(&k) {
                             return Err(ChainStorageError::InvalidOperation("Duplicate key".to_string()));
                         }
-                        let hash = v.hash();
-                        if update_mmr {
-                            db.header_mmr.push(&hash)?;
-                        }
-                        db.block_hashes.insert(hash.clone(), k);
+                        db.block_hashes.insert(v.hash(), k);
                         db.headers.insert(k, *v);
                     },
                     DbKeyValuePair::UnspentOutput(k, v, update_mmr) => {
@@ -224,10 +216,6 @@ where D: Digest + Send + Sync
                     _ => return Err(ChainStorageError::InvalidOperation("Only STXOs can be unspent".into())),
                 },
                 WriteOperation::CreateMmrCheckpoint(tree) => match tree {
-                    MmrTree::Header => db
-                        .header_mmr
-                        .commit()
-                        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
                     MmrTree::Kernel => db
                         .kernel_mmr
                         .commit()
@@ -242,17 +230,6 @@ where D: Digest + Send + Sync
                         .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
                 },
                 WriteOperation::RewindMmr(tree, steps_back) => match tree {
-                    MmrTree::Header => {
-                        if steps_back == 0 {
-                            db.header_mmr
-                                .reset()
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-                        } else {
-                            db.header_mmr
-                                .rewind(steps_back)
-                                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-                        }
-                    },
                     MmrTree::Kernel => {
                         if steps_back == 0 {
                             db.kernel_mmr
@@ -339,7 +316,6 @@ where D: Digest + Send + Sync
             MmrTree::Utxo => db.utxo_mmr.get_merkle_root()?,
             MmrTree::Kernel => db.kernel_mmr.get_merkle_root()?,
             MmrTree::RangeProof => db.range_proof_mmr.get_merkle_root()?,
-            MmrTree::Header => db.header_mmr.get_merkle_root()?,
         };
         Ok(root)
     }
@@ -350,7 +326,6 @@ where D: Digest + Send + Sync
             MmrTree::Utxo => db.utxo_mmr.get_mmr_only_root()?,
             MmrTree::Kernel => db.kernel_mmr.get_mmr_only_root()?,
             MmrTree::RangeProof => db.range_proof_mmr.get_mmr_only_root()?,
-            MmrTree::Header => db.header_mmr.get_mmr_only_root()?,
         };
         Ok(root)
     }
@@ -367,7 +342,6 @@ where D: Digest + Send + Sync
             MmrTree::Utxo => prune_mutable_mmr(&db.utxo_mmr)?,
             MmrTree::Kernel => prune_mutable_mmr(&db.kernel_mmr)?,
             MmrTree::RangeProof => prune_mutable_mmr(&db.range_proof_mmr)?,
-            MmrTree::Header => prune_mutable_mmr(&db.header_mmr)?,
         };
         for hash in additions {
             pruned_mmr.push(&hash)?;
@@ -390,7 +364,6 @@ where D: Digest + Send + Sync
             MmrTree::Utxo => MerkleProof::for_leaf_node(&db.utxo_mmr.mmr(), leaf_pos)?,
             MmrTree::Kernel => MerkleProof::for_leaf_node(&db.kernel_mmr.mmr(), leaf_pos)?,
             MmrTree::RangeProof => MerkleProof::for_leaf_node(&db.range_proof_mmr.mmr(), leaf_pos)?,
-            MmrTree::Header => MerkleProof::for_leaf_node(&db.header_mmr.mmr(), leaf_pos)?,
         };
         Ok(proof)
     }
@@ -406,7 +379,6 @@ where D: Digest + Send + Sync
             MmrTree::Kernel => db.kernel_mmr.get_checkpoint(index),
             MmrTree::Utxo => db.utxo_mmr.get_checkpoint(index),
             MmrTree::RangeProof => db.range_proof_mmr.get_checkpoint(index),
-            MmrTree::Header => db.header_mmr.get_checkpoint(index),
         };
         cp.map_err(|e| ChainStorageError::AccessError(format!("MMR Checkpoint error: {}", e.to_string())))
     }
@@ -415,7 +387,6 @@ where D: Digest + Send + Sync
         let db = self.db_access()?;
         let (hash, deleted) = match tree {
             MmrTree::Kernel => db.kernel_mmr.get_leaf_status(pos)?,
-            MmrTree::Header => db.header_mmr.get_leaf_status(pos)?,
             MmrTree::Utxo => db.utxo_mmr.get_leaf_status(pos)?,
             MmrTree::RangeProof => db.range_proof_mmr.get_leaf_status(pos)?,
         };
@@ -441,10 +412,6 @@ where D: Digest + Send + Sync
                 total_leaf_count: db.kernel_mmr.get_base_leaf_count(),
                 leaf_nodes: db.kernel_mmr.to_base_leaf_nodes(index, count)?,
             },
-            MmrTree::Header => MutableMmrState {
-                total_leaf_count: db.header_mmr.get_base_leaf_count(),
-                leaf_nodes: db.header_mmr.to_base_leaf_nodes(index, count)?,
-            },
             MmrTree::Utxo => MutableMmrState {
                 total_leaf_count: db.utxo_mmr.get_base_leaf_count(),
                 leaf_nodes: db.utxo_mmr.to_base_leaf_nodes(index, count)?,
@@ -461,7 +428,6 @@ where D: Digest + Send + Sync
         let db = self.db_access()?;
         let mmr_state = match tree {
             MmrTree::Kernel => db.kernel_mmr.get_base_leaf_count(),
-            MmrTree::Header => db.header_mmr.get_base_leaf_count(),
             MmrTree::Utxo => db.utxo_mmr.get_base_leaf_count(),
             MmrTree::RangeProof => db.range_proof_mmr.get_base_leaf_count(),
         };
@@ -475,7 +441,6 @@ where D: Digest + Send + Sync
             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
         match tree {
             MmrTree::Kernel => db.kernel_mmr.assign(base_state)?,
-            MmrTree::Header => db.header_mmr.assign(base_state)?,
             MmrTree::Utxo => db.utxo_mmr.assign(base_state)?,
             MmrTree::RangeProof => db.range_proof_mmr.assign(base_state)?,
         };
@@ -530,8 +495,6 @@ where D: Digest
         };
         let utxo_mmr =
             MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new(), mct_config).unwrap();
-        let header_mmr =
-            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new(), mct_config).unwrap();
         let kernel_mmr =
             MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new(), mct_config).unwrap();
         let range_proof_mmr =
@@ -545,7 +508,6 @@ where D: Digest
             kernels: HashMap::default(),
             orphans: HashMap::default(),
             utxo_mmr,
-            header_mmr,
             kernel_mmr,
             range_proof_mmr,
         }
@@ -609,7 +571,7 @@ mod test {
         // Create a local version of the MMR
         let mut mmr = MutableMmr::<HashDigest, _>::new(Vec::new());
         // Assign the state to the DB backend and compare roots
-        mmr.assign(state.clone());
+        mmr.assign(state.clone()).unwrap();
         let root = mmr.get_merkle_root().unwrap();
         db.assign_mmr(MmrTree::Kernel, state).unwrap();
         assert_eq!(db.fetch_mmr_root(MmrTree::Kernel).unwrap(), root);

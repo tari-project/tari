@@ -153,11 +153,7 @@ mod test {
         mempool::orphan_pool::{OrphanPool, OrphanPoolConfig},
     };
     use std::{sync::Arc, thread, time::Duration};
-    use tari_transactions::{
-        tari_amount::{uT, MicroTari, T},
-        transaction::OutputFeatures,
-        tx,
-    };
+    use tari_transactions::{tari_amount::MicroTari, tx};
 
     #[test]
     fn test_insert_rlu_and_ttl() {
