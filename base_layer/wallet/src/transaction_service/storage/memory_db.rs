@@ -33,6 +33,7 @@ use crate::{
             DbValue,
             InboundTransaction,
             OutboundTransaction,
+            PendingCoinbaseTransaction,
             TransactionBackend,
             WriteOperation,
         },
@@ -46,6 +47,7 @@ use std::{
 struct InnerDatabase {
     pending_outbound_transactions: HashMap<TxId, OutboundTransaction>,
     pending_inbound_transactions: HashMap<TxId, InboundTransaction>,
+    pending_coinbase_transactions: HashMap<TxId, PendingCoinbaseTransaction>,
     completed_transactions: HashMap<TxId, CompletedTransaction>,
 }
 
@@ -54,6 +56,7 @@ impl InnerDatabase {
         Self {
             pending_outbound_transactions: HashMap::new(),
             pending_inbound_transactions: HashMap::new(),
+            pending_coinbase_transactions: HashMap::new(),
             completed_transactions: HashMap::new(),
         }
     }
@@ -88,11 +91,18 @@ impl TransactionBackend for TransactionMemoryDatabase {
                 .completed_transactions
                 .get(t)
                 .map(|v| DbValue::CompletedTransaction(Box::new(v.clone()))),
+            DbKey::PendingCoinbaseTransaction(t) => db
+                .pending_coinbase_transactions
+                .get(t)
+                .map(|v| DbValue::PendingCoinbaseTransaction(Box::new(v.clone()))),
             DbKey::PendingOutboundTransactions => Some(DbValue::PendingOutboundTransactions(
                 db.pending_outbound_transactions.clone(),
             )),
             DbKey::PendingInboundTransactions => Some(DbValue::PendingInboundTransactions(
                 db.pending_inbound_transactions.clone(),
+            )),
+            DbKey::PendingCoinbaseTransactions => Some(DbValue::PendingCoinbaseTransactions(
+                db.pending_coinbase_transactions.clone(),
             )),
             DbKey::CompletedTransactions => Some(DbValue::CompletedTransactions(db.completed_transactions.clone())),
         };
@@ -106,9 +116,11 @@ impl TransactionBackend for TransactionMemoryDatabase {
             DbKey::PendingOutboundTransaction(k) => db.pending_outbound_transactions.contains_key(k),
             DbKey::PendingInboundTransaction(k) => db.pending_inbound_transactions.contains_key(k),
             DbKey::CompletedTransaction(k) => db.completed_transactions.contains_key(k),
+            DbKey::PendingCoinbaseTransaction(k) => db.pending_coinbase_transactions.contains_key(k),
             DbKey::PendingOutboundTransactions => false,
             DbKey::PendingInboundTransactions => false,
             DbKey::CompletedTransactions => false,
+            DbKey::PendingCoinbaseTransactions => false,
         };
 
         Ok(result)
@@ -130,6 +142,13 @@ impl TransactionBackend for TransactionMemoryDatabase {
                     }
                     db.pending_inbound_transactions.insert(k, *v);
                 },
+                DbKeyValuePair::PendingCoinbaseTransaction(k, v) => {
+                    if db.pending_coinbase_transactions.contains_key(&k) {
+                        return Err(TransactionStorageError::DuplicateOutput);
+                    }
+                    db.pending_coinbase_transactions.insert(k, *v);
+                },
+
                 DbKeyValuePair::CompletedTransaction(k, v) => {
                     if db.completed_transactions.contains_key(&k) {
                         return Err(TransactionStorageError::DuplicateOutput);
@@ -156,6 +175,15 @@ impl TransactionBackend for TransactionMemoryDatabase {
                         ));
                     }
                 },
+                DbKey::PendingCoinbaseTransaction(k) => {
+                    if let Some(p) = db.pending_coinbase_transactions.remove(&k) {
+                        return Ok(Some(DbValue::PendingCoinbaseTransaction(Box::new(p))));
+                    } else {
+                        return Err(TransactionStorageError::ValueNotFound(
+                            DbKey::PendingCoinbaseTransaction(k),
+                        ));
+                    }
+                },
                 DbKey::CompletedTransaction(k) => {
                     if let Some(p) = db.completed_transactions.remove(&k) {
                         return Ok(Some(DbValue::CompletedTransaction(Box::new(p))));
@@ -166,6 +194,8 @@ impl TransactionBackend for TransactionMemoryDatabase {
                 DbKey::PendingInboundTransactions => return Err(TransactionStorageError::OperationNotSupported),
                 DbKey::PendingOutboundTransactions => return Err(TransactionStorageError::OperationNotSupported),
                 DbKey::CompletedTransactions => return Err(TransactionStorageError::OperationNotSupported),
+
+                DbKey::PendingCoinbaseTransactions => return Err(TransactionStorageError::OperationNotSupported),
             },
         }
 
@@ -215,6 +245,28 @@ impl TransactionBackend for TransactionMemoryDatabase {
             ))?;
 
         db.completed_transactions.insert(tx_id, transaction);
+        Ok(())
+    }
+
+    fn complete_coinbase_transaction(
+        &mut self,
+        tx_id: u64,
+        completed_transaction: CompletedTransaction,
+    ) -> Result<(), TransactionStorageError>
+    {
+        let mut db = acquire_write_lock!(self.db);
+
+        if db.completed_transactions.contains_key(&tx_id) {
+            return Err(TransactionStorageError::TransactionAlreadyExists);
+        }
+        let _ = db
+            .pending_coinbase_transactions
+            .remove(&tx_id)
+            .ok_or(TransactionStorageError::ValueNotFound(
+                DbKey::PendingCoinbaseTransaction(tx_id.clone()),
+            ))?;
+
+        db.completed_transactions.insert(tx_id, completed_transaction);
         Ok(())
     }
 

@@ -258,6 +258,7 @@ where T: OutputManagerBackend
         tx_id: &TxId,
         amount: &MicroTari,
         spending_key: &PrivateKey,
+        output_features: OutputFeatures,
     ) -> Result<(), OutputManagerStorageError>
     {
         self.db
@@ -269,7 +270,7 @@ where T: OutputManagerBackend
                     outputs_to_be_received: vec![UnblindedOutput {
                         value: amount.clone(),
                         spending_key: spending_key.clone(),
-                        features: OutputFeatures::default(),
+                        features: output_features,
                     }],
                     timestamp: Utc::now().naive_utc(),
                 }),
@@ -313,7 +314,6 @@ where T: OutputManagerBackend
         }?;
 
         uo.sort();
-
         Ok(uo)
     }
 

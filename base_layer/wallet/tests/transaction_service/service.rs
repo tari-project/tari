@@ -38,7 +38,10 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
 };
 use tari_comms_dht::outbound::mock::{create_outbound_service_mock, OutboundServiceMockState};
-use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::{PublicKey as PK, SecretKey as SK},
+};
 use tari_p2p::{
     comms_connector::pubsub_connector,
     domain_message::DomainMessage,
@@ -48,13 +51,13 @@ use tari_service_framework::{reply_channel, StackBuilder};
 use tari_test_utils::{collect_stream, paths::with_temp_dir};
 use tari_transactions::{
     tari_amount::*,
-    transaction::{KernelFeatures, OutputFeatures, Transaction},
+    transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction, TransactionOutput},
     transaction_protocol::{
         proto,
         recipient::{RecipientSignedMessage, RecipientState},
         sender::TransactionSenderMessage,
     },
-    types::{CryptoFactories, PrivateKey, PublicKey},
+    types::{CryptoFactories, PrivateKey, PublicKey, RangeProof, Signature},
     ReceiverTransactionProtocol,
 };
 use tari_wallet::{
@@ -1152,4 +1155,111 @@ fn discovery_async_return_test() {
             }
         )
         .is_some());
+}
+
+fn test_coinbase<T: TransactionBackend + Clone + 'static>(backend: T) {
+    let runtime = Builder::new().core_threads(8).build().unwrap();
+    let factories = CryptoFactories::default();
+
+    let (mut alice_ts, mut alice_output_manager, _alice_outbound_service, _alice_tx_sender, _alice_tx_ack_sender, _) =
+        setup_transaction_service_no_comms(&runtime, factories.clone(), backend);
+
+    let balance = runtime.block_on(alice_output_manager.get_balance()).unwrap();
+    assert_eq!(balance.pending_incoming_balance, MicroTari(0));
+
+    let coinbase = runtime
+        .block_on(alice_ts.request_coinbase_key(MicroTari::from(4000), 7777))
+        .unwrap();
+
+    let balance = runtime.block_on(alice_output_manager.get_balance()).unwrap();
+    assert_eq!(balance.pending_incoming_balance, MicroTari(4000));
+
+    runtime
+        .block_on(alice_ts.cancel_coinbase_transaction(coinbase.tx_id))
+        .unwrap();
+
+    let balance = runtime.block_on(alice_output_manager.get_balance()).unwrap();
+    assert_eq!(balance.pending_incoming_balance, MicroTari(0));
+
+    let coinbase = runtime
+        .block_on(alice_ts.request_coinbase_key(MicroTari::from(7000), 7778))
+        .unwrap();
+
+    let output = TransactionOutput::new(
+        OutputFeatures::create_coinbase(7778),
+        factories.commitment.commit_value(&coinbase.spending_key, 7000),
+        RangeProof::default(),
+    );
+    let kernel = KernelBuilder::new()
+        .with_features(KernelFeatures::create_coinbase())
+        .with_excess(&factories.commitment.zero())
+        .with_signature(&Signature::default())
+        .build()
+        .unwrap();
+    let output_wrong_commitment = TransactionOutput::new(
+        OutputFeatures::create_coinbase(1000),
+        factories.commitment.commit_value(&coinbase.spending_key, 2222),
+        RangeProof::default(),
+    );
+
+    let output_wrong_feature = TransactionOutput::new(
+        OutputFeatures::default(),
+        factories.commitment.commit_value(&coinbase.spending_key, 7000),
+        RangeProof::default(),
+    );
+
+    let transaction_wrong_commitment = Transaction::new(
+        Vec::new(),
+        vec![output_wrong_commitment.clone()],
+        vec![kernel.clone()],
+        PrivateKey::default(),
+    );
+    let transaction_wrong_feature = Transaction::new(
+        Vec::new(),
+        vec![output_wrong_feature.clone()],
+        vec![kernel.clone()],
+        PrivateKey::default(),
+    );
+    let transaction = Transaction::new(
+        Vec::new(),
+        vec![output.clone()],
+        vec![kernel.clone()],
+        PrivateKey::default(),
+    );
+
+    assert!(runtime
+        .block_on(alice_ts.complete_coinbase_transaction(55, transaction.clone()))
+        .is_err());
+
+    assert!(runtime
+        .block_on(alice_ts.complete_coinbase_transaction(coinbase.tx_id, transaction_wrong_commitment.clone()))
+        .is_err());
+
+    assert!(runtime
+        .block_on(alice_ts.complete_coinbase_transaction(coinbase.tx_id, transaction_wrong_feature.clone()))
+        .is_err());
+
+    runtime
+        .block_on(alice_ts.complete_coinbase_transaction(coinbase.tx_id, transaction))
+        .unwrap();
+
+    let completed_txs = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
+
+    assert_eq!(completed_txs.len(), 1);
+    assert!(completed_txs.get(&coinbase.tx_id).is_some());
+}
+
+#[test]
+fn test_coinbase_memory_db() {
+    test_coinbase(TransactionMemoryDatabase::new());
+}
+
+#[test]
+fn test_coinbase_sqlite_db() {
+    with_temp_dir(|dir_path| {
+        let path_string = dir_path.to_str().unwrap().to_string();
+        let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let alice_db_path = format!("{}/{}", path_string, alice_db_name);
+        test_coinbase(TransactionServiceSqliteDatabase::new(alice_db_path).unwrap());
+    });
 }

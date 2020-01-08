@@ -1,4 +1,13 @@
 table! {
+    coinbase_transactions (tx_id) {
+        tx_id -> BigInt,
+        amount -> BigInt,
+        commitment -> Binary,
+        timestamp -> Timestamp,
+    }
+}
+
+table! {
     completed_transactions (tx_id) {
         tx_id -> BigInt,
         source_public_key -> Binary,
@@ -82,6 +91,7 @@ table! {
 joinable!(outputs -> pending_transaction_outputs (tx_id));
 
 allow_tables_to_appear_in_same_query!(
+    coinbase_transactions,
     completed_transactions,
     contacts,
     inbound_transactions,
