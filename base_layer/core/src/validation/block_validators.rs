@@ -21,7 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{blockheader::BlockHeader, Block, BlockValidationError, NewBlockTemplate},
+    blocks::{
+        blockheader::BlockHeader,
+        genesis_block::get_gen_block_hash,
+        Block,
+        BlockValidationError,
+        NewBlockTemplate,
+    },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::PowError,
@@ -134,10 +140,13 @@ fn check_achieved_difficulty<B: BlockchainBackend>(
     rules: ConsensusManager<B>,
 ) -> Result<(), ValidationError>
 {
-    let target = rules.get_target_difficulty(&block_header.pow.pow_algo).map_err(|_| {
-        ValidationError::BlockError(BlockValidationError::ProofOfWorkError(PowError::InvalidProofOfWork))
-    })?;
     let achieved = block_header.achieved_difficulty();
+    let mut target = 1.into();
+    if block_header.height > 0 || get_gen_block_hash() != block_header.hash() {
+        target = rules.get_target_difficulty(&block_header.pow.pow_algo).map_err(|_| {
+            ValidationError::BlockError(BlockValidationError::ProofOfWorkError(PowError::InvalidProofOfWork))
+        })?;
+    }
     if achieved < target {
         return Err(ValidationError::BlockError(BlockValidationError::ProofOfWorkError(
             PowError::AchievedDifficultyTooLow,
@@ -154,6 +163,9 @@ fn check_timestamp_range<B: BlockchainBackend>(
 {
     if block_header.timestamp > ConsensusConstants::current().ftl() {
         return Err(ValidationError::BlockError(BlockValidationError::InvalidTimestamp));
+    }
+    if block_header.height == 0 || get_gen_block_hash() == block_header.hash() {
+        return Ok(()); // Its the genesis block, so we dont have to check median
     }
     let median_timestamp = rules
         .get_median_timestamp()

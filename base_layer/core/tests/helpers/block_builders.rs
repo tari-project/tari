@@ -22,14 +22,30 @@
 
 use tari_core::{
     blocks::{Block, BlockBuilder, BlockHeader, NewBlockTemplate},
-    chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, MemoryDatabase},
+    chain_storage::{
+        BlockAddResult,
+        BlockchainBackend,
+        BlockchainDatabase,
+        ChainStorageError,
+        MemoryDatabase,
+        Validators,
+    },
+    consensus::emission::EmissionSchedule,
+    validation::mocks::MockValidator,
 };
 use tari_transactions::{
-    helpers::{create_random_signature, create_utxo, spend_utxos, TransactionSchema},
+    helpers::{
+        create_random_signature,
+        create_random_signature_from_s_key,
+        create_utxo,
+        spend_utxos,
+        TransactionSchema,
+    },
     tari_amount::MicroTari,
     transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction, UnblindedOutput},
     types::{Commitment, CryptoFactories, HashDigest, PublicKey},
 };
+use tari_utilities::{hash::Hashable, hex::Hex};
 
 fn genesis_template(factories: &&CryptoFactories) -> (NewBlockTemplate, UnblindedOutput) {
     let header = BlockHeader::new(0);
@@ -53,6 +69,42 @@ fn genesis_template(factories: &&CryptoFactories) -> (NewBlockTemplate, Unblinde
     );
     let output = UnblindedOutput::new(value, key, Some(features));
     (block, output)
+}
+
+// this test is used to help generate and print out a block
+// this was used to generate the genesis block
+#[ignore]
+#[test]
+fn create_act_gen_block() {
+    let factories = CryptoFactories::default();
+    let mut header = BlockHeader::new(0);
+    let emission_schedule = EmissionSchedule::new(10_000_000.into(), 0.999, 100.into());
+    let value = emission_schedule.supply_at_block(0);
+    let (mut utxo, key) = create_utxo(value, &factories);
+    utxo.features = OutputFeatures::create_coinbase(1);
+    let (pk, sig) = create_random_signature_from_s_key(key.clone(), 0.into(), 0);
+    let excess = Commitment::from_public_key(&pk);
+    let kernel = KernelBuilder::new()
+        .with_signature(&sig)
+        .with_excess(&excess)
+        .with_features(KernelFeatures::COINBASE_KERNEL)
+        .build()
+        .unwrap();
+
+    let utxo_hash = utxo.hash();
+    let rp = utxo.proof().hash();
+    let kern = kernel.hash();
+    header.kernel_mr = kern;
+    header.output_mr = utxo_hash;
+    header.range_proof_mr = rp;
+    let block = BlockBuilder::new()
+        .with_header(header)
+        .with_coinbase_utxo(utxo, kernel)
+        .build();
+    println!("{}", &block);
+    dbg!(&key.to_hex());
+    dbg!(&block.body.outputs()[0].proof.to_hex());
+    assert!(false); // this is so that the output is printed
 }
 
 /// Create a genesis block returning it with the spending key for the coinbase utxo
