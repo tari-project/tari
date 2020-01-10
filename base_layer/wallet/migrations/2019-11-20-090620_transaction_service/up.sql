@@ -17,6 +17,13 @@ CREATE TABLE inbound_transactions (
     timestamp DATETIME NOT NULL
 );
 
+CREATE TABLE coinbase_transactions (
+    tx_id INTEGER PRIMARY KEY NOT NULL,
+    amount INTEGER NOT NULL,
+    commitment BLOB NOT NULL,
+    timestamp DATETIME NOT NULL
+);
+
 CREATE TABLE completed_transactions (
     tx_id INTEGER PRIMARY KEY NOT NULL,
     source_public_key BLOB NOT NULL,

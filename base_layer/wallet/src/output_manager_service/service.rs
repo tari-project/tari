@@ -169,6 +169,9 @@ where T: OutputManagerBackend
                 .fetch_unspent_outputs()
                 .map(|o| OutputManagerResponse::UnspentOutputs(o)),
             OutputManagerRequest::GetSeedWords => self.get_seed_words().map(|sw| OutputManagerResponse::SeedWords(sw)),
+            OutputManagerRequest::GetCoinbaseKey((tx_id, amount, maturity_height)) => self
+                .get_coinbase_spending_key(tx_id, amount, maturity_height)
+                .map(|k| OutputManagerResponse::RecipientKeyGenerated(k)),
         }
     }
 
@@ -192,7 +195,34 @@ where T: OutputManagerBackend
 
         let key = km.next_key()?.k;
         self.db.increment_key_index()?;
-        self.db.accept_incoming_pending_transaction(&tx_id, &amount, &key)?;
+        self.db
+            .accept_incoming_pending_transaction(&tx_id, &amount, &key, OutputFeatures::default())?;
+
+        Ok(key)
+    }
+
+    /// Request a spending key to be used to accept a coinbase output to be mined with the specified maturity height
+    /// # Arguments:
+    /// 'tx_id': the TxId that this coinbase transaction has been assigned
+    /// 'amount': Amount of MicroTari the coinbase has as a value
+    /// 'maturity_height': The block height at which this coinbase output becomes spendable
+    pub fn get_coinbase_spending_key(
+        &mut self,
+        tx_id: TxId,
+        amount: MicroTari,
+        maturity_height: u64,
+    ) -> Result<PrivateKey, OutputManagerError>
+    {
+        let mut km = acquire_lock!(self.key_manager);
+
+        let key = km.next_key()?.k;
+        self.db.increment_key_index()?;
+        self.db.accept_incoming_pending_transaction(
+            &tx_id,
+            &amount,
+            &key,
+            OutputFeatures::create_coinbase(maturity_height),
+        )?;
 
         Ok(key)
     }

@@ -41,6 +41,7 @@ pub enum OutputManagerRequest {
     GetBalance,
     AddOutput(UnblindedOutput),
     GetRecipientKey((u64, MicroTari)),
+    GetCoinbaseKey((u64, MicroTari, u64)),
     ConfirmReceivedOutput((u64, TransactionOutput)),
     ConfirmSentTransaction((u64, Vec<TransactionInput>, Vec<TransactionOutput>)),
     PrepareToSendTransaction((MicroTari, MicroTari, Option<u64>, String)),
@@ -101,6 +102,23 @@ impl OutputManagerHandle {
         match self
             .handle
             .call(OutputManagerRequest::GetRecipientKey((tx_id, amount)))
+            .await??
+        {
+            OutputManagerResponse::RecipientKeyGenerated(k) => Ok(k),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_coinbase_spending_key(
+        &mut self,
+        tx_id: u64,
+        amount: MicroTari,
+        maturity_height: u64,
+    ) -> Result<PrivateKey, OutputManagerError>
+    {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetCoinbaseKey((tx_id, amount, maturity_height)))
             .await??
         {
             OutputManagerResponse::RecipientKeyGenerated(k) => Ok(k),

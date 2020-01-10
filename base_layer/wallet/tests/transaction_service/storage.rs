@@ -22,12 +22,15 @@
 
 use crate::support::utils::random_string;
 use chrono::Utc;
-use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+};
 use tari_transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, Transaction, UnblindedOutput},
     transaction_protocol::sender::TransactionSenderMessage,
-    types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
+    types::{CommitmentFactory, CryptoFactories, HashDigest, PrivateKey, PublicKey},
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
@@ -36,6 +39,7 @@ use tari_wallet::transaction_service::storage::{
         CompletedTransaction,
         InboundTransaction,
         OutboundTransaction,
+        PendingCoinbaseTransaction,
         TransactionBackend,
         TransactionDatabase,
         TransactionStatus,
@@ -139,6 +143,37 @@ pub fn test_db_backend<T: TransactionBackend>(backend: T) {
         );
     }
 
+    let mut coinbases = Vec::new();
+    for i in 0..messages.len() {
+        coinbases.push(PendingCoinbaseTransaction {
+            tx_id: (i + 100) as u64,
+            amount: amounts[i].clone(),
+            commitment: CommitmentFactory::default().zero(),
+            timestamp: Utc::now().naive_utc(),
+        });
+
+        assert!(!db.transaction_exists(&((i + 100) as u64)).unwrap());
+        db.add_pending_coinbase_transaction((i + 100) as u64, coinbases[i].clone())
+            .unwrap();
+        assert!(db.transaction_exists(&&((i + 100) as u64)).unwrap());
+    }
+
+    db.add_pending_coinbase_transaction(9999u64, PendingCoinbaseTransaction {
+        tx_id: 9999u64,
+        amount: MicroTari::from(10000),
+        commitment: CommitmentFactory::default().zero(),
+        timestamp: Utc::now().naive_utc(),
+    })
+    .unwrap();
+
+    db.cancel_coinbase_transaction(9999u64).unwrap();
+
+    let read_coinbases = db.get_pending_coinbase_transactions().unwrap();
+    assert_eq!(read_coinbases.len(), messages.len());
+    for i in 0..messages.len() {
+        assert_eq!(read_coinbases.get(&coinbases[i].tx_id).unwrap(), &coinbases[i]);
+    }
+
     let mut completed_txs = Vec::new();
     let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut rng));
 
@@ -165,10 +200,15 @@ pub fn test_db_backend<T: TransactionBackend>(backend: T) {
             ..completed_txs[i].clone()
         })
         .unwrap();
+        db.complete_coinbase_transaction(coinbases[i].tx_id, CompletedTransaction {
+            tx_id: coinbases[i].tx_id,
+            ..completed_txs[i].clone()
+        })
+        .unwrap();
     }
 
     let retrieved_completed_txs = db.get_completed_transactions().unwrap();
-    assert_eq!(retrieved_completed_txs.len(), 2 * messages.len());
+    assert_eq!(retrieved_completed_txs.len(), 3 * messages.len());
 
     for i in 0..messages.len() {
         assert_eq!(
@@ -181,6 +221,13 @@ pub fn test_db_backend<T: TransactionBackend>(backend: T) {
         assert_eq!(
             retrieved_completed_txs.get(&outbound_txs[i].tx_id).unwrap(),
             &completed_txs[i]
+        );
+        assert_eq!(
+            retrieved_completed_txs.get(&coinbases[i].tx_id).unwrap(),
+            &CompletedTransaction {
+                tx_id: coinbases[i].tx_id,
+                ..completed_txs[i].clone()
+            }
         );
     }
 

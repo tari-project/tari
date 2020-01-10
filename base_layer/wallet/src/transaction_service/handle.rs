@@ -24,6 +24,7 @@ use crate::{
     output_manager_service::TxId,
     transaction_service::{
         error::TransactionServiceError,
+        service::PendingCoinbaseSpendingKey,
         storage::database::{CompletedTransaction, InboundTransaction, OutboundTransaction},
     },
 };
@@ -32,7 +33,7 @@ use std::collections::HashMap;
 use tari_broadcast_channel::Subscriber;
 use tari_comms::types::CommsPublicKey;
 use tari_service_framework::reply_channel::SenderService;
-use tari_transactions::tari_amount::MicroTari;
+use tari_transactions::{tari_amount::MicroTari, transaction::Transaction};
 use tower::Service;
 
 /// API Request enum
@@ -42,6 +43,9 @@ pub enum TransactionServiceRequest {
     GetPendingOutboundTransactions,
     GetCompletedTransactions,
     SendTransaction((CommsPublicKey, MicroTari, MicroTari, String)),
+    RequestCoinbaseSpendingKey((MicroTari, u64)),
+    CompleteCoinbaseTransaction((TxId, Transaction)),
+    CancelPendingCoinbaseTransaction(TxId),
     #[cfg(feature = "test_harness")]
     CompletePendingOutboundTransaction(CompletedTransaction),
     #[cfg(feature = "test_harness")]
@@ -61,6 +65,9 @@ pub enum TransactionServiceResponse {
     PendingInboundTransactions(HashMap<u64, InboundTransaction>),
     PendingOutboundTransactions(HashMap<u64, OutboundTransaction>),
     CompletedTransactions(HashMap<u64, CompletedTransaction>),
+    CoinbaseKey(PendingCoinbaseSpendingKey),
+    CompletedCoinbaseTransactionReceived,
+    CoinbaseTransactionCancelled,
     #[cfg(feature = "test_harness")]
     CompletedPendingTransaction,
     #[cfg(feature = "test_harness")]
@@ -87,6 +94,8 @@ pub enum TransactionEvent {
     Error(String),
 }
 
+/// The Transaction Service Handle is a struct that contains the interfaces used to communicate with a running
+/// Transaction Service
 #[derive(Clone)]
 pub struct TransactionServiceHandle {
     handle: SenderService<TransactionServiceRequest, Result<TransactionServiceResponse, TransactionServiceError>>,
@@ -164,6 +173,55 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::CompletedTransactions(c) => Ok(c),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn request_coinbase_key(
+        &mut self,
+        amount: MicroTari,
+        maturity_height: u64,
+    ) -> Result<PendingCoinbaseSpendingKey, TransactionServiceError>
+    {
+        match self
+            .handle
+            .call(TransactionServiceRequest::RequestCoinbaseSpendingKey((
+                amount,
+                maturity_height,
+            )))
+            .await??
+        {
+            TransactionServiceResponse::CoinbaseKey(c) => Ok(c),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn complete_coinbase_transaction(
+        &mut self,
+        tx_id: TxId,
+        completed_transaction: Transaction,
+    ) -> Result<(), TransactionServiceError>
+    {
+        match self
+            .handle
+            .call(TransactionServiceRequest::CompleteCoinbaseTransaction((
+                tx_id,
+                completed_transaction,
+            )))
+            .await??
+        {
+            TransactionServiceResponse::CompletedCoinbaseTransactionReceived => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn cancel_coinbase_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::CancelPendingCoinbaseTransaction(tx_id))
+            .await??
+        {
+            TransactionServiceResponse::CoinbaseTransactionCancelled => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

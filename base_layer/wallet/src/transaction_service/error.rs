@@ -68,6 +68,8 @@ pub enum TransactionServiceError {
     /// Discovery process failed to return a result
     #[error(no_from, non_std)]
     DiscoveryProcessFailed(TxId),
+    /// Invalid Completed Transaction provided
+    InvalidCompletedTransaction,
     DhtOutboundError(DhtOutboundError),
     OutputManagerError(OutputManagerError),
     TransportChannelError(TransportChannelError),

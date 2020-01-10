@@ -27,6 +27,7 @@ use std::time::Duration;
 use tari_crypto::keys::SecretKey;
 use tari_transactions::{
     tari_amount::MicroTari,
+    transaction::OutputFeatures,
     types::{CryptoFactories, PrivateKey},
 };
 use tari_wallet::output_manager_service::{
@@ -183,8 +184,13 @@ pub fn test_db_backend<T: OutputManagerBackend>(backend: T) {
         MicroTari::from(100 + rng.next_u64() % 1000),
         &factories.commitment,
     );
-    db.accept_incoming_pending_transaction(&5, &uo_incoming.value, &uo_incoming.spending_key)
-        .unwrap();
+    db.accept_incoming_pending_transaction(
+        &5,
+        &uo_incoming.value,
+        &uo_incoming.spending_key,
+        OutputFeatures::default(),
+    )
+    .unwrap();
 
     pending_incoming_balance += uo_incoming.clone().value;
 
