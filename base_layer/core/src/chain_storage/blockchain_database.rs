@@ -202,7 +202,7 @@ macro_rules! fetch {
 /// let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
 /// let db = MemoryDatabase::<HashDigest>::default();
 /// let mut db = BlockchainDatabase::new(db_backend).unwrap();
-/// db.add_validators(validators);
+/// db.set_validators(validators);
 /// // Do stuff with db
 /// ```
 pub struct BlockchainDatabase<T>
