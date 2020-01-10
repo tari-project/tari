@@ -226,7 +226,7 @@ where T: BlockchainBackend
         })
     }
 
-    pub fn add_validators(&mut self, validators: Validators<T>) {
+    pub fn set_validators(&mut self, validators: Validators<T>) {
         self.validators = Some(validators);
     }
 
