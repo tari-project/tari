@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
 
 use crate::helpers::{
     block_builders::{append_block, create_genesis_block, create_genesis_block_with_utxos, generate_new_block},
@@ -28,7 +27,7 @@ use crate::helpers::{
 use env_logger;
 use std::thread;
 use tari_core::{
-    blocks::{genesis_block::get_genesis_block, Block, BlockHeader},
+    blocks::{Block, BlockHeader},
     chain_storage::{
         BlockAddResult,
         BlockchainDatabase,
@@ -36,7 +35,6 @@ use tari_core::{
         DbKey,
         DbTransaction,
         MemoryDatabase,
-        MetadataKey,
         MmrTree,
         Validators,
     },
@@ -95,7 +93,7 @@ fn insert_and_fetch_header() {
     header.height = 42;
 
     let mut txn = DbTransaction::new();
-    txn.insert_header(header.clone(), true);
+    txn.insert_header(header.clone());
     assert!(store.commit(txn).is_ok());
     assert_eq!(
         store.fetch_header(0),
@@ -198,31 +196,6 @@ fn utxo_and_rp_merkle_root() {
 }
 
 #[test]
-fn header_merkle_root() {
-    let store = create_mem_db();
-    let root = store.fetch_mmr_root(MmrTree::Header).unwrap();
-    // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
-    assert_eq!(
-        &root.to_hex(),
-        "26146a5435ef15e8cf7dc3354cb7268137e8be211794e93d04551576c6561565"
-    );
-    let header1 = BlockHeader::new(0);
-    let mut header2 = BlockHeader::new(0);
-    header2.height = 1;
-    let hash1 = header1.hash();
-    let hash2 = header2.hash();
-    let mut txn = DbTransaction::new();
-    txn.insert_header(header1, true);
-    txn.insert_header(header2, true);
-    assert!(store.commit(txn).is_ok());
-    let root = store.fetch_mmr_root(MmrTree::Header).unwrap();
-    let mut mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new());
-    assert!(mmr_check.push(&hash1).is_ok());
-    assert!(mmr_check.push(&hash2).is_ok());
-    assert_eq!(root.to_hex(), mmr_check.get_merkle_root().unwrap().to_hex());
-}
-
-#[test]
 fn kernel_merkle_root() {
     let store = create_mem_db();
     let root = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
@@ -290,32 +263,6 @@ fn utxo_and_rp_future_merkle_root() {
 }
 
 #[test]
-fn header_future_merkle_root() {
-    let store = create_mem_db();
-
-    let header1 = BlockHeader::new(0);
-    let mut header2 = BlockHeader::new(0);
-    header2.height = 1;
-    let hash2 = header2.hash();
-
-    let mut txn = DbTransaction::new();
-    txn.insert_header(header1, true);
-    assert!(store.commit(txn).is_ok());
-
-    let future_root = store
-        .calculate_mmr_root(MmrTree::Header, vec![hash2], Vec::new())
-        .unwrap()
-        .to_hex();
-    assert_ne!(future_root, store.fetch_mmr_root(MmrTree::Header).unwrap().to_hex());
-
-    let mut txn = DbTransaction::new();
-    txn.insert_header(header2, true);
-    assert!(store.commit(txn).is_ok());
-
-    assert_eq!(future_root, store.fetch_mmr_root(MmrTree::Header).unwrap().to_hex());
-}
-
-#[test]
 fn kernel_future_merkle_root() {
     let store = create_mem_db();
 
@@ -364,31 +311,6 @@ fn utxo_and_rp_mmr_proof() {
     assert!(proof1.verify_leaf::<HashDigest>(&root, &utxo1.hash(), 0).is_ok());
     assert!(proof2.verify_leaf::<HashDigest>(&root, &utxo2.hash(), 1).is_ok());
     assert!(proof3.verify_leaf::<HashDigest>(&root, &utxo3.hash(), 2).is_ok());
-}
-
-#[test]
-fn header_mmr_proof() {
-    let store = create_mem_db();
-
-    let mut header1 = BlockHeader::new(0);
-    header1.height = 1;
-    let mut header2 = BlockHeader::new(0);
-    header2.height = 2;
-    let mut header3 = BlockHeader::new(0);
-    header3.height = 3;
-    let mut txn = DbTransaction::new();
-    txn.insert_header(header1.clone(), true);
-    txn.insert_header(header2.clone(), true);
-    txn.insert_header(header3.clone(), true);
-    assert!(store.commit(txn).is_ok());
-
-    let root = store.fetch_mmr_only_root(MmrTree::Header).unwrap();
-    let proof1 = store.fetch_mmr_proof(MmrTree::Header, 0).unwrap();
-    let proof2 = store.fetch_mmr_proof(MmrTree::Header, 1).unwrap();
-    let proof3 = store.fetch_mmr_proof(MmrTree::Header, 2).unwrap();
-    assert!(proof1.verify_leaf::<HashDigest>(&root, &header1.hash(), 0).is_ok());
-    assert!(proof2.verify_leaf::<HashDigest>(&root, &header2.hash(), 1).is_ok());
-    assert!(proof3.verify_leaf::<HashDigest>(&root, &header3.hash(), 2).is_ok());
 }
 
 #[test]

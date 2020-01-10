@@ -305,6 +305,11 @@ where T: BlockchainBackend
         Ok(metadata.height_of_longest_chain)
     }
 
+    /// Returns the height of earliest block that the backend can provide full data for.
+    pub fn fetch_horizon_block_height(&self) -> Result<u64, ChainStorageError> {
+        self.db.fetch_horizon_block_height()
+    }
+
     /// Returns a copy of the current blockchain database metadata
     pub fn get_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
         let db = self.access_metadata()?;
@@ -479,7 +484,7 @@ where T: BlockchainBackend
         let (header, inputs, outputs, kernels) = block.dissolve();
         // Build all the DB queries needed to add the block and the add it atomically
         let mut txn = DbTransaction::new();
-        txn.insert_header(header, false);
+        txn.insert_header(header);
         txn.spend_inputs(&inputs);
         outputs.iter().for_each(|utxo| txn.insert_utxo(utxo.clone(), true));
         kernels.iter().for_each(|k| txn.insert_kernel(k.clone(), true));
@@ -638,15 +643,11 @@ where T: BlockchainBackend
             let orphaned_block = self.fetch_block(rewind_height)?.block().clone();
             txn.insert_orphan(orphaned_block);
 
-            // Remove Headers
+            // Remove Header and block hash
+            let rewind_header = self.fetch_header(rewind_height)?;
             txn.delete(DbKey::BlockHeader(rewind_height));
-            // Remove block_hashes
-            self.fetch_mmr_checkpoint(MmrTree::Header, rewind_height)?
-                .nodes_added()
-                .iter()
-                .for_each(|hash_output| {
-                    txn.delete(DbKey::BlockHash(hash_output.clone()));
-                });
+            txn.delete(DbKey::BlockHash(rewind_header.hash()));
+
             // Remove Kernels
             self.fetch_mmr_checkpoint(MmrTree::Kernel, rewind_height)?
                 .nodes_added()
@@ -671,7 +672,6 @@ where T: BlockchainBackend
             }
         }
         // Rewind MMRs
-        txn.rewind_header_mmr(steps_back);
         txn.rewind_kernel_mmr(steps_back);
         txn.rewind_utxo_mmr(steps_back);
         txn.rewind_rp_mmr(steps_back);

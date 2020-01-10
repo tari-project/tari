@@ -19,25 +19,16 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
 
 use tari_core::{
     blocks::{Block, BlockBuilder, BlockHeader, NewBlockTemplate},
-    chain_storage::{
-        BlockAddResult,
-        BlockchainBackend,
-        BlockchainDatabase,
-        ChainStorageError,
-        MemoryDatabase,
-        Validators,
-    },
-    validation::mocks::MockValidator,
+    chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, MemoryDatabase},
 };
 use tari_transactions::{
     helpers::{create_random_signature, create_utxo, spend_utxos, TransactionSchema},
     tari_amount::MicroTari,
-    transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
-    types::{Commitment, CryptoFactories, HashDigest, PrivateKey, PublicKey},
+    transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction, UnblindedOutput},
+    types::{Commitment, CryptoFactories, HashDigest, PublicKey},
 };
 
 fn genesis_template(factories: &&CryptoFactories) -> (NewBlockTemplate, UnblindedOutput) {

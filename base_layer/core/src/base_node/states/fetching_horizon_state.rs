@@ -154,7 +154,7 @@ impl HorizonInfo {
         shared: &mut BaseNodeStateMachine<B>,
     ) -> Result<(), String>
     {
-        let height_indices = (0..self.horizon_block).collect::<Vec<u64>>();
+        let height_indices = (0..=self.horizon_block).collect::<Vec<u64>>();
         for block_nums in height_indices.chunks(shared.config.horizon_sync_config.headers_sync_chunk_size) {
             let headers = shared
                 .comms
@@ -163,7 +163,7 @@ impl HorizonInfo {
                 .map_err(|e| e.to_string())?;
 
             let mut txn = DbTransaction::new();
-            headers.into_iter().for_each(|header| txn.insert_header(header, false));
+            headers.into_iter().for_each(|header| txn.insert_header(header));
             shared.db.commit(txn).map_err(|e| e.to_string())?;
         }
 

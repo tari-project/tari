@@ -19,14 +19,13 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
 
 #[allow(dead_code)]
 mod helpers;
 
 use helpers::{
     block_builders::{append_block, create_genesis_block, create_genesis_block_with_utxos, generate_new_block},
-    nodes::{create_network_with_2_base_nodes, create_network_with_2_base_nodes_with_config},
+    nodes::create_network_with_2_base_nodes_with_config,
 };
 use tari_core::{
     base_node::{
@@ -53,7 +52,17 @@ fn test_horizon_state_sync() {
     let runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (alice_node, mut bob_node) = create_network_with_2_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 1,
+        max_history_len: 3,
+    };
+    let (alice_node, mut bob_node) = create_network_with_2_base_nodes_with_config(
+        &runtime,
+        BaseNodeServiceConfig::default(),
+        mct_config,
+        MempoolServiceConfig::default(),
+        temp_dir.path().to_str().unwrap(),
+    );
     let state_machine_config = BaseNodeStateMachineConfig {
         horizon_sync_config: HorizonSyncConfig {
             leaf_nodes_sync_chunk_size: 5,
@@ -86,9 +95,8 @@ fn test_horizon_state_sync() {
     let bob_kernel_mmr_state = db.fetch_mmr_base_leaf_nodes(MmrTree::Kernel, 0, 1000).unwrap();
     let bob_rp_mmr_state = db.fetch_mmr_base_leaf_nodes(MmrTree::RangeProof, 0, 1000).unwrap();
 
-    let horizon_block = 12; // TODO - currently, it only syncs to block 11
-
     runtime.block_on(async {
+        let horizon_block = db.fetch_horizon_block_height().unwrap();
         let mut horizon_info = HorizonInfo::new(horizon_block);
         let state_event = horizon_info.next_event(&mut alice_state_machine).await;
         assert_eq!(state_event, StateEvent::HorizonStateFetched);
@@ -102,7 +110,7 @@ fn test_horizon_state_sync() {
         assert_eq!(alice_kernel_mmr_state, bob_kernel_mmr_state);
         assert_eq!(alice_rp_mmr_state, bob_rp_mmr_state);
 
-        for height in 0..horizon_block {
+        for height in 0..=horizon_block {
             assert_eq!(adb.fetch_header(height), db.fetch_header(height));
         }
 
@@ -116,7 +124,7 @@ fn test_horizon_state_sync() {
             }
         }
 
-        assert_eq!(adb.get_height(), Ok(Some(horizon_block - 1))); // TODO - should be horizon block
+        assert_eq!(adb.get_height(), Ok(Some(horizon_block)));
     });
 
     alice_node.comms.shutdown().unwrap();
@@ -125,11 +133,20 @@ fn test_horizon_state_sync() {
 
 #[test]
 fn test_block_sync() {
-    env_logger::init();
     let runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (alice_node, bob_node) = create_network_with_2_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 2,
+        max_history_len: 4,
+    };
+    let (alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
+        &runtime,
+        BaseNodeServiceConfig::default(),
+        mct_config,
+        MempoolServiceConfig::default(),
+        temp_dir.path().to_str().unwrap(),
+    );
     let state_machine_config = BaseNodeStateMachineConfig::default();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
@@ -145,18 +162,17 @@ fn test_block_sync() {
     }
 
     runtime.block_on(async {
-        // Sync to genesis block
-        let horizon_block = 1;
+        // Sync horizon state
+        let horizon_block = bob_node.blockchain_db.fetch_horizon_block_height().unwrap();
         let mut horizon_info = HorizonInfo::new(horizon_block);
         let state_event = horizon_info.next_event(&mut alice_state_machine).await;
         assert_eq!(state_event, StateEvent::HorizonStateFetched);
         let adb = &alice_node.blockchain_db;
-        assert_eq!(adb.get_height(), Ok(Some(0)));
+        assert_eq!(adb.get_height(), Ok(Some(horizon_block)));
 
         // Sync Blocks from horizon state to tip
         let state_event = BlockSyncInfo {}.next_event(&mut alice_state_machine).await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
-
         assert_eq!(adb.get_height(), db.get_height());
 
         let alice_utxo_mmr_state = alice_node
@@ -187,9 +203,8 @@ fn test_block_sync() {
         assert_eq!(alice_kernel_mmr_state, bob_kernel_mmr_state);
         assert_eq!(alice_rp_mmr_state, bob_rp_mmr_state);
 
-        // TODO = Start at 1 since there's still a horizon sync block issue
         let bob_tip_height = db.get_height().unwrap().unwrap();
-        for height in 1..bob_tip_height {
+        for height in horizon_block + 1..=bob_tip_height {
             assert_eq!(adb.fetch_block(height), db.fetch_block(height));
         }
     });
@@ -275,7 +290,7 @@ fn test_lagging_block_sync() {
         assert_eq!(alice_rp_mmr_state, bob_rp_mmr_state);
 
         let bob_tip_height = bob_node.blockchain_db.get_height().unwrap().unwrap();
-        for height in 0..bob_tip_height {
+        for height in 0..=bob_tip_height {
             assert_eq!(
                 alice_node.blockchain_db.fetch_block(height),
                 bob_node.blockchain_db.fetch_block(height)

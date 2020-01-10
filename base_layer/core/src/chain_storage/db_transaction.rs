@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
 
 use crate::blocks::{blockheader::BlockHash, Block, BlockHeader};
 use serde::{Deserialize, Serialize};
@@ -67,9 +66,9 @@ impl DbTransaction {
     }
 
     /// Inserts a block header into the current transaction.
-    pub fn insert_header(&mut self, header: BlockHeader, update_mmr: bool) {
+    pub fn insert_header(&mut self, header: BlockHeader) {
         let height = header.height;
-        self.insert(DbKeyValuePair::BlockHeader(height, Box::new(header), update_mmr));
+        self.insert(DbKeyValuePair::BlockHeader(height, Box::new(header)));
     }
 
     /// Adds a UTXO into the current transaction and update the TXO MMR.
@@ -119,8 +118,6 @@ impl DbTransaction {
     /// the database.
     pub fn commit_block(&mut self) {
         self.operations
-            .push(WriteOperation::CreateMmrCheckpoint(MmrTree::Header));
-        self.operations
             .push(WriteOperation::CreateMmrCheckpoint(MmrTree::Kernel));
         self.operations.push(WriteOperation::CreateMmrCheckpoint(MmrTree::Utxo));
         self.operations
@@ -137,12 +134,6 @@ impl DbTransaction {
             MetadataKey::PruningHorizon,
             MetadataValue::PruningHorizon(new_pruning_horizon),
         )));
-    }
-
-    /// Rewinds the Header MMR state by the given number of Checkpoints.
-    pub fn rewind_header_mmr(&mut self, steps_back: usize) {
-        self.operations
-            .push(WriteOperation::RewindMmr(MmrTree::Header, steps_back));
     }
 
     /// Rewinds the Kernel MMR state by the given number of Checkpoints.
@@ -178,7 +169,7 @@ pub enum WriteOperation {
 #[derive(Debug)]
 pub enum DbKeyValuePair {
     Metadata(MetadataKey, MetadataValue),
-    BlockHeader(u64, Box<BlockHeader>, bool),
+    BlockHeader(u64, Box<BlockHeader>),
     UnspentOutput(HashOutput, Box<TransactionOutput>, bool),
     TransactionKernel(HashOutput, Box<TransactionKernel>, bool),
     OrphanBlock(HashOutput, Box<Block>),
@@ -189,7 +180,6 @@ pub enum MmrTree {
     Utxo,
     Kernel,
     RangeProof,
-    Header,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -270,7 +260,6 @@ impl Display for MmrTree {
             MmrTree::RangeProof => f.write_str("Range Proof"),
             MmrTree::Utxo => f.write_str("UTXO"),
             MmrTree::Kernel => f.write_str("Kernel"),
-            MmrTree::Header => f.write_str("Block header"),
         }
     }
 }

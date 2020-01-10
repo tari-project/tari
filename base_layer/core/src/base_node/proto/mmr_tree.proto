@@ -9,5 +9,4 @@ enum MmrTree {
     MmrTreeUtxo = 1;
     MmrTreeKernel = 2;
     MmrTreeRangeProof = 3;
-    MmrTreeHeader = 4;
 }

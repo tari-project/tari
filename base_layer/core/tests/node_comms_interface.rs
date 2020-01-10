@@ -241,7 +241,7 @@ fn inbound_fetch_headers() {
     let mut header = BlockHeader::new(0);
     header.height = 0;
     let mut txn = DbTransaction::new();
-    txn.insert_header(header.clone(), true);
+    txn.insert_header(header.clone());
     assert!(store.commit(txn).is_ok());
 
     test_async(move |rt| {

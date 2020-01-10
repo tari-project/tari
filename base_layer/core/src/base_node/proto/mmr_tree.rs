@@ -34,7 +34,6 @@ impl TryFrom<proto::MmrTree> for MmrTree {
             Utxo => MmrTree::Utxo,
             Kernel => MmrTree::Kernel,
             RangeProof => MmrTree::RangeProof,
-            Header => MmrTree::Header,
         })
     }
 }
@@ -46,7 +45,6 @@ impl From<MmrTree> for proto::MmrTree {
             Utxo => proto::MmrTree::Utxo,
             Kernel => proto::MmrTree::Kernel,
             RangeProof => proto::MmrTree::RangeProof,
-            Header => proto::MmrTree::Header,
         }
     }
 }
