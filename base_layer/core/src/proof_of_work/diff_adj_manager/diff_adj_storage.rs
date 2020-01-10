@@ -70,17 +70,21 @@ where T: BlockchainBackend
         }
     }
 
-    // Check if the difficulty adjustment manager is in sync with the longest chain. It will also check if a full sync
+    // Check if the difficulty adjustment manager is in sync with specified height. It will also check if a full sync
     // or update sync needs to be performed.
-    fn check_sync_state(&self, best_block: BlockHash) -> Result<UpdateState, DiffAdjManagerError> {
+    fn check_sync_state(&self, block_hash: &BlockHash, height: u64) -> Result<UpdateState, DiffAdjManagerError> {
         Ok(match &self.sync_data {
             Some((sync_height, sync_block_hash)) => {
-                if *sync_block_hash != best_block {
-                    let header = self.blockchain_db.fetch_header(*sync_height)?;
-                    if *sync_block_hash == header.hash() {
-                        UpdateState::SyncToTip
-                    } else {
+                if *sync_block_hash != *block_hash {
+                    if height < *sync_height {
                         UpdateState::FullSync
+                    } else {
+                        let header = self.blockchain_db.fetch_header(*sync_height)?;
+                        if *sync_block_hash == header.hash() {
+                            UpdateState::SyncToTip
+                        } else {
+                            UpdateState::FullSync
+                        }
                     }
                 } else {
                     UpdateState::Synced
@@ -91,33 +95,53 @@ where T: BlockchainBackend
     }
 
     // Performs an update on the difficulty adjustment manager based on the detected sync state.
-    fn update(&mut self) -> Result<(), DiffAdjManagerError> {
-        let metadata = self.blockchain_db.get_metadata()?;
-        let height_of_longest_chain = metadata
-            .height_of_longest_chain
-            .ok_or(DiffAdjManagerError::EmptyBlockchain)?;
-        let best_block = metadata.best_block.ok_or(DiffAdjManagerError::EmptyBlockchain)?;
-        match self.check_sync_state(best_block.clone())? {
-            UpdateState::FullSync => self.sync_full_history(best_block, height_of_longest_chain)?,
-            UpdateState::SyncToTip => self.sync_to_chain_tip(best_block, height_of_longest_chain)?,
+    fn update(&mut self, height: u64) -> Result<(), DiffAdjManagerError> {
+        let block_hash = self.blockchain_db.fetch_header(height)?.hash();
+        match self.check_sync_state(&block_hash, height)? {
+            UpdateState::FullSync => self.sync_full_history(block_hash, height)?,
+            UpdateState::SyncToTip => self.sync_to_chain_tip(block_hash, height)?,
             UpdateState::Synced => {},
         };
-
         Ok(())
     }
 
-    /// Returns the estimated target difficulty for the specified PoW algorithm.
+    // Retrieves the height of the longest chain from the blockchain db
+    fn get_height_of_longest_chain(&mut self) -> Result<u64, DiffAdjManagerError> {
+        self.blockchain_db
+            .get_metadata()?
+            .height_of_longest_chain
+            .ok_or(DiffAdjManagerError::EmptyBlockchain)
+    }
+
+    /// Returns the estimated target difficulty for the specified PoW algorithm at the chain tip.
     pub fn get_target_difficulty(&mut self, pow_algo: &PowAlgorithm) -> Result<Difficulty, DiffAdjManagerError> {
-        self.update()?;
+        let height = self.get_height_of_longest_chain()?;
+        self.get_target_difficulty_with_height(pow_algo, height)
+    }
+
+    /// Returns the estimated target difficulty for the specified PoW algorithm and provided height.
+    pub fn get_target_difficulty_with_height(
+        &mut self,
+        pow_algo: &PowAlgorithm,
+        height: u64,
+    ) -> Result<Difficulty, DiffAdjManagerError>
+    {
+        self.update(height)?;
         Ok(match pow_algo {
             PowAlgorithm::Monero => self.monero_lwma.get_difficulty(),
             PowAlgorithm::Blake => self.blake_lwma.get_difficulty(),
         })
     }
 
-    /// Returns the estimated target difficulty for the specified PoW algorithm.
+    /// Returns the median timestamp of the past 11 blocks at the chain tip.
     pub fn get_median_timestamp(&mut self) -> Result<EpochTime, DiffAdjManagerError> {
-        self.update()?;
+        let height = self.get_height_of_longest_chain()?;
+        self.get_median_timestamp_with_height(height)
+    }
+
+    /// Returns the median timestamp of the past 11 blocks at the provided height.
+    pub fn get_median_timestamp_with_height(&mut self, height: u64) -> Result<EpochTime, DiffAdjManagerError> {
+        self.update(height)?;
         let mut length = self.timestamps.len();
         if length == 0 {
             return Err(DiffAdjManagerError::EmptyBlockchain);
@@ -133,6 +157,7 @@ where T: BlockchainBackend
         self.monero_lwma = LinearWeightedMovingAverage::default();
         self.blake_lwma = LinearWeightedMovingAverage::default();
         self.sync_data = None;
+        self.timestamps = VecDeque::new();
     }
 
     // Adds the new PoW sample to the specific LinearWeightedMovingAverage specified by the PoW algorithm.

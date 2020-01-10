@@ -29,14 +29,21 @@ use tari_core::{
     chain_storage::{BlockchainDatabase, MemoryDatabase},
     consensus::ConsensusConstants,
     helpers::create_mem_db,
-    proof_of_work::{DiffAdjManager, Difficulty, PowAlgorithm},
+    proof_of_work::{
+        lwma_diff::LinearWeightedMovingAverage,
+        DiffAdjManager,
+        Difficulty,
+        DifficultyAdjustment,
+        PowAlgorithm,
+    },
 };
 use tari_transactions::types::{CryptoFactories, HashDigest};
 use tari_utilities::epoch_time::EpochTime;
 
-fn create_test_pow_blockchain(db: &BlockchainDatabase<MemoryDatabase<HashDigest>>, pow_algos: Vec<PowAlgorithm>) {
+fn create_test_pow_blockchain(db: &BlockchainDatabase<MemoryDatabase<HashDigest>>, mut pow_algos: Vec<PowAlgorithm>) {
     let factories = CryptoFactories::default();
     let (mut block0, _) = create_genesis_block(&db, &factories);
+    block0.header.pow.pow_algo = pow_algos.remove(0);
     block0.header.timestamp = EpochTime::from(1575018842);
     db.add_block(block0.clone()).unwrap();
     append_to_pow_blockchain(db, block0, pow_algos);
@@ -63,7 +70,26 @@ fn append_to_pow_blockchain(
     }
 }
 
-#[ignore]
+// Calculated the accumulated difficulty for the selected blocks in the blockchain db.
+fn calculate_accumulated_difficulty(
+    db: &BlockchainDatabase<MemoryDatabase<HashDigest>>,
+    heights: Vec<u64>,
+) -> Difficulty
+{
+    let mut lwma = LinearWeightedMovingAverage::default();
+    for height in heights {
+        let header = db.fetch_header(height).unwrap();
+        let accumulated_difficulty = header.achieved_difficulty() +
+            match header.pow.pow_algo {
+                PowAlgorithm::Monero => header.pow.accumulated_monero_difficulty,
+                PowAlgorithm::Blake => header.pow.accumulated_blake_difficulty,
+            };
+        lwma.add(header.timestamp, accumulated_difficulty).unwrap();
+    }
+    lwma.get_difficulty()
+}
+
+#[test]
 fn test_initial_sync() {
     let store = create_mem_db();
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
@@ -71,6 +97,7 @@ fn test_initial_sync() {
     assert!(diff_adj_manager.get_target_difficulty(&PowAlgorithm::Blake).is_err());
 
     let pow_algos = vec![
+        PowAlgorithm::Blake, // GB default
         PowAlgorithm::Blake,
         PowAlgorithm::Monero,
         PowAlgorithm::Blake,
@@ -79,24 +106,27 @@ fn test_initial_sync() {
         PowAlgorithm::Monero,
         PowAlgorithm::Blake,
     ];
-    create_test_pow_blockchain(&store, pow_algos);
+
+    create_test_pow_blockchain(&store, pow_algos.clone());
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
+
     assert_eq!(
         diff_adj_manager.get_target_difficulty(&PowAlgorithm::Monero),
-        Ok(Difficulty::from(2))
+        Ok(calculate_accumulated_difficulty(&store, vec![2, 5, 6]))
     );
     assert_eq!(
         diff_adj_manager.get_target_difficulty(&PowAlgorithm::Blake),
-        Ok(Difficulty::from(3))
+        Ok(calculate_accumulated_difficulty(&store, vec![0, 1, 3, 4, 7]))
     );
 }
 
-#[ignore]
+#[test]
 fn test_sync_to_chain_tip() {
     let store = create_mem_db();
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
 
     let pow_algos = vec![
+        PowAlgorithm::Blake, // GB default
         PowAlgorithm::Monero,
         PowAlgorithm::Blake,
         PowAlgorithm::Blake,
@@ -107,11 +137,11 @@ fn test_sync_to_chain_tip() {
     assert_eq!(store.get_height(), Ok(Some(5)));
     assert_eq!(
         diff_adj_manager.get_target_difficulty(&PowAlgorithm::Monero),
-        Ok(Difficulty::from(1))
+        Ok(calculate_accumulated_difficulty(&store, vec![1, 4]))
     );
     assert_eq!(
         diff_adj_manager.get_target_difficulty(&PowAlgorithm::Blake),
-        Ok(Difficulty::from(4))
+        Ok(calculate_accumulated_difficulty(&store, vec![0, 2, 3, 5]))
     );
 
     let pow_algos = vec![
@@ -120,16 +150,66 @@ fn test_sync_to_chain_tip() {
         PowAlgorithm::Blake,
         PowAlgorithm::Monero,
     ];
-    assert_eq!(store.get_height(), Ok(Some(9)));
-    let tip = store.fetch_block(9).unwrap().block;
+    let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
     append_to_pow_blockchain(&store, tip, pow_algos);
+    assert_eq!(store.get_height(), Ok(Some(9)));
     assert_eq!(
         diff_adj_manager.get_target_difficulty(&PowAlgorithm::Monero),
-        Ok(Difficulty::from(1))
+        Ok(calculate_accumulated_difficulty(&store, vec![1, 4, 7, 9]))
     );
     assert_eq!(
         diff_adj_manager.get_target_difficulty(&PowAlgorithm::Blake),
-        Ok(Difficulty::from(5))
+        Ok(calculate_accumulated_difficulty(&store, vec![0, 2, 3, 5, 6, 8]))
+    );
+}
+
+#[test]
+fn test_target_difficulty_with_height() {
+    let store = create_mem_db();
+    let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
+    assert!(diff_adj_manager
+        .get_target_difficulty_with_height(&PowAlgorithm::Monero, 5)
+        .is_err());
+    assert!(diff_adj_manager
+        .get_target_difficulty_with_height(&PowAlgorithm::Blake, 5)
+        .is_err());
+
+    let pow_algos = vec![
+        PowAlgorithm::Blake, // GB default
+        PowAlgorithm::Monero,
+        PowAlgorithm::Blake,
+        PowAlgorithm::Blake,
+        PowAlgorithm::Monero,
+        PowAlgorithm::Blake,
+    ];
+    create_test_pow_blockchain(&store, pow_algos);
+    let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
+
+    assert_eq!(
+        diff_adj_manager.get_target_difficulty_with_height(&PowAlgorithm::Monero, 5),
+        Ok(calculate_accumulated_difficulty(&store, vec![1, 4]))
+    );
+    assert_eq!(
+        diff_adj_manager.get_target_difficulty_with_height(&PowAlgorithm::Blake, 5),
+        Ok(calculate_accumulated_difficulty(&store, vec![0, 2, 3, 5]))
+    );
+
+    assert_eq!(
+        diff_adj_manager.get_target_difficulty_with_height(&PowAlgorithm::Monero, 2),
+        Ok(calculate_accumulated_difficulty(&store, vec![1]))
+    );
+    assert_eq!(
+        diff_adj_manager.get_target_difficulty_with_height(&PowAlgorithm::Blake, 2),
+        Ok(calculate_accumulated_difficulty(&store, vec![0, 2]))
+    );
+
+    assert_eq!(
+        diff_adj_manager.get_target_difficulty_with_height(&PowAlgorithm::Monero, 3),
+        Ok(calculate_accumulated_difficulty(&store, vec![1]))
+    );
+    assert_eq!(
+        diff_adj_manager.get_target_difficulty_with_height(&PowAlgorithm::Blake, 3),
+        Ok(calculate_accumulated_difficulty(&store, vec![0, 2, 3]))
     );
 }
 
@@ -140,6 +220,7 @@ fn test_full_sync_on_reorg() {
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
 
     let pow_algos = vec![
+        PowAlgorithm::Blake, // GB default
         PowAlgorithm::Blake,
         PowAlgorithm::Blake,
         PowAlgorithm::Blake,
@@ -184,7 +265,7 @@ fn test_median_timestamp() {
     let store = create_mem_db();
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let consensus = ConsensusConstants::current();
-    let pow_algos = vec![];
+    let pow_algos = vec![PowAlgorithm::Blake]; // GB default
     create_test_pow_blockchain(&store, pow_algos);
     let mut timestamp = diff_adj_manager
         .get_median_timestamp()
@@ -236,12 +317,49 @@ fn test_median_timestamp() {
 }
 
 #[test]
+fn test_median_timestamp_with_height() {
+    let store = create_mem_db();
+    let mut diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
+    let pow_algos = vec![
+        PowAlgorithm::Blake, // GB default
+        PowAlgorithm::Monero,
+        PowAlgorithm::Blake,
+        PowAlgorithm::Monero,
+        PowAlgorithm::Blake,
+    ];
+    create_test_pow_blockchain(&store, pow_algos);
+
+    let header0_timestamp = store.fetch_header(0).unwrap().timestamp;
+    let header1_timestamp = store.fetch_header(1).unwrap().timestamp;
+    let header2_timestamp = store.fetch_header(2).unwrap().timestamp;
+
+    let timestamp = diff_adj_manager
+        .get_median_timestamp_with_height(0)
+        .expect("median returned an error");
+    assert_eq!(timestamp, header0_timestamp);
+
+    let timestamp = diff_adj_manager
+        .get_median_timestamp_with_height(3)
+        .expect("median returned an error");
+    assert_eq!(timestamp, header2_timestamp);
+
+    let timestamp = diff_adj_manager
+        .get_median_timestamp_with_height(2)
+        .expect("median returned an error");
+    assert_eq!(timestamp, header1_timestamp);
+
+    let timestamp = diff_adj_manager
+        .get_median_timestamp_with_height(4)
+        .expect("median returned an error");
+    assert_eq!(timestamp, header2_timestamp);
+}
+
+#[test]
 fn test_median_timestamp_odd_order() {
     let store = create_mem_db();
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let consensus = ConsensusConstants::current();
-
-    let pow_algos = vec![];
+    let pow_algos = vec![PowAlgorithm::Blake]; // GB default
     create_test_pow_blockchain(&store, pow_algos);
     let mut timestamp = diff_adj_manager
         .get_median_timestamp()

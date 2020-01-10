@@ -34,7 +34,7 @@ pub mod lwma_diff;
 
 pub use blake_pow::{blake_difficulty, blake_difficulty_with_hash};
 pub use diff_adj_manager::{DiffAdjManager, DiffAdjManagerError};
-pub use difficulty::Difficulty;
+pub use difficulty::{Difficulty, DifficultyAdjustment};
 pub use error::{DifficultyAdjustmentError, PowError};
 pub use monero_rx::monero_difficulty;
 pub use proof_of_work::{PowAlgorithm, ProofOfWork};

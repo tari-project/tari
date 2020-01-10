@@ -49,7 +49,7 @@ where T: BlockchainBackend
         })
     }
 
-    /// Returns the estimated target difficulty for the specified PoW algorithm.
+    /// Returns the estimated target difficulty for the specified PoW algorithm at the chain tip.
     pub fn get_target_difficulty(&self, pow_algo: &PowAlgorithm) -> Result<Difficulty, DiffAdjManagerError> {
         self.diff_adj_storage
             .write()
@@ -57,12 +57,33 @@ where T: BlockchainBackend
             .get_target_difficulty(pow_algo)
     }
 
-    /// Returns the median timestamp of the past 11 blocks.
+    /// Returns the estimated target difficulty for the specified PoW algorithm and provided height.
+    pub fn get_target_difficulty_with_height(
+        &self,
+        pow_algo: &PowAlgorithm,
+        height: u64,
+    ) -> Result<Difficulty, DiffAdjManagerError>
+    {
+        self.diff_adj_storage
+            .write()
+            .map_err(|_| DiffAdjManagerError::PoisonedAccess)?
+            .get_target_difficulty_with_height(pow_algo, height)
+    }
+
+    /// Returns the median timestamp of the past 11 blocks at the chain tip.
     pub fn get_median_timestamp(&self) -> Result<EpochTime, DiffAdjManagerError> {
         self.diff_adj_storage
             .write()
             .map_err(|_| DiffAdjManagerError::PoisonedAccess)?
             .get_median_timestamp()
+    }
+
+    /// Returns the median timestamp of the past 11 blocks at the provided height.
+    pub fn get_median_timestamp_with_height(&mut self, height: u64) -> Result<EpochTime, DiffAdjManagerError> {
+        self.diff_adj_storage
+            .write()
+            .map_err(|_| DiffAdjManagerError::PoisonedAccess)?
+            .get_median_timestamp_with_height(height)
     }
 }
 
