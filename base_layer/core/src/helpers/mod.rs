@@ -49,6 +49,6 @@ pub fn create_mem_db() -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
     let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
     let db = MemoryDatabase::<HashDigest>::default();
     let mut db = BlockchainDatabase::new(db).unwrap();
-    db.add_validators(validators);
+    db.set_validators(validators);
     db
 }

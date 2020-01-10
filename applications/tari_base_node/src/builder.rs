@@ -176,7 +176,7 @@ pub fn configure_and_initialize_node(
                 FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
                 StatelessValidator::new(factories.clone()),
             );
-            db.add_validators(validators);
+            db.set_validators(validators);
             let mempool = Mempool::new(db.clone(), MempoolConfig::default());
             let diff_adj_manager = DiffAdjManager::new(db.clone()).map_err(|e| e.to_string())?;
             rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
@@ -204,7 +204,7 @@ pub fn configure_and_initialize_node(
                 FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
                 StatelessValidator::new(factories.clone()),
             );
-            db.add_validators(validators);
+            db.set_validators(validators);
             let mempool = Mempool::new(db.clone(), MempoolConfig::default());
             let diff_adj_manager = DiffAdjManager::new(db.clone()).map_err(|e| e.to_string())?;
             rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
