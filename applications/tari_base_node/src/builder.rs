@@ -171,11 +171,12 @@ pub fn configure_and_initialize_node(
         DatabaseType::Memory => {
             let rules = ConsensusManager::default();
             let backend = MemoryDatabase::<HashDigest>::default();
+            let mut db = BlockchainDatabase::new(backend).map_err(|e| e.to_string())?;
             let validators = Validators::new(
-                FullConsensusValidator::new(rules.clone(), factories.clone()),
+                FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
                 StatelessValidator::new(factories.clone()),
             );
-            let db = BlockchainDatabase::new(backend, validators).map_err(|e| e.to_string())?;
+            db.add_validators(validators);
             let mempool = Mempool::new(db.clone(), MempoolConfig::default());
             let diff_adj_manager = DiffAdjManager::new(db.clone()).map_err(|e| e.to_string())?;
             rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
@@ -198,11 +199,12 @@ pub fn configure_and_initialize_node(
                 max_history_len: 1000,
             };
             let backend = create_lmdb_database(&p, mct_config).map_err(|e| e.to_string())?;
+            let mut db = BlockchainDatabase::new(backend).map_err(|e| e.to_string())?;
             let validators = Validators::new(
-                FullConsensusValidator::new(rules.clone(), factories.clone()),
+                FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
                 StatelessValidator::new(factories.clone()),
             );
-            let db = BlockchainDatabase::new(backend, validators).map_err(|e| e.to_string())?;
+            db.add_validators(validators);
             let mempool = Mempool::new(db.clone(), MempoolConfig::default());
             let diff_adj_manager = DiffAdjManager::new(db.clone()).map_err(|e| e.to_string())?;
             rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;

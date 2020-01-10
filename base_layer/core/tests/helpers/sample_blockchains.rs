@@ -124,7 +124,8 @@ pub fn create_new_blockchain() -> (
     // We may need move this to the parameters to provide more fine-grained validator control
     let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
     let db = MemoryDatabase::<HashDigest>::default();
-    let db = BlockchainDatabase::new(db, validators).unwrap();
+    let mut db = BlockchainDatabase::new(db).unwrap();
+    db.add_validators(validators);
     let mut outputs = Vec::new();
     let mut blocks = Vec::new();
     // Genesis Block

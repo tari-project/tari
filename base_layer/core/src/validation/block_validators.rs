@@ -60,25 +60,18 @@ impl<B: BlockchainBackend> Validation<Block, B> for StatelessValidator {
 pub struct FullConsensusValidator<B: BlockchainBackend> {
     rules: ConsensusManager<B>,
     factories: Arc<CryptoFactories>,
-    db: Option<BlockchainDatabase<B>>,
+    db: BlockchainDatabase<B>,
 }
 
 impl<B: BlockchainBackend> FullConsensusValidator<B>
 where B: BlockchainBackend
 {
-    pub fn new(rules: ConsensusManager<B>, factories: Arc<CryptoFactories>) -> Self {
-        Self {
-            rules,
-            factories,
-            db: None,
-        }
+    pub fn new(rules: ConsensusManager<B>, factories: Arc<CryptoFactories>, db: BlockchainDatabase<B>) -> Self {
+        Self { rules, factories, db }
     }
 
     fn db(&self) -> Result<BlockchainDatabase<B>, ValidationError> {
-        match &self.db {
-            Some(db) => Ok(db.clone()),
-            None => Err(ValidationError::NoDatabaseConfigured),
-        }
+        Ok(self.db.clone())
     }
 }
 

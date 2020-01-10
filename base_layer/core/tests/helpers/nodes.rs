@@ -154,7 +154,8 @@ impl BaseNodeBuilder {
             .validators
             .unwrap_or(Validators::new(MockValidator::new(true), MockValidator::new(true)));
         let db = MemoryDatabase::<HashDigest>::new(mct_config);
-        let blockchain_db = BlockchainDatabase::new(db, validators).unwrap();
+        let mut blockchain_db = BlockchainDatabase::new(db).unwrap();
+        blockchain_db.add_validators(validators);
         let mempool = Mempool::new(
             blockchain_db.clone(),
             self.mempool_config.unwrap_or(MempoolConfig::default()),

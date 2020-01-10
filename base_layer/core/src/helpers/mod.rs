@@ -48,5 +48,7 @@ pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>) ->
 pub fn create_mem_db() -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
     let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
     let db = MemoryDatabase::<HashDigest>::default();
-    BlockchainDatabase::new(db, validators).unwrap()
+    let mut db = BlockchainDatabase::new(db).unwrap();
+    db.add_validators(validators);
+    db
 }
