@@ -197,7 +197,12 @@ impl Display for BlockHeader {
             self.kernel_mr.to_hex()
         );
         fmt.write_str(&msg)?;
-        fmt.write_str(&format!("Nonce: {}\nProof of work: {}", self.nonce, self.pow))
+        fmt.write_str(&format!(
+            "Total offset: {}\nNonce: {}\nProof of work: {}",
+            self.total_kernel_offset.to_hex(),
+            self.nonce,
+            self.pow
+        ))
     }
 }
 
