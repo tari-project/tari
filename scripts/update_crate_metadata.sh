@@ -8,8 +8,12 @@ fi
 
 function update_versions {
     packages=${@:-'
+   infrastructure/broadcast_channel
    infrastructure/crypto
    infrastructure/derive
+   infrastructure/protobuf_build
+   infrastructure/pubsub
+   infrastructure/shutdown
    infrastructure/storage
    infrastructure/tari_util
    base_layer/core
@@ -18,7 +22,9 @@ function update_versions {
    base_layer/mmr
    base_layer/p2p
    base_layer/service_framework
+   base_layer/transactions
    base_layer/wallet
+   base_layer/wallet_ffi
    common
    comms
 '}
