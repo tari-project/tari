@@ -7,6 +7,7 @@ infrastructure/crypto
 infrastructure/storage
 common
 comms
+base_layer/transactions
 base_layer/p2p
 base_layer/core
 base_layer/keymanager
@@ -14,6 +15,7 @@ base_layer/mining
 base_layer/mmr
 base_layer/service_framework
 base_layer/wallet
+base_layer/wallet_ffi
 '}
 p_arr=($packages)
 
