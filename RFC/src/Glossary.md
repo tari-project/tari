@@ -50,6 +50,11 @@ A collection transactions and associated metadata recorded as a single entity in
  Tari transactions is set purely by the block height of the block they are recorded in. 
 
 
+## Block Header
+[block header]: #block-header "A collection of information validating the information within a [block]"
+
+A data structure that validates the information contained in a [block].
+
 ## Block reward
 [block reward]: #block-reward "The amount of Tari created in every block"
 
@@ -321,7 +326,6 @@ network conditions etc.
 
 The base layer token. Tari coins are released according to the [emission schedule] on the Tari [base layer] 
 [blockchain] in [coinbase transaction]s.
-
 
 ## Transaction
 [transaction]: #transaction "Base layer tari coin transfers."

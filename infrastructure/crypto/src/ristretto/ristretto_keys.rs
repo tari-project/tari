@@ -582,7 +582,7 @@ mod test {
         let (k1, p1) = get_keypair();
         let (k2, p2) = get_keypair();
         let p_slow = &(&k1 * &p1) + &(&k2 * &p2);
-        let b_batch = RistrettoPublicKey::batch_mul(&[k1, k2], &vec![p1, p2]);
+        let b_batch = RistrettoPublicKey::batch_mul(&[k1, k2], &[p1, p2]);
         assert_completely_equal(&p_slow, &b_batch);
     }
 

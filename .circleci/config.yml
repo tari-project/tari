@@ -1,7 +1,7 @@
-version: 2
+version: 2.1
 
 defaults:
-  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2019-08-21
+  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2019-10-04
 
 jobs:
   test-docs:
@@ -9,6 +9,10 @@ jobs:
       - image: *rust_image
     steps:
       - checkout
+      - run:
+          command: |
+            git submodule update --init --recursive
+          name: Init git submodule
       - run:
           name: RFC documentation
           command: |
@@ -25,6 +29,10 @@ jobs:
       - image: quay.io/tarilabs/git-ssh-client:0.2-alpine
     steps:
       - checkout
+      - run:
+          command: |
+            git submodule update --init --recursive
+          name: Init git submodule
       - attach_workspace:
           at: .
       - add_ssh_keys:
@@ -65,16 +73,23 @@ jobs:
   test-tari:
     docker:
       - image: *rust_image
+    resource_class: medium
     steps:
       - checkout
       - run:
+          command: |
+            git submodule update --init --recursive
+          name: Init git submodule
+      - run:
           name: Tari source code
           command: |
-            TOOLCHAIN_VERSION=nightly-2019-08-21
-            rustup component add --toolchain $TOOLCHAIN_VERSION rustfmt
+            TOOLCHAIN=$(cat rust-toolchain)
+            NUM_JOBS=2
+            rustup component add --toolchain $TOOLCHAIN rustfmt
+            cargo build --jobs=$NUM_JOBS --all-features
             cargo fmt --all -- --check
-            cargo test --all
-            cargo test --release
+            cargo test --workspace --all-features --jobs=$NUM_JOBS
+            cargo test --workspace --all-features --release --jobs=$NUM_JOBS
 
 workflows:
   version: 2

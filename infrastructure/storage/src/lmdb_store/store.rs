@@ -1,6 +1,9 @@
 //! An ergonomic, multithreaded API for an LMDB datastore
 
-use crate::{key_val_store::error::KeyValStoreError, lmdb_store::error::LMDBError};
+use crate::{
+    key_val_store::{error::KeyValStoreError, key_val_store::IterationResult},
+    lmdb_store::error::LMDBError,
+};
 use lmdb_zero::{
     db,
     error::{self, LmdbResultExt},
@@ -141,7 +144,7 @@ impl LMDBBuilder {
                 db: Arc::new(db),
             };
             databases.insert(name.to_string(), db);
-            info!(target: LOG_TARGET, "({}) LMDB database '{}' is ready", path, name);
+            trace!(target: LOG_TARGET, "({}) LMDB database '{}' is ready", path, name);
         }
         Ok(LMDBStore { path, env, databases })
     }
@@ -320,6 +323,10 @@ impl LMDBStore {
             None => None,
         }
     }
+
+    pub fn env(&self) -> Arc<Environment> {
+        self.env.clone()
+    }
 }
 
 #[derive(Clone)]
@@ -413,8 +420,9 @@ impl LMDBDatabase {
     /// The underlying LMDB library does not permit database cursors to be returned from functions to preserve Rust
     /// memory guarantees, so this is the closest thing to an iterator that you're going to get :/
     ///
-    /// `f` is a closure of form `|pair: Result<(K,V), LMDBError>| -> ()`. You will usually need to include type
-    /// inference to let Rust know which type to deserialise to:
+    /// `f` is a closure of form `|pair: Result<(K,V), LMDBError>| -> IterationResult`. If `IterationResult::Break` is
+    /// returned the closure will not be called again and `for_each` will return. You will usually need to include
+    /// type inference to let Rust know which type to deserialise to:
     /// ```nocompile
     ///    let res = db.for_each::<Key, User, _>(|pair| {
     ///        let (key, user) = pair.unwrap();
@@ -424,7 +432,7 @@ impl LMDBDatabase {
     where
         K: DeserializeOwned,
         V: DeserializeOwned,
-        F: FnMut(Result<(K, V), KeyValStoreError>),
+        F: FnMut(Result<(K, V), KeyValStoreError>) -> IterationResult,
     {
         let env = self.env.clone();
         let db = self.db.clone();
@@ -442,7 +450,10 @@ impl LMDBDatabase {
         let iter = CursorIter::new(cursor, &access, head, ReadOnlyIterator::next).map_err(LMDBError::DatabaseError)?;
 
         for p in iter {
-            f(p.map_err(|e| KeyValStoreError::DatabaseError(e.to_string())));
+            match f(p.map_err(|e| KeyValStoreError::DatabaseError(e.to_string()))) {
+                IterationResult::Break => break,
+                IterationResult::Continue => {},
+            }
         }
 
         Ok(())
@@ -492,6 +503,10 @@ impl LMDBDatabase {
         let wrapper = LMDBWriteTransaction { db: &self.db, access };
         f(wrapper)?;
         txn.commit().map_err(|e| LMDBError::CommitError(e.to_string()))
+    }
+
+    pub fn db(&self) -> &DatabaseRef {
+        &self.db
     }
 }
 

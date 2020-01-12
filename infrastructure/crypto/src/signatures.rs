@@ -11,7 +11,7 @@ use std::{
 };
 use tari_utilities::{hex::Hex, ByteArray};
 
-#[derive(Clone, Debug, Error, PartialEq, Eq)]
+#[derive(Clone, Debug, Error, PartialEq, Eq, Deserialize, Serialize)]
 pub enum SchnorrSignatureError {
     // An invalid challenge was provided
     InvalidChallenge,

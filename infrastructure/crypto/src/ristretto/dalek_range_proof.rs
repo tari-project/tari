@@ -34,7 +34,7 @@ use crate::{
 use bulletproofs::{BulletproofGens, PedersenGens, RangeProof as DalekProof};
 use merlin::Transcript;
 
-/// A wrapper aroubd the Dalek library implementation of Bulletproof range proofs.
+/// A wrapper around the Dalek library implementation of Bulletproof range proofs.
 pub struct DalekRangeProofService {
     range: usize,
     pc_gens: PedersenGens,

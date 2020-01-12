@@ -70,8 +70,8 @@ pub trait ThreadJoinWithTimeout<T> {
 impl<T> ThreadJoinWithTimeout<T> for JoinHandle<T>
 where T: 'static
 {
-    fn timeout_join(self, timeout_in_ms: Duration) -> Result<(), ThreadError> {
-        timeout_join(self, timeout_in_ms)
+    fn timeout_join(self, timeout: Duration) -> Result<(), ThreadError> {
+        timeout_join(self, timeout)
     }
 }
 

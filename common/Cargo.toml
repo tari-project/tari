@@ -1,5 +1,6 @@
 [package]
 name = "tari_common"
+authors = ["The Tari Development Community"]
 description = "Utilities and features for the Tari domain layer, shared across both Base and Digital Asset layers."
 repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
@@ -11,4 +12,10 @@ edition = "2018"
 
 [dependencies]
 dirs = "2.0"
+log = "0.4.8"
 log4rs = "0.8.3"
+config = { version = "0.9.3" }
+clap = "2.33.0"
+
+[dev-dependencies]
+tempdir = "0.3.7"

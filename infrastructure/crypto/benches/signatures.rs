@@ -43,7 +43,7 @@ fn gen_keypair() -> SigningData {
 fn sign_message(c: &mut Criterion) {
     c.bench_function("Create RistrettoSchnorr", move |b| {
         b.iter_batched(
-            || gen_keypair(),
+            gen_keypair,
             |d| {
                 let _ = RistrettoSchnorr::sign(d.k, d.r, &d.m.to_vec()).unwrap();
             },

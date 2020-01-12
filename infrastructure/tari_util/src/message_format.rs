@@ -49,7 +49,7 @@ pub trait MessageFormat: Sized {
     fn from_base64(msg: &str) -> Result<Self, MessageFormatError>;
 }
 
-impl<'de, T> MessageFormat for T
+impl<T> MessageFormat for T
 where T: DeserializeOwned + Serialize
 {
     fn to_binary(&self) -> Result<Vec<u8>, MessageFormatError> {
@@ -191,7 +191,7 @@ mod test {
         match err {
             MessageFormatError::Base64DeserializeError(Base64Error::InvalidByte(offset, val)) => {
                 assert_eq!(offset, 5);
-                assert_eq!(val, '$' as u8);
+                assert_eq!(val, b'$');
             },
             _ => panic!("Base64 conversion should fail"),
         };
