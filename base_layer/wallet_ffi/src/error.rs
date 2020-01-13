@@ -173,6 +173,10 @@ impl From<WalletError> for LibWalletError {
                 code: 209,
                 message: format!("{:?}", w),
             },
+            WalletError::TransactionServiceError(TransactionServiceError::OutboundSendDiscoveryInProgress(_)) => Self {
+                code: 210,
+                message: format!("{:?}", w),
+            },
             // Comms Stack errors
             WalletError::MultiaddrError(_) => Self {
                 code: 301,
