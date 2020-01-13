@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::peer_message::PeerMessage;
-use futures::{task::Context, Future, Poll, Sink, SinkExt};
+use futures::{task::Context, Future, Sink, SinkExt};
 use log::*;
-use std::{error::Error, pin::Pin, sync::Arc};
+use std::{error::Error, pin::Pin, sync::Arc, task::Poll};
 use tari_comms_dht::{domain_message::MessageHeader, inbound::DecryptedDhtMessage};
 use tari_comms_middleware::MiddlewareError;
 use tower::Service;

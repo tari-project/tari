@@ -39,10 +39,9 @@ use futures::{
     stream::{self, StreamExt},
     task::Context,
     Future,
-    Poll,
 };
 use log::*;
-use std::sync::Arc;
+use std::{sync::Arc, task::Poll};
 use tari_comms::{
     message::MessageFlags,
     peer_manager::{NodeId, NodeIdentity, Peer},
@@ -419,7 +418,7 @@ mod test {
 
     #[test]
     fn send_message_flood() {
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
 
         let pk = CommsPublicKey::default();
         let example_peer = Peer::new(
@@ -482,7 +481,7 @@ mod test {
     #[test]
     fn send_message_direct_not_found() {
         // Test for issue https://github.com/tari-project/tari/issues/959
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
 
         let pk = CommsPublicKey::default();
         let node_identity = NodeIdentity::random(
@@ -531,7 +530,7 @@ mod test {
 
     #[test]
     fn send_message_direct_dht_discovery() {
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
 
         let node_identity = NodeIdentity::random(
             &mut OsRng::new().unwrap(),

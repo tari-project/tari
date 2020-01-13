@@ -1,15 +1,16 @@
 use futures_util::{future::poll_fn, pin_mut};
-use std::{future::Future, thread};
-use tokio_test::{assert_ready, assert_ready_err, task};
+use std::future::Future;
+use tokio::runtime::Handle;
+use tokio_test::task;
 use tower::Service;
 use tower_filter::{error::Error, Filter};
 use tower_test::{assert_request_eq, mock};
 
-#[tokio::test]
+#[tokio_macros::test]
 async fn passthrough_sync() {
     let (mut service, handle) = new_service(|_| async { Ok(()) });
 
-    let th = thread::spawn(move || {
+    let handle = Handle::current().spawn(async move {
         // Receive the requests and respond
         pin_mut!(handle);
         for i in 0..10 {
@@ -33,24 +34,21 @@ async fn passthrough_sync() {
     }
 
     futures_util::future::join_all(responses).await;
-    th.join().unwrap();
+    handle.await.unwrap();
 }
 
 #[test]
 fn rejected_sync() {
-    task::mock(|cx| {
+    task::spawn(async {
         let (mut service, _handle) = new_service(|_| async { Err(Error::rejected()) });
-
-        let fut = service.call("hello".into());
-        pin_mut!(fut);
-        assert_ready_err!(fut.poll(cx));
+        service.call("hello".into()).await.unwrap_err();
     });
 }
 
 type Mock = mock::Mock<String, String>;
-type Handle = mock::Handle<String, String>;
+type MockHandle = mock::Handle<String, String>;
 
-fn new_service<F, U>(f: F) -> (Filter<Mock, F>, Handle)
+fn new_service<F, U>(f: F) -> (Filter<Mock, F>, MockHandle)
 where
     F: Fn(&String) -> U,
     U: Future<Output = Result<(), Error>>,

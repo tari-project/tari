@@ -20,8 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{task::Context, Poll, Sink};
-use std::{marker::PhantomData, pin::Pin};
+use futures::{task::Context, Sink};
+use std::{marker::PhantomData, pin::Pin, task::Poll};
 
 /// Sink to nowhere. This is used as an initial type for the CommsBuilder
 /// and should be replaced with a working sink (otherwise inbound messages

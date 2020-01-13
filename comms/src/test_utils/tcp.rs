@@ -25,7 +25,7 @@ use futures::StreamExt;
 use tokio::net::{TcpListener, TcpStream};
 
 pub async fn build_connected_tcp_socket_pair() -> (TcpSocket, TcpSocket) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let local_addr = listener.local_addr().unwrap();
     let (in_sock, out_sock) = futures::future::join(listener.incoming().next(), TcpStream::connect(&local_addr)).await;
 

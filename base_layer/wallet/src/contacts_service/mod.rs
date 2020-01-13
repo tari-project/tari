@@ -34,7 +34,7 @@ use tari_service_framework::{
     ServiceInitializer,
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 
 pub mod error;
 pub mod handle;
@@ -64,7 +64,7 @@ where T: ContactsBackend + 'static
 
     fn initialize(
         &mut self,
-        executor: TaskExecutor,
+        executor: runtime::Handle,
         handles_fut: ServiceHandlesFuture,
         shutdown: ShutdownSignal,
     ) -> Self::Future

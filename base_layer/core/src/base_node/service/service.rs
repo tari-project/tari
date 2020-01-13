@@ -51,11 +51,7 @@ use futures::{
     Stream,
 };
 use log::*;
-use std::{
-    collections::HashMap,
-    convert::TryInto,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, convert::TryInto, time::Duration};
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
@@ -64,7 +60,7 @@ use tari_comms_dht::{
 };
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::RequestContext;
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 
 const LOG_TARGET: &'static str = "tari_core::base_node::base_node_service::service";
 
@@ -137,7 +133,7 @@ where
 /// The Base Node Service is responsible for handling inbound requests and responses and for sending new requests to
 /// remote Base Node Services.
 pub struct BaseNodeService<B: BlockchainBackend> {
-    executor: TaskExecutor,
+    executor: runtime::Handle,
     outbound_message_service: OutboundMessageRequester,
     inbound_nch: InboundNodeCommsHandlers<B>,
     waiting_requests: HashMap<RequestKey, WaitingRequest>,
@@ -147,10 +143,10 @@ pub struct BaseNodeService<B: BlockchainBackend> {
 }
 
 impl<B> BaseNodeService<B>
-where B: BlockchainBackend
+where B: BlockchainBackend + 'static
 {
     pub fn new(
-        executor: TaskExecutor,
+        executor: runtime::Handle,
         outbound_message_service: OutboundMessageRequester,
         inbound_nch: InboundNodeCommsHandlers<B>,
         config: BaseNodeServiceConfig,
@@ -470,7 +466,7 @@ where B: BlockchainBackend
     async fn spawn_request_timeout(&self, request_key: RequestKey, timeout: Duration) {
         let mut timeout_sender = self.timeout_sender.clone();
         self.executor.spawn(async move {
-            tokio::timer::delay(Instant::now() + timeout).await;
+            tokio::time::delay_for(timeout).await;
             let _ = timeout_sender.send(request_key).await;
         });
     }

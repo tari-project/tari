@@ -38,14 +38,14 @@ use futures::{
 };
 use log::*;
 use std::sync::Arc;
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 
 const PEER_REQUEST_BUFFER_SIZE: usize = 64;
 
 pub async fn create_peer_connection<TSocket>(
-    executor: TaskExecutor,
+    executor: runtime::Handle,
     socket: TSocket,
     address: Multiaddr,
     public_key: CommsPublicKey,

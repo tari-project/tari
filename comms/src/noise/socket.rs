@@ -666,7 +666,7 @@ mod test {
         Ok((dialer_result?, listener_result?))
     }
 
-    #[tokio::test]
+    #[tokio_macros::test]
     async fn test_handshake() {
         let ((dialer_keypair, dialer), (listener_keypair, listener)) = build_test_connection().await.unwrap();
 
@@ -682,7 +682,7 @@ mod test {
         );
     }
 
-    #[tokio::test]
+    #[tokio_macros::test]
     async fn simple_test() -> io::Result<()> {
         let ((_dialer_keypair, dialer), (_listener_keypair, listener)) = build_test_connection().await.unwrap();
 
@@ -702,7 +702,7 @@ mod test {
         Ok(())
     }
 
-    #[tokio::test]
+    #[tokio_macros::test]
     async fn interleaved_writes() -> io::Result<()> {
         let ((_dialer_keypair, dialer), (_listener_keypair, listener)) = build_test_connection().await.unwrap();
 
@@ -733,7 +733,7 @@ mod test {
     #[test]
     fn u16_max_writes() -> io::Result<()> {
         // Current thread runtime stack overflows, so the full tokio runtime is used here
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
         rt.block_on(async move {
             let ((_dialer_keypair, dialer), (_listener_keypair, listener)) = build_test_connection().await.unwrap();
 

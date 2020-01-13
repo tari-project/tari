@@ -57,7 +57,7 @@ use tari_p2p::{
 use tari_service_framework::StackBuilder;
 use tari_test_utils::address::get_next_local_address;
 use tari_transactions::types::HashDigest;
-use tokio::runtime::{Runtime, TaskExecutor};
+use tokio::runtime::{self, Runtime};
 
 /// The NodeInterfaces is used as a container for providing access to all the services and interfaces of a single node.
 pub struct NodeInterfaces {
@@ -145,7 +145,7 @@ impl BaseNodeBuilder {
     }
 
     /// Build the test base node and start its services.
-    pub fn start(self, runtime: &Runtime, data_path: &str) -> NodeInterfaces {
+    pub fn start(self, runtime: &mut Runtime, data_path: &str) -> NodeInterfaces {
         let mct_config = self.mct_config.unwrap_or(MerkleChangeTrackerConfig {
             min_history_len: 10,
             max_history_len: 20,
@@ -166,7 +166,7 @@ impl BaseNodeBuilder {
         let node_identity = self.node_identity.unwrap_or(random_node_identity());
         let (outbound_nci, local_nci, outbound_mp_interface, outbound_message_service, comms) =
             setup_base_node_services(
-                &runtime,
+                runtime,
                 node_identity.clone(),
                 self.peers.unwrap_or(Vec::new()),
                 blockchain_db.clone(),
@@ -192,25 +192,25 @@ impl BaseNodeBuilder {
 }
 
 // Creates a network with two Base Nodes where each node in the network knows the other nodes in the network.
-pub fn create_network_with_2_base_nodes(runtime: &Runtime, data_path: &str) -> (NodeInterfaces, NodeInterfaces) {
+pub fn create_network_with_2_base_nodes(runtime: &mut Runtime, data_path: &str) -> (NodeInterfaces, NodeInterfaces) {
     let alice_node_identity = random_node_identity();
     let bob_node_identity = random_node_identity();
 
     let alice_node = BaseNodeBuilder::new()
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone()])
-        .start(&runtime, data_path);
+        .start(runtime, data_path);
     let bob_node = BaseNodeBuilder::new()
         .with_node_identity(bob_node_identity)
         .with_peers(vec![alice_node_identity])
-        .start(&runtime, data_path);
+        .start(runtime, data_path);
 
     (alice_node, bob_node)
 }
 
 // Creates a network with two Base Nodes where each node in the network knows the other nodes in the network.
 pub fn create_network_with_2_base_nodes_with_config(
-    runtime: &Runtime,
+    runtime: &mut Runtime,
     base_node_service_config: BaseNodeServiceConfig,
     mct_config: MerkleChangeTrackerConfig,
     mempool_service_config: MempoolServiceConfig,
@@ -226,21 +226,21 @@ pub fn create_network_with_2_base_nodes_with_config(
         .with_base_node_service_config(base_node_service_config)
         .with_merkle_change_tracker_config(mct_config)
         .with_mempool_service_config(mempool_service_config)
-        .start(&runtime, data_path);
+        .start(runtime, data_path);
     let bob_node = BaseNodeBuilder::new()
         .with_node_identity(bob_node_identity)
         .with_peers(vec![alice_node_identity])
         .with_base_node_service_config(base_node_service_config)
         .with_merkle_change_tracker_config(mct_config)
         .with_mempool_service_config(mempool_service_config)
-        .start(&runtime, data_path);
+        .start(runtime, data_path);
 
     (alice_node, bob_node)
 }
 
 // Creates a network with three Base Nodes where each node in the network knows the other nodes in the network.
 pub fn create_network_with_3_base_nodes(
-    runtime: &Runtime,
+    runtime: &mut Runtime,
     data_path: &str,
 ) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces)
 {
@@ -259,7 +259,7 @@ pub fn create_network_with_3_base_nodes(
 
 // Creates a network with three Base Nodes where each node in the network knows the other nodes in the network.
 pub fn create_network_with_3_base_nodes_with_config(
-    runtime: &Runtime,
+    runtime: &mut Runtime,
     base_node_service_config: BaseNodeServiceConfig,
     mct_config: MerkleChangeTrackerConfig,
     mempool_service_config: MempoolServiceConfig,
@@ -276,21 +276,21 @@ pub fn create_network_with_3_base_nodes_with_config(
         .with_base_node_service_config(base_node_service_config)
         .with_merkle_change_tracker_config(mct_config)
         .with_mempool_service_config(mempool_service_config)
-        .start(&runtime, data_path);
+        .start(runtime, data_path);
     let bob_node = BaseNodeBuilder::new()
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![alice_node_identity.clone(), carol_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
         .with_merkle_change_tracker_config(mct_config)
         .with_mempool_service_config(mempool_service_config)
-        .start(&runtime, data_path);
+        .start(runtime, data_path);
     let carol_node = BaseNodeBuilder::new()
         .with_node_identity(carol_node_identity.clone())
         .with_peers(vec![alice_node_identity, bob_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
         .with_merkle_change_tracker_config(mct_config)
         .with_mempool_service_config(mempool_service_config)
-        .start(&runtime, data_path);
+        .start(runtime, data_path);
 
     (alice_node, bob_node, carol_node)
 }
@@ -315,7 +315,7 @@ pub fn random_node_identity() -> Arc<NodeIdentity> {
 
 // Helper function for starting the comms stack.
 fn setup_comms_services<TSink>(
-    executor: TaskExecutor,
+    executor: runtime::Handle,
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
     publisher: InboundDomainConnector<TSink>,
@@ -364,7 +364,7 @@ where
 
 // Helper function for starting the services of the Base node.
 fn setup_base_node_services(
-    runtime: &Runtime,
+    runtime: &mut Runtime,
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
     blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
@@ -381,11 +381,11 @@ fn setup_base_node_services(
     CommsNode,
 )
 {
-    let (publisher, subscription_factory) = pubsub_connector(runtime.executor(), 100);
+    let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100);
     let subscription_factory = Arc::new(subscription_factory);
-    let (comms, dht) = setup_comms_services(runtime.executor(), node_identity, peers, publisher, data_path);
+    let (comms, dht) = setup_comms_services(runtime.handle().clone(), node_identity, peers, publisher, data_path);
 
-    let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
+    let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(BaseNodeServiceInitializer::new(
             subscription_factory.clone(),

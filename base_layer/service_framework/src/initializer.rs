@@ -25,7 +25,7 @@ use derive_error::Error;
 use futures::{Future, FutureExt};
 use std::pin::Pin;
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 
 #[derive(Debug, Error)]
 pub enum ServiceInitializationError {
@@ -44,7 +44,7 @@ pub trait ServiceInitializer {
     /// Async initialization code for a service
     fn initialize(
         &mut self,
-        executor: TaskExecutor,
+        executor: runtime::Handle,
         handles_fut: ServiceHandlesFuture,
         shutdown: ShutdownSignal,
     ) -> Self::Future;
@@ -64,22 +64,22 @@ pub trait ServiceInitializer {
 ///
 /// ```edition2018
 /// # use tari_service_framework::handles::ServiceHandlesFuture;
-/// # use tokio::runtime::TaskExecutor;
-/// let my_initializer = |executor: TaskExecutor, handles_fut: ServiceHandlesFuture| {
+/// # use tokio::runtime;
+/// let my_initializer = |executor: runtime::Handle, handles_fut: ServiceHandlesFuture| {
 ///     // initialization code
 ///     futures::future::ready(Result::<_, ()>::Ok(()))
 /// };
 /// ```
 impl<TFunc, TFut> ServiceInitializer for TFunc
 where
-    TFunc: FnMut(TaskExecutor, ServiceHandlesFuture, ShutdownSignal) -> TFut,
+    TFunc: FnMut(runtime::Handle, ServiceHandlesFuture, ShutdownSignal) -> TFut,
     TFut: Future<Output = Result<(), ServiceInitializationError>>,
 {
     type Future = TFut;
 
     fn initialize(
         &mut self,
-        executor: TaskExecutor,
+        executor: runtime::Handle,
         handles: ServiceHandlesFuture,
         shutdown: ShutdownSignal,
     ) -> Self::Future
@@ -103,7 +103,7 @@ type ServiceInitializationFuture = Pin<Box<dyn Future<Output = Result<(), Servic
 pub trait AbstractServiceInitializer {
     fn initialize(
         &mut self,
-        executor: TaskExecutor,
+        executor: runtime::Handle,
         handles_fut: ServiceHandlesFuture,
         shutdown: ShutdownSignal,
     ) -> ServiceInitializationFuture;
@@ -117,7 +117,7 @@ where
 {
     fn initialize(
         &mut self,
-        executor: TaskExecutor,
+        executor: runtime::Handle,
         handles: ServiceHandlesFuture,
         shutdown: ShutdownSignal,
     ) -> ServiceInitializationFuture
@@ -151,7 +151,7 @@ impl ServiceInitializer for BoxedServiceInitializer {
 
     fn initialize(
         &mut self,
-        executor: TaskExecutor,
+        executor: runtime::Handle,
         handles_fut: ServiceHandlesFuture,
         shutdown: ShutdownSignal,
     ) -> Self::Future

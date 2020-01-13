@@ -45,11 +45,7 @@ use futures::{
     Stream,
 };
 use log::*;
-use std::{
-    collections::HashMap,
-    convert::TryInto,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, convert::TryInto, time::Duration};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
@@ -58,7 +54,7 @@ use tari_comms_dht::{
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::RequestContext;
 use tari_transactions::{proto::types::Transaction as ProtoTransaction, transaction::Transaction};
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 
 const LOG_TARGET: &'static str = "tari_core::base_node::mempool::service";
 
@@ -111,7 +107,7 @@ where
 /// The Mempool Service is responsible for handling inbound requests and responses and for sending new requests to the
 /// Mempools of remote Base nodes.
 pub struct MempoolService<B: BlockchainBackend> {
-    executor: TaskExecutor,
+    executor: runtime::Handle,
     outbound_message_service: OutboundMessageRequester,
     inbound_handlers: MempoolInboundHandlers<B>,
     waiting_requests: HashMap<RequestKey, Option<OneshotSender<Result<MempoolResponse, MempoolServiceError>>>>,
@@ -124,7 +120,7 @@ impl<B> MempoolService<B>
 where B: BlockchainBackend
 {
     pub fn new(
-        executor: TaskExecutor,
+        executor: runtime::Handle,
         outbound_message_service: OutboundMessageRequester,
         inbound_handlers: MempoolInboundHandlers<B>,
         config: MempoolServiceConfig,
@@ -381,7 +377,7 @@ where B: BlockchainBackend
     async fn spawn_request_timeout(&self, request_key: RequestKey, timeout: Duration) {
         let mut timeout_sender = self.timeout_sender.clone();
         self.executor.spawn(async move {
-            tokio::timer::delay(Instant::now() + timeout).await;
+            tokio::time::delay_for(timeout).await;
             let _ = timeout_sender.send(request_key).await;
         });
     }

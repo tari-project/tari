@@ -20,7 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{ready, task::Context, Future, FutureExt, Poll};
+use futures::{ready, task::Context, Future, FutureExt};
+use std::task::Poll;
 use tower_service::Service;
 
 /// LazyService state
@@ -97,9 +98,12 @@ mod test {
     use crate::tower::service_fn;
     use futures::future::{self, poll_fn};
     use futures_test::task::panic_context;
-    use std::sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
+    use std::{
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
+        task::Poll,
     };
 
     fn mock_fut(flag: Arc<AtomicBool>) -> impl Future<Output = ()> {

@@ -120,7 +120,7 @@ unsafe extern "C" fn discovery_send_callback(_tx_id: u64, _result: bool) {
 
 #[test]
 fn test_callback_handler() {
-    let runtime = Runtime::new().unwrap();
+    let mut runtime = Runtime::new().unwrap();
 
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
@@ -155,7 +155,7 @@ fn test_callback_handler() {
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let alice_db = TransactionMemoryDatabase::new();
     let (mut alice_ts, mut alice_oms, _alice_comms) = setup_transaction_service(
-        &runtime,
+        &mut runtime,
         alice_node_identity.clone(),
         vec![bob_node_identity.clone()],
         factories.clone(),
@@ -179,7 +179,7 @@ fn test_callback_handler() {
     runtime.spawn(callback_handler.start());
 
     let (mut bob_ts, mut bob_oms, _bob_comms) = setup_transaction_service(
-        &runtime,
+        &mut runtime,
         bob_node_identity.clone(),
         vec![alice_node_identity.clone(), carol_node_identity.clone()],
         factories.clone(),
@@ -189,7 +189,7 @@ fn test_callback_handler() {
     );
 
     let (_carol_ts, _carol_oms, _carol_comms) = setup_transaction_service(
-        &runtime,
+        &mut runtime,
         carol_node_identity.clone(),
         vec![bob_node_identity.clone()],
         factories.clone(),

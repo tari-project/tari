@@ -27,8 +27,8 @@ use crate::{
     inbound::DecryptedDhtMessage,
     outbound::OutboundMessageRequester,
 };
-use futures::{task::Context, Future, Poll};
-use std::sync::Arc;
+use futures::{task::Context, Future};
+use std::{sync::Arc, task::Poll};
 use tari_comms::peer_manager::{NodeIdentity, PeerManager};
 use tari_comms_middleware::MiddlewareError;
 use tower::Service;

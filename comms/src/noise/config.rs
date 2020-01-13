@@ -116,7 +116,7 @@ mod test {
 
     #[test]
     fn upgrade_socket() {
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
 
         let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         let config1 = NoiseConfig::new(node_identity1.clone());

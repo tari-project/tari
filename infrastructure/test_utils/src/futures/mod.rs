@@ -81,8 +81,8 @@ mod test {
     use futures::{
         future::{self, FutureExt},
         task::Context,
-        Poll,
     };
+    use std::task::Poll;
 
     #[test]
     fn counter_context() {

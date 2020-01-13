@@ -29,7 +29,6 @@ mod cli;
 mod consts;
 
 use crate::builder::{create_and_save_id, load_identity};
-use futures::{future, StreamExt};
 use log::*;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -37,7 +36,7 @@ use std::sync::{
 };
 use tari_common::{load_configuration, GlobalConfig};
 use tari_utilities::hex::Hex;
-use tokio::{net::signal, runtime::Runtime};
+use tokio::{runtime::Runtime, signal, task};
 
 const LOG_TARGET: &str = "base_node::app";
 
@@ -111,7 +110,7 @@ fn main() {
     };
 
     // Set up the Tokio runtime
-    let rt = match setup_runtime(&node_config) {
+    let mut rt = match setup_runtime(&node_config) {
         Ok(rt) => rt,
         Err(s) => {
             error!(target: LOG_TARGET, "{}", s);
@@ -120,7 +119,7 @@ fn main() {
     };
 
     // Build, node, build!
-    let (comms, node) = match builder::configure_and_initialize_node(&node_config, node_id, &rt) {
+    let (comms, node) = match builder::configure_and_initialize_node(&node_config, node_id, &mut rt) {
         Ok(n) => n,
         Err(e) => {
             error!(target: LOG_TARGET, "Could not instantiate node instance. {}", e);
@@ -130,10 +129,7 @@ fn main() {
 
     // Configure the shutdown daemon to listen for CTRL-C
     let flag = node.get_flag();
-    if let Err(e) = handle_ctrl_c(&rt, flag) {
-        error!(target: LOG_TARGET, "Could not configure Ctrl-C handling. {}", e);
-        return;
-    };
+    handle_ctrl_c(&rt, flag);
 
     // Run, node, run!
     let main = async move {
@@ -151,8 +147,7 @@ fn main() {
             ),
         }
     };
-    rt.spawn(main);
-    rt.shutdown_on_idle();
+    rt.block_on(main);
     println!("Goodbye!");
 }
 
@@ -167,23 +162,23 @@ fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
         num_blocking_threads
     );
     tokio::runtime::Builder::new()
-        .blocking_threads(num_blocking_threads)
+        .threaded_scheduler()
+        .enable_all()
+        .max_threads(num_core_threads + num_blocking_threads)
         .core_threads(num_core_threads)
         .build()
         .map_err(|e| format!("There was an error while building the node runtime. {}", e.to_string()))
 }
 
 /// Set the interrupt flag on the node when Ctrl-C is entered
-fn handle_ctrl_c(rt: &Runtime, flag: Arc<AtomicBool>) -> Result<(), String> {
-    let ctrl_c = signal::ctrl_c().map_err(|e| e.to_string())?;
-    let s = ctrl_c.take(1).for_each(move |_| {
+fn handle_ctrl_c(rt: &Runtime, flag: Arc<AtomicBool>) -> task::JoinHandle<Result<(), String>> {
+    rt.spawn(async move {
+        signal::ctrl_c().await.map_err(|e| e.to_string())?;
         info!(
             target: LOG_TARGET,
             "Termination signal received from user. Shutting node down."
         );
         flag.store(true, Ordering::SeqCst);
-        future::ready(())
-    });
-    rt.spawn(s);
-    Ok(())
+        Ok(())
+    })
 }

@@ -43,26 +43,26 @@ where
 /// # use std::time::Duration;
 /// # use tari_test_utils::collect_stream;
 ///
-/// let rt = Runtime::new().unwrap();
+/// let mut rt = Runtime::new().unwrap();
 /// let stream = stream::iter(1..10);
 /// assert_eq!(collect_stream!(rt, stream, take=3, timeout=Duration::from_secs(1)), vec![1,2,3]);
 /// ```
 #[macro_export]
 macro_rules! collect_stream {
     ($runtime:expr, $stream:expr, take=$take:expr, timeout=$timeout:expr $(,)?) => {{
-        use futures::StreamExt;
-        use tokio::future::FutureExt;
+        use futures::{FutureExt, StreamExt};
+        use tokio::time;
 
         $runtime
-            .block_on($stream.take($take).collect::<Vec<_>>().timeout($timeout))
+            .block_on(async { time::timeout($timeout, $stream.take($take).collect::<Vec<_>>()).await })
             .expect(format!("Timeout before stream could collect {} item(s)", $take).as_str())
     }};
     ($runtime:expr, $stream:expr, timeout=$timeout:expr $(,)?) => {{
-        use futures::StreamExt;
-        use tokio::future::FutureExt;
+        use futures::{FutureExt, StreamExt};
+        use tokio::time;
 
         $runtime
-            .block_on($stream.collect::<Vec<_>>().timeout($timeout))
+            .block_on(async { time::timeout($timeout, $stream.collect::<Vec<_>>()).await })
             .expect("Stream did not close within timeout")
     }};
 }
@@ -75,7 +75,7 @@ macro_rules! collect_stream {
 /// # use std::time::Duration;
 /// # use tari_test_utils::collect_stream_count;
 ///
-/// let rt = Runtime::new().unwrap();
+/// let mut rt = Runtime::new().unwrap();
 /// let stream = stream::iter(vec![1,2,2,3,2]);
 /// assert_eq!(collect_stream_count!(rt, stream, timeout=Duration::from_secs(1)).get(&2), Some(&3));
 /// ```

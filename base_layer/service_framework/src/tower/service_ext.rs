@@ -20,8 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{ready, task::Context, Future, FutureExt, Poll};
-use std::pin::Pin;
+use futures::{ready, task::Context, Future, FutureExt};
+use std::{pin::Pin, task::Poll};
 use tower_service::Service;
 
 impl<T: ?Sized, TRequest> ServiceExt<TRequest> for T where T: Service<TRequest> {}

@@ -39,12 +39,12 @@ use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
 pub fn setup_contacts_service<T: ContactsBackend + 'static>(
-    runtime: &Runtime,
+    runtime: &mut Runtime,
     backend: T,
 ) -> (ContactsServiceHandle, Shutdown)
 {
     let shutdown = Shutdown::new();
-    let fut = StackBuilder::new(runtime.executor(), shutdown.to_signal())
+    let fut = StackBuilder::new(runtime.handle().clone(), shutdown.to_signal())
         .add_initializer(ContactsServiceInitializer::new(backend))
         .finish();
 
@@ -108,8 +108,8 @@ pub fn test_memory_database_crud() {
 pub fn test_contacts_service<T: ContactsBackend + 'static>(backend: T) {
     let mut rng = rand::OsRng::new().unwrap();
 
-    let runtime = Runtime::new().unwrap();
-    let (mut contacts_service, _shutdown) = setup_contacts_service(&runtime, backend);
+    let mut runtime = Runtime::new().unwrap();
+    let (mut contacts_service, _shutdown) = setup_contacts_service(&mut runtime, backend);
 
     let mut contacts = Vec::new();
     for i in 0..5 {

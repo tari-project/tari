@@ -27,13 +27,13 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerManager},
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 
 pub struct DhtBuilder {
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
     config: DhtConfig,
-    executor: TaskExecutor,
+    executor: runtime::Handle,
     shutdown_signal: ShutdownSignal,
 }
 
@@ -50,7 +50,7 @@ impl DhtBuilder {
     pub fn new(
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
-        executor: TaskExecutor,
+        executor: runtime::Handle,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {

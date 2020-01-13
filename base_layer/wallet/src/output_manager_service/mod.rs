@@ -33,7 +33,7 @@ use tari_service_framework::{
 };
 use tari_shutdown::ShutdownSignal;
 use tari_transactions::types::CryptoFactories;
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 
 pub mod error;
 pub mod handle;
@@ -69,7 +69,7 @@ where T: OutputManagerBackend + 'static
 
     fn initialize(
         &mut self,
-        executor: TaskExecutor,
+        executor: runtime::Handle,
         handles_fut: ServiceHandlesFuture,
         shutdown: ShutdownSignal,
     ) -> Self::Future

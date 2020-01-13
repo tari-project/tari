@@ -49,7 +49,7 @@ use tokio::runtime::Runtime;
 
 #[test]
 fn test_horizon_state_sync() {
-    let runtime = Runtime::new().unwrap();
+    let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let mct_config = MerkleChangeTrackerConfig {
@@ -57,7 +57,7 @@ fn test_horizon_state_sync() {
         max_history_len: 3,
     };
     let (alice_node, mut bob_node) = create_network_with_2_base_nodes_with_config(
-        &runtime,
+        &mut runtime,
         BaseNodeServiceConfig::default(),
         mct_config,
         MempoolServiceConfig::default(),
@@ -133,7 +133,7 @@ fn test_horizon_state_sync() {
 
 #[test]
 fn test_block_sync() {
-    let runtime = Runtime::new().unwrap();
+    let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let mct_config = MerkleChangeTrackerConfig {
@@ -141,7 +141,7 @@ fn test_block_sync() {
         max_history_len: 4,
     };
     let (alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
-        &runtime,
+        &mut runtime,
         BaseNodeServiceConfig::default(),
         mct_config,
         MempoolServiceConfig::default(),
@@ -215,7 +215,7 @@ fn test_block_sync() {
 
 #[test]
 fn test_lagging_block_sync() {
-    let runtime = Runtime::new().unwrap();
+    let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let mct_config = MerkleChangeTrackerConfig {
@@ -223,7 +223,7 @@ fn test_lagging_block_sync() {
         max_history_len: 20,
     };
     let (alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
-        &runtime,
+        &mut runtime,
         BaseNodeServiceConfig::default(),
         mct_config,
         MempoolServiceConfig::default(),

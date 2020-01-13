@@ -26,7 +26,7 @@ use futures::{channel::mpsc, FutureExt, SinkExt, StreamExt};
 use log::*;
 use std::sync::Arc;
 use tari_pubsub::{pubsub_channel, TopicPayload, TopicSubscriptionFactory};
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 
 const LOG_TARGET: &'static str = "comms::middleware::pubsub";
 
@@ -35,7 +35,7 @@ pub type PubsubDomainConnector = InboundDomainConnector<mpsc::Sender<Arc<PeerMes
 
 /// Connects `InboundDomainConnector` to a `tari_pubsub::TopicPublisher` through a buffered channel
 pub fn pubsub_connector(
-    executor: TaskExecutor,
+    executor: runtime::Handle,
     buf_size: usize,
 ) -> (
     PubsubDomainConnector,

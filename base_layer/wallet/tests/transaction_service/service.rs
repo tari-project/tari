@@ -82,8 +82,17 @@ use tari_wallet::{
 use tempdir::TempDir;
 use tokio::runtime::{Builder, Runtime};
 
+fn create_runtime() -> Runtime {
+    Builder::new()
+        .threaded_scheduler()
+        .enable_all()
+        .core_threads(8)
+        .build()
+        .unwrap()
+}
+
 pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
-    runtime: &Runtime,
+    runtime: &mut Runtime,
     node_identity: NodeIdentity,
     peers: Vec<NodeIdentity>,
     factories: CryptoFactories,
@@ -92,10 +101,10 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
     discovery_request_timeout: Duration,
 ) -> (TransactionServiceHandle, OutputManagerHandle, CommsNode)
 {
-    let (publisher, subscription_factory) = pubsub_connector(runtime.executor(), 100);
+    let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100);
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht) = setup_comms_services(
-        runtime.executor(),
+        runtime.handle().clone(),
         Arc::new(node_identity.clone()),
         peers,
         publisher,
@@ -103,7 +112,7 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
         discovery_request_timeout,
     );
 
-    let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
+    let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(OutputManagerServiceInitializer::new(
             OutputManagerMemoryDatabase::new(),
@@ -198,7 +207,7 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
     database_path: String,
 )
 {
-    let runtime = Builder::new().core_threads(8).build().unwrap();
+    let mut runtime = create_runtime();
 
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
@@ -221,7 +230,7 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
     .unwrap();
 
     let (mut alice_ts, mut alice_oms, alice_comms) = setup_transaction_service(
-        &runtime,
+        &mut runtime,
         alice_node_identity.clone(),
         vec![bob_node_identity.clone()],
         factories.clone(),
@@ -259,7 +268,7 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
     assert_eq!(alice_completed_tx.len(), 0);
 
     let (mut bob_ts, mut bob_oms, bob_comms) = setup_transaction_service(
-        &runtime,
+        &mut runtime,
         bob_node_identity.clone(),
         vec![alice_node_identity.clone()],
         factories.clone(),
@@ -353,7 +362,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
     database_path: String,
 )
 {
-    let runtime = Builder::new().core_threads(8).build().unwrap();
+    let mut runtime = create_runtime();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
     // Alice's parameters
@@ -384,7 +393,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
     .unwrap();
 
     let (mut alice_ts, mut alice_oms, alice_comms) = setup_transaction_service(
-        &runtime,
+        &mut runtime,
         alice_node_identity.clone(),
         vec![bob_node_identity.clone(), carol_node_identity.clone()],
         factories.clone(),
@@ -430,7 +439,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
 
     // Spin up Bob and Carol
     let (mut bob_ts, mut bob_oms, bob_comms) = setup_transaction_service(
-        &runtime,
+        &mut runtime,
         bob_node_identity.clone(),
         vec![alice_node_identity.clone()],
         factories.clone(),
@@ -439,7 +448,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
         Duration::from_secs(1),
     );
     let (mut carol_ts, mut carol_oms, carol_comms) = setup_transaction_service(
-        &runtime,
+        &mut runtime,
         carol_node_identity.clone(),
         vec![alice_node_identity.clone()],
         factories.clone(),
@@ -543,7 +552,7 @@ fn manage_multiple_transactions_sqlite_db() {
 }
 
 fn test_sending_repeated_tx_ids<T: TransactionBackend + Clone + 'static>(alice_backend: T, bob_backend: T) {
-    let runtime = Builder::new().core_threads(8).build().unwrap();
+    let mut runtime = create_runtime();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
@@ -632,7 +641,7 @@ fn test_sending_repeated_tx_ids_sqlite_db() {
 }
 
 fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clone + 'static>(alice_backend: T) {
-    let runtime = Builder::new().core_threads(8).build().unwrap();
+    let mut runtime = create_runtime();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
@@ -726,7 +735,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply_sqlite_db() {
 }
 
 fn finalize_tx_with_nonexistent_txid<T: TransactionBackend + Clone + 'static>(alice_backend: T) {
-    let runtime = Builder::new().core_threads(8).build().unwrap();
+    let mut runtime = create_runtime();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
@@ -784,7 +793,7 @@ fn finalize_tx_with_nonexistent_txid_sqlite_db() {
 }
 
 fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(alice_backend: T, bob_backend: T) {
-    let runtime = Builder::new().core_threads(8).build().unwrap();
+    let mut runtime = create_runtime();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
@@ -892,7 +901,7 @@ fn finalize_tx_with_incorrect_pubkey_sqlite_db() {
 }
 
 fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alice_backend: T, bob_backend: T) {
-    let runtime = Builder::new().core_threads(8).build().unwrap();
+    let mut runtime = create_runtime();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
@@ -1003,7 +1012,7 @@ fn discovery_async_return_test() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
 
-    let runtime = Runtime::new().unwrap();
+    let mut runtime = Runtime::new().unwrap();
     let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
@@ -1049,7 +1058,7 @@ fn discovery_async_return_test() {
     .unwrap();
 
     let (mut alice_ts, mut alice_oms, _alice_comms) = setup_transaction_service(
-        &runtime,
+        &mut runtime,
         alice_node_identity.clone(),
         vec![bob_node_identity.clone()],
         factories.clone(),
@@ -1060,7 +1069,7 @@ fn discovery_async_return_test() {
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
     let (_bob_ts, _bob_oms, _bob_comms) = setup_transaction_service(
-        &runtime,
+        &mut runtime,
         bob_node_identity.clone(),
         vec![
             alice_node_identity.clone(),
@@ -1117,7 +1126,7 @@ fn discovery_async_return_test() {
     assert_eq!(initial_balance, runtime.block_on(alice_oms.get_balance()).unwrap());
 
     let (_dave_ts, _dave_oms, _dave_comms) = setup_transaction_service(
-        &runtime,
+        &mut runtime,
         dave_node_identity.clone(),
         vec![bob_node_identity.clone()],
         factories.clone(),
@@ -1158,7 +1167,7 @@ fn discovery_async_return_test() {
 }
 
 fn test_coinbase<T: TransactionBackend + Clone + 'static>(backend: T) {
-    let runtime = Builder::new().core_threads(8).build().unwrap();
+    let mut runtime = create_runtime();
     let factories = CryptoFactories::default();
 
     let (mut alice_ts, mut alice_output_manager, _alice_outbound_service, _alice_tx_sender, _alice_tx_ack_sender, _) =

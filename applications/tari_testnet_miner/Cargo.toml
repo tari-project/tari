@@ -9,11 +9,10 @@ edition = "2018"
 [dependencies]
 log = { version = "0.4.8", features = ["std"] }
 tonic = "0.1.0-alpha.3"
-tokio-executor= "=0.2.0-alpha.6"
 bytes = "0.4"
 prost = "0.5"
-tokio = "=0.2.0-alpha.6"
-futures-preview = { version = "=0.3.0-alpha.19", default-features = false, features = ["alloc"]}
+tokio = "0.2.9"
+futures= { version = "^0.3.1", default-features = false, features = ["alloc"]}
 async-stream = "0.1.2"
 http = "0.1"
 tower = "=0.3.0-alpha.2"

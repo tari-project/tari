@@ -51,7 +51,7 @@ use tari_service_framework::{
 };
 use tari_shutdown::ShutdownSignal;
 use tari_transactions::{proto::types::Transaction as ProtoTransaction, transaction::Transaction};
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 
 const LOG_TARGET: &'static str = "base_node::mempool_service::initializer";
 
@@ -143,7 +143,7 @@ where T: BlockchainBackend + 'static
 
     fn initialize(
         &mut self,
-        executor: TaskExecutor,
+        executor: runtime::Handle,
         handles_fut: ServiceHandlesFuture,
         shutdown: ShutdownSignal,
     ) -> Self::Future

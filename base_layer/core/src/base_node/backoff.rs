@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use std::time::{Duration, Instant};
-use tokio::timer;
+use std::time::Duration;
+use tokio::time;
 
 /// A simple back-off strategy. `BackOff` is typically used in situations where you want to retry an operation a
 /// number of times, with an increasing delay between attempts
@@ -105,9 +105,7 @@ impl BackOff {
         if self.is_finished() {
             return;
         }
-        let deadline = Instant::now() + self.delay;
-        let delay = timer::delay(deadline);
-        delay.await;
+        time::delay_for(self.delay).await;
         self.current_attempts += 1;
         self.delay = self.delay.mul_f64(self.backoff);
     }
@@ -118,7 +116,7 @@ mod test {
     use crate::base_node::BackOff;
     use std::time::Duration;
 
-    #[tokio::test]
+    #[tokio_macros::test]
     async fn retry() {
         let mut retry = BackOff::new(3, Duration::from_millis(100), 1.5);
         assert_eq!(retry.attempts(), 0);

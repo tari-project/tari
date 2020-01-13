@@ -20,16 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{future, Poll};
+use futures::future;
 use std::{
+    future::Future,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
         Mutex,
     },
-    task::Context,
+    task::{Context, Poll},
 };
-use tokio::future::Future;
 use tower::Service;
 
 pub fn service_spy<TReq>() -> ServiceSpy<TReq>

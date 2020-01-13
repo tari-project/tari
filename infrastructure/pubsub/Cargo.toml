@@ -13,4 +13,4 @@ edition = "2018"
 
 [dependencies]
 tari_broadcast_channel = { version="^0.0",  path = "../broadcast_channel" }
-futures = { version = "=0.3.0-alpha.19", package = "futures-preview", features=["async-await"] }
+futures = { version = "^0.3.1", features=["async-await"] }

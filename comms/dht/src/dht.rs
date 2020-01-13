@@ -42,7 +42,7 @@ use tari_comms::{
 };
 use tari_comms_middleware::MiddlewareError;
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 use tower::{layer::Layer, Service, ServiceBuilder};
 use tower_filter::error::Error as FilterError;
 
@@ -68,7 +68,7 @@ pub struct Dht {
 impl Dht {
     pub fn new(
         config: DhtConfig,
-        executor: TaskExecutor,
+        executor: runtime::Handle,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         shutdown_signal: ShutdownSignal,
@@ -285,20 +285,20 @@ mod test {
     };
     use tari_comms_middleware::sink::SinkMiddleware;
     use tari_shutdown::Shutdown;
-    use tokio::{future::FutureExt, runtime::Runtime};
+    use tokio::{runtime::Runtime, time};
     use tower::{layer::Layer, Service};
 
     #[test]
     fn stack_unencrypted() {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
 
         let shutdown = Shutdown::new();
         let dht = DhtBuilder::new(
             Arc::clone(&node_identity),
             peer_manager,
-            rt.executor(),
+            rt.handle().clone(),
             shutdown.to_signal(),
         )
         .finish();
@@ -321,7 +321,10 @@ mod test {
 
         let msg = rt.block_on(async move {
             service.call(inbound_message).await.unwrap();
-            let msg = out_rx.next().timeout(Duration::from_secs(10)).await.unwrap().unwrap();
+            let msg = time::timeout(Duration::from_secs(10), out_rx.next())
+                .await
+                .unwrap()
+                .unwrap();
             msg.success().unwrap().decode_part::<Vec<u8>>(0).unwrap().unwrap()
         });
 
@@ -333,12 +336,12 @@ mod test {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
 
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
         let shutdown = Shutdown::new();
         let dht = DhtBuilder::new(
             Arc::clone(&node_identity),
             peer_manager,
-            rt.executor(),
+            rt.handle().clone(),
             shutdown.to_signal(),
         )
         .finish();
@@ -360,7 +363,10 @@ mod test {
 
         let msg = rt.block_on(async move {
             service.call(inbound_message).await.unwrap();
-            let msg = out_rx.next().timeout(Duration::from_secs(10)).await.unwrap().unwrap();
+            let msg = time::timeout(Duration::from_secs(10), out_rx.next())
+                .await
+                .unwrap()
+                .unwrap();
             msg.success().unwrap().decode_part::<Vec<u8>>(0).unwrap().unwrap()
         });
 
@@ -372,17 +378,15 @@ mod test {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
 
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
         let shutdown = Shutdown::new();
         let mut dht = DhtBuilder::new(
             Arc::clone(&node_identity),
             peer_manager,
-            rt.executor(),
+            rt.handle().clone(),
             shutdown.to_signal(),
         )
         .finish();
-
-        let rt = Runtime::new().unwrap();
 
         let (next_service_tx, mut next_service_rx) = mpsc::channel(10);
         let (oms_requester, oms_mock) = create_outbound_service_mock(1);
@@ -427,12 +431,12 @@ mod test {
         let node_identity = make_client_identity();
         let peer_manager = make_peer_manager();
 
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
         let shutdown = Shutdown::new();
         let dht = DhtBuilder::new(
             Arc::clone(&node_identity),
             peer_manager,
-            rt.executor(),
+            rt.handle().clone(),
             shutdown.to_signal(),
         )
         .finish();

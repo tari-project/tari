@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::MiddlewareError;
-use futures::{task::Context, Future, Poll, Sink, SinkExt};
+use futures::{task::Context, Future, Sink, SinkExt};
 use log::*;
-use std::{error::Error, pin::Pin};
+use std::{error::Error, pin::Pin, task::Poll};
 use tower::Service;
 
 const LOG_TARGET: &'static str = "comms::middleware::sink";

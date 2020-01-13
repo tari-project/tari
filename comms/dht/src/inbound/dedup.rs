@@ -21,8 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{actor::DhtRequester, inbound::DhtInboundMessage};
-use futures::{task::Context, Future, Poll};
+use futures::{task::Context, Future};
 use log::*;
+use std::task::Poll;
 use tari_comms_middleware::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -123,7 +124,7 @@ mod test {
 
     #[test]
     fn process_message() {
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
         let spy = service_spy();
 
         let (dht_requester, mut mock) = create_dht_actor_mock(1);
@@ -148,6 +149,5 @@ mod test {
         assert_eq!(spy.call_count(), 1);
         // Drop dedup so that the DhtMock will stop running
         drop(dedup);
-        rt.shutdown_on_idle();
     }
 }

@@ -34,9 +34,9 @@ use crate::{
     services::liveness::{neighbours::Neighbours, LivenessEvent, PongEvent},
     tari_message::TariMessageType,
 };
-use futures::{pin_mut, stream::StreamExt, task::Context, Poll, SinkExt, Stream};
+use futures::{pin_mut, stream::StreamExt, task::Context, SinkExt, Stream};
 use log::*;
-use std::{pin::Pin, time::Instant};
+use std::{pin::Pin, task::Poll, time::Instant};
 use tari_broadcast_channel::Publisher;
 use tari_comms::{
     peer_manager::{NodeId, Peer},
@@ -50,7 +50,7 @@ use tari_comms_dht::{
 };
 use tari_service_framework::RequestContext;
 use tari_shutdown::ShutdownSignal;
-use tokio::timer::Interval;
+use tokio::time;
 
 /// Service responsible for testing Liveness for Peers.
 ///
@@ -107,7 +107,7 @@ where
         pin_mut!(request_stream);
 
         let mut ping_tick = match self.config.auto_ping_interval {
-            Some(interval) => EitherStream::Left(Interval::new(Instant::now() + interval, interval)),
+            Some(interval) => EitherStream::Left(time::interval_at((Instant::now() + interval).into(), interval)),
             None => EitherStream::Right(futures::stream::iter(Vec::new())),
         }
         .fuse();
@@ -398,7 +398,6 @@ mod test {
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
     use tari_test_utils::runtime;
-    use tokio::future::FutureExt;
 
     #[test]
     fn get_ping_pong_count() {
@@ -562,63 +561,64 @@ mod test {
         });
     }
 
-    #[tokio::test]
-    async fn handle_message_pong() {
-        let mut state = LivenessState::new();
+    #[test]
+    fn handle_message_pong() {
+        runtime::test_async(|rt| {
+            rt.spawn(async {
+                let mut state = LivenessState::new();
 
-        let (outbound_tx, _) = mpsc::channel(10);
-        let oms_handle = OutboundMessageRequester::new(outbound_tx);
+                let (outbound_tx, _) = mpsc::channel(10);
+                let oms_handle = OutboundMessageRequester::new(outbound_tx);
 
-        let mut metadata = Metadata::new();
-        metadata.insert(MetadataKey::ChainMetadata, b"dummy-data".to_vec());
-        let msg = create_dummy_message(PingPongMessage::pong_with_metadata(123, metadata));
+                let mut metadata = Metadata::new();
+                metadata.insert(MetadataKey::ChainMetadata, b"dummy-data".to_vec());
+                let msg = create_dummy_message(PingPongMessage::pong_with_metadata(123, metadata));
 
-        state.add_inflight_ping(&msg.source_peer.node_id);
-        // A stream which emits one message and then closes
-        let pingpong_stream = stream::iter(std::iter::once(msg));
+                state.add_inflight_ping(&msg.source_peer.node_id);
+                // A stream which emits one message and then closes
+                let pingpong_stream = stream::iter(std::iter::once(msg));
 
-        let (dht_tx, _) = mpsc::channel(10);
-        let dht_requester = DhtRequester::new(dht_tx);
-        // Setup liveness service
-        let (publisher, subscriber) = broadcast_channel::bounded(100);
-        let mut shutdown = Shutdown::new();
-        let service = LivenessService::new(
-            Default::default(),
-            stream::empty(),
-            pingpong_stream,
-            state,
-            dht_requester,
-            oms_handle,
-            publisher,
-            shutdown.to_signal(),
-        );
+                let (dht_tx, _) = mpsc::channel(10);
+                let dht_requester = DhtRequester::new(dht_tx);
+                // Setup liveness service
+                let (publisher, subscriber) = broadcast_channel::bounded(100);
+                let mut shutdown = Shutdown::new();
+                let service = LivenessService::new(
+                    Default::default(),
+                    stream::empty(),
+                    pingpong_stream,
+                    state,
+                    dht_requester,
+                    oms_handle,
+                    publisher,
+                    shutdown.to_signal(),
+                );
 
-        // Create a flag that gets flipped when the subscribed event is received
-        let received_event = Arc::new(AtomicBool::new(false));
-        let rec_event_clone = received_event.clone();
+                // Create a flag that gets flipped when the subscribed event is received
+                let received_event = Arc::new(AtomicBool::new(false));
+                let rec_event_clone = received_event.clone();
 
-        // Listen for the pong event
-        futures::join!(
-            async move {
-                let event = subscriber
-                    .fuse()
-                    .select_next_some()
-                    .timeout(Duration::from_secs(10))
-                    .await
-                    .unwrap();
-                match &*event {
-                    LivenessEvent::ReceivedPong(event) => {
-                        rec_event_clone.store(true, Ordering::SeqCst);
-                        assert_eq!(event.metadata.get(&MetadataKey::ChainMetadata).unwrap(), b"dummy-data");
+                // Listen for the pong event
+                futures::join!(
+                    async move {
+                        let event = time::timeout(Duration::from_secs(10), subscriber.fuse().select_next_some())
+                            .await
+                            .unwrap();
+                        match &*event {
+                            LivenessEvent::ReceivedPong(event) => {
+                                rec_event_clone.store(true, Ordering::SeqCst);
+                                assert_eq!(event.metadata.get(&MetadataKey::ChainMetadata).unwrap(), b"dummy-data");
+                            },
+                            _ => panic!("Unexpected event"),
+                        }
+
+                        shutdown.trigger().unwrap();
                     },
-                    _ => panic!("Unexpected event"),
-                }
+                    service.run()
+                );
 
-                shutdown.trigger().unwrap();
-            },
-            service.run()
-        );
-
-        assert_eq!(received_event.load(Ordering::SeqCst), true);
+                assert_eq!(received_event.load(Ordering::SeqCst), true);
+            });
+        });
     }
 }

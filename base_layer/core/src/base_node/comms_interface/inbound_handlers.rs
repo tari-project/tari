@@ -64,7 +64,7 @@ where T: BlockchainBackend
 }
 
 impl<T> InboundNodeCommsHandlers<T>
-where T: BlockchainBackend
+where T: BlockchainBackend + 'static
 {
     /// Construct a new InboundNodeCommsInterface.
     pub fn new(

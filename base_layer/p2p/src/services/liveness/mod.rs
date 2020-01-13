@@ -63,7 +63,7 @@ use tari_service_framework::{
     ServiceInitializer,
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 
 #[cfg(feature = "test-mocks")]
 pub mod mock;
@@ -114,7 +114,7 @@ impl ServiceInitializer for LivenessInitializer {
 
     fn initialize(
         &mut self,
-        executor: TaskExecutor,
+        executor: runtime::Handle,
         handles_fut: ServiceHandlesFuture,
         shutdown: ShutdownSignal,
     ) -> Self::Future

@@ -21,7 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // TODO: Remove this when https://github.com/tower-rs/tower/pull/318 is resolved and published
-use futures::{task::Context, Future, Poll};
+use futures::{task::Context, Future};
+use std::task::Poll;
 use tower_service::Service;
 
 /// Returns a new `ServiceFn` with the given closure.

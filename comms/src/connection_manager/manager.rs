@@ -45,7 +45,7 @@ use log::*;
 use multiaddr::Multiaddr;
 use std::{collections::HashMap, sync::Arc};
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
 
@@ -79,7 +79,7 @@ impl Default for ConnectionManagerConfig {
 
 pub struct ConnectionManager<TTransport, TBackoff> {
     config: ConnectionManagerConfig,
-    executor: TaskExecutor,
+    executor: runtime::Handle,
     request_rx: Fuse<mpsc::Receiver<ConnectionManagerRequest>>,
     event_rx: Fuse<mpsc::Receiver<ConnectionManagerEvent>>,
     establisher_tx: mpsc::Sender<DialerRequest>,
@@ -98,7 +98,7 @@ where
 {
     pub fn new(
         config: ConnectionManagerConfig,
-        executor: TaskExecutor,
+        executor: runtime::Handle,
         transport: TTransport,
         backoff: Arc<TBackoff>,
         request_rx: mpsc::Receiver<ConnectionManagerRequest>,
@@ -268,7 +268,7 @@ mod test {
 
     #[test]
     fn connect_to_nonexistent_peer() {
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
         let transport = TcpTransport::new();
         let transport = NoiseTransport::new(
             transport,
@@ -282,7 +282,7 @@ mod test {
 
         let connection_manager = ConnectionManager::new(
             Default::default(),
-            rt.executor(),
+            rt.handle().clone(),
             transport,
             Arc::new(ConstantBackoff::new(Duration::from_secs(1))),
             request_rx,
@@ -303,7 +303,5 @@ mod test {
         }
 
         shutdown.trigger().unwrap();
-
-        rt.shutdown_on_idle();
     }
 }

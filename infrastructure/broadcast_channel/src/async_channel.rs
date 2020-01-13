@@ -2,11 +2,10 @@ use crate::channel::{bounded as raw_bounded, Receiver, SendError, Sender, TryRec
 use crossbeam_channel as mpsc;
 use futures::{
     task::{self, AtomicWaker},
-    Poll,
     Sink,
     Stream,
 };
-use std::{pin::Pin, sync::Arc};
+use std::{pin::Pin, sync::Arc, task::Poll};
 
 pub fn bounded<T>(size: usize) -> (Publisher<T>, Subscriber<T>) {
     let (sender, receiver) = raw_bounded(size);

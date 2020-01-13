@@ -21,10 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{inbound::DhtInboundMessage, proto::envelope::DhtEnvelope};
-use futures::{task::Context, Future, Poll};
+use futures::{task::Context, Future};
 use log::*;
 use prost::Message;
-use std::convert::TryInto;
+use std::{convert::TryInto, task::Poll};
 use tari_comms::message::InboundMessage;
 use tari_comms_middleware::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceExt};
