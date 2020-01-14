@@ -65,7 +65,7 @@ fn pruned_mmrs() {
 fn get_changes() -> (usize, Vec<Hash>, Vec<u32>) {
     let mut rng = rand::thread_rng();
     let src_size: usize = rng.gen_range(25, 150);
-    let addition_length = rng.gen_range(0, 100);
+    let addition_length = rng.gen_range(1, 100);
     let additions: Vec<Hash> = Uniform::from(1..1000)
         .sample_iter(rng)
         .take(addition_length)
