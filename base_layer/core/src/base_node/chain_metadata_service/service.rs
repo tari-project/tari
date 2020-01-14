@@ -146,7 +146,7 @@ impl ChainMetadataService {
                 }
             },
             // New ping round has begun
-            LivenessEvent::BroadcastedPings(num_peers) => {
+            LivenessEvent::BroadcastedNeighbourPings(num_peers) => {
                 // If we have chain metadata to send to the base node service, send them now
                 // because the next round of pings is happening.
                 // TODO: It's pretty easy for this service to require either a percentage of peers
@@ -322,6 +322,7 @@ mod test {
             metadata,
             node_id: node_id.clone(),
             latency: None,
+            is_monitored: false,
         };
 
         let (base_node, _) = create_base_node_nci();
@@ -353,6 +354,7 @@ mod test {
             metadata,
             node_id,
             latency: None,
+            is_monitored: false,
         };
 
         let (base_node, _) = create_base_node_nci();
@@ -375,6 +377,7 @@ mod test {
             metadata,
             node_id,
             latency: None,
+            is_monitored: false,
         };
 
         let (base_node, _) = create_base_node_nci();
@@ -397,6 +400,7 @@ mod test {
             metadata,
             node_id,
             latency: None,
+            is_monitored: false,
         };
 
         let (base_node, _) = create_base_node_nci();

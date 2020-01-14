@@ -42,4 +42,6 @@ pub enum LivenessError {
     TransportChannelError(TransportChannelError),
     /// Ping pong type was invalid or unrecognised
     InvalidPingPongType,
+    /// NodeId does not exist
+    NodeIdDoesNotExist,
 }

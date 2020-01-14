@@ -22,6 +22,7 @@
 
 use crate::services::liveness::{
     error::LivenessError,
+    state::NodeStats,
     LivenessEvent,
     LivenessHandle,
     LivenessRequest,
@@ -137,6 +138,10 @@ impl LivenessMock {
             GetNumActiveNeighbours => {
                 reply_tx.send(Ok(LivenessResponse::NumActiveNeighbours(8))).unwrap();
             },
+            AddNodeId(_n) => reply_tx.send(Ok(LivenessResponse::NodeIdAdded)).unwrap(),
+            GetNodeIdStats(_n) => reply_tx
+                .send(Ok(LivenessResponse::NodeIdStats(NodeStats::new())))
+                .unwrap(),
         }
     }
 }

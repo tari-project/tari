@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{error::LivenessError, state::Metadata};
-use crate::proto::liveness::MetadataKey;
+use crate::{proto::liveness::MetadataKey, services::liveness::state::NodeStats};
 use futures::{stream::Fuse, StreamExt};
 use tari_broadcast_channel::Subscriber;
 use tari_comms::peer_manager::NodeId;
@@ -43,6 +43,10 @@ pub enum LivenessRequest {
     SetPongMetadata(MetadataKey, Vec<u8>),
     /// Request the number of active neighbours
     GetNumActiveNeighbours,
+    /// Add NodeId to be monitored
+    AddNodeId(NodeId),
+    /// Get stats for a monitored NodeId
+    GetNodeIdStats(NodeId),
 }
 
 /// Response type for `LivenessService`
@@ -56,6 +60,8 @@ pub enum LivenessResponse {
     AvgLatency(Option<u32>),
     /// The number of active neighbouring peers
     NumActiveNeighbours(usize),
+    NodeIdAdded,
+    NodeIdStats(NodeStats),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -65,7 +71,8 @@ pub enum LivenessEvent {
     /// A pong was received. The latency to the peer (if available) and the metadata contained
     /// within the received pong message are included as part of the event
     ReceivedPong(Box<PongEvent>),
-    BroadcastedPings(usize),
+    BroadcastedNeighbourPings(usize),
+    BroadcastedMonitoredNodeIdPings(usize),
 }
 
 /// Repressents a pong event
@@ -79,15 +86,25 @@ pub struct PongEvent {
     pub metadata: Metadata,
     /// True if the pong was from a neighbouring peer, otherwise false
     pub is_neighbour: bool,
+    /// True if the pong was from a monitored node, otherwise false
+    pub is_monitored: bool,
 }
 
 impl PongEvent {
-    pub(super) fn new(node_id: NodeId, latency: Option<u32>, metadata: Metadata, is_neighbour: bool) -> Self {
+    pub(super) fn new(
+        node_id: NodeId,
+        latency: Option<u32>,
+        metadata: Metadata,
+        is_neighbour: bool,
+        is_monitored: bool,
+    ) -> Self
+    {
         Self {
             node_id,
             latency,
             metadata,
             is_neighbour,
+            is_monitored,
         }
     }
 }
@@ -140,6 +157,22 @@ impl LivenessHandle {
     pub async fn set_pong_metadata_entry(&mut self, key: MetadataKey, value: Vec<u8>) -> Result<(), LivenessError> {
         match self.handle.call(LivenessRequest::SetPongMetadata(key, value)).await?? {
             LivenessResponse::Ok => Ok(()),
+            _ => Err(LivenessError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Add NodeId to be monitored
+    pub async fn add_node_id(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
+        match self.handle.call(LivenessRequest::AddNodeId(node_id)).await?? {
+            LivenessResponse::NodeIdAdded => Ok(()),
+            _ => Err(LivenessError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Get stats for NodeId that is being monitored
+    pub async fn get_node_id_stats(&mut self, node_id: NodeId) -> Result<NodeStats, LivenessError> {
+        match self.handle.call(LivenessRequest::GetNodeIdStats(node_id)).await?? {
+            LivenessResponse::NodeIdStats(n) => Ok(n),
             _ => Err(LivenessError::UnexpectedApiResponse),
         }
     }
