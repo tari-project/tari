@@ -24,6 +24,7 @@ use crate::helpers::{
     block_builders::{append_block, create_genesis_block, create_genesis_block_with_utxos, generate_new_block},
     sample_blockchains::create_new_blockchain,
 };
+use croaring::Bitmap;
 use env_logger;
 use std::thread;
 use tari_core::{
@@ -178,7 +179,7 @@ fn utxo_and_rp_merkle_root() {
     let hash1 = utxo1.hash();
     let hash2 = utxo2.hash();
     // Calculate the Range proof MMR root as a check
-    let mut rp_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new());
+    let mut rp_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
     assert_eq!(rp_mmr_check.push(&utxo1.proof.hash()).unwrap(), 1);
     assert_eq!(rp_mmr_check.push(&utxo2.proof.hash()).unwrap(), 2);
     // Store the UTXOs
@@ -188,7 +189,7 @@ fn utxo_and_rp_merkle_root() {
     assert!(store.commit(txn).is_ok());
     let root = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
     let rp_root = store.fetch_mmr_root(MmrTree::RangeProof).unwrap();
-    let mut mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new());
+    let mut mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
     assert!(mmr_check.push(&hash1).is_ok());
     assert!(mmr_check.push(&hash2).is_ok());
     assert_eq!(root.to_hex(), mmr_check.get_merkle_root().unwrap().to_hex());
@@ -216,7 +217,7 @@ fn kernel_merkle_root() {
     txn.insert_kernel(kernel3, true);
     assert!(store.commit(txn).is_ok());
     let root = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
-    let mut mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new());
+    let mut mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
     assert!(mmr_check.push(&hash1).is_ok());
     assert!(mmr_check.push(&hash2).is_ok());
     assert!(mmr_check.push(&hash3).is_ok());

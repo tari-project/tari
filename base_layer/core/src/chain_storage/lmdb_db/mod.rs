@@ -42,3 +42,5 @@ pub const LMDB_DB_KERNEL_MMR_BASE_BACKEND: &str = "kernel_mmr_base_backend";
 pub const LMDB_DB_KERNEL_MMR_CP_BACKEND: &str = "kernel_mmr_cp_backend";
 pub const LMDB_DB_RANGE_PROOF_MMR_BASE_BACKEND: &str = "range_proof_mmr_base_backend";
 pub const LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND: &str = "range_proof_mmr_cp_backend";
+pub const LMDB_DB_MMR_BITMAPS: &str = "mmr_bitmaps";
+pub const LMDB_UTXO_BITMAP_KEY: u16 = 1;

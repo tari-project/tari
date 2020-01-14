@@ -37,7 +37,7 @@ use tari_utilities::hex::Hex;
 
 #[test]
 fn change_tracker() {
-    let mmr = MutableMmr::<Hasher, _>::new(Vec::default());
+    let mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create());
     let config = MerkleChangeTrackerConfig {
         min_history_len: 15,
         max_history_len: 20,
@@ -51,7 +51,7 @@ fn change_tracker() {
 /// Test the same MMR structure as the test in mutable_mmr, but add in rewinding and restoring of state
 fn checkpoints() {
     //----------- Construct and populate the initial MMR --------------------------
-    let base = MutableMmr::<Hasher, _>::new(Vec::default());
+    let base = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create());
     let config = MerkleChangeTrackerConfig {
         min_history_len: 15,
         max_history_len: 20,
@@ -185,7 +185,7 @@ fn serialize_and_deserialize_merklecheckpoint() {
 
 #[test]
 fn update_of_base_mmr_with_history_bounds() {
-    let base = MutableMmr::<Hasher, _>::new(Vec::default());
+    let base = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create());
     let config = MerkleChangeTrackerConfig {
         min_history_len: 3,
         max_history_len: 5,
@@ -218,7 +218,7 @@ fn update_of_base_mmr_with_history_bounds() {
 
 #[test]
 fn find_leaf_index() {
-    let base = MutableMmr::<Hasher, _>::new(Vec::default());
+    let base = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create());
     let config = MerkleChangeTrackerConfig {
         min_history_len: 2,
         max_history_len: 3,
@@ -255,7 +255,7 @@ fn find_leaf_index() {
 #[ignore] // TODO: this test demonstrate bug #1132, where the pruned MMR doesn't remove the leaf hashes that have been committed
           // to the base MMR.
 fn check_pruning_of_pruned_mmr() {
-    let base = MutableMmr::<Hasher, _>::new(Vec::default());
+    let base = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create());
     let config = MerkleChangeTrackerConfig {
         min_history_len: 2,
         max_history_len: 3,

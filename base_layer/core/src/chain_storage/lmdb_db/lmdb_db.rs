@@ -35,6 +35,7 @@ use crate::{
             LMDB_DB_KERNEL_MMR_BASE_BACKEND,
             LMDB_DB_KERNEL_MMR_CP_BACKEND,
             LMDB_DB_METADATA,
+            LMDB_DB_MMR_BITMAPS,
             LMDB_DB_ORPHANS,
             LMDB_DB_RANGE_PROOF_MMR_BASE_BACKEND,
             LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND,
@@ -43,11 +44,13 @@ use crate::{
             LMDB_DB_UTXOS,
             LMDB_DB_UTXO_MMR_BASE_BACKEND,
             LMDB_DB_UTXO_MMR_CP_BACKEND,
+            LMDB_UTXO_BITMAP_KEY,
         },
     },
 };
+use croaring::Bitmap;
 use digest::Digest;
-use lmdb_zero::{Database, Environment, WriteTransaction};
+use lmdb_zero::{error::NOTFOUND, Database, Environment, Error as LmdbErr, ReadTransaction, WriteTransaction};
 use std::{
     path::Path,
     sync::{Arc, RwLock},
@@ -84,6 +87,7 @@ where D: Digest
     txos_hash_to_index_db: DatabaseRef,
     kernels_db: DatabaseRef,
     orphans_db: DatabaseRef,
+    bitmaps_db: DatabaseRef,
     utxo_mmr: RwLock<MerkleChangeTracker<D, LMDBVec<MmrHash>, LMDBVec<MerkleCheckPoint>>>,
     kernel_mmr: RwLock<MerkleChangeTracker<D, LMDBVec<MmrHash>, LMDBVec<MerkleCheckPoint>>>,
     range_proof_mmr: RwLock<MerkleChangeTracker<D, LMDBVec<MmrHash>, LMDBVec<MerkleCheckPoint>>>,
@@ -141,6 +145,22 @@ where D: Digest + Send + Sync
                 .db()
                 .clone(),
         );
+        let bitmaps_db = store
+            .get_handle(LMDB_DB_MMR_BITMAPS)
+            .ok_or(ChainStorageError::CriticalError)?
+            .db()
+            .clone();
+        // Get a reference into the serialized UTXO deletion bitmap. Use zero-copy here for performance
+        let utxo_bitmap = {
+            let txn = ReadTransaction::new(store.env()).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+            let access = txn.access();
+            match access.get::<_, [u8]>(&bitmaps_db, &LMDB_UTXO_BITMAP_KEY) {
+                Err(LmdbErr::Code(code)) if code == NOTFOUND => Bitmap::create(),
+                Ok(buf) => Bitmap::deserialize(buf),
+                Err(e) => return Err(ChainStorageError::AccessError(e.to_string())),
+            }
+        };
+
         Ok(Self {
             metadata_db: store
                 .get_handle(LMDB_DB_METADATA)
@@ -182,18 +202,21 @@ where D: Digest + Send + Sync
                 .ok_or(ChainStorageError::CriticalError)?
                 .db()
                 .clone(),
+            bitmaps_db,
             utxo_mmr: RwLock::new(MerkleChangeTracker::new(
-                MutableMmr::new(utxo_mmr_base_backend),
+                MutableMmr::new(utxo_mmr_base_backend, utxo_bitmap),
                 utxo_mmr_cp_backend,
                 mct_config,
             )?),
             kernel_mmr: RwLock::new(MerkleChangeTracker::new(
-                MutableMmr::new(kernel_mmr_base_backend),
+                // Kernels are never deleted, so the bitmap is always empty
+                MutableMmr::new(kernel_mmr_base_backend, Bitmap::create()),
                 kernel_mmr_cp_backend,
                 mct_config,
             )?),
             range_proof_mmr: RwLock::new(MerkleChangeTracker::new(
-                MutableMmr::new(range_proof_mmr_base_backend),
+                // The range proof MMR is immutable, so use an empty bitmap
+                MutableMmr::new(range_proof_mmr_base_backend, Bitmap::create()),
                 range_proof_mmr_cp_backend,
                 mct_config,
             )?),
@@ -477,6 +500,7 @@ pub fn create_lmdb_database(
         .add_database(LMDB_DB_KERNEL_MMR_CP_BACKEND, flags)
         .add_database(LMDB_DB_RANGE_PROOF_MMR_BASE_BACKEND, flags)
         .add_database(LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND, flags)
+        .add_database(LMDB_DB_MMR_BITMAPS, flags)
         .build()
         .map_err(|_| ChainStorageError::CriticalError)?;
     LMDBDatabase::<HashDigest>::new(lmdb_store, mct_config)
