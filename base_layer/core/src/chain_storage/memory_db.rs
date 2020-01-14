@@ -30,6 +30,7 @@ use crate::{
         error::ChainStorageError,
     },
 };
+use croaring::Bitmap;
 use digest::Digest;
 use std::{
     collections::HashMap,
@@ -91,11 +92,14 @@ where D: Digest
 {
     pub fn new(mct_config: MerkleChangeTrackerConfig) -> Self {
         let utxo_mmr =
-            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new(), mct_config).unwrap();
+            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new(), Bitmap::create()), Vec::new(), mct_config)
+                .unwrap();
         let kernel_mmr =
-            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new(), mct_config).unwrap();
+            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new(), Bitmap::create()), Vec::new(), mct_config)
+                .unwrap();
         let range_proof_mmr =
-            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new(), mct_config).unwrap();
+            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new(), Bitmap::create()), Vec::new(), mct_config)
+                .unwrap();
         Self {
             db: Arc::new(RwLock::new(InnerDatabase {
                 metadata: HashMap::default(),
@@ -494,11 +498,14 @@ where D: Digest
             max_history_len: 1000,
         };
         let utxo_mmr =
-            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new(), mct_config).unwrap();
+            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new(), Bitmap::create()), Vec::new(), mct_config)
+                .unwrap();
         let kernel_mmr =
-            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new(), mct_config).unwrap();
+            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new(), Bitmap::create()), Vec::new(), mct_config)
+                .unwrap();
         let range_proof_mmr =
-            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new()), Vec::new(), mct_config).unwrap();
+            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new(), Bitmap::create()), Vec::new(), mct_config)
+                .unwrap();
         Self {
             metadata: HashMap::default(),
             headers: HashMap::default(),
@@ -569,7 +576,7 @@ mod test {
         deleted.add(3);
         let state = MutableMmrLeafNodes::new(hashes, deleted);
         // Create a local version of the MMR
-        let mut mmr = MutableMmr::<HashDigest, _>::new(Vec::new());
+        let mut mmr = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
         // Assign the state to the DB backend and compare roots
         mmr.assign(state.clone()).unwrap();
         let root = mmr.get_merkle_root().unwrap();

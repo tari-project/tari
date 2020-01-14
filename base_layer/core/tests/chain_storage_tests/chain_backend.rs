@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use croaring::Bitmap;
 use tari_core::{
     blocks::BlockHeader,
     chain_storage::{
@@ -387,7 +388,7 @@ fn fetch_mmr_root_and_proof_for_utxo_and_rp<T: BlockchainBackend>(db: T) {
     txn.insert_utxo(utxo3.clone(), true);
     assert!(db.write(txn).is_ok());
 
-    let mut utxo_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new());
+    let mut utxo_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
     assert!(utxo_mmr_check.push(&utxo_hash1).is_ok());
     assert!(utxo_mmr_check.push(&utxo_hash2).is_ok());
     assert!(utxo_mmr_check.push(&utxo_hash3).is_ok());
@@ -404,7 +405,7 @@ fn fetch_mmr_root_and_proof_for_utxo_and_rp<T: BlockchainBackend>(db: T) {
     assert!(proof2.verify_leaf::<HashDigest>(&mmr_only_root, &utxo_hash2, 1).is_ok());
     assert!(proof3.verify_leaf::<HashDigest>(&mmr_only_root, &utxo_hash3, 2).is_ok());
 
-    let mut rp_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new());
+    let mut rp_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
     assert_eq!(rp_mmr_check.push(&rp_hash1), Ok(1));
     assert_eq!(rp_mmr_check.push(&rp_hash2), Ok(2));
     assert_eq!(rp_mmr_check.push(&rp_hash3), Ok(3));
@@ -458,7 +459,7 @@ fn fetch_mmr_root_and_proof_for_kernel<T: BlockchainBackend>(db: T) {
     txn.insert_kernel(kernel3, true);
     assert!(db.write(txn).is_ok());
 
-    let mut kernel_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new());
+    let mut kernel_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
     assert!(kernel_mmr_check.push(&hash1).is_ok());
     assert!(kernel_mmr_check.push(&hash2).is_ok());
     assert!(kernel_mmr_check.push(&hash3).is_ok());
