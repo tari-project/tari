@@ -41,7 +41,7 @@ impl Default for LivenessConfig {
             auto_ping_interval: None,
             enable_auto_join: true,
             enable_auto_stored_message_request: true,
-            refresh_neighbours_interval: Duration::from_secs(5 * 60),
+            refresh_neighbours_interval: Duration::from_secs(3 * 60),
         }
     }
 }

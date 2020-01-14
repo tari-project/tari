@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::proto::liveness::MetadataKey;
+use crate::{proto::liveness::MetadataKey, services::liveness::error::LivenessError};
 use chrono::{NaiveDateTime, Utc};
 use std::{
     collections::HashMap,
@@ -77,6 +77,7 @@ pub struct LivenessState {
     num_active_neighbours: AtomicUsize,
 
     pong_metadata: Metadata,
+    nodes_to_monitor: HashMap<NodeId, NodeStats>,
 }
 
 impl LivenessState {
@@ -138,8 +139,12 @@ impl LivenessState {
     }
 
     /// Adds a ping to the inflight ping list, while noting the current time that a ping was sent.
-    pub fn add_inflight_ping(&mut self, node_id: NodeId) {
-        self.inflight_pings.insert(node_id, Utc::now().naive_utc());
+    pub fn add_inflight_ping(&mut self, node_id: &NodeId) {
+        let now = Utc::now().naive_utc();
+        self.inflight_pings.insert((*node_id).clone(), now.clone());
+        if let Some(ns) = self.nodes_to_monitor.get_mut(node_id) {
+            ns.last_ping_sent = Some(now);
+        }
         self.clear_stale_inflight_pings();
     }
 
@@ -156,14 +161,21 @@ impl LivenessState {
     /// a latency sample is added and calculated.
     pub fn record_pong(&mut self, node_id: &NodeId) -> Option<u32> {
         self.inc_pongs_received();
-        self.inflight_pings
-            .remove_entry(&node_id)
-            .and_then(|(node_id, sent_time)| {
+
+        match self.inflight_pings.remove_entry(&node_id) {
+            Some((node_id, sent_time)) => {
+                if let Some(ns) = self.nodes_to_monitor.get_mut(&node_id) {
+                    ns.last_pong_received = Some(sent_time.clone());
+                    ns.average_latency
+                        .add_sample(convert_to_std_duration(Utc::now().naive_utc() - sent_time));
+                }
                 let latency = self
                     .add_latency_sample(node_id, convert_to_std_duration(Utc::now().naive_utc() - sent_time))
                     .calc_average();
                 Some(latency)
-            })
+            },
+            None => None,
+        }
     }
 
     fn add_latency_sample(&mut self, node_id: NodeId, duration: Duration) -> &mut AverageLatency {
@@ -181,6 +193,32 @@ impl LivenessState {
             .get(node_id)
             .and_then(|latency| Some(latency.calc_average()))
     }
+
+    pub fn add_node_id(&mut self, node_id: &NodeId) {
+        if self.nodes_to_monitor.contains_key(node_id) {
+            return;
+        }
+        let _ = self.nodes_to_monitor.insert(node_id.clone(), NodeStats::new());
+    }
+
+    pub fn get_num_monitored_nodes(&self) -> usize {
+        self.nodes_to_monitor.len()
+    }
+
+    pub fn get_monitored_node_ids(&self) -> Vec<NodeId> {
+        self.nodes_to_monitor.keys().map(|n| (*n).clone()).collect()
+    }
+
+    pub fn is_monitored_node_id(&self, node_id: &NodeId) -> bool {
+        self.nodes_to_monitor.contains_key(node_id)
+    }
+
+    pub fn get_node_id_stats(&self, node_id: &NodeId) -> Result<NodeStats, LivenessError> {
+        return match self.nodes_to_monitor.get(node_id) {
+            None => Err(LivenessError::NodeIdDoesNotExist),
+            Some(s) => Ok((*s).clone()),
+        };
+    }
 }
 
 /// Convert `chrono::Duration` to `std::time::Duration`
@@ -191,6 +229,7 @@ pub(super) fn convert_to_std_duration(old_duration: chrono::Duration) -> Duratio
 /// A very simple implementation for calculating average latency. Samples are added in milliseconds and the mean average
 /// is calculated for those samples. If more than [LATENCY_SAMPLE_WINDOW_SIZE](self::LATENCY_SAMPLE_WINDOW_SIZE) samples
 /// are added the oldest sample is discarded.
+#[derive(Clone, Debug)]
 pub struct AverageLatency {
     samples: Vec<u32>,
 }
@@ -219,6 +258,24 @@ impl AverageLatency {
         }
 
         samples.iter().fold(0, |sum, x| sum + *x) / samples.len() as u32
+    }
+}
+
+/// This struct contains the stats about a Node that is being monitored by the Liveness Service
+#[derive(Clone, Debug)]
+pub struct NodeStats {
+    last_ping_sent: Option<NaiveDateTime>,
+    last_pong_received: Option<NaiveDateTime>,
+    average_latency: AverageLatency,
+}
+
+impl NodeStats {
+    pub fn new() -> NodeStats {
+        Self {
+            last_ping_sent: None,
+            last_pong_received: None,
+            average_latency: AverageLatency::new(LATENCY_SAMPLE_WINDOW_SIZE),
+        }
     }
 }
 
@@ -282,10 +339,10 @@ mod test {
         let mut state = LivenessState::new();
 
         let node_id = NodeId::default();
-        state.add_inflight_ping(node_id.clone());
+        state.add_inflight_ping(&node_id);
 
         let latency = state.record_pong(&node_id).unwrap();
-        assert!(latency < 5);
+        assert!(latency < 50);
     }
 
     #[test]
@@ -296,5 +353,24 @@ mod test {
             state.pong_metadata().get(&MetadataKey::ChainMetadata).unwrap(),
             b"dummy-data"
         );
+    }
+
+    #[test]
+    fn monitor_node_id() {
+        let node_id = NodeId::default();
+        let mut state = LivenessState::new();
+        state.add_node_id(&node_id);
+
+        state.add_inflight_ping(&node_id);
+
+        let latency = state.record_pong(&node_id).unwrap();
+        assert!(latency < 50);
+
+        assert_eq!(state.get_num_monitored_nodes(), 1);
+        assert_eq!(state.get_monitored_node_ids().len(), 1);
+        assert!(state.is_monitored_node_id(&node_id));
+        let stats = state.get_node_id_stats(&node_id).unwrap();
+
+        assert_eq!(stats.average_latency.calc_average(), latency);
     }
 }
