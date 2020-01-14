@@ -116,11 +116,11 @@ where T: BlockchainBackend
     /// Returns the estimated target difficulty for the specified PoW algorithm at the chain tip.
     pub fn get_target_difficulty(&mut self, pow_algo: &PowAlgorithm) -> Result<Difficulty, DiffAdjManagerError> {
         let height = self.get_height_of_longest_chain()?;
-        self.get_target_difficulty_with_height(pow_algo, height)
+        self.get_target_difficulty_at_height(pow_algo, height)
     }
 
     /// Returns the estimated target difficulty for the specified PoW algorithm and provided height.
-    pub fn get_target_difficulty_with_height(
+    pub fn get_target_difficulty_at_height(
         &mut self,
         pow_algo: &PowAlgorithm,
         height: u64,
@@ -136,11 +136,11 @@ where T: BlockchainBackend
     /// Returns the median timestamp of the past 11 blocks at the chain tip.
     pub fn get_median_timestamp(&mut self) -> Result<EpochTime, DiffAdjManagerError> {
         let height = self.get_height_of_longest_chain()?;
-        self.get_median_timestamp_with_height(height)
+        self.get_median_timestamp_at_height(height)
     }
 
     /// Returns the median timestamp of the past 11 blocks at the provided height.
-    pub fn get_median_timestamp_with_height(&mut self, height: u64) -> Result<EpochTime, DiffAdjManagerError> {
+    pub fn get_median_timestamp_at_height(&mut self, height: u64) -> Result<EpochTime, DiffAdjManagerError> {
         self.update(height)?;
         let mut length = self.timestamps.len();
         if length == 0 {

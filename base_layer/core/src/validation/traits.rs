@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
-    validation::error::ValidationError,
-};
+use crate::{chain_storage::BlockchainBackend, validation::error::ValidationError};
 
 pub type Validator<T, B> = Box<dyn Validation<T, B>>;
 
@@ -35,8 +32,4 @@ where B: BlockchainBackend
 {
     /// General validation code that can run independent of external state
     fn validate(&self, item: &T) -> Result<(), ValidationError>;
-    #[allow(unused_variables)]
-    fn set_db(&mut self, db: BlockchainDatabase<B>) {
-        // noop
-    }
 }

@@ -22,16 +22,18 @@
 
 use crate::{
     blocks::{
-        blockheader::BlockHeader,
-        genesis_block::get_gen_block_hash,
+        blockheader::{BlockHeader, BlockHeaderValidationError},
         Block,
         BlockValidationError,
         NewBlockTemplate,
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::{ConsensusConstants, ConsensusManager},
-    proof_of_work::PowError,
-    validation::{Validation, ValidationError},
+    validation::{
+        helpers::{check_achieved_difficulty_at_chain_tip, check_median_timestamp_at_chain_tip},
+        Validation,
+        ValidationError,
+    },
 };
 use std::sync::Arc;
 use tari_transactions::{transaction::OutputFlags, types::CryptoFactories};
@@ -85,7 +87,8 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator<B> {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Does the block satisfy the stateless checks?
     /// 1. Are all inputs currently in the UTXO set?
-    /// 1. Is the block header timestamp within range?
+    /// 1. Is the block header timestamp less than the ftl?
+    /// 1. Is the block header timestamp greater than the median timestamp?
     /// 1. Is the Proof of Work valid?
     /// 1. Is the achieved difficulty of this block >= the target difficulty for this block?
     fn validate(&self, block: &Block) -> Result<(), ValidationError> {
@@ -93,8 +96,9 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator<B> {
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
         check_accounting_balance(block, self.rules.clone(), &self.factories)?;
         check_inputs_are_utxos(block, self.db()?)?;
-        check_timestamp_range(&block.header, self.rules.clone())?;
-        check_achieved_difficulty(&block.header, self.rules.clone())?; // Update function signature once diff adjuster is complete
+        check_timestamp_ftl(&block.header)?;
+        check_median_timestamp_at_chain_tip(&block.header, self.db()?, self.rules.clone())?;
+        check_achieved_difficulty_at_chain_tip(&block.header, self.db()?, self.rules.clone())?; // Update function signature once diff adjuster is complete
         Ok(())
     }
 }
@@ -134,44 +138,12 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(
     Ok(())
 }
 
-/// Calculates the achieved and target difficulties and compares them
-fn check_achieved_difficulty<B: BlockchainBackend>(
-    block_header: &BlockHeader,
-    rules: ConsensusManager<B>,
-) -> Result<(), ValidationError>
-{
-    let achieved = block_header.achieved_difficulty();
-    let mut target = 1.into();
-    if block_header.height > 0 || get_gen_block_hash() != block_header.hash() {
-        target = rules.get_target_difficulty(&block_header.pow.pow_algo).map_err(|_| {
-            ValidationError::BlockError(BlockValidationError::ProofOfWorkError(PowError::InvalidProofOfWork))
-        })?;
-    }
-    if achieved < target {
-        return Err(ValidationError::BlockError(BlockValidationError::ProofOfWorkError(
-            PowError::AchievedDifficultyTooLow,
-        )));
-    }
-    Ok(())
-}
-
-/// This function test that the block timestamp is less than the ftl and greater than the median timestamp
-fn check_timestamp_range<B: BlockchainBackend>(
-    block_header: &BlockHeader,
-    rules: ConsensusManager<B>,
-) -> Result<(), ValidationError>
-{
+/// This function tests that the block timestamp is less than the ftl.
+fn check_timestamp_ftl(block_header: &BlockHeader) -> Result<(), ValidationError> {
     if block_header.timestamp > ConsensusConstants::current().ftl() {
-        return Err(ValidationError::BlockError(BlockValidationError::InvalidTimestamp));
-    }
-    if block_header.height == 0 || get_gen_block_hash() == block_header.hash() {
-        return Ok(()); // Its the genesis block, so we dont have to check median
-    }
-    let median_timestamp = rules
-        .get_median_timestamp()
-        .map_err(|_| ValidationError::BlockError(BlockValidationError::InvalidTimestamp))?;
-    if block_header.timestamp < median_timestamp {
-        return Err(ValidationError::BlockError(BlockValidationError::InvalidTimestamp));
+        return Err(ValidationError::BlockHeaderError(
+            BlockHeaderValidationError::InvalidTimestampFutureTimeLimit,
+        ));
     }
     Ok(())
 }

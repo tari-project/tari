@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::blocks::BlockValidationError;
+use crate::blocks::{blockheader::BlockHeaderValidationError, BlockValidationError};
 use derive_error::Error;
 use tari_transactions::transaction::TransactionError;
 
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum ValidationError {
+    BlockHeaderError(BlockHeaderValidationError),
     BlockError(BlockValidationError),
     TransactionError(TransactionError),
     /// Custom error with string message

@@ -51,7 +51,10 @@ use tari_core::{
     consensus::ConsensusManager,
     mempool::{Mempool, MempoolConfig},
     proof_of_work::DiffAdjManager,
-    validation::block_validators::{FullConsensusValidator, StatelessValidator},
+    validation::{
+        block_validators::{FullConsensusValidator, StatelessValidator},
+        horizon_state_validators::HorizonStateHeaderValidator,
+    },
 };
 use tari_mmr::MerkleChangeTrackerConfig;
 use tari_p2p::{
@@ -175,6 +178,7 @@ pub fn configure_and_initialize_node(
             let validators = Validators::new(
                 FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
                 StatelessValidator::new(factories.clone()),
+                HorizonStateHeaderValidator::new(rules.clone(), db.clone()),
             );
             db.set_validators(validators);
             let mempool = Mempool::new(db.clone(), MempoolConfig::default());
@@ -203,6 +207,7 @@ pub fn configure_and_initialize_node(
             let validators = Validators::new(
                 FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
                 StatelessValidator::new(factories.clone()),
+                HorizonStateHeaderValidator::new(rules.clone(), db.clone()),
             );
             db.set_validators(validators);
             let mempool = Mempool::new(db.clone(), MempoolConfig::default());

@@ -22,16 +22,8 @@
 
 use tari_core::{
     blocks::{Block, BlockBuilder, BlockHeader, NewBlockTemplate},
-    chain_storage::{
-        BlockAddResult,
-        BlockchainBackend,
-        BlockchainDatabase,
-        ChainStorageError,
-        MemoryDatabase,
-        Validators,
-    },
+    chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, MemoryDatabase},
     consensus::emission::EmissionSchedule,
-    validation::mocks::MockValidator,
 };
 use tari_transactions::{
     helpers::{

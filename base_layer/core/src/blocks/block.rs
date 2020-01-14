@@ -22,11 +22,7 @@
 //
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
-use crate::{
-    blocks::BlockHeader,
-    consensus::ConsensusConstants,
-    proof_of_work::{PowError, ProofOfWork},
-};
+use crate::{blocks::BlockHeader, consensus::ConsensusConstants, proof_of_work::ProofOfWork};
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -41,8 +37,6 @@ use tari_utilities::Hashable;
 pub enum BlockValidationError {
     // A transaction in the block failed to validate
     TransactionError(TransactionError),
-    // Invalid Proof of work for the block
-    ProofOfWorkError(PowError),
     // Invalid kernel in block
     InvalidKernel,
     // Invalid input in block
@@ -53,8 +47,6 @@ pub enum BlockValidationError {
     InvalidCoinbase,
     // Mismatched MMR roots
     MismatchedMmrRoots,
-    // Invalid timestamp received on the block
-    InvalidTimestamp,
 }
 
 /// A Tari block. Blocks are linked together into a blockchain.
