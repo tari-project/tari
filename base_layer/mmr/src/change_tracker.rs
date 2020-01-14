@@ -42,7 +42,7 @@ pub struct MerkleChangeTrackerConfig {
     /// When the max_history_len is reached then the number of checkpoints upto the min_history_len is committed to the
     /// base MMR.
     pub min_history_len: usize,
-    /// The max_history_len specifies the point in history upto where the MMR can be rewinded.
+    /// The max_history_len specifies the point in history upto where the MMR can be rewound.
     pub max_history_len: usize,
 }
 

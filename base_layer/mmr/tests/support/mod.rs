@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+use croaring::Bitmap;
 use digest::Digest;
 use tari_crypto::common::Blake256;
 use tari_mmr::{Hash, HashSlice, MerkleMountainRange, MutableMmr};
@@ -37,7 +38,7 @@ pub fn create_mmr(size: usize) -> MerkleMountainRange<Hasher, Vec<Hash>> {
 }
 
 pub fn create_mutable_mmr(size: usize) -> MutableMmr<Hasher, Vec<Hash>> {
-    let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default());
+    let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create());
     for i in 0..size {
         let hash = int_to_hash(i);
         assert!(mmr.push(&hash).is_ok());
