@@ -112,7 +112,7 @@ where T: BlockchainBackend
     }
 
     fn check_timelocks(&self, tx: &Transaction) -> Result<bool, MempoolError> {
-        match tx.max_timelock_height() {
+        match tx.min_spendable_height() {
             0 => Ok(false),
             v => Ok(v - 1 >
                 self.blockchain_db

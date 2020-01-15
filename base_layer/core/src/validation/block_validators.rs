@@ -115,7 +115,7 @@ fn check_accounting_balance<B: BlockchainBackend>(
     block
         .body
         .validate_internal_consistency(&offset, total_coinbase, factories)
-        .map_err(ValidationError::from)
+        .map_err(|e| ValidationError::TransactionError(e))
 }
 
 fn check_coinbase_output(block: &Block) -> Result<(), ValidationError> {

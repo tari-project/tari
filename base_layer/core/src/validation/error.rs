@@ -28,6 +28,11 @@ use tari_transactions::transaction::TransactionError;
 pub enum ValidationError {
     BlockHeaderError(BlockHeaderValidationError),
     BlockError(BlockValidationError),
+    // Contains kernels or inputs that are not yet spendable
+    MaturityError,
+    // Contains unknown inputs
+    UnknownInputs,
+    // The transaction has some transaction error
     TransactionError(TransactionError),
     /// Custom error with string message
     #[error(no_from, non_std, msg_embedded)]
