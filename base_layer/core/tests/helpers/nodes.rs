@@ -35,7 +35,7 @@ use tari_core::{
         LocalNodeCommsInterface,
         OutboundNodeCommsInterface,
     },
-    blocks::Block,
+    blocks::{Block, BlockHeader},
     chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
     consensus::ConsensusManager,
     mempool::{
@@ -137,9 +137,10 @@ impl BaseNodeBuilder {
         mut self,
         block: impl Validation<Block, MemoryDatabase<HashDigest>> + 'static,
         orphan: impl Validation<Block, MemoryDatabase<HashDigest>> + 'static,
+        horizon_state_header: impl Validation<BlockHeader, MemoryDatabase<HashDigest>> + 'static,
     ) -> Self
     {
-        let validators = Validators::new(block, orphan);
+        let validators = Validators::new(block, orphan, horizon_state_header);
         self.validators = Some(validators);
         self
     }
@@ -150,9 +151,11 @@ impl BaseNodeBuilder {
             min_history_len: 10,
             max_history_len: 20,
         });
-        let validators = self
-            .validators
-            .unwrap_or(Validators::new(MockValidator::new(true), MockValidator::new(true)));
+        let validators = self.validators.unwrap_or(Validators::new(
+            MockValidator::new(true),
+            MockValidator::new(true),
+            MockValidator::new(true),
+        ));
         let db = MemoryDatabase::<HashDigest>::new(mct_config);
         let mut blockchain_db = BlockchainDatabase::new(db).unwrap();
         blockchain_db.set_validators(validators);

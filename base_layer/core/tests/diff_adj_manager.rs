@@ -168,10 +168,10 @@ fn test_target_difficulty_with_height() {
     let store = create_mem_db();
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     assert!(diff_adj_manager
-        .get_target_difficulty_with_height(&PowAlgorithm::Monero, 5)
+        .get_target_difficulty_at_height(&PowAlgorithm::Monero, 5)
         .is_err());
     assert!(diff_adj_manager
-        .get_target_difficulty_with_height(&PowAlgorithm::Blake, 5)
+        .get_target_difficulty_at_height(&PowAlgorithm::Blake, 5)
         .is_err());
 
     let pow_algos = vec![
@@ -186,29 +186,29 @@ fn test_target_difficulty_with_height() {
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
 
     assert_eq!(
-        diff_adj_manager.get_target_difficulty_with_height(&PowAlgorithm::Monero, 5),
+        diff_adj_manager.get_target_difficulty_at_height(&PowAlgorithm::Monero, 5),
         Ok(calculate_accumulated_difficulty(&store, vec![1, 4]))
     );
     assert_eq!(
-        diff_adj_manager.get_target_difficulty_with_height(&PowAlgorithm::Blake, 5),
+        diff_adj_manager.get_target_difficulty_at_height(&PowAlgorithm::Blake, 5),
         Ok(calculate_accumulated_difficulty(&store, vec![0, 2, 3, 5]))
     );
 
     assert_eq!(
-        diff_adj_manager.get_target_difficulty_with_height(&PowAlgorithm::Monero, 2),
+        diff_adj_manager.get_target_difficulty_at_height(&PowAlgorithm::Monero, 2),
         Ok(calculate_accumulated_difficulty(&store, vec![1]))
     );
     assert_eq!(
-        diff_adj_manager.get_target_difficulty_with_height(&PowAlgorithm::Blake, 2),
+        diff_adj_manager.get_target_difficulty_at_height(&PowAlgorithm::Blake, 2),
         Ok(calculate_accumulated_difficulty(&store, vec![0, 2]))
     );
 
     assert_eq!(
-        diff_adj_manager.get_target_difficulty_with_height(&PowAlgorithm::Monero, 3),
+        diff_adj_manager.get_target_difficulty_at_height(&PowAlgorithm::Monero, 3),
         Ok(calculate_accumulated_difficulty(&store, vec![1]))
     );
     assert_eq!(
-        diff_adj_manager.get_target_difficulty_with_height(&PowAlgorithm::Blake, 3),
+        diff_adj_manager.get_target_difficulty_at_height(&PowAlgorithm::Blake, 3),
         Ok(calculate_accumulated_difficulty(&store, vec![0, 2, 3]))
     );
 }
@@ -319,7 +319,7 @@ fn test_median_timestamp() {
 #[test]
 fn test_median_timestamp_with_height() {
     let store = create_mem_db();
-    let mut diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
+    let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let pow_algos = vec![
         PowAlgorithm::Blake, // GB default
         PowAlgorithm::Monero,
@@ -334,22 +334,22 @@ fn test_median_timestamp_with_height() {
     let header2_timestamp = store.fetch_header(2).unwrap().timestamp;
 
     let timestamp = diff_adj_manager
-        .get_median_timestamp_with_height(0)
+        .get_median_timestamp_at_height(0)
         .expect("median returned an error");
     assert_eq!(timestamp, header0_timestamp);
 
     let timestamp = diff_adj_manager
-        .get_median_timestamp_with_height(3)
+        .get_median_timestamp_at_height(3)
         .expect("median returned an error");
     assert_eq!(timestamp, header2_timestamp);
 
     let timestamp = diff_adj_manager
-        .get_median_timestamp_with_height(2)
+        .get_median_timestamp_at_height(2)
         .expect("median returned an error");
     assert_eq!(timestamp, header1_timestamp);
 
     let timestamp = diff_adj_manager
-        .get_median_timestamp_with_height(4)
+        .get_median_timestamp_at_height(4)
         .expect("median returned an error");
     assert_eq!(timestamp, header2_timestamp);
 }

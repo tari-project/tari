@@ -39,9 +39,10 @@
 
 use crate::{
     blocks::NewBlockHeaderTemplate,
-    proof_of_work::{Difficulty, ProofOfWork},
+    proof_of_work::{Difficulty, PowError, ProofOfWork},
 };
 use chrono::{DateTime, Utc};
+use derive_error::Error;
 use digest::Digest;
 use serde::{
     de::{self, Visitor},
@@ -58,6 +59,20 @@ use tari_transactions::types::{BlindingFactor, HashDigest};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 
 pub type BlockHash = Vec<u8>;
+
+#[derive(Clone, Debug, PartialEq, Error)]
+pub enum BlockHeaderValidationError {
+    // The Genesis block header is incorrectly chained
+    ChainedGenesisBlockHeader,
+    // Header does not form a valid chain
+    InvalidChaining,
+    // Invalid timestamp received on the header
+    InvalidTimestamp,
+    // Invalid timestamp future time limit received on the header
+    InvalidTimestampFutureTimeLimit,
+    // Invalid Proof of work for the header
+    ProofOfWorkError(PowError),
+}
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 /// and the transaction kernels.

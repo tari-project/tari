@@ -85,7 +85,7 @@ where B: BlockchainBackend
         }
     }
 
-    /// Returns the estimated target difficulty for the specified PoW algorithm.
+    /// Returns the estimated target difficulty for the specified PoW algorithm at the chain tip.
     pub fn get_target_difficulty(&self, pow_algo: &PowAlgorithm) -> Result<Difficulty, ConsensusManagerError> {
         match self.access_diff_adj()?.as_ref() {
             Some(v) => v
@@ -95,11 +95,36 @@ where B: BlockchainBackend
         }
     }
 
-    /// Returns the median timestamp of the past 11 blocks.
+    /// Returns the estimated target difficulty for the specified PoW algorithm and provided height.
+    pub fn get_target_difficulty_with_height(
+        &self,
+        pow_algo: &PowAlgorithm,
+        height: u64,
+    ) -> Result<Difficulty, ConsensusManagerError>
+    {
+        match self.access_diff_adj()?.as_ref() {
+            Some(v) => v
+                .get_target_difficulty_at_height(pow_algo, height)
+                .map_err(|e| ConsensusManagerError::DifficultyAdjustmentManagerError(e)),
+            None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
+        }
+    }
+
+    /// Returns the median timestamp of the past 11 blocks at the chain tip.
     pub fn get_median_timestamp(&self) -> Result<EpochTime, ConsensusManagerError> {
         match self.access_diff_adj()?.as_ref() {
             Some(v) => v
                 .get_median_timestamp()
+                .map_err(|e| ConsensusManagerError::DifficultyAdjustmentManagerError(e)),
+            None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
+        }
+    }
+
+    /// Returns the median timestamp of the past 11 blocks at the provided height.
+    pub fn get_median_timestamp_at_height(&self, height: u64) -> Result<EpochTime, ConsensusManagerError> {
+        match self.access_diff_adj()?.as_ref() {
+            Some(v) => v
+                .get_median_timestamp_at_height(height)
                 .map_err(|e| ConsensusManagerError::DifficultyAdjustmentManagerError(e)),
             None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
         }

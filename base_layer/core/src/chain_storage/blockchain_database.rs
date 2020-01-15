@@ -66,17 +66,24 @@ pub struct MutableMmrState {
 /// A placeholder struct that contains the two validators that the database uses to decide whether or not a block is
 /// eligible to be added to the database. The `block` validator should perform a full consensus check. The `orphan`
 /// validator needs to check that the block is internally consistent, but can't know whether the PoW is sufficient,
-/// for example.
+/// for example. The `horizon_state_header` validator is used to check the synced headers of the Horizon state.
 pub struct Validators<B: BlockchainBackend> {
     block: Arc<Validator<Block, B>>,
     orphan: Arc<Validator<Block, B>>,
+    horizon_state_header: Arc<Validator<BlockHeader, B>>,
 }
 
 impl<B: BlockchainBackend> Validators<B> {
-    pub fn new(block: impl Validation<Block, B> + 'static, orphan: impl Validation<Block, B> + 'static) -> Self {
+    pub fn new(
+        block: impl Validation<Block, B> + 'static,
+        orphan: impl Validation<Block, B> + 'static,
+        horizon_state_header: impl Validation<BlockHeader, B> + 'static,
+    ) -> Self
+    {
         Self {
             block: Arc::new(Box::new(block)),
             orphan: Arc::new(Box::new(orphan)),
+            horizon_state_header: Arc::new(Box::new(horizon_state_header)),
         }
     }
 }
@@ -86,6 +93,7 @@ impl<B: BlockchainBackend> Clone for Validators<B> {
         Validators {
             block: Arc::clone(&self.block),
             orphan: Arc::clone(&self.orphan),
+            horizon_state_header: Arc::clone(&self.horizon_state_header),
         }
     }
 }
@@ -199,7 +207,11 @@ macro_rules! fetch {
 /// };
 /// use tari_transactions::types::HashDigest;
 /// let db_backend = MemoryDatabase::<HashDigest>::default();
-/// let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+/// let validators = Validators::new(
+///     MockValidator::new(true),
+///     MockValidator::new(true),
+///     MockValidator::new(true),
+/// );
 /// let db = MemoryDatabase::<HashDigest>::default();
 /// let mut db = BlockchainDatabase::new(db_backend).unwrap();
 /// db.set_validators(validators);
@@ -820,11 +832,18 @@ where T: BlockchainBackend
         self.db.clone()
     }
 
-    /// Perform validation on the horizon state of the blockchain and update the metadata.
+    /// Perform validation on the horizon state of the synced blockchain and updates the metadata.
     pub fn validate_horizon_state(&self) -> Result<(), ChainStorageError> {
-        // TODO: #1138 Perform validation steps on the synced horizon blockchain state stored backend data. Check that
-        // header heights form a sequence, headers create a valid chain, check the accounting balance and proof
-        // of work.
+        // TODO: #1185 Check the accounting balance and mmr state.
+
+        for height in 0..self.db.fetch_horizon_block_height()? {
+            let header = self.fetch_header(height)?;
+            self.validators
+                .as_ref()
+                .expect("No validators added")
+                .horizon_state_header
+                .validate(&header)?;
+        }
 
         if let Some(last_header) = self.db.fetch_last_header()? {
             self.update_metadata(last_header.height, last_header.hash())?;

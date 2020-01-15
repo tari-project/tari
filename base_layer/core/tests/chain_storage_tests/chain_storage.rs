@@ -510,7 +510,11 @@ fn store_and_retrieve_block_with_mmr_pruning_horizon() {
         min_history_len: 2,
         max_history_len: 3,
     };
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
     let db = MemoryDatabase::<HashDigest>::new(mct_config);
     let mut store = BlockchainDatabase::new(db).unwrap();
     store.set_validators(validators);
@@ -533,5 +537,3 @@ fn store_and_retrieve_block_with_mmr_pruning_horizon() {
     assert_eq!(*store.fetch_block(2).unwrap().block(), block2);
     assert_eq!(*store.fetch_block(3).unwrap().block(), block3);
 }
-
-// TODO: add validate_horizon_state test

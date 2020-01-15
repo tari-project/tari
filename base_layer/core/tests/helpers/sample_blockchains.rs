@@ -122,7 +122,11 @@ pub fn create_new_blockchain() -> (
 ) {
     let factories = CryptoFactories::default();
     // We may need move this to the parameters to provide more fine-grained validator control
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
     let db = MemoryDatabase::<HashDigest>::default();
     let mut db = BlockchainDatabase::new(db).unwrap();
     db.set_validators(validators);
