@@ -20,19 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use multiaddr::{AddrComponent, Multiaddr};
+use multiaddr::{Multiaddr, Protocol};
 use std::{
     io,
     net::{IpAddr, SocketAddr},
 };
 
-/// Convert a socket address to a multiaddress
+/// Convert a socket address to a multiaddress. Assumes the protocol is Tcp
 pub fn socketaddr_to_multiaddr(socket_addr: &SocketAddr) -> Multiaddr {
     let mut addr: Multiaddr = match socket_addr.ip() {
-        IpAddr::V4(addr) => AddrComponent::IP4(addr).into(),
-        IpAddr::V6(addr) => AddrComponent::IP6(addr).into(),
+        IpAddr::V4(addr) => Protocol::Ip4(addr).into(),
+        IpAddr::V6(addr) => Protocol::Ip6(addr).into(),
     };
-    addr.append(AddrComponent::TCP(socket_addr.port()));
+    addr.push(Protocol::Tcp(socket_addr.port()));
     addr
 }
 
@@ -56,8 +56,8 @@ pub fn multiaddr_to_socketaddr(addr: &Multiaddr) -> io::Result<SocketAddr> {
     }
 
     match (network_proto, transport_proto) {
-        (AddrComponent::IP4(host), AddrComponent::TCP(port)) => Ok((host, port).into()),
-        (AddrComponent::IP6(host), AddrComponent::TCP(port)) => Ok((host, port).into()),
+        (Protocol::Ip4(host), Protocol::Tcp(port)) => Ok((host, port).into()),
+        (Protocol::Ip6(host), Protocol::Tcp(port)) => Ok((host, port).into()),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!("Invalid address '{}'", addr),
@@ -65,21 +65,22 @@ pub fn multiaddr_to_socketaddr(addr: &Multiaddr) -> io::Result<SocketAddr> {
     }
 }
 
-/// Creates a Multiaddr from AddrComponents. This macro currently only supports tuple AddrComponents
-#[macro_export]
-macro_rules! multiaddr_from_components {
-    ($first:ident ( $($first_vars:expr),+ )$(,)? $($parts:ident ( $($var:expr),+ )),* ) => {{
-        let mut addr: $crate::multiaddr::Multiaddr = $crate::multiaddr::AddrComponent::$first($($first_vars),*).into();
-        $(
-            addr.append($crate::multiaddr::AddrComponent::$parts($($var),+));
-        )*
-        addr
-    }};
-}
+// /// Creates a Multiaddr from Protocols. This macro currently only supports tuple Protocols
+//#[macro_export]
+// macro_rules! multiaddr_from_components {
+//    ($first:ident ( $($first_vars:expr),+ )$(,)? $($parts:ident ( $($var:expr),+ )),* ) => {{
+//        let mut addr: $crate::multiaddr::Multiaddr = $crate::multiaddr::Protocol::$first($($first_vars),*).into();
+//        $(
+//            addr.append($crate::multiaddr::Protocol::$parts($($var),+));
+//        )*
+//        addr
+//    }};
+//}
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use multiaddr::multiaddr;
     use std::{net::Ipv4Addr, str::FromStr};
 
     #[test]
@@ -110,10 +111,10 @@ mod test {
     #[test]
     fn multiaddr_from_components() {
         let ip: Ipv4Addr = "127.0.0.1".parse().unwrap();
-        let addr = multiaddr_from_components!(IP4(ip.clone()), TCP(1456));
+        let addr = multiaddr!(Ip4(ip.clone()), Tcp(1456u16));
         let mut addr_iter = addr.iter();
-        assert_eq!(addr_iter.next(), Some(AddrComponent::IP4(ip)));
-        assert_eq!(addr_iter.next(), Some(AddrComponent::TCP(1456)));
+        assert_eq!(addr_iter.next(), Some(Protocol::Ip4(ip)));
+        assert_eq!(addr_iter.next(), Some(Protocol::Tcp(1456)));
         assert_eq!(addr_iter.next(), None);
     }
 }

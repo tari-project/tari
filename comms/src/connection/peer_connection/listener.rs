@@ -37,7 +37,7 @@ use crate::{
         InprocAddress,
     },
     message::{Frame, FrameSet},
-    utils::multiaddr::multiaddr_to_socketaddr,
+    utils::multiaddr::{multiaddr_to_socketaddr, socketaddr_to_multiaddr},
 };
 use log::*;
 use std::{
@@ -173,7 +173,7 @@ impl PeerConnectionListener {
 
         if let Some(addr) = addr {
             debug!(target: LOG_TARGET, "Starting peer connection worker thread on {}", addr);
-            self.context.peer_address = addr.clone().into();
+            self.context.peer_address = socketaddr_to_multiaddr(&addr);
         }
 
         loop {

@@ -23,8 +23,11 @@
 // Acknowledgement to @sticnarf for tokio-socks on which this code is based
 use super::error::SocksError;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use multiaddr::{AddrComponent, Multiaddr};
-use std::net::{Ipv4Addr, Ipv6Addr};
+use multiaddr::{Multiaddr, Protocol};
+use std::{
+    borrow::Cow,
+    net::{Ipv4Addr, Ipv6Addr},
+};
 
 pub type Result<T> = std::result::Result<T, SocksError>;
 
@@ -259,8 +262,8 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 ip[..].copy_from_slice(&self.buf[4..8]);
                 let ip = Ipv4Addr::from(ip);
                 let port = u16::from_be_bytes([self.buf[8], self.buf[9]]);
-                let mut addr: Multiaddr = AddrComponent::IP4(ip).into();
-                addr.append(AddrComponent::TCP(port));
+                let mut addr: Multiaddr = Protocol::Ip4(ip).into();
+                addr.push(Protocol::Tcp(port));
                 addr
             },
             // IPv6
@@ -269,8 +272,8 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 ip[..].copy_from_slice(&self.buf[4..20]);
                 let ip = Ipv6Addr::from(ip);
                 let port = u16::from_be_bytes([self.buf[20], self.buf[21]]);
-                let mut addr: Multiaddr = AddrComponent::IP6(ip).into();
-                addr.append(AddrComponent::TCP(port));
+                let mut addr: Multiaddr = Protocol::Ip6(ip).into();
+                addr.push(Protocol::Tcp(port));
                 addr
             },
             // Domain
@@ -279,8 +282,8 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 let domain = String::from_utf8(domain_bytes)
                     .map_err(|_| SocksError::InvalidTargetAddress("not a valid UTF-8 string"))?;
                 let port = u16::from_be_bytes([self.buf[self.len - 2], self.buf[self.len - 1]]);
-                let mut addr: Multiaddr = AddrComponent::DNS4(domain).into();
-                addr.append(AddrComponent::TCP(port));
+                let mut addr: Multiaddr = Protocol::Dns4(Cow::Owned(domain)).into();
+                addr.push(Protocol::Tcp(port));
                 addr
             },
             _ => unreachable!(),
@@ -346,19 +349,19 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             .ok_or(SocksError::InvalidTargetAddress("Address missing tcp port component"))?;
 
         match (protocol, port) {
-            (AddrComponent::IP4(ip), AddrComponent::TCP(port)) => {
+            (Protocol::Ip4(ip), Protocol::Tcp(port)) => {
                 self.buf[3] = 0x01;
                 self.buf[4..8].copy_from_slice(&ip.octets());
                 self.buf[8..10].copy_from_slice(&port.to_be_bytes());
                 self.len = 10;
             },
-            (AddrComponent::IP6(ip), AddrComponent::TCP(port)) => {
+            (Protocol::Ip6(ip), Protocol::Tcp(port)) => {
                 self.buf[3] = 0x04;
                 self.buf[4..20].copy_from_slice(&ip.octets());
                 self.buf[20..22].copy_from_slice(&port.to_be_bytes());
                 self.len = 22;
             },
-            (AddrComponent::DNS4(domain), AddrComponent::TCP(port)) => {
+            (Protocol::Dns4(domain), Protocol::Tcp(port)) => {
                 self.buf[3] = 0x03;
                 let domain = domain.as_bytes();
                 let len = domain.len();

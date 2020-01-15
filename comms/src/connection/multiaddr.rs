@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::connection::zmq::ZmqEndpoint;
-use multiaddr::{AddrComponent, Multiaddr};
+use multiaddr::{Multiaddr, Protocol};
 
 impl ZmqEndpoint for Multiaddr {
     type Error = multiaddr::Error;
@@ -29,14 +29,18 @@ impl ZmqEndpoint for Multiaddr {
     fn to_zmq_endpoint(&self) -> Result<String, Self::Error> {
         let mut iter = self.iter();
         let protocol = iter.next().ok_or(multiaddr::Error::InvalidMultiaddr)?;
-        let tcp_port = |tcp: Option<AddrComponent>| match tcp.unwrap_or(AddrComponent::TCP(0)) {
-            AddrComponent::TCP(port) => Ok(port),
+        let tcp_port = |tcp: Option<Protocol>| match tcp.unwrap_or(Protocol::Tcp(0)) {
+            Protocol::Tcp(port) => Ok(port),
             _ => Err(multiaddr::Error::InvalidMultiaddr),
         };
         match protocol {
-            AddrComponent::ONION(addr, port) => Ok(format!("tcp://{}.onion:{}", addr, port)),
-            AddrComponent::IP4(ip) => Ok(format!("tcp://{}:{}", ip, tcp_port(iter.next())?)),
-            AddrComponent::IP6(ip) => Ok(format!("tcp://{}:{}", ip, tcp_port(iter.next())?)),
+            Protocol::Onion(addr, port) => Ok(format!(
+                "tcp://{}.onion:{}",
+                String::from_utf8_lossy(addr.as_ref()),
+                port
+            )),
+            Protocol::Ip4(ip) => Ok(format!("tcp://{}:{}", ip, tcp_port(iter.next())?)),
+            Protocol::Ip6(ip) => Ok(format!("tcp://{}:{}", ip, tcp_port(iter.next())?)),
             _ => Err(multiaddr::Error::InvalidMultiaddr),
         }
     }

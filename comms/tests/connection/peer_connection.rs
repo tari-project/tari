@@ -38,6 +38,7 @@ use tari_comms::{
         ZmqContext,
     },
     message::FrameSet,
+    utils::multiaddr::socketaddr_to_multiaddr,
 };
 
 #[test]
@@ -234,7 +235,7 @@ fn connection_disconnect() {
         .establish(&addr)
         .unwrap();
 
-    let addr = sender.get_connected_address().clone().unwrap().into();
+    let addr = sender.get_connected_address().map(socketaddr_to_multiaddr).unwrap();
 
     // Initialize and start peer connection
     let identity = b"123".to_vec();

@@ -280,28 +280,36 @@ impl From<NodeIdentityError> for LibWalletError {
 }
 
 impl From<multiaddr::Error> for LibWalletError {
-    fn from(n: multiaddr::Error) -> Self {
-        error!(target: LOG_TARGET, "{}", format!("{:?}", n));
-        match n {
+    fn from(err: multiaddr::Error) -> Self {
+        error!(target: LOG_TARGET, "{}", format!("{:?}", err));
+        match err {
             multiaddr::Error::ParsingError(_) => Self {
                 code: 801,
-                message: format!("{:?}", n).to_string(),
+                message: format!("{:?}", err).to_string(),
             },
             multiaddr::Error::InvalidMultiaddr => Self {
                 code: 802,
-                message: format!("{:?}", n).to_string(),
+                message: format!("{:?}", err).to_string(),
             },
-            multiaddr::Error::MissingAddress => Self {
+            multiaddr::Error::DataLessThanLen => Self {
                 code: 803,
-                message: format!("{:?}", n).to_string(),
+                message: format!("{:?}", err).to_string(),
             },
-            multiaddr::Error::UnknownProtocol => Self {
+            multiaddr::Error::InvalidProtocolString => Self {
                 code: 804,
-                message: format!("{:?}", n).to_string(),
+                message: format!("{:?}", err).to_string(),
             },
-            multiaddr::Error::UnknownProtocolString => Self {
+            multiaddr::Error::UnknownProtocolString(_) => Self {
                 code: 805,
-                message: format!("{:?}", n).to_string(),
+                message: format!("{:?}", err).to_string(),
+            },
+            multiaddr::Error::InvalidUvar(_) => Self {
+                code: 806,
+                message: format!("{:?}", err).to_string(),
+            },
+            err => Self {
+                code: 810,
+                message: format!("Multiaddr error: {:?}", err).to_string(),
             },
         }
     }

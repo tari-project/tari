@@ -35,7 +35,7 @@ use tari_comms::{
     },
     control_service::messages::{MessageHeader, MessageType, PongMessage},
     message::{Envelope, MessageExt, MessageFlags},
-    utils::crypt,
+    utils::{crypt, multiaddr::socketaddr_to_multiaddr},
     wrap_in_envelope_body,
 };
 use tari_utilities::{thread_join::ThreadJoinWithTimeout, ByteArray};
@@ -163,11 +163,15 @@ fn establish_peer_connection_outbound() {
         .wait_listening_or_failure(Duration::from_millis(2000))
         .unwrap();
 
-    let address = other_peer_conn.get_address().unwrap();
+    let address = other_peer_conn
+        .get_address()
+        .as_ref()
+        .map(socketaddr_to_multiaddr)
+        .unwrap();
     assert_ne!(address.to_string(), "127.0.0.1:0");
 
     let remote_peer = factories::peer::create()
-        .with_net_addresses(vec![address.clone().into()])
+        .with_net_addresses(vec![address.clone()])
         .with_public_key(node_identity_in.public_key().clone())
         .with_node_id(node_identity_in.node_id().clone())
         .build()
@@ -185,7 +189,7 @@ fn establish_peer_connection_outbound() {
     let establisher = ConnectionEstablisher::new(context.clone(), node_identity_out.clone(), config, tx_outbound2);
     let (connection, peer_conn_handle) = establisher
         .establish_outbound_peer_connection(
-            address.into(),
+            address,
             peer_curve_pk,
             node_identity_out.node_id().to_vec(),
             remote_peer.node_id.to_vec(),
@@ -229,7 +233,7 @@ fn establish_peer_connection_inbound() {
         .wait_listening_or_failure(Duration::from_millis(3000))
         .unwrap();
 
-    let address = connection.get_address().unwrap();
+    let address = connection.get_address().as_ref().map(socketaddr_to_multiaddr).unwrap();
 
     // Setup a peer connection which will connect to our established inbound peer connection
     let (other_tx, _other_rx) = channel(10);
@@ -242,7 +246,7 @@ fn establish_peer_connection_inbound() {
                 .with_context(&context)
                 .with_server_public_key(public_key.clone())
                 .with_message_sink_channel(other_tx)
-                .with_address(address.into()),
+                .with_address(address),
         )
         .build()
         .unwrap();

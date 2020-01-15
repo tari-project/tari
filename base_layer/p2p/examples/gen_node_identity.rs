@@ -34,6 +34,7 @@ use std::{
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerFeatures},
+    utils::multiaddr::socketaddr_to_multiaddr,
 };
 use tari_utilities::message_format::MessageFormat;
 
@@ -41,7 +42,7 @@ fn random_address() -> Multiaddr {
     let mut rng = OsRng::new().unwrap();
     let port = rng.gen_range(9000, std::u16::MAX);
     let socket_addr: SocketAddr = (Ipv4Addr::LOCALHOST, port).into();
-    socket_addr.into()
+    socketaddr_to_multiaddr(&socket_addr)
 }
 
 fn to_abs_path(path: &str) -> String {
