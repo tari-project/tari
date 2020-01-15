@@ -10,10 +10,6 @@ jobs:
     steps:
       - checkout
       - run:
-          command: |
-            git submodule update --init --recursive
-          name: Init git submodule
-      - run:
           name: RFC documentation
           command: |
             # Workaround for bug https://github.com/rust-lang-nursery/mdBook/issues/855
@@ -29,10 +25,6 @@ jobs:
       - image: quay.io/tarilabs/git-ssh-client:0.2-alpine
     steps:
       - checkout
-      - run:
-          command: |
-            git submodule update --init --recursive
-          name: Init git submodule
       - attach_workspace:
           at: .
       - add_ssh_keys:
@@ -76,10 +68,6 @@ jobs:
     resource_class: medium
     steps:
       - checkout
-      - run:
-          command: |
-            git submodule update --init --recursive
-          name: Init git submodule
       - run:
           name: Tari source code
           command: |

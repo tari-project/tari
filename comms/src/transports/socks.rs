@@ -26,7 +26,7 @@ use crate::{
     transports::{tcp::TcpTransport, TcpSocket, Transport},
 };
 use futures::{Future, FutureExt};
-use multiaddr::{AddrComponent, Multiaddr};
+use multiaddr::{multiaddr, Multiaddr, Protocol};
 use std::io;
 
 #[derive(Clone, Debug)]
@@ -76,24 +76,20 @@ impl SocksTransport {
         let mut addr_iter = addr.iter();
 
         match (addr_iter.next(), addr_iter.next(), addr_iter.next()) {
-            (Some(AddrComponent::ONION(_, _)), Some(AddrComponent::IP4(ip)), Some(AddrComponent::TCP(port))) => {
-                Ok(multiaddr_from_components!(IP4(ip), TCP(port)))
+            (Some(Protocol::Onion(_, _)), Some(Protocol::Ip4(ip)), Some(Protocol::Tcp(port))) => {
+                Ok(multiaddr!(Ip4(ip), Tcp(port)))
             },
-            (Some(AddrComponent::ONION(_, _)), Some(AddrComponent::IP6(ip)), Some(AddrComponent::TCP(port))) => {
-                Ok(multiaddr_from_components!(IP6(ip), TCP(port)))
+            (Some(Protocol::Onion(_, _)), Some(Protocol::Ip6(ip)), Some(Protocol::Tcp(port))) => {
+                Ok(multiaddr!(Ip6(ip), Tcp(port)))
             },
-            (Some(AddrComponent::ONION3(_, _)), Some(AddrComponent::IP4(ip)), Some(AddrComponent::TCP(port))) => {
-                Ok(multiaddr_from_components!(IP4(ip), TCP(port)))
-            },
-            (Some(AddrComponent::ONION3(_, _)), Some(AddrComponent::IP6(ip)), Some(AddrComponent::TCP(port))) => {
-                Ok(multiaddr_from_components!(IP6(ip), TCP(port)))
-            },
-            (Some(AddrComponent::IP4(ip)), Some(AddrComponent::TCP(port)), None) => {
-                Ok(multiaddr_from_components!(IP4(ip), TCP(port)))
-            },
-            (Some(AddrComponent::IP6(ip)), Some(AddrComponent::TCP(port)), None) => {
-                Ok(multiaddr_from_components!(IP6(ip), TCP(port)))
-            },
+            //            (Some(Protocol::ONION3(_, _)), Some(Protocol::Ip4(ip)), Some(Protocol::Tcp(port))) => {
+            //                Ok(multiaddr!(IP4(ip), TCP(port)))
+            //            },
+            //            (Some(Protocol::ONION3(_, _)), Some(Protocol::Ip6(ip)), Some(Protocol::Tcp(port))) => {
+            //                Ok(multiaddr!(IP6(ip), TCP(port)))
+            //            },
+            (Some(Protocol::Ip4(ip)), Some(Protocol::Tcp(port)), None) => Ok(multiaddr!(Ip4(ip), Tcp(port))),
+            (Some(Protocol::Ip6(ip)), Some(Protocol::Tcp(port)), None) => Ok(multiaddr!(Ip6(ip), Tcp(port))),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!("TorTransport does not support the address '{}'.", addr),
@@ -110,8 +106,6 @@ impl Transport for SocksTransport {
 
     type DialFuture = impl Future<Output = Result<Self::Output, Self::Error>> + Unpin;
     type ListenFuture = impl Future<Output = Result<(Self::Listener, Multiaddr), Self::Error>>;
-
-    // impl Future<Output = Result<(Self::Listener, Multiaddr), Self::Error>> + Unpin;
 
     fn listen(&self, addr: Multiaddr) -> Self::ListenFuture {
         let tcp_transport = self.tcp_transport.clone();
@@ -148,13 +142,11 @@ mod test {
 
     #[test]
     fn extract_proxied_address() {
-        let addr = "/onion3/vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd:1234/ip4/127.0.0.1/tcp/9080"
-            .parse()
-            .unwrap();
+        let addr = "/onion/aaimaq4ygg2iegci:1234/ip4/127.0.0.1/tcp/9080".parse().unwrap();
         let proxy_addr = SocksTransport::extract_proxied_address(&addr).unwrap();
         let mut addr_iter = proxy_addr.iter();
-        assert_eq!(addr_iter.next(), Some(AddrComponent::IP4("127.0.0.1".parse().unwrap())));
-        assert_eq!(addr_iter.next(), Some(AddrComponent::TCP(9080)));
+        assert_eq!(addr_iter.next(), Some(Protocol::Ip4("127.0.0.1".parse().unwrap())));
+        assert_eq!(addr_iter.next(), Some(Protocol::Tcp(9080)));
         assert_eq!(addr_iter.next(), None);
     }
 }

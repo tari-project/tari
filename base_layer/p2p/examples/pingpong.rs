@@ -41,6 +41,7 @@ use futures::{
     stream::{FusedStream, StreamExt},
     Stream,
 };
+use multiaddr::multiaddr;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::{
     fs,
@@ -51,7 +52,7 @@ use std::{
 };
 use tari_comms::{
     control_service::ControlServiceConfig,
-    multiaddr::{AddrComponent, Multiaddr, Protocol},
+    multiaddr::{Multiaddr, Protocol},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags},
 };
 use tari_p2p::{
@@ -92,9 +93,12 @@ fn set_lan_address(identity: &NodeIdentity) {
     let control_addr = identity.control_service_address();
     let tcp = control_addr
         .iter()
-        .find(|c| c.protocol_id() == Protocol::TCP)
+        .find(|p| match p {
+            Protocol::Tcp(_) => true,
+            _ => false,
+        })
         .expect("no tcp protocol in address");
-    addr.append(tcp);
+    addr.push(tcp);
     identity.set_control_service_address(addr).unwrap();
 }
 
@@ -179,14 +183,16 @@ fn main() {
         socks_proxy_address: proxy.clone(),
         control_service: ControlServiceConfig {
             listening_address: {
-                let tcp = node_identity
+                let tcp_port = node_identity
                     .control_service_address()
                     .iter()
-                    .find(|c| c.protocol_id() == Protocol::TCP)
+                    .find_map(|p| match p {
+                        Protocol::Tcp(port) => Some(port),
+                        _ => None,
+                    })
                     .expect("no tcp protocol in node_identity address");
-                let mut addr: Multiaddr = AddrComponent::IP4("0.0.0.0".parse().unwrap()).into();
-                addr.append(tcp);
-                addr
+
+                multiaddr!(Ip4([0, 0, 0, 0]), Tcp(tcp_port))
             },
             public_peer_address: Some(node_identity.control_service_address()),
             socks_proxy_address: proxy,

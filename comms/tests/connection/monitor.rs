@@ -21,14 +21,16 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support::factories::{self, TestFactory};
-use multiaddr::Multiaddr;
 use std::{thread, time::Duration};
-use tari_comms::connection::{
-    connection::Connection,
-    monitor::{ConnectionMonitor, SocketEventType},
-    types::ConnectionDirection,
-    zmq::{ZmqContext, ZmqEndpoint},
-    InprocAddress,
+use tari_comms::{
+    connection::{
+        connection::Connection,
+        monitor::{ConnectionMonitor, SocketEventType},
+        types::ConnectionDirection,
+        zmq::{ZmqContext, ZmqEndpoint},
+        InprocAddress,
+    },
+    utils::multiaddr::socketaddr_to_multiaddr,
 };
 
 #[test]
@@ -43,7 +45,8 @@ fn recv_socket_events() {
         .set_monitor_addr(monitor_addr.clone())
         .establish(&address)
         .unwrap();
-    let connected_address = Multiaddr::from(conn_in.get_connected_address().clone().unwrap());
+
+    let connected_address = conn_in.get_connected_address().map(socketaddr_to_multiaddr).unwrap();
 
     {
         // Connect and disconnect

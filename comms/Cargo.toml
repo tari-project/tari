@@ -27,7 +27,7 @@ futures =  { version = "^0.3", features = ["async-await"]}
 lazy_static = "1.3.0"
 lmdb-zero = "0.4.4"
 log = { version = "0.4.0", features = ["std"] }
-multiaddr = {path="./rust-multiaddr", features = ["serde-support"]}
+multiaddr = {version = "0.7.0", package = "parity-multiaddr"}
 prost = "0.5.0"
 rand = "0.5.5"
 serde = "1.0.90"

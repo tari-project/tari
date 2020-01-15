@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{TestFactory, TestFactoryError};
-use multiaddr::{AddrComponent, Multiaddr};
+use multiaddr::{Multiaddr, Protocol};
 use std::iter::repeat_with;
 use tari_test_utils::address::get_next_local_port;
 
@@ -98,7 +98,7 @@ impl TestFactory for NetAddressFactory {
             .map_err(TestFactoryError::build_failed())?;
 
         let is_use_os_port = self.is_use_os_port;
-        addr.append(AddrComponent::TCP(self.port.unwrap_or_else(|| {
+        addr.push(Protocol::Tcp(self.port.unwrap_or_else(|| {
             if is_use_os_port {
                 0
             } else {

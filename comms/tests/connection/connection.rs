@@ -24,15 +24,17 @@ use crate::{
     support,
     support::factories::{self, TestFactory},
 };
-use multiaddr::Multiaddr;
 use std::time::Duration;
-use tari_comms::connection::{
-    connection::Connection,
-    error::ConnectionError,
-    types::{ConnectionDirection, Linger},
-    CurveEncryption,
-    InprocAddress,
-    ZmqContext,
+use tari_comms::{
+    connection::{
+        connection::Connection,
+        error::ConnectionError,
+        types::{ConnectionDirection, Linger},
+        CurveEncryption,
+        InprocAddress,
+        ZmqContext,
+    },
+    utils::multiaddr::socketaddr_to_multiaddr,
 };
 
 #[test]
@@ -107,7 +109,7 @@ fn inbound_recv_send_encrypted_tcp() {
         .establish(&addr)
         .unwrap();
 
-    let addr = Multiaddr::from(conn.get_connected_address().clone().unwrap());
+    let addr = conn.get_connected_address().map(socketaddr_to_multiaddr).unwrap();
 
     let signal = req_rep_pattern
         .set_endpoint(addr)

@@ -48,7 +48,7 @@ use crate::{
     message::{Envelope, EnvelopeBody, Frame, FrameSet, MessageEnvelopeHeader, MessageExt, MessageFlags},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManagerError},
     types::CommsPublicKey,
-    utils::crypt,
+    utils::{crypt, multiaddr::socketaddr_to_multiaddr},
 };
 use log::*;
 use multiaddr::Multiaddr;
@@ -445,7 +445,7 @@ impl ControlServiceWorker {
                     .public_peer_address
                     .as_ref()
                     .map(Clone::clone)
-                    .or_else(|| inbound_conn.get_address().map(Into::into))
+                    .or_else(|| inbound_conn.get_address().as_ref().map(socketaddr_to_multiaddr))
                     .ok_or(ControlServiceError::ListenerAddressNotEstablished)?;
 
                 let permitted_identity = self.generate_random_identity();

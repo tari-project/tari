@@ -29,8 +29,8 @@ pub fn create_runtime() -> Runtime {
         .threaded_scheduler()
         .enable_io()
         .enable_time()
-        .max_threads(4)
-        .core_threads(1)
+        .max_threads(8)
+        .core_threads(4)
         .build()
         .expect("Could not create runtime")
 }

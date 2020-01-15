@@ -389,8 +389,8 @@ impl EstablishedConnection {
     /// the OS, (e.g. "127.0.0.1:0") which means that the actual port we're connecting to isn't known until the binding
     /// has been made. This function queries the socket for the connection info, and extracts the address & port if it
     /// was a TCP connection, returning None otherwise
-    pub fn get_connected_address(&self) -> &Option<SocketAddr> {
-        &self.connected_address
+    pub fn get_connected_address(&self) -> Option<&SocketAddr> {
+        self.connected_address.as_ref()
     }
 
     /// Read entire multipart message
