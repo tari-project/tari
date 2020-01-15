@@ -92,7 +92,7 @@ where T: BlockchainBackend
                 }
             }
 
-            if tx.max_timelock_height() > height + 1 {
+            if tx.min_spendable_height() > height + 1 {
                 removed_timelocked_tx_keys.push(tx_key.clone());
             } else {
                 removed_tx_keys.push(tx_key.clone());

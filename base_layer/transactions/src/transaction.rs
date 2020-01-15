@@ -619,10 +619,18 @@ impl Transaction {
             .fold(0, |max_maturity, input| max(max_maturity, input.features.maturity))
     }
 
-    /// Returns the height of the maximum time-lock restriction calculated from the transaction lock_height and the
-    /// maturity of the input UTXOs.
-    pub fn max_timelock_height(&self) -> u64 {
-        max(self.body.kernels()[0].lock_height, self.max_input_maturity())
+    /// Returns the maximum timelock of the kernels inside of the transaction
+    pub fn max_kernel_timelock(&self) -> u64 {
+        self.body
+            .kernels()
+            .iter()
+            .fold(0, |max_timelock, kernel| max(max_timelock, kernel.lock_height))
+    }
+
+    /// Returns the height of the minimum height where the transaction is spendable. This is calculated from the
+    /// transaction kernel lock_heights and the maturity of the input UTXOs.
+    pub fn min_spendable_height(&self) -> u64 {
+        max(self.max_kernel_timelock(), self.max_input_maturity())
     }
 }
 
@@ -711,6 +719,7 @@ impl Default for TransactionBuilder {
 mod test {
     use super::*;
     use crate::{
+        helpers::{create_test_kernel, create_tx},
         transaction::OutputFeatures,
         types::{BlindingFactor, PrivateKey, PublicKey, RangeProof},
     };
@@ -805,5 +814,54 @@ mod test {
             &k.hash().to_hex(),
             "988ed705e6509684eb78ba81cd49525692002ab4dc79025bfd3fc051e45eb0b2"
         )
+    }
+
+    #[test]
+    fn check_timelocks() {
+        let mut rng = rand::OsRng::new().unwrap();
+        let factories = CryptoFactories::new(32);
+        let k = BlindingFactor::random(&mut rng);
+        let v = PrivateKey::from(2u64.pow(32) + 1);
+        let c = factories.commitment.commit(&k, &v);
+
+        let mut input = TransactionInput::new(OutputFeatures::default(), c);
+        let mut kernel = create_test_kernel(0.into(), 0);
+        let mut tx = Transaction::new(Vec::new(), Vec::new(), Vec::new(), 0.into());
+
+        // lets add timelocks
+        input.features.maturity = 5;
+        kernel.lock_height = 2;
+        tx.body.add_input(input.clone());
+        tx.body.add_kernel(kernel.clone());
+
+        assert_eq!(tx.max_input_maturity(), 5);
+        assert_eq!(tx.max_kernel_timelock(), 2);
+        assert_eq!(tx.min_spendable_height(), 5);
+
+        input.features.maturity = 4;
+        kernel.lock_height = 3;
+        tx.body.add_input(input.clone());
+        tx.body.add_kernel(kernel.clone());
+
+        assert_eq!(tx.max_input_maturity(), 5);
+        assert_eq!(tx.max_kernel_timelock(), 3);
+        assert_eq!(tx.min_spendable_height(), 5);
+
+        input.features.maturity = 2;
+        kernel.lock_height = 10;
+        tx.body.add_input(input.clone());
+        tx.body.add_kernel(kernel.clone());
+
+        assert_eq!(tx.max_input_maturity(), 5);
+        assert_eq!(tx.max_kernel_timelock(), 10);
+        assert_eq!(tx.min_spendable_height(), 10);
+    }
+
+    #[test]
+    fn test_validate_internal_consistency() {
+        let (tx, _, _) = create_tx(5000.into(), 15.into(), 1, 2, 1, 4);
+
+        let factories = CryptoFactories::default();
+        assert!(tx.validate_internal_consistency(&factories, None).is_ok());
     }
 }

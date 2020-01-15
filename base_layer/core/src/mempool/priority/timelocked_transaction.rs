@@ -33,7 +33,7 @@ pub struct TimelockPriority(Vec<u8>);
 
 impl TimelockPriority {
     pub fn try_from(transaction: &Transaction) -> Result<Self, PriorityError> {
-        let mut priority = transaction.max_timelock_height().to_binary()?;
+        let mut priority = transaction.min_spendable_height().to_binary()?;
         priority.reverse(); // Requires Big-endian for BtreeMap sorting
         priority.append(&mut transaction.body.kernels()[0].excess_sig.to_binary()?);
         Ok(Self(priority))
@@ -62,7 +62,7 @@ impl TryFrom<Transaction> for TimelockedTransaction {
         Ok(Self {
             fee_priority: FeePriority::try_from(&transaction)?,
             timelock_priority: TimelockPriority::try_from(&transaction)?,
-            max_timelock_height: match transaction.max_timelock_height() {
+            max_timelock_height: match transaction.min_spendable_height() {
                 0 => 0,
                 v => v - 1,
             },
