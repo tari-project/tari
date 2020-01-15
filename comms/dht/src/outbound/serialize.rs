@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{consts::DHT_RNG, outbound::message::DhtOutboundMessage, proto::envelope::DhtEnvelope};
-use futures::{task::Context, Future, Poll};
+use futures::{task::Context, Future};
 use log::*;
-use std::sync::Arc;
+use std::{sync::Arc, task::Poll};
 use tari_comms::{
     message::MessageExt,
     outbound_message_service::OutboundMessage,

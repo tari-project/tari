@@ -46,7 +46,7 @@ use crate::{
     message::FrameSet,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
 };
-use futures::{channel::mpsc::Sender, Future};
+use futures::{channel::mpsc::Sender, Future, FutureExt};
 use log::*;
 use std::{
     collections::HashMap,
@@ -55,7 +55,7 @@ use std::{
     time::Duration,
 };
 use tari_utilities::{thread_join::thread_join::ThreadJoinWithTimeout, ByteArray};
-use tokio_executor::blocking;
+use tokio::task;
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
 
@@ -505,9 +505,13 @@ impl Dialer<NodeId> for ConnectionManagerDialer {
     fn dial(&self, node_id: &NodeId) -> Self::Future {
         let inner = Arc::clone(&self.inner);
         let node_id = node_id.clone();
-        blocking::run(move || {
+        task::spawn_blocking(move || {
             // TODO: This is synchronous until we can make connection manager fully async
             inner.establish_connection_to_node_id(&node_id)
+        })
+        .map(|result| match result {
+            Ok(x) => x,
+            Err(err) => Err(err.into()),
         })
     }
 }

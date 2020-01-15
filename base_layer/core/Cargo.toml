@@ -45,9 +45,8 @@ blake2 = "^0.8.0"
 bigint = "^4.4.1"
 ttl_cache = "0.5.1"
 croaring = "=0.3.9"
-tokio = { version="^0.2.0-alpha.6" }
-tokio-executor = { version ="^0.2.0-alpha.6", features = ["threadpool"] }
-futures-preview = {version = "0.3.0-alpha.19", features = ["async-await"] }
+tokio = { version="^0.2" }
+futures = {version = "^0.3.1", features = ["async-await"] }
 lmdb-zero = "0.4.4"
 tower-service = { version="0.3.0-alpha.2" }
 crossbeam-channel = "0.3.8"
@@ -60,6 +59,7 @@ tari_p2p = {path = "../../base_layer/p2p", version = "^0.0", features=["test-moc
 tari_test_utils = { path = "../../infrastructure/test_utils", version = "^0.0" }
 env_logger = "0.7.0"
 tempdir = "0.3.7"
+tokio-macros = "0.2.3"
 
 [build-dependencies]
 tari_protobuf_build = { version = "^0.0", path="../../infrastructure/protobuf_build"}

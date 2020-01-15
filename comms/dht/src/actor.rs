@@ -32,6 +32,7 @@ use crate::{
     discovery::DhtDiscoveryError,
     outbound::{OutboundMessageRequester, SendMessageParams},
     proto::{dht::JoinMessage, envelope::DhtMessageType, store_forward::StoredMessagesRequest},
+    utils::hoist_nested_result,
     DhtConfig,
 };
 use chrono::{DateTime, Utc};
@@ -62,7 +63,7 @@ use tari_comms::{
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::ByteArray;
-use tokio_executor::blocking;
+use tokio::task;
 use ttl_cache::TtlCache;
 
 const LOG_TARGET: &'static str = "comms::dht::actor";
@@ -79,6 +80,7 @@ pub enum DhtActorError {
     #[error(msg_embedded, no_from, non_std)]
     SendFailed(String),
     DiscoveryError(DhtDiscoveryError),
+    BlockingJoinError(tokio::task::JoinError),
 }
 
 impl From<SendError> for DhtActorError {
@@ -243,15 +245,18 @@ impl<'a> DhtActor<'a> {
                 let peer_manager = Arc::clone(&self.peer_manager);
                 let node_identity = Arc::clone(&self.node_identity);
                 let config = self.config.clone();
-                Box::pin(blocking::run(move || {
-                    match Self::select_peers(config, node_identity, peer_manager, broadcast_strategy) {
-                        Ok(peers) => reply_tx.send(peers).map_err(|_| DhtActorError::ReplyCanceled),
-                        Err(err) => {
-                            error!(target: LOG_TARGET, "Peer selection failed: {}", err);
-                            reply_tx.send(Vec::new()).map_err(|_| DhtActorError::ReplyCanceled)
-                        },
-                    }
-                }))
+                Box::pin(
+                    task::spawn_blocking(move || {
+                        match Self::select_peers(config, node_identity, peer_manager, broadcast_strategy) {
+                            Ok(peers) => reply_tx.send(peers).map_err(|_| DhtActorError::ReplyCanceled),
+                            Err(err) => {
+                                error!(target: LOG_TARGET, "Peer selection failed: {}", err);
+                                reply_tx.send(Vec::new()).map_err(|_| DhtActorError::ReplyCanceled)
+                            },
+                        }
+                    })
+                    .map(hoist_nested_result),
+                )
             },
             SendRequestStoredMessages(maybe_since) => {
                 let node_identity = Arc::clone(&self.node_identity);

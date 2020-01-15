@@ -145,7 +145,7 @@ macro_rules! log_if_error_fmt {
     }};
 }
 
-/// Adds #[cfg(feature = "next")] to mod and use
+/// Adds #[cfg(feature = "next")] to mod and use statements
 macro_rules! cfg_next {
     ($($item:item)+) => {
         $(

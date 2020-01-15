@@ -35,7 +35,7 @@ use tari_comms::{
 use tari_shutdown::Shutdown;
 use tari_storage::LMDBWrapper;
 use tari_utilities::ByteArray;
-use tokio::{future::FutureExt, runtime::Runtime};
+use tokio::{runtime::Runtime, time::timeout};
 
 /// A utility function that will construct a Comms layer message that would typically arrive from a PeerConnection as a
 /// FrameSet that deserializes into a MessageEnvelope
@@ -58,7 +58,7 @@ fn construct_message(message_body: Vec<u8>, node_identity: Arc<NodeIdentity>) ->
 
 #[test]
 fn smoke_test() {
-    let rt = Runtime::new().unwrap();
+    let mut rt = Runtime::new().unwrap();
 
     let node_identity = factories::node_identity::create().build().map(Arc::new).unwrap();
 
@@ -106,12 +106,14 @@ fn smoke_test() {
 
     let num_messages = sent_messages.len();
     let messages = rt
-        .block_on(
-            inbound_rx
-                .take(num_messages as u64)
-                .collect::<Vec<_>>()
-                .timeout(Duration::from_secs(3)),
-        )
+        // timeout() needs to run in the context of a runtime
+        .block_on(async {
+            timeout(
+                Duration::from_secs(3),
+                inbound_rx.take(num_messages).collect::<Vec<_>>(),
+            )
+            .await
+        })
         .unwrap();
 
     assert_eq!(messages.len(), sent_messages.len());

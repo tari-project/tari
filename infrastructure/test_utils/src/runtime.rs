@@ -20,18 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
-use tokio::runtime::Runtime;
+use futures::FutureExt;
+use std::{future::Future, pin::Pin};
+use tokio::{runtime, runtime::Runtime, task};
 
-pub fn create_runtime(passed: Arc<AtomicBool>) -> Runtime {
+pub fn create_runtime() -> Runtime {
     tokio::runtime::Builder::new()
-        .blocking_threads(4)
-        // Run the work scheduler on one thread so we can really see the effects of using `blocking` above
+        .threaded_scheduler()
+        .enable_io()
+        .enable_time()
+        .max_threads(4)
         .core_threads(1)
-        .panic_handler(move |_| passed.store(false, Ordering::SeqCst))
         .build()
         .expect("Could not create runtime")
 }
@@ -40,12 +39,61 @@ pub fn create_runtime(passed: Arc<AtomicBool>) -> Runtime {
 /// will carry on running forever.
 /// TODO: Create a test harness which allows test cleanup or at least fail the test after a timeout
 pub fn test_async<F>(f: F)
-where F: FnOnce(&Runtime) {
-    let passed = Arc::new(AtomicBool::new(true));
-    let rt: Runtime = create_runtime(passed.clone());
-    f(&rt);
-    rt.shutdown_on_idle();
-    assert!(passed.load(Ordering::SeqCst), "Panic occurred in spawned future");
+where F: FnOnce(&mut TestRuntime) {
+    let mut rt = TestRuntime::from(create_runtime());
+    f(&mut rt);
+    let handles = rt.handles.drain(..).collect::<Vec<_>>();
+    for h in handles {
+        rt.block_on(h);
+    }
+}
+
+pub struct TestRuntime {
+    inner: Runtime,
+    handles: Vec<Pin<Box<dyn Future<Output = ()>>>>,
+}
+
+impl TestRuntime {
+    pub fn block_on<F: Future>(&mut self, future: F) -> F::Output {
+        self.inner.block_on(future)
+    }
+
+    pub fn spawn<F>(&mut self, future: F)
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        let handle = self.inner.spawn(future);
+        self.handles.push(
+            async move {
+                if let Err(err) = handle.await {
+                    panic!("{:?}", err);
+                }
+            }
+            .boxed(),
+        );
+    }
+
+    pub fn spawn_unchecked<F>(&mut self, future: F) -> task::JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        self.inner.spawn(future)
+    }
+
+    pub fn handle(&self) -> &runtime::Handle {
+        self.inner.handle()
+    }
+}
+
+impl From<Runtime> for TestRuntime {
+    fn from(rt: Runtime) -> Self {
+        Self {
+            inner: rt,
+            handles: Vec::new(),
+        }
+    }
 }
 
 // TODO: WIP for a test harness which allows shutdown code to be run in the case of a successful/failed test

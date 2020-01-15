@@ -278,11 +278,11 @@ mod test {
     use super::*;
     use crate::test_utils::dialers::CountDialer;
     use tari_shutdown::Shutdown;
-    use tokio::runtime::current_thread;
+    use tokio::runtime::Builder;
 
     #[test]
     fn requester_dial_peer() {
-        let mut rt = current_thread::Runtime::new().unwrap();
+        let mut rt = Builder::new().basic_scheduler().build().unwrap();
         let (tx, mut rx) = mpsc::channel(1);
         let mut requester = ConnectionManagerRequester::new(tx);
         let node_id = NodeId::new();
@@ -309,7 +309,7 @@ mod test {
 
     #[test]
     fn connection_manager_service_calls_dialer() {
-        let mut rt = current_thread::Runtime::new().unwrap();
+        let mut rt = Builder::new().basic_scheduler().build().unwrap();
 
         let dialer = CountDialer::<NodeId>::new();
         let shutdown = Shutdown::new();
@@ -325,7 +325,7 @@ mod test {
 
     #[test]
     fn connection_manager_service_get_active_connection_count() {
-        let mut rt = current_thread::Runtime::new().unwrap();
+        let mut rt = Builder::new().basic_scheduler().build().unwrap();
 
         let dialer = CountDialer::<NodeId>::new();
         let shutdown = Shutdown::new();

@@ -47,9 +47,9 @@ use futures::{
     StreamExt,
 };
 use log::*;
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{collections::HashMap, sync::Arc};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{runtime::TaskExecutor, timer};
+use tokio::{runtime, time};
 
 const LOG_TARGET: &str = "comms::connection_manager::establisher";
 
@@ -62,7 +62,7 @@ pub enum DialerRequest {
 }
 
 pub struct Dialer<TTransport, TBackoff> {
-    executor: TaskExecutor,
+    executor: runtime::Handle,
     config: ConnectionManagerConfig,
     transport: TTransport,
     backoff: Arc<TBackoff>,
@@ -80,7 +80,7 @@ where
     TBackoff: Backoff + Send + Sync + 'static,
 {
     pub fn new(
-        executor: TaskExecutor,
+        executor: runtime::Handle,
         config: ConnectionManagerConfig,
         transport: TTransport,
         backoff: Arc<TBackoff>,
@@ -309,7 +309,7 @@ where
                 current_state.peer.node_id.short_str(),
                 backoff_duration.as_secs()
             );
-            let mut delay = timer::delay(Instant::now() + backoff_duration).fuse();
+            let mut delay = time::delay_for(backoff_duration).fuse();
             let mut cancel_signal = current_state.get_cancel_signal();
             futures::select! {
                 _ = delay => {

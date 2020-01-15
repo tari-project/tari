@@ -32,11 +32,7 @@ use helpers::{
     },
     sample_blockchains::create_new_blockchain,
 };
-use std::{
-    ops::Deref,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{ops::Deref, sync::Arc, time::Duration};
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundEncryption};
 use tari_core::{
     base_node::service::BaseNodeServiceConfig,
@@ -391,9 +387,9 @@ fn test_orphaned_mempool_transactions() {
 #[test]
 fn request_response_get_stats() {
     let factories = CryptoFactories::default();
-    let runtime = Runtime::new().unwrap();
+    let mut runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut alice, bob) = create_network_with_2_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
+    let (mut alice, bob) = create_network_with_2_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
 
     // Create a Genesis block, and a tx spending the genesis output. Then create 2 orphan txs
     let (block0, utxo) = create_genesis_block(&bob.blockchain_db, &factories);
@@ -438,10 +434,10 @@ fn request_response_get_stats() {
 #[test]
 fn request_response_get_tx_state_with_excess_sig() {
     let factories = CryptoFactories::default();
-    let runtime = Runtime::new().unwrap();
+    let mut runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let (mut alice_node, bob_node, carol_node) =
-        create_network_with_3_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
+        create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
 
     let (block0, utxo) = create_genesis_block(&bob_node.blockchain_db, &factories);
     bob_node.blockchain_db.add_block(block0.clone()).unwrap();
@@ -497,10 +493,10 @@ fn request_response_get_tx_state_with_excess_sig() {
 #[test]
 fn receive_and_propagate_transaction() {
     let factories = CryptoFactories::default();
-    let runtime = Runtime::new().unwrap();
+    let mut runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let (mut alice_node, bob_node, carol_node) =
-        create_network_with_3_base_nodes(&runtime, temp_dir.path().to_str().unwrap());
+        create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
 
     let (block0, utxo) = create_genesis_block(&alice_node.blockchain_db, &factories);
     alice_node.blockchain_db.add_block(block0.clone()).unwrap();
@@ -566,7 +562,7 @@ fn receive_and_propagate_transaction() {
 
 #[test]
 fn service_request_timeout() {
-    let runtime = Runtime::new().unwrap();
+    let mut runtime = Runtime::new().unwrap();
 
     let mempool_service_config = MempoolServiceConfig {
         request_timeout: Duration::from_millis(1),
@@ -577,7 +573,7 @@ fn service_request_timeout() {
     };
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let (mut alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
-        &runtime,
+        &mut runtime,
         BaseNodeServiceConfig::default(),
         mct_config,
         mempool_service_config,

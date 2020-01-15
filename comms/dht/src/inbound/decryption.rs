@@ -24,10 +24,10 @@ use crate::{
     envelope::DhtMessageFlags,
     inbound::message::{DecryptedDhtMessage, DhtInboundMessage},
 };
-use futures::{task::Context, Future, Poll};
+use futures::{task::Context, Future};
 use log::*;
 use prost::Message;
-use std::sync::Arc;
+use std::{sync::Arc, task::Poll};
 use tari_comms::{message::EnvelopeBody, peer_manager::NodeIdentity, utils::crypt};
 use tari_comms_middleware::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceExt};

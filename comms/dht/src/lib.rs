@@ -123,6 +123,7 @@ mod consts;
 mod dht;
 mod discovery;
 mod proto;
+mod utils;
 
 pub mod broadcast_strategy;
 pub mod domain_message;

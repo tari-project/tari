@@ -31,8 +31,9 @@ use crate::{
         store_forward::{StoredMessage, StoredMessagesRequest, StoredMessagesResponse},
     },
     store_forward::{error::StoreAndForwardError, SafStorage},
+    utils::hoist_nested_result,
 };
-use futures::{future, stream, Future, StreamExt};
+use futures::{future, stream, Future, FutureExt, StreamExt};
 use log::*;
 use prost::Message;
 use std::{convert::TryInto, sync::Arc};
@@ -43,8 +44,7 @@ use tari_comms::{
 };
 use tari_comms_middleware::MiddlewareError;
 use tari_utilities::ByteArray;
-use tokio::runtime::current_thread;
-use tokio_executor::blocking;
+use tokio::{runtime, task};
 use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::dht::store_forward";
@@ -300,7 +300,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
         let peer_manager = Arc::clone(&self.peer_manager);
         let config = self.config.clone();
         let mut dht_requester = self.dht_requester.clone();
-        blocking::run(move || {
+        task::spawn_blocking(move || {
             if message.dht_header.is_none() {
                 return Err(StoreAndForwardError::DhtHeaderNotProvided);
             }
@@ -318,7 +318,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
             Self::check_flags(&dht_header)?;
             // Check that the message has not already been received.
             // The current thread runtime is used because calls to the DHT actor are async
-            let mut rt = current_thread::Runtime::new()?;
+            let mut rt = runtime::Builder::new().basic_scheduler().build()?;
             rt.block_on(Self::check_duplicate(&mut dht_requester, &dht_header))?;
 
             // Attempt to decrypt the message
@@ -332,6 +332,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
 
             Ok(DecryptedDhtMessage::succeeded(decrypted_body, inbound_msg))
         })
+        .map(hoist_nested_result)
     }
 
     async fn check_duplicate(

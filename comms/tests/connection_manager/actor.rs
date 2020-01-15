@@ -181,7 +181,7 @@ fn with_alice_and_bob(cb: impl FnOnce(CommsTestNode, CommsTestNode)) {
 #[test]
 fn establish_connection_simple() {
     with_alice_and_bob(|alice, bob| {
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
         let shutdown = Shutdown::new();
         let (mut requester, service) = create_connection_manager_actor(
             1,
@@ -204,7 +204,7 @@ fn establish_connection_simple() {
 #[test]
 fn establish_connection_simultaneous_connect() {
     with_alice_and_bob(|alice, bob| {
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
         let shutdown = Shutdown::new();
         let (requester_alice, service) = create_connection_manager_actor(
             1,

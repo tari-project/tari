@@ -22,7 +22,7 @@
 
 use crate::peer_manager::{NodeId, Peer, PeerManager, PeerManagerError};
 use std::sync::Arc;
-use tokio_executor::blocking;
+use tokio::task;
 
 #[derive(Clone)]
 pub struct AsyncPeerManager {
@@ -37,7 +37,9 @@ impl AsyncPeerManager {
     pub async fn find_by_node_id(&self, node_id: &NodeId) -> Result<Peer, PeerManagerError> {
         let node_id = node_id.clone();
         let peer_manager = Arc::clone(&self.peer_manager);
-        blocking::run(move || peer_manager.find_by_node_id(&node_id)).await
+        task::spawn_blocking(move || peer_manager.find_by_node_id(&node_id))
+            .await
+            .map_err(|_| PeerManagerError::BlockingTaskSpawnError)?
     }
 }
 

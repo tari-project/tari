@@ -44,7 +44,7 @@ use futures::{channel::mpsc, stream, Sink, Stream};
 use log::*;
 use std::{fmt::Debug, sync::Arc};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 
 const LOG_TARGET: &str = "comms::builder";
 
@@ -90,14 +90,14 @@ pub struct CommsBuilder<TInSink, TOutStream> {
     node_identity: Option<Arc<NodeIdentity>>,
     peer_conn_config: Option<PeerConnectionConfig>,
     comms_builder_config: Option<CommsBuilderConfig>,
-    executor: TaskExecutor,
+    executor: runtime::Handle,
     oms_backoff: Option<BoxedBackoff>,
     on_shutdown: Option<Box<dyn FnOnce() + Send + Sync>>,
 }
 
 impl CommsBuilder<NullSink<InboundMessage, mpsc::SendError>, stream::Empty<OutboundMessage>> {
     /// Create a new CommsBuilder
-    pub fn new(executor: TaskExecutor) -> Self {
+    pub fn new(executor: runtime::Handle) -> Self {
         let zmq_context = ZmqContext::new();
 
         Self {
@@ -380,7 +380,7 @@ pub struct CommsContainer<TInSink, TOutStream> {
     connection_manager_actor: CommsConnectionManagerActor,
     control_service: Option<ControlService>,
 
-    executor: TaskExecutor,
+    executor: runtime::Handle,
 
     inbound_message_service: InboundMessageService<TInSink>,
 
@@ -437,7 +437,7 @@ pub struct CommsNode {
     shutdown: Shutdown,
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
-    executor: TaskExecutor,
+    executor: runtime::Handle,
 }
 
 impl CommsNode {
@@ -452,7 +452,7 @@ impl CommsNode {
     }
 
     /// Return a reference to the executor used to run comms tasks
-    pub fn executor(&self) -> &TaskExecutor {
+    pub fn executor(&self) -> &runtime::Handle {
         &self.executor
     }
 
@@ -514,7 +514,7 @@ mod test {
     #[test]
     fn new_no_control_service() {
         let rt = Runtime::new().unwrap();
-        let container = CommsBuilder::new(rt.executor())
+        let container = CommsBuilder::new(rt.handle().clone())
             .with_node_identity(Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::empty())))
             .with_peer_storage(HashmapDatabase::new())
             .build()
@@ -526,7 +526,7 @@ mod test {
     #[test]
     fn new_with_control_service() {
         let rt = Runtime::new().unwrap();
-        let container = CommsBuilder::new(rt.executor())
+        let container = CommsBuilder::new(rt.handle().clone())
             .with_node_identity(Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::empty())))
             .with_peer_storage(HashmapDatabase::new())
             .configure_control_service(ControlServiceConfig::default())

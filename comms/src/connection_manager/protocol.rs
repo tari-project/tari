@@ -163,7 +163,7 @@ mod test {
     #[test]
     fn smoke() {
         // TODO: When we can upgrade to futures 0.3 / async-std we can use an in-memory cursor instead of tcp sockets
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
         let (mut initiator, mut responder) = rt.block_on(build_connected_tcp_socket_pair());
         let mut negotiate_out = ProtocolNegotiation::new(&mut initiator);
         let mut negotiate_in = ProtocolNegotiation::new(&mut responder);

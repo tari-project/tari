@@ -96,7 +96,7 @@ mod test {
 
     #[test]
     fn open_substream() -> io::Result<()> {
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
         let (dialer, listener) = rt.block_on(build_connected_tcp_socket_pair());
         let msg = b"The Way of Kings";
 
@@ -130,7 +130,7 @@ mod test {
 
     #[test]
     fn close() -> io::Result<()> {
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
         let (dialer, listener) = rt.block_on(build_connected_tcp_socket_pair());
         let msg = b"Words of Radiance";
 
@@ -180,7 +180,7 @@ mod test {
 
     #[test]
     fn send_big_message() -> io::Result<()> {
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
         #[allow(non_upper_case_globals)]
         static MiB: usize = 1 << 20;
         static MSG_LEN: usize = 16 * MiB;

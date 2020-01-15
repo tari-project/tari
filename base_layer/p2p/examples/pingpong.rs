@@ -199,12 +199,12 @@ fn main() {
         outbound_buffer_size: 10,
         dht: Default::default(),
     };
-    let rt = Runtime::new().expect("Failed to create tokio Runtime");
+    let mut rt = Runtime::new().expect("Failed to create tokio Runtime");
 
-    let (publisher, subscription_factory) = pubsub_connector(rt.executor(), 100);
+    let (publisher, subscription_factory) = pubsub_connector(rt.handle().clone(), 100);
     let subscription_factory = Arc::new(subscription_factory);
 
-    let (comms, dht) = initialize_comms(rt.executor(), comms_config, publisher).unwrap();
+    let (comms, dht) = initialize_comms(rt.handle().clone(), comms_config, publisher).unwrap();
 
     let peer = Peer::new(
         peer_identity.public_key().clone(),
@@ -215,7 +215,7 @@ fn main() {
     );
     comms.peer_manager().add_peer(peer).unwrap();
 
-    let fut = StackBuilder::new(rt.executor(), comms.shutdown_signal())
+    let fut = StackBuilder::new(rt.handle().clone(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(LivenessInitializer::new(
             LivenessConfig {
@@ -264,7 +264,6 @@ fn main() {
 
     shutdown.trigger().unwrap();
     comms.shutdown().unwrap();
-    rt.shutdown_on_idle();
 }
 
 fn setup_ui() -> Cursive {

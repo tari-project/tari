@@ -80,7 +80,7 @@ pub fn build_connection_manager(
 
     let connection_manager = ConnectionManager::new(
         Default::default(),
-        runtime.executor(),
+        runtime.handle().clone(),
         transport,
         Arc::new(ConstantBackoff::new(config.dial_backoff_duration)),
         request_rx,

@@ -19,18 +19,18 @@ tari_utilities = { version = "^0.0", path = "../../infrastructure/tari_util"}
 tari_shutdown = { version="^0.0",  path = "../../infrastructure/shutdown" }
 
 derive-error = "0.0.4"
-futures= {version= "0.3.0-alpha.19", package="futures-preview"}
+futures= {version= "^0.3.1"}
 log = "0.4.8"
 serde = "1.0.90"
 serde_derive = "1.0.90"
-tokio = "0.2.0-alpha.6"
-tower= "0.3.0-alpha.2"
+tokio = "^0.2"
+tower= "0.3.0"
 rand = "0.5.5"
 
 [dev-dependencies]
 tari_test_utils = {version="^0.0", path="../../infrastructure/test_utils"}
 tari_storage = {version = "^0.0", path = "../../infrastructure/storage"}
 
-futures-test = { version = "0.3.0-alpha.18", package = "futures-test-preview" }
+futures-test = { version = "^0.3.1" }
 lmdb-zero = "0.4.4"
 tempdir = "0.3.7"

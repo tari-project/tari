@@ -89,7 +89,7 @@ impl NodeType {
                 NodeType::Memory(n) => n.run().await,
             }
         }
-            .await;
+        .await;
     }
 }
 
@@ -161,7 +161,7 @@ pub fn create_and_save_id(path: &Path, control_addr: &str) -> Result<NodeIdentit
 pub fn configure_and_initialize_node(
     config: &GlobalConfig,
     id: NodeIdentity,
-    rt: &Runtime,
+    rt: &mut Runtime,
 ) -> Result<(CommsNode, NodeType), String>
 {
     let id = Arc::new(id);
@@ -181,7 +181,7 @@ pub fn configure_and_initialize_node(
             let diff_adj_manager = DiffAdjManager::new(db.clone()).map_err(|e| e.to_string())?;
             rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
             let (comms, handles) =
-                setup_comms_services(&rt, id.clone(), peers, &config.peer_db_path, db.clone(), mempool, rules);
+                setup_comms_services(rt, id.clone(), peers, &config.peer_db_path, db.clone(), mempool, rules);
             let outbound_interface = handles.get_handle::<OutboundNodeCommsInterface>().unwrap();
             (
                 comms,
@@ -209,7 +209,7 @@ pub fn configure_and_initialize_node(
             let diff_adj_manager = DiffAdjManager::new(db.clone()).map_err(|e| e.to_string())?;
             rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
             let (comms, handles) =
-                setup_comms_services(&rt, id.clone(), peers, &config.peer_db_path, db.clone(), mempool, rules);
+                setup_comms_services(rt, id.clone(), peers, &config.peer_db_path, db.clone(), mempool, rules);
             let outbound_interface = handles.get_handle::<OutboundNodeCommsInterface>().unwrap();
             (
                 comms,
@@ -281,7 +281,7 @@ fn assign_peers(seeds: &[String]) -> Vec<Peer> {
 }
 
 fn setup_comms_services<T>(
-    rt: &Runtime,
+    rt: &mut Runtime,
     id: Arc<NodeIdentity>,
     peers: Vec<Peer>,
     peer_db_path: &str,
@@ -293,7 +293,7 @@ where
     T: BlockchainBackend + 'static,
 {
     let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
-    let (publisher, subscription_factory) = pubsub_connector(rt.executor(), 100);
+    let (publisher, subscription_factory) = pubsub_connector(rt.handle().clone(), 100);
     let subscription_factory = Arc::new(subscription_factory);
     let comms_config = CommsConfig {
         node_identity: id.clone(),
@@ -314,14 +314,14 @@ where
         dht: Default::default(), // TODO - make this configurable
     };
 
-    let (comms, dht) = initialize_comms(rt.executor(), comms_config, publisher).unwrap();
+    let (comms, dht) = initialize_comms(rt.handle().clone(), comms_config, publisher).unwrap();
 
     for p in peers {
         debug!(target: LOG_TARGET, "Adding seed peer [{}]", p.node_id);
         comms.peer_manager().add_peer(p).unwrap();
     }
 
-    let fut = StackBuilder::new(rt.executor(), comms.shutdown_signal())
+    let fut = StackBuilder::new(rt.handle().clone(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(BaseNodeServiceInitializer::new(
             subscription_factory,

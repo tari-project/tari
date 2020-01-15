@@ -21,10 +21,9 @@ tari_mmr = { path = "../../base_layer/mmr", version = "^0.0" }
 clap = "2.33.0"
 config = { version = "0.9.3" }
 dirs = "2.0.2"
-futures-preview = { version = "=0.3.0-alpha.19", default-features = false, features = ["alloc"]}
+futures = { version = "^0.3.1", default-features = false, features = ["alloc"]}
 log = { version = "0.4.8", features = ["std"] }
 log4rs = { version = "0.8.3", features = ["toml_format"] }
 rand = "0.5.5"
 serde_json = "1.0"
-tokio = { version="=0.2.0-alpha.6", features = ["signal"] }
-tokio-executor = { version ="=0.2.0-alpha.6", features = ["threadpool"] }
+tokio = { version="0.2.9", features = ["signal"] }

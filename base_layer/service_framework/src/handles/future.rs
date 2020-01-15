@@ -25,7 +25,6 @@ use crate::handles::LazyService;
 use futures::{
     task::{AtomicWaker, Context},
     Future,
-    Poll,
 };
 use std::{
     any::Any,
@@ -35,6 +34,7 @@ use std::{
         mpsc,
         Arc,
     },
+    task::Poll,
 };
 
 /// Create a Notifier, ServiceHandlesFuture pair.

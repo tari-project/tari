@@ -31,13 +31,13 @@ use crate::{
 use futures::{channel::mpsc, AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 
 const LOG_TARGET: &str = "comms::connection_manager::listener";
 
 pub struct PeerListener<TTransport> {
     listen_address: Multiaddr,
-    executor: TaskExecutor,
+    executor: runtime::Handle,
     conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
     shutdown_signal: Option<ShutdownSignal>,
     transport: TTransport,
@@ -50,7 +50,7 @@ where
     TSocket: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     pub fn new(
-        executor: TaskExecutor,
+        executor: runtime::Handle,
         listen_address: Multiaddr,
         transport: TTransport,
         event_tx: mpsc::Sender<ConnectionManagerEvent>,
@@ -75,7 +75,7 @@ where
 
         match self.listen().await {
             Ok((inbound, address)) => {
-                let mut inbound = inbound.fuse();
+                let inbound = inbound.fuse();
                 futures::pin_mut!(inbound);
                 self.transport_address = Some(address);
 

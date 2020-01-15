@@ -22,10 +22,7 @@
 
 use futures::channel::mpsc;
 use rand::rngs::OsRng;
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Duration};
 use tari_comms::{
     builder::CommsNode,
     connection_manager::PeerConnectionConfig,
@@ -39,7 +36,6 @@ use tari_comms_dht::{envelope::NodeDestination, inbound::DecryptedDhtMessage, Dh
 use tari_comms_middleware::{pipeline::ServicePipeline, sink::SinkMiddleware};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tari_test_utils::{async_assert_eventually, paths::create_temporary_data_path, random, runtime};
-use tokio::runtime::TaskExecutor;
 use tower::ServiceBuilder;
 
 fn new_node_identity(control_service_address: Multiaddr) -> NodeIdentity {
@@ -72,7 +68,7 @@ fn create_peer_storage(peers: Vec<Peer>) -> CommsDatabase {
 }
 
 fn setup_comms_dht(
-    executor: TaskExecutor,
+    executor: tokio::runtime::Handle,
     node_identity: NodeIdentity,
     storage: CommsDatabase,
     inbound_sink: mpsc::Sender<DecryptedDhtMessage>,
@@ -146,7 +142,7 @@ fn dht_join_propagation() {
         // Node A knows about Node B
         let (tx, ims_rx_A) = mpsc::channel(1);
         let (node_A_comms, node_A_dht) = setup_comms_dht(
-            rt.executor(),
+            rt.handle().clone(),
             node_A_identity.clone(),
             create_peer_storage(vec![node_B_identity.clone().into()]),
             tx,
@@ -154,7 +150,7 @@ fn dht_join_propagation() {
         // Node B knows about Node A and C
         let (tx, ims_rx_B) = mpsc::channel(1);
         let (node_B_comms, node_B_dht) = setup_comms_dht(
-            rt.executor(),
+            rt.handle().clone(),
             node_B_identity.clone(),
             create_peer_storage(vec![node_A_identity.clone().into(), node_C_identity.clone().into()]),
             tx,
@@ -162,7 +158,7 @@ fn dht_join_propagation() {
         // Node C knows about Node B
         let (tx, ims_rx_C) = mpsc::channel(1);
         let (node_C_comms, node_C_dht) = setup_comms_dht(
-            rt.executor(),
+            rt.handle().clone(),
             node_C_identity.clone(),
             create_peer_storage(vec![node_B_identity.clone().into()]),
             tx,
@@ -226,7 +222,7 @@ fn dht_discover_propagation() {
         // Node A knows about Node B
         let (tx, ims_rx_A) = mpsc::channel(1);
         let (node_A_comms, node_A_dht) = setup_comms_dht(
-            rt.executor(),
+            rt.handle().clone(),
             node_A_identity.clone(),
             create_peer_storage(vec![node_B_identity.clone().into()]),
             tx,
@@ -234,7 +230,7 @@ fn dht_discover_propagation() {
         // Node B knows about Node C
         let (tx, ims_rx_B) = mpsc::channel(1);
         let (node_B_comms, node_B_dht) = setup_comms_dht(
-            rt.executor(),
+            rt.handle().clone(),
             node_B_identity.clone(),
             create_peer_storage(vec![node_C_identity.clone().into()]),
             tx,
@@ -242,15 +238,19 @@ fn dht_discover_propagation() {
         // Node C knows about Node D
         let (tx, ims_rx_C) = mpsc::channel(1);
         let (node_C_comms, node_C_dht) = setup_comms_dht(
-            rt.executor(),
+            rt.handle().clone(),
             node_C_identity.clone(),
             create_peer_storage(vec![node_D_identity.clone().into()]),
             tx,
         );
         // Node C knows no one
         let (tx, ims_rx_D) = mpsc::channel(1);
-        let (node_D_comms, node_D_dht) =
-            setup_comms_dht(rt.executor(), node_D_identity.clone(), create_peer_storage(vec![]), tx);
+        let (node_D_comms, node_D_dht) = setup_comms_dht(
+            rt.handle().clone(),
+            node_D_identity.clone(),
+            create_peer_storage(vec![]),
+            tx,
+        );
 
         rt.spawn(async move {
             // Send a discover request from Node A, through B and C, to D. Once Node D

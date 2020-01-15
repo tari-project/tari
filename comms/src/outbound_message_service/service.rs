@@ -37,11 +37,10 @@ use futures::{
     StreamExt,
 };
 use log::*;
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{collections::HashMap, sync::Arc};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::ByteArray;
-use tokio::timer;
-use tokio_executor::blocking;
+use tokio::{task, time};
 
 const LOG_TARGET: &str = "comms::outbound_message_service::worker";
 
@@ -253,7 +252,9 @@ where
 
     async fn test_connection(&self, conn: Arc<PeerConnection>, node_id: &NodeId) -> bool {
         let identity = node_id.to_vec();
-        blocking::run(move || conn.test_connection(identity).is_ok()).await
+        task::spawn_blocking(move || conn.test_connection(identity).is_ok())
+            .await
+            .unwrap_or(false)
     }
 
     fn cancel_pending_connection_attempts(&mut self) {
@@ -279,7 +280,7 @@ where
             state.attempts,
             delay.as_secs()
         );
-        let mut delay = timer::delay(Instant::now() + delay).fuse();
+        let mut delay = time::delay_for(delay).fuse();
         futures::select! {
             _ = delay => {
                 debug!(target: LOG_TARGET, "[Attempt {}] Connecting to NodeId '{}'...", state.attempts, state.node_id);
@@ -490,7 +491,7 @@ mod test {
         // Tests sending a number of messages to 2 recipients simultaneously.
         // This checks that messages from separate requests are batched and a single dial request per
         // peer is made.
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
         let (mut new_message_tx, new_message_rx) = mpsc::unbounded();
 
         let (conn_man_tx, mut conn_man_rx) = mpsc::channel(2);
@@ -521,7 +522,7 @@ mod test {
                 (node_id1.clone(), b"D".to_vec()),
             ]
             .into_iter()
-            .map(|(node_id, msg)| OutboundMessage::new(node_id, MessageFlags::empty(), msg)),
+            .map(|(node_id, msg)| Ok(OutboundMessage::new(node_id, MessageFlags::empty(), msg))),
         );
 
         rt.block_on(new_message_tx.send_all(&mut messages)).unwrap();
@@ -600,6 +601,5 @@ mod test {
 
         // Abort pending connections and shutdown the service
         shutdown.trigger().unwrap();
-        rt.shutdown_on_idle();
     }
 }

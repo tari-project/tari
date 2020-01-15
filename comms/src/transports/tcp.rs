@@ -22,9 +22,14 @@
 
 use super::Transport;
 use crate::utils::multiaddr::{multiaddr_to_socketaddr, socketaddr_to_multiaddr};
-use futures::{future, io::Error, ready, stream::BoxStream, AsyncRead, AsyncWrite, Future, Poll, Stream, StreamExt};
+use futures::{future, io::Error, ready, AsyncRead, AsyncWrite, Future, Stream};
 use multiaddr::Multiaddr;
-use std::{io, pin::Pin, task::Context, time::Duration};
+use std::{
+    io,
+    pin::Pin,
+    task::{Context, Poll},
+    time::Duration,
+};
 use tokio::{
     io::{AsyncRead as TokioAsyncRead, AsyncWrite as TokioAsyncWrite},
     net::{TcpListener, TcpStream},
@@ -90,7 +95,7 @@ impl TcpTransport {
 impl Transport for TcpTransport {
     type Error = io::Error;
     type Inbound = future::Ready<io::Result<(TcpSocket, Multiaddr)>>;
-    type Listener = TcpInbound<'static>;
+    type Listener = TcpInbound;
     type Output = (TcpSocket, Multiaddr);
 
     type DialFuture = impl Future<Output = io::Result<Self::Output>>;
@@ -102,13 +107,7 @@ impl Transport for TcpTransport {
             let socket_addr = multiaddr_to_socketaddr(&addr)?;
             let listener = TcpListener::bind(&socket_addr).await?;
             let local_addr = socketaddr_to_multiaddr(&listener.local_addr()?);
-            Ok((
-                TcpInbound {
-                    incoming: listener.incoming().boxed(),
-                    config,
-                },
-                local_addr,
-            ))
+            Ok((TcpInbound::new(config, listener), local_addr))
         })
     }
 
@@ -126,26 +125,27 @@ impl Transport for TcpTransport {
 
 /// Wrapper around an Inbound stream. This ensures that any connecting `TcpStream` is configured according to the
 /// transport
-pub struct TcpInbound<'a> {
-    incoming: BoxStream<'a, io::Result<TcpStream>>,
+pub struct TcpInbound {
+    listener: TcpListener, // BoxStream<'a, io::Result<TcpStream>>,
     config: TcpTransport,
 }
 
-impl Stream for TcpInbound<'_> {
+impl TcpInbound {
+    pub fn new(config: TcpTransport, listener: TcpListener) -> Self {
+        Self { listener, config }
+    }
+}
+
+impl Stream for TcpInbound {
     type Item = io::Result<future::Ready<io::Result<(TcpSocket, Multiaddr)>>>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match ready!(self.incoming.poll_next_unpin(cx)) {
-            Some(Ok(stream)) => {
-                // Configure each socket
-                self.config.configure(&stream)?;
-                let peer_addr = socketaddr_to_multiaddr(&stream.peer_addr()?);
-                let result = future::ready(Ok((TcpSocket::new(stream), peer_addr)));
-                Poll::Ready(Some(Ok(result)))
-            },
-            Some(Err(err)) => Poll::Ready(Some(Err(err))),
-            None => Poll::Ready(None),
-        }
+        let (socket, _) = ready!(self.listener.poll_accept(cx))?;
+        // Configure each socket
+        self.config.configure(&socket)?;
+        let peer_addr = socketaddr_to_multiaddr(&socket.peer_addr()?);
+        let result = future::ready(Ok((TcpSocket::new(socket), peer_addr)));
+        Poll::Ready(Some(Ok(result)))
     }
 }
 

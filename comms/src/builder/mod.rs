@@ -33,7 +33,6 @@
 //! # use tari_storage::lmdb_store::LMDBBuilder;
 //! # use lmdb_zero::db;
 //! # use tari_storage::LMDBWrapper;
-//! # use futures::executor::ThreadPool;
 //! # use tokio::runtime::Runtime;
 //! # use futures::channel::mpsc;
 //! // This should be loaded up from storage
@@ -53,7 +52,7 @@
 //! let (inbound_tx, _inbound_rx) = mpsc::channel(10);
 //! let (_outbound_tx, outbound_rx) = mpsc::channel(10);
 //! let runtime = Runtime::new().unwrap();
-//! let services = CommsBuilder::new(runtime.executor())
+//! let services = CommsBuilder::new(runtime.handle().clone())
 //!    .with_inbound_sink(inbound_tx)
 //!    .with_outbound_stream(outbound_rx)
 //!    // This enables the control service - allowing another peer to connect to this node

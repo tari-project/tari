@@ -24,7 +24,7 @@ use futures::{future, future::Either, stream::FusedStream, FutureExt, Stream, St
 use log::*;
 use std::fmt::Debug;
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::middleware::pipeline";
@@ -60,14 +60,14 @@ where
         self
     }
 
-    pub fn spawn_with(self, executor: TaskExecutor) {
+    pub fn spawn_with(self, executor: runtime::Handle) {
         executor.spawn(self.run(executor.clone()).unwrap_or_else(|err| {
             error!(target: LOG_TARGET, "ServicePipeline error: {:?}", err);
             ()
         }));
     }
 
-    pub async fn run(mut self, executor: TaskExecutor) -> Result<(), TSvc::Error> {
+    pub async fn run(mut self, executor: runtime::Handle) -> Result<(), TSvc::Error> {
         let mut stream = self.stream.fuse();
         let mut shutdown_signal = self
             .shutdown_signal
@@ -83,13 +83,13 @@ where
             futures::select! {
                 item = stream.select_next_some() => {
                     let mut service = self.service.clone();
-                    // Call the service on it's own spawned task
+                    // Call the service in it's own spawned task
                     executor.spawn(async move {
                         if let Err(err) = service.oneshot(item).await {
                             // TODO: might want to dispatch this to tracing or provide an on_error callback
                             error!(target: LOG_TARGET, "ServicePipeline error: {:?}", err);
                         }
-                    })
+                    });
                 },
 
                 should_shutdown = shutdown_signal => {
@@ -114,29 +114,36 @@ mod test {
     use super::*;
     use crate::test_utils::service_fn;
     use futures::{future, stream};
-    use std::sync::{Arc, Mutex};
+    use std::{
+        sync::{Arc, Mutex},
+        time::Duration,
+    };
+    use tari_test_utils::async_assert_eventually;
     use tokio::runtime::Runtime;
 
     #[test]
     fn run() {
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
         let items = vec![1, 2, 3, 4, 5, 6];
-        let st = stream::iter(items.clone()).fuse();
+        let stream = stream::iter(items.clone()).fuse();
         let collection = Arc::new(Mutex::new(Vec::new()));
         let cloned = Arc::clone(&collection);
         let pipeline = ServicePipeline::new(
-            st,
+            stream,
             service_fn(move |req| {
                 cloned.lock().unwrap().push(req);
                 future::ready(Result::<_, ()>::Ok(()))
             }),
         );
-        rt.block_on(pipeline.run(rt.executor())).unwrap();
-        rt.shutdown_on_idle();
-        {
-            let c = collection.lock().unwrap();
-            assert_eq!(c.len(), items.len());
-            assert!(c.iter().all(|i| items.contains(i)));
-        }
+        rt.block_on(pipeline.run(rt.handle().clone())).unwrap();
+        rt.block_on(async move {
+            async_assert_eventually!(
+                collection.lock().unwrap().len(),
+                expect = items.len(),
+                max_attempts = 10,
+                interval = Duration::from_millis(10)
+            );
+            assert!(collection.lock().unwrap().iter().all(|i| items.contains(i)));
+        });
     }
 }

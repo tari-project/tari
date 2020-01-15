@@ -29,7 +29,7 @@ use tari_broadcast_channel as broadcast_channel;
 use tari_p2p::services::liveness::LivenessHandle;
 use tari_service_framework::{handles::ServiceHandlesFuture, ServiceInitializationError, ServiceInitializer};
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 
 const BROADCAST_EVENT_BUFFER_SIZE: usize = 10;
 
@@ -40,7 +40,7 @@ impl ServiceInitializer for ChainMetadataServiceInitializer {
 
     fn initialize(
         &mut self,
-        executor: TaskExecutor,
+        executor: runtime::Handle,
         handles_fut: ServiceHandlesFuture,
         shutdown: ShutdownSignal,
     ) -> Self::Future

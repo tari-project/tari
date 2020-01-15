@@ -108,7 +108,7 @@ where
 {
     pub fn new(
         config: WalletConfig,
-        runtime: Runtime,
+        mut runtime: Runtime,
         wallet_backend: T,
         transaction_backend: U,
         output_manager_backend: V,
@@ -135,12 +135,12 @@ where
 
         let factories = config.factories;
         let (publisher, subscription_factory) =
-            pubsub_connector(runtime.executor(), config.comms_config.inbound_buffer_size);
+            pubsub_connector(runtime.handle().clone(), config.comms_config.inbound_buffer_size);
         let subscription_factory = Arc::new(subscription_factory);
 
-        let (comms, dht) = initialize_comms(runtime.executor(), config.comms_config.clone(), publisher)?;
+        let (comms, dht) = initialize_comms(runtime.handle().clone(), config.comms_config.clone(), publisher)?;
 
-        let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
+        let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
             .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
             .add_initializer(LivenessInitializer::new(
                 Default::default(),
@@ -222,7 +222,7 @@ where
     /// exiting.
     pub fn shutdown(self) -> Result<(), WalletError> {
         self.comms.shutdown()?;
-        self.runtime.shutdown_on_idle();
+        drop(self.runtime);
         Ok(())
     }
 

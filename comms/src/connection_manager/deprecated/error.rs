@@ -86,4 +86,5 @@ pub enum ConnectionManagerError {
     /// The listener has not been started
     ListenerNotStarted,
     MultiaddrError(multiaddr::Error),
+    JoinError(tokio::task::JoinError),
 }

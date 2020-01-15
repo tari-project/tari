@@ -306,7 +306,7 @@ mod test {
         });
     }
 
-    #[tokio::test]
+    #[tokio_macros::test]
     async fn handle_liveness_event_ok() {
         let (liveness_handle, _) = create_p2p_liveness_mock(1);
         let mut metadata = Metadata::new();
@@ -344,7 +344,7 @@ mod test {
         );
     }
 
-    #[tokio::test]
+    #[tokio_macros::test]
     async fn handle_liveness_event_no_metadata() {
         let (liveness_handle, _) = create_p2p_liveness_mock(1);
         let metadata = Metadata::new();
@@ -367,7 +367,7 @@ mod test {
         assert_eq!(service.peer_chain_metadata.len(), 0);
     }
 
-    #[tokio::test]
+    #[tokio_macros::test]
     async fn handle_liveness_event_not_neighbour() {
         let (liveness_handle, _) = create_p2p_liveness_mock(1);
         let metadata = Metadata::new();
@@ -389,7 +389,7 @@ mod test {
         assert_eq!(service.peer_chain_metadata.len(), 0);
     }
 
-    #[tokio::test]
+    #[tokio_macros::test]
     async fn handle_liveness_event_bad_metadata() {
         let (liveness_handle, _) = create_p2p_liveness_mock(1);
         let mut metadata = Metadata::new();

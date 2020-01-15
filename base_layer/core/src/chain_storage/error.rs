@@ -66,4 +66,6 @@ pub enum ChainStorageError {
     MismatchedMmrRoot(MmrTree),
     // An invalid block was submitted to the database
     InvalidBlock,
+    #[error(msg_embedded, non_std, no_from)]
+    BlockingTaskSpawnError(String),
 }

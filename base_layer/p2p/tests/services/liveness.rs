@@ -40,23 +40,23 @@ use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
 pub fn setup_liveness_service(
-    runtime: &Runtime,
+    runtime: &mut Runtime,
     node_identity: NodeIdentity,
     peers: Vec<NodeIdentity>,
     data_path: &str,
 ) -> (LivenessHandle, CommsNode, Dht)
 {
-    let (publisher, subscription_factory) = pubsub_connector(runtime.executor(), 100);
+    let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100);
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht) = setup_comms_services(
-        runtime.executor(),
+        runtime.handle().clone(),
         Arc::new(node_identity.clone()),
         peers,
         publisher,
         data_path,
     );
 
-    let fut = StackBuilder::new(runtime.executor(), comms.shutdown_signal())
+    let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(LivenessInitializer::new(
             LivenessConfig {
@@ -79,7 +79,7 @@ pub fn setup_liveness_service(
 
 #[test]
 fn end_to_end() {
-    let runtime = Runtime::new().unwrap();
+    let mut runtime = Runtime::new().unwrap();
 
     let mut rng = rand::rngs::OsRng::new().unwrap();
 
@@ -98,14 +98,14 @@ fn end_to_end() {
 
     let alice_temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let (mut liveness1, comms_1, _dht_1) = setup_liveness_service(
-        &runtime,
+        &mut runtime,
         node_1_identity.clone(),
         vec![node_2_identity.clone()],
         alice_temp_dir.path().to_str().unwrap(),
     );
     let bob_temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let (mut liveness2, comms_2, _dht_2) = setup_liveness_service(
-        &runtime,
+        &mut runtime,
         node_2_identity.clone(),
         vec![node_1_identity.clone()],
         bob_temp_dir.path().to_str().unwrap(),
@@ -201,6 +201,4 @@ fn end_to_end() {
 
     comms_1.shutdown().unwrap();
     comms_2.shutdown().unwrap();
-
-    runtime.shutdown_on_idle();
 }

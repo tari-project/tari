@@ -38,7 +38,7 @@ use tari_comms_dht as comms_dht;
 use tari_comms_dht::{Dht, DhtConfig};
 use tari_comms_middleware::{pipeline::ServicePipeline, sink::SinkMiddleware};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 use tower::ServiceBuilder;
 
 #[derive(Debug, Error)]
@@ -77,7 +77,7 @@ pub struct CommsConfig {
 
 /// Initialize Tari Comms configured for tests
 pub fn initialize_local_test_comms<TSink>(
-    executor: TaskExecutor,
+    executor: runtime::Handle,
     node_identity: Arc<NodeIdentity>,
     connector: InboundDomainConnector<TSink>,
     data_path: &str,
@@ -179,7 +179,7 @@ where
 ///
 /// inbound_connector - Service to call
 pub fn initialize_comms<TSink>(
-    executor: TaskExecutor,
+    executor: runtime::Handle,
     config: CommsConfig,
     connector: InboundDomainConnector<TSink>,
 ) -> Result<(CommsNode, Dht), CommsInitializationError>

@@ -31,10 +31,10 @@ use tari_p2p::{
     comms_connector::{InboundDomainConnector, PeerMessage},
     initialization::initialize_local_test_comms,
 };
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 
 pub fn setup_comms_services<TSink>(
-    executor: TaskExecutor,
+    executor: runtime::Handle,
     node_identity: Arc<NodeIdentity>,
     peers: Vec<NodeIdentity>,
     publisher: InboundDomainConnector<TSink>,

@@ -33,7 +33,7 @@ use tari_comms::{
     peer_manager::{NodeId, Peer},
     types::CommsPublicKey,
 };
-use tokio::future::FutureExt;
+use tokio::time;
 
 #[derive(Debug)]
 pub struct DiscoverPeerRequest {
@@ -118,8 +118,10 @@ impl DhtDiscoveryRequester {
             .send(DhtDiscoveryRequest::DiscoverPeer(Box::new((request, reply_tx))))
             .await?;
 
-        reply_rx
-            .timeout(self.discovery_timeout)
+        time::timeout(
+            self.discovery_timeout,
+            reply_rx
+        )
             .await
             // Timeout?
             .map_err(|_| DhtDiscoveryError::DiscoveryTimeout)?

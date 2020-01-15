@@ -26,9 +26,9 @@ use crate::{
     outbound::{OutboundMessageRequester, SendMessageParams},
     store_forward::error::StoreAndForwardError,
 };
-use futures::{task::Context, Future, Poll};
+use futures::{task::Context, Future};
 use log::*;
-use std::sync::Arc;
+use std::{sync::Arc, task::Poll};
 use tari_comms::{peer_manager::PeerManager, types::CommsPublicKey};
 use tari_comms_middleware::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceExt};
@@ -234,7 +234,7 @@ mod test {
 
     #[test]
     fn decryption_failed() {
-        let rt = Runtime::new().unwrap();
+        let mut rt = Runtime::new().unwrap();
         let spy = service_spy();
         let peer_manager = make_peer_manager();
         let (oms_requester, oms_mock) = create_outbound_service_mock(1);

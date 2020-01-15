@@ -52,4 +52,6 @@ pub enum StoreAndForwardError {
     DecodeError(DecodeError),
     /// Dht header was not provided
     DhtHeaderNotProvided,
+    /// Failed to spawn blocking task
+    JoinError(tokio::task::JoinError),
 }

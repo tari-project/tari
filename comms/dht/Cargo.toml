@@ -24,19 +24,18 @@ bytes = "0.4.12"
 chrono = "0.4.9"
 derive-error = "0.0.4"
 digest = "0.8.1"
-futures= {version= "0.3.0-alpha.19", package="futures-preview"}
+futures= {version= "^0.3.1"}
 log = "0.4.8"
 prost = "0.5.0"
+prost-types = "0.5.0"
 rand = "0.5.5"
 serde = "1.0.90"
 serde_derive = "1.0.90"
 serde_repr = "0.1.5"
-tokio = "0.2.0-alpha.6"
-tokio-executor = "0.2.0-alpha.6"
-tower-filter= {path="../middleware/tower-filter"}#version="=0.3.0-alpha.2", path="../"
-tower= "0.3.0-alpha.2"
+tokio = "0.2.9"
+tower= "0.3.0"
+tower-filter = {version="0.3.0-alpha.2", path="../middleware/tower-filter"}
 ttl_cache = "0.5.1"
-prost-types = "0.5.0"
 
 [dev-dependencies]
 tari_test_utils = { version = "^0.0", path = "../../infrastructure/test_utils"}

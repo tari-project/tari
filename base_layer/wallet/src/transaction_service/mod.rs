@@ -55,7 +55,7 @@ use tari_service_framework::{
 };
 use tari_shutdown::ShutdownSignal;
 use tari_transactions::{transaction_protocol::proto, types::CryptoFactories};
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 
 const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service";
 
@@ -116,7 +116,7 @@ where T: TransactionBackend + Clone + 'static
 
     fn initialize(
         &mut self,
-        executor: TaskExecutor,
+        executor: runtime::Handle,
         handles_fut: ServiceHandlesFuture,
         shutdown: ShutdownSignal,
     ) -> Self::Future

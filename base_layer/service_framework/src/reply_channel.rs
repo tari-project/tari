@@ -31,11 +31,10 @@ use futures::{
     task::Context,
     Future,
     FutureExt,
-    Poll,
     Stream,
     StreamExt,
 };
-use std::pin::Pin;
+use std::{pin::Pin, task::Poll};
 use tower_service::Service;
 
 /// Create a new Requester/Responder pair which wraps and calls the given service

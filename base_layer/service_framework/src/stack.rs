@@ -27,19 +27,19 @@ use crate::{
 use futures::future::join_all;
 use std::sync::Arc;
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime::TaskExecutor;
+use tokio::runtime;
 
 /// Responsible for building and collecting handles and (usually long-running) service futures.
 /// `finish` is an async function which resolves once all the services are initialized, or returns
 /// an error if any one of the services fails to initialize.
 pub struct StackBuilder {
     initializers: Vec<BoxedServiceInitializer>,
-    executor: TaskExecutor,
+    executor: runtime::Handle,
     shutdown_signal: ShutdownSignal,
 }
 
 impl StackBuilder {
-    pub fn new(executor: TaskExecutor, shutdown_signal: ShutdownSignal) -> Self {
+    pub fn new(executor: runtime::Handle, shutdown_signal: ShutdownSignal) -> Self {
         Self {
             initializers: Vec::new(),
             executor,
@@ -111,7 +111,7 @@ mod test {
     fn service_defn_simple() {
         let rt = Runtime::new().unwrap();
         // This is less of a test and more of a demo of using the short-hand implementation of ServiceInitializer
-        let simple_initializer = |executor: TaskExecutor, _: ServiceHandlesFuture, _: ShutdownSignal| {
+        let simple_initializer = |executor: runtime::Handle, _: ServiceHandlesFuture, _: ShutdownSignal| {
             executor.spawn(future::ready(()));
             future::ok(())
         };
@@ -119,7 +119,7 @@ mod test {
         let shutdown = Shutdown::new();
 
         let handles = block_on(
-            StackBuilder::new(rt.executor(), shutdown.to_signal())
+            StackBuilder::new(rt.handle().clone(), shutdown.to_signal())
                 .add_initializer(simple_initializer)
                 .finish(),
         );
@@ -144,12 +144,12 @@ mod test {
 
         fn initialize(
             &mut self,
-            executor: TaskExecutor,
+            executor: runtime::Handle,
             handles_fut: ServiceHandlesFuture,
             _shutdown: ShutdownSignal,
         ) -> Self::Future
         {
-            // Spawn some task on the given TaskExecutor
+            // Spawn some task on the given runtime::Handle
             executor.spawn(future::ready(()));
             // Add a handle
             handles_fut.register(DummyServiceHandle(123));
@@ -184,7 +184,7 @@ mod test {
         let initializer = DummyInitializer::new(Arc::clone(&shared_state));
 
         let handles = block_on(
-            StackBuilder::new(rt.executor(), shutdown.to_signal())
+            StackBuilder::new(rt.handle().clone(), shutdown.to_signal())
                 .add_initializer(initializer)
                 .finish(),
         )

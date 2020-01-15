@@ -68,7 +68,7 @@ fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
 #[test]
 fn test_wallet() {
     with_temp_dir(|dir_path| {
-        let runtime = Runtime::new().unwrap();
+        let mut runtime = Runtime::new().unwrap();
 
         let mut rng = rand::OsRng::new().unwrap();
         let factories = CryptoFactories::default();
@@ -217,8 +217,6 @@ fn test_wallet() {
 
         let got_contacts = runtime.block_on(alice_wallet.contacts_service.get_contacts()).unwrap();
         assert_eq!(contacts, got_contacts);
-
-        runtime.shutdown_on_idle();
     });
 }
 

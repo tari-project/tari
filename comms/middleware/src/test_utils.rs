@@ -23,7 +23,8 @@
 //---------------------------------- ServiceFn --------------------------------------------//
 
 // TODO: Remove this when https://github.com/tower-rs/tower/pull/318 is published
-use futures::{task::Context, Future, Poll};
+use futures::{task::Context, Future};
+use std::task::Poll;
 use tower::Service;
 
 /// Returns a new `ServiceFn` with the given closure.
