@@ -33,7 +33,7 @@ rand = "0.5.5"
 serde = "1.0.90"
 serde_derive = "1.0.90"
 serde_repr = "0.1.5"
-snow = {git="https://github.com/tari-project/snow.git", branch="sb-make-builder-send", features=["default-resolver"], optional = true}
+snow = {version="0.6.2", features=["default-resolver"], optional = true}
 time = "0.1.42"
 tokio = {version="^0.2", features=["blocking", "tcp", "stream", "dns"]}
 ttl_cache = "0.5.1"
