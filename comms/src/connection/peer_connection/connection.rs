@@ -536,8 +536,9 @@ impl PeerConnection {
     ) -> Result<MutexGuard<PeerConnectionState>, PeerConnectionError>
     {
         let guard = acquire_lock!(self.state);
-        let (guard, timeout) = recover_lock!(self.state_var.wait_timeout_until(guard, until, predicate));
-        if timeout.timed_out() {
+        let (guard, is_timeout) =
+            recover_lock!(convar_ext::wait_timeout_until(&self.state_var, guard, until, predicate));
+        if is_timeout {
             Err(ConnectionError::Timeout.into())
         } else {
             Ok(guard)
@@ -560,6 +561,42 @@ impl PeerConnection {
             },
             rx,
         )
+    }
+}
+
+mod convar_ext {
+    use std::{
+        sync::{Condvar, LockResult, MutexGuard, PoisonError},
+        time::{Duration, Instant},
+    };
+
+    pub fn wait_timeout_until<'a, T, F>(
+        condvar: &Condvar,
+        mut guard: MutexGuard<'a, T>,
+        dur: Duration,
+        mut condition: F,
+    ) -> LockResult<(MutexGuard<'a, T>, bool)>
+    where
+        F: FnMut(&mut T) -> bool,
+    {
+        let start = Instant::now();
+        loop {
+            if condition(&mut *guard) {
+                return Ok((guard, false));
+            }
+            let timeout = match dur.checked_sub(start.elapsed()) {
+                Some(timeout) => timeout,
+                None => return Ok((guard, true)),
+            };
+            guard = condvar
+                .wait_timeout(guard, timeout)
+                .map(|(guard, timeout)| (guard, timeout.timed_out()))
+                .map_err(|err| {
+                    let (guard, timeout) = err.into_inner();
+                    PoisonError::new((guard, timeout.timed_out()))
+                })?
+                .0;
+        }
     }
 }
 

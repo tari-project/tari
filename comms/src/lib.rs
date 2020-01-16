@@ -9,8 +9,6 @@
 #![recursion_limit = "512"]
 // Allow `type Future = impl Future`
 #![feature(type_alias_impl_trait)]
-// Required to use `CondVar::wait_timeout_until`
-#![feature(wait_timeout_until)]
 
 #[macro_use]
 extern crate lazy_static;
