@@ -80,10 +80,9 @@ pub fn monero_difficulty(header: &BlockHeader) -> Difficulty {
 fn monero_difficulty_calculation(header: &BlockHeader) -> Result<Difficulty, MergeMineError> {
     let monero = MoneroData::new(header)?;
     verify_header(&header, &monero)?;
-    let mut flags = Vec::new();
+    let flags = RandomXFlag::FLAG_DEFAULT;
     let key = monero.key.clone();
     let input = create_input_blob(&monero)?;
-    flags.push(RandomXFlag::FlagDefault);
     let cache = RandomXCache::new(flags.clone(), &key)?;
     let vm = RandomXVM::new(flags.clone(), &cache, None)?;
     let hash = vm.calculate_hash(&input)?;
