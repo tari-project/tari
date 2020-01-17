@@ -110,7 +110,7 @@ where
         }
 
         let source_node_id: NodeId = frames.remove(0).try_into()?;
-        let envelope = Envelope::decode(&frames.remove(0))?;
+        let envelope = Envelope::decode(frames.remove(0).as_slice())?;
 
         if !envelope.is_valid() {
             return Err(InboundMessageServiceError::InvalidEnvelope);

@@ -31,6 +31,7 @@ use std::{
     sync::{Arc, Condvar, Mutex, RwLock},
     time::Duration,
 };
+use tari_comms::condvar_shim;
 
 /// Creates a mock outbound request "handler" for testing purposes.
 ///
@@ -65,12 +66,13 @@ impl OutboundServiceMockState {
     /// An error will be returned if the timeout expires.
     pub fn wait_call_count(&self, expected_calls: usize, timeout: Duration) -> Result<usize, String> {
         let call_guard = acquire_lock!(self.calls);
-        let (call_guard, timeout) = self
-            .call_count_cond_var
-            .wait_timeout_until(call_guard, timeout, |calls| calls.len() >= expected_calls)
+        let (call_guard, is_timeout) =
+            condvar_shim::wait_timeout_until(&self.call_count_cond_var, call_guard, timeout, |calls| {
+                calls.len() >= expected_calls
+            })
             .expect("CondVar must never be poisoned");
 
-        if timeout.timed_out() {
+        if is_timeout {
             Err(format!(
                 "wait_call_count timed out before before receiving the expected number of calls. (Expected = {}, Got \
                  = {})",

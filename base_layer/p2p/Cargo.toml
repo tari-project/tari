@@ -29,7 +29,7 @@ derive-error = "0.0.4"
 futures = { version = "^0.3.1"}
 lmdb-zero = "0.4.4"
 log = "0.4.6"
-prost = "0.5.0"
+prost = "0.6.1"
 rand = "0.6.5"
 serde = "1.0.90"
 serde_derive = "1.0.90"

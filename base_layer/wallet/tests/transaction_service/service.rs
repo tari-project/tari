@@ -672,7 +672,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
         .wait_call_count(1, Duration::from_secs(10))
         .unwrap();
     let (_, body) = alice_outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(&body).unwrap();
+    let envelope_body = EnvelopeBody::decode(body.as_slice()).unwrap();
     let sender_message = envelope_body
         .decode_part::<proto::TransactionSenderMessage>(1)
         .unwrap()
@@ -840,7 +840,7 @@ fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(al
         .wait_call_count(1, Duration::from_secs(10))
         .unwrap();
     let (_, body) = alice_outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(&body).unwrap();
+    let envelope_body = EnvelopeBody::decode(body.as_slice()).unwrap();
     let recipient_reply: RecipientSignedMessage = envelope_body
         .decode_part::<proto::RecipientSignedMessage>(1)
         .unwrap()
@@ -948,7 +948,7 @@ fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alic
         .wait_call_count(1, Duration::from_secs(10))
         .unwrap();
     let (_, body) = alice_outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(&body).unwrap();
+    let envelope_body = EnvelopeBody::decode(body.as_slice()).unwrap();
     let recipient_reply: RecipientSignedMessage = envelope_body
         .decode_part::<proto::RecipientSignedMessage>(1)
         .unwrap()

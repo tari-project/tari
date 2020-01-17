@@ -400,7 +400,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
     {
         let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), &dht_header.origin_public_key);
         let decrypted_bytes = crypt::decrypt(&shared_secret, encrypted_body)?;
-        EnvelopeBody::decode(&decrypted_bytes).map_err(|_| StoreAndForwardError::DecryptionFailed)
+        EnvelopeBody::decode(decrypted_bytes.as_slice()).map_err(|_| StoreAndForwardError::DecryptionFailed)
     }
 }
 
@@ -489,7 +489,7 @@ mod test {
             });
             rt.spawn(async move {
                 let (_, body) = unwrap_oms_send_msg!(oms_rx.next().await.unwrap());
-                let body = EnvelopeBody::decode(&body).unwrap();
+                let body = EnvelopeBody::decode(body.as_slice()).unwrap();
                 let msg = body.decode_part::<StoredMessagesResponse>(0).unwrap().unwrap();
                 assert_eq!(msg.messages().len(), 1);
                 assert_eq!(msg.messages()[0].encrypted_body, b"A");

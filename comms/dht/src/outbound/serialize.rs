@@ -179,7 +179,7 @@ mod test {
         block_on(serialize.call(msg)).unwrap();
 
         let msg = spy.pop_request().unwrap();
-        let dht_envelope = DhtEnvelope::decode(&msg.body).unwrap();
+        let dht_envelope = DhtEnvelope::decode(msg.body.as_slice()).unwrap();
         assert_eq!(dht_envelope.body, b"A".to_vec());
         assert_eq!(msg.peer_node_id, NodeId::default());
     }

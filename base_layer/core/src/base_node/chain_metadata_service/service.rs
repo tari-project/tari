@@ -209,7 +209,7 @@ impl ChainMetadataService {
             .ok_or(ChainMetadataSyncError::NoChainMetadata)?;
 
         debug!(target: LOG_TARGET, "Received chain metadata from NodeId '{}'", node_id);
-        let chain_metadata = proto::ChainMetadata::decode(chain_metadata_bytes)?.into();
+        let chain_metadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?.into();
 
         if let Some(pos) = self
             .peer_chain_metadata
@@ -301,7 +301,7 @@ mod test {
             let last_call = liveness_mock_state.take_calls().remove(0);
             unpack_enum!(LivenessRequest::SetPongMetadata(metadata_key, data) = last_call);
             assert_eq!(metadata_key, MetadataKey::ChainMetadata);
-            let chain_metadata = proto::ChainMetadata::decode(&data).unwrap();
+            let chain_metadata = proto::ChainMetadata::decode(data.as_slice()).unwrap();
             assert_eq!(chain_metadata.height_of_longest_chain, Some(123));
         });
     }

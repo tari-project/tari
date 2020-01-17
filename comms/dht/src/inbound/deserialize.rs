@@ -77,7 +77,7 @@ where
 
         let InboundMessage { source_peer, body, .. } = message;
 
-        match DhtEnvelope::decode(&body) {
+        match DhtEnvelope::decode(body.as_slice()) {
             Ok(dht_envelope) => {
                 trace!(target: LOG_TARGET, "Deserialization succeeded. Checking signatures");
                 if !dht_envelope.is_signature_valid() {

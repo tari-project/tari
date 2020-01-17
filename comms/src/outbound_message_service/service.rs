@@ -469,7 +469,7 @@ mod test {
     fn assert_send_msg(control_msg: peer_connection::ControlMessage, msg: &[u8]) {
         match control_msg {
             peer_connection::ControlMessage::SendMsg(_, mut frames, reply_tx) => {
-                let envelope = Envelope::decode(frames.remove(0)).unwrap();
+                let envelope = Envelope::decode(frames.remove(0).as_slice()).unwrap();
                 assert_eq!(envelope.body.as_slice(), msg);
                 reply_tx.send(Ok(())).unwrap();
             },

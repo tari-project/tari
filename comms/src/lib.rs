@@ -24,6 +24,7 @@ pub mod builder;
 #[macro_use]
 pub mod connection;
 pub mod backoff;
+pub mod condvar_shim;
 pub mod connection_manager;
 mod consts;
 pub mod control_service;

@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,33 +20,36 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::peer_manager::Peer;
-use tari_comms_dht::{domain_message::MessageHeader, envelope::DhtMessageHeader};
+use std::{
+    sync::{Condvar, LockResult, MutexGuard, PoisonError},
+    time::{Duration, Instant},
+};
 
-/// A domain-level message
-pub struct PeerMessage {
-    /// The message envelope header
-    pub dht_header: DhtMessageHeader,
-    /// The connected peer which sent this message
-    pub source_peer: Peer,
-    /// Domain message header
-    pub message_header: MessageHeader,
-    /// Serialized message data
-    pub body: Vec<u8>,
-}
-
-impl PeerMessage {
-    pub fn new(dht_header: DhtMessageHeader, source_peer: Peer, message_header: MessageHeader, body: Vec<u8>) -> Self {
-        Self {
-            body,
-            message_header,
-            dht_header,
-            source_peer,
+pub fn wait_timeout_until<'a, T, F>(
+    condvar: &Condvar,
+    mut guard: MutexGuard<'a, T>,
+    dur: Duration,
+    mut condition: F,
+) -> LockResult<(MutexGuard<'a, T>, bool)>
+where
+    F: FnMut(&mut T) -> bool,
+{
+    let start = Instant::now();
+    loop {
+        if condition(&mut *guard) {
+            return Ok((guard, false));
         }
-    }
-
-    pub fn decode_message<T>(&self) -> Result<T, prost::DecodeError>
-    where T: prost::Message + Default {
-        T::decode(self.body.as_slice())
+        let timeout = match dur.checked_sub(start.elapsed()) {
+            Some(timeout) => timeout,
+            None => return Ok((guard, true)),
+        };
+        guard = condvar
+            .wait_timeout(guard, timeout)
+            .map(|(guard, timeout)| (guard, timeout.timed_out()))
+            .map_err(|err| {
+                let (guard, timeout) = err.into_inner();
+                PoisonError::new((guard, timeout.timed_out()))
+            })?
+            .0;
     }
 }

@@ -170,7 +170,7 @@ impl EnvelopeBody {
     pub fn decode_part<T>(&self, index: usize) -> Result<Option<T>, MessageError>
     where T: prost::Message + Default {
         match self.parts.get(index) {
-            Some(part) => T::decode(part).map(Some).map_err(Into::into),
+            Some(part) => T::decode(part.as_slice()).map(Some).map_err(Into::into),
             None => Ok(None),
         }
     }
