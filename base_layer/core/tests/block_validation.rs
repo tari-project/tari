@@ -49,6 +49,5 @@ fn test_genesis_block() {
     rules.set_diff_manager(diff_adj_manager).unwrap();
     let block = get_genesis_block();
     let result = db.add_block(block);
-    dbg!(&result);
     assert!(result.is_ok());
 }

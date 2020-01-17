@@ -23,6 +23,7 @@
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     mempool::orphan_pool::{error::OrphanPoolError, orphan_pool::OrphanPoolConfig},
+    validation::{ValidationError, Validator},
 };
 use std::sync::Arc;
 use tari_transactions::{transaction::Transaction, types::Signature};
@@ -39,17 +40,24 @@ where T: BlockchainBackend
     blockchain_db: BlockchainDatabase<T>,
     config: OrphanPoolConfig,
     txs_by_signature: TtlCache<Signature, Arc<Transaction>>,
+    validator: Validator<Transaction, T>,
 }
 
 impl<T> OrphanPoolStorage<T>
 where T: BlockchainBackend
 {
     /// Create a new OrphanPoolStorage with the specified configuration
-    pub fn new(blockchain_db: BlockchainDatabase<T>, config: OrphanPoolConfig) -> Self {
+    pub fn new(
+        blockchain_db: BlockchainDatabase<T>,
+        config: OrphanPoolConfig,
+        validator: Validator<Transaction, T>,
+    ) -> Self
+    {
         Self {
             blockchain_db,
             config,
             txs_by_signature: TtlCache::new(config.storage_capacity),
+            validator,
         }
     }
 
@@ -85,18 +93,15 @@ where T: BlockchainBackend
             .blockchain_db
             .get_height()?
             .ok_or(OrphanPoolError::ChainHeightUndefined)?;
-        'outer: for (tx_key, tx) in self.txs_by_signature.iter() {
-            for input in tx.body.inputs() {
-                if !self.blockchain_db.is_utxo(input.hash())? {
-                    continue 'outer;
-                }
-            }
 
-            if tx.min_spendable_height() > height + 1 {
-                removed_timelocked_tx_keys.push(tx_key.clone());
-            } else {
-                removed_tx_keys.push(tx_key.clone());
-            }
+        // We dont care about tx's that appeared in valid blocks. Those tx's will time out in orphan pool and remove
+        // them selves.
+        for (tx_key, tx) in self.txs_by_signature.iter() {
+            match self.validator.validate(&tx) {
+                Ok(()) => removed_tx_keys.push(tx_key.clone()),
+                Err(ValidationError::MaturityError) => removed_timelocked_tx_keys.push(tx_key.clone()),
+                _ => {},
+            };
         }
 
         let mut removed_txs: Vec<Arc<Transaction>> = Vec::with_capacity(removed_tx_keys.len());

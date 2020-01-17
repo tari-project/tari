@@ -30,6 +30,7 @@ use crate::{
         reorg_pool::{ReorgPool, ReorgPoolConfig},
         unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolConfig},
     },
+    validation::{Validation, ValidationError, Validator},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -75,6 +76,29 @@ impl Default for MempoolConfig {
     }
 }
 
+/// Struct containing the validators the mempool needs to run, It forces the correct amount of validators are given
+pub struct MempoolValidators<B: BlockchainBackend> {
+    mempool: Box<dyn Validation<Transaction, B>>,
+    orphan: Box<dyn Validation<Transaction, B>>,
+}
+
+impl<B: BlockchainBackend> MempoolValidators<B> {
+    pub fn new(
+        mempool: impl Validation<Transaction, B> + 'static,
+        orphan: impl Validation<Transaction, B> + 'static,
+    ) -> Self
+    {
+        Self {
+            mempool: Box::new(mempool),
+            orphan: Box::new(orphan),
+        }
+    }
+
+    pub fn into_validators(self) -> (Box<dyn Validation<Transaction, B>>, Box<dyn Validation<Transaction, B>>) {
+        (self.mempool, self.orphan)
+    }
+}
+
 /// The Mempool consists of an Unconfirmed Transaction Pool, Pending Pool, Orphan Pool and Reorg Pool and is responsible
 /// for managing and maintaining all unconfirmed transactions have not yet been included in a block, and transactions
 /// that have recently been included in a block.
@@ -86,38 +110,22 @@ where T: BlockchainBackend
     orphan_pool: OrphanPool<T>,
     pending_pool: PendingPool,
     reorg_pool: ReorgPool,
+    validator: Arc<Validator<Transaction, T>>,
 }
 
 impl<T> Mempool<T>
 where T: BlockchainBackend
 {
     /// Create a new Mempool with an UnconfirmedPool, OrphanPool, PendingPool and ReOrgPool.
-    pub fn new(blockchain_db: BlockchainDatabase<T>, config: MempoolConfig) -> Self {
+    pub fn new(blockchain_db: BlockchainDatabase<T>, config: MempoolConfig, validators: MempoolValidators<T>) -> Self {
+        let (mempool_validator, orphan_validator) = validators.into_validators();
         Self {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool_config),
-            orphan_pool: OrphanPool::new(blockchain_db.clone(), config.orphan_pool_config),
+            orphan_pool: OrphanPool::new(blockchain_db.clone(), config.orphan_pool_config, orphan_validator),
             pending_pool: PendingPool::new(config.pending_pool_config),
             reorg_pool: ReorgPool::new(config.reorg_pool_config),
             blockchain_db,
-        }
-    }
-
-    fn check_input_utxos(&self, tx: &Transaction) -> Result<bool, MempoolError> {
-        for input in tx.body.inputs() {
-            if !self.blockchain_db.is_utxo(input.hash())? {
-                return Ok(false);
-            }
-        }
-        Ok(true)
-    }
-
-    fn check_timelocks(&self, tx: &Transaction) -> Result<bool, MempoolError> {
-        match tx.min_spendable_height() {
-            0 => Ok(false),
-            v => Ok(v - 1 >
-                self.blockchain_db
-                    .get_height()?
-                    .ok_or(MempoolError::ChainHeightUndefined)?),
+            validator: Arc::new(mempool_validator),
         }
     }
 
@@ -125,16 +133,12 @@ where T: BlockchainBackend
     /// pipeline already and will thus always be internally consistent by this stage
     pub fn insert(&self, tx: Arc<Transaction>) -> Result<(), MempoolError> {
         // The transaction is already internally consistent
-        if self.check_input_utxos(&tx)? {
-            if self.check_timelocks(&tx)? {
-                self.pending_pool.insert(tx)?;
-            } else {
-                self.unconfirmed_pool.insert(tx)?;
-            }
-        } else {
-            self.orphan_pool.insert(tx)?;
-        }
-
+        match self.validator.validate(&tx) {
+            Ok(()) => self.unconfirmed_pool.insert(tx)?,
+            Err(ValidationError::UnknownInputs) => self.orphan_pool.insert(tx)?,
+            Err(ValidationError::MaturityError) => self.pending_pool.insert(tx)?,
+            _ => return Err(MempoolError::ValidationError),
+        };
         Ok(())
     }
 
@@ -256,6 +260,7 @@ where T: BlockchainBackend
             orphan_pool: self.orphan_pool.clone(),
             pending_pool: self.pending_pool.clone(),
             reorg_pool: self.reorg_pool.clone(),
+            validator: self.validator.clone(),
         }
     }
 }

@@ -43,10 +43,11 @@ use tari_core::{
         MempoolConfig,
         MempoolServiceConfig,
         MempoolServiceInitializer,
+        MempoolValidators,
         OutboundMempoolServiceInterface,
     },
     proof_of_work::DiffAdjManager,
-    validation::{mocks::MockValidator, Validation},
+    validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator, Validation},
 };
 use tari_mmr::MerkleChangeTrackerConfig;
 use tari_p2p::{
@@ -159,9 +160,14 @@ impl BaseNodeBuilder {
         let db = MemoryDatabase::<HashDigest>::new(mct_config);
         let mut blockchain_db = BlockchainDatabase::new(db).unwrap();
         blockchain_db.set_validators(validators);
+        let mempool_validator = MempoolValidators::new(
+            TxInputAndMaturityValidator::new(blockchain_db.clone()),
+            TxInputAndMaturityValidator::new(blockchain_db.clone()),
+        );
         let mempool = Mempool::new(
             blockchain_db.clone(),
             self.mempool_config.unwrap_or(MempoolConfig::default()),
+            mempool_validator,
         );
         let diff_adj_manager = DiffAdjManager::new(blockchain_db.clone()).unwrap();
         let consensus_manager = ConsensusManager::default();

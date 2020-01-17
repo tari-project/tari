@@ -32,7 +32,7 @@ mod unconfirmed_pool;
 
 // Public re-exports
 pub use error::MempoolError;
-pub use mempool::{Mempool, MempoolConfig, TxStorageResponse};
+pub use mempool::{Mempool, MempoolConfig, MempoolValidators, TxStorageResponse};
 pub use service::{
     MempoolServiceConfig,
     MempoolServiceError,
