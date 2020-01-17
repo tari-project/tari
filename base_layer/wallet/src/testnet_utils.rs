@@ -52,6 +52,7 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
 };
 use tari_p2p::initialization::CommsConfig;
+use tari_test_utils::collect_stream;
 use tari_transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
@@ -165,7 +166,7 @@ pub fn generate_wallet_test_data<
     data_path: &str,
 ) -> Result<(), WalletError>
 {
-    let rng = rand::OsRng::new().unwrap();
+    let mut rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
     let names = ["Alice", "Bob", "Carol", "Dave"];
     let private_keys = [
@@ -174,6 +175,11 @@ pub fn generate_wallet_test_data<
         "07beb0d0d1eef08c246b70da8b060f7f8e885f5c0f2fd04b10607dc744b5f502",
         "bb2dcd0b477c8d709afe2547122a7199d6d4516bc6f35c2adb1a8afedbf97e0e",
     ];
+
+    // attempt to avoid colliding ports for if two wallets are run on the same machine using this test data generation
+    // function
+    let random_port_offset = (rng.next_u64() % 100) as usize;
+
     // Generate contacts
     let mut generated_contacts = Vec::new();
     for i in 0..names.len() {
@@ -183,11 +189,15 @@ pub fn generate_wallet_test_data<
             alias: names[i].to_string(),
             public_key: public_key.clone(),
         }))?;
+
         wallet.add_base_node_peer(
             public_key.clone(),
-            format!("/ip4/127.0.0.1/tcp/{}", 15200 + i).to_string(),
+            format!("/ip4/127.0.0.1/tcp/{}", 15200 + i + random_port_offset).to_string(),
         )?;
-        generated_contacts.push((secret_key, format!("/ip4/127.0.0.1/tcp/{}", 15200 + i).to_string()));
+        generated_contacts.push((
+            secret_key,
+            format!("/ip4/127.0.0.1/tcp/{}", 15200 + i + random_port_offset).to_string(),
+        ));
     }
     let contacts = wallet.runtime.block_on(wallet.contacts_service.get_contacts())?;
     assert_eq!(contacts.len(), names.len());
@@ -213,6 +223,7 @@ pub fn generate_wallet_test_data<
         generated_contacts[0].1.clone(),
         alice_temp_dir.clone(),
     );
+
     for i in 0..20 {
         let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(1_500_000 + i * 530_500), &factories);
         wallet_alice
@@ -289,6 +300,25 @@ pub fn generate_wallet_test_data<
         "".to_string(),
     ))?;
 
+    // Make sure that the messages have been received by the alice and bob wallets before they start sending messages so
+    // that they have the wallet in their peer_managers
+    let alice_event_stream = wallet_alice.transaction_service.get_event_stream_fused();
+    let bob_event_stream = wallet_bob.transaction_service.get_event_stream_fused();
+
+    let _alice_stream = collect_stream!(
+        wallet_alice.runtime,
+        alice_event_stream.map(|i| (*i).clone()),
+        take = 6,
+        timeout = Duration::from_secs(10)
+    );
+
+    let _bob_stream = collect_stream!(
+        wallet_bob.runtime,
+        bob_event_stream.map(|i| (*i).clone()),
+        take = 2,
+        timeout = Duration::from_secs(10)
+    );
+
     // Pending Inbound
     wallet_alice
         .runtime
@@ -307,6 +337,14 @@ pub fn generate_wallet_test_data<
             MicroTari::from(117),
             "".to_string(),
         ))?;
+
+    let wallet_event_stream = wallet.transaction_service.get_event_stream_fused();
+    let _wallet_stream = collect_stream!(
+        wallet.runtime,
+        wallet_event_stream.map(|i| (*i).clone()),
+        take = 8,
+        timeout = Duration::from_secs(10)
+    );
 
     let txs = wallet
         .runtime
