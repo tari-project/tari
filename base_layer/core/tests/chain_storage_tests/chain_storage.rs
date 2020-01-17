@@ -537,3 +537,64 @@ fn store_and_retrieve_block_with_mmr_pruning_horizon() {
     assert_eq!(*store.fetch_block(2).unwrap().block(), block2);
     assert_eq!(*store.fetch_block(3).unwrap().block(), block3);
 }
+
+#[test]
+fn total_kernel_excess() {
+    let store = create_mem_db();
+    let kernel1 = create_test_kernel(100.into(), 0);
+    let kernel2 = create_test_kernel(200.into(), 0);
+    let kernel3 = create_test_kernel(300.into(), 0);
+
+    let mut txn = DbTransaction::new();
+    txn.insert_kernel(kernel1.clone(), false);
+    txn.insert_kernel(kernel2.clone(), false);
+    txn.insert_kernel(kernel3.clone(), false);
+    assert!(store.commit(txn).is_ok());
+
+    let total_kernel_excess = store.total_kernel_excess().unwrap();
+    assert_eq!(
+        total_kernel_excess,
+        &(&kernel1.excess + &kernel2.excess) + &kernel3.excess
+    );
+}
+
+#[test]
+fn total_kernel_offset() {
+    let store = create_mem_db();
+    let header1 = BlockHeader::new(0);
+    let header2 = BlockHeader::from_previous(&header1);
+    let header3 = BlockHeader::from_previous(&header2);
+
+    let mut txn = DbTransaction::new();
+    txn.insert_header(header1.clone());
+    txn.insert_header(header2.clone());
+    txn.insert_header(header3.clone());
+    assert!(store.commit(txn).is_ok());
+
+    let total_kernel_offset = store.total_kernel_offset().unwrap();
+    assert_eq!(
+        total_kernel_offset,
+        &(&header1.total_kernel_offset + &header2.total_kernel_offset) + &header3.total_kernel_offset
+    );
+}
+
+#[test]
+fn total_utxo_commitment() {
+    let factories = CryptoFactories::default();
+    let store = create_mem_db();
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories);
+    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories);
+    let (utxo3, _) = create_utxo(MicroTari(20_000), &factories);
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo1.clone(), true);
+    txn.insert_utxo(utxo2.clone(), true);
+    txn.insert_utxo(utxo3.clone(), true);
+    assert!(store.commit(txn).is_ok());
+
+    let total_utxo_commitment = store.total_utxo_commitment().unwrap();
+    assert_eq!(
+        total_utxo_commitment,
+        &(&utxo1.commitment + &utxo2.commitment) + &utxo3.commitment
+    );
+}

@@ -853,6 +853,24 @@ where D: Digest + Send + Sync
         lmdb_for_each::<F, HashOutput, Block>(&self.env, &self.orphans_db, f)
     }
 
+    /// Iterate over all the stored transaction kernels and execute the function `f` for each kernel.
+    fn for_each_kernel<F>(&self, f: F) -> Result<(), ChainStorageError>
+    where F: FnMut(Result<(HashOutput, TransactionKernel), ChainStorageError>) {
+        lmdb_for_each::<F, HashOutput, TransactionKernel>(&self.env, &self.kernels_db, f)
+    }
+
+    /// Iterate over all the stored block headers and execute the function `f` for each header.
+    fn for_each_header<F>(&self, f: F) -> Result<(), ChainStorageError>
+    where F: FnMut(Result<(u64, BlockHeader), ChainStorageError>) {
+        lmdb_for_each::<F, u64, BlockHeader>(&self.env, &self.headers_db, f)
+    }
+
+    /// Iterate over all the stored transaction kernels and execute the function `f` for each kernel.
+    fn for_each_utxo<F>(&self, f: F) -> Result<(), ChainStorageError>
+    where F: FnMut(Result<(HashOutput, TransactionOutput), ChainStorageError>) {
+        lmdb_for_each::<F, HashOutput, TransactionOutput>(&self.env, &self.utxos_db, f)
+    }
+
     fn fetch_horizon_block_height(&self) -> Result<u64, ChainStorageError> {
         let tip_height = lmdb_len(&self.env, &self.headers_db)?;
         let checkpoint_count = self

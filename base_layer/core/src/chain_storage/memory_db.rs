@@ -461,6 +461,36 @@ where D: Digest + Send + Sync
         Ok(())
     }
 
+    /// Iterate over all the stored transaction kernels and execute the function `f` for each kernel.
+    fn for_each_kernel<F>(&self, mut f: F) -> Result<(), ChainStorageError>
+    where F: FnMut(Result<(HashOutput, TransactionKernel), ChainStorageError>) {
+        let db = self.db_access()?;
+        for (key, val) in db.kernels.iter() {
+            f(Ok((key.clone(), val.clone())));
+        }
+        Ok(())
+    }
+
+    /// Iterate over all the stored block headers and execute the function `f` for each header.
+    fn for_each_header<F>(&self, mut f: F) -> Result<(), ChainStorageError>
+    where F: FnMut(Result<(u64, BlockHeader), ChainStorageError>) {
+        let db = self.db_access()?;
+        for (key, val) in db.headers.iter() {
+            f(Ok((key.clone(), val.clone())));
+        }
+        Ok(())
+    }
+
+    /// Iterate over all the stored unspent transaction outputs and execute the function `f` for each UTXO.
+    fn for_each_utxo<F>(&self, mut f: F) -> Result<(), ChainStorageError>
+    where F: FnMut(Result<(HashOutput, TransactionOutput), ChainStorageError>) {
+        let db = self.db_access()?;
+        for (key, val) in db.utxos.iter() {
+            f(Ok((key.clone(), val.value.clone())));
+        }
+        Ok(())
+    }
+
     /// The horizon block is the earliest block that we can return all data to reconstruct a full block
     fn fetch_horizon_block_height(&self) -> Result<u64, ChainStorageError> {
         let db = self.db_access()?;

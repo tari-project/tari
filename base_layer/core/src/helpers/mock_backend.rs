@@ -26,7 +26,10 @@ use crate::{
     chain_storage::{BlockchainBackend, ChainStorageError, DbKey, DbTransaction, DbValue, MmrTree, MutableMmrState},
 };
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof, MutableMmrLeafNodes};
-use tari_transactions::types::HashOutput;
+use tari_transactions::{
+    transaction::{TransactionKernel, TransactionOutput},
+    types::HashOutput,
+};
 
 // This is a test backend. This is used so that the ConsensusManager can be called without actually having a backend.
 // Calling this backend will result in a panic.
@@ -101,6 +104,30 @@ impl BlockchainBackend for MockBackend {
     where
         Self: Sized,
         F: FnMut(Result<(HashOutput, Block), ChainStorageError>),
+    {
+        unimplemented!()
+    }
+
+    fn for_each_kernel<F>(&self, _f: F) -> Result<(), ChainStorageError>
+    where
+        Self: Sized,
+        F: FnMut(Result<(HashOutput, TransactionKernel), ChainStorageError>),
+    {
+        unimplemented!()
+    }
+
+    fn for_each_header<F>(&self, _f: F) -> Result<(), ChainStorageError>
+    where
+        Self: Sized,
+        F: FnMut(Result<(u64, BlockHeader), ChainStorageError>),
+    {
+        unimplemented!()
+    }
+
+    fn for_each_utxo<F>(&self, _f: F) -> Result<(), ChainStorageError>
+    where
+        Self: Sized,
+        F: FnMut(Result<(HashOutput, TransactionOutput), ChainStorageError>),
     {
         unimplemented!()
     }
