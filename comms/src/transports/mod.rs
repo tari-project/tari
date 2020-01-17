@@ -27,11 +27,11 @@
 use futures::{Future, Stream};
 use multiaddr::Multiaddr;
 
-mod noise;
+mod memory;
 mod socks;
 mod tcp;
 
-pub use noise::NoiseTransport;
+pub use memory::MemoryTransport;
 pub use tcp::{TcpSocket, TcpTransport};
 
 pub trait Transport {
@@ -42,7 +42,7 @@ pub trait Transport {
     /// A future which resolves to `Self::Output`
     type Inbound: Future<Output = Result<Self::Output, Self::Error>> + Send;
     /// A stream which emits `Self::InboundFuture` whenever a successful inbound connection is made
-    type Listener: Stream<Item = Result<Self::Inbound, Self::Error>> + Send + Unpin;
+    type Listener: Stream<Item = Result<(Self::Inbound, Multiaddr), Self::Error>> + Send + Unpin;
 
     /// The future returned from the `listen` method.
     type ListenFuture: Future<Output = Result<(Self::Listener, Multiaddr), Self::Error>> + Send + Unpin;

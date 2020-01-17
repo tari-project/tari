@@ -94,9 +94,9 @@ impl TcpTransport {
 
 impl Transport for TcpTransport {
     type Error = io::Error;
-    type Inbound = future::Ready<io::Result<(TcpSocket, Multiaddr)>>;
+    type Inbound = future::Ready<io::Result<Self::Output>>;
     type Listener = TcpInbound;
-    type Output = (TcpSocket, Multiaddr);
+    type Output = TcpSocket;
 
     type DialFuture = impl Future<Output = io::Result<Self::Output>>;
     type ListenFuture = impl Future<Output = io::Result<(Self::Listener, Multiaddr)>>;
@@ -117,8 +117,7 @@ impl Transport for TcpTransport {
             let socket_addr = multiaddr_to_socketaddr(&addr)?;
             let stream = TcpStream::connect(&socket_addr).await?;
             config.configure(&stream)?;
-            let peer_addr = socketaddr_to_multiaddr(&stream.peer_addr()?);
-            Ok((TcpSocket::new(stream), peer_addr))
+            Ok(TcpSocket::new(stream))
         })
     }
 }
@@ -126,7 +125,7 @@ impl Transport for TcpTransport {
 /// Wrapper around an Inbound stream. This ensures that any connecting `TcpStream` is configured according to the
 /// transport
 pub struct TcpInbound {
-    listener: TcpListener, // BoxStream<'a, io::Result<TcpStream>>,
+    listener: TcpListener,
     config: TcpTransport,
 }
 
@@ -137,15 +136,15 @@ impl TcpInbound {
 }
 
 impl Stream for TcpInbound {
-    type Item = io::Result<future::Ready<io::Result<(TcpSocket, Multiaddr)>>>;
+    type Item = io::Result<(future::Ready<io::Result<TcpSocket>>, Multiaddr)>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let (socket, _) = ready!(self.listener.poll_accept(cx))?;
+        let (socket, addr) = ready!(self.listener.poll_accept(cx))?;
         // Configure each socket
         self.config.configure(&socket)?;
-        let peer_addr = socketaddr_to_multiaddr(&socket.peer_addr()?);
-        let result = future::ready(Ok((TcpSocket::new(socket), peer_addr)));
-        Poll::Ready(Some(Ok(result)))
+        let peer_addr = socketaddr_to_multiaddr(&addr);
+        let fut = future::ready(Ok(TcpSocket::new(socket)));
+        Poll::Ready(Some(Ok((fut, peer_addr))))
     }
 }
 

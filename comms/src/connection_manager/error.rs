@@ -22,6 +22,7 @@
 
 use crate::peer_manager::PeerManagerError;
 use derive_error::Error;
+use futures::channel::mpsc;
 
 #[derive(Debug, Error, Clone)]
 pub enum ConnectionManagerError {
@@ -47,4 +48,19 @@ pub enum ConnectionManagerError {
     TransportError(String),
     /// The peer authenticated to a public key which did not match the dialed peer's public key
     DialedPublicKeyMismatch,
+    /// The noise transport failed to provide a valid static public key for the peer
+    InvalidStaticPublicKey,
+    // This is a String because we need this error to be clonable so that we can
+    // send the same response to multiple requesters
+    #[error(msg_embedded, no_from, non_std)]
+    NoiseError(String),
+}
+
+#[derive(Debug, Error)]
+pub enum PeerConnectionError {
+    YamuxConnectionError(yamux::ConnectionError),
+    /// Internal oneshot reply channel was unexpectedly cancelled
+    InternalReplyCancelled,
+    /// Failed to send internal request
+    InternalRequestSendFailed(mpsc::SendError),
 }

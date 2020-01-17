@@ -72,7 +72,7 @@ impl ConstantBackoff {
 
 impl Backoff for ConstantBackoff {
     fn calculate_backoff(&self, attempts: usize) -> Duration {
-        if attempts == 1 {
+        if attempts <= 1 {
             return Duration::from_secs(0);
         }
         self.0

@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,14 +20,4 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transports::TcpSocket;
-use futures::StreamExt;
-use tokio::net::{TcpListener, TcpStream};
-
-pub async fn build_connected_tcp_socket_pair() -> (TcpSocket, TcpSocket) {
-    let mut listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let local_addr = listener.local_addr().unwrap();
-    let (in_sock, out_sock) = futures::future::join(listener.incoming().next(), TcpStream::connect(&local_addr)).await;
-
-    (out_sock.unwrap().into(), in_sock.unwrap().unwrap().into())
-}
+mod listener_dialer;

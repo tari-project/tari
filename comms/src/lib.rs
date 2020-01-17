@@ -38,6 +38,7 @@ cfg_next! {
     mod multiplexing;
     mod noise;
     mod socks;
+    pub mod memsocket;
 
     pub mod transports;
 }

@@ -23,10 +23,13 @@
 use super::error::ConnectionManagerError;
 use crate::{
     connection::ConnectionDirection,
-    connection_manager::{next::ConnectionManagerEvent, peer_connection::create_peer_connection},
+    connection_manager::{
+        next::ConnectionManagerEvent,
+        peer_connection::{create_peer_connection, PeerConnection},
+    },
     multiaddr::Multiaddr,
+    noise::NoiseConfig,
     transports::Transport,
-    types::CommsPublicKey,
 };
 use futures::{channel::mpsc, AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
@@ -41,19 +44,21 @@ pub struct PeerListener<TTransport> {
     conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
     shutdown_signal: Option<ShutdownSignal>,
     transport: TTransport,
-    transport_address: Option<Multiaddr>,
+    noise_config: NoiseConfig,
+    listening_address: Option<Multiaddr>,
 }
 
-impl<TTransport, TSocket> PeerListener<TTransport>
+impl<TTransport> PeerListener<TTransport>
 where
-    TTransport: Transport<Output = (TSocket, CommsPublicKey, Multiaddr)>,
-    TSocket: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+    TTransport: Transport,
+    TTransport::Output: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     pub fn new(
         executor: runtime::Handle,
         listen_address: Multiaddr,
         transport: TTransport,
-        event_tx: mpsc::Sender<ConnectionManagerEvent>,
+        noise_config: NoiseConfig,
+        conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
@@ -61,9 +66,10 @@ where
             executor,
             listen_address,
             transport,
-            conn_man_notifier: event_tx,
+            noise_config,
+            conn_man_notifier,
             shutdown_signal: Some(shutdown_signal),
-            transport_address: None,
+            listening_address: None,
         }
     }
 
@@ -77,15 +83,19 @@ where
             Ok((inbound, address)) => {
                 let inbound = inbound.fuse();
                 futures::pin_mut!(inbound);
-                self.transport_address = Some(address);
+
+                info!(target: LOG_TARGET, "Listening for peer connection on '{}'", address);
+                self.listening_address = Some(address.clone());
+
+                self.send_event(ConnectionManagerEvent::Listening(address)).await;
 
                 loop {
                     futures::select! {
                         inbound_result = inbound.select_next_some() => {
-                            if let Some(inbound_future) = log_if_error!(target: LOG_TARGET, inbound_result, "Inbound connection failed because '{error}'",) {
+                            if let Some((inbound_future, peer_addr)) = log_if_error!(target: LOG_TARGET, inbound_result, "Inbound connection failed because '{error}'",) {
                                 // TODO: Add inbound_future to FuturesUnordered stream to allow multiple peers to connect simultaneously
-                                if let Some((socket, public_key, peer_addr)) = log_if_error!(target: LOG_TARGET, inbound_future.await,  "Inbound connection failed because '{error}'",) {
-                                    self.handle_inbound_connection(socket, public_key, peer_addr).await;
+                                if let Some(socket) = log_if_error!(target: LOG_TARGET, inbound_future.await,  "Inbound connection failed because '{error}'",) {
+                                    self.handle_inbound_connection(socket, peer_addr).await;
                                 }
                             }
                         },
@@ -98,39 +108,61 @@ where
             },
             Err(err) => {
                 error!(target: LOG_TARGET, "PeerListener was unable to start because '{}'", err);
+                self.send_event(ConnectionManagerEvent::ListenFailed(err)).await;
             },
         }
     }
 
-    async fn handle_inbound_connection(
+    async fn send_event(&mut self, event: ConnectionManagerEvent) {
+        log_if_error_fmt!(
+            target: LOG_TARGET,
+            self.conn_man_notifier.send(event).await,
+            "Failed to send connection manager event in listener",
+        );
+    }
+
+    async fn handle_inbound_connection(&mut self, socket: TTransport::Output, peer_addr: Multiaddr) {
+        match self.upgrade_to_peer_connection(socket, peer_addr).await {
+            Ok(peer_conn) => {
+                self.notify_connection_manager(ConnectionManagerEvent::PeerConnected(Box::new(peer_conn)))
+                    .await;
+            },
+            Err(err) => {
+                self.notify_connection_manager(ConnectionManagerEvent::PeerInboundConnectFailed(err))
+                    .await
+            },
+        }
+    }
+
+    async fn upgrade_to_peer_connection(
         &mut self,
-        socket: TSocket,
-        peer_public_key: CommsPublicKey,
+        socket: TTransport::Output,
         peer_addr: Multiaddr,
-    )
+    ) -> Result<PeerConnection, ConnectionManagerError>
     {
-        match create_peer_connection(
+        debug!(
+            target: LOG_TARGET,
+            "Starting noise protocol upgrade for peer at address '{}'", peer_addr
+        );
+        let noise_socket = self
+            .noise_config
+            .upgrade_socket(socket, ConnectionDirection::Inbound)
+            .await
+            .map_err(|err| ConnectionManagerError::NoiseError(err.to_string()))?;
+
+        let peer_public_key = noise_socket
+            .get_remote_public_key()
+            .ok_or(ConnectionManagerError::InvalidStaticPublicKey)?;
+
+        create_peer_connection(
             self.executor.clone(),
-            socket,
+            noise_socket,
             peer_addr,
             peer_public_key.clone(),
             ConnectionDirection::Inbound,
             self.conn_man_notifier.clone(),
         )
         .await
-        {
-            Ok(peer_conn) => {
-                self.notify_connection_manager(ConnectionManagerEvent::PeerConnected(Box::new(peer_conn)))
-                    .await;
-            },
-            Err(err) => {
-                self.notify_connection_manager(ConnectionManagerEvent::PeerConnectFailed(
-                    Box::new(peer_public_key),
-                    err,
-                ))
-                .await
-            },
-        }
     }
 
     async fn listen(&self) -> Result<(TTransport::Listener, Multiaddr), ConnectionManagerError> {
@@ -138,10 +170,6 @@ where
             .listen(self.listen_address.clone())
             .await
             .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))
-    }
-
-    pub fn transport_address(&self) -> Option<&Multiaddr> {
-        self.transport_address.as_ref()
     }
 
     pub async fn notify_connection_manager(&mut self, event: ConnectionManagerEvent) {

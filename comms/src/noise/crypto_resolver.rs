@@ -41,12 +41,6 @@ macro_rules! copy_slice {
 #[derive(Default)]
 pub struct TariCryptoResolver(DefaultResolver);
 
-impl TariCryptoResolver {
-    pub fn new() -> Self {
-        Default::default()
-    }
-}
-
 impl CryptoResolver for TariCryptoResolver {
     fn resolve_rng(&self) -> Option<Box<dyn Random>> {
         self.0.resolve_rng()
