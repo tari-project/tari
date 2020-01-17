@@ -42,4 +42,5 @@ pub enum MempoolError {
     ChainStorageError(ChainStorageError),
     /// The Blockchain height is undefined
     ChainHeightUndefined,
+    ValidationError,
 }

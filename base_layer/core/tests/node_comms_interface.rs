@@ -36,8 +36,9 @@ use tari_core::{
         MutableMmrState,
     },
     consensus::ConsensusManager,
-    mempool::{Mempool, MempoolConfig},
+    mempool::{Mempool, MempoolConfig, MempoolValidators},
     proof_of_work::DiffAdjManager,
+    validation::transaction_validators::TxInputAndMaturityValidator,
 };
 
 use croaring::Bitmap;
@@ -85,7 +86,11 @@ fn new_mempool() -> (
     BlockchainDatabase<MemoryDatabase<HashDigest>>,
 ) {
     let store = create_mem_db();
-    let mempool = Mempool::new(store.clone(), MempoolConfig::default());
+    let mempool_validator = MempoolValidators::new(
+        TxInputAndMaturityValidator::new(store.clone()),
+        TxInputAndMaturityValidator::new(store.clone()),
+    );
+    let mempool = Mempool::new(store.clone(), MempoolConfig::default(), mempool_validator);
     (mempool, store)
 }
 

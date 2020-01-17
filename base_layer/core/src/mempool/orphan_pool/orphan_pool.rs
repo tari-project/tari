@@ -24,6 +24,7 @@ use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consts::{MEMPOOL_ORPHAN_POOL_CACHE_TTL, MEMPOOL_ORPHAN_POOL_STORAGE_CAPACITY},
     mempool::orphan_pool::{error::OrphanPoolError, orphan_pool_storage::OrphanPoolStorage},
+    validation::Validator,
 };
 use std::{
     sync::{Arc, RwLock},
@@ -62,9 +63,14 @@ impl<T> OrphanPool<T>
 where T: BlockchainBackend
 {
     /// Create a new OrphanPool with the specified configuration
-    pub fn new(blockchain_db: BlockchainDatabase<T>, config: OrphanPoolConfig) -> Self {
+    pub fn new(
+        blockchain_db: BlockchainDatabase<T>,
+        config: OrphanPoolConfig,
+        validator: Validator<Transaction, T>,
+    ) -> Self
+    {
         Self {
-            pool_storage: Arc::new(RwLock::new(OrphanPoolStorage::new(blockchain_db, config))),
+            pool_storage: Arc::new(RwLock::new(OrphanPoolStorage::new(blockchain_db, config, validator))),
         }
     }
 
@@ -151,6 +157,7 @@ mod test {
     use crate::{
         helpers::create_mem_db,
         mempool::orphan_pool::{OrphanPool, OrphanPoolConfig},
+        validation::transaction_validators::TxInputAndMaturityValidator,
     };
     use std::{sync::Arc, thread, time::Duration};
     use tari_transactions::{tari_amount::MicroTari, tx};
@@ -165,10 +172,15 @@ mod test {
         let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(600), lock: 5500, inputs: 2, outputs: 1).0);
 
         let store = create_mem_db();
-        let orphan_pool = OrphanPool::new(store, OrphanPoolConfig {
-            storage_capacity: 3,
-            tx_ttl: Duration::from_millis(50),
-        });
+        let mempool_validator = Box::new(TxInputAndMaturityValidator::new(store.clone()));
+        let orphan_pool = OrphanPool::new(
+            store,
+            OrphanPoolConfig {
+                storage_capacity: 3,
+                tx_ttl: Duration::from_millis(50),
+            },
+            mempool_validator,
+        );
         orphan_pool
             .insert_txs(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone()])
             .unwrap();

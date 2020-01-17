@@ -49,11 +49,12 @@ use tari_core::{
         Validators,
     },
     consensus::ConsensusManager,
-    mempool::{Mempool, MempoolConfig},
+    mempool::{Mempool, MempoolConfig, MempoolValidators},
     proof_of_work::DiffAdjManager,
     validation::{
         block_validators::{FullConsensusValidator, StatelessValidator},
         horizon_state_validators::HorizonStateHeaderValidator,
+        transaction_validators::{FullTxValidator, TxInputAndMaturityValidator},
     },
 };
 use tari_mmr::MerkleChangeTrackerConfig;
@@ -181,7 +182,11 @@ pub fn configure_and_initialize_node(
                 HorizonStateHeaderValidator::new(rules.clone(), db.clone()),
             );
             db.set_validators(validators);
-            let mempool = Mempool::new(db.clone(), MempoolConfig::default());
+            let mempool_validator = MempoolValidators::new(
+                FullTxValidator::new(factories.clone(), db.clone()),
+                TxInputAndMaturityValidator::new(db.clone()),
+            );
+            let mempool = Mempool::new(db.clone(), MempoolConfig::default(), mempool_validator);
             let diff_adj_manager = DiffAdjManager::new(db.clone()).map_err(|e| e.to_string())?;
             rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
             let (comms, handles) =
@@ -210,7 +215,11 @@ pub fn configure_and_initialize_node(
                 HorizonStateHeaderValidator::new(rules.clone(), db.clone()),
             );
             db.set_validators(validators);
-            let mempool = Mempool::new(db.clone(), MempoolConfig::default());
+            let mempool_validator = MempoolValidators::new(
+                FullTxValidator::new(factories.clone(), db.clone()),
+                TxInputAndMaturityValidator::new(db.clone()),
+            );
+            let mempool = Mempool::new(db.clone(), MempoolConfig::default(), mempool_validator);
             let diff_adj_manager = DiffAdjManager::new(db.clone()).map_err(|e| e.to_string())?;
             rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
             let (comms, handles) =

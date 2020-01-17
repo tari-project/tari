@@ -37,7 +37,15 @@ use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundEn
 use tari_core::{
     base_node::service::BaseNodeServiceConfig,
     helpers::create_mem_db,
-    mempool::{Mempool, MempoolConfig, MempoolServiceConfig, MempoolServiceError, TxStorageResponse},
+    mempool::{
+        Mempool,
+        MempoolConfig,
+        MempoolServiceConfig,
+        MempoolServiceError,
+        MempoolValidators,
+        TxStorageResponse,
+    },
+    validation::transaction_validators::TxInputAndMaturityValidator,
 };
 use tari_mmr::MerkleChangeTrackerConfig;
 use tari_p2p::tari_message::TariMessageType;
@@ -57,7 +65,11 @@ use tokio::runtime::Runtime;
 #[test]
 fn test_insert_and_process_published_block() {
     let (mut store, mut blocks, mut outputs) = create_new_blockchain();
-    let mempool = Mempool::new(store.clone(), MempoolConfig::default());
+    let mempool_validator = MempoolValidators::new(
+        TxInputAndMaturityValidator::new(store.clone()),
+        TxInputAndMaturityValidator::new(store.clone()),
+    );
+    let mempool = Mempool::new(store.clone(), MempoolConfig::default(), mempool_validator);
     // Create a block with 4 outputs
     let txs = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
@@ -197,7 +209,11 @@ fn test_insert_and_process_published_block() {
 #[test]
 fn test_retrieve() {
     let (mut store, mut blocks, mut outputs) = create_new_blockchain();
-    let mempool = Mempool::new(store.clone(), MempoolConfig::default());
+    let mempool_validator = MempoolValidators::new(
+        TxInputAndMaturityValidator::new(store.clone()),
+        TxInputAndMaturityValidator::new(store.clone()),
+    );
+    let mempool = Mempool::new(store.clone(), MempoolConfig::default(), mempool_validator);
     let txs = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
         to: vec![1 * T, 1 * T, 1 * T, 1 * T, 1 * T, 1 * T, 1 * T]
@@ -282,7 +298,11 @@ fn test_retrieve() {
 #[test]
 fn test_reorg() {
     let (mut db, mut blocks, mut outputs) = create_new_blockchain();
-    let mempool = Mempool::new(db.clone(), MempoolConfig::default());
+    let mempool_validator = MempoolValidators::new(
+        TxInputAndMaturityValidator::new(db.clone()),
+        TxInputAndMaturityValidator::new(db.clone()),
+    );
+    let mempool = Mempool::new(db.clone(), MempoolConfig::default(), mempool_validator);
 
     // "Mine" Block 1
     let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![1 * T, 1 * T])];
@@ -362,8 +382,11 @@ fn test_orphaned_mempool_transactions() {
     ];
     let (txns2, _) = schema_to_transaction(&schemas.clone());
     generate_new_block(&mut miner, &mut blocks, &mut outputs, schemas).unwrap();
-
-    let mempool = Mempool::new(store.clone(), MempoolConfig::default());
+    let mempool_validator = MempoolValidators::new(
+        TxInputAndMaturityValidator::new(store.clone()),
+        TxInputAndMaturityValidator::new(store.clone()),
+    );
+    let mempool = Mempool::new(store.clone(), MempoolConfig::default(), mempool_validator);
     // There are 2 orphan txs
     vec![txns[2].clone(), txns2[0].clone(), txns2[1].clone(), txns2[2].clone()]
         .into_iter()
