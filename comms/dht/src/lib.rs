@@ -106,8 +106,6 @@
 #![recursion_limit = "256"]
 // Details: https://doc.rust-lang.org/beta/unstable-book/language-features/type-alias-impl-trait.html
 #![feature(type_alias_impl_trait)]
-// Required to use `CondVar::wait_timeout_until`
-#![feature(wait_timeout_until)]
 
 #[macro_use]
 mod macros;

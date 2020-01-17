@@ -236,7 +236,7 @@ impl ControlServiceWorker {
         let identity_frame = frames.remove(0);
         let envelope_frame = frames.remove(0);
 
-        let envelope = Envelope::decode(envelope_frame)?;
+        let envelope = Envelope::decode(envelope_frame.as_slice())?;
 
         let envelope_header: MessageEnvelopeHeader = envelope
             .header
@@ -259,7 +259,7 @@ impl ControlServiceWorker {
             decrypted_body.len()
         );
 
-        let body = EnvelopeBody::decode(&decrypted_body)?;
+        let body = EnvelopeBody::decode(decrypted_body.as_slice())?;
 
         debug!(target: LOG_TARGET, "Handling message");
         self.handle_message(envelope_header, identity_frame, body)

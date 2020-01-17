@@ -88,7 +88,7 @@ impl ControlServiceClient {
         match self.receive_envelope(timeout)? {
             Some(envelope) => {
                 let decrypted_body = crypt::decrypt(&self.shared_secret(), &envelope.body)?;
-                let body = EnvelopeBody::decode(decrypted_body)?;
+                let body = EnvelopeBody::decode(decrypted_body.as_slice())?;
                 let header = body
                     .decode_part::<MessageHeader>(0)?
                     .ok_or(ControlServiceError::InvalidEnvelopeBody)?;
@@ -113,7 +113,7 @@ impl ControlServiceClient {
             Some(msg) => {
                 trace!(target: LOG_TARGET, "Received envelope. Decrypting...");
                 let decrypted_bytes = crypt::decrypt(&self.shared_secret(), &msg.body)?;
-                let body = EnvelopeBody::decode(decrypted_bytes)?;
+                let body = EnvelopeBody::decode(decrypted_bytes.as_slice())?;
                 trace!(target: LOG_TARGET, "Decoding envelope body of length {}", body.len());
                 let maybe_message = body.decode_part(1)?;
                 Ok(maybe_message)
@@ -133,7 +133,7 @@ impl ControlServiceClient {
                     frames.remove(0);
                 }
                 let envelope_frame = frames.get(0).ok_or(ControlServiceError::InvalidEnvelope)?;
-                let envelope = Envelope::decode(envelope_frame)?;
+                let envelope = Envelope::decode(envelope_frame.as_slice())?;
                 if envelope.verify_signature()? {
                     Ok(Some(envelope))
                 } else {

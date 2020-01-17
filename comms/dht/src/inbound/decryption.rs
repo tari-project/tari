@@ -107,7 +107,7 @@ where
         debug!(target: LOG_TARGET, "Attempting to decrypt message");
         let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), &dht_header.origin_public_key);
         match crypt::decrypt(&shared_secret, &message.body) {
-            Ok(decrypted) => Self::decryption_succeeded(next_service, message, decrypted).await,
+            Ok(decrypted) => Self::decryption_succeeded(next_service, message, &decrypted).await,
             Err(err) => {
                 debug!(target: LOG_TARGET, "Unable to decrypt message: {}", err);
                 Self::decryption_failed(next_service, message).await
@@ -118,12 +118,12 @@ where
     async fn decryption_succeeded(
         next_service: S,
         message: DhtInboundMessage,
-        decrypted: Vec<u8>,
+        decrypted: &[u8],
     ) -> Result<(), MiddlewareError>
     {
         // Deserialization into an EnvelopeBody is done here to determine if the
         // decryption produced valid bytes or not.
-        let result = EnvelopeBody::decode(&decrypted).and_then(|body| {
+        let result = EnvelopeBody::decode(decrypted).and_then(|body| {
             // Check if we received a body length of zero
             //
             // In addition to a peer sending a zero-length EnvelopeBody, decoding can erroneously succeed
@@ -158,7 +158,7 @@ where
     }
 
     async fn success_not_encrypted(next_service: S, message: DhtInboundMessage) -> Result<(), MiddlewareError> {
-        match EnvelopeBody::decode(&message.body) {
+        match EnvelopeBody::decode(message.body.as_slice()) {
             Ok(deserialized) => {
                 debug!(
                     target: LOG_TARGET,
