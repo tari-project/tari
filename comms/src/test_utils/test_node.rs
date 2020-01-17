@@ -27,7 +27,7 @@ use crate::{
     multiaddr::Multiaddr,
     noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
-    transports::{NoiseTransport, TcpTransport},
+    transports::TcpTransport,
 };
 use futures::channel::mpsc;
 use std::{sync::Arc, time::Duration};
@@ -72,7 +72,8 @@ pub fn build_connection_manager(
 ) -> ConnectionManagerRequester
 {
     // TODO: Once we have `comms::Builder@next` we can construct a whole "comms node" here for testing
-    let transport = NoiseTransport::new(TcpTransport::default(), NoiseConfig::new(config.node_identity.clone()));
+    let noise_config = NoiseConfig::new(config.node_identity.clone());
+    let transport = TcpTransport::default();
     let (request_tx, request_rx) = mpsc::channel(10);
     let requester = ConnectionManagerRequester::new(request_tx);
 
@@ -82,6 +83,7 @@ pub fn build_connection_manager(
         Default::default(),
         runtime.handle().clone(),
         transport,
+        noise_config,
         Arc::new(ConstantBackoff::new(config.dial_backoff_duration)),
         request_rx,
         peer_manager.into(),

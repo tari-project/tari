@@ -124,7 +124,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         self.socket.read_exact(&mut self.buf[..1]).await?;
         // Len can never overrun the buffer because the buffer len is u8::MAX + 1 and the length delimiter
         // is a u8. If that changes, then len should be checked here
-        let len = self.buf[0] as usize;
+        let len = u8::from_be_bytes([self.buf[0]]) as usize;
         self.socket.read_exact(&mut self.buf[1..len + 1]).await?;
         trace!(
             target: LOG_TARGET,
@@ -136,18 +136,19 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn write_frame_flush(&mut self, protocol: &ProtocolId) -> Result<(), ProtocolError> {
-        let len_u8 = protocol
+        let len_byte = protocol
             .len()
             .try_into()
+            .map(|v: u8| v.to_be_bytes())
             .map_err(|_| ProtocolError::ProtocolIdTooLong)?;
-        self.socket.write_all(&[len_u8]).await?;
+        self.socket.write_all(&len_byte).await?;
         self.socket.write_all(&protocol).await?;
         self.socket.flush().await?;
         trace!(
             target: LOG_TARGET,
             "Wrote frame '{}' ({} byte(s))",
             String::from_utf8_lossy(&protocol),
-            len_u8
+            len_byte[0]
         );
         Ok(())
     }
@@ -156,15 +157,14 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::tcp::build_connected_tcp_socket_pair;
+    use crate::memsocket::MemorySocket;
     use futures::future;
     use tokio::runtime::Runtime;
 
     #[test]
     fn smoke() {
-        // TODO: When we can upgrade to futures 0.3 / async-std we can use an in-memory cursor instead of tcp sockets
         let mut rt = Runtime::new().unwrap();
-        let (mut initiator, mut responder) = rt.block_on(build_connected_tcp_socket_pair());
+        let (mut initiator, mut responder) = MemorySocket::new_pair();
         let mut negotiate_out = ProtocolNegotiation::new(&mut initiator);
         let mut negotiate_in = ProtocolNegotiation::new(&mut responder);
 

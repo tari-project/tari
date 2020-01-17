@@ -36,7 +36,9 @@ use std::{
     task::{Context, Poll},
 };
 // use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use crate::types::CommsPublicKey;
 use futures::{io::Error, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tari_utilities::ByteArray;
 
 const LOG_TARGET: &str = "comms::noise::socket";
 
@@ -144,9 +146,15 @@ impl<TSocket> NoiseSocket<TSocket> {
         }
     }
 
-    /// Pull out the static public key of the remote
+    /// Get the raw remote static key
     pub fn get_remote_static(&self) -> Option<&[u8]> {
         self.state.get_remote_static()
+    }
+
+    /// Get the remote static key as a CommsPublicKey
+    pub fn get_remote_public_key(&self) -> Option<CommsPublicKey> {
+        self.get_remote_static()
+            .and_then(|s| CommsPublicKey::from_bytes(s).ok())
     }
 }
 
@@ -620,18 +628,14 @@ impl From<TransportState> for NoiseState {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        noise::config::NOISE_IX_PARAMETER,
-        test_utils::tcp::build_connected_tcp_socket_pair,
-        transports::TcpSocket,
-    };
+    use crate::{memsocket::MemorySocket, noise::config::NOISE_IX_PARAMETER};
     use futures::future::join;
     use snow::{params::NoiseParams, Builder, Error, Keypair};
     use std::io;
     use tokio::runtime::Runtime;
 
-    async fn build_test_connection() -> Result<((Keypair, Handshake<TcpSocket>), (Keypair, Handshake<TcpSocket>)), Error>
-    {
+    async fn build_test_connection(
+    ) -> Result<((Keypair, Handshake<MemorySocket>), (Keypair, Handshake<MemorySocket>)), Error> {
         let parameters: NoiseParams = NOISE_IX_PARAMETER.parse().expect("Invalid protocol name");
 
         let dialer_keypair = Builder::new(parameters.clone()).generate_keypair()?;
@@ -644,7 +648,7 @@ mod test {
             .local_private_key(&listener_keypair.private)
             .build_responder()?;
 
-        let (dialer_socket, listener_socket) = build_connected_tcp_socket_pair().await;
+        let (dialer_socket, listener_socket) = MemorySocket::new_pair();
         let (dialer, listener) = (
             NoiseSocket::new(dialer_socket, dialer_session.into()),
             NoiseSocket::new(listener_socket, listener_session.into()),
@@ -657,9 +661,9 @@ mod test {
     }
 
     async fn perform_handshake(
-        dialer: Handshake<TcpSocket>,
-        listener: Handshake<TcpSocket>,
-    ) -> io::Result<(NoiseSocket<TcpSocket>, NoiseSocket<TcpSocket>)>
+        dialer: Handshake<MemorySocket>,
+        listener: Handshake<MemorySocket>,
+    ) -> io::Result<(NoiseSocket<MemorySocket>, NoiseSocket<MemorySocket>)>
     {
         let (dialer_result, listener_result) = join(dialer.handshake_1rt(), listener.handshake_1rt()).await;
 

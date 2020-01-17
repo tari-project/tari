@@ -30,6 +30,7 @@ use crate::{
         peer_connection::PeerConnection,
         requester::ConnectionManagerRequest,
     },
+    noise::NoiseConfig,
     peer_manager::{AsyncPeerManager, NodeId},
     transports::Transport,
     types::{CommsPublicKey, DEFAULT_LISTENER_ADDRESS},
@@ -56,6 +57,10 @@ pub enum ConnectionManagerEvent {
     PeerConnected(Box<PeerConnection>),
     PeerDisconnected(Box<CommsPublicKey>),
     PeerConnectFailed(Box<CommsPublicKey>, ConnectionManagerError),
+    PeerInboundConnectFailed(ConnectionManagerError),
+
+    Listening(Multiaddr),
+    ListenFailed(ConnectionManagerError),
 }
 
 #[derive(Debug, Clone)]
@@ -83,23 +88,24 @@ pub struct ConnectionManager<TTransport, TBackoff> {
     request_rx: Fuse<mpsc::Receiver<ConnectionManagerRequest>>,
     event_rx: Fuse<mpsc::Receiver<ConnectionManagerEvent>>,
     establisher_tx: mpsc::Sender<DialerRequest>,
-    establisher: Option<Dialer<TTransport, TBackoff>>,
+    dialer: Option<Dialer<TTransport, TBackoff>>,
     listener: Option<PeerListener<TTransport>>,
     peer_manager: AsyncPeerManager,
     active_connections: HashMap<NodeId, PeerConnection>,
     shutdown_signal: Option<ShutdownSignal>,
 }
 
-impl<TTransport, TSocket, TBackoff> ConnectionManager<TTransport, TBackoff>
+impl<TTransport, TBackoff> ConnectionManager<TTransport, TBackoff>
 where
-    TTransport: Transport<Output = (TSocket, CommsPublicKey, Multiaddr)> + Unpin + Send + Sync + Clone + 'static,
-    TSocket: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
+    TTransport: Transport + Unpin + Send + Sync + Clone + 'static,
+    TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
     TBackoff: Backoff + Send + Sync + 'static,
 {
     pub fn new(
         config: ConnectionManagerConfig,
         executor: runtime::Handle,
         transport: TTransport,
+        noise_config: NoiseConfig,
         backoff: Arc<TBackoff>,
         request_rx: mpsc::Receiver<ConnectionManagerRequest>,
         peer_manager: AsyncPeerManager,
@@ -109,10 +115,11 @@ where
         let (event_tx, event_rx) = mpsc::channel(EVENT_CHANNEL_SIZE);
 
         let (establisher_tx, establisher_rx) = mpsc::channel(ESTABLISHER_CHANNEL_SIZE);
-        let establisher = Dialer::new(
+        let dialer = Dialer::new(
             executor.clone(),
             config.clone(),
             transport.clone(),
+            noise_config.clone(),
             backoff,
             establisher_rx,
             event_tx.clone(),
@@ -123,6 +130,7 @@ where
             executor.clone(),
             config.listener_address.clone(),
             transport,
+            noise_config,
             event_tx,
             shutdown_signal.clone(),
         );
@@ -135,7 +143,7 @@ where
             peer_manager,
             event_rx: event_rx.fuse(),
             establisher_tx,
-            establisher: Some(establisher),
+            dialer: Some(dialer),
             listener: Some(listener),
             active_connections: Default::default(),
         }
@@ -148,7 +156,7 @@ where
             .expect("ConnectionManager initialized without a shutdown");
 
         self.run_listener();
-        self.run_establisher();
+        self.run_dialer();
 
         debug!(target: LOG_TARGET, "Connection manager started");
         loop {
@@ -178,13 +186,13 @@ where
         self.executor.spawn(listener.run());
     }
 
-    fn run_establisher(&mut self) {
-        let establisher = self
-            .establisher
+    fn run_dialer(&mut self) {
+        let dialer = self
+            .dialer
             .take()
             .expect("ConnnectionManager initialized without an Establisher");
 
-        self.executor.spawn(establisher.run());
+        self.executor.spawn(dialer.run());
     }
 
     async fn handle_request(&mut self, request: ConnectionManagerRequest) {
@@ -218,15 +226,14 @@ where
             Ok(peer) => {
                 if let Err(err) = self
                     .establisher_tx
-                    .try_send(DialerRequest::Dial(Box::new((peer, reply_tx))))
+                    .try_send(DialerRequest::Dial(Box::new(peer), reply_tx))
                 {
                     error!(
                         target: LOG_TARGET,
                         "Failed to send request to establisher because '{}'", err
                     );
 
-                    if let DialerRequest::Dial(boxed) = err.into_inner() {
-                        let (_, reply_tx) = *boxed;
+                    if let DialerRequest::Dial(_, reply_tx) = err.into_inner() {
                         log_if_error_fmt!(
                             target: LOG_TARGET,
                             reply_tx.send(Err(ConnectionManagerError::EstablisherChannelError)),
@@ -259,7 +266,7 @@ mod test {
         noise::NoiseConfig,
         peer_manager::{PeerFeatures, PeerManagerError},
         test_utils::{node_identity::build_node_identity, test_node::build_peer_manager},
-        transports::{NoiseTransport, TcpTransport},
+        transports::MemoryTransport,
     };
     use std::time::Duration;
     use tari_shutdown::Shutdown;
@@ -269,11 +276,7 @@ mod test {
     #[test]
     fn connect_to_nonexistent_peer() {
         let mut rt = Runtime::new().unwrap();
-        let transport = TcpTransport::new();
-        let transport = NoiseTransport::new(
-            transport,
-            NoiseConfig::new(build_node_identity(PeerFeatures::COMMUNICATION_NODE)),
-        );
+        let noise_config = NoiseConfig::new(build_node_identity(PeerFeatures::COMMUNICATION_NODE));
         let (request_tx, request_rx) = mpsc::channel(1);
         let mut requester = ConnectionManagerRequester::new(request_tx);
         let mut shutdown = Shutdown::new();
@@ -283,7 +286,8 @@ mod test {
         let connection_manager = ConnectionManager::new(
             Default::default(),
             rt.handle().clone(),
-            transport,
+            MemoryTransport,
+            noise_config,
             Arc::new(ConstantBackoff::new(Duration::from_secs(1))),
             request_rx,
             peer_manager.into(),

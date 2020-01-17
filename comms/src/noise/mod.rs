@@ -28,4 +28,5 @@ mod error;
 mod socket;
 
 pub use config::NoiseConfig;
+pub use error::NoiseError;
 pub use socket::NoiseSocket;

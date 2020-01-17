@@ -86,12 +86,12 @@ impl Peer {
 
     /// Returns the peers local id if this peer is persisted.
     ///
-    /// This method panics if the peer is not persisted and therefore, does not have a PeerId.
+    /// This method panics if the peer does not have a PeerId, and therefore is not persisted.
     /// If the caller should be sure that the peer is persisted before calling this function.
     /// This can be checked by using `Peer::is_persisted`.
     #[inline]
     pub fn id(&self) -> PeerId {
-        self.id.expect("call to Peer::key() when peer is not persisted")
+        self.id.expect("call to Peer::id() when peer is not persisted")
     }
 
     pub fn is_persisted(&self) -> bool {
@@ -100,6 +100,11 @@ impl Peer {
 
     pub(super) fn set_id(&mut self, id: PeerId) {
         debug_assert!(self.id.is_none());
+        self.id = Some(id);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_id_for_test(&mut self, id: PeerId) {
         self.id = Some(id);
     }
 

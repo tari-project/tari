@@ -31,14 +31,15 @@ use crate::{
         utils::short_str,
     },
     multiaddr::Multiaddr,
+    noise::{NoiseConfig, NoiseSocket},
     peer_manager::{Peer, PeerId},
     transports::Transport,
-    types::CommsPublicKey,
 };
 use futures::{
     channel::{mpsc, oneshot},
     future,
     future::{BoxFuture, Either},
+    pin_mut,
     stream::{Fuse, FuturesUnordered},
     AsyncRead,
     AsyncWrite,
@@ -53,11 +54,14 @@ use tokio::{runtime, time};
 
 const LOG_TARGET: &str = "comms::connection_manager::establisher";
 
-type DialResult<T> = Result<T, ConnectionManagerError>;
+type DialResult<TSock> = Result<(TSock, Multiaddr), ConnectionManagerError>;
 
 #[derive(Debug)]
 pub enum DialerRequest {
-    Dial(Box<(Peer, oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>)>),
+    Dial(
+        Box<Peer>,
+        oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
+    ),
     CancelPending(PeerId),
 }
 
@@ -65,6 +69,7 @@ pub struct Dialer<TTransport, TBackoff> {
     executor: runtime::Handle,
     config: ConnectionManagerConfig,
     transport: TTransport,
+    noise_config: NoiseConfig,
     backoff: Arc<TBackoff>,
     request_rx: Fuse<mpsc::Receiver<DialerRequest>>,
     cancel_signals: HashMap<PeerId, Shutdown>,
@@ -73,16 +78,17 @@ pub struct Dialer<TTransport, TBackoff> {
     pending_dial_requests: HashMap<PeerId, Vec<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>>,
 }
 
-impl<TTransport, TSocket, TBackoff> Dialer<TTransport, TBackoff>
+impl<TTransport, TBackoff> Dialer<TTransport, TBackoff>
 where
-    TTransport: Transport<Output = (TSocket, CommsPublicKey, Multiaddr)> + Unpin + Send + Sync + Clone + 'static,
-    TSocket: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
+    TTransport: Transport + Unpin + Send + Sync + Clone + 'static,
+    TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
     TBackoff: Backoff + Send + Sync + 'static,
 {
     pub fn new(
         executor: runtime::Handle,
         config: ConnectionManagerConfig,
         transport: TTransport,
+        noise_config: NoiseConfig,
         backoff: Arc<TBackoff>,
         request_rx: mpsc::Receiver<DialerRequest>,
         conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
@@ -93,6 +99,7 @@ where
             executor,
             config,
             transport,
+            noise_config,
             backoff,
             request_rx: request_rx.fuse(),
             cancel_signals: Default::default(),
@@ -128,14 +135,15 @@ where
 
     fn handle_request(
         &mut self,
-        pending_dials: &mut FuturesUnordered<BoxFuture<'static, Option<(DialState, DialResult<TTransport::Output>)>>>,
+        pending_dials: &mut FuturesUnordered<
+            BoxFuture<'static, Option<(DialState, DialResult<NoiseSocket<TTransport::Output>>)>>,
+        >,
         request: DialerRequest,
     )
     {
         use DialerRequest::*;
         match request {
-            Dial(boxed) => {
-                let (peer, reply_tx) = *boxed;
+            Dial(peer, reply_tx) => {
                 if !peer.is_persisted() {
                     log_if_error_fmt!(
                         target: LOG_TARGET,
@@ -145,7 +153,7 @@ where
                     );
                     return;
                 }
-                self.handle_dial_peer_request(pending_dials, peer, reply_tx);
+                self.handle_dial_peer_request(pending_dials, *peer, reply_tx);
             },
             CancelPending(peer_id) => {
                 debug!(target: LOG_TARGET, "Cancelling dial for peer id '{}'", peer_id);
@@ -181,7 +189,12 @@ where
         })
     }
 
-    async fn handle_dial_result(&mut self, dial_state: DialState, dial_result: DialResult<TTransport::Output>) {
+    async fn handle_dial_result(
+        &mut self,
+        dial_state: DialState,
+        dial_result: DialResult<NoiseSocket<TTransport::Output>>,
+    )
+    {
         let DialState { peer, reply_tx, .. } = dial_state;
         let peer_id = peer.id();
 
@@ -190,41 +203,7 @@ where
         drop(removed);
 
         let reply = match dial_result {
-            Ok((socket, peer_public_key, peer_addr)) => {
-                if peer_public_key != peer.public_key {
-                    Err(ConnectionManagerError::DialedPublicKeyMismatch)
-                } else {
-                    let peer_conn_result = create_peer_connection(
-                        self.executor.clone(),
-                        socket,
-                        peer_addr,
-                        peer.public_key.clone(),
-                        ConnectionDirection::Outbound,
-                        self.conn_man_notifier.clone(),
-                    )
-                    .await;
-
-                    match peer_conn_result {
-                        Ok(peer_conn) => {
-                            self.notify_connection_manager(ConnectionManagerEvent::PeerConnected(Box::new(
-                                peer_conn.clone(),
-                            )))
-                            .await;
-
-                            Ok(peer_conn)
-                        },
-                        Err(err) => {
-                            let err_str = err.to_string();
-                            self.notify_connection_manager(ConnectionManagerEvent::PeerConnectFailed(
-                                Box::new(peer.public_key.clone()),
-                                err,
-                            ))
-                            .await;
-                            Err(ConnectionManagerError::YamuxUpgradeFailure(err_str))
-                        },
-                    }
-                }
-            },
+            Ok((socket, peer_addr)) => self.upgrade_to_peer_connection(&peer, socket, peer_addr).await,
             Err(err) => Err(err),
         };
 
@@ -238,6 +217,55 @@ where
             "Failed to send dial result reply for peer '{}'",
             short_str(&peer.public_key)
         );
+    }
+
+    async fn upgrade_to_peer_connection(
+        &mut self,
+        peer: &Peer,
+        socket: NoiseSocket<TTransport::Output>,
+        peer_addr: Multiaddr,
+    ) -> Result<PeerConnection, ConnectionManagerError>
+    {
+        debug!(
+            target: LOG_TARGET,
+            "Connection successfully established to peer '{}' on address '{}'",
+            peer.node_id.short_str(),
+            peer_addr
+        );
+        let peer_public_key = socket
+            .get_remote_public_key()
+            .ok_or(ConnectionManagerError::InvalidStaticPublicKey)?;
+
+        if peer_public_key != peer.public_key {
+            return Err(ConnectionManagerError::DialedPublicKeyMismatch);
+        }
+        let peer_conn_result = create_peer_connection(
+            self.executor.clone(),
+            socket,
+            peer_addr,
+            peer_public_key,
+            ConnectionDirection::Outbound,
+            self.conn_man_notifier.clone(),
+        )
+        .await;
+
+        match peer_conn_result {
+            Ok(peer_conn) => {
+                self.notify_connection_manager(ConnectionManagerEvent::PeerConnected(Box::new(peer_conn.clone())))
+                    .await;
+
+                Ok(peer_conn)
+            },
+            Err(err) => {
+                let err_str = err.to_string();
+                self.notify_connection_manager(ConnectionManagerEvent::PeerConnectFailed(
+                    Box::new(peer.public_key.clone()),
+                    err,
+                ))
+                .await;
+                Err(ConnectionManagerError::YamuxUpgradeFailure(err_str))
+            },
+        }
     }
 
     pub async fn notify_connection_manager(&mut self, event: ConnectionManagerEvent) {
@@ -264,7 +292,9 @@ where
 
     fn handle_dial_peer_request(
         &mut self,
-        pending_dials: &mut FuturesUnordered<BoxFuture<'static, Option<(DialState, DialResult<TTransport::Output>)>>>,
+        pending_dials: &mut FuturesUnordered<
+            BoxFuture<'static, Option<(DialState, DialResult<NoiseSocket<TTransport::Output>>)>>,
+        >,
         peer: Peer,
         reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
     )
@@ -284,22 +314,26 @@ where
         let max_attempts = self.config.max_dial_attempts;
 
         let dial_state = DialState::new(peer, reply_tx, cancel_signal);
-        pending_dials.push(Self::dial_peer_with_retry(dial_state, transport, backoff, max_attempts).boxed());
+        pending_dials.push(
+            Self::dial_peer_with_retry(dial_state, self.noise_config.clone(), transport, backoff, max_attempts).boxed(),
+        );
     }
 
     async fn dial_peer_with_retry(
         dial_state: DialState,
+        noise_config: NoiseConfig,
         transport: TTransport,
         backoff: Arc<TBackoff>,
         max_attempts: usize,
-    ) -> Option<(DialState, DialResult<TTransport::Output>)>
+    ) -> Option<(DialState, DialResult<NoiseSocket<TTransport::Output>>)>
     {
         // Container for dial state
         let mut dial_state = Some(dial_state);
         let mut transport = Some(transport);
 
         loop {
-            let current_state = dial_state.take().expect("dial_state must own current dial state");
+            let mut current_state = dial_state.take().expect("dial_state must own current dial state");
+            current_state.inc_attempts();
             let current_transport = transport.take().expect("transport must own current dial state");
             let backoff_duration = backoff.calculate_backoff(current_state.num_attempts());
             debug!(
@@ -314,19 +348,18 @@ where
             futures::select! {
                 _ = delay => {
                     debug!(target: LOG_TARGET, "[Attempt {}] Connecting to peer '{}'", current_state.num_attempts(), current_state.peer.node_id.short_str());
-                    match Self::dial_peer(current_state, current_transport).await {
-                        Some((state, _, Ok(socket_and_address))) => {
-                            break Some((state, Ok(socket_and_address)));
+                    match Self::dial_peer(current_state, &noise_config, &current_transport).await {
+                        Some((state, Ok((socket, addr)))) => {
+                            break Some((state, Ok((socket, addr))));
                         },
-                        Some((mut state, t, Err(err))) => {
+                        Some((mut state, Err(err))) => {
                             if state.num_attempts() > max_attempts {
                                 break Some((state, Err(ConnectionManagerError::ConnectFailedMaximumAttemptsReached)));
                             }
 
-                            state.inc_attempts();
                             // Put the dial state and transport back for the retry
                             dial_state = Some(state);
-                            transport = Some(t);
+                            transport = Some(current_transport);
                         }
                         // Inflight dial was cancelled
                         None => break None,
@@ -346,17 +379,34 @@ where
     /// or None if the dial was cancelled inflight
     async fn dial_peer(
         dial_state: DialState,
-        transport: TTransport,
-    ) -> Option<(DialState, TTransport, DialResult<TTransport::Output>)>
+        noise_config: &NoiseConfig,
+        transport: &TTransport,
+    ) -> Option<(DialState, DialResult<NoiseSocket<TTransport::Output>>)>
     {
         let mut addr_iter = dial_state.peer.addresses.address_iter();
         let cancel_signal = dial_state.get_cancel_signal();
         loop {
             let result = match addr_iter.next() {
                 Some(address) => {
-                    let either = future::select(transport.dial(address.clone()), cancel_signal.clone()).await;
+                    let dial_fut = async move {
+                        let socket = transport
+                            .dial(address.clone())
+                            .await
+                            .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))?;
+                        debug!(
+                            target: LOG_TARGET,
+                            "Socket established on '{}'. Performing noise upgrade protocol", address
+                        );
+                        let noise_socket = noise_config
+                            .upgrade_socket(socket, ConnectionDirection::Outbound)
+                            .await
+                            .map_err(|err| ConnectionManagerError::NoiseError(err.to_string()))?;
+                        Result::<_, ConnectionManagerError>::Ok(noise_socket)
+                    };
+                    pin_mut!(dial_fut);
+                    let either = future::select(dial_fut, cancel_signal.clone()).await;
                     match either {
-                        Either::Left((Ok((socket, public_key, peer_addr)), _)) => Ok((socket, public_key, peer_addr)),
+                        Either::Left((Ok(noise_socket), _)) => Ok((noise_socket, address.clone())),
                         Either::Left((Err(err), _)) => {
                             debug!(
                                 target: LOG_TARGET,
@@ -391,7 +441,7 @@ where
 
             drop(addr_iter);
 
-            break Some((dial_state, transport, result));
+            break Some((dial_state, result));
         }
     }
 }

@@ -30,13 +30,14 @@ use crate::{
         socket::{Handshake, NoiseSocket},
     },
     peer_manager::NodeIdentity,
-    types::CommsPublicKey,
 };
 use futures::{AsyncRead, AsyncWrite};
+use log::*;
 use snow::{self, params::NoiseParams};
 use std::sync::Arc;
 use tari_utilities::ByteArray;
 
+const LOG_TARGET: &str = "comms::noise";
 pub(super) const NOISE_IX_PARAMETER: &str = "Noise_IX_25519_ChaChaPoly_BLAKE2b";
 
 /// The Noise protocol configuration to be used to perform a protocol upgrade on an underlying
@@ -63,7 +64,7 @@ impl NoiseConfig {
         &self,
         socket: TSocket,
         direction: ConnectionDirection,
-    ) -> Result<(CommsPublicKey, NoiseSocket<TSocket>), NoiseError>
+    ) -> Result<NoiseSocket<TSocket>, NoiseError>
     where
         TSocket: AsyncWrite + AsyncRead + Unpin,
     {
@@ -73,30 +74,29 @@ impl NoiseConfig {
                     .local_private_key(self.node_identity.secret_key().as_bytes());
 
             match direction {
-                ConnectionDirection::Outbound => builder.build_initiator()?,
-                ConnectionDirection::Inbound => builder.build_responder()?,
+                ConnectionDirection::Outbound => {
+                    debug!(target: LOG_TARGET, "Starting noise initiator handshake ");
+                    builder.build_initiator()?
+                },
+                ConnectionDirection::Inbound => {
+                    debug!(target: LOG_TARGET, "Starting noise responder handshake");
+                    builder.build_responder()?
+                },
             }
         };
 
         let handshake = Handshake::new(socket, handshake_state);
         let socket = handshake.handshake_1rt().await.map_err(NoiseError::HandshakeFailed)?;
-        let static_key = socket
-            .get_remote_static()
-            .ok_or(NoiseError::PeerPublicStaticKeyUnknown)?;
-        let comms_pk = CommsPublicKey::from_bytes(static_key).map_err(NoiseError::InvalidCommsPublicKey)?;
 
-        Ok((comms_pk, socket))
+        Ok(socket)
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        peer_manager::PeerFeatures,
-        test_utils::{node_identity::build_node_identity, tcp::build_connected_tcp_socket_pair},
-    };
-    use futures::{future, AsyncReadExt, AsyncWriteExt};
+    use crate::{memsocket::MemorySocket, peer_manager::PeerFeatures, test_utils::node_identity::build_node_identity};
+    use futures::{future, AsyncReadExt, AsyncWriteExt, FutureExt};
     use snow::params::{BaseChoice, CipherChoice, DHChoice, HandshakePattern, HashChoice};
     use tokio::runtime::Runtime;
 
@@ -128,15 +128,16 @@ mod test {
         let config2 = NoiseConfig::new(node_identity2.clone());
 
         rt.block_on(async move {
-            let (in_socket, out_socket) = build_connected_tcp_socket_pair().await;
-            let (upgraded_in, upgraded_out) = future::join(
+            let (in_socket, out_socket) = MemorySocket::new_pair();
+            let (mut socket_in, mut socket_out) = future::join(
                 config1.upgrade_socket(in_socket, ConnectionDirection::Inbound),
                 config2.upgrade_socket(out_socket, ConnectionDirection::Outbound),
             )
+            .map(|(s1, s2)| (s1.unwrap(), s2.unwrap()))
             .await;
 
-            let (in_pubkey, mut socket_in) = upgraded_in.unwrap();
-            let (out_pubkey, mut socket_out) = upgraded_out.unwrap();
+            let in_pubkey = socket_in.get_remote_public_key().unwrap();
+            let out_pubkey = socket_out.get_remote_public_key().unwrap();
 
             assert_eq!(&in_pubkey, node_identity2.public_key());
             assert_eq!(&out_pubkey, node_identity1.public_key());

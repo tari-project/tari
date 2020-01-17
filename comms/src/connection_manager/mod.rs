@@ -39,4 +39,7 @@ cfg_next! {
         pub use super::manager::{ConnectionManager, ConnectionManagerConfig, ConnectionManagerEvent};
         pub use super::requester::{ConnectionManagerRequester, ConnectionManagerRequest};
     }
+
+    #[cfg(test)]
+    mod tests;
 }

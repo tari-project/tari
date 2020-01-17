@@ -20,7 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/// Unpack the tuple or struct variant variables from an enum.
+/// Unpack the tuple or struct from an enum variant.
+/// Each extracted variable is decalred as mutable for maximum flexibility.
 ///
 /// ```edition2018
 /// # use tari_test_utils::unpack_enum;
@@ -52,17 +53,18 @@
 #[macro_export]
 macro_rules! unpack_enum {
     ($($enum_key:ident)::+ { $($idents:tt),* } = $enum:expr) => {
-        let ($($idents),+) =  match $enum {
+        let ($(mut $idents),+) =  match $enum {
             $($enum_key)::+{$($idents),+} => ($($idents),+),
             _ => panic!("Unexpected enum variant given to unpack_enum"),
         };
     };
     ($($enum_key:ident)::+ ( $($idents:tt),* ) = $enum:expr) => {
-        let ($($idents),+) =  match $enum {
+        let ($(mut $idents),+) =  match $enum {
             $($enum_key)::+($($idents),+) => ($($idents),+),
             _ => panic!("Unexpected enum variant given to unpack_enum"),
         };
     };
+    // This matches `MyEnum::First = some_var` and will panic if the enum does not match
     ($($enum_key:ident)::+ = $enum:expr) => {
         match $enum {
             $($enum_key)::+ => {},

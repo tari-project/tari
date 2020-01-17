@@ -22,7 +22,7 @@
 
 use futures::FutureExt;
 use std::{future::Future, pin::Pin};
-use tokio::{runtime, runtime::Runtime, task};
+use tokio::{runtime, runtime::Runtime, task, task::JoinError};
 
 pub fn create_runtime() -> Runtime {
     tokio::runtime::Builder::new()
@@ -44,13 +44,13 @@ where F: FnOnce(&mut TestRuntime) {
     f(&mut rt);
     let handles = rt.handles.drain(..).collect::<Vec<_>>();
     for h in handles {
-        rt.block_on(h);
+        rt.block_on(h).unwrap();
     }
 }
 
 pub struct TestRuntime {
     inner: Runtime,
-    handles: Vec<Pin<Box<dyn Future<Output = ()>>>>,
+    handles: Vec<Pin<Box<dyn Future<Output = Result<(), JoinError>>>>>,
 }
 
 impl TestRuntime {
@@ -65,12 +65,12 @@ impl TestRuntime {
     {
         let handle = self.inner.spawn(future);
         self.handles.push(
-            async move {
-                if let Err(err) = handle.await {
-                    panic!("{:?}", err);
-                }
-            }
-            .boxed(),
+            handle
+                .map(|result| match result {
+                    Ok(_) => Ok(()),
+                    Err(err) => Err(err),
+                })
+                .boxed(),
         );
     }
 

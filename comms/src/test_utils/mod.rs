@@ -25,6 +25,5 @@ pub mod node_id;
 
 cfg_next! {
     pub mod node_identity;
-    pub mod tcp;
     pub mod test_node;
 }

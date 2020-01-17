@@ -83,8 +83,8 @@ where TSocket: AsyncRead + AsyncWrite + Send + Unpin + 'static
 #[cfg(test)]
 mod test {
     use crate::{
+        memsocket::MemorySocket,
         multiplexing::yamux::{Mode, Yamux},
-        test_utils::tcp::build_connected_tcp_socket_pair,
     };
     use futures::{
         future,
@@ -97,7 +97,7 @@ mod test {
     #[test]
     fn open_substream() -> io::Result<()> {
         let mut rt = Runtime::new().unwrap();
-        let (dialer, listener) = rt.block_on(build_connected_tcp_socket_pair());
+        let (dialer, listener) = MemorySocket::new_pair();
         let msg = b"The Way of Kings";
 
         let dialer = Yamux::new(dialer, Mode::Client);
@@ -131,7 +131,7 @@ mod test {
     #[test]
     fn close() -> io::Result<()> {
         let mut rt = Runtime::new().unwrap();
-        let (dialer, listener) = rt.block_on(build_connected_tcp_socket_pair());
+        let (dialer, listener) = MemorySocket::new_pair();
         let msg = b"Words of Radiance";
 
         let dialer = Yamux::new(dialer, Mode::Client);
@@ -185,7 +185,7 @@ mod test {
         static MiB: usize = 1 << 20;
         static MSG_LEN: usize = 16 * MiB;
 
-        let (dialer, listener) = rt.block_on(build_connected_tcp_socket_pair());
+        let (dialer, listener) = MemorySocket::new_pair();
 
         let dialer = Yamux::new(dialer, Mode::Client);
         let mut dialer_control = dialer.get_yamux_control();
