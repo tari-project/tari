@@ -25,6 +25,7 @@ use tari_core::{
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, MemoryDatabase},
     consensus::emission::EmissionSchedule,
 };
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_transactions::{
     helpers::{
         create_random_signature,
@@ -34,18 +35,28 @@ use tari_transactions::{
         TransactionSchema,
     },
     tari_amount::MicroTari,
-    transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction, UnblindedOutput},
+    transaction::{
+        KernelBuilder,
+        KernelFeatures,
+        OutputFeatures,
+        Transaction,
+        TransactionKernel,
+        TransactionOutput,
+        UnblindedOutput,
+    },
     types::{Commitment, CryptoFactories, HashDigest, PublicKey},
 };
 use tari_utilities::{hash::Hashable, hex::Hex};
 
-fn genesis_template(factories: &&CryptoFactories) -> (NewBlockTemplate, UnblindedOutput) {
-    let header = BlockHeader::new(0);
-    let value = MicroTari::from(100_000_000);
-    let excess = Commitment::from_public_key(&PublicKey::default());
+fn create_coinbase(
+    factories: &CryptoFactories,
+    value: MicroTari,
+) -> (TransactionOutput, TransactionKernel, UnblindedOutput)
+{
     let features = OutputFeatures::create_coinbase(100);
     let (mut utxo, key) = create_utxo(value, &factories);
     utxo.features = features.clone();
+    let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&key));
     let (_pk, sig) = create_random_signature(0.into(), 0);
     let kernel = KernelBuilder::new()
         .with_signature(&sig)
@@ -53,21 +64,24 @@ fn genesis_template(factories: &&CryptoFactories) -> (NewBlockTemplate, Unblinde
         .with_features(KernelFeatures::COINBASE_KERNEL)
         .build()
         .unwrap();
+    let output = UnblindedOutput::new(value, key, Some(features));
+    (utxo, kernel, output)
+}
+
+fn genesis_template(factories: &CryptoFactories, coinbase_value: MicroTari) -> (NewBlockTemplate, UnblindedOutput) {
+    let header = BlockHeader::new(0);
+    let (utxo, kernel, output) = create_coinbase(factories, coinbase_value);
     let block = NewBlockTemplate::from(
         BlockBuilder::new()
             .with_header(header)
             .with_coinbase_utxo(utxo, kernel)
             .build(),
     );
-    let output = UnblindedOutput::new(value, key, Some(features));
     (block, output)
 }
 
-// this test is used to help generate and print out a block
-// this was used to generate the genesis block
-#[ignore]
-#[test]
-fn create_act_gen_block() {
+// This is a helper function to generate and print out a block that can be used as the genesis block.
+pub fn create_act_gen_block() {
     let factories = CryptoFactories::default();
     let mut header = BlockHeader::new(0);
     let emission_schedule = EmissionSchedule::new(10_000_000.into(), 0.999, 100.into());
@@ -105,7 +119,19 @@ fn create_act_gen_block() {
 /// value, and the maturity is zero.
 pub fn create_genesis_block<B>(db: &BlockchainDatabase<B>, factories: &CryptoFactories) -> (Block, UnblindedOutput)
 where B: BlockchainBackend {
-    let (block, output) = genesis_template(&factories);
+    create_genesis_block_with_coinbase_value(db, factories, 100_000_000.into())
+}
+
+/// Create a genesis block with the specified coinbase value, returning it with the spending key for the coinbase utxo.
+pub fn create_genesis_block_with_coinbase_value<B>(
+    db: &BlockchainDatabase<B>,
+    factories: &CryptoFactories,
+    coinbase_value: MicroTari,
+) -> (Block, UnblindedOutput)
+where
+    B: BlockchainBackend,
+{
+    let (block, output) = genesis_template(&factories, coinbase_value);
     let block = db
         .calculate_mmr_roots(block)
         .expect("Could not generate genesis block MMRs");
@@ -122,7 +148,7 @@ pub fn create_genesis_block_with_utxos<B>(
 where
     B: BlockchainBackend,
 {
-    let (mut template, coinbase) = genesis_template(&factories);
+    let (mut template, coinbase) = genesis_template(&factories, 100_000_000.into());
     let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
         let (t, k) = create_utxo(*v, factories);
         template.body.add_output(t);
@@ -135,13 +161,31 @@ where
     (block, outputs)
 }
 
-/// Create a new block using the provided transactions that adds to the blockchain given in `prev_block`
+/// Create a new block using the provided transactions that adds to the blockchain given in `prev_block`.
 pub fn chain_block(prev_block: &Block, transactions: Vec<Transaction>) -> NewBlockTemplate {
     let header = BlockHeader::from_previous(&prev_block.header);
     NewBlockTemplate::from(
         BlockBuilder::new()
             .with_header(header)
             .with_transactions(transactions)
+            .build(),
+    )
+}
+
+/// Create a new block using the provided coinbase and transactions that adds to the blockchain given in `prev_block`.
+pub fn chain_block_with_coinbase(
+    prev_block: &Block,
+    transactions: Vec<Transaction>,
+    coinbase_utxo: TransactionOutput,
+    coinbase_kernel: TransactionKernel,
+) -> NewBlockTemplate
+{
+    let header = BlockHeader::from_previous(&prev_block.header);
+    NewBlockTemplate::from(
+        BlockBuilder::new()
+            .with_header(header)
+            .with_transactions(transactions)
+            .with_coinbase_utxo(coinbase_utxo, coinbase_kernel)
             .build(),
     )
 }
@@ -182,6 +226,33 @@ pub fn generate_new_block(
     generate_block(db, blocks, txns)
 }
 
+/// Generate a new block using the given transaction schema and coinbase value and add it to the provided database.
+/// The blocks and UTXO vectors are also updated with the info from the new block.
+pub fn generate_new_block_with_coinbase(
+    db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
+    factories: &CryptoFactories,
+    blocks: &mut Vec<Block>,
+    outputs: &mut Vec<Vec<UnblindedOutput>>,
+    schemas: Vec<TransactionSchema>,
+    coinbase_value: MicroTari,
+) -> Result<BlockAddResult, ChainStorageError>
+{
+    let mut txns = Vec::new();
+    let mut block_utxos = Vec::new();
+    let mut keys = Vec::new();
+    for schema in schemas {
+        let (tx, mut utxos, param) = spend_utxos(schema);
+        txns.push(tx);
+        block_utxos.append(&mut utxos);
+        keys.push(param);
+    }
+    let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(factories, coinbase_value);
+    block_utxos.push(coinbase_output);
+
+    outputs.push(block_utxos);
+    generate_block_with_coinbase(db, blocks, txns, coinbase_utxo, coinbase_kernel)
+}
+
 /// Generate a block and add it to the database using the transactions provided. The header will be updated with the
 /// correct MMR roots.
 /// This function is not able to determine the unblinded outputs of a transaction, so if you are mixing using this
@@ -193,6 +264,25 @@ pub fn generate_block(
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let template = chain_block(&blocks.last().unwrap(), transactions);
+    let new_block = db.calculate_mmr_roots(template)?;
+    let result = db.add_block(new_block.clone());
+    if let Ok(BlockAddResult::Ok) = result {
+        blocks.push(new_block);
+    }
+    result
+}
+
+/// Generate a block and add it to the database using the provided transactions and coinbase. The header will be updated
+/// with the correct MMR roots.
+pub fn generate_block_with_coinbase(
+    db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
+    blocks: &mut Vec<Block>,
+    transactions: Vec<Transaction>,
+    coinbase_utxo: TransactionOutput,
+    coinbase_kernel: TransactionKernel,
+) -> Result<BlockAddResult, ChainStorageError>
+{
+    let template = chain_block_with_coinbase(&blocks.last().unwrap(), transactions, coinbase_utxo, coinbase_kernel);
     let new_block = db.calculate_mmr_roots(template)?;
     let result = db.add_block(new_block.clone());
     if let Ok(BlockAddResult::Ok) = result {

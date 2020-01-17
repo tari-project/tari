@@ -73,8 +73,8 @@ impl Block {
     }
 
     /// Run through the outputs of the block and check that
-    /// i) There is exactly ONE coinbase output
-    /// ii) The output's maturity is correctly set
+    /// 1. There is exactly ONE coinbase output
+    /// 1. The output's maturity is correctly set
     /// NOTE this does not check the coinbase amount
     pub fn check_coinbase_output(&self) -> Result<(), BlockValidationError> {
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase
