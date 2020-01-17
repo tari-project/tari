@@ -35,6 +35,7 @@ futures =  { version = "^0.3.1", features =["compat", "std"]}
 tokio = "0.2.9"
 tower = "0.3.0-alpha.2"
 tempdir = "0.3.7"
+tari_test_utils = { path = "../../infrastructure/test_utils", version = "^0.0", optional = true}
 
 [dev-dependencies]
 tari_comms_dht = { path = "../../comms/dht", version = "^0.0", features=["test-mocks"]}
@@ -44,5 +45,5 @@ env_logger = "0.6.2"
 prost = "0.5.0"
 
 [features]
-test_harness = []
+test_harness = ["tari_test_utils"]
 c_integration = []
