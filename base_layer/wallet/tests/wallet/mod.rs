@@ -47,7 +47,10 @@ use tari_wallet::{
     contacts_service::storage::{database::Contact, memory_db::ContactsServiceMemoryDatabase},
     output_manager_service::storage::memory_db::OutputManagerMemoryDatabase,
     storage::memory_db::WalletMemoryDatabase,
-    transaction_service::{handle::TransactionEvent, storage::memory_db::TransactionMemoryDatabase},
+    transaction_service::{
+        handle::TransactionEvent,
+        storage::{memory_db::TransactionMemoryDatabase, sqlite_db::TransactionServiceSqliteDatabase},
+    },
     wallet::WalletConfig,
     Wallet,
 };
@@ -263,17 +266,19 @@ fn test_data_generation() {
         logging_path: None,
     };
 
+    let transaction_backend = TransactionMemoryDatabase::new();
+
     let mut wallet = Wallet::new(
         config,
         runtime,
         WalletMemoryDatabase::new(),
-        TransactionMemoryDatabase::new(),
+        transaction_backend.clone(),
         OutputManagerMemoryDatabase::new(),
         ContactsServiceMemoryDatabase::new(),
     )
     .unwrap();
 
-    generate_wallet_test_data(&mut wallet, temp_dir.path().to_str().unwrap()).unwrap();
+    generate_wallet_test_data(&mut wallet, temp_dir.path().to_str().unwrap(), transaction_backend).unwrap();
 
     let contacts = wallet.runtime.block_on(wallet.contacts_service.get_contacts()).unwrap();
     assert!(contacts.len() > 0);

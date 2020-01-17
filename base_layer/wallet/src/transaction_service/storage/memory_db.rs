@@ -39,6 +39,7 @@ use crate::{
         },
     },
 };
+use chrono::NaiveDateTime;
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
@@ -194,7 +195,6 @@ impl TransactionBackend for TransactionMemoryDatabase {
                 DbKey::PendingInboundTransactions => return Err(TransactionStorageError::OperationNotSupported),
                 DbKey::PendingOutboundTransactions => return Err(TransactionStorageError::OperationNotSupported),
                 DbKey::CompletedTransactions => return Err(TransactionStorageError::OperationNotSupported),
-
                 DbKey::PendingCoinbaseTransactions => return Err(TransactionStorageError::OperationNotSupported),
             },
         }
@@ -296,6 +296,22 @@ impl TransactionBackend for TransactionMemoryDatabase {
                     tx_id.clone(),
                 )))?;
         completed_tx.status = TransactionStatus::Mined;
+
+        Ok(())
+    }
+
+    #[cfg(feature = "test_harness")]
+    fn update_completed_transaction_timestamp(
+        &mut self,
+        tx_id: u64,
+        timestamp: NaiveDateTime,
+    ) -> Result<(), TransactionStorageError>
+    {
+        let mut db = acquire_write_lock!(self.db);
+
+        if let Some(tx) = db.completed_transactions.get_mut(&tx_id) {
+            tx.timestamp = timestamp;
+        }
 
         Ok(())
     }

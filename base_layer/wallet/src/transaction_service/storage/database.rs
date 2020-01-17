@@ -77,6 +77,13 @@ pub trait TransactionBackend: Send + Sync {
     /// Indicated that a completed transaction has been detected as mined on the base layer
     #[cfg(feature = "test_harness")]
     fn mine_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError>;
+    /// Update a completed transactions timestamp for use in test data generation
+    #[cfg(feature = "test_harness")]
+    fn update_completed_transaction_timestamp(
+        &mut self,
+        tx_id: TxId,
+        timestamp: NaiveDateTime,
+    ) -> Result<(), TransactionStorageError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
