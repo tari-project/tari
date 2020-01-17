@@ -399,6 +399,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 let _ = v.update(
                     UpdateCompletedTransaction {
                         status: Some(TransactionStatus::Broadcast),
+                        timestamp: None,
                     },
                     &conn,
                 )?;
@@ -426,6 +427,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 let _ = v.update(
                     UpdateCompletedTransaction {
                         status: Some(TransactionStatus::Mined),
+                        timestamp: None,
                     },
                     &conn,
                 )?;
@@ -437,6 +439,32 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             Err(e) => return Err(e),
         };
+        Ok(())
+    }
+
+    #[cfg(feature = "test_harness")]
+    fn update_completed_transaction_timestamp(
+        &mut self,
+        tx_id: u64,
+        timestamp: NaiveDateTime,
+    ) -> Result<(), TransactionStorageError>
+    {
+        let conn = self
+            .database_connection_pool
+            .clone()
+            .get()
+            .map_err(|_| TransactionStorageError::R2d2Error)?;
+
+        if let Ok(tx) = CompletedTransactionSql::find(&tx_id, &conn) {
+            let _ = tx.update(
+                UpdateCompletedTransaction {
+                    status: None,
+                    timestamp: Some(timestamp),
+                },
+                &conn,
+            );
+        }
+
         Ok(())
     }
 }
@@ -824,12 +852,14 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
 /// These are the fields that can be updated for a Completed Transaction
 pub struct UpdateCompletedTransaction {
     status: Option<TransactionStatus>,
+    timestamp: Option<NaiveDateTime>,
 }
 
 #[derive(AsChangeset)]
 #[table_name = "completed_transactions"]
 pub struct UpdateCompletedTransactionSql {
     status: Option<i32>,
+    timestamp: Option<NaiveDateTime>,
 }
 
 /// Map a Rust friendly UpdateCompletedTransaction to the Sql data type form
@@ -837,6 +867,7 @@ impl From<UpdateCompletedTransaction> for UpdateCompletedTransactionSql {
     fn from(u: UpdateCompletedTransaction) -> Self {
         Self {
             status: u.status.map(|s| s as i32),
+            timestamp: u.timestamp,
         }
     }
 }
@@ -1107,6 +1138,7 @@ mod test {
             .update(
                 UpdateCompletedTransaction {
                     status: Some(TransactionStatus::Mined),
+                    timestamp: None,
                 },
                 &conn,
             )

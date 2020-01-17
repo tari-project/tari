@@ -94,6 +94,8 @@ where
     pub db: WalletDatabase<T>,
     pub runtime: Runtime,
     pub log_handle: Option<LogHandle>,
+    #[cfg(feature = "test_harness")]
+    pub transaction_backend: U,
     _u: PhantomData<U>,
     _v: PhantomData<V>,
     _w: PhantomData<W>,
@@ -132,6 +134,9 @@ where
 
             log_handle = Some(log4rs::init_config(config)?);
         }
+
+        #[cfg(feature = "test_harness")]
+        let transaction_backend_handle = transaction_backend.clone();
 
         let factories = config.factories;
         let (publisher, subscription_factory) =
@@ -185,6 +190,8 @@ where
             db: WalletDatabase::new(wallet_backend),
             runtime,
             log_handle,
+            #[cfg(feature = "test_harness")]
+            transaction_backend: transaction_backend_handle,
             _u: PhantomData,
             _v: PhantomData,
             _w: PhantomData,

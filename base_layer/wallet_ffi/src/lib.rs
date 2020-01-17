@@ -1292,31 +1292,6 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_amount(
     c_ulonglong::from((*transaction).amount)
 }
 
-/// Gets the fee of a TariPendingOutboundTransaction
-///
-/// ## Arguments
-/// `transaction` - The pointer to a TariPendingOutboundTransaction
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `c_ulonglong` - Returns the fee, note that it will be zero if transaction is null
-#[no_mangle]
-pub unsafe extern "C" fn pending_outbound_transaction_get_fee(
-    transaction: *mut TariPendingOutboundTransaction,
-    error_out: *mut c_int,
-) -> c_ulonglong
-{
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if transaction.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
-    c_ulonglong::from((*transaction).fee)
-}
-
 /// Gets the timestamp of a TariPendingOutboundTransaction
 ///
 /// ## Arguments
@@ -1817,7 +1792,11 @@ pub unsafe extern "C" fn wallet_test_generate_data(
         return false;
     }
 
-    match generate_wallet_test_data(&mut *wallet, datastore_path_string.as_str()) {
+    match generate_wallet_test_data(
+        &mut *wallet,
+        datastore_path_string.as_str(),
+        (*wallet).transaction_backend.clone(),
+    ) {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -1895,43 +1874,6 @@ pub unsafe extern "C" fn wallet_test_complete_sent_transaction(
             false
         },
     }
-}
-
-/// This function checks to determine if a TariCompletedTransaction was originally a TariPendingOutboundTransaction
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `tx` - The TariCompletedTransaction
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `bool` - Returns if the transaction was originally sent from the wallet
-#[no_mangle]
-pub unsafe extern "C" fn wallet_is_completed_transaction_outbound(
-    wallet: *mut TariWallet,
-    tx: *mut TariCompletedTransaction,
-    error_out: *mut c_int,
-) -> bool
-{
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if wallet.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
-    }
-    if tx.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("tx".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
-    }
-
-    if (*tx).source_public_key == (*wallet).comms.node_identity().public_key().clone() {
-        return true;
-    }
-
-    return false;
 }
 
 /// This function will simulate the process when a completed transaction is broadcast to
