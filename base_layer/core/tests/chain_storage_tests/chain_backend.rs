@@ -741,6 +741,160 @@ fn lmdb_for_each_orphan() {
     for_each_orphan(db);
 }
 
+fn for_each_kernel<T: BlockchainBackend>(db: T) {
+    let kernel1 = create_test_kernel(100.into(), 0);
+    let kernel2 = create_test_kernel(200.into(), 1);
+    let kernel3 = create_test_kernel(300.into(), 2);
+    let hash1 = kernel1.hash();
+    let hash2 = kernel2.hash();
+    let hash3 = kernel3.hash();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_kernel(kernel1.clone(), false);
+    txn.insert_kernel(kernel2.clone(), false);
+    txn.insert_kernel(kernel3.clone(), false);
+    assert!(db.write(txn).is_ok());
+    assert_eq!(db.contains(&DbKey::TransactionKernel(hash1.clone())), Ok(true));
+    assert_eq!(db.contains(&DbKey::TransactionKernel(hash2.clone())), Ok(true));
+    assert_eq!(db.contains(&DbKey::TransactionKernel(hash3.clone())), Ok(true));
+
+    let mut kernel1_found = false;
+    let mut kernel2_found = false;
+    let mut kernel3_found = false;
+    assert!(db
+        .for_each_kernel(|pair| {
+            let (hash, kernel) = pair.unwrap();
+            if (hash == hash1) && (kernel == kernel1) {
+                kernel1_found = true;
+            } else if (hash == hash2) && (kernel == kernel2) {
+                kernel2_found = true;
+            } else if (hash == hash3) && (kernel == kernel3) {
+                kernel3_found = true;
+            }
+        })
+        .is_ok());
+    assert!(kernel1_found & kernel2_found & kernel3_found);
+}
+
+#[test]
+fn memory_for_each_kernel() {
+    let db = MemoryDatabase::<HashDigest>::default();
+    for_each_kernel(db);
+}
+
+#[test]
+fn lmdb_for_each_kernel() {
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
+    for_each_kernel(db);
+}
+
+fn for_each_header<T: BlockchainBackend>(db: T) {
+    let header1 = BlockHeader::new(0);
+    let header2 = BlockHeader::from_previous(&header1);
+    let header3 = BlockHeader::from_previous(&header2);
+    let key1 = header1.height;
+    let key2 = header2.height;
+    let key3 = header3.height;
+
+    let mut txn = DbTransaction::new();
+    txn.insert_header(header1.clone());
+    txn.insert_header(header2.clone());
+    txn.insert_header(header3.clone());
+    assert!(db.write(txn).is_ok());
+    assert_eq!(db.contains(&DbKey::BlockHeader(key1)), Ok(true));
+    assert_eq!(db.contains(&DbKey::BlockHeader(key2)), Ok(true));
+    assert_eq!(db.contains(&DbKey::BlockHeader(key3)), Ok(true));
+
+    let mut header1_found = false;
+    let mut header2_found = false;
+    let mut header3_found = false;
+    assert!(db
+        .for_each_header(|pair| {
+            let (key, header) = pair.unwrap();
+            if (key == key1) && (header == header1) {
+                header1_found = true;
+            } else if (key == key2) && (header == header2) {
+                header2_found = true;
+            } else if (key == key3) && (header == header3) {
+                header3_found = true;
+            }
+        })
+        .is_ok());
+    assert!(header1_found & header2_found & header3_found);
+}
+
+#[test]
+fn memory_for_each_header() {
+    let db = MemoryDatabase::<HashDigest>::default();
+    for_each_header(db);
+}
+
+#[test]
+fn lmdb_for_each_header() {
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
+    for_each_header(db);
+}
+
+fn for_each_utxo<T: BlockchainBackend>(db: T) {
+    let factories = CryptoFactories::default();
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories);
+    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories);
+    let (utxo3, _) = create_utxo(MicroTari(20_000), &factories);
+    let hash1 = utxo1.hash();
+    let hash2 = utxo2.hash();
+    let hash3 = utxo3.hash();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo1.clone(), true);
+    txn.insert_utxo(utxo2.clone(), true);
+    txn.insert_utxo(utxo3.clone(), true);
+    assert!(db.write(txn).is_ok());
+    assert_eq!(db.contains(&DbKey::UnspentOutput(hash1.clone())), Ok(true));
+    assert_eq!(db.contains(&DbKey::UnspentOutput(hash2.clone())), Ok(true));
+    assert_eq!(db.contains(&DbKey::UnspentOutput(hash3.clone())), Ok(true));
+
+    let mut utxo1_found = false;
+    let mut utxo2_found = false;
+    let mut utxo3_found = false;
+    assert!(db
+        .for_each_utxo(|pair| {
+            let (hash, utxo) = pair.unwrap();
+            if (hash == hash1) && (utxo == utxo1) {
+                utxo1_found = true;
+            } else if (hash == hash2) && (utxo == utxo2) {
+                utxo2_found = true;
+            } else if (hash == hash3) && (utxo == utxo3) {
+                utxo3_found = true;
+            }
+        })
+        .is_ok());
+    assert!(utxo1_found & utxo2_found & utxo3_found);
+}
+
+#[test]
+fn memory_for_each_utxo() {
+    let db = MemoryDatabase::<HashDigest>::default();
+    for_each_utxo(db);
+}
+
+#[test]
+fn lmdb_for_each_utxo() {
+    let mct_config = MerkleChangeTrackerConfig {
+        min_history_len: 10,
+        max_history_len: 20,
+    };
+    let db = create_lmdb_database(&create_temporary_data_path(), mct_config).unwrap();
+    for_each_utxo(db);
+}
+
 #[test]
 fn lmdb_backend_restore() {
     let factories = CryptoFactories::default();

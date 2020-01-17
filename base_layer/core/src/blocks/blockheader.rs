@@ -97,8 +97,7 @@ pub struct BlockHeader {
     /// This is the MMR root of the kernels
     #[serde(with = "hash_serializer")]
     pub kernel_mr: BlockHash,
-    /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
-    /// block from the total kernel offset of the previous block header.
+    /// Sum of kernel offsets for all kernels in this block.
     pub total_kernel_offset: BlindingFactor,
     /// Nonce increment used to mine this block.
     pub nonce: u64,

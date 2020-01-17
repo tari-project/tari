@@ -39,10 +39,11 @@ use std::{
     collections::VecDeque,
     sync::{Arc, RwLock, RwLockReadGuard},
 };
+use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof, MutableMmrLeafNodes};
 use tari_transactions::{
     transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-    types::{Commitment, HashOutput},
+    types::{BlindingFactor, Commitment, CommitmentFactory, HashOutput},
 };
 use tari_utilities::{hex::Hex, Hashable};
 
@@ -156,6 +157,21 @@ pub trait BlockchainBackend: Send + Sync {
     where
         Self: Sized,
         F: FnMut(Result<(HashOutput, Block), ChainStorageError>);
+    /// Performs the function F for each transaction kernel.
+    fn for_each_kernel<F>(&self, f: F) -> Result<(), ChainStorageError>
+    where
+        Self: Sized,
+        F: FnMut(Result<(HashOutput, TransactionKernel), ChainStorageError>);
+    /// Performs the function F for each block header.
+    fn for_each_header<F>(&self, f: F) -> Result<(), ChainStorageError>
+    where
+        Self: Sized,
+        F: FnMut(Result<(u64, BlockHeader), ChainStorageError>);
+    /// Performs the function F for each UTXO.
+    fn for_each_utxo<F>(&self, f: F) -> Result<(), ChainStorageError>
+    where
+        Self: Sized,
+        F: FnMut(Result<(HashOutput, TransactionOutput), ChainStorageError>);
     /// Returns the height of earliest block that the backend can provide full data for.
     fn fetch_horizon_block_height(&self) -> Result<u64, ChainStorageError>;
     /// Returns the stored header with the highest corresponding height.
@@ -850,6 +866,36 @@ where T: BlockchainBackend
         }
 
         Ok(())
+    }
+
+    /// Calculate the total kernel excess for all kernels in the chain.
+    pub fn total_kernel_excess(&self) -> Result<Commitment, ChainStorageError> {
+        let mut excess = CommitmentFactory::default().zero();
+        self.db.for_each_kernel(|pair| {
+            let (_, kernel) = pair.unwrap();
+            excess = &excess + &kernel.excess;
+        })?;
+        Ok(excess)
+    }
+
+    /// Calculate the total kernel offset for all the kernel offsets recorded in the headers of the chain.
+    pub fn total_kernel_offset(&self) -> Result<BlindingFactor, ChainStorageError> {
+        let mut offset = BlindingFactor::default();
+        self.db.for_each_header(|pair| {
+            let (_, header) = pair.unwrap();
+            offset = &offset + &header.total_kernel_offset;
+        })?;
+        Ok(offset)
+    }
+
+    /// Calculate the total sum of all the UTXO commitments in the chain.
+    pub fn total_utxo_commitment(&self) -> Result<Commitment, ChainStorageError> {
+        let mut total_commitment = CommitmentFactory::default().zero();
+        self.db.for_each_utxo(|pair| {
+            let (_, utxo) = pair.unwrap();
+            total_commitment = &total_commitment + &utxo.commitment;
+        })?;
+        Ok(total_commitment)
     }
 }
 
