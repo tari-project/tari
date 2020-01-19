@@ -40,7 +40,6 @@ use crate::{
 use digest::Digest;
 use std::{
     collections::HashMap,
-    error::Error as ErrorTrait,
     fmt::{Debug, Error, Formatter},
 };
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
@@ -257,7 +256,7 @@ impl SenderTransactionInitializer {
         {
             Ok(o) => o,
             Err(e) => {
-                return self.build_err(e.description());
+                return self.build_err(&e.to_string());
             },
         };
 

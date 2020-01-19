@@ -79,7 +79,6 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::error::Error;
 
     #[test]
     fn test_to_hex() {
@@ -109,7 +108,7 @@ mod test {
             _ => panic!(),
         }
         // Check that message is the doc message above
-        assert_eq!(err.description(), "Hex string lengths must be a multiple of 2");
+        assert_eq!(err.to_string(), "Hex string lengths must be a multiple of 2");
     }
 
     #[test]
@@ -121,7 +120,6 @@ mod test {
             HexError::InvalidCharacter(e) => println!("{:?}", e),
             _ => panic!(),
         }
-        // Check that message is inherited from ParseIntError
-        assert_eq!(err.description(), "invalid digit found in string");
+        assert_eq!(err.to_string(), "Only hexadecimal characters (0-9,a-f) are permitted");
     }
 }
