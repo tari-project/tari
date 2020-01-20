@@ -72,7 +72,7 @@ jobs:
           name: Tari source code
           command: |
             TOOLCHAIN=$(cat rust-toolchain)
-            NUM_JOBS=2
+            NUM_JOBS=3
             rustup component add --toolchain $TOOLCHAIN rustfmt
             cargo build --jobs=$NUM_JOBS --all-features
             cargo fmt --all -- --check
