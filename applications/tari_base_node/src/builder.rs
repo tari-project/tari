@@ -53,6 +53,7 @@ use tari_core::{
     proof_of_work::DiffAdjManager,
     validation::{
         block_validators::{FullConsensusValidator, StatelessValidator},
+        chain_validators::{ChainTipValidator, GenesisBlockValidator},
         horizon_state_validators::HorizonStateHeaderValidator,
         transaction_validators::{FullTxValidator, TxInputAndMaturityValidator},
     },
@@ -178,8 +179,10 @@ pub fn configure_and_initialize_node(
             let mut db = BlockchainDatabase::new(backend).map_err(|e| e.to_string())?;
             let validators = Validators::new(
                 FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
-                StatelessValidator::new(factories.clone()),
+                StatelessValidator::new(),
                 HorizonStateHeaderValidator::new(rules.clone(), db.clone()),
+                GenesisBlockValidator::new(),
+                ChainTipValidator::new(rules.clone(), factories.clone(), db.clone()),
             );
             db.set_validators(validators);
             let mempool_validator = MempoolValidators::new(
@@ -211,8 +214,10 @@ pub fn configure_and_initialize_node(
             let mut db = BlockchainDatabase::new(backend).map_err(|e| e.to_string())?;
             let validators = Validators::new(
                 FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
-                StatelessValidator::new(factories.clone()),
+                StatelessValidator::new(),
                 HorizonStateHeaderValidator::new(rules.clone(), db.clone()),
+                GenesisBlockValidator::new(),
+                ChainTipValidator::new(rules.clone(), factories.clone(), db.clone()),
             );
             db.set_validators(validators);
             let mempool_validator = MempoolValidators::new(

@@ -52,7 +52,7 @@ pub fn get_genesis_block() -> Block {
             commitment: Commitment::from_hex(
                 "feba9eeee21bb01aea86cfa52ea3c905647e3785040581dd9c1f6c89510e6548",
             )
-            .unwrap(),
+                .unwrap(),
             proof: BulletRangeProof::from_hex("9aadf23887b4bf69f2743c773aabfa0c70a270971d2fc9ad123340a1b6a1d015783012da766307c628a84bc2453f28f0157d64943e95a59ea3e4d892ef66bd70d85026432df39294a3000ed243c63e3e041c234498149962b447e3c8d234631bf036cd4f0649347957795b28a683e3b6190f1a42b51e5debbef7d2cee4941416ad15d8080ab498d7cfdee64d62a8a3701986aecede76894602689862d4465c0160fd23d97cc4379e857725905d757154f45b01803d8562bf03c25217e02ba600628c90e81f43cf94dd10b4ebd9acd3ee388ec99e659a06162af7ca3f34c84d0ef23dccbabc307af93fadad74c7c9df9e896f1c61b4340b55cf9a270218420c40ce8fec166f51e187fb9e53083e514047ff9970627b3d29dadcd8c4555e61ec2e8c09b99a9de4ac15c8583522a647960a1dd476992787f69cc9a2bf3a302fb0426ad6a121be5beb98a621e9171718901a1e6ff81e73dde7d5bbe32251ddf363423262293b81d2cb40354c41ed317b3c06f2fbddfdc1cf07547a854a50416b8d5f4adc39f021a189a5f032d1d445a19bf57c921e34d3f7d6ff8227490d50391765ccf24b84649c88f5a2aece1936c638c0b44eb21a2d9e1c159b96061d674600139e9e09d7e07ed7cc0f2c172da4104568e58ae3ef47b0ab5e7aafac7fdb05ef3a229812c4013d8fb19334f0b3488ce9bf0fc280c565ebde6197c9060740ae5d1a808de889dbb123e26fcf1dd99501f99ba6b6057aa0b0ffd07cfdf0690a2a9c79ecff61da6318c81e9066d3fb5fbc3b102b3e1d586a8933c653887c37f24c29257a7d123fa43f962f073c62e6cb0b318743b9bf9fc9043c0f56a9164eb0666174bf76e5e4b4264a35ab25edeae69af5388d7bec4690ce67304812a44df7af9909033a8234c2a777cf66b48c326de09fb2df8b23477a05d33cb59c0c4aa43ca60c").unwrap(),
         }],
         vec![TransactionKernel {
@@ -64,7 +64,7 @@ pub fn get_genesis_block() -> Block {
             excess: Commitment::from_hex(
                 "d811169b90cf749d056416121ba34bf8b435e1c1549c446433c233289fc1372c",
             )
-            .unwrap(),
+                .unwrap(),
             excess_sig: sig,
         }],
     );
@@ -101,5 +101,5 @@ pub fn get_gen_block_hash() -> Vec<u8> {
 }
 
 pub fn get_gen_header() -> BlockHeader {
-    BlockHeader::new(0)
+    get_genesis_block().header
 }

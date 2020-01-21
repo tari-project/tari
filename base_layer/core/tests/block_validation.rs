@@ -41,7 +41,9 @@ fn test_genesis_block() {
     let mut db = BlockchainDatabase::new(backend).unwrap();
     let validators = Validators::new(
         FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
-        StatelessValidator::new(factories.clone()),
+        StatelessValidator::new(),
+        MockValidator::new(true),
+        MockValidator::new(true),
         MockValidator::new(true),
     );
     db.set_validators(validators);

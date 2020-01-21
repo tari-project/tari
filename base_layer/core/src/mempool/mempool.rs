@@ -120,7 +120,7 @@ where T: BlockchainBackend
         let (mempool_validator, orphan_validator) = validators.into_validators();
         Self {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool_config),
-            orphan_pool: OrphanPool::new(blockchain_db.clone(), config.orphan_pool_config, orphan_validator),
+            orphan_pool: OrphanPool::new(config.orphan_pool_config, orphan_validator),
             pending_pool: PendingPool::new(config.pending_pool_config),
             reorg_pool: ReorgPool::new(config.reorg_pool_config),
             blockchain_db,

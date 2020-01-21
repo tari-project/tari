@@ -68,10 +68,14 @@ pub struct MutableMmrState {
 /// eligible to be added to the database. The `block` validator should perform a full consensus check. The `orphan`
 /// validator needs to check that the block is internally consistent, but can't know whether the PoW is sufficient,
 /// for example. The `horizon_state_header` validator is used to check the synced headers of the Horizon state.
+/// The `GenesisBlockValidator` is used to check that the chain builds on the correct genesis block.
+/// The `ChainTipValidator` is used to check that the accounting balance and MMR states of the chain state is valid.
 pub struct Validators<B: BlockchainBackend> {
     block: Arc<Validator<Block, B>>,
     orphan: Arc<Validator<Block, B>>,
     horizon_state_header: Arc<Validator<BlockHeader, B>>,
+    genesis_block: Arc<Validator<BlockHeader, B>>,
+    chain_tip: Arc<Validator<BlockHeader, B>>,
 }
 
 impl<B: BlockchainBackend> Validators<B> {
@@ -79,12 +83,16 @@ impl<B: BlockchainBackend> Validators<B> {
         block: impl Validation<Block, B> + 'static,
         orphan: impl Validation<Block, B> + 'static,
         horizon_state_header: impl Validation<BlockHeader, B> + 'static,
+        genesis_block: impl Validation<BlockHeader, B> + 'static,
+        chain_tip: impl Validation<BlockHeader, B> + 'static,
     ) -> Self
     {
         Self {
             block: Arc::new(Box::new(block)),
             orphan: Arc::new(Box::new(orphan)),
             horizon_state_header: Arc::new(Box::new(horizon_state_header)),
+            genesis_block: Arc::new(Box::new(genesis_block)),
+            chain_tip: Arc::new(Box::new(chain_tip)),
         }
     }
 }
@@ -95,6 +103,8 @@ impl<B: BlockchainBackend> Clone for Validators<B> {
             block: Arc::clone(&self.block),
             orphan: Arc::clone(&self.orphan),
             horizon_state_header: Arc::clone(&self.horizon_state_header),
+            genesis_block: Arc::clone(&self.genesis_block),
+            chain_tip: Arc::clone(&self.chain_tip),
         }
     }
 }
@@ -224,6 +234,8 @@ macro_rules! fetch {
 /// use tari_transactions::types::HashDigest;
 /// let db_backend = MemoryDatabase::<HashDigest>::default();
 /// let validators = Validators::new(
+///     MockValidator::new(true),
+///     MockValidator::new(true),
 ///     MockValidator::new(true),
 ///     MockValidator::new(true),
 ///     MockValidator::new(true),
@@ -850,7 +862,12 @@ where T: BlockchainBackend
 
     /// Perform validation on the horizon state of the synced blockchain and updates the metadata.
     pub fn validate_horizon_state(&self) -> Result<(), ChainStorageError> {
-        // TODO: #1185 Check the accounting balance and mmr state.
+        let genesis_block_header = self.fetch_header(0)?;
+        self.validators
+            .as_ref()
+            .expect("No validators added")
+            .genesis_block
+            .validate(&genesis_block_header)?;
 
         for height in 0..self.db.fetch_horizon_block_height()? {
             let header = self.fetch_header(height)?;
@@ -861,9 +878,17 @@ where T: BlockchainBackend
                 .validate(&header)?;
         }
 
-        if let Some(last_header) = self.db.fetch_last_header()? {
-            self.update_metadata(last_header.height, last_header.hash())?;
-        }
+        let last_header = self
+            .db
+            .fetch_last_header()?
+            .ok_or(ChainStorageError::InvalidQuery("Blockchain database is empty".into()))?;
+        self.validators
+            .as_ref()
+            .expect("No validators added")
+            .chain_tip
+            .validate(&last_header)?;
+
+        self.update_metadata(last_header.height, last_header.hash())?;
 
         Ok(())
     }

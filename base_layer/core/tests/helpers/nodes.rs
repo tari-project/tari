@@ -139,9 +139,11 @@ impl BaseNodeBuilder {
         block: impl Validation<Block, MemoryDatabase<HashDigest>> + 'static,
         orphan: impl Validation<Block, MemoryDatabase<HashDigest>> + 'static,
         horizon_state_header: impl Validation<BlockHeader, MemoryDatabase<HashDigest>> + 'static,
+        chain_gb: impl Validation<BlockHeader, MemoryDatabase<HashDigest>> + 'static,
+        chain_tip: impl Validation<BlockHeader, MemoryDatabase<HashDigest>> + 'static,
     ) -> Self
     {
-        let validators = Validators::new(block, orphan, horizon_state_header);
+        let validators = Validators::new(block, orphan, horizon_state_header, chain_gb, chain_tip);
         self.validators = Some(validators);
         self
     }
@@ -153,6 +155,8 @@ impl BaseNodeBuilder {
             max_history_len: 20,
         });
         let validators = self.validators.unwrap_or(Validators::new(
+            MockValidator::new(true),
+            MockValidator::new(true),
             MockValidator::new(true),
             MockValidator::new(true),
             MockValidator::new(true),
