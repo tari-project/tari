@@ -25,4 +25,4 @@ where_single_line = true
 wrap_comments = true
 overflow_delimited_expr = true
 edition = "2018"
-ignore=["comms/yamux", "comms/rust-multiaddr"]
+ignore=[]
