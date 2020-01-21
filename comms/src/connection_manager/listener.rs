@@ -29,6 +29,7 @@ use crate::{
     },
     multiaddr::Multiaddr,
     noise::NoiseConfig,
+    protocol::ProtocolId,
     transports::Transport,
 };
 use futures::{channel::mpsc, AsyncRead, AsyncWrite, SinkExt, StreamExt};
@@ -46,6 +47,7 @@ pub struct PeerListener<TTransport> {
     transport: TTransport,
     noise_config: NoiseConfig,
     listening_address: Option<Multiaddr>,
+    supported_protocols: Vec<ProtocolId>,
 }
 
 impl<TTransport> PeerListener<TTransport>
@@ -59,6 +61,7 @@ where
         transport: TTransport,
         noise_config: NoiseConfig,
         conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
+        supported_protocols: Vec<ProtocolId>,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
@@ -70,6 +73,7 @@ where
             conn_man_notifier,
             shutdown_signal: Some(shutdown_signal),
             listening_address: None,
+            supported_protocols,
         }
     }
 
@@ -144,6 +148,7 @@ where
             target: LOG_TARGET,
             "Starting noise protocol upgrade for peer at address '{}'", peer_addr
         );
+
         let noise_socket = self
             .noise_config
             .upgrade_socket(socket, ConnectionDirection::Inbound)
@@ -158,9 +163,10 @@ where
             self.executor.clone(),
             noise_socket,
             peer_addr,
-            peer_public_key.clone(),
+            peer_public_key,
             ConnectionDirection::Inbound,
             self.conn_man_notifier.clone(),
+            self.supported_protocols.clone(),
         )
         .await
     }

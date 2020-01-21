@@ -20,32 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use super::{ProtocolError, ProtocolId};
 use bytes::{Bytes, BytesMut};
-use derive_error::Error;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use log::*;
-use std::{convert::TryInto, io};
+use std::convert::TryInto;
 
 const LOG_TARGET: &str = "comms::connection_manager::protocol";
-
-/// Represents a protocol id string (e.g. /tari/transactions/1.0.0)
-pub type ProtocolId = bytes::Bytes;
 
 const PROTOCOL_NOT_SUPPORTED: &[u8] = b"not-supported";
 const PROTOCOL_NEGOTIATION_TERMINATED: &[u8] = b"negotiation-terminated";
 const BUF_CAPACITY: usize = std::u8::MAX as usize + 1;
 const MAX_ROUNDS_ALLOWED: u8 = 10;
-
-#[derive(Debug, Error)]
-pub enum ProtocolError {
-    IoError(io::Error),
-    /// The ProtocolId was longer than 255
-    ProtocolIdTooLong,
-    /// Protocol negotiation failed because the peer did not accept any protocols
-    ProtocolOutboundNegotiationFailed,
-    /// Protocol negotiation terminated by peer
-    ProtocolNegotiationTerminatedByPeer,
-}
 
 pub struct ProtocolNegotiation<'a, TSocket> {
     buf: BytesMut,
@@ -69,7 +55,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     /// Negotiate a protocol to speak. Since this node is initiating this interation, send each protocol this node
     /// wishes to speak until the destination node agrees.
     pub async fn negotiate_protocol_outbound<T>(&mut self, selected_protocols: T) -> Result<ProtocolId, ProtocolError>
-    where T: AsRef<[ProtocolId]> + 'a {
+    where T: AsRef<[ProtocolId]> {
         for protocol in selected_protocols.as_ref() {
             self.write_frame_flush(protocol).await?;
 
@@ -80,6 +66,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 return Err(ProtocolError::ProtocolNegotiationTerminatedByPeer);
             }
             if proto.as_ref() == protocol {
+                // Shallow copy
                 return Ok(protocol.clone());
             }
         }
@@ -93,7 +80,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     /// Negotiate a protocol to speak. Since this node is the responder, first we wait for a protocol to be sent and see
     /// if it is in the supported protocol list.
     pub async fn negotiate_protocol_inbound<T>(&mut self, supported_protocols: T) -> Result<ProtocolId, ProtocolError>
-    where T: AsRef<[ProtocolId]> + 'a {
+    where T: AsRef<[ProtocolId]> {
         for _ in 0..MAX_ROUNDS_ALLOWED {
             let proto = self.read_frame().await?;
 
@@ -105,7 +92,8 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
             match supported_protocols.as_ref().iter().find(|p| proto == p) {
                 Some(proto) => {
-                    self.write_frame_flush(proto.into()).await?;
+                    self.write_frame_flush(proto).await?;
+                    // Shallow copy
                     return Ok(proto.clone());
                 },
                 None => {
@@ -159,16 +147,15 @@ mod test {
     use super::*;
     use crate::memsocket::MemorySocket;
     use futures::future;
-    use tokio::runtime::Runtime;
+    use tari_test_utils::unpack_enum;
 
-    #[test]
-    fn smoke() {
-        let mut rt = Runtime::new().unwrap();
+    #[tokio_macros::test_basic]
+    async fn negotiate_success() {
         let (mut initiator, mut responder) = MemorySocket::new_pair();
         let mut negotiate_out = ProtocolNegotiation::new(&mut initiator);
         let mut negotiate_in = ProtocolNegotiation::new(&mut responder);
 
-        let supported_protocols = vec![b"A", b"B"]
+        let supported_protocols = vec![b"B", b"A"]
             .into_iter()
             .map(|p| ProtocolId::from_static(p))
             .collect::<Vec<_>>();
@@ -177,12 +164,38 @@ mod test {
             .map(|p| ProtocolId::from_static(p))
             .collect::<Vec<_>>();
 
-        let (in_proto, out_proto) = rt.block_on(future::join(
+        let (in_proto, out_proto) = future::join(
             negotiate_in.negotiate_protocol_inbound(supported_protocols),
             negotiate_out.negotiate_protocol_outbound(selected_protocols),
-        ));
+        )
+        .await;
 
-        assert_eq!(in_proto.unwrap(), b"A".to_vec());
-        assert_eq!(out_proto.unwrap(), b"A".to_vec());
+        assert_eq!(in_proto.unwrap(), ProtocolId::from_static(b"A"));
+        assert_eq!(out_proto.unwrap(), ProtocolId::from_static(b"A"));
+    }
+
+    #[tokio_macros::test_basic]
+    async fn negotiate_fail() {
+        let (mut initiator, mut responder) = MemorySocket::new_pair();
+        let mut negotiate_out = ProtocolNegotiation::new(&mut initiator);
+        let mut negotiate_in = ProtocolNegotiation::new(&mut responder);
+
+        let supported_protocols = vec![b"A", b"B"]
+            .into_iter()
+            .map(|p| ProtocolId::from_static(p))
+            .collect::<Vec<_>>();
+        let selected_protocols = vec![b"C", b"D", b"E"]
+            .into_iter()
+            .map(|p| ProtocolId::from_static(p))
+            .collect::<Vec<_>>();
+
+        let (in_proto, out_proto) = future::join(
+            negotiate_in.negotiate_protocol_inbound(supported_protocols),
+            negotiate_out.negotiate_protocol_outbound(selected_protocols),
+        )
+        .await;
+
+        unpack_enum!(ProtocolError::ProtocolNegotiationTerminatedByPeer = in_proto.unwrap_err());
+        unpack_enum!(ProtocolError::ProtocolOutboundNegotiationFailed = out_proto.unwrap_err());
     }
 }

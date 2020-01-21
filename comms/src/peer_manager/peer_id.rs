@@ -23,6 +23,7 @@
 use crate::consts::COMMS_RNG;
 use rand::RngCore;
 
+/// Represents a local peer id. This number is meaningless outside of this node.
 pub type PeerId = u64;
 
 pub fn generate_peer_key() -> PeerId {

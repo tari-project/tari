@@ -37,9 +37,10 @@ pub mod types;
 cfg_next! {
     mod multiplexing;
     mod noise;
+    mod protocol;
     mod socks;
-    pub mod memsocket;
 
+    pub mod memsocket;
     pub mod transports;
 }
 

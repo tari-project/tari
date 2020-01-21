@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,25 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod deprecated;
+mod error;
+mod negotiation;
+mod notifiers;
 
-pub use deprecated::*;
+/// Represents a protocol id string (e.g. /tari/transactions/1.0.0).
+/// This is atomically reference counted, so clones are shallow and cheap
+pub type ProtocolId = bytes::Bytes;
 
-cfg_next! {
-    mod dial_state;
-    mod dialer;
-    mod error;
-    mod listener;
-    mod manager;
-    mod peer_connection;
-    mod requester;
-    mod utils;
-
-    pub mod next {
-        pub use super::manager::{ConnectionManager, ConnectionManagerConfig, ConnectionManagerEvent};
-        pub use super::requester::{ConnectionManagerRequester, ConnectionManagerRequest};
-    }
-
-    #[cfg(test)]
-    mod tests;
-}
+pub use error::ProtocolError;
+pub use negotiation::ProtocolNegotiation;
+pub use notifiers::{ProtocolEvent, ProtocolNotifier};

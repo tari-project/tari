@@ -96,9 +96,9 @@ macro_rules! acquire_read_lock {
 /// instead of writing `if let Err(err) = my_error_call() { error!(...) }`, you can write
 /// `log_if_error!(my_error_call())`
 ///
-/// ```edition2018
+/// ```edition2018,no_compile
 /// # use tari_common::log_if_error;
-/// let opt = log_if_error!(level: debug, target: "docs", "Error sending reply: {}", Result::<(), _>::Err("this will be logged"));
+/// let opt = log_if_error!(target: "docs", level: debug, Result::<(), _>::Err("this will be logged as 'error' tag"), "Error: {error}");
 /// assert_eq!(opt, None);
 /// ```
 #[macro_export]

@@ -27,6 +27,7 @@ use crate::{
     multiaddr::Multiaddr,
     noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
+    protocol::ProtocolNotifier,
     transports::TcpTransport,
 };
 use futures::channel::mpsc;
@@ -87,6 +88,7 @@ pub fn build_connection_manager(
         Arc::new(ConstantBackoff::new(config.dial_backoff_duration)),
         request_rx,
         peer_manager.into(),
+        ProtocolNotifier::new(),
         shutdown,
     );
 
