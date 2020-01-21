@@ -514,6 +514,8 @@ fn store_and_retrieve_block_with_mmr_pruning_horizon() {
         MockValidator::new(true),
         MockValidator::new(true),
         MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
     );
     let db = MemoryDatabase::<HashDigest>::new(mct_config);
     let mut store = BlockchainDatabase::new(db).unwrap();

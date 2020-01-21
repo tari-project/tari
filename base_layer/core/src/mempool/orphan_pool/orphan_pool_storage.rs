@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
+    chain_storage::BlockchainBackend,
     mempool::orphan_pool::{error::OrphanPoolError, orphan_pool::OrphanPoolConfig},
     validation::{ValidationError, Validator},
 };
@@ -36,7 +36,6 @@ use ttl_cache::TtlCache;
 pub struct OrphanPoolStorage<T>
 where T: BlockchainBackend
 {
-    blockchain_db: BlockchainDatabase<T>,
     config: OrphanPoolConfig,
     txs_by_signature: TtlCache<Signature, Arc<Transaction>>,
     validator: Validator<Transaction, T>,
@@ -46,14 +45,8 @@ impl<T> OrphanPoolStorage<T>
 where T: BlockchainBackend
 {
     /// Create a new OrphanPoolStorage with the specified configuration
-    pub fn new(
-        blockchain_db: BlockchainDatabase<T>,
-        config: OrphanPoolConfig,
-        validator: Validator<Transaction, T>,
-    ) -> Self
-    {
+    pub fn new(config: OrphanPoolConfig, validator: Validator<Transaction, T>) -> Self {
         Self {
-            blockchain_db,
             config,
             txs_by_signature: TtlCache::new(config.storage_capacity),
             validator,
@@ -88,10 +81,6 @@ where T: BlockchainBackend
     ) -> Result<(Vec<Arc<Transaction>>, Vec<Arc<Transaction>>), OrphanPoolError> {
         let mut removed_tx_keys: Vec<Signature> = Vec::new();
         let mut removed_timelocked_tx_keys: Vec<Signature> = Vec::new();
-        let height = self
-            .blockchain_db
-            .get_height()?
-            .ok_or(OrphanPoolError::ChainHeightUndefined)?;
 
         // We dont care about tx's that appeared in valid blocks. Those tx's will time out in orphan pool and remove
         // them selves.

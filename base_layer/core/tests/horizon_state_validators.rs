@@ -20,14 +20,35 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[allow(dead_code)]
+mod helpers;
+
+use crate::helpers::block_builders::{
+    create_genesis_block,
+    create_genesis_block_with_coinbase_value,
+    generate_new_block_with_coinbase,
+};
+use std::sync::Arc;
 use tari_core::{
-    blocks::BlockHeader,
-    chain_storage::{BlockchainDatabase, DbTransaction, MemoryDatabase, Validators},
+    blocks::{genesis_block::get_genesis_block, Block, BlockHeader, BlockHeaderValidationError},
+    chain_storage::{BlockchainDatabase, ChainStorageError, DbTransaction, MemoryDatabase, Validators},
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{DiffAdjManager, Difficulty},
-    validation::{horizon_state_validators::HorizonStateHeaderValidator, mocks::MockValidator},
+    validation::{
+        chain_validators::{ChainTipValidator, GenesisBlockValidator},
+        horizon_state_validators::HorizonStateHeaderValidator,
+        mocks::MockValidator,
+        ValidationError,
+    },
 };
-use tari_transactions::types::HashDigest;
+use tari_transactions::{
+    fee::Fee,
+    helpers::{create_test_kernel, create_utxo},
+    tari_amount::{uT, MicroTari},
+    transaction::UnblindedOutput,
+    txn_schema,
+    types::{CryptoFactories, HashDigest},
+};
 
 fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_difficulty: Difficulty) {
     while header.achieved_difficulty() != achieved_difficulty {
@@ -44,6 +65,8 @@ fn validate_header_sequence_and_chaining() {
         MockValidator::new(true),
         MockValidator::new(true),
         HorizonStateHeaderValidator::new(rules, store.clone()),
+        MockValidator::new(true),
+        MockValidator::new(true),
     );
     store.set_validators(validators);
 
@@ -73,6 +96,8 @@ fn validate_median_timestamp() {
         MockValidator::new(true),
         MockValidator::new(true),
         HorizonStateHeaderValidator::new(rules, store.clone()),
+        MockValidator::new(true),
+        MockValidator::new(true),
     );
     store.set_validators(validators);
 
@@ -114,6 +139,8 @@ fn validate_achieved_difficulty() {
         MockValidator::new(true),
         MockValidator::new(true),
         HorizonStateHeaderValidator::new(rules, store.clone()),
+        MockValidator::new(true),
+        MockValidator::new(true),
     );
     store.set_validators(validators);
 
@@ -140,4 +167,179 @@ fn validate_achieved_difficulty() {
     txn.insert_header(header3);
     assert!(store.commit(txn).is_ok());
     assert!(store.validate_horizon_state().is_err());
+}
+
+#[test]
+fn validate_chain_genesis_block() {
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+        GenesisBlockValidator::new(),
+        MockValidator::new(true),
+    );
+    let factories = Arc::new(CryptoFactories::default());
+
+    let db = MemoryDatabase::<HashDigest>::default();
+    let mut store = BlockchainDatabase::new(db).unwrap();
+    store.set_validators(validators.clone());
+    let (block0, _) = create_genesis_block(&store, &factories);
+    store.add_block(block0).unwrap();
+    assert_eq!(
+        store.validate_horizon_state(),
+        Err(ChainStorageError::ValidationError(ValidationError::BlockHeaderError(
+            BlockHeaderValidationError::IncorrectGenesisBlockHeader
+        )))
+    );
+
+    let db = MemoryDatabase::<HashDigest>::default();
+    let mut store = BlockchainDatabase::new(db).unwrap();
+    store.set_validators(validators);
+    store.add_block(get_genesis_block()).unwrap();
+    assert!(store.validate_horizon_state().is_ok());
+}
+
+fn create_test_blockchain_with_emission(
+    rules: &ConsensusManager<MemoryDatabase<HashDigest>>,
+    factories: &CryptoFactories,
+    store: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
+) -> (Vec<Block>, Vec<Vec<UnblindedOutput>>)
+{
+    // Block 0
+    let block_reward0 = rules.emission_schedule().block_reward(0);
+    let (block0, output) = create_genesis_block_with_coinbase_value(&store, &factories, block_reward0);
+    store.add_block(block0.clone()).unwrap();
+    let mut blocks = vec![block0];
+    let mut outputs = vec![vec![output]];
+
+    // Block 1
+    let fee_per_gram = 25 * uT;
+    let schema = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![1000 * uT],
+        fee: fee_per_gram
+    )];
+    let block_reward1 = rules.emission_schedule().block_reward(1);
+    generate_new_block_with_coinbase(
+        store,
+        &factories,
+        &mut blocks,
+        &mut outputs,
+        schema,
+        block_reward1 + Fee::calculate(fee_per_gram, 1, 2),
+    )
+    .unwrap();
+    (blocks, outputs)
+}
+
+#[test]
+fn validate_accounting_balance() {
+    let db = MemoryDatabase::<HashDigest>::default();
+    let mut store = BlockchainDatabase::new(db).unwrap();
+    let factories = Arc::new(CryptoFactories::default());
+    let rules = ConsensusManager::default();
+    rules
+        .set_diff_manager(DiffAdjManager::new(store.clone()).unwrap())
+        .unwrap();
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+        ChainTipValidator::new(rules.clone(), factories.clone(), store.clone()),
+    );
+    store.set_validators(validators);
+
+    let (mut blocks, mut outputs) = create_test_blockchain_with_emission(&rules, &factories, &mut store);
+    assert!(store.validate_horizon_state().is_ok());
+
+    let fee_per_gram = 25 * uT;
+    let schema = vec![txn_schema!(
+        from: vec![outputs[1][0].clone()],
+        to: vec![2 * uT],
+        fee: fee_per_gram
+    )];
+    let total_fee = Fee::calculate(fee_per_gram, 1, 1);
+    let block_reward2 = rules.emission_schedule().block_reward(2);
+    generate_new_block_with_coinbase(
+        &mut store,
+        &factories,
+        &mut blocks,
+        &mut outputs,
+        schema,
+        block_reward2 + total_fee,
+    )
+    .unwrap();
+    assert_eq!(
+        store.validate_horizon_state(),
+        Err(ChainStorageError::ValidationError(
+            ValidationError::InvalidAccountingBalance
+        ))
+    );
+}
+
+#[test]
+fn validate_kernel_mmr_roots() {
+    let db = MemoryDatabase::<HashDigest>::default();
+    let mut store = BlockchainDatabase::new(db).unwrap();
+    let factories = Arc::new(CryptoFactories::default());
+    let rules = ConsensusManager::default();
+    rules
+        .set_diff_manager(DiffAdjManager::new(store.clone()).unwrap())
+        .unwrap();
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+        ChainTipValidator::new(rules.clone(), factories.clone(), store.clone()),
+    );
+    store.set_validators(validators);
+
+    create_test_blockchain_with_emission(&rules, &factories, &mut store);
+    assert!(store.validate_horizon_state().is_ok());
+
+    let kernel = create_test_kernel(100.into(), 0);
+    let mut txn = DbTransaction::new();
+    txn.insert_kernel(kernel.clone(), true);
+    assert!(store.commit(txn).is_ok());
+    assert_eq!(
+        store.validate_horizon_state(),
+        Err(ChainStorageError::ValidationError(ValidationError::BlockHeaderError(
+            BlockHeaderValidationError::MismatchedMmrRoots
+        )))
+    );
+}
+
+#[test]
+fn validate_output_and_rp_mmr_roots() {
+    let db = MemoryDatabase::<HashDigest>::default();
+    let mut store = BlockchainDatabase::new(db).unwrap();
+    let factories = Arc::new(CryptoFactories::default());
+    let rules = ConsensusManager::default();
+    rules
+        .set_diff_manager(DiffAdjManager::new(store.clone()).unwrap())
+        .unwrap();
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+        ChainTipValidator::new(rules.clone(), factories.clone(), store.clone()),
+    );
+    store.set_validators(validators);
+
+    create_test_blockchain_with_emission(&rules, &factories, &mut store);
+    assert!(store.validate_horizon_state().is_ok());
+
+    let (utxo, _) = create_utxo(MicroTari(10_000), &factories);
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo.clone(), true);
+    assert!(store.commit(txn).is_ok());
+    assert_eq!(
+        store.validate_horizon_state(),
+        Err(ChainStorageError::ValidationError(ValidationError::BlockHeaderError(
+            BlockHeaderValidationError::MismatchedMmrRoots
+        )))
+    );
 }

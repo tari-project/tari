@@ -40,13 +40,11 @@ use tari_transactions::{transaction::OutputFlags, types::CryptoFactories};
 use tari_utilities::hash::Hashable;
 
 /// This validator tests whether a candidate block is internally consistent
-pub struct StatelessValidator {
-    factories: Arc<CryptoFactories>,
-}
+pub struct StatelessValidator {}
 
 impl StatelessValidator {
-    pub fn new(factories: Arc<CryptoFactories>) -> Self {
-        Self { factories }
+    pub fn new() -> Self {
+        Self {}
     }
 }
 

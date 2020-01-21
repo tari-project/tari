@@ -64,6 +64,8 @@ pub type BlockHash = Vec<u8>;
 pub enum BlockHeaderValidationError {
     // The Genesis block header is incorrectly chained
     ChainedGenesisBlockHeader,
+    // Incorrect Genesis block header,
+    IncorrectGenesisBlockHeader,
     // Header does not form a valid chain
     InvalidChaining,
     // Invalid timestamp received on the header
@@ -72,6 +74,8 @@ pub enum BlockHeaderValidationError {
     InvalidTimestampFutureTimeLimit,
     // Invalid Proof of work for the header
     ProofOfWorkError(PowError),
+    // Mismatched MMR roots
+    MismatchedMmrRoots,
 }
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block

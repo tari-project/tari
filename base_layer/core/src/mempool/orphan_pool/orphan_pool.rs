@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
+    chain_storage::BlockchainBackend,
     consts::{MEMPOOL_ORPHAN_POOL_CACHE_TTL, MEMPOOL_ORPHAN_POOL_STORAGE_CAPACITY},
     mempool::orphan_pool::{error::OrphanPoolError, orphan_pool_storage::OrphanPoolStorage},
     validation::Validator,
@@ -63,14 +63,9 @@ impl<T> OrphanPool<T>
 where T: BlockchainBackend
 {
     /// Create a new OrphanPool with the specified configuration
-    pub fn new(
-        blockchain_db: BlockchainDatabase<T>,
-        config: OrphanPoolConfig,
-        validator: Validator<Transaction, T>,
-    ) -> Self
-    {
+    pub fn new(config: OrphanPoolConfig, validator: Validator<Transaction, T>) -> Self {
         Self {
-            pool_storage: Arc::new(RwLock::new(OrphanPoolStorage::new(blockchain_db, config, validator))),
+            pool_storage: Arc::new(RwLock::new(OrphanPoolStorage::new(config, validator))),
         }
     }
 
@@ -174,7 +169,6 @@ mod test {
         let store = create_mem_db();
         let mempool_validator = Box::new(TxInputAndMaturityValidator::new(store.clone()));
         let orphan_pool = OrphanPool::new(
-            store,
             OrphanPoolConfig {
                 storage_capacity: 3,
                 tx_ttl: Duration::from_millis(50),

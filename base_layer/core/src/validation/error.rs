@@ -39,4 +39,7 @@ pub enum ValidationError {
     CustomError(String),
     /// A database instance must be set for this validator
     NoDatabaseConfigured,
+    // The total expected supply plus the total accumulated (offset) excess does not equal the sum of all UTXO
+    // commitments.
+    InvalidAccountingBalance,
 }
