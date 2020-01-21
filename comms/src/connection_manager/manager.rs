@@ -32,6 +32,7 @@ use crate::{
     },
     noise::NoiseConfig,
     peer_manager::{AsyncPeerManager, NodeId},
+    protocol::{ProtocolEvent, ProtocolId, ProtocolNotifier},
     transports::Transport,
     types::{CommsPublicKey, DEFAULT_LISTENER_ADDRESS},
 };
@@ -53,14 +54,20 @@ const LOG_TARGET: &str = "comms::connection_manager::manager";
 const EVENT_CHANNEL_SIZE: usize = 32;
 const ESTABLISHER_CHANNEL_SIZE: usize = 32;
 
+#[derive(Debug)]
 pub enum ConnectionManagerEvent {
+    // Peer connection
     PeerConnected(Box<PeerConnection>),
     PeerDisconnected(Box<CommsPublicKey>),
     PeerConnectFailed(Box<CommsPublicKey>, ConnectionManagerError),
     PeerInboundConnectFailed(ConnectionManagerError),
 
+    // Listener
     Listening(Multiaddr),
     ListenFailed(ConnectionManagerError),
+
+    // Substreams
+    NewInboundSubstream(Arc<CommsPublicKey>, ProtocolId, yamux::Stream),
 }
 
 #[derive(Debug, Clone)]
@@ -93,6 +100,7 @@ pub struct ConnectionManager<TTransport, TBackoff> {
     peer_manager: AsyncPeerManager,
     active_connections: HashMap<NodeId, PeerConnection>,
     shutdown_signal: Option<ShutdownSignal>,
+    protocol_notifier: ProtocolNotifier<yamux::Stream>,
 }
 
 impl<TTransport, TBackoff> ConnectionManager<TTransport, TBackoff>
@@ -109,12 +117,15 @@ where
         backoff: Arc<TBackoff>,
         request_rx: mpsc::Receiver<ConnectionManagerRequest>,
         peer_manager: AsyncPeerManager,
+        protocol_notifier: ProtocolNotifier<yamux::Stream>,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
         let (event_tx, event_rx) = mpsc::channel(EVENT_CHANNEL_SIZE);
 
         let (establisher_tx, establisher_rx) = mpsc::channel(ESTABLISHER_CHANNEL_SIZE);
+
+        let supported_protocols = protocol_notifier.get_supported_protocols();
         let dialer = Dialer::new(
             executor.clone(),
             config.clone(),
@@ -123,6 +134,7 @@ where
             backoff,
             establisher_rx,
             event_tx.clone(),
+            supported_protocols.clone(),
             shutdown_signal.clone(),
         );
 
@@ -132,6 +144,7 @@ where
             transport,
             noise_config,
             event_tx,
+            supported_protocols,
             shutdown_signal.clone(),
         );
 
@@ -141,6 +154,7 @@ where
             shutdown_signal: Some(shutdown_signal),
             request_rx: request_rx.fuse(),
             peer_manager,
+            protocol_notifier,
             event_rx: event_rx.fuse(),
             establisher_tx,
             dialer: Some(dialer),
@@ -162,7 +176,7 @@ where
         loop {
             futures::select! {
                 event = self.event_rx.select_next_some() => {
-                    unimplemented!();
+                    self.handle_event(event).await;
                 },
 
                 request = self.request_rx.select_next_some() => {
@@ -209,6 +223,23 @@ where
                 },
                 None => self.dial_peer(node_id, reply_tx).await,
             },
+        }
+    }
+
+    async fn handle_event(&mut self, event: ConnectionManagerEvent) {
+        use ConnectionManagerEvent::*;
+
+        match event {
+            NewInboundSubstream(_peer_public_key, protocol, stream) => {
+                log_if_error!(
+                    target: LOG_TARGET,
+                    self.protocol_notifier
+                        .notify(&protocol, ProtocolEvent::NewSubstream(123, stream))
+                        .await,
+                    "Error sending NewSubstream notification because '{error}'",
+                );
+            },
+            _ => {},
         }
     }
 
@@ -291,6 +322,7 @@ mod test {
             Arc::new(ConstantBackoff::new(Duration::from_secs(1))),
             request_rx,
             peer_manager.into(),
+            ProtocolNotifier::new(),
             shutdown.to_signal(),
         );
 

@@ -33,6 +33,7 @@ use crate::{
     multiaddr::Multiaddr,
     noise::{NoiseConfig, NoiseSocket},
     peer_manager::{Peer, PeerId},
+    protocol::ProtocolId,
     transports::Transport,
 };
 use futures::{
@@ -54,7 +55,7 @@ use tokio::{runtime, time};
 
 const LOG_TARGET: &str = "comms::connection_manager::establisher";
 
-type DialResult<TSock> = Result<(TSock, Multiaddr), ConnectionManagerError>;
+type DialResult<TSock> = Result<(NoiseSocket<TSock>, Multiaddr), ConnectionManagerError>;
 
 #[derive(Debug)]
 pub enum DialerRequest {
@@ -76,6 +77,7 @@ pub struct Dialer<TTransport, TBackoff> {
     conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
     shutdown: Option<ShutdownSignal>,
     pending_dial_requests: HashMap<PeerId, Vec<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>>,
+    supported_protocols: Vec<ProtocolId>,
 }
 
 impl<TTransport, TBackoff> Dialer<TTransport, TBackoff>
@@ -92,6 +94,7 @@ where
         backoff: Arc<TBackoff>,
         request_rx: mpsc::Receiver<DialerRequest>,
         conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
+        supported_protocols: Vec<ProtocolId>,
         shutdown: ShutdownSignal,
     ) -> Self
     {
@@ -106,6 +109,7 @@ where
             conn_man_notifier,
             shutdown: Some(shutdown),
             pending_dial_requests: Default::default(),
+            supported_protocols,
         }
     }
 
@@ -135,9 +139,7 @@ where
 
     fn handle_request(
         &mut self,
-        pending_dials: &mut FuturesUnordered<
-            BoxFuture<'static, Option<(DialState, DialResult<NoiseSocket<TTransport::Output>>)>>,
-        >,
+        pending_dials: &mut FuturesUnordered<BoxFuture<'static, Option<(DialState, DialResult<TTransport::Output>)>>>,
         request: DialerRequest,
     )
     {
@@ -189,12 +191,7 @@ where
         })
     }
 
-    async fn handle_dial_result(
-        &mut self,
-        dial_state: DialState,
-        dial_result: DialResult<NoiseSocket<TTransport::Output>>,
-    )
-    {
+    async fn handle_dial_result(&mut self, dial_state: DialState, dial_result: DialResult<TTransport::Output>) {
         let DialState { peer, reply_tx, .. } = dial_state;
         let peer_id = peer.id();
 
@@ -232,6 +229,7 @@ where
             peer.node_id.short_str(),
             peer_addr
         );
+
         let peer_public_key = socket
             .get_remote_public_key()
             .ok_or(ConnectionManagerError::InvalidStaticPublicKey)?;
@@ -239,6 +237,7 @@ where
         if peer_public_key != peer.public_key {
             return Err(ConnectionManagerError::DialedPublicKeyMismatch);
         }
+
         let peer_conn_result = create_peer_connection(
             self.executor.clone(),
             socket,
@@ -246,6 +245,7 @@ where
             peer_public_key,
             ConnectionDirection::Outbound,
             self.conn_man_notifier.clone(),
+            self.supported_protocols.clone(),
         )
         .await;
 
@@ -292,9 +292,7 @@ where
 
     fn handle_dial_peer_request(
         &mut self,
-        pending_dials: &mut FuturesUnordered<
-            BoxFuture<'static, Option<(DialState, DialResult<NoiseSocket<TTransport::Output>>)>>,
-        >,
+        pending_dials: &mut FuturesUnordered<BoxFuture<'static, Option<(DialState, DialResult<TTransport::Output>)>>>,
         peer: Peer,
         reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
     )
@@ -325,7 +323,7 @@ where
         transport: TTransport,
         backoff: Arc<TBackoff>,
         max_attempts: usize,
-    ) -> Option<(DialState, DialResult<NoiseSocket<TTransport::Output>>)>
+    ) -> Option<(DialState, DialResult<TTransport::Output>)>
     {
         // Container for dial state
         let mut dial_state = Some(dial_state);
@@ -381,7 +379,7 @@ where
         dial_state: DialState,
         noise_config: &NoiseConfig,
         transport: &TTransport,
-    ) -> Option<(DialState, DialResult<NoiseSocket<TTransport::Output>>)>
+    ) -> Option<(DialState, DialResult<TTransport::Output>)>
     {
         let mut addr_iter = dial_state.peer.addresses.address_iter();
         let cancel_signal = dial_state.get_cancel_signal();
