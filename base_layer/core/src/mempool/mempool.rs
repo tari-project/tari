@@ -35,7 +35,6 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tari_transactions::{transaction::Transaction, types::Signature};
-use tari_utilities::hash::Hashable;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum TxStorageResponse {

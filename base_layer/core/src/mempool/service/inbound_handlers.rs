@@ -23,11 +23,13 @@
 use crate::{
     chain_storage::BlockchainBackend,
     mempool::{
-        service::{MempoolRequest, MempoolResponse, MempoolServiceError},
+        service::{MempoolRequest, MempoolResponse, MempoolServiceError, OutboundMempoolServiceInterface},
         Mempool,
     },
 };
 use std::sync::Arc;
+
+use tari_comms::types::CommsPublicKey;
 use tari_transactions::transaction::Transaction;
 
 /// The MempoolInboundHandlers is used to handle all received inbound mempool requests and transactions from remote
@@ -36,14 +38,15 @@ pub struct MempoolInboundHandlers<T>
 where T: BlockchainBackend
 {
     mempool: Mempool<T>,
+    outbound_nmi: OutboundMempoolServiceInterface,
 }
 
 impl<T> MempoolInboundHandlers<T>
 where T: BlockchainBackend
 {
     /// Construct the MempoolInboundHandlers.
-    pub fn new(mempool: Mempool<T>) -> Self {
-        Self { mempool }
+    pub fn new(mempool: Mempool<T>, outbound_nmi: OutboundMempoolServiceInterface) -> Self {
+        Self { mempool, outbound_nmi }
     }
 
     /// Handle inbound Mempool service requests from remote nodes and local services.
@@ -58,9 +61,20 @@ where T: BlockchainBackend
     }
 
     /// Handle inbound transactions from remote wallets and local services.
-    pub async fn handle_transaction(&self, tx: &Transaction) -> Result<(), MempoolServiceError> {
-        // TODO tx must pass through the validation pipeline, with checking of its internal consistency, before adding
-        // and propagating it.
-        Ok(self.mempool.insert(Arc::new(tx.clone()))?)
+    pub async fn handle_transaction(
+        &mut self,
+        tx: &Transaction,
+        source_peer: Option<CommsPublicKey>,
+    ) -> Result<(), MempoolServiceError>
+    {
+        self.mempool.insert(Arc::new(tx.clone()))?;
+        let exclude_list = if let Some(peer) = source_peer {
+            vec![peer]
+        } else {
+            Vec::new()
+        };
+        self.outbound_nmi.propagate_tx(tx.clone(), exclude_list).await?;
+
+        Ok(())
     }
 }

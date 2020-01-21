@@ -24,8 +24,10 @@ use crate::mempool::{
     mempool::{StatsResponse, TxStorageResponse},
     service::{MempoolRequest, MempoolResponse, MempoolServiceError},
 };
+use futures::channel::mpsc::UnboundedSender;
+use tari_comms::types::CommsPublicKey;
 use tari_service_framework::reply_channel::SenderService;
-use tari_transactions::types::Signature;
+use tari_transactions::{transaction::Transaction, types::Signature};
 use tower_service::Service;
 
 /// The OutboundMempoolServiceInterface provides an interface to request information from the Mempools of remote Base
@@ -33,12 +35,20 @@ use tower_service::Service;
 #[derive(Clone)]
 pub struct OutboundMempoolServiceInterface {
     request_sender: SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
+    tx_sender: UnboundedSender<(Transaction, Vec<CommsPublicKey>)>,
 }
 
 impl OutboundMempoolServiceInterface {
     /// Construct a new OutboundMempoolServiceInterface with the specified SenderService.
-    pub fn new(request_sender: SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>) -> Self {
-        Self { request_sender }
+    pub fn new(
+        request_sender: SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
+        tx_sender: UnboundedSender<(Transaction, Vec<CommsPublicKey>)>,
+    ) -> Self
+    {
+        Self {
+            request_sender,
+            tx_sender,
+        }
     }
 
     /// Request the stats from the mempool of a remote base node.
@@ -48,6 +58,18 @@ impl OutboundMempoolServiceInterface {
         } else {
             Err(MempoolServiceError::UnexpectedApiResponse)
         }
+    }
+
+    /// Transmit a transaction to remote base nodes, excluding the provided peers.
+    pub async fn propagate_tx(
+        &mut self,
+        transaction: Transaction,
+        exclude_peers: Vec<CommsPublicKey>,
+    ) -> Result<(), MempoolServiceError>
+    {
+        self.tx_sender
+            .unbounded_send((transaction, exclude_peers))
+            .map_err(|_| MempoolServiceError::BroadcastFailed)
     }
 
     /// Check if the specified transaction is stored in the mempool of a remote base node.
