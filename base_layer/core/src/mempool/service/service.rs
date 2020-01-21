@@ -36,7 +36,7 @@ use crate::{
 };
 use futures::{
     channel::{
-        mpsc::{channel, Receiver, Sender},
+        mpsc::{channel, Receiver, Sender, UnboundedReceiver},
         oneshot::Sender as OneshotSender,
     },
     pin_mut,
@@ -46,6 +46,7 @@ use futures::{
 };
 use log::*;
 use std::{collections::HashMap, convert::TryInto, time::Duration};
+use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
@@ -76,6 +77,7 @@ impl Default for MempoolServiceConfig {
 /// A convenience struct to hold all the Mempool service streams
 pub struct MempoolStreams<SOutReq, SInReq, SInRes, STxIn> {
     outbound_request_stream: SOutReq,
+    outbound_tx_stream: UnboundedReceiver<(Transaction, Vec<CommsPublicKey>)>,
     inbound_request_stream: SInReq,
     inbound_response_stream: SInRes,
     inbound_transaction_stream: STxIn,
@@ -90,6 +92,7 @@ where
 {
     pub fn new(
         outbound_request_stream: SOutReq,
+        outbound_tx_stream: UnboundedReceiver<(Transaction, Vec<CommsPublicKey>)>,
         inbound_request_stream: SInReq,
         inbound_response_stream: SInRes,
         inbound_transaction_stream: STxIn,
@@ -97,6 +100,7 @@ where
     {
         Self {
             outbound_request_stream,
+            outbound_tx_stream,
             inbound_request_stream,
             inbound_response_stream,
             inbound_transaction_stream,
@@ -150,6 +154,8 @@ where B: BlockchainBackend
     {
         let outbound_request_stream = streams.outbound_request_stream.fuse();
         pin_mut!(outbound_request_stream);
+        let outbound_tx_stream = streams.outbound_tx_stream.fuse();
+        pin_mut!(outbound_tx_stream);
         let inbound_request_stream = streams.inbound_request_stream.fuse();
         pin_mut!(inbound_request_stream);
         let inbound_response_stream = streams.inbound_response_stream.fuse();
@@ -169,6 +175,15 @@ where B: BlockchainBackend
                     let (request, reply_tx) = outbound_request_context.split();
                     let _ = self.handle_outbound_request(reply_tx,request).await.or_else(|err| {
                         error!(target: LOG_TARGET, "Failed to handle outbound request message: {:?}", err);
+                        Err(err)
+                    });
+                },
+
+                // Outbound tx messages from the OutboundMempoolServiceInterface
+                outbound_tx_context = outbound_tx_stream.select_next_some() => {
+                    let (tx, excluded_peers) = outbound_tx_context;
+                    let _ = self.handle_outbound_tx(tx,excluded_peers).await.or_else(|err| {
+                        error!(target: LOG_TARGET, "Failed to handle outbound tx message {:?}",err);
                         Err(err)
                     });
                 },
@@ -343,17 +358,9 @@ where B: BlockchainBackend
     {
         let DomainMessage::<_> { source_peer, inner, .. } = domain_transaction_msg;
 
-        self.inbound_handlers.handle_transaction(&inner.clone().into()).await?;
-
-        self.outbound_message_service
-            .propagate(
-                NodeDestination::Unknown,
-                OutboundEncryption::None,
-                vec![source_peer.public_key],
-                OutboundDomainMessage::new(TariMessageType::NewTransaction, ProtoTransaction::from(inner)),
-            )
-            .await
-            .map_err(|e| MempoolServiceError::OutboundMessageService(e.to_string()))?;
+        self.inbound_handlers
+            .handle_transaction(&inner.clone().into(), Some(source_peer.public_key))
+            .await?;
 
         Ok(())
     }
@@ -372,6 +379,24 @@ where B: BlockchainBackend
             }
         }
         Ok(())
+    }
+
+    async fn handle_outbound_tx(
+        &mut self,
+        tx: Transaction,
+        exclude_peers: Vec<CommsPublicKey>,
+    ) -> Result<(), MempoolServiceError>
+    {
+        self.outbound_message_service
+            .propagate(
+                NodeDestination::Unknown,
+                OutboundEncryption::EncryptForPeer,
+                exclude_peers,
+                OutboundDomainMessage::new(TariMessageType::NewTransaction, ProtoTransaction::from(tx)),
+            )
+            .await
+            .map_err(|e| MempoolServiceError::OutboundMessageService(e.to_string()))
+            .map(|_| ())
     }
 
     async fn spawn_request_timeout(&self, request_key: RequestKey, timeout: Duration) {

@@ -32,7 +32,7 @@ use crate::{
         },
     },
 };
-use futures::{future, Future, Stream, StreamExt};
+use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, future, Future, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -153,13 +153,14 @@ where T: BlockchainBackend + 'static
         let inbound_response_stream = self.inbound_response_stream();
         let inbound_transaction_stream = self.inbound_transaction_stream();
         // Connect MempoolOutboundServiceHandle to MempoolService
+        let (outbound_tx_sender_service, outbound_tx_stream) = futures_mpsc_channel_unbounded();
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
-        let outbound_mp_interface = OutboundMempoolServiceInterface::new(outbound_request_sender_service);
-
-        let inbound_handlers = MempoolInboundHandlers::new(self.mempool.clone());
+        let outbound_mp_interface =
+            OutboundMempoolServiceInterface::new(outbound_request_sender_service, outbound_tx_sender_service);
         let executer_clone = executor.clone(); // Give MempoolService access to the executor
         let config = self.config.clone();
-
+        let mempool = self.mempool.clone();
+        let inbound_handlers = MempoolInboundHandlers::new(mempool, outbound_mp_interface.clone());
         // Register handle to OutboundMempoolServiceInterface before waiting for handles to be ready
         handles_fut.register(outbound_mp_interface);
 
@@ -172,6 +173,7 @@ where T: BlockchainBackend + 'static
 
             let streams = MempoolStreams::new(
                 outbound_request_stream,
+                outbound_tx_stream,
                 inbound_request_stream,
                 inbound_response_stream,
                 inbound_transaction_stream,

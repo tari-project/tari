@@ -27,7 +27,6 @@ use crate::{
 };
 use std::sync::Arc;
 use tari_transactions::{transaction::Transaction, types::Signature};
-use tari_utilities::hash::Hashable;
 use ttl_cache::TtlCache;
 
 /// OrphanPool makes use of OrphanPoolStorage to provide thread save access to its TtlCache.
