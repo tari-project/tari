@@ -26,7 +26,7 @@ pub mod base_node {
 
 use crate::proto::core;
 // Required for `super::types` used in generated files
-use tari_transactions::proto::types;
+use crate::transactions::proto::types;
 
 pub mod chain_metadata;
 pub mod mmr_state_request;

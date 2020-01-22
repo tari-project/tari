@@ -37,13 +37,13 @@ use tari_core::{
     blocks::{Block, BlockHeader},
     consensus::ConsensusManager,
     proof_of_work::Difficulty,
+    transactions::{tari_amount::MicroTari, transaction::*, types::*},
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PK, SecretKey},
     range_proof::RangeProofService,
 };
-use tari_transactions::{tari_amount::MicroTari, transaction::*, types::*};
 use tari_utilities::byte_array::ByteArray;
 use tokio_executor::threadpool::{blocking, ThreadPool};
 

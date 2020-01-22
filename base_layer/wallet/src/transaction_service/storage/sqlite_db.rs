@@ -47,7 +47,7 @@ use diesel::{
     SqliteConnection,
 };
 use std::{collections::HashMap, convert::TryFrom, io, path::Path, time::Duration};
-use tari_transactions::{
+use tari_core::transactions::{
     tari_amount::MicroTari,
     types::{Commitment, PublicKey},
 };
@@ -894,12 +894,7 @@ mod test {
     use chrono::Utc;
     use diesel::{r2d2::ConnectionManager, Connection, SqliteConnection};
     use std::convert::TryFrom;
-    use tari_crypto::{
-        commitment::HomomorphicCommitmentFactory,
-        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-    };
-    use tari_test_utils::random::string;
-    use tari_transactions::{
+    use tari_core::transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, Transaction, UnblindedOutput},
         transaction_protocol::sender::TransactionSenderMessage,
@@ -907,6 +902,11 @@ mod test {
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     };
+    use tari_crypto::{
+        commitment::HomomorphicCommitmentFactory,
+        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    };
+    use tari_test_utils::random::string;
     use tempdir::TempDir;
 
     #[test]

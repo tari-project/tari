@@ -26,11 +26,10 @@ use crate::{
         service::{MempoolRequest, MempoolResponse, MempoolServiceError, OutboundMempoolServiceInterface},
         Mempool,
     },
+    transactions::transaction::Transaction,
 };
 use std::sync::Arc;
-
 use tari_comms::types::CommsPublicKey;
-use tari_transactions::transaction::Transaction;
 
 /// The MempoolInboundHandlers is used to handle all received inbound mempool requests and transactions from remote
 /// nodes.

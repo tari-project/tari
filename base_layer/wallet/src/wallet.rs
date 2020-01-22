@@ -57,6 +57,7 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::Dht;
+use tari_core::transactions::types::CryptoFactories;
 use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization::{initialize_comms, CommsConfig},
@@ -66,7 +67,6 @@ use tari_p2p::{
     },
 };
 use tari_service_framework::StackBuilder;
-use tari_transactions::types::CryptoFactories;
 use tokio::runtime::Runtime;
 
 #[derive(Clone)]

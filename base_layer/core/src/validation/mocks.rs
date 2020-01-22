@@ -48,9 +48,9 @@ impl<T, B: BlockchainBackend> Validation<T, B> for MockValidator {
 mod test {
     use crate::{
         chain_storage::MemoryDatabase,
+        transactions::types::HashDigest,
         validation::{mocks::MockValidator, Validation},
     };
-    use tari_transactions::types::HashDigest;
 
     #[test]
     fn mock_is_valid() {

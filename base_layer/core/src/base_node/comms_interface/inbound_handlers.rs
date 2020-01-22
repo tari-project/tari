@@ -36,12 +36,12 @@ use crate::{
     },
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::Mempool,
+    transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 use futures::SinkExt;
 use log::*;
 use tari_broadcast_channel::Publisher;
 use tari_comms::types::CommsPublicKey;
-use tari_transactions::transaction::{TransactionKernel, TransactionOutput};
 
 const LOG_TARGET: &str = "base_node::comms_interface::inbound_handler";
 

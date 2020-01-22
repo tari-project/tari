@@ -40,16 +40,16 @@ use tari_core::{
         Validators,
     },
     helpers::{create_mem_db, create_orphan_block},
+    transactions::{
+        helpers::{create_test_kernel, create_utxo, spend_utxos},
+        tari_amount::{uT, MicroTari, T},
+        types::{CryptoFactories, HashDigest},
+    },
+    tx,
+    txn_schema,
     validation::mocks::MockValidator,
 };
 use tari_mmr::{MerkleChangeTrackerConfig, MutableMmr};
-use tari_transactions::{
-    helpers::{create_test_kernel, create_utxo, spend_utxos},
-    tari_amount::{uT, MicroTari, T},
-    tx,
-    txn_schema,
-    types::{CryptoFactories, HashDigest},
-};
 use tari_utilities::{hex::Hex, Hashable};
 
 fn init_log() {

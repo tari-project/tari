@@ -24,28 +24,28 @@ use tari_core::{
     blocks::{Block, BlockBuilder, BlockHeader, NewBlockTemplate},
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, MemoryDatabase},
     consensus::emission::EmissionSchedule,
+    transactions::{
+        helpers::{
+            create_random_signature,
+            create_random_signature_from_s_key,
+            create_utxo,
+            spend_utxos,
+            TransactionSchema,
+        },
+        tari_amount::MicroTari,
+        transaction::{
+            KernelBuilder,
+            KernelFeatures,
+            OutputFeatures,
+            Transaction,
+            TransactionKernel,
+            TransactionOutput,
+            UnblindedOutput,
+        },
+        types::{Commitment, CryptoFactories, HashDigest, PublicKey},
+    },
 };
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
-use tari_transactions::{
-    helpers::{
-        create_random_signature,
-        create_random_signature_from_s_key,
-        create_utxo,
-        spend_utxos,
-        TransactionSchema,
-    },
-    tari_amount::MicroTari,
-    transaction::{
-        KernelBuilder,
-        KernelFeatures,
-        OutputFeatures,
-        Transaction,
-        TransactionKernel,
-        TransactionOutput,
-        UnblindedOutput,
-    },
-    types::{Commitment, CryptoFactories, HashDigest, PublicKey},
-};
 use tari_utilities::{hash::Hashable, hex::Hex};
 
 fn create_coinbase(

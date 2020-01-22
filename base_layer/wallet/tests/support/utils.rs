@@ -22,14 +22,14 @@
 
 use rand::{distributions::Alphanumeric, CryptoRng, OsRng, Rng};
 use std::{fmt::Debug, iter, thread, time::Duration};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-};
-use tari_transactions::{
+use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
     types::{CommitmentFactory, PrivateKey, PublicKey},
+};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
 };
 
 pub fn assert_change<F, T>(mut func: F, to: T, poll_count: usize)

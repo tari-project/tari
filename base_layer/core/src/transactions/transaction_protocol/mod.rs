@@ -55,7 +55,7 @@ pub mod sender;
 pub mod single_receiver;
 pub mod transaction_initializer;
 
-use crate::{
+use crate::transactions::{
     tari_amount::*,
     transaction::TransactionError,
     types::{Challenge, HashOutput, MessageHash, PublicKey},

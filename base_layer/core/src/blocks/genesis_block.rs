@@ -26,7 +26,7 @@ use crate::{
     proof_of_work::{PowAlgorithm, ProofOfWork},
 };
 
-use tari_transactions::{
+use crate::transactions::{
     aggregated_body::AggregateBody,
     bullet_rangeproofs::BulletRangeProof,
     tari_amount::MicroTari,

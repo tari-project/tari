@@ -21,14 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::protocol as proto;
-use crate::transaction_protocol::sender::{SingleRoundSenderData, TransactionSenderMessage};
+use crate::transactions::transaction_protocol::sender::{SingleRoundSenderData, TransactionSenderMessage};
 
 use super::protocol::transaction_sender_message::Message as ProtoTransactionSenderMessage;
 use std::convert::{TryFrom, TryInto};
 use tari_utilities::ByteArray;
 
 // The generated _oneof_ enum
-use crate::types::PublicKey;
+use crate::transactions::types::PublicKey;
 use proto::transaction_sender_message::Message as ProtoTxnSenderMessage;
 
 impl proto::TransactionSenderMessage {

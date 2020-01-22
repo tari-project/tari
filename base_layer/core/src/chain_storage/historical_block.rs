@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::blocks::Block;
+use crate::{
+    blocks::Block,
+    transactions::{transaction::TransactionOutput, types::Commitment},
+};
 use serde::{Deserialize, Serialize};
-use tari_transactions::{transaction::TransactionOutput, types::Commitment};
 
 /// The representation of a historical block in the blockchain. It is essentially identical to a protocol-defined
 /// block but contains some extra metadata that clients such as Block Explorers will find interesting.

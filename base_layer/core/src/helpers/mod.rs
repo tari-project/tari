@@ -28,9 +28,9 @@ mod mock_backend;
 use crate::{
     blocks::{Block, BlockBuilder, BlockHeader},
     chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
+    transactions::{transaction::Transaction, types::HashDigest},
     validation::mocks::MockValidator,
 };
-use tari_transactions::{transaction::Transaction, types::HashDigest};
 
 pub use mock_backend::MockBackend;
 

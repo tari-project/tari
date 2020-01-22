@@ -24,12 +24,12 @@ use crate::support::utils::{make_input, random_string};
 use chrono::{Duration as ChronoDuration, Utc};
 use rand::RngCore;
 use std::time::Duration;
-use tari_crypto::keys::SecretKey;
-use tari_transactions::{
+use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::OutputFeatures,
     types::{CryptoFactories, PrivateKey},
 };
+use tari_crypto::keys::SecretKey;
 use tari_wallet::output_manager_service::{
     service::Balance,
     storage::{

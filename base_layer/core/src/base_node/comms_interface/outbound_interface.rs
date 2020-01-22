@@ -30,14 +30,14 @@ use crate::{
     },
     blocks::{blockheader::BlockHeader, Block},
     chain_storage::{ChainMetadata, HistoricalBlock, MmrTree, MutableMmrState},
+    transactions::{
+        transaction::{TransactionKernel, TransactionOutput},
+        types::HashOutput,
+    },
 };
 use futures::channel::mpsc::UnboundedSender;
 use tari_comms::types::CommsPublicKey;
 use tari_service_framework::reply_channel::SenderService;
-use tari_transactions::{
-    transaction::{TransactionKernel, TransactionOutput},
-    types::HashOutput,
-};
 use tower_service::Service;
 
 /// The OutboundNodeCommsInterface provides an interface to request information from remove nodes.

@@ -23,7 +23,7 @@
 //! Impls for transaction proto
 
 use super::types as proto;
-use crate::{
+use crate::transactions::{
     aggregated_body::AggregateBody,
     bullet_rangeproofs::BulletRangeProof,
     proto::utils::try_convert_all,

@@ -29,6 +29,10 @@ use crate::{
         db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataValue, MmrTree, WriteOperation},
         error::ChainStorageError,
     },
+    transactions::{
+        transaction::{TransactionKernel, TransactionOutput},
+        types::HashOutput,
+    },
 };
 use croaring::Bitmap;
 use digest::Digest;
@@ -45,10 +49,6 @@ use tari_mmr::{
     MerkleProof,
     MutableMmr,
     MutableMmrLeafNodes,
-};
-use tari_transactions::{
-    transaction::{TransactionKernel, TransactionOutput},
-    types::HashOutput,
 };
 use tari_utilities::hash::Hashable;
 
@@ -578,10 +578,13 @@ fn unspend_stxo<D: Digest>(db: &mut RwLockWriteGuard<InnerDatabase<D>>, hash: Ha
 
 #[cfg(test)]
 mod test {
-    use crate::chain_storage::{BlockchainBackend, MemoryDatabase, MmrTree};
+    use crate::{
+        chain_storage::{BlockchainBackend, MemoryDatabase, MmrTree},
+        transactions::{tari_amount::uT, types::HashDigest},
+        tx,
+    };
     use croaring::Bitmap;
     use tari_mmr::{MerkleChangeTrackerConfig, MutableMmr, MutableMmrLeafNodes};
-    use tari_transactions::{tari_amount::uT, tx, types::HashDigest};
     use tari_utilities::Hashable;
 
     /// Test the ability to assign a given state to the database MMR

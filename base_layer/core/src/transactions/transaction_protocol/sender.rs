@@ -20,14 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
+use crate::transactions::{
     tari_amount::*,
-    transaction::{KernelFeatures, Transaction, TransactionBuilder, TransactionInput, TransactionOutput},
-    types::{BlindingFactor, PrivateKey, PublicKey, RangeProofService, Signature},
-};
-
-use crate::{
-    transaction::{KernelBuilder, MAX_TRANSACTION_INPUTS, MAX_TRANSACTION_OUTPUTS, MINIMUM_TRANSACTION_FEE},
+    transaction::{
+        KernelBuilder,
+        KernelFeatures,
+        Transaction,
+        TransactionBuilder,
+        TransactionInput,
+        TransactionOutput,
+        MAX_TRANSACTION_INPUTS,
+        MAX_TRANSACTION_OUTPUTS,
+        MINIMUM_TRANSACTION_FEE,
+    },
     transaction_protocol::{
         build_challenge,
         recipient::{RecipientInfo, RecipientSignedMessage},
@@ -35,7 +40,7 @@ use crate::{
         TransactionMetadata,
         TransactionProtocolError as TPE,
     },
-    types::CryptoFactories,
+    types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, RangeProofService, Signature},
 };
 use digest::Digest;
 use serde::{Deserialize, Serialize};
@@ -494,7 +499,7 @@ impl SenderState {
 
 #[cfg(test)]
 mod test {
-    use crate::{
+    use crate::transactions::{
         fee::Fee,
         helpers::{make_input, TestParams},
         tari_amount::*,

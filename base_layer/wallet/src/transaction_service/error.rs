@@ -28,8 +28,8 @@ use derive_error::Error;
 use diesel::result::Error as DieselError;
 use serde_json::Error as SerdeJsonError;
 use tari_comms_dht::outbound::DhtOutboundError;
+use tari_core::transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
 use tari_service_framework::reply_channel::TransportChannelError;
-use tari_transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
 use time::OutOfRangeError;
 
 #[derive(Debug, Error)]

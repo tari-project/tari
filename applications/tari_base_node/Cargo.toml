@@ -11,7 +11,6 @@ tari_common = {path = "../../common", version= "^0.0"}
 tari_comms = { version = "^0.0", path = "../../comms"}
 tari_comms_dht = { version = "^0.0", path = "../../comms/dht"}
 tari_core = {path = "../../base_layer/core", version= "^0.0"}
-tari_transactions = {path = "../../base_layer/transactions", version= "^0.0"}
 tari_p2p = {path = "../../base_layer/p2p", version= "^0.0"}
 tari_service_framework = { version = "^0.0", path = "../../base_layer/service_framework"}
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0" }

@@ -38,6 +38,17 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
 };
 use tari_comms_dht::outbound::mock::{create_outbound_service_mock, OutboundServiceMockState};
+use tari_core::transactions::{
+    tari_amount::*,
+    transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction, TransactionOutput},
+    transaction_protocol::{
+        proto,
+        recipient::{RecipientSignedMessage, RecipientState},
+        sender::TransactionSenderMessage,
+    },
+    types::{CryptoFactories, PrivateKey, PublicKey, RangeProof, Signature},
+    ReceiverTransactionProtocol,
+};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PK, SecretKey as SK},
@@ -49,17 +60,6 @@ use tari_p2p::{
 };
 use tari_service_framework::{reply_channel, StackBuilder};
 use tari_test_utils::{collect_stream, paths::with_temp_dir};
-use tari_transactions::{
-    tari_amount::*,
-    transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction, TransactionOutput},
-    transaction_protocol::{
-        proto,
-        recipient::{RecipientSignedMessage, RecipientState},
-        sender::TransactionSenderMessage,
-    },
-    types::{CryptoFactories, PrivateKey, PublicKey, RangeProof, Signature},
-    ReceiverTransactionProtocol,
-};
 use tari_wallet::{
     output_manager_service::{
         handle::OutputManagerHandle,
@@ -487,7 +487,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
             runtime,
             alice_event_stream.map(|i| (*i).clone()),
             take = 5,
-            timeout = Duration::from_secs(10)
+            timeout = Duration::from_secs(30)
         )
         .iter()
         .fold(0, |acc, x| match x {
@@ -497,7 +497,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
         3
     );
 
-    let _ = collect_stream!(runtime, bob_event_stream, take = 5, timeout = Duration::from_secs(10));
+    let _ = collect_stream!(runtime, bob_event_stream, take = 5, timeout = Duration::from_secs(30));
 
     let alice_pending_outbound = runtime.block_on(alice_ts.get_pending_outbound_transactions()).unwrap();
     let alice_completed_tx = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
@@ -507,7 +507,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
     let bob_completed_tx = runtime.block_on(bob_ts.get_completed_transactions()).unwrap();
     assert_eq!(bob_pending_outbound.len(), 0);
     assert_eq!(bob_completed_tx.len(), 3);
-    let _ = collect_stream!(runtime, carol_event_stream, take = 2, timeout = Duration::from_secs(10));
+    let _ = collect_stream!(runtime, carol_event_stream, take = 2, timeout = Duration::from_secs(30));
     let carol_pending_inbound = runtime.block_on(carol_ts.get_pending_inbound_transactions()).unwrap();
     let carol_completed_tx = runtime.block_on(carol_ts.get_completed_transactions()).unwrap();
     assert_eq!(carol_pending_inbound.len(), 0);

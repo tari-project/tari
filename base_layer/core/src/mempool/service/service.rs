@@ -33,6 +33,7 @@ use crate::{
             MempoolResponse,
         },
     },
+    transactions::{proto::types::Transaction as ProtoTransaction, transaction::Transaction},
 };
 use futures::{
     channel::{
@@ -54,7 +55,6 @@ use tari_comms_dht::{
 };
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::RequestContext;
-use tari_transactions::{proto::types::Transaction as ProtoTransaction, transaction::Transaction};
 use tokio::runtime;
 
 const LOG_TARGET: &'static str = "tari_core::base_node::mempool::service";

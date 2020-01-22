@@ -22,15 +22,26 @@
 //
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
-use crate::{blocks::BlockHeader, consensus::ConsensusConstants, proof_of_work::ProofOfWork};
+use crate::{
+    blocks::BlockHeader,
+    consensus::ConsensusConstants,
+    proof_of_work::ProofOfWork,
+    transactions::{
+        aggregated_body::AggregateBody,
+        tari_amount::MicroTari,
+        transaction::{
+            OutputFlags,
+            Transaction,
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
+    },
+};
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
-use tari_transactions::{
-    aggregated_body::AggregateBody,
-    tari_amount::MicroTari,
-    transaction::{OutputFlags, Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
-};
 use tari_utilities::Hashable;
 
 #[derive(Clone, Debug, PartialEq, Error)]

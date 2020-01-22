@@ -121,8 +121,8 @@ use std::{
     slice,
 };
 use tari_comms::peer_manager::NodeIdentity;
+use tari_core::transactions::tari_amount::MicroTari;
 use tari_crypto::keys::SecretKey;
-use tari_transactions::tari_amount::MicroTari;
 use tari_utilities::ByteArray;
 use tari_wallet::wallet::WalletConfig;
 
@@ -131,8 +131,8 @@ use core::ptr;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{control_service::ControlServiceConfig, multiaddr::Multiaddr, peer_manager::PeerFeatures};
 use tari_comms_dht::DhtConfig;
+use tari_core::transactions::types::CryptoFactories;
 use tari_crypto::keys::PublicKey;
-use tari_transactions::types::CryptoFactories;
 use tari_utilities::hex::Hex;
 use tari_wallet::{
     contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},

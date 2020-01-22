@@ -20,9 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::transactions::types::Signature;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use tari_transactions::types::Signature;
 
 pub type RequestKey = u64; // TODO: BaseNodeService and MempoolService uses RequestKey
 

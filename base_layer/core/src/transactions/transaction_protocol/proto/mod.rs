@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,33 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{tari_amount::*, transaction::MINIMUM_TRANSACTION_FEE};
+use crate::transactions::proto::types;
 
-pub struct Fee {}
-
-pub const WEIGHT_PER_INPUT: u64 = 1;
-pub const WEIGHT_PER_OUTPUT: u64 = 4;
-pub const BASE_COST: u64 = 1;
-
-impl Fee {
-    /// Computes the absolute transaction fee given the fee-per-gram, and the size of the transaction
-    pub fn calculate(fee_per_gram: MicroTari, num_inputs: usize, num_outputs: usize) -> MicroTari {
-        (BASE_COST + Fee::calculate_weight(num_inputs, num_outputs) * u64::from(fee_per_gram)).into()
-    }
-
-    /// Computes the absolute transaction fee using `calculate`, but the resulting fee will always be at least the
-    /// minimum network transaction fee.
-    pub fn calculate_with_minimum(fee_per_gram: MicroTari, num_inputs: usize, num_outputs: usize) -> MicroTari {
-        let fee = Fee::calculate(fee_per_gram, num_inputs, num_outputs);
-        if fee < MINIMUM_TRANSACTION_FEE {
-            MINIMUM_TRANSACTION_FEE
-        } else {
-            fee
-        }
-    }
-
-    /// Calculate the weight of a transaction based on the number of inputs and outputs
-    pub fn calculate_weight(num_inputs: usize, num_outputs: usize) -> u64 {
-        WEIGHT_PER_INPUT * num_inputs as u64 + WEIGHT_PER_OUTPUT * num_outputs as u64
-    }
+pub mod protocol {
+    tari_utilities::include_proto_package!("tari.transaction_protocol");
 }
+
+pub mod recipient_signed_message;
+pub mod transaction_metadata;
+pub mod transaction_sender;
+
+// Re-export message types
+pub use protocol::*;

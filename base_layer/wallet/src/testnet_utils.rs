@@ -47,17 +47,17 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_comms_dht::DhtConfig;
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
+    types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
+};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
 };
 use tari_p2p::initialization::CommsConfig;
 use tari_test_utils::collect_stream;
-use tari_transactions::{
-    tari_amount::MicroTari,
-    transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
-    types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
-};
 use tari_utilities::hex::Hex;
 use tokio::runtime::Runtime;
 
@@ -176,10 +176,6 @@ pub fn generate_wallet_test_data<
         "07beb0d0d1eef08c246b70da8b060f7f8e885f5c0f2fd04b10607dc744b5f502",
         "bb2dcd0b477c8d709afe2547122a7199d6d4516bc6f35c2adb1a8afedbf97e0e",
     ];
-
-    // attempt to avoid colliding ports for if two wallets are run on the same machine using this test data generation
-    // function
-    let random_port_offset = (rng.next_u64() % 100) as usize;
 
     let messages: Vec<String> = vec![
         "My half of dinner",
@@ -387,14 +383,14 @@ pub fn generate_wallet_test_data<
         wallet_alice.runtime,
         alice_event_stream.map(|i| (*i).clone()),
         take = 12,
-        timeout = Duration::from_secs(10)
+        timeout = Duration::from_secs(60)
     );
 
     let _bob_stream = collect_stream!(
         wallet_bob.runtime,
         bob_event_stream.map(|i| (*i).clone()),
         take = 8,
-        timeout = Duration::from_secs(10)
+        timeout = Duration::from_secs(60)
     );
 
     // Make sure that the messages have been received by the alice and bob wallets before they start sending messages so
@@ -406,14 +402,14 @@ pub fn generate_wallet_test_data<
         wallet_alice.runtime,
         alice_event_stream.map(|i| (*i).clone()),
         take = 6,
-        timeout = Duration::from_secs(10)
+        timeout = Duration::from_secs(60)
     );
 
     let _bob_stream = collect_stream!(
         wallet_bob.runtime,
         bob_event_stream.map(|i| (*i).clone()),
         take = 2,
-        timeout = Duration::from_secs(10)
+        timeout = Duration::from_secs(60)
     );
 
     // Pending Inbound
@@ -471,7 +467,7 @@ pub fn generate_wallet_test_data<
         wallet.runtime,
         wallet_event_stream.map(|i| (*i).clone()),
         take = 20,
-        timeout = Duration::from_secs(10)
+        timeout = Duration::from_secs(60)
     );
 
     let txs = wallet

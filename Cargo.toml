@@ -2,7 +2,6 @@
 
 members = [
     "base_layer/core",
-    "base_layer/transactions",
     "base_layer/key_manager",
     "base_layer/mmr",
     "base_layer/mining",

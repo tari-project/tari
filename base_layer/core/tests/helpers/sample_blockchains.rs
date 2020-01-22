@@ -22,16 +22,17 @@
 //
 
 use crate::helpers::block_builders::{create_genesis_block, generate_new_block};
+
 use tari_core::{
     blocks::Block,
     chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
-    validation::mocks::MockValidator,
-};
-use tari_transactions::{
-    tari_amount::{uT, T},
-    transaction::UnblindedOutput,
+    transactions::{
+        tari_amount::{uT, T},
+        transaction::UnblindedOutput,
+        types::{CryptoFactories, HashDigest},
+    },
     txn_schema,
-    types::{CryptoFactories, HashDigest},
+    validation::mocks::MockValidator,
 };
 
 /// Create a simple 6 block memory-backed database.

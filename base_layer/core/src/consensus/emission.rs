@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_transactions::tari_amount::MicroTari;
+use crate::transactions::tari_amount::MicroTari;
 
 /// The Tari emission schedule. The emission schedule determines how much Tari is mined as a block reward at every
 /// block.
@@ -80,7 +80,7 @@ impl EmissionSchedule {
     ///
     /// ```edition2018
     /// use tari_core::consensus::emission::EmissionSchedule;
-    /// use tari_transactions::tari_amount::MicroTari;
+    /// use tari_core::transactions::tari_amount::MicroTari;
     /// // Print the reward and supply for first 100 blocks
     /// let schedule = EmissionSchedule::new(10.into(), 0.9, 1.into());
     /// for (n, reward, supply) in schedule.iter().take(100) {
@@ -124,8 +124,7 @@ impl<'a> Iterator for EmissionValues<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::consensus::emission::EmissionSchedule;
-    use tari_transactions::tari_amount::MicroTari;
+    use crate::{consensus::emission::EmissionSchedule, transactions::tari_amount::MicroTari};
     #[test]
     fn schedule() {
         let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));

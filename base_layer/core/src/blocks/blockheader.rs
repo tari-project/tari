@@ -40,6 +40,7 @@
 use crate::{
     blocks::NewBlockHeaderTemplate,
     proof_of_work::{Difficulty, PowError, ProofOfWork},
+    transactions::types::{BlindingFactor, HashDigest},
 };
 use chrono::{DateTime, Utc};
 use derive_error::Error;
@@ -55,7 +56,6 @@ use std::{
     fmt,
     fmt::{Display, Error, Formatter},
 };
-use tari_transactions::types::{BlindingFactor, HashDigest};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 
 pub type BlockHash = Vec<u8>;

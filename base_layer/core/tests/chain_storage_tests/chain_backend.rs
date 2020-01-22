@@ -36,15 +36,15 @@ use tari_core::{
         MmrTree,
     },
     helpers::create_orphan_block,
+    transactions::{
+        helpers::{create_test_kernel, create_utxo},
+        tari_amount::MicroTari,
+        types::{CryptoFactories, HashDigest},
+    },
+    tx,
 };
 use tari_mmr::{Hash, MerkleChangeTrackerConfig, MutableMmr};
 use tari_test_utils::paths::create_temporary_data_path;
-use tari_transactions::{
-    helpers::{create_test_kernel, create_utxo},
-    tari_amount::MicroTari,
-    tx,
-    types::{CryptoFactories, HashDigest},
-};
 use tari_utilities::{hex::Hex, Hashable};
 
 fn insert_contains_delete_and_fetch_header<T: BlockchainBackend>(db: T) {

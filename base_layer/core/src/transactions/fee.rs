@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,33 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::protocol as proto;
+use crate::transactions::{tari_amount::*, transaction::MINIMUM_TRANSACTION_FEE};
 
-use crate::transaction_protocol::TransactionMetadata;
+pub struct Fee {}
 
-impl From<proto::TransactionMetadata> for TransactionMetadata {
-    fn from(metadata: proto::TransactionMetadata) -> Self {
-        Self {
-            fee: metadata.fee.into(),
-            lock_height: metadata.lock_height,
-            meta_info: metadata.meta_info.map(Into::into),
-            linked_kernel: metadata.linked_kernel.map(Into::into),
+pub const WEIGHT_PER_INPUT: u64 = 1;
+pub const WEIGHT_PER_OUTPUT: u64 = 4;
+pub const BASE_COST: u64 = 1;
+
+impl Fee {
+    /// Computes the absolute transaction fee given the fee-per-gram, and the size of the transaction
+    pub fn calculate(fee_per_gram: MicroTari, num_inputs: usize, num_outputs: usize) -> MicroTari {
+        (BASE_COST + Fee::calculate_weight(num_inputs, num_outputs) * u64::from(fee_per_gram)).into()
+    }
+
+    /// Computes the absolute transaction fee using `calculate`, but the resulting fee will always be at least the
+    /// minimum network transaction fee.
+    pub fn calculate_with_minimum(fee_per_gram: MicroTari, num_inputs: usize, num_outputs: usize) -> MicroTari {
+        let fee = Fee::calculate(fee_per_gram, num_inputs, num_outputs);
+        if fee < MINIMUM_TRANSACTION_FEE {
+            MINIMUM_TRANSACTION_FEE
+        } else {
+            fee
         }
     }
-}
 
-impl From<TransactionMetadata> for proto::TransactionMetadata {
-    fn from(metadata: TransactionMetadata) -> Self {
-        Self {
-            // The absolute fee for the transaction
-            fee: metadata.fee.into(),
-            // The earliest block this transaction can be mined
-            lock_height: metadata.lock_height,
-            // This is an optional field used by committing to additional tx meta data between the two parties
-            meta_info: metadata.meta_info.map(Into::into),
-            // This is an optional field and is the hash of the kernel this kernel is linked to.
-            // This field is for example for relative time-locked transactions
-            linked_kernel: metadata.linked_kernel.map(Into::into),
-        }
+    /// Calculate the weight of a transaction based on the number of inputs and outputs
+    pub fn calculate_weight(num_inputs: usize, num_outputs: usize) -> u64 {
+        WEIGHT_PER_INPUT * num_inputs as u64 + WEIGHT_PER_OUTPUT * num_outputs as u64
     }
 }

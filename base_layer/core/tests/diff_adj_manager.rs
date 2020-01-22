@@ -36,8 +36,8 @@ use tari_core::{
         DifficultyAdjustment,
         PowAlgorithm,
     },
+    transactions::types::{CryptoFactories, HashDigest},
 };
-use tari_transactions::types::{CryptoFactories, HashDigest};
 use tari_utilities::epoch_time::EpochTime;
 
 fn create_test_pow_blockchain(db: &BlockchainDatabase<MemoryDatabase<HashDigest>>, mut pow_algos: Vec<PowAlgorithm>) {

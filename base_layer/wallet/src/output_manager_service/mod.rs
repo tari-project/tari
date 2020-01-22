@@ -25,6 +25,7 @@ use crate::output_manager_service::{handle::OutputManagerHandle, service::Output
 use crate::output_manager_service::storage::database::{OutputManagerBackend, OutputManagerDatabase};
 use futures::{future, Future};
 use log::*;
+use tari_core::transactions::types::CryptoFactories;
 use tari_service_framework::{
     handles::ServiceHandlesFuture,
     reply_channel,
@@ -32,7 +33,6 @@ use tari_service_framework::{
     ServiceInitializer,
 };
 use tari_shutdown::ShutdownSignal;
-use tari_transactions::types::CryptoFactories;
 use tokio::runtime;
 
 pub mod error;

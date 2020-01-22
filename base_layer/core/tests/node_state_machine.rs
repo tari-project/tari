@@ -36,14 +36,14 @@ use tari_core::{
     },
     chain_storage::MmrTree,
     mempool::MempoolServiceConfig,
+    transactions::{
+        tari_amount::{uT, T},
+        types::CryptoFactories,
+    },
+    txn_schema,
 };
 use tari_mmr::MerkleChangeTrackerConfig;
 use tari_test_utils::random::string;
-use tari_transactions::{
-    tari_amount::{uT, T},
-    txn_schema,
-    types::CryptoFactories,
-};
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
 

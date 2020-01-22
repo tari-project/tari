@@ -24,16 +24,23 @@
 use crate::{
     chain_storage::BlockchainBackend,
     consensus::{ConsensusConstants, ConsensusManager},
+    transactions::{
+        tari_amount::{uT, MicroTari},
+        transaction::{
+            KernelBuilder,
+            KernelFeatures,
+            OutputFeatures,
+            Transaction,
+            TransactionBuilder,
+            UnblindedOutput,
+        },
+        transaction_protocol::{build_challenge, TransactionMetadata},
+        types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, Signature},
+    },
 };
 use derive_error::Error;
 use std::sync::Arc;
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PK};
-use tari_transactions::{
-    tari_amount::{uT, MicroTari},
-    transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction, TransactionBuilder, UnblindedOutput},
-    transaction_protocol::{build_challenge, TransactionMetadata},
-    types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, Signature},
-};
 
 #[derive(Debug, Clone, Error, PartialEq)]
 pub enum CoinbaseBuildError {
@@ -150,10 +157,10 @@ mod test {
         consensus::ConsensusManager,
         helpers::MockBackend,
         mining::{coinbase_builder::CoinbaseBuildError, CoinbaseBuilder},
+        transactions::{helpers::TestParams, tari_amount::uT, transaction::OutputFlags, types::CryptoFactories},
     };
     use std::sync::Arc;
     use tari_crypto::commitment::HomomorphicCommitmentFactory;
-    use tari_transactions::{helpers::TestParams, tari_amount::uT, transaction::OutputFlags, types::CryptoFactories};
 
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager<MockBackend>, Arc<CryptoFactories>) {
         let rules = ConsensusManager::default();

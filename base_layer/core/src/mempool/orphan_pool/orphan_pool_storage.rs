@@ -23,10 +23,10 @@
 use crate::{
     chain_storage::BlockchainBackend,
     mempool::orphan_pool::{error::OrphanPoolError, orphan_pool::OrphanPoolConfig},
+    transactions::{transaction::Transaction, types::Signature},
     validation::{ValidationError, Validator},
 };
 use std::sync::Arc;
-use tari_transactions::{transaction::Transaction, types::Signature};
 use ttl_cache::TtlCache;
 
 /// OrphanPool makes use of OrphanPoolStorage to provide thread save access to its TtlCache.

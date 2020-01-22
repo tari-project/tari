@@ -44,7 +44,7 @@ use diesel::{
     SqliteConnection,
 };
 use std::{collections::HashMap, convert::TryFrom, io, path::Path, time::Duration};
-use tari_transactions::{
+use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
     types::PrivateKey,
@@ -878,12 +878,12 @@ mod test {
     use diesel::{r2d2::ConnectionManager, Connection, SqliteConnection};
     use rand::{distributions::Alphanumeric, CryptoRng, OsRng, Rng, RngCore};
     use std::{convert::TryFrom, iter, time::Duration};
-    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
-    use tari_transactions::{
+    use tari_core::transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
         types::{CommitmentFactory, PrivateKey},
     };
+    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
     use tempdir::TempDir;
 
     pub fn random_string(len: usize) -> String {

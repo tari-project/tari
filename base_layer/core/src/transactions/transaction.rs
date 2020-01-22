@@ -23,17 +23,23 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::{
-    tari_amount::MicroTari,
-    types::{BlindingFactor, Commitment, CommitmentFactory, MessageHash, Signature},
-};
-
-use crate::{
+use crate::transactions::{
     aggregated_body::AggregateBody,
     fee::Fee,
-    tari_amount::uT,
+    tari_amount::{uT, MicroTari},
     transaction_protocol::{build_challenge, TransactionMetadata},
-    types::{CryptoFactories, HashDigest, HashOutput, RangeProof, RangeProofService},
+    types::{
+        BlindingFactor,
+        Commitment,
+        CommitmentFactory,
+        CryptoFactories,
+        HashDigest,
+        HashOutput,
+        MessageHash,
+        RangeProof,
+        RangeProofService,
+        Signature,
+    },
 };
 use derive_error::Error;
 use digest::Input;
@@ -718,7 +724,7 @@ impl Default for TransactionBuilder {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
+    use crate::transactions::{
         helpers::{create_test_kernel, create_tx},
         transaction::OutputFeatures,
         types::{BlindingFactor, PrivateKey, PublicKey, RangeProof},

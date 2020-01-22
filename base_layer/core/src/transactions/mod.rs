@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate bitflags;
-
 pub mod aggregated_body;
 pub mod bullet_rangeproofs;
 pub mod fee;
@@ -14,6 +11,5 @@ pub mod types;
 pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
 // Re-export the crypto crate to make exposing traits etc easier for clients of this crate
 pub use tari_crypto as crypto;
-
 #[macro_use]
 pub mod helpers;

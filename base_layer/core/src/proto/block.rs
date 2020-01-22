@@ -26,10 +26,10 @@ use crate::{
     chain_storage::HistoricalBlock,
     proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
     proto::utils::try_convert_all,
+    transactions::types::BlindingFactor,
 };
 use prost_types::Timestamp;
 use std::convert::{TryFrom, TryInto};
-use tari_transactions::types::BlindingFactor;
 use tari_utilities::{epoch_time::EpochTime, ByteArray, ByteArrayError};
 
 /// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime`

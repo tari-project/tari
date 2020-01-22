@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::mempool::{
-    mempool::{StatsResponse, TxStorageResponse},
-    service::{MempoolRequest, MempoolResponse, MempoolServiceError},
+use crate::{
+    mempool::{
+        mempool::{StatsResponse, TxStorageResponse},
+        service::{MempoolRequest, MempoolResponse, MempoolServiceError},
+    },
+    transactions::{transaction::Transaction, types::Signature},
 };
 use futures::channel::mpsc::UnboundedSender;
 use tari_comms::types::CommsPublicKey;
 use tari_service_framework::reply_channel::SenderService;
-use tari_transactions::{transaction::Transaction, types::Signature};
 use tower_service::Service;
 
 /// The OutboundMempoolServiceInterface provides an interface to request information from the Mempools of remote Base

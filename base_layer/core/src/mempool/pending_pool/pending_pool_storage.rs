@@ -26,13 +26,13 @@ use crate::{
         pending_pool::{PendingPoolConfig, PendingPoolError},
         priority::{FeePriority, TimelockPriority, TimelockedTransaction},
     },
+    transactions::{transaction::Transaction, types::Signature},
 };
 use std::{
     collections::{BTreeMap, HashMap},
     convert::TryFrom,
     sync::Arc,
 };
-use tari_transactions::{transaction::Transaction, types::Signature};
 
 /// PendingPool makes use of PendingPoolStorage to provide thread safe access to its Hashmap and BTreeMaps.
 /// The txs_by_signature HashMap is used to find a transaction using its excess_sig, this functionality is used to match

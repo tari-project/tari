@@ -27,11 +27,11 @@ use crate::{
         genesis_block::get_gen_block_hash,
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase, MmrTree},
+    transactions::types::CryptoFactories,
     validation::{error::ValidationError, traits::Validation},
 };
 use std::sync::Arc;
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
-use tari_transactions::types::CryptoFactories;
 use tari_utilities::hash::Hashable;
 
 /// This validator checks that the synced state satisfies *all* consensus rules and should only be performed on

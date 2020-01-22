@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
+use crate::transactions::{
     fee::Fee,
     tari_amount::*,
     transaction::{
@@ -48,7 +48,7 @@ use tari_utilities::fixed_set::FixedSet;
 /// The SenderTransactionInitializer is a Builder that helps set up the initial state for the Sender party of a new
 /// transaction Typically you don't instantiate this object directly. Rather use
 /// ```ignore
-/// # use tari_core::SenderTransactionProtocol;
+/// # use crate::SenderTransactionProtocol;
 /// SenderTransactionProtocol::new(1);
 /// ```
 /// which returns an instance of this builder. Once all the sender's information has been added via the builder
@@ -313,7 +313,7 @@ impl SenderTransactionInitializer {
 
 #[cfg(test)]
 mod test {
-    use crate::{
+    use crate::transactions::{
         fee::{Fee, BASE_COST, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
         helpers::{make_input, TestParams},
         tari_amount::*,

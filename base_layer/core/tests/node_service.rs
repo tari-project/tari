@@ -52,15 +52,15 @@ use tari_core::{
     consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
     mempool::MempoolServiceConfig,
     proof_of_work::{Difficulty, PowAlgorithm},
+    transactions::{
+        helpers::{create_test_kernel, create_utxo, schema_to_transaction},
+        tari_amount::{uT, MicroTari, T},
+        types::CryptoFactories,
+    },
+    txn_schema,
 };
 use tari_mmr::MerkleChangeTrackerConfig;
 use tari_test_utils::random::string;
-use tari_transactions::{
-    helpers::{create_test_kernel, create_utxo, schema_to_transaction},
-    tari_amount::{uT, MicroTari, T},
-    txn_schema,
-    types::CryptoFactories,
-};
 use tari_utilities::hash::Hashable;
 use tempdir::TempDir;
 use tokio::runtime::Runtime;

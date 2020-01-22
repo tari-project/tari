@@ -29,7 +29,7 @@ use std::{
     fmt::{Display, Error, Formatter},
 };
 use tari_comms::types::CommsPublicKey;
-use tari_transactions::{
+use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::Transaction,
     types::Commitment,

@@ -31,12 +31,12 @@ use crate::{
         HistoricalBlock,
         MmrTree,
     },
+    transactions::{
+        transaction::{TransactionKernel, TransactionOutput},
+        types::HashOutput,
+    },
 };
 use tari_mmr::MerkleProof;
-use tari_transactions::{
-    transaction::{TransactionKernel, TransactionOutput},
-    types::HashOutput,
-};
 
 macro_rules! make_async {
     ($fn:ident() -> $rtype:ty) => {
