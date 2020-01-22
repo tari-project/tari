@@ -26,12 +26,12 @@ use tari_core::{
     chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
     consensus::ConsensusManager,
     proof_of_work::DiffAdjManager,
+    transactions::types::{CryptoFactories, HashDigest},
     validation::{
         block_validators::{FullConsensusValidator, StatelessValidator},
         mocks::MockValidator,
     },
 };
-use tari_transactions::types::{CryptoFactories, HashDigest};
 
 #[test]
 fn test_genesis_block() {

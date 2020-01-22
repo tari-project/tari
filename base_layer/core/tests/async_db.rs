@@ -28,22 +28,21 @@ use helpers::{
     block_builders::chain_block,
     sample_blockchains::{create_blockchain_db_no_cut_through, create_new_blockchain},
 };
-
 use std::ops::Deref;
 use tari_core::{
     blocks::Block,
     chain_storage::{async_db, BlockAddResult, MmrTree},
     helpers::create_orphan_block,
+    transactions::{
+        helpers::schema_to_transaction,
+        tari_amount::T,
+        transaction::{TransactionOutput, UnblindedOutput},
+        types::CommitmentFactory,
+    },
+    txn_schema,
 };
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_test_utils::runtime::test_async;
-use tari_transactions::{
-    helpers::schema_to_transaction,
-    tari_amount::T,
-    transaction::{TransactionOutput, UnblindedOutput},
-    txn_schema,
-    types::CommitmentFactory,
-};
 use tari_utilities::{hex::Hex, Hashable};
 
 /// Finds the UTXO in a block corresponding to the unblinded output. We have to search for outputs because UTXOs get

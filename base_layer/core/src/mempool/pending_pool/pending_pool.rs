@@ -24,9 +24,9 @@ use crate::{
     blocks::Block,
     consts::MEMPOOL_PENDING_POOL_STORAGE_CAPACITY,
     mempool::pending_pool::{PendingPoolError, PendingPoolStorage},
+    transactions::{transaction::Transaction, types::Signature},
 };
 use std::sync::{Arc, RwLock};
-use tari_transactions::{transaction::Transaction, types::Signature};
 
 /// Configuration for the PendingPool.
 #[derive(Clone, Copy)]
@@ -148,9 +148,10 @@ mod test {
     use crate::{
         helpers::create_orphan_block,
         mempool::pending_pool::{PendingPool, PendingPoolConfig},
+        transactions::tari_amount::MicroTari,
+        tx,
     };
     use std::sync::Arc;
-    use tari_transactions::{tari_amount::MicroTari, tx};
 
     #[test]
     fn test_insert_and_lru() {

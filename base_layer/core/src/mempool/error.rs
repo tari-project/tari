@@ -28,9 +28,9 @@ use crate::{
         reorg_pool::ReorgPoolError,
         unconfirmed_pool::UnconfirmedPoolError,
     },
+    transactions::transaction::TransactionError,
 };
 use derive_error::Error;
-use tari_transactions::transaction::TransactionError;
 
 #[derive(Debug, Error)]
 pub enum MempoolError {

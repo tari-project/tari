@@ -26,13 +26,13 @@ use crate::{
         priority::{FeePriority, PrioritizedTransaction},
         unconfirmed_pool::{UnconfirmedPoolConfig, UnconfirmedPoolError},
     },
+    transactions::{transaction::Transaction, types::Signature},
 };
 use std::{
     collections::{BTreeMap, HashMap},
     convert::TryFrom,
     sync::Arc,
 };
-use tari_transactions::{transaction::Transaction, types::Signature};
 
 /// UnconfirmedPool makes use of UnconfirmedPoolStorage to provide thread save access to its Hashmap and BTreeMap.
 /// The txs_by_signature HashMap is used to find a transaction using its excess_sig, this functionality is used to match

@@ -30,11 +30,11 @@ use crate::{
         reorg_pool::{ReorgPool, ReorgPoolConfig},
         unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolConfig},
     },
+    transactions::{transaction::Transaction, types::Signature},
     validation::{Validation, ValidationError, Validator},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tari_transactions::{transaction::Transaction, types::Signature};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum TxStorageResponse {

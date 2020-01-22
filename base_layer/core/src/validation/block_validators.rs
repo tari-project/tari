@@ -29,6 +29,7 @@ use crate::{
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::{ConsensusConstants, ConsensusManager},
+    transactions::{transaction::OutputFlags, types::CryptoFactories},
     validation::{
         helpers::{check_achieved_difficulty_at_chain_tip, check_median_timestamp_at_chain_tip},
         Validation,
@@ -36,7 +37,6 @@ use crate::{
     },
 };
 use std::sync::Arc;
-use tari_transactions::{transaction::OutputFlags, types::CryptoFactories};
 use tari_utilities::hash::Hashable;
 
 /// This validator tests whether a candidate block is internally consistent

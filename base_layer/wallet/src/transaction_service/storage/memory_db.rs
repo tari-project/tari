@@ -39,6 +39,7 @@ use crate::{
         },
     },
 };
+#[cfg(feature = "test_harness")]
 use chrono::NaiveDateTime;
 use std::{
     collections::HashMap,

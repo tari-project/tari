@@ -20,10 +20,45 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-fn main() {
-    tari_protobuf_build::ProtoCompiler::new()
-        .include_paths(&["src/proto"])
-        .proto_paths(&["src/transaction_protocol/proto"])
-        .compile()
-        .unwrap();
+use super::protocol as proto;
+
+use crate::transactions::{transaction_protocol::recipient::RecipientSignedMessage, types::PublicKey};
+use std::convert::{TryFrom, TryInto};
+use tari_utilities::ByteArray;
+
+impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
+    type Error = String;
+
+    fn try_from(message: proto::RecipientSignedMessage) -> Result<Self, Self::Error> {
+        let output = message
+            .output
+            .map(TryInto::try_into)
+            .ok_or("Transaction output not provided".to_string())??;
+
+        let public_spend_key = PublicKey::from_bytes(&message.public_spend_key).map_err(|err| format!("{}", err))?;
+
+        let partial_signature = message
+            .partial_signature
+            .map(TryInto::try_into)
+            .ok_or("Transaction partial signature not provided".to_string())?
+            .map_err(|err| format!("{}", err))?;
+
+        Ok(Self {
+            tx_id: message.tx_id,
+            output,
+            public_spend_key,
+            partial_signature,
+        })
+    }
+}
+
+impl From<RecipientSignedMessage> for proto::RecipientSignedMessage {
+    fn from(message: RecipientSignedMessage) -> Self {
+        Self {
+            tx_id: message.tx_id,
+            output: Some(message.output.into()),
+            public_spend_key: message.public_spend_key.to_vec(),
+            partial_signature: Some(message.partial_signature.into()),
+        }
+    }
 }

@@ -51,6 +51,10 @@ use tari_core::{
     consensus::ConsensusManager,
     mempool::{Mempool, MempoolConfig, MempoolValidators},
     proof_of_work::DiffAdjManager,
+    transactions::{
+        crypto::keys::SecretKey as SK,
+        types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
+    },
     validation::{
         block_validators::{FullConsensusValidator, StatelessValidator},
         chain_validators::{ChainTipValidator, GenesisBlockValidator},
@@ -65,10 +69,6 @@ use tari_p2p::{
     services::comms_outbound::CommsOutboundServiceInitializer,
 };
 use tari_service_framework::{handles::ServiceHandles, StackBuilder};
-use tari_transactions::{
-    crypto::keys::SecretKey as SK,
-    types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
-};
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tokio::runtime::Runtime;
 

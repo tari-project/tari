@@ -56,14 +56,7 @@ use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageResponse},
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
-use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
-use tari_service_framework::{reply_channel, reply_channel::Receiver};
-#[cfg(feature = "test_harness")]
-use tari_transactions::tari_amount::T;
-#[cfg(feature = "test_harness")]
-use tari_transactions::types::BlindingFactor;
-use tari_transactions::{
+use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{KernelFeatures, OutputFeatures, OutputFlags, Transaction},
     transaction_protocol::{
@@ -74,6 +67,11 @@ use tari_transactions::{
     types::{CryptoFactories, PrivateKey},
     ReceiverTransactionProtocol,
 };
+#[cfg(feature = "test_harness")]
+use tari_core::transactions::{tari_amount::T, types::BlindingFactor};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
+use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
+use tari_service_framework::{reply_channel, reply_channel::Receiver};
 
 const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service::service";
 
@@ -809,7 +807,7 @@ where
     /// the outputs
     #[cfg(feature = "test_harness")]
     pub async fn mine_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
-        use tari_transactions::transaction::TransactionOutput;
+        use tari_core::transactions::transaction::TransactionOutput;
 
         let completed_txs = self.db.get_completed_transactions()?;
         let _found_tx = completed_txs

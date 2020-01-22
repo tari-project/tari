@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
 
 #[allow(dead_code)]
 mod helpers;
@@ -58,15 +57,15 @@ use tari_core::{
     },
     blocks::BlockBuilder,
     helpers::create_mem_db,
+    transactions::{
+        helpers::{create_test_kernel, create_utxo},
+        tari_amount::MicroTari,
+        types::{CryptoFactories, HashDigest},
+    },
 };
 use tari_mmr::MutableMmrLeafNodes;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_test_utils::runtime::test_async;
-use tari_transactions::{
-    helpers::{create_test_kernel, create_utxo},
-    tari_amount::MicroTari,
-    types::{CryptoFactories, HashDigest},
-};
 use tari_utilities::hash::Hashable;
 
 async fn test_request_responder(

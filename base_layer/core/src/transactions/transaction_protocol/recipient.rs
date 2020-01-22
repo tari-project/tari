@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
+use crate::transactions::{
     transaction::{OutputFeatures, TransactionOutput},
     transaction_protocol::{
         sender::{SingleRoundSenderData as SD, TransactionSenderMessage},
@@ -158,7 +158,7 @@ impl ReceiverTransactionProtocol {
 
 #[cfg(test)]
 mod test {
-    use crate::{
+    use crate::transactions::{
         helpers::TestParams,
         tari_amount::*,
         transaction::OutputFeatures,

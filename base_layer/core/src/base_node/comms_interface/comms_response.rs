@@ -24,9 +24,9 @@ use crate::{
     blocks::{blockheader::BlockHeader, Block, NewBlockTemplate},
     chain_storage::{ChainMetadata, HistoricalBlock, MutableMmrState},
     proof_of_work::Difficulty,
+    transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 use serde::{Deserialize, Serialize};
-use tari_transactions::transaction::{TransactionKernel, TransactionOutput};
 
 /// API Response enum
 #[derive(Debug, Serialize, Deserialize, Clone)]

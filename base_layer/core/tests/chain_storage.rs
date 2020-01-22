@@ -22,4 +22,4 @@
 
 pub mod chain_storage_tests;
 #[allow(dead_code)]
-pub mod helpers;
+mod helpers;

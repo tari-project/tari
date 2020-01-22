@@ -20,22 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod error;
-mod mempool;
-mod orphan_pool;
-mod pending_pool;
-mod priority;
-mod proto;
-mod reorg_pool;
-mod service;
-mod unconfirmed_pool;
-
-// Public re-exports
-pub use error::MempoolError;
-pub use mempool::{Mempool, MempoolConfig, MempoolValidators, TxStorageResponse};
-pub use service::{
-    MempoolServiceConfig,
-    MempoolServiceError,
-    MempoolServiceInitializer,
-    OutboundMempoolServiceInterface,
-};
+cfg_if! {
+    if #[cfg(feature = "base_node")] {
+        mod error;
+        mod mempool;
+        mod orphan_pool;
+        mod pending_pool;
+        mod priority;
+        mod reorg_pool;
+        mod service;
+        mod unconfirmed_pool;
+        // Public re-exports
+        pub use error::MempoolError;
+        pub use mempool::{Mempool, MempoolConfig, MempoolValidators, TxStorageResponse};
+        pub use service::{
+            MempoolServiceConfig,
+            MempoolServiceError,
+            MempoolServiceInitializer,
+            OutboundMempoolServiceInterface,
+        };
+    }
+}
+#[cfg(any(feature = "base_node", feature = "mempool_proto"))]
+pub mod proto;

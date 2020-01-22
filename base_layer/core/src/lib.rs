@@ -21,30 +21,39 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // Needed to make futures::select! work
-#![recursion_limit = "512"]
+#![recursion_limit = "1024"]
 // Used to eliminate the need for boxing futures in many cases.
 // Tracking issue: https://github.com/rust-lang/rust/issues/63063
 #![feature(type_alias_impl_trait)]
 // Enable usage of Vec::shrink_to
 #![feature(shrink_to)]
 
-pub mod consensus;
-pub mod consts;
+#[macro_use]
+extern crate bitflags;
+#[macro_use]
+extern crate cfg_if;
+
+cfg_if! {
+    if #[cfg(feature = "base_node")] {
+        pub mod base_node;
+        pub mod blocks;
+        pub mod chain_storage;
+        pub mod consensus;
+        pub mod consts;
+        pub mod helpers;
+        pub mod mining;
+        pub mod proof_of_work;
+        pub mod proto;
+        pub mod types;
+        pub mod validation;
+    }
+}
+
+#[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod mempool;
-pub mod proof_of_work;
 
-pub mod proto;
-pub mod types;
-
-pub mod base_node;
-pub mod blocks;
-
-pub mod chain_storage;
-pub mod validation;
-
-pub mod mining;
-
-pub mod helpers;
+#[cfg(feature = "transactions")]
+pub mod transactions;
 
 // Re-export the crypto crate to make exposing traits etc easier for clients of this crate
 pub use tari_crypto as crypto;

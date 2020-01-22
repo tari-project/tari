@@ -31,6 +31,7 @@ use crate::{
             service::{MempoolService, MempoolServiceConfig, MempoolStreams},
         },
     },
+    transactions::{proto::types::Transaction as ProtoTransaction, transaction::Transaction},
 };
 use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, future, Future, Stream, StreamExt};
 use log::*;
@@ -50,7 +51,6 @@ use tari_service_framework::{
     ServiceInitializer,
 };
 use tari_shutdown::ShutdownSignal;
-use tari_transactions::{proto::types::Transaction as ProtoTransaction, transaction::Transaction};
 use tokio::runtime;
 
 const LOG_TARGET: &'static str = "base_node::mempool_service::initializer";

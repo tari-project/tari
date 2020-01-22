@@ -24,9 +24,9 @@ use crate::{
     blocks::Block,
     consts::{MEMPOOL_UNCONFIRMED_POOL_STORAGE_CAPACITY, MEMPOOL_UNCONFIRMED_POOL_WEIGHT_TRANSACTION_SKIP_COUNT},
     mempool::unconfirmed_pool::{UnconfirmedPoolError, UnconfirmedPoolStorage},
+    transactions::{transaction::Transaction, types::Signature},
 };
 use std::sync::{Arc, RwLock};
-use tari_transactions::{transaction::Transaction, types::Signature};
 
 /// Configuration for the UnconfirmedPool
 #[derive(Clone, Copy)]
@@ -159,8 +159,7 @@ impl Clone for UnconfirmedPool {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::helpers::create_orphan_block;
-    use tari_transactions::{tari_amount::MicroTari, tx};
+    use crate::{helpers::create_orphan_block, transactions::tari_amount::MicroTari, tx};
 
     #[test]
     fn test_insert_and_retrieve_highest_priority_txs() {

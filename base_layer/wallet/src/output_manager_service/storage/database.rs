@@ -28,7 +28,7 @@ use std::{
     fmt::{Display, Error, Formatter},
     time::Duration,
 };
-use tari_transactions::{
+use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, UnblindedOutput},
     types::{BlindingFactor, PrivateKey},

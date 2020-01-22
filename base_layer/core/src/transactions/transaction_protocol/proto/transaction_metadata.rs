@@ -22,43 +22,31 @@
 
 use super::protocol as proto;
 
-use crate::{transaction_protocol::recipient::RecipientSignedMessage, types::PublicKey};
-use std::convert::{TryFrom, TryInto};
-use tari_utilities::ByteArray;
+use crate::transactions::transaction_protocol::TransactionMetadata;
 
-impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
-    type Error = String;
-
-    fn try_from(message: proto::RecipientSignedMessage) -> Result<Self, Self::Error> {
-        let output = message
-            .output
-            .map(TryInto::try_into)
-            .ok_or("Transaction output not provided".to_string())??;
-
-        let public_spend_key = PublicKey::from_bytes(&message.public_spend_key).map_err(|err| format!("{}", err))?;
-
-        let partial_signature = message
-            .partial_signature
-            .map(TryInto::try_into)
-            .ok_or("Transaction partial signature not provided".to_string())?
-            .map_err(|err| format!("{}", err))?;
-
-        Ok(Self {
-            tx_id: message.tx_id,
-            output,
-            public_spend_key,
-            partial_signature,
-        })
+impl From<proto::TransactionMetadata> for TransactionMetadata {
+    fn from(metadata: proto::TransactionMetadata) -> Self {
+        Self {
+            fee: metadata.fee.into(),
+            lock_height: metadata.lock_height,
+            meta_info: metadata.meta_info.map(Into::into),
+            linked_kernel: metadata.linked_kernel.map(Into::into),
+        }
     }
 }
 
-impl From<RecipientSignedMessage> for proto::RecipientSignedMessage {
-    fn from(message: RecipientSignedMessage) -> Self {
+impl From<TransactionMetadata> for proto::TransactionMetadata {
+    fn from(metadata: TransactionMetadata) -> Self {
         Self {
-            tx_id: message.tx_id,
-            output: Some(message.output.into()),
-            public_spend_key: message.public_spend_key.to_vec(),
-            partial_signature: Some(message.partial_signature.into()),
+            // The absolute fee for the transaction
+            fee: metadata.fee.into(),
+            // The earliest block this transaction can be mined
+            lock_height: metadata.lock_height,
+            // This is an optional field used by committing to additional tx meta data between the two parties
+            meta_info: metadata.meta_info.map(Into::into),
+            // This is an optional field and is the hash of the kernel this kernel is linked to.
+            // This field is for example for relative time-locked transactions
+            linked_kernel: metadata.linked_kernel.map(Into::into),
         }
     }
 }

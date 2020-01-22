@@ -27,9 +27,9 @@ use crate::{
 use rand::OsRng;
 use std::{sync::Mutex, time::Duration};
 use tari_comms::peer_manager::{NodeIdentity, PeerFeatures};
+use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
 use tari_shutdown::Shutdown;
 use tari_test_utils::collect_stream;
-use tari_transactions::{tari_amount::MicroTari, types::CryptoFactories};
 use tari_wallet::transaction_service::{
     callback_handler::CallbackHandler,
     handle::TransactionEvent,
@@ -82,35 +82,41 @@ lazy_static! {
 
 unsafe extern "C" fn received_tx_callback(_tx: *mut InboundTransaction) {
     assert_eq!(_tx.is_null(), false);
-    CALLBACK_STATE.lock().unwrap().received_tx_callback_called = true;
+    {
+        CALLBACK_STATE.lock().unwrap().received_tx_callback_called = true;
+    }
     Box::from_raw(_tx);
 }
 
 unsafe extern "C" fn received_tx_reply_callback(_tx: *mut CompletedTransaction) {
     assert_eq!(_tx.is_null(), false);
-    CALLBACK_STATE.lock().unwrap().received_tx_reply_callback_called = true;
-
+    {
+        CALLBACK_STATE.lock().unwrap().received_tx_reply_callback_called = true;
+    }
     Box::from_raw(_tx);
 }
 
 unsafe extern "C" fn received_finalized_tx_callback(_tx: *mut CompletedTransaction) {
     assert_eq!(_tx.is_null(), false);
-    CALLBACK_STATE.lock().unwrap().received_finalized_tx_callback_called = true;
-
+    {
+        CALLBACK_STATE.lock().unwrap().received_finalized_tx_callback_called = true;
+    }
     Box::from_raw(_tx);
 }
 
-unsafe extern "C" fn broacast_tx_callback(_tx: *mut CompletedTransaction) {
+unsafe extern "C" fn broadcast_tx_callback(_tx: *mut CompletedTransaction) {
     assert_eq!(_tx.is_null(), false);
-    CALLBACK_STATE.lock().unwrap().broadcast_tx_callback_called = true;
-
+    {
+        CALLBACK_STATE.lock().unwrap().broadcast_tx_callback_called = true;
+    }
     Box::from_raw(_tx);
 }
 
 unsafe extern "C" fn mined_tx_callback(_tx: *mut CompletedTransaction) {
     assert_eq!(_tx.is_null(), false);
-    CALLBACK_STATE.lock().unwrap().mined_tx_callback_called = true;
-
+    {
+        CALLBACK_STATE.lock().unwrap().mined_tx_callback_called = true;
+    }
     Box::from_raw(_tx);
 }
 
@@ -126,7 +132,6 @@ fn test_callback_handler() {
     let factories = CryptoFactories::default();
 
     CALLBACK_STATE.lock().unwrap().reset();
-
     // Alice's parameters
     let alice_node_identity = NodeIdentity::random(
         &mut rng,
@@ -171,11 +176,10 @@ fn test_callback_handler() {
         received_tx_callback,
         received_tx_reply_callback,
         received_finalized_tx_callback,
-        broacast_tx_callback,
+        broadcast_tx_callback,
         mined_tx_callback,
         discovery_send_callback,
     );
-
     runtime.spawn(callback_handler.start());
 
     let (mut bob_ts, mut bob_oms, _bob_comms) = setup_transaction_service(
@@ -243,8 +247,9 @@ fn test_callback_handler() {
     });
 
     if let TransactionEvent::ReceivedTransactionReply(tx_id) = recv_tx.unwrap() {
-        runtime.block_on(alice_ts.test_broadcast_transaction(*tx_id)).unwrap();
-        runtime.block_on(alice_ts.test_mine_transaction(*tx_id)).unwrap();
+        runtime
+            .block_on(alice_ts.test_broadcast_transaction((*tx_id).clone()))
+            .unwrap();
     };
 
     let alice_event_stream = alice_ts.get_event_stream_fused();
@@ -255,11 +260,24 @@ fn test_callback_handler() {
         timeout = Duration::from_secs(10)
     );
 
+    if let TransactionEvent::ReceivedTransactionReply(tx_id) = recv_tx.unwrap() {
+        runtime
+            .block_on(alice_ts.test_mine_transaction((*tx_id).clone()))
+            .unwrap();
+    };
+
+    let alice_event_stream = alice_ts.get_event_stream_fused();
+    let _ = collect_stream!(
+        runtime,
+        alice_event_stream.map(|i| (*i).clone()),
+        take = 6,
+        timeout = Duration::from_secs(10)
+    );
+
     let callback_state = CALLBACK_STATE.lock().unwrap();
     assert!(callback_state.received_tx_callback_called);
     assert!(callback_state.received_tx_reply_callback_called);
     assert!(callback_state.received_finalized_tx_callback_called);
     assert!(callback_state.broadcast_tx_callback_called);
-    assert!(callback_state.mined_tx_callback_called);
     assert!(callback_state.discovery_send_callback_called);
 }

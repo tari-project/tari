@@ -34,7 +34,7 @@ use tari_crypto::ristretto::RistrettoSecretKey;
 /// conversion errors etc.
 ///
 /// ```edition2018
-/// use tari_transactions::tari_amount::MicroTari;
+/// use tari_core::transactions::tari_amount::MicroTari;
 ///
 /// let a = MicroTari::from(500);
 /// let b = MicroTari::from(50);
@@ -45,7 +45,7 @@ pub struct MicroTari(pub u64);
 
 /// A convenience constant that makes it easier to define Tari amounts.
 /// ```edition2018
-///   use tari_transactions::tari_amount::{MicroTari, uT, T};
+///   use tari_core::transactions::tari_amount::{MicroTari, uT, T};
 ///   assert_eq!(MicroTari::from(42), 42 * uT);
 ///   assert_eq!(1 * T, 1_000_000.into());
 ///   assert_eq!(3_000_000 * uT, 3 * T);
@@ -155,7 +155,7 @@ impl From<MicroTari> for Tari {
 
 #[cfg(test)]
 mod test {
-    use crate::tari_amount::{MicroTari, Tari};
+    use crate::transactions::tari_amount::{MicroTari, Tari};
 
     #[test]
     fn micro_tari_arithmetic() {

@@ -24,13 +24,13 @@ use crate::{
     chain_storage::BlockchainBackend,
     consts::{MEMPOOL_ORPHAN_POOL_CACHE_TTL, MEMPOOL_ORPHAN_POOL_STORAGE_CAPACITY},
     mempool::orphan_pool::{error::OrphanPoolError, orphan_pool_storage::OrphanPoolStorage},
+    transactions::{transaction::Transaction, types::Signature},
     validation::Validator,
 };
 use std::{
     sync::{Arc, RwLock},
     time::Duration,
 };
-use tari_transactions::{transaction::Transaction, types::Signature};
 
 /// Configuration for the OrphanPool
 #[derive(Clone, Copy)]
@@ -152,10 +152,11 @@ mod test {
     use crate::{
         helpers::create_mem_db,
         mempool::orphan_pool::{OrphanPool, OrphanPoolConfig},
+        transactions::tari_amount::MicroTari,
+        tx,
         validation::transaction_validators::TxInputAndMaturityValidator,
     };
     use std::{sync::Arc, thread, time::Duration};
-    use tari_transactions::{tari_amount::MicroTari, tx};
 
     #[test]
     fn test_insert_rlu_and_ttl() {

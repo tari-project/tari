@@ -26,9 +26,9 @@ use crate::{
         BlockHash,
     },
     proof_of_work::ProofOfWork,
+    transactions::types::BlindingFactor,
 };
 use serde::{Deserialize, Serialize};
-use tari_transactions::types::BlindingFactor;
 
 /// The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for
 /// the block that the Base Node is able to complete on behalf of a Miner.

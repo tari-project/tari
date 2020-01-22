@@ -22,17 +22,17 @@
 
 use crate::support::utils::random_string;
 use chrono::Utc;
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-};
-use tari_transactions::{
+use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, Transaction, UnblindedOutput},
     transaction_protocol::sender::TransactionSenderMessage,
     types::{CommitmentFactory, CryptoFactories, HashDigest, PrivateKey, PublicKey},
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
+};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
 };
 use tari_wallet::transaction_service::storage::{
     database::{

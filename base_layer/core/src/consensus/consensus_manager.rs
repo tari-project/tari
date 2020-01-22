@@ -25,10 +25,10 @@ use crate::{
     chain_storage::{BlockchainBackend, ChainStorageError},
     consensus::emission::EmissionSchedule,
     proof_of_work::{DiffAdjManager, DiffAdjManagerError, Difficulty, DifficultyAdjustmentError, PowAlgorithm},
+    transactions::tari_amount::MicroTari,
 };
 use derive_error::Error;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
-use tari_transactions::tari_amount::MicroTari;
 use tari_utilities::epoch_time::EpochTime;
 
 #[derive(Debug, Error, Clone, PartialEq)]

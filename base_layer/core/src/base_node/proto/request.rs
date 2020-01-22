@@ -21,9 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::base_node::{base_node_service_request::Request as ProtoNodeCommsRequest, BlockHeights, HashOutputs};
-use crate::{base_node::comms_interface as ci, proof_of_work::PowAlgorithm};
+use crate::{base_node::comms_interface as ci, proof_of_work::PowAlgorithm, transactions::types::HashOutput};
 use std::convert::{TryFrom, TryInto};
-use tari_transactions::types::HashOutput;
 
 //---------------------------------- BaseNodeRequest --------------------------------------------//
 impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {

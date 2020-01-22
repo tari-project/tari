@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
+use crate::transactions::{
     fee::Fee,
     tari_amount::MicroTari,
     transaction::{
@@ -143,7 +143,7 @@ pub fn create_random_signature_from_s_key(
 #[macro_export]
 macro_rules! tx {
   ($amount:expr, fee: $fee:expr, lock: $lock:expr, inputs: $n_in:expr, maturity: $mat:expr, outputs: $n_out:expr) => {{
-    use $crate::helpers::create_tx;
+    use $crate::transactions::helpers::create_tx;
     create_tx($amount, $fee, $lock, $n_in, $mat, $n_out)
   }};
 
@@ -174,7 +174,7 @@ macro_rules! tx {
 #[macro_export]
 macro_rules! txn_schema {
     (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, $features:expr) => {{
-        $crate::helpers::TransactionSchema {
+        $crate::transactions::helpers::TransactionSchema {
             from: $input.clone(),
             to: $outputs.clone(),
             fee: $fee,
@@ -189,7 +189,7 @@ macro_rules! txn_schema {
             to:$outputs,
             fee:$fee,
             lock:0,
-            tari_transactions::transaction::OutputFeatures::default()
+            $crate::transactions::transaction::OutputFeatures::default()
         )
     };
 

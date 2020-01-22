@@ -47,6 +47,10 @@ use crate::{
             LMDB_UTXO_BITMAP_KEY,
         },
     },
+    transactions::{
+        transaction::{TransactionKernel, TransactionOutput},
+        types::{HashDigest, HashOutput},
+    },
 };
 use croaring::Bitmap;
 use digest::Digest;
@@ -66,10 +70,6 @@ use tari_mmr::{
     MutableMmrLeafNodes,
 };
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBStore};
-use tari_transactions::{
-    transaction::{TransactionKernel, TransactionOutput},
-    types::{HashDigest, HashOutput},
-};
 use tari_utilities::hash::Hashable;
 
 type DatabaseRef = Arc<Database<'static>>;

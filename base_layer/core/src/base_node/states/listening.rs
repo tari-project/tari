@@ -27,10 +27,10 @@ use crate::{
     },
     blocks::Block,
     chain_storage::{BlockchainBackend, ChainMetadata},
+    transactions::transaction::Transaction,
 };
 use log::*;
 use std::sync::atomic::Ordering;
-use tari_transactions::transaction::Transaction;
 
 const LOG_TARGET: &str = "base_node::listening";
 

@@ -27,12 +27,16 @@ use super::base_node::{
     TransactionKernels as ProtoTransactionKernels,
     TransactionOutputs as ProtoTransactionOutputs,
 };
-use crate::{base_node::comms_interface as ci, proof_of_work::Difficulty, proto::core as core_proto_types};
+use crate::{
+    base_node::comms_interface as ci,
+    proof_of_work::Difficulty,
+    proto::core as core_proto_types,
+    transactions::proto::{types as transactions_proto, utils::try_convert_all},
+};
 use std::{
     convert::TryInto,
     iter::{FromIterator, Iterator},
 };
-use tari_transactions::proto::{types as transactions_proto, utils::try_convert_all};
 
 impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
     type Error = String;

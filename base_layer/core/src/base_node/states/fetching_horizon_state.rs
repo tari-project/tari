@@ -23,11 +23,11 @@
 use crate::{
     base_node::{states::StateEvent, BaseNodeStateMachine},
     chain_storage::{BlockchainBackend, DbTransaction, MmrTree, MutableMmrState},
+    transactions::types::HashOutput,
 };
 use croaring::Bitmap;
 use log::*;
 use tari_mmr::MutableMmrLeafNodes;
-use tari_transactions::types::HashOutput;
 
 const LOG_TARGET: &str = "base_node::fetching_horizon_state";
 

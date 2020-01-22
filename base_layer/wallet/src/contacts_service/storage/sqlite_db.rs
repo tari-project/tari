@@ -34,7 +34,7 @@ use diesel::{
     SqliteConnection,
 };
 use std::{convert::TryFrom, io, path::Path, time::Duration};
-use tari_transactions::types::PublicKey;
+use tari_core::transactions::types::PublicKey;
 use tari_utilities::ByteArray;
 
 const DATABASE_CONNECTION_TIMEOUT_MS: u64 = 2000;
@@ -212,9 +212,9 @@ mod test {
     use crate::contacts_service::storage::{database::Contact, sqlite_db::ContactSql};
     use diesel::{r2d2::ConnectionManager, Connection, SqliteConnection};
     use std::convert::TryFrom;
+    use tari_core::transactions::types::{PrivateKey, PublicKey};
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
     use tari_test_utils::{paths::with_temp_dir, random::string};
-    use tari_transactions::types::{PrivateKey, PublicKey};
     use tari_utilities::ByteArray;
 
     #[test]

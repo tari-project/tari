@@ -24,12 +24,12 @@
 use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{BlockchainBackend, ChainStorageError, DbKey, DbTransaction, DbValue, MmrTree, MutableMmrState},
+    transactions::{
+        transaction::{TransactionKernel, TransactionOutput},
+        types::HashOutput,
+    },
 };
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof, MutableMmrLeafNodes};
-use tari_transactions::{
-    transaction::{TransactionKernel, TransactionOutput},
-    types::HashOutput,
-};
 
 // This is a test backend. This is used so that the ConsensusManager can be called without actually having a backend.
 // Calling this backend will result in a panic.

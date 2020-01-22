@@ -20,13 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::blocks::{blockheader::BlockHash, Block, BlockHeader};
+use crate::{
+    blocks::{blockheader::BlockHash, Block, BlockHeader},
+    transactions::{
+        transaction::{TransactionInput, TransactionKernel, TransactionOutput},
+        types::HashOutput,
+    },
+};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
-use tari_transactions::{
-    transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-    types::HashOutput,
-};
 use tari_utilities::{hex::to_hex, Hashable};
 
 #[derive(Debug)]

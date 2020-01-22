@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 #[allow(dead_code)]
 mod helpers;
 
@@ -45,20 +44,20 @@ use tari_core::{
         MempoolValidators,
         TxStorageResponse,
     },
+    transactions::{
+        helpers::{schema_to_transaction, spend_utxos},
+        proto,
+        tari_amount::{uT, T},
+        transaction::{OutputFeatures, Transaction},
+        types::CryptoFactories,
+    },
+    tx,
+    txn_schema,
     validation::transaction_validators::TxInputAndMaturityValidator,
 };
 use tari_mmr::MerkleChangeTrackerConfig;
 use tari_p2p::tari_message::TariMessageType;
 use tari_test_utils::{async_assert_eventually, random::string};
-use tari_transactions::{
-    helpers::{schema_to_transaction, spend_utxos},
-    proto,
-    tari_amount::{uT, T},
-    transaction::{OutputFeatures, Transaction},
-    tx,
-    txn_schema,
-    types::CryptoFactories,
-};
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
 

@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // Required for `super::types` used in generated files
-use tari_transactions::proto::types;
+use crate::transactions::proto::types;
 
 pub mod core {
     tari_utilities::include_proto_package!("tari.core");

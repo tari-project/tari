@@ -30,6 +30,10 @@ use crate::{
         HistoricalBlock,
     },
     proof_of_work::Difficulty,
+    transactions::{
+        transaction::{TransactionInput, TransactionKernel, TransactionOutput},
+        types::{BlindingFactor, Commitment, CommitmentFactory, HashOutput},
+    },
     validation::{Validation, Validator},
 };
 use croaring::Bitmap;
@@ -41,10 +45,6 @@ use std::{
 };
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof, MutableMmrLeafNodes};
-use tari_transactions::{
-    transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-    types::{BlindingFactor, Commitment, CommitmentFactory, HashOutput},
-};
 use tari_utilities::{hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "core::chain_storage::database";
@@ -229,9 +229,9 @@ macro_rules! fetch {
 /// ```
 /// use tari_core::{
 ///     chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
+///     transactions::types::HashDigest,
 ///     validation::{mocks::MockValidator, Validation},
 /// };
-/// use tari_transactions::types::HashDigest;
 /// let db_backend = MemoryDatabase::<HashDigest>::default();
 /// let validators = Validators::new(
 ///     MockValidator::new(true),

@@ -33,10 +33,10 @@ use tari_comms::{
 };
 #[cfg(feature = "test_harness")]
 use tari_comms_dht::DhtConfig;
+use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
 use tari_crypto::keys::PublicKey;
 use tari_p2p::initialization::CommsConfig;
 use tari_test_utils::{collect_stream, paths::with_temp_dir};
-use tari_transactions::{tari_amount::MicroTari, types::CryptoFactories};
 #[cfg(feature = "test_harness")]
 use tari_wallet::testnet_utils::broadcast_transaction;
 #[cfg(feature = "test_harness")]
@@ -47,10 +47,7 @@ use tari_wallet::{
     contacts_service::storage::{database::Contact, memory_db::ContactsServiceMemoryDatabase},
     output_manager_service::storage::memory_db::OutputManagerMemoryDatabase,
     storage::memory_db::WalletMemoryDatabase,
-    transaction_service::{
-        handle::TransactionEvent,
-        storage::{memory_db::TransactionMemoryDatabase, sqlite_db::TransactionServiceSqliteDatabase},
-    },
+    transaction_service::{handle::TransactionEvent, storage::memory_db::TransactionMemoryDatabase},
     wallet::WalletConfig,
     Wallet,
 };

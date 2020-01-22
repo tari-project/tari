@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::blocks::{new_blockheader_template::NewBlockHeaderTemplate, Block};
+use crate::{
+    blocks::{new_blockheader_template::NewBlockHeaderTemplate, Block},
+    transactions::aggregated_body::AggregateBody,
+};
 use serde::{Deserialize, Serialize};
-use tari_transactions::aggregated_body::AggregateBody;
 
 /// The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as
 /// a final step the Base node to add the MMR roots to the header.

@@ -34,20 +34,20 @@ use tari_core::{
     chain_storage::{BlockchainDatabase, ChainStorageError, DbTransaction, MemoryDatabase, Validators},
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{DiffAdjManager, Difficulty},
+    transactions::{
+        fee::Fee,
+        helpers::{create_test_kernel, create_utxo},
+        tari_amount::{uT, MicroTari},
+        transaction::UnblindedOutput,
+        types::{CryptoFactories, HashDigest},
+    },
+    txn_schema,
     validation::{
         chain_validators::{ChainTipValidator, GenesisBlockValidator},
         horizon_state_validators::HorizonStateHeaderValidator,
         mocks::MockValidator,
         ValidationError,
     },
-};
-use tari_transactions::{
-    fee::Fee,
-    helpers::{create_test_kernel, create_utxo},
-    tari_amount::{uT, MicroTari},
-    transaction::UnblindedOutput,
-    txn_schema,
-    types::{CryptoFactories, HashDigest},
 };
 
 fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_difficulty: Difficulty) {
