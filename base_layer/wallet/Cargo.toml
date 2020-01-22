@@ -32,7 +32,7 @@ diesel_migrations =  "1.4"
 diesel = {version="1.4", features = ["sqlite", "serde_json", "chrono", "r2d2"]}
 rand = "0.5.5"
 futures =  { version = "^0.3.1", features =["compat", "std"]}
-tokio = "0.2.9"
+tokio = "0.2.10"
 tower = "0.3.0-alpha.2"
 tempdir = "0.3.7"
 tari_test_utils = { path = "../../infrastructure/test_utils", version = "^0.0", optional = true}
