@@ -72,14 +72,6 @@ rustup toolchain add nightly-2019-10-04
 rustup default nightly-2019-10-04
 rustup component add rustfmt --toolchain nightly
 rustup component add clippy
-rustup target add x86_64-linux-android 
-rustup target add aarch64-linux-android 
-rustup target add armv7-linux-androideabi 
-rustup target add i686-linux-android arm-linux-androideabi
-rustup target add aarch64-apple-ios
-rustup target add x86_64-apple-ios
-cargo install cargo-ndk
-cargo install cargo-lipo
 ```
 
 ## Build Configuration
@@ -107,6 +99,8 @@ The following changes need to be made to the file
 2. ```ANDROID_WALLET``` needs to be changed to the path of the Android-Wallet repository
 3. ```IOS_WALLET_PATH``` needs to be changed to the path of the Wallet-iOS repository
 4. ```TARI_REPO_PATH``` needs to be changed to the path of the Tari repository
+5. ```BUILD_ANDROID``` can be set to ```0``` to disable Android library build
+6. ```BUILD_IOS``` can be set to ```0``` to disable iOS library build
 
 Save the file and rename it to ```build.config```
 
