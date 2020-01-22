@@ -33,7 +33,7 @@ use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, utils::signature};
 use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
 
 // Re-export applicable protos
-pub use crate::proto::envelope::{dht_header::Destination, DhtEnvelope, DhtHeader, DhtMessageType};
+pub use crate::proto::envelope::{dht_header::Destination, DhtEnvelope, DhtHeader, DhtMessageType, Network};
 
 #[derive(Debug, Error)]
 pub enum DhtMessageError {
@@ -43,6 +43,8 @@ pub enum DhtMessageError {
     InvalidOriginPublicKey,
     /// Invalid or unrecognised DHT message type
     InvalidMessageType,
+    /// Invalid or unrecognised network type
+    InvalidNetwork,
     /// Invalid or unrecognised DHT message flags
     InvalidMessageFlags,
     /// Header was omitted from the message
@@ -79,6 +81,7 @@ pub struct DhtMessageHeader {
     pub origin_public_key: CommsPublicKey,
     pub origin_signature: Vec<u8>,
     pub message_type: DhtMessageType,
+    pub network: Network,
     pub flags: DhtMessageFlags,
 }
 
@@ -88,6 +91,7 @@ impl DhtMessageHeader {
         origin_pubkey: CommsPublicKey,
         origin_signature: Vec<u8>,
         message_type: DhtMessageType,
+        network: Network,
         flags: DhtMessageFlags,
     ) -> Self
     {
@@ -97,6 +101,7 @@ impl DhtMessageHeader {
             origin_public_key: origin_pubkey,
             origin_signature,
             message_type,
+            network,
             flags,
         }
     }
@@ -130,6 +135,7 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
                 .map_err(|_| DhtMessageError::InvalidOriginPublicKey)?,
             header.origin_signature,
             DhtMessageType::from_i32(header.message_type).ok_or(DhtMessageError::InvalidMessageType)?,
+            Network::from_i32(header.network).ok_or(DhtMessageError::InvalidNetwork)?,
             DhtMessageFlags::from_bits(header.flags).ok_or(DhtMessageError::InvalidMessageFlags)?,
         ))
     }
@@ -154,6 +160,7 @@ impl From<DhtMessageHeader> for DhtHeader {
             origin_signature: header.origin_signature,
             destination: Some(header.destination.into()),
             message_type: header.message_type as i32,
+            network: header.network as i32,
             flags: header.flags.bits(),
         }
     }

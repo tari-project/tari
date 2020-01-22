@@ -31,7 +31,7 @@ use crate::{
         message_params::FinalSendMessageParams,
         SendMessageResponse,
     },
-    proto::envelope::DhtMessageType,
+    proto::envelope::{DhtMessageType, Network},
 };
 use futures::{
     channel::oneshot,
@@ -56,6 +56,7 @@ pub struct BroadcastLayer {
     dht_requester: DhtRequester,
     dht_discovery_requester: DhtDiscoveryRequester,
     node_identity: Arc<NodeIdentity>,
+    target_network: Network,
 }
 
 impl BroadcastLayer {
@@ -63,12 +64,14 @@ impl BroadcastLayer {
         node_identity: Arc<NodeIdentity>,
         dht_requester: DhtRequester,
         dht_discovery_requester: DhtDiscoveryRequester,
+        target_network: Network,
     ) -> Self
     {
         BroadcastLayer {
             node_identity,
             dht_requester,
             dht_discovery_requester,
+            target_network,
         }
     }
 }
@@ -82,6 +85,7 @@ impl<S> Layer<S> for BroadcastLayer {
             Arc::clone(&self.node_identity),
             self.dht_requester.clone(),
             self.dht_discovery_requester.clone(),
+            self.target_network.clone(),
         )
     }
 }
@@ -94,6 +98,7 @@ pub struct BroadcastMiddleware<S> {
     dht_requester: DhtRequester,
     dht_discovery_requester: DhtDiscoveryRequester,
     node_identity: Arc<NodeIdentity>,
+    target_network: Network,
 }
 
 impl<S> BroadcastMiddleware<S> {
@@ -102,6 +107,7 @@ impl<S> BroadcastMiddleware<S> {
         node_identity: Arc<NodeIdentity>,
         dht_requester: DhtRequester,
         dht_discovery_requester: DhtDiscoveryRequester,
+        target_network: Network,
     ) -> Self
     {
         Self {
@@ -109,6 +115,7 @@ impl<S> BroadcastMiddleware<S> {
             dht_requester,
             dht_discovery_requester,
             node_identity,
+            target_network,
         }
     }
 }
@@ -131,6 +138,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError> + C
             Arc::clone(&self.node_identity),
             self.dht_requester.clone(),
             self.dht_discovery_requester.clone(),
+            self.target_network.clone(),
             msg,
         )
         .handle()
@@ -143,6 +151,7 @@ struct BroadcastTask<S> {
     dht_requester: DhtRequester,
     dht_discovery_requester: DhtDiscoveryRequester,
     request: Option<DhtOutboundRequest>,
+    target_network: Network,
 }
 
 impl<S> BroadcastTask<S>
@@ -153,6 +162,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         node_identity: Arc<NodeIdentity>,
         dht_requester: DhtRequester,
         dht_discovery_requester: DhtDiscoveryRequester,
+        target_network: Network,
         request: DhtOutboundRequest,
     ) -> Self
     {
@@ -161,6 +171,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
             node_identity,
             dht_requester,
             dht_discovery_requester,
+            target_network,
             request: Some(request),
         }
     }
@@ -368,6 +379,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
                     // work
                     Vec::new(),
                     dht_message_type,
+                    self.target_network.clone(),
                     dht_flags,
                 ))
             })
@@ -458,8 +470,13 @@ mod test {
 
         let spy = service_spy();
 
-        let mut service =
-            BroadcastMiddleware::new(spy.to_service(), node_identity, dht_requester, dht_discover_requester);
+        let mut service = BroadcastMiddleware::new(
+            spy.to_service(),
+            node_identity,
+            dht_requester,
+            dht_discover_requester,
+            Network::LocalTest,
+        );
         let (reply_tx, _reply_rx) = oneshot::channel();
 
         rt.block_on(service.call(DhtOutboundRequest::SendMessage(
@@ -502,6 +519,7 @@ mod test {
             Arc::new(node_identity),
             dht_requester,
             dht_discover_requester,
+            Network::LocalTest,
         );
         let (reply_tx, reply_rx) = oneshot::channel();
 
@@ -553,6 +571,7 @@ mod test {
             Arc::new(node_identity),
             dht_requester,
             dht_discover_requester,
+            Network::LocalTest,
         );
         let (reply_tx, reply_rx) = oneshot::channel();
 

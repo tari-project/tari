@@ -391,7 +391,7 @@ mod test {
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     };
     use tari_comms_dht::{
-        envelope::DhtMessageHeader,
+        envelope::{DhtMessageHeader, Network},
         outbound::{DhtOutboundRequest, SendMessageResponse},
     };
     use tari_crypto::keys::PublicKey;
@@ -518,6 +518,7 @@ mod test {
             message_type: Default::default(),
             origin_signature: Default::default(),
             version: 0,
+            network: Network::LocalTest,
             origin_public_key,
         }
     }

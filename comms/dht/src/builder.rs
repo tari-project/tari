@@ -55,6 +55,9 @@ impl DhtBuilder {
     ) -> Self
     {
         Self {
+            #[cfg(test)]
+            config: DhtConfig::default_local_test(),
+            #[cfg(not(test))]
             config: Default::default(),
             node_identity,
             peer_manager,
@@ -65,6 +68,21 @@ impl DhtBuilder {
 
     pub fn with_config(mut self, config: DhtConfig) -> Self {
         self.config = config;
+        self
+    }
+
+    pub fn local_test(mut self) -> Self {
+        self.config = DhtConfig::default_local_test();
+        self
+    }
+
+    pub fn testnet(mut self) -> Self {
+        self.config = DhtConfig::default_testnet();
+        self
+    }
+
+    pub fn mainnet(mut self) -> Self {
+        self.config = DhtConfig::default_mainnet();
         self
     }
 

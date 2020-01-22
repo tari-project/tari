@@ -104,7 +104,7 @@ impl DhtDiscoveryMock {
         match req {
             DiscoverPeer(boxed) => {
                 let (_, reply_tx) = *boxed;
-                let lock = acquire_read_lock!(self.state.discover_peer);
+                let lock = self.state.discover_peer.read().unwrap();
                 reply_tx.send(Ok(lock.clone())).unwrap();
             },
             NotifyDiscoveryResponseReceived(_) => {},

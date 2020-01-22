@@ -28,7 +28,7 @@ use tari_comms::{
     utils::signature,
 };
 use tari_comms_dht::{
-    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
+    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, Network, NodeDestination},
     inbound::DhtInboundMessage,
 };
 use tari_utilities::message_format::MessageFormat;
@@ -71,6 +71,7 @@ pub fn make_dht_header(node_identity: &NodeIdentity, message: &Vec<u8>, flags: D
             .to_binary()
             .unwrap(),
         message_type: DhtMessageType::None,
+        network: Network::LocalTest,
         flags,
     }
 }

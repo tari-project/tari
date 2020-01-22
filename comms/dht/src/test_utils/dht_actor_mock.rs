@@ -102,7 +102,7 @@ impl DhtActorMock {
                 reply_tx.send(v).unwrap();
             },
             SelectPeers(_, reply_tx) => {
-                let lock = acquire_read_lock!(self.state.select_peers);
+                let lock = self.state.select_peers.read().unwrap();
                 reply_tx.send(lock.clone()).unwrap();
             },
             SendRequestStoredMessages(_) => {},
