@@ -319,7 +319,7 @@ where B: BlockchainBackend
             .map_err(|e| MempoolServiceError::OutboundMessageService(e.to_string()))?;
 
         match send_result.resolve_ok().await {
-            Some(n) if n > 0 => {
+            Some(tags) if tags.len() > 0 => {
                 // Spawn timeout and wait for matching response to arrive
                 self.waiting_requests.insert(request_key, Some(reply_tx));
                 self.spawn_request_timeout(request_key, self.config.request_timeout)

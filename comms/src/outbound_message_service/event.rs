@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,32 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod error;
-mod event;
-mod messages;
-mod service;
+use super::MessageTag;
+use crate::peer_manager::NodeId;
+use std::sync::Arc;
+use tokio::sync::broadcast;
 
-pub use self::{
-    error::OutboundServiceError,
-    event::{OutboundEvent, OutboundEventPublisher, OutboundEventSubscription},
-    messages::{MessageTag, OutboundMessage},
-    service::OutboundMessageService,
-};
+pub type OutboundEventSubscription = broadcast::Receiver<Arc<OutboundEvent>>;
+pub type OutboundEventPublisher = broadcast::Sender<Arc<OutboundEvent>>;
 
-/// Configuration for the OutboundService
-pub struct OutboundServiceConfig {
-    /// Maximum size of the recent connection cache. This cache keeps active connections
-    /// for reuse with subsequent messages without querying the connection manager. Default: 20
-    pub max_cached_connections: usize,
-    /// Maximum attempts to send a message before discarding it. Default: 5
-    pub max_attempts: usize,
-}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OutboundEvent {
+    PeerDialStart(NodeId),
+    PeerDialSuccess(NodeId),
+    PeerDialFail(NodeId),
+    PeerDialRetry(NodeId, usize),
 
-impl Default for OutboundServiceConfig {
-    fn default() -> Self {
-        Self {
-            max_attempts: 5,
-            max_cached_connections: 20,
-        }
-    }
+    MessageSendSuccess(MessageTag, NodeId),
+    MessageSendFail(MessageTag, NodeId),
 }

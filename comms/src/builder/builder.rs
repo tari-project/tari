@@ -35,7 +35,14 @@ use crate::{
     control_service::{ControlService, ControlServiceConfig, ControlServiceError, ControlServiceHandle},
     inbound_message_service::inbound_message_service::InboundMessageService,
     message::{FrameSet, InboundMessage},
-    outbound_message_service::{OutboundMessage, OutboundMessageService, OutboundServiceConfig, OutboundServiceError},
+    outbound_message_service::{
+        OutboundEventPublisher,
+        OutboundEventSubscription,
+        OutboundMessage,
+        OutboundMessageService,
+        OutboundServiceConfig,
+        OutboundServiceError,
+    },
     peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
     types::CommsDatabase,
 };
@@ -44,7 +51,7 @@ use futures::{channel::mpsc, stream, Sink, Stream};
 use log::*;
 use std::{fmt::Debug, sync::Arc};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::runtime;
+use tokio::{runtime, sync::broadcast};
 
 const LOG_TARGET: &str = "comms::builder";
 
@@ -284,17 +291,22 @@ where
         node_identity: Arc<NodeIdentity>,
         connection_manager_requester: ConnectionManagerRequester,
         shutdown_signal: ShutdownSignal,
-    ) -> OutboundMessageService<TOutStream, BoxedBackoff>
+    ) -> (OutboundMessageService<TOutStream, BoxedBackoff>, OutboundEventPublisher)
     {
         let outbound_stream = self.outbound_stream.take().expect("outbound_stream cannot be None");
         let oms_backoff = self.oms_backoff.take().expect("oms_backoff was None");
-        OutboundMessageService::with_backoff(
-            self.outbound_service_config.take().unwrap_or_default(),
-            outbound_stream,
-            node_identity,
-            connection_manager_requester,
-            shutdown_signal,
-            oms_backoff,
+        let (event_tx, _) = broadcast::channel(10);
+        (
+            OutboundMessageService::with_backoff(
+                self.outbound_service_config.take().unwrap_or_default(),
+                outbound_stream,
+                node_identity,
+                connection_manager_requester,
+                shutdown_signal,
+                oms_backoff,
+                event_tx.clone(),
+            ),
+            event_tx,
         )
     }
 
@@ -333,7 +345,7 @@ where
         let (connection_manager_requester, connection_manager_actor) =
             self.make_connection_manager_actor(Arc::clone(&connection_manager), shutdown.to_signal());
 
-        let outbound_message_service = self.make_outbound_message_service(
+        let (outbound_message_service, outbound_event_publisher) = self.make_outbound_message_service(
             Arc::clone(&node_identity),
             connection_manager_requester.clone(),
             shutdown.to_signal(),
@@ -356,6 +368,7 @@ where
             inbound_message_service,
             node_identity,
             outbound_message_service,
+            outbound_event_publisher,
             peer_manager,
         })
     }
@@ -387,6 +400,8 @@ pub struct CommsContainer<TInSink, TOutStream> {
     node_identity: Arc<NodeIdentity>,
 
     outbound_message_service: OutboundMessageService<TOutStream, BoxedBackoff>,
+    outbound_event_publisher: OutboundEventPublisher,
+
     shutdown: Shutdown,
 
     peer_manager: Arc<PeerManager>,
@@ -417,6 +432,7 @@ where
 
         Ok(CommsNode {
             connection_manager: self.connection_manager,
+            outbound_event_publisher: self.outbound_event_publisher,
             executor: self.executor,
             shutdown: self.shutdown,
             control_service_handle,
@@ -438,6 +454,7 @@ pub struct CommsNode {
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
     executor: runtime::Handle,
+    outbound_event_publisher: OutboundEventPublisher,
 }
 
 impl CommsNode {
@@ -449,6 +466,11 @@ impl CommsNode {
     /// Return a cloned atomic reference of the NodeIdentity
     pub fn node_identity(&self) -> Arc<NodeIdentity> {
         Arc::clone(&self.node_identity)
+    }
+
+    /// Return a subscription to OMS events. This will emit events sent _after_ this subscription was created.
+    pub fn outbound_event_subscription(&self) -> OutboundEventSubscription {
+        self.outbound_event_publisher.subscribe()
     }
 
     /// Return a reference to the executor used to run comms tasks

@@ -483,7 +483,7 @@ mod test {
             rt.spawn(async move {
                 match outbound_rx.select_next_some().await {
                     DhtOutboundRequest::SendMessage(_, _, reply_tx) => {
-                        reply_tx.send(SendMessageResponse::Ok(0)).unwrap();
+                        reply_tx.send(SendMessageResponse::Queued(vec![])).unwrap();
                     },
                 }
             });

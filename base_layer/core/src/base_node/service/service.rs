@@ -390,7 +390,7 @@ where B: BlockchainBackend + 'static
             .map_err(|e| CommsInterfaceError::OutboundMessageService(e.to_string()))?;
 
         match send_result.resolve_ok().await {
-            Some(0) => {
+            Some(tags) if tags.len() == 0 => {
                 let _ = reply_tx
                     .send(Err(CommsInterfaceError::NoBootstrapNodesConfigured))
                     .or_else(|resp| {
@@ -401,7 +401,8 @@ where B: BlockchainBackend + 'static
                         Err(resp)
                     });
             },
-            Some(dest_count) => {
+            Some(tags) => {
+                let dest_count = tags.len();
                 // Wait for matching responses to arrive
                 self.waiting_requests.insert(request_key, WaitingRequest {
                     reply_tx: Some(reply_tx),

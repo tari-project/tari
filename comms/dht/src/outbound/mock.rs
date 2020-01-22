@@ -144,7 +144,7 @@ impl OutboundServiceMock {
                     let response = self
                         .mock_state
                         .take_next_response()
-                        .or(Some(SendMessageResponse::Ok(0)))
+                        .or(Some(SendMessageResponse::Queued(vec![])))
                         .expect("never none");
 
                     reply_tx.send(response).expect("Reply channel cancelled");

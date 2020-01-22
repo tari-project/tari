@@ -364,7 +364,7 @@ where
             )
             .await?
         {
-            SendMessageResponse::Ok(_) => (),
+            SendMessageResponse::Queued(_) => (),
             SendMessageResponse::Failed => return Err(TransactionServiceError::OutboundSendFailure),
             SendMessageResponse::PendingDiscovery(r) => {
                 // The sending of the message resulted in a long running Discovery process being performed by the Comms
@@ -965,8 +965,8 @@ async fn transaction_send_discovery_process_completion<TBackend: TransactionBack
     let mut success = false;
     match response_channel.await {
         Ok(response) => match response {
-            SendMessageResponse::Ok(n) => {
-                if n == 0 {
+            SendMessageResponse::Queued(tags) => {
+                if tags.len() == 0 {
                     error!(
                         target: LOG_TARGET,
                         "Send Discovery process for TX_ID: {} was unsuccessful and no message was sent", tx_id
@@ -974,7 +974,9 @@ async fn transaction_send_discovery_process_completion<TBackend: TransactionBack
                 } else {
                     info!(
                         target: LOG_TARGET,
-                        "Transaction (TxId: {}) Send Discovery process successful? {}", tx_id, n
+                        "Transaction (TxId: {}) Send Discovery process successful? {}",
+                        tx_id,
+                        tags.len()
                     );
                     success = true;
                 }

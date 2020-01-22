@@ -27,6 +27,7 @@ use crate::support::{
 use futures::{channel::mpsc, SinkExt, StreamExt};
 use std::{sync::Arc, thread, time::Duration};
 use tari_comms::{
+    backoff::ConstantBackoff,
     connection::ZmqContext,
     connection_manager::{
         create_connection_manager_actor,
@@ -36,14 +37,14 @@ use tari_comms::{
     },
     control_service::{ControlService, ControlServiceConfig},
     message::MessageFlags,
-    outbound_message_service::{OutboundMessage, OutboundMessageService},
+    outbound_message_service::{MessageTag, OutboundEvent, OutboundMessage, OutboundMessageService},
     peer_manager::{Peer, PeerManager},
     types::CommsDatabase,
 };
 use tari_shutdown::Shutdown;
 use tari_storage::LMDBWrapper;
-use tari_test_utils::random;
-use tokio::runtime::Runtime;
+use tari_test_utils::{collect_stream, random};
+use tokio::{runtime::Runtime, sync::broadcast};
 
 fn make_peer_connection_config() -> PeerConnectionConfig {
     PeerConnectionConfig {
@@ -147,6 +148,7 @@ fn outbound_message_pool_no_retry() {
 
     // Setup Node A OMS
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
+    let (event_tx, _) = broadcast::channel(1);
     let mut shutdown = Shutdown::new();
     let oms = OutboundMessageService::new(
         Default::default(),
@@ -154,6 +156,7 @@ fn outbound_message_pool_no_retry() {
         node_identity,
         node_A_connection_manager_requester,
         shutdown.to_signal(),
+        event_tx,
     );
     rt.spawn(oms.start());
 
@@ -190,7 +193,7 @@ fn outbound_message_pool_no_retry() {
 #[test]
 #[allow(non_snake_case)]
 fn test_outbound_message_pool_fail_and_retry() {
-    let rt = Runtime::new().unwrap();
+    let mut rt = Runtime::new().unwrap();
     let context = ZmqContext::new();
 
     let node_A_identity = factories::node_identity::create().build().map(Arc::new).unwrap();
@@ -248,30 +251,40 @@ fn test_outbound_message_pool_fail_and_retry() {
     rt.spawn(node_A_connection_manager_actor.run());
 
     // Setup Node A OMS
+    let (event_tx, _) = broadcast::channel(20); // Note: increase if we expect more than 20 events we want to test
+    let event_subscription = event_tx.subscribe();
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
-    let oms = OutboundMessageService::new(
+    let oms = OutboundMessageService::with_backoff(
         Default::default(),
         outbound_rx,
-        node_A_identity,
+        node_A_identity.clone(),
         node_A_connection_manager_requester,
         shutdown.to_signal(),
+        ConstantBackoff::new(Duration::from_millis(1)),
+        event_tx,
     );
     rt.spawn(oms.start());
 
     // Spawn 8 message sending tasks
+    let expected_tag = MessageTag::new();
     for _ in 0..8 {
         let mut sink_clone = outbound_tx.clone();
         let node_id = node_B_peer.node_id.clone();
         rt.spawn(async move {
             sink_clone
-                .send(OutboundMessage::new(node_id, MessageFlags::empty(), vec![0]))
+                .send(OutboundMessage::with_tag(
+                    expected_tag,
+                    node_id,
+                    MessageFlags::empty(),
+                    vec![0],
+                ))
                 .await
                 .unwrap()
         });
     }
 
     // Keep this thread sleep, it's testing send retry
-    thread::sleep(Duration::from_millis(1500));
+    thread::sleep(Duration::from_millis(200));
 
     // Later, start node B's control service and test if we receive messages
     let node_B_database_name = random::string(8);
@@ -309,4 +322,36 @@ fn test_outbound_message_pool_fail_and_retry() {
         .unwrap();
 
     shutdown.trigger().unwrap();
+
+    let events = collect_stream!(rt, event_subscription, timeout = Duration::from_secs(10));
+
+    // Check that the PeerDialSuccess event was emitted
+    let dialed_node_id = events
+        .iter()
+        .map(|result| result.as_ref().unwrap())
+        .find_map(|event| match &**event {
+            OutboundEvent::PeerDialSuccess(node_id) => Some(node_id),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(dialed_node_id, &node_B_peer.node_id);
+
+    // Check that the MessageSendSuccess event was emitted for each event
+    let msg_success = events
+        .iter()
+        .map(|result| result.as_ref().unwrap())
+        .filter(|event| match ***event {
+            OutboundEvent::MessageSendSuccess(_, _) => true,
+            _ => false,
+        })
+        .map(|event| match &**event {
+            OutboundEvent::MessageSendSuccess(msg_tag, node_id) => (msg_tag, node_id),
+            _ => unreachable!(),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(msg_success.len(), 8);
+
+    assert!(msg_success
+        .iter()
+        .all(|(tag, node_id)| **tag == expected_tag && **node_id == node_B_peer.node_id));
 }

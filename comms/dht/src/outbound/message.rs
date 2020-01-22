@@ -26,7 +26,12 @@ use crate::{
 };
 use futures::channel::oneshot;
 use std::fmt;
-use tari_comms::{message::MessageFlags, peer_manager::Peer, types::CommsPublicKey};
+use tari_comms::{
+    message::MessageFlags,
+    outbound_message_service::MessageTag,
+    peer_manager::Peer,
+    types::CommsPublicKey,
+};
 
 /// Determines if an outbound message should be Encrypted and, if so, for which public key
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,8 +64,9 @@ impl Default for OutboundEncryption {
 
 #[derive(Debug)]
 pub enum SendMessageResponse {
-    /// The number of messages that have been queued for sending
-    Ok(usize),
+    /// Returns the message tags which are queued for sending. These tags will be used in a subsequent OutboundEvent to
+    /// indicate if the message succeeded/failed to send
+    Queued(Vec<MessageTag>),
     /// A failure occurred when sending
     Failed,
     /// DHT Discovery has been initiated. The caller may wait on the receiver
@@ -71,23 +77,23 @@ pub enum SendMessageResponse {
 
 impl SendMessageResponse {
     /// Returns the result of a send message request.
-    /// A `SendMessageResponse::Ok(n)` will resolve immediately returning `Some(n)`.
+    /// A `SendMessageResponse::Queued(n)` will resolve immediately returning `Some(n)`.
     /// A `SendMessageResponse::Failed` will resolve immediately returning a `None`.
     /// If DHT discovery is initiated, this will resolve once discovery has completed, either
     /// succeeding (`Some(n)`) or failing (`None`).
-    pub async fn resolve_ok(self) -> Option<usize> {
+    pub async fn resolve_ok(self) -> Option<Vec<MessageTag>> {
         use SendMessageResponse::*;
         match self {
-            Ok(n) => Some(n),
+            Queued(tags) => Some(tags),
             Failed => None,
-            PendingDiscovery(rx) => rx.await.ok()?.ok_or_failed(),
+            PendingDiscovery(rx) => rx.await.ok()?.queued_or_failed(),
         }
     }
 
-    fn ok_or_failed(self) -> Option<usize> {
+    fn queued_or_failed(self) -> Option<Vec<MessageTag>> {
         use SendMessageResponse::*;
         match self {
-            Ok(n) => Some(n),
+            Queued(tags) => Some(tags),
             Failed => None,
             PendingDiscovery(_) => panic!("ok_or_failed() called on PendingDiscovery"),
         }
@@ -119,6 +125,7 @@ impl fmt::Display for DhtOutboundRequest {
 /// send a message
 #[derive(Clone, Debug)]
 pub struct DhtOutboundMessage {
+    pub tag: MessageTag,
     pub destination_peer: Peer,
     pub dht_header: DhtMessageHeader,
     pub comms_flags: MessageFlags,
@@ -137,6 +144,7 @@ impl DhtOutboundMessage {
     ) -> Self
     {
         Self {
+            tag: MessageTag::new(),
             destination_peer,
             dht_header,
             encryption,
