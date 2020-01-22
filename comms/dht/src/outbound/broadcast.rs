@@ -252,7 +252,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
                         },
                         Ok(None) => {
                             // Message sent to 0 peers
-                            let _ = discovery_reply_tx.send(SendMessageResponse::Ok(0));
+                            let _ = discovery_reply_tx.send(SendMessageResponse::Queued(vec![]));
                             return Ok(Vec::new());
                         },
                         Err(err) => {
@@ -271,7 +271,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
                         let _ = reply_tx
                             .take()
                             .expect("cannot fail")
-                            .send(SendMessageResponse::Ok(msgs.len()));
+                            .send(SendMessageResponse::Queued(msgs.iter().map(|m| m.tag).collect()));
                         Ok(msgs)
                     },
                     Err(err) => {
@@ -414,6 +414,7 @@ mod test {
         types::CommsPublicKey,
     };
     use tari_crypto::keys::PublicKey;
+    use tari_test_utils::unpack_enum;
     use tokio::runtime::Runtime;
 
     #[test]
@@ -519,12 +520,8 @@ mod test {
         .unwrap();
 
         let send_message_response = rt.block_on(reply_rx).unwrap();
-        // TODO: use unpack_enum!
-        match send_message_response {
-            SendMessageResponse::Ok(0) => {},
-            _ => panic!("Unexpected SendMessageResponse variant"),
-        }
-
+        unpack_enum!(SendMessageResponse::Queued(tags) = send_message_response);
+        assert_eq!(tags.len(), 0);
         assert_eq!(spy.call_count(), 0);
     }
 
@@ -573,18 +570,12 @@ mod test {
         .unwrap();
 
         let send_message_response = rt.block_on(reply_rx).unwrap();
-        match send_message_response {
-            SendMessageResponse::PendingDiscovery(await_discovery) => {
-                let discovery_reply = rt.block_on(await_discovery).unwrap();
-                assert_eq!(dht_discovery_state.call_count(), 1);
-                match discovery_reply {
-                    SendMessageResponse::Ok(1) => {},
-                    e => panic!("Unexpected SendMessageResponse variant: {:?}", e),
-                }
 
-                assert_eq!(spy.call_count(), 1);
-            },
-            e => panic!("Unexpected SendMessageResponse variant: {:?}", e),
-        }
+        unpack_enum!(SendMessageResponse::PendingDiscovery(await_discovery) = send_message_response);
+        let discovery_reply = rt.block_on(await_discovery).unwrap();
+        assert_eq!(dht_discovery_state.call_count(), 1);
+        unpack_enum!(SendMessageResponse::Queued(tags) = discovery_reply);
+        assert_eq!(tags.len(), 1);
+        assert_eq!(spy.call_count(), 1);
     }
 }

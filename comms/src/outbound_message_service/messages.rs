@@ -20,12 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{message::MessageFlags, peer_manager::node_id::NodeId};
+use crate::{consts::COMMS_RNG, message::MessageFlags, peer_manager::node_id::NodeId};
+use rand::Rng;
+
+/// Represents a tag for a message
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
+pub struct MessageTag(u64);
+
+impl MessageTag {
+    pub fn new() -> Self {
+        COMMS_RNG.with(|rng| Self(rng.borrow_mut().gen()))
+    }
+}
 
 /// The OutboundMessage has a copy of the MessageEnvelope. OutboundMessageService will create the
 /// OutboundMessage and forward it to the OutboundMessagePool.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OutboundMessage {
+    pub tag: MessageTag,
     pub peer_node_id: NodeId,
     pub flags: MessageFlags,
     pub body: Vec<u8>,
@@ -34,7 +46,13 @@ pub struct OutboundMessage {
 impl OutboundMessage {
     /// Create a new OutboundMessage from the destination_node_id and message_frames
     pub fn new(peer_node_id: NodeId, flags: MessageFlags, body: Vec<u8>) -> OutboundMessage {
+        Self::with_tag(MessageTag::new(), peer_node_id, flags, body)
+    }
+
+    /// Create a new OutboundMessage from the destination_node_id and message_frames
+    pub fn with_tag(tag: MessageTag, peer_node_id: NodeId, flags: MessageFlags, body: Vec<u8>) -> OutboundMessage {
         OutboundMessage {
+            tag,
             peer_node_id,
             flags,
             body,
@@ -47,9 +65,11 @@ mod test {
     use super::*;
 
     #[test]
-    fn new() {
+    fn with_tag() {
         let node_id = NodeId::new();
-        let subject = OutboundMessage::new(node_id.clone(), MessageFlags::empty(), vec![1]);
+        let tag = MessageTag::new();
+        let subject = OutboundMessage::with_tag(tag, node_id.clone(), MessageFlags::empty(), vec![1]);
+        assert_eq!(tag, subject.tag);
         assert_eq!(subject.body, vec![1]);
         assert_eq!(subject.peer_node_id, node_id);
     }

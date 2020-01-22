@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use super::{OutboundEvent, OutboundMessage, OutboundServiceConfig, OutboundServiceError};
 use crate::{
     backoff::{Backoff, ExponentialBackoff},
     connection::PeerConnection,
     connection_manager::ConnectionManagerRequester,
     message::{Envelope, MessageExt},
-    outbound_message_service::{error::OutboundServiceError, messages::OutboundMessage, OutboundServiceConfig},
+    outbound_message_service::{event::OutboundEventPublisher, MessageTag},
     peer_manager::{NodeId, NodeIdentity},
 };
 use futures::{
@@ -40,12 +41,13 @@ use log::*;
 use std::{collections::HashMap, sync::Arc};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::ByteArray;
-use tokio::{task, time};
+use tokio::{sync::broadcast, task, time};
 
 const LOG_TARGET: &str = "comms::outbound_message_service::worker";
 
 /// The state of the dial request
 pub struct DialState {
+    message_tag: MessageTag,
     /// Number of dial attempts
     attempts: usize,
     /// The node id being dialed
@@ -56,8 +58,9 @@ pub struct DialState {
 
 impl DialState {
     /// Create a new DialState for the given NodeId
-    pub fn new(node_id: NodeId) -> Self {
+    pub fn new(message_tag: MessageTag, node_id: NodeId) -> Self {
         Self {
+            message_tag,
             node_id,
             attempts: 0,
             cancel_rx: None,
@@ -93,6 +96,7 @@ pub struct OutboundMessageService<TMsgStream, TBackoff> {
     active_connections: HashMap<NodeId, Arc<PeerConnection>>,
     shutdown_signal: Option<ShutdownSignal>,
     backoff: Arc<TBackoff>,
+    event_publisher: OutboundEventPublisher,
 }
 
 impl<TMsgStream> OutboundMessageService<TMsgStream, ExponentialBackoff>
@@ -104,6 +108,7 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
         node_identity: Arc<NodeIdentity>,
         connection_manager: ConnectionManagerRequester,
         shutdown_signal: ShutdownSignal,
+        event_publisher: broadcast::Sender<Arc<OutboundEvent>>,
     ) -> Self
     {
         Self::with_backoff(
@@ -113,6 +118,7 @@ where TMsgStream: Stream<Item = OutboundMessage> + Unpin
             connection_manager,
             shutdown_signal,
             ExponentialBackoff::default(),
+            event_publisher,
         )
     }
 }
@@ -129,6 +135,7 @@ where
         connection_manager: ConnectionManagerRequester,
         shutdown_signal: ShutdownSignal,
         backoff: TBackoff,
+        event_publisher: broadcast::Sender<Arc<OutboundEvent>>,
     ) -> Self
     {
         Self {
@@ -141,6 +148,7 @@ where
             dial_cancel_signals: HashMap::new(),
             shutdown_signal: Some(shutdown_signal),
             backoff: Arc::new(backoff),
+            event_publisher,
         }
     }
 
@@ -175,6 +183,7 @@ where
                                 target: LOG_TARGET,
                                 "Message failed to send from existing active connection",
                             );
+
                             // TODO: Enqueue message for resending
                         }
                     } else {
@@ -182,6 +191,9 @@ where
                             let (cancel_tx, cancel_rx) = oneshot::channel();
                             self.dial_cancel_signals.insert(dial_state.node_id.clone(), cancel_tx);
                             dial_state.set_cancel_receiver(cancel_rx.fuse());
+                            self.publish_event(OutboundEvent::PeerDialStart(
+                                dial_state.node_id.clone(),
+                            ));
                             pending_connects.push(
                                 Self::connect_to(self.connection_manager.clone(), dial_state, Arc::clone(&self.backoff))
                             );
@@ -208,10 +220,21 @@ where
                                 );
                                 self.dial_cancel_signals.remove(&state.node_id);
                                 self.pending_connect_requests.remove(&state.node_id);
+                                self.publish_event(OutboundEvent::PeerDialFail(
+                                    state.node_id.clone(),
+                                ));
+                                self.publish_event(OutboundEvent::MessageSendFail(
+                                    state.message_tag,
+                                    state.node_id.clone(),
+                                ));
                                 debug!(target: LOG_TARGET, "NodeId={} Maximum attempts reached. Discarding messages.", state.node_id);
                             } else {
                                 // Should retry this connection attempt
                                 state.inc_attempts();
+                                self.publish_event(OutboundEvent::PeerDialRetry(
+                                    state.node_id.clone(),
+                                    state.attempts,
+                                ));
                                 pending_connects.push(
                                     Self::connect_to(self.connection_manager.clone(), state, Arc::clone(&self.backoff))
                                 );
@@ -232,6 +255,18 @@ where
                     break;
                 }
             }
+        }
+    }
+
+    fn publish_event(&mut self, event: OutboundEvent) {
+        match self.event_publisher.send(Arc::new(event)) {
+            Ok(n) => {
+                debug!(target: LOG_TARGET, "Sent OutboundEvent to {} subscriber(s)", n);
+            },
+            // This only happens if there are no subscribers, in which case we can ignore this error
+            Err(_) => {
+                debug!(target: LOG_TARGET, "No subscribers listening for OutboundEvents");
+            },
         }
     }
 
@@ -323,8 +358,9 @@ where
                     target: LOG_TARGET,
                     "Connection attempt required for NodeId={}.", node_id
                 );
+                let msg_tag = msg.tag;
                 self.pending_connect_requests.insert(node_id.clone(), vec![msg]);
-                Some(DialState::new(node_id))
+                Some(DialState::new(msg_tag, node_id))
             },
         }
     }
@@ -346,6 +382,8 @@ where
                         .await,
                     "Unable to set last connection success because '{}'",
                 );
+
+                self.publish_event(OutboundEvent::PeerDialSuccess(state.node_id.clone()));
                 if let Err(err) = self.handle_new_connection(&state.node_id, conn).await {
                     error!(
                         target: LOG_TARGET,
@@ -422,12 +460,19 @@ where
         self.active_connections = new_hm;
     }
 
-    async fn send_message(&self, conn: &PeerConnection, message: OutboundMessage) -> Result<(), OutboundServiceError> {
+    async fn send_message(
+        &mut self,
+        conn: &PeerConnection,
+        message: OutboundMessage,
+    ) -> Result<(), OutboundServiceError>
+    {
         let OutboundMessage {
             flags,
             body,
             peer_node_id,
+            tag,
         } = message;
+
         let envelope = Envelope::construct_signed(
             self.node_identity.secret_key(),
             self.node_identity.public_key(),
@@ -443,8 +488,17 @@ where
             conn.direction(),
             peer_node_id
         );
-        conn.send_to_identity(peer_node_id.to_vec(), vec![frame])
-            .map_err(OutboundServiceError::PeerConnectionError)
+
+        match conn.send_to_identity(peer_node_id.to_vec(), vec![frame]) {
+            Ok(_) => {
+                self.publish_event(OutboundEvent::MessageSendSuccess(tag, peer_node_id));
+                Ok(())
+            },
+            Err(err) => {
+                self.publish_event(OutboundEvent::MessageSendFail(tag, peer_node_id));
+                Err(OutboundServiceError::PeerConnectionError(err))
+            },
+        }
     }
 }
 
@@ -499,6 +553,7 @@ mod test {
 
         let node_identity = Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::empty()));
         let mut shutdown = Shutdown::new();
+        let (event_tx, _) = broadcast::channel(10);
 
         let service = OutboundMessageService::with_backoff(
             OutboundServiceConfig::default(),
@@ -507,6 +562,7 @@ mod test {
             conn_manager,
             shutdown.to_signal(),
             ConstantBackoff::new(Duration::from_millis(100)),
+            event_tx,
         );
         rt.spawn(service.start());
 
