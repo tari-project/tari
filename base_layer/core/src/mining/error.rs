@@ -20,9 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod blake_miner;
-mod coinbase_builder;
-mod error;
-mod miner;
+use derive_error::Error;
 
-pub use coinbase_builder::CoinbaseBuilder;
+#[derive(Clone, Debug, PartialEq, Error)]
+pub enum MinerError {
+    // Could not construct the coinbase utxo and kernel for the block
+    CoinbaseError,
+    // No block provided to mine
+    MissingBlock,
+    // Config issue
+    ConfigError,
+    // Error communicating to base node or wallet
+    CommunicationError,
+}
