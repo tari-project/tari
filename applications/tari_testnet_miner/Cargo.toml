@@ -11,7 +11,7 @@ log = { version = "0.4.8", features = ["std"] }
 tonic = "0.1.0-alpha.3"
 bytes = "0.4"
 prost = "0.6.1"
-tokio = "0.2.9"
+tokio = "0.2.10"
 futures= { version = "^0.3.1", default-features = false, features = ["alloc"]}
 async-stream = "0.1.2"
 http = "0.1"

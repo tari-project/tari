@@ -32,7 +32,7 @@ rand = "0.5.5"
 serde = "1.0.90"
 serde_derive = "1.0.90"
 serde_repr = "0.1.5"
-tokio = "0.2.9"
+tokio = "0.2.10"
 tower= "0.3.0"
 tower-filter = {version="0.3.0-alpha.2", path="../middleware/tower-filter"}
 ttl_cache = "0.5.1"

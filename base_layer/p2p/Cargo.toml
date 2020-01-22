@@ -33,7 +33,7 @@ prost = "0.6.1"
 rand = "0.6.5"
 serde = "1.0.90"
 serde_derive = "1.0.90"
-tokio = "0.2.9"
+tokio = "0.2.10"
 tower = "0.3.0-alpha.2"
 tower-service = { version="0.3.0-alpha.2" }
 
