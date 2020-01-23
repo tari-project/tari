@@ -167,7 +167,7 @@ pub fn configure_and_initialize_node(
     config: &GlobalConfig,
     id: NodeIdentity,
     rt: &mut Runtime,
-) -> Result<(CommsNode, NodeType), String>
+) -> Result<(CommsNode, NodeType, Arc<ServiceHandles>), String>
 {
     let id = Arc::new(id);
     let factories = Arc::new(CryptoFactories::default());
@@ -202,6 +202,7 @@ pub fn configure_and_initialize_node(
                     &outbound_interface,
                     BaseNodeStateMachineConfig::default(),
                 )),
+                handles,
             )
         },
         DatabaseType::LMDB(p) => {
@@ -237,6 +238,7 @@ pub fn configure_and_initialize_node(
                     &outbound_interface,
                     BaseNodeStateMachineConfig::default(),
                 )),
+                handles,
             )
         },
     };

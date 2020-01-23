@@ -27,6 +27,8 @@ mod builder;
 mod cli;
 /// Application-specific constants
 mod consts;
+/// Miner lib Todo hide behind feature flag
+mod miner;
 
 use crate::builder::{create_and_save_id, load_identity};
 use log::*;
@@ -119,7 +121,7 @@ fn main() {
     };
 
     // Build, node, build!
-    let (comms, node) = match builder::configure_and_initialize_node(&node_config, node_id, &mut rt) {
+    let (comms, node, _handles) = match builder::configure_and_initialize_node(&node_config, node_id, &mut rt) {
         Ok(n) => n,
         Err(e) => {
             error!(target: LOG_TARGET, "Could not instantiate node instance. {}", e);

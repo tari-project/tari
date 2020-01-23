@@ -24,7 +24,7 @@ use crate::{chain_storage::ChainStorageError, consensus::ConsensusManagerError};
 use derive_error::Error;
 use tari_service_framework::reply_channel::TransportChannelError;
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Clone)]
 pub enum CommsInterfaceError {
     /// Access to the underlying storage mechanism failed
     UnexpectedApiResponse,

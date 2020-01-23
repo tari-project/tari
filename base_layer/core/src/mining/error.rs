@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::base_node::comms_interface::CommsInterfaceError;
 use derive_error::Error;
 
 #[derive(Clone, Debug, PartialEq, Error)]
@@ -31,5 +32,6 @@ pub enum MinerError {
     // Config issue
     ConfigError,
     // Error communicating to base node or wallet
-    CommunicationError,
+    #[error(msg_embedded, non_std, no_from)]
+    CommunicationError(String),
 }

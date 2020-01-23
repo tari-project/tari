@@ -95,7 +95,7 @@ impl<TReq, TRes> Service<TReq> for SenderService<TReq, TRes> {
     }
 }
 
-#[derive(Debug, Error, Eq, PartialEq)]
+#[derive(Debug, Error, Eq, PartialEq, Clone)]
 pub enum TransportChannelError {
     /// Error occurred when sending
     SendError(SendError),
