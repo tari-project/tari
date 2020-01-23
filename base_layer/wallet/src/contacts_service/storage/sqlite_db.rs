@@ -96,7 +96,7 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
         Ok(result)
     }
 
-    fn write(&mut self, op: WriteOperation) -> Result<Option<DbValue>, ContactsServiceStorageError> {
+    fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, ContactsServiceStorageError> {
         let conn = self
             .database_connection_pool
             .clone()

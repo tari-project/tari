@@ -66,4 +66,6 @@ pub enum WalletStorageError {
     ValueNotFound(DbKey),
     #[error(msg_embedded, non_std, no_from)]
     UnexpectedResult(String),
+    #[error(msg_embedded, non_std, no_from)]
+    BlockingTaskSpawnError(String),
 }

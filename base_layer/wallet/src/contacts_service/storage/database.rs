@@ -22,8 +22,12 @@
 
 use crate::contacts_service::error::ContactsServiceStorageError;
 use log::*;
-use std::fmt::{Display, Error, Formatter};
+use std::{
+    fmt::{Display, Error, Formatter},
+    sync::Arc,
+};
 use tari_comms::types::CommsPublicKey;
+
 const LOG_TARGET: &'static str = "wallet::contacts_service::database";
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,7 +41,7 @@ pub trait ContactsBackend: Send + Sync {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ContactsServiceStorageError>;
     /// Modify the state the of the backend with a write operation
-    fn write(&mut self, op: WriteOperation) -> Result<Option<DbValue>, ContactsServiceStorageError>;
+    fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, ContactsServiceStorageError>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -62,9 +66,9 @@ pub enum WriteOperation {
 
 // Private macro that pulls out all the boiler plate of extracting a DB query result from its variants
 macro_rules! fetch {
-    ($self:ident, $key_val:expr, $key_var:ident) => {{
+    ($db:ident, $key_val:expr, $key_var:ident) => {{
         let key = DbKey::$key_var($key_val);
-        match $self.db.fetch(&key) {
+        match $db.fetch(&key) {
             Ok(None) => Err(ContactsServiceStorageError::ValueNotFound(key)),
             Ok(Some(DbValue::$key_var(k))) => Ok(*k),
             Ok(Some(other)) => unexpected_result(key, other),
@@ -76,22 +80,28 @@ macro_rules! fetch {
 pub struct ContactsDatabase<T>
 where T: ContactsBackend
 {
-    db: T,
+    db: Arc<T>,
 }
 
 impl<T> ContactsDatabase<T>
-where T: ContactsBackend
+where T: ContactsBackend + 'static
 {
     pub fn new(db: T) -> Self {
-        Self { db }
+        Self { db: Arc::new(db) }
     }
 
-    pub fn get_contact(&self, pub_key: &CommsPublicKey) -> Result<Contact, ContactsServiceStorageError> {
-        fetch!(self, pub_key.clone(), Contact)
+    pub async fn get_contact(&self, pub_key: CommsPublicKey) -> Result<Contact, ContactsServiceStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || fetch!(db_clone, pub_key.clone(), Contact))
+            .await
+            .or_else(|err| Err(ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string())))
+            .and_then(|inner_result| inner_result)
     }
 
-    pub fn get_contacts(&self) -> Result<Vec<Contact>, ContactsServiceStorageError> {
-        let c = match self.db.fetch(&DbKey::Contacts) {
+    pub async fn get_contacts(&self) -> Result<Vec<Contact>, ContactsServiceStorageError> {
+        let db_clone = self.db.clone();
+
+        let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::Contacts) {
             Ok(None) => log_error(
                 DbKey::Contacts,
                 ContactsServiceStorageError::UnexpectedResult("Could not retrieve contacts".to_string()),
@@ -99,25 +109,41 @@ where T: ContactsBackend
             Ok(Some(DbValue::Contacts(c))) => Ok(c),
             Ok(Some(other)) => unexpected_result(DbKey::Contacts, other),
             Err(e) => log_error(DbKey::Contacts, e),
-        }?;
+        })
+        .await
+        .or_else(|err| Err(ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string())))
+        .and_then(|inner_result| inner_result)?;
         Ok(c)
     }
 
-    pub fn save_contact(&mut self, contact: Contact) -> Result<(), ContactsServiceStorageError> {
-        self.db.write(WriteOperation::Insert(DbKeyValuePair::Contact(
-            contact.public_key.clone(),
-            contact,
-        )))?;
+    pub async fn save_contact(&self, contact: Contact) -> Result<(), ContactsServiceStorageError> {
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || {
+            db_clone.write(WriteOperation::Insert(DbKeyValuePair::Contact(
+                contact.public_key.clone(),
+                contact,
+            )))
+        })
+        .await
+        .or_else(|err| Err(ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string())))
+        .and_then(|inner_result| inner_result)?;
         Ok(())
     }
 
-    pub fn remove_contact(&mut self, pub_key: &CommsPublicKey) -> Result<Contact, ContactsServiceStorageError> {
-        match self
-            .db
-            .write(WriteOperation::Remove(DbKey::Contact(pub_key.clone())))?
-            .ok_or(ContactsServiceStorageError::ValueNotFound(DbKey::Contact(
-                pub_key.clone(),
-            )))? {
+    pub async fn remove_contact(&self, pub_key: CommsPublicKey) -> Result<Contact, ContactsServiceStorageError> {
+        let db_clone = self.db.clone();
+        let pub_key_clone = pub_key.clone();
+        let result =
+            tokio::task::spawn_blocking(move || db_clone.write(WriteOperation::Remove(DbKey::Contact(pub_key_clone))))
+                .await
+                .or_else(|err| Err(ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string())))
+                .and_then(|inner_result| inner_result)?
+                .ok_or(ContactsServiceStorageError::ValueNotFound(DbKey::Contact(
+                    pub_key.clone(),
+                )))?;
+
+        match result {
             DbValue::Contact(c) => Ok(*c),
             DbValue::Contacts(_) => Err(ContactsServiceStorageError::UnexpectedResult(
                 "Incorrect response from backend.".to_string(),

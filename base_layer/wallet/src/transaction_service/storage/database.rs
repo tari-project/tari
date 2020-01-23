@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fmt::{Display, Error, Formatter},
+    sync::Arc,
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
@@ -49,38 +50,40 @@ pub trait TransactionBackend: Send + Sync {
     /// Check if a record with the provided key exists in the backend.
     fn contains(&self, key: &DbKey) -> Result<bool, TransactionStorageError>;
     /// Modify the state the of the backend with a write operation
-    fn write(&mut self, op: WriteOperation) -> Result<Option<DbValue>, TransactionStorageError>;
+    fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, TransactionStorageError>;
+    /// Check if a transaction exists in any of the collections
+    fn transaction_exists(&self, tx_id: &TxId) -> Result<bool, TransactionStorageError>;
     /// Complete outbound transaction, this operation must delete the `OutboundTransaction` with the provided
     /// `TxId` and insert the provided `CompletedTransaction` into `CompletedTransactions`.
     fn complete_outbound_transaction(
-        &mut self,
+        &self,
         tx_id: TxId,
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>;
     /// Complete inbound transaction, this operation must delete the `InboundTransaction` with the provided
     /// `TxId` and insert the provided `CompletedTransaction` into `CompletedTransactions`.
     fn complete_inbound_transaction(
-        &mut self,
+        &self,
         tx_id: TxId,
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>;
     /// Complete pending coinbase transaction, this operation must delete the `PendingCoinbaseTransaction` with the
     /// provided `TxId` and insert the provided `CompletedTransaction` into `CompletedTransactions`.
     fn complete_coinbase_transaction(
-        &mut self,
+        &self,
         tx_id: TxId,
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>;
     /// Indicated that a completed transaction has been broadcast to the mempools
     #[cfg(feature = "test_harness")]
-    fn broadcast_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError>;
+    fn broadcast_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Indicated that a completed transaction has been detected as mined on the base layer
     #[cfg(feature = "test_harness")]
-    fn mine_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError>;
+    fn mine_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Update a completed transactions timestamp for use in test data generation
     #[cfg(feature = "test_harness")]
     fn update_completed_transaction_timestamp(
-        &mut self,
+        &self,
         tx_id: TxId,
         timestamp: NaiveDateTime,
     ) -> Result<(), TransactionStorageError>;
@@ -177,9 +180,9 @@ pub enum WriteOperation {
 
 // Private macro that pulls out all the boiler plate of extracting a DB query result from its variants
 macro_rules! fetch {
-    ($self:ident, $key_val:expr, $key_var:ident) => {{
+    ($db:ident, $key_val:expr, $key_var:ident) => {{
         let key = DbKey::$key_var($key_val);
-        match $self.db.fetch(&key) {
+        match $db.fetch(&key) {
             Ok(None) => Err(TransactionStorageError::ValueNotFound(key)),
             Ok(Some(DbValue::$key_var(k))) => Ok(*k),
             Ok(Some(other)) => unexpected_result(key, other),
@@ -192,100 +195,149 @@ macro_rules! fetch {
 /// data access logic required by the module built onto the functionality defined by the trait
 #[derive(Clone)]
 pub struct TransactionDatabase<T>
-where T: TransactionBackend
+where T: TransactionBackend + 'static
 {
-    db: T,
+    db: Arc<T>,
 }
 
 impl<T> TransactionDatabase<T>
-where T: TransactionBackend
+where T: TransactionBackend + 'static
 {
     pub fn new(db: T) -> Self {
-        Self { db }
+        Self { db: Arc::new(db) }
     }
 
-    pub fn add_pending_inbound_transaction(
-        &mut self,
+    pub async fn add_pending_inbound_transaction(
+        &self,
         tx_id: TxId,
         inbound_tx: InboundTransaction,
     ) -> Result<(), TransactionStorageError>
     {
-        self.db
-            .write(WriteOperation::Insert(DbKeyValuePair::PendingInboundTransaction(
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || {
+            db_clone.write(WriteOperation::Insert(DbKeyValuePair::PendingInboundTransaction(
                 tx_id,
                 Box::new(inbound_tx),
-            )))?;
+            )))
+        })
+        .await
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+        .and_then(|inner_result| inner_result)?;
+
         Ok(())
     }
 
-    pub fn add_pending_outbound_transaction(
-        &mut self,
+    pub async fn add_pending_outbound_transaction(
+        &self,
         tx_id: TxId,
         outbound_tx: OutboundTransaction,
     ) -> Result<(), TransactionStorageError>
     {
-        self.db
-            .write(WriteOperation::Insert(DbKeyValuePair::PendingOutboundTransaction(
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || {
+            db_clone.write(WriteOperation::Insert(DbKeyValuePair::PendingOutboundTransaction(
                 tx_id,
                 Box::new(outbound_tx),
-            )))?;
+            )))
+        })
+        .await
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+        .and_then(|inner_result| inner_result)?;
         Ok(())
     }
 
-    pub fn add_pending_coinbase_transaction(
-        &mut self,
+    pub async fn add_pending_coinbase_transaction(
+        &self,
         tx_id: TxId,
         coinbase_tx: PendingCoinbaseTransaction,
     ) -> Result<(), TransactionStorageError>
     {
-        self.db
-            .write(WriteOperation::Insert(DbKeyValuePair::PendingCoinbaseTransaction(
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || {
+            db_clone.write(WriteOperation::Insert(DbKeyValuePair::PendingCoinbaseTransaction(
                 tx_id,
                 Box::new(coinbase_tx),
-            )))?;
+            )))
+        })
+        .await
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+        .and_then(|inner_result| inner_result)?;
         Ok(())
     }
 
     /// Check if a transaction with the specified TxId exists in any of the collections
-    pub fn transaction_exists(&self, tx_id: &TxId) -> Result<bool, TransactionStorageError> {
-        Ok(self.db.contains(&DbKey::PendingOutboundTransaction(tx_id.clone()))? ||
-            self.db.contains(&DbKey::PendingInboundTransaction(tx_id.clone()))? ||
-            self.db.contains(&DbKey::PendingCoinbaseTransaction(tx_id.clone()))? ||
-            self.db.contains(&DbKey::CompletedTransaction(tx_id.clone()))?)
+    pub async fn transaction_exists(&self, tx_id: &TxId) -> Result<bool, TransactionStorageError> {
+        let db_clone = self.db.clone();
+        let tx_id_clone = (*tx_id).clone();
+        tokio::task::spawn_blocking(move || db_clone.transaction_exists(&tx_id_clone))
+            .await
+            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+            .and_then(|inner_result| inner_result)
     }
 
-    pub fn get_pending_outbound_transaction(
+    pub async fn get_pending_outbound_transaction(
         &self,
         tx_id: TxId,
     ) -> Result<OutboundTransaction, TransactionStorageError>
     {
-        let result = fetch!(self, tx_id, PendingOutboundTransaction)?;
+        let db_clone = self.db.clone();
+        let result = tokio::task::spawn_blocking(move || fetch!(db_clone, tx_id, PendingOutboundTransaction))
+            .await
+            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+            .and_then(|inner_result| inner_result)?;
         Ok(result)
     }
 
-    pub fn get_pending_inbound_transaction(&self, tx_id: TxId) -> Result<InboundTransaction, TransactionStorageError> {
-        let result = fetch!(self, tx_id, PendingInboundTransaction)?;
+    pub async fn get_pending_inbound_transaction(
+        &self,
+        tx_id: TxId,
+    ) -> Result<InboundTransaction, TransactionStorageError>
+    {
+        let db_clone = self.db.clone();
+
+        let result = tokio::task::spawn_blocking(move || fetch!(db_clone, tx_id, PendingInboundTransaction))
+            .await
+            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+            .and_then(|inner_result| inner_result)?;
+
         Ok(result)
     }
 
-    pub fn get_pending_coinbase_transaction(
+    pub async fn get_pending_coinbase_transaction(
         &self,
         tx_id: TxId,
     ) -> Result<PendingCoinbaseTransaction, TransactionStorageError>
     {
-        let result = fetch!(self, tx_id, PendingCoinbaseTransaction)?;
+        let db_clone = self.db.clone();
+
+        let result = tokio::task::spawn_blocking(move || fetch!(db_clone, tx_id, PendingCoinbaseTransaction))
+            .await
+            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+            .and_then(|inner_result| inner_result)?;
+
         Ok(result)
     }
 
-    pub fn get_completed_transaction(&self, tx_id: TxId) -> Result<CompletedTransaction, TransactionStorageError> {
-        let result = fetch!(self, tx_id, CompletedTransaction)?;
+    pub async fn get_completed_transaction(
+        &self,
+        tx_id: TxId,
+    ) -> Result<CompletedTransaction, TransactionStorageError>
+    {
+        let db_clone = self.db.clone();
+
+        let result = tokio::task::spawn_blocking(move || fetch!(db_clone, tx_id, CompletedTransaction))
+            .await
+            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+            .and_then(|inner_result| inner_result)?;
         Ok(result)
     }
 
-    pub fn get_pending_inbound_transactions(
+    pub async fn get_pending_inbound_transactions(
         &self,
     ) -> Result<HashMap<TxId, InboundTransaction>, TransactionStorageError> {
-        let t = match self.db.fetch(&DbKey::PendingInboundTransactions) {
+        let db_clone = self.db.clone();
+
+        let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::PendingInboundTransactions) {
             Ok(None) => log_error(
                 DbKey::PendingInboundTransactions,
                 TransactionStorageError::UnexpectedResult(
@@ -295,14 +347,19 @@ where T: TransactionBackend
             Ok(Some(DbValue::PendingInboundTransactions(pt))) => Ok(pt),
             Ok(Some(other)) => unexpected_result(DbKey::PendingInboundTransactions, other),
             Err(e) => log_error(DbKey::PendingInboundTransactions, e),
-        }?;
+        })
+        .await
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+        .and_then(|inner_result| inner_result)?;
         Ok(t)
     }
 
-    pub fn get_pending_outbound_transactions(
+    pub async fn get_pending_outbound_transactions(
         &self,
     ) -> Result<HashMap<TxId, OutboundTransaction>, TransactionStorageError> {
-        let t = match self.db.fetch(&DbKey::PendingOutboundTransactions) {
+        let db_clone = self.db.clone();
+
+        let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::PendingOutboundTransactions) {
             Ok(None) => log_error(
                 DbKey::PendingOutboundTransactions,
                 TransactionStorageError::UnexpectedResult(
@@ -312,14 +369,19 @@ where T: TransactionBackend
             Ok(Some(DbValue::PendingOutboundTransactions(pt))) => Ok(pt),
             Ok(Some(other)) => unexpected_result(DbKey::PendingOutboundTransactions, other),
             Err(e) => log_error(DbKey::PendingOutboundTransactions, e),
-        }?;
+        })
+        .await
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+        .and_then(|inner_result| inner_result)?;
         Ok(t)
     }
 
-    pub fn get_pending_coinbase_transactions(
+    pub async fn get_pending_coinbase_transactions(
         &self,
     ) -> Result<HashMap<TxId, PendingCoinbaseTransaction>, TransactionStorageError> {
-        let t = match self.db.fetch(&DbKey::PendingCoinbaseTransactions) {
+        let db_clone = self.db.clone();
+
+        let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::PendingCoinbaseTransactions) {
             Ok(None) => log_error(
                 DbKey::PendingCoinbaseTransactions,
                 TransactionStorageError::UnexpectedResult(
@@ -329,12 +391,19 @@ where T: TransactionBackend
             Ok(Some(DbValue::PendingCoinbaseTransactions(pt))) => Ok(pt),
             Ok(Some(other)) => unexpected_result(DbKey::PendingCoinbaseTransactions, other),
             Err(e) => log_error(DbKey::PendingCoinbaseTransactions, e),
-        }?;
+        })
+        .await
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+        .and_then(|inner_result| inner_result)?;
         Ok(t)
     }
 
-    pub fn get_completed_transactions(&self) -> Result<HashMap<TxId, CompletedTransaction>, TransactionStorageError> {
-        let t = match self.db.fetch(&DbKey::CompletedTransactions) {
+    pub async fn get_completed_transactions(
+        &self,
+    ) -> Result<HashMap<TxId, CompletedTransaction>, TransactionStorageError> {
+        let db_clone = self.db.clone();
+
+        let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::CompletedTransactions) {
             Ok(None) => log_error(
                 DbKey::CompletedTransactions,
                 TransactionStorageError::UnexpectedResult("Could not retrieve completed transactions".to_string()),
@@ -342,56 +411,90 @@ where T: TransactionBackend
             Ok(Some(DbValue::CompletedTransactions(pt))) => Ok(pt),
             Ok(Some(other)) => unexpected_result(DbKey::CompletedTransactions, other),
             Err(e) => log_error(DbKey::CompletedTransactions, e),
-        }?;
+        })
+        .await
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+        .and_then(|inner_result| inner_result)?;
         Ok(t)
     }
 
     /// This method moves a `PendingOutboundTransaction` to the `CompleteTransaction` collection.
-    pub fn complete_outbound_transaction(
-        &mut self,
+    pub async fn complete_outbound_transaction(
+        &self,
         tx_id: TxId,
         transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>
     {
-        self.db.complete_outbound_transaction(tx_id, transaction)
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || db_clone.complete_outbound_transaction(tx_id, transaction))
+            .await
+            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+            .and_then(|inner_result| inner_result)
     }
 
     /// This method moves a `PendingInboundTransaction` to the `CompleteTransaction` collection.
-    pub fn complete_inbound_transaction(
-        &mut self,
+    pub async fn complete_inbound_transaction(
+        &self,
         tx_id: TxId,
         transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>
     {
-        self.db.complete_inbound_transaction(tx_id, transaction)
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || db_clone.complete_inbound_transaction(tx_id, transaction))
+            .await
+            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+            .and_then(|inner_result| inner_result)
     }
 
     /// This method moves a `PendingCoinbaseTransaction` to the `CompleteTransaction` collection.
-    pub fn complete_coinbase_transaction(
-        &mut self,
+    pub async fn complete_coinbase_transaction(
+        &self,
         tx_id: TxId,
         transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>
     {
-        self.db.complete_coinbase_transaction(tx_id, transaction)
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || db_clone.complete_coinbase_transaction(tx_id, transaction))
+            .await
+            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+            .and_then(|inner_result| inner_result)
     }
 
-    pub fn cancel_coinbase_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
-        self.db
-            .write(WriteOperation::Remove(DbKey::PendingCoinbaseTransaction(tx_id)))?;
+    pub async fn cancel_coinbase_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || {
+            db_clone.write(WriteOperation::Remove(DbKey::PendingCoinbaseTransaction(tx_id)))
+        })
+        .await
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+        .and_then(|inner_result| inner_result)?;
         Ok(())
     }
 
     /// Indicated that the specified completed transaction has been broadcast into the mempool
     #[cfg(feature = "test_harness")]
-    pub fn broadcast_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
-        self.db.broadcast_completed_transaction(tx_id)
+    pub async fn broadcast_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || db_clone.broadcast_completed_transaction(tx_id))
+            .await
+            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+            .and_then(|inner_result| inner_result)
     }
 
     /// Indicated that the specified completed transaction has been detected as mined on the base layer
     #[cfg(feature = "test_harness")]
-    pub fn mine_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
-        self.db.mine_completed_transaction(tx_id)
+    pub async fn mine_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || db_clone.mine_completed_transaction(tx_id))
+            .await
+            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+            .and_then(|inner_result| inner_result)
     }
 }
 

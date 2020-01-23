@@ -323,6 +323,7 @@ impl CallbackState {
         }
     }
 
+    #[allow(dead_code)]
     fn reset(&mut self) {
         self.received_tx_callback_called = false;
         self.received_tx_reply_callback_called = false;

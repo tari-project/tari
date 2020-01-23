@@ -35,7 +35,7 @@ use tari_shutdown::ShutdownSignal;
 const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service::callback_handler";
 
 pub struct CallbackHandler<TBackend>
-where TBackend: TransactionBackend
+where TBackend: TransactionBackend + 'static
 {
     callback_received_transaction: unsafe extern "C" fn(*mut InboundTransaction),
     callback_received_transaction_reply: unsafe extern "C" fn(*mut CompletedTransaction),
@@ -49,7 +49,7 @@ where TBackend: TransactionBackend
 }
 
 impl<TBackend> CallbackHandler<TBackend>
-where TBackend: TransactionBackend
+where TBackend: TransactionBackend + 'static
 {
     pub fn new(
         db: TransactionDatabase<TBackend>,
@@ -115,22 +115,22 @@ where TBackend: TransactionBackend
                     trace!(target: LOG_TARGET, "Callback Handler  {:?}", msg);
                     match (*msg).clone() {
                         TransactionEvent::ReceivedTransaction(tx_id) => {
-                            self.receive_transaction_event(tx_id);
+                            self.receive_transaction_event(tx_id).await;
                         },
                         TransactionEvent::ReceivedTransactionReply(tx_id) => {
-                            self.receive_transaction_reply_event(tx_id);
+                            self.receive_transaction_reply_event(tx_id).await;
                         },
                         TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
-                            self.receive_finalized_transaction_event(tx_id);
+                            self.receive_finalized_transaction_event(tx_id).await;
                         },
                         TransactionEvent::TransactionSendDiscoveryComplete(tx_id, result) => {
                             self.receive_discovery_process_result(tx_id, result);
                         },
                         TransactionEvent::TransactionBroadcast(tx_id) => {
-                            self.receive_transaction_broadcast_event(tx_id);
+                            self.receive_transaction_broadcast_event(tx_id).await;
                         },
                         TransactionEvent::TransactionMined(tx_id) => {
-                            self.receive_transaction_mined_event(tx_id);
+                            self.receive_transaction_mined_event(tx_id).await;
                         },
                         /// Only the above variants are mapped to callbacks
                         _ => (),
@@ -148,8 +148,8 @@ where TBackend: TransactionBackend
         }
     }
 
-    fn receive_transaction_event(&mut self, tx_id: TxId) {
-        match self.db.get_pending_inbound_transaction(tx_id) {
+    async fn receive_transaction_event(&mut self, tx_id: TxId) {
+        match self.db.get_pending_inbound_transaction(tx_id).await {
             Ok(tx) => {
                 trace!(
                     target: LOG_TARGET,
@@ -168,8 +168,8 @@ where TBackend: TransactionBackend
         }
     }
 
-    fn receive_transaction_reply_event(&mut self, tx_id: TxId) {
-        match self.db.get_completed_transaction(tx_id) {
+    async fn receive_transaction_reply_event(&mut self, tx_id: TxId) {
+        match self.db.get_completed_transaction(tx_id).await {
             Ok(tx) => {
                 trace!(
                     target: LOG_TARGET,
@@ -185,8 +185,8 @@ where TBackend: TransactionBackend
         }
     }
 
-    fn receive_finalized_transaction_event(&mut self, tx_id: TxId) {
-        match self.db.get_completed_transaction(tx_id) {
+    async fn receive_finalized_transaction_event(&mut self, tx_id: TxId) {
+        match self.db.get_completed_transaction(tx_id).await {
             Ok(tx) => {
                 trace!(
                     target: LOG_TARGET,
@@ -214,8 +214,8 @@ where TBackend: TransactionBackend
         }
     }
 
-    fn receive_transaction_broadcast_event(&mut self, tx_id: TxId) {
-        match self.db.get_completed_transaction(tx_id) {
+    async fn receive_transaction_broadcast_event(&mut self, tx_id: TxId) {
+        match self.db.get_completed_transaction(tx_id).await {
             Ok(tx) => {
                 trace!(
                     target: LOG_TARGET,
@@ -231,8 +231,8 @@ where TBackend: TransactionBackend
         }
     }
 
-    fn receive_transaction_mined_event(&mut self, tx_id: TxId) {
-        match self.db.get_completed_transaction(tx_id) {
+    async fn receive_transaction_mined_event(&mut self, tx_id: TxId) {
+        match self.db.get_completed_transaction(tx_id).await {
             Ok(tx) => {
                 trace!(
                     target: LOG_TARGET,

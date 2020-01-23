@@ -164,7 +164,7 @@ pub fn generate_wallet_test_data<
 >(
     wallet: &mut Wallet<T, U, V, W>,
     data_path: &str,
-    mut transaction_service_backend: U,
+    transaction_service_backend: U,
 ) -> Result<(), WalletError>
 {
     let mut rng = rand::OsRng::new().unwrap();

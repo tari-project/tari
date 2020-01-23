@@ -128,7 +128,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
         Ok(result)
     }
 
-    fn write(&mut self, op: WriteOperation) -> Result<Option<DbValue>, TransactionStorageError> {
+    fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, TransactionStorageError> {
         let mut db = acquire_write_lock!(self.db);
         match op {
             WriteOperation::Insert(kvp) => match kvp {
@@ -203,8 +203,17 @@ impl TransactionBackend for TransactionMemoryDatabase {
         Ok(None)
     }
 
+    fn transaction_exists(&self, tx_id: &u64) -> Result<bool, TransactionStorageError> {
+        let db = acquire_read_lock!(self.db);
+
+        Ok(db.pending_outbound_transactions.contains_key(&tx_id) ||
+            db.pending_inbound_transactions.contains_key(&tx_id) ||
+            db.pending_coinbase_transactions.contains_key(&tx_id) ||
+            db.completed_transactions.contains_key(&tx_id))
+    }
+
     fn complete_outbound_transaction(
-        &mut self,
+        &self,
         tx_id: TxId,
         transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>
@@ -228,7 +237,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
     }
 
     fn complete_inbound_transaction(
-        &mut self,
+        &self,
         tx_id: TxId,
         transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>
@@ -250,7 +259,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
     }
 
     fn complete_coinbase_transaction(
-        &mut self,
+        &self,
         tx_id: u64,
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>
@@ -272,7 +281,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
     }
 
     #[cfg(feature = "test_harness")]
-    fn broadcast_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+    fn broadcast_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let mut db = acquire_write_lock!(self.db);
 
         let mut completed_tx =
@@ -287,7 +296,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
     }
 
     #[cfg(feature = "test_harness")]
-    fn mine_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+    fn mine_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let mut db = acquire_write_lock!(self.db);
 
         let mut completed_tx =
@@ -303,7 +312,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
 
     #[cfg(feature = "test_harness")]
     fn update_completed_transaction_timestamp(
-        &mut self,
+        &self,
         tx_id: u64,
         timestamp: NaiveDateTime,
     ) -> Result<(), TransactionStorageError>

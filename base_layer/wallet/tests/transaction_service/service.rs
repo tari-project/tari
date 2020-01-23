@@ -137,7 +137,7 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
 /// This utility function creates a Transaction service without using the Service Framework Stack and exposes all the
 /// streams for testing purposes.
 pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'static>(
-    runtime: &Runtime,
+    runtime: &mut Runtime,
     factories: CryptoFactories,
     backend: T,
 ) -> (
@@ -150,12 +150,13 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
 )
 {
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
-    let output_manager_service = OutputManagerService::new(
-        oms_request_receiver,
-        OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
-        factories.clone(),
-    )
-    .unwrap();
+    let output_manager_service = runtime
+        .block_on(OutputManagerService::new(
+            oms_request_receiver,
+            OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
+            factories.clone(),
+        ))
+        .unwrap();
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender);
 
     let (ts_request_sender, ts_request_receiver) = reply_channel::unbounded();
@@ -564,9 +565,9 @@ fn test_sending_repeated_tx_ids<T: TransactionBackend + Clone + 'static>(alice_b
     .unwrap();
 
     let (alice_ts, _alice_output_manager, alice_outbound_service, mut alice_tx_sender, _alice_tx_ack_sender, _) =
-        setup_transaction_service_no_comms(&runtime, factories.clone(), alice_backend);
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend);
     let (_bob_ts, mut bob_output_manager, _bob_outbound_service, _bob_tx_sender, _bob_tx_ack_sender, _) =
-        setup_transaction_service_no_comms(&runtime, factories.clone(), bob_backend);
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend);
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
     let (_utxo, uo) = make_input(&mut rng, MicroTari(250000), &factories.commitment);
@@ -652,7 +653,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
     )
     .unwrap();
     let (mut alice_ts, mut alice_output_manager, alice_outbound_service, _alice_tx_sender, mut alice_tx_ack_sender, _) =
-        setup_transaction_service_no_comms(&runtime, factories.clone(), alice_backend);
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend);
 
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
@@ -746,7 +747,7 @@ fn finalize_tx_with_nonexistent_txid<T: TransactionBackend + Clone + 'static>(al
         _alice_tx_sender,
         _alice_tx_ack_sender,
         mut alice_tx_finalized,
-    ) = setup_transaction_service_no_comms(&runtime, factories.clone(), alice_backend);
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend);
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
     let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut rng));
@@ -804,7 +805,7 @@ fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(al
         mut alice_tx_sender,
         _alice_tx_ack_sender,
         mut alice_tx_finalized,
-    ) = setup_transaction_service_no_comms(&runtime, factories.clone(), alice_backend);
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend);
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
     let bob_node_identity = NodeIdentity::random(
@@ -814,7 +815,7 @@ fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(al
     )
     .unwrap();
     let (_bob_ts, mut bob_output_manager, _bob_outbound_service, _bob_tx_sender, _bob_tx_ack_sender, _) =
-        setup_transaction_service_no_comms(&runtime, factories.clone(), bob_backend);
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend);
 
     let (_utxo, uo) = make_input(&mut rng, MicroTari(250000), &factories.commitment);
 
@@ -912,7 +913,7 @@ fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alic
         mut alice_tx_sender,
         _alice_tx_ack_sender,
         mut alice_tx_finalized,
-    ) = setup_transaction_service_no_comms(&runtime, factories.clone(), alice_backend);
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend);
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
     let bob_node_identity = NodeIdentity::random(
@@ -922,7 +923,7 @@ fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alic
     )
     .unwrap();
     let (_bob_ts, mut bob_output_manager, _bob_outbound_service, _bob_tx_sender, _bob_tx_ack_sender, _) =
-        setup_transaction_service_no_comms(&runtime, factories.clone(), bob_backend);
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend);
 
     let (_utxo, uo) = make_input(&mut rng, MicroTari(250000), &factories.commitment);
 
@@ -1171,7 +1172,7 @@ fn test_coinbase<T: TransactionBackend + Clone + 'static>(backend: T) {
     let factories = CryptoFactories::default();
 
     let (mut alice_ts, mut alice_output_manager, _alice_outbound_service, _alice_tx_sender, _alice_tx_ack_sender, _) =
-        setup_transaction_service_no_comms(&runtime, factories.clone(), backend);
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend);
 
     let balance = runtime.block_on(alice_output_manager.get_balance()).unwrap();
     assert_eq!(balance.pending_incoming_balance, MicroTari(0));

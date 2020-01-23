@@ -166,7 +166,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(result)
     }
 
-    fn write(&mut self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError> {
+    fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError> {
         let conn = self
             .database_connection_pool
             .clone()
@@ -255,7 +255,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(None)
     }
 
-    fn confirm_transaction(&mut self, tx_id: u64) -> Result<(), OutputManagerStorageError> {
+    fn confirm_transaction(&self, tx_id: u64) -> Result<(), OutputManagerStorageError> {
         let conn = self
             .database_connection_pool
             .clone()
@@ -304,7 +304,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn encumber_outputs(
-        &mut self,
+        &self,
         tx_id: u64,
         outputs_to_send: &Vec<UnblindedOutput>,
         change_output: Option<UnblindedOutput>,
@@ -346,7 +346,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn cancel_pending_transaction(&mut self, tx_id: u64) -> Result<(), OutputManagerStorageError> {
+    fn cancel_pending_transaction(&self, tx_id: u64) -> Result<(), OutputManagerStorageError> {
         let conn = self
             .database_connection_pool
             .clone()
@@ -391,7 +391,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn timeout_pending_transactions(&mut self, period: Duration) -> Result<(), OutputManagerStorageError> {
+    fn timeout_pending_transactions(&self, period: Duration) -> Result<(), OutputManagerStorageError> {
         let conn = self
             .database_connection_pool
             .clone()
@@ -409,7 +409,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn increment_key_index(&mut self) -> Result<(), OutputManagerStorageError> {
+    fn increment_key_index(&self) -> Result<(), OutputManagerStorageError> {
         let conn = self
             .database_connection_pool
             .clone()

@@ -37,6 +37,7 @@ use tokio::runtime;
 
 pub mod error;
 pub mod handle;
+#[allow(unused_assignments)]
 pub mod service;
 pub mod storage;
 
@@ -88,6 +89,7 @@ where T: OutputManagerBackend + 'static
         let factories = self.factories.clone();
         executor.spawn(async move {
             let service = OutputManagerService::new(receiver, OutputManagerDatabase::new(backend), factories)
+                .await
                 .expect("Could not initialize Output Manager Service")
                 .start();
 
