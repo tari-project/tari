@@ -10,7 +10,7 @@ version = "0.0.5"
 edition = "2018"
 
 [features]
-default = ["croaring", "tari_mmr", "transactions", "base_node", "mempool_proto"]
+default = ["croaring", "tari_mmr", "transactions", "base_node", "mempool_proto", "monero", "randomx-rs"]
 transactions = []
 mempool_proto = []
 base_node = []
@@ -30,8 +30,8 @@ tari_pubsub = { version = "^0.0", path = "../../infrastructure/pubsub"}
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0"}
 tari_mmr = { path = "../../base_layer/mmr", version = "^0.0", optional = true }
 
-randomx-rs = "0.1.2"
-monero = { version = "0.5", features= ["serde_support"]}
+randomx-rs = { version = "0.1.2", optional = true }
+monero = { version = "0.5", features= ["serde_support"], optional = true }
 bitflags = "1.0.4"
 chrono = { version = "0.4.6", features = ["serde"]}
 digest = "0.8.0"
