@@ -205,6 +205,9 @@ struct TariPublicKey *pending_outbound_transaction_get_destination_public_key(st
 // Gets the amount of a TariPendingOutboundTransaction
 unsigned long long pending_outbound_transaction_get_amount(struct TariPendingOutboundTransaction *transaction,int* error_out);
 
+// Gets the fee of a TariPendingOutboundTransaction
+unsigned long long pending_outbound_transaction_get_fee(struct TariPendingOutboundTransaction *transaction,int* error_out);
+
 // Gets the message of a TariPendingOutboundTransaction
 const char *pending_outbound_transaction_get_message(struct TariPendingOutboundTransaction *transaction,int* error_out);
 
@@ -331,6 +334,10 @@ struct TariPendingInboundTransaction *wallet_get_pending_inbound_transaction_by_
 
 // Simulates completion of a TariPendingOutboundTransaction
 bool wallet_test_complete_sent_transaction(struct TariWallet *wallet, struct TariPendingOutboundTransaction *tx,int* error_out);
+
+// Checks if a TariCompletedTransaction was originally a TariPendingOutboundTransaction,
+// i.e the transaction was originally sent from the wallet
+bool wallet_is_completed_transaction_outbound(struct TariWallet *wallet, struct TariCompletedTransaction *tx,int* error_out);
 
 // Simulates the completion of a broadcasted TariPendingInboundTransaction
 bool wallet_test_broadcast_transaction(struct TariWallet *wallet, struct TariCompletedTransaction *tx, int* error_out);
