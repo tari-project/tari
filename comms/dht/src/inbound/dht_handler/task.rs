@@ -97,6 +97,7 @@ where
             DhtMessageType::Join => self.handle_join(message).await?,
             DhtMessageType::Discovery => self.handle_discover(message).await?,
             DhtMessageType::DiscoveryResponse => self.handle_discover_response(message).await?,
+            DhtMessageType::RejectMsg => self.handle_message_reject(message).await?,
             // Not a DHT message, call downstream middleware
             _ => {
                 trace!(target: LOG_TARGET, "Passing message onto next service");
@@ -239,6 +240,18 @@ where
                 body.to_encoded_bytes()?,
             )
             .await?;
+
+        Ok(())
+    }
+
+    async fn handle_message_reject(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
+        trace!(
+            target: LOG_TARGET,
+            "Received Message reject from {}",
+            message.source_peer.public_key
+        );
+
+        // TODO: Perhaps we'll need some way to let the larger system know that the message was explicitly rejected
 
         Ok(())
     }

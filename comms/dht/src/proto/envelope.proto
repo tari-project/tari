@@ -11,6 +11,8 @@ enum DhtMessageType {
     DhtMessageTypeDiscovery = 2;
     // Response to a discovery request
     DhtMessageTypeDiscoveryResponse = 3;
+    // Message was rejected
+    DhtMessageTypeRejectMsg = 4;
     // Request stored messages from a node
     DhtMessageTypeSafRequestMessages = 20;
     // Stored messages response
@@ -32,9 +34,22 @@ message DhtHeader {
     // Origin public key of the message. This can be the same peer that sent the message
     // or another peer if the message should be forwarded.
     bytes origin_public_key = 5;
+    // Signature of the message body that can be verified using the origin_public_key above
     bytes origin_signature = 6;
+    // The type of message
     DhtMessageType message_type = 7;
-    uint32 flags = 8;
+    // The network for which this message is intended (e.g. TestNet, MainNet etc.)
+    Network network = 8;
+    uint32 flags = 9;
+}
+
+enum Network {
+    // Main net (default)
+    NetworkMainNet = 0;
+    // Test net
+    NetworkTestNet = 1;
+    // Network used for local tests
+    NetworkLocalTest = 2;
 }
 
 message DhtEnvelope {

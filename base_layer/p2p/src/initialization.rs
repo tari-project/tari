@@ -136,6 +136,7 @@ where
 
     // Create a channel for outbound requests
     let mut dht = comms_dht::DhtBuilder::from_comms(&comms)
+        .local_test()
         .with_config(DhtConfig {
             discovery_request_timeout,
             ..Default::default()

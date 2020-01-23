@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::envelope::Network;
 use std::time::Duration;
 
 /// The default maximum number of messages that can be stored using the Store-and-forward middleware
@@ -72,6 +73,28 @@ pub struct DhtConfig {
     /// The duration to wait for a peer discovery to complete before giving up.
     /// Default: 2 minutes
     pub discovery_request_timeout: Duration,
+    /// The active Network. Default: TestNet
+    pub network: Network,
+}
+
+impl DhtConfig {
+    pub fn default_testnet() -> Self {
+        Default::default()
+    }
+
+    pub fn default_mainnet() -> Self {
+        Self {
+            network: Network::MainNet,
+            ..Default::default()
+        }
+    }
+
+    pub fn default_local_test() -> Self {
+        Self {
+            network: Network::LocalTest,
+            ..Default::default()
+        }
+    }
 }
 
 impl Default for DhtConfig {
@@ -89,6 +112,7 @@ impl Default for DhtConfig {
             broadcast_cooldown_max_attempts: 3,
             broadcast_cooldown_period: Duration::from_secs(60 * 30),
             discovery_request_timeout: Duration::from_secs(2 * 60),
+            network: Network::TestNet,
         }
     }
 }

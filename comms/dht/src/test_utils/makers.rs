@@ -22,7 +22,7 @@
 use crate::{
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     inbound::DhtInboundMessage,
-    proto::envelope::{DhtEnvelope, DhtMessageType},
+    proto::envelope::{DhtEnvelope, DhtMessageType, Network},
 };
 use rand::rngs::OsRng;
 use std::sync::Arc;
@@ -103,6 +103,7 @@ pub fn make_dht_header(node_identity: &NodeIdentity, message: &Vec<u8>, flags: D
             .to_binary()
             .unwrap(),
         message_type: DhtMessageType::None,
+        network: Network::LocalTest,
         flags,
     }
 }

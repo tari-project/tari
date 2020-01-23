@@ -98,6 +98,7 @@ fn setup_comms_dht(
 
     // Create a channel for outbound requests
     let mut dht = DhtBuilder::from_comms(&comms)
+        .local_test()
         .with_discovery_timeout(Duration::from_secs(60))
         .finish();
 

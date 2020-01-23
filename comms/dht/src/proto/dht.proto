@@ -32,3 +32,16 @@ message DiscoveryResponseMessage {
     uint64 peer_features = 3;
     uint64 nonce = 4;
 }
+
+message RejectMessage {
+    // The signature of the rejected message
+    bytes signature = 1;
+    // The reason for rejection
+    RejectMessageReason reason = 2;
+}
+
+enum RejectMessageReason {
+    RejectMessageReasonUnknown = 0;
+    // The destination node does not support the specified network
+    RejectMessageReasonUnsupportedNetwork = 1;
+}

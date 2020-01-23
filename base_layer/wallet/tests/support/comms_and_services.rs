@@ -28,7 +28,10 @@ use tari_comms::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     types::CommsPublicKey,
 };
-use tari_comms_dht::{envelope::DhtMessageHeader, Dht};
+use tari_comms_dht::{
+    envelope::{DhtMessageHeader, Network},
+    Dht,
+};
 use tari_p2p::{
     comms_connector::{InboundDomainConnector, PeerMessage},
     domain_message::DomainMessage,
@@ -89,6 +92,7 @@ pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainM
             version: Default::default(),
             message_type: Default::default(),
             flags: Default::default(),
+            network: Network::LocalTest,
             destination: Default::default(),
         },
         source_peer: peer_source,
