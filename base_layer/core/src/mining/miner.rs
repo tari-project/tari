@@ -34,7 +34,6 @@ use crate::{
     },
 };
 use core::sync::atomic::AtomicBool;
-use futures::executor::block_on;
 use std::{
     sync::{atomic::Ordering, Arc},
     thread,
@@ -90,7 +89,7 @@ impl<B: BlockchainBackend> Miner<B> {
             );
             if result.is_some() {
                 block.header = result.unwrap();
-                self.send_block(block).await;
+                self.send_block(block).await?;
             }
         }
         Ok(())
@@ -166,8 +165,8 @@ impl<B: BlockchainBackend> Miner<B> {
     /// stub function, get private key and tx_id from wallet
     pub fn get_spending_key(
         &self,
-        amount: MicroTari,
-        maturity_height: u64,
+        _amount: MicroTari,
+        _maturity_height: u64,
     ) -> Result<(u64, PrivateKey, PrivateKey), MinerError>
     {
         let mut rng = rand::OsRng::new().unwrap();
@@ -177,5 +176,5 @@ impl<B: BlockchainBackend> Miner<B> {
     }
 
     /// Stub function to let wallet know about potential tx
-    pub fn submit_tx_to_wallet(&self, tx: &Transaction, id: u64) {}
+    pub fn submit_tx_to_wallet(&self, _tx: &Transaction, _id: u64) {}
 }

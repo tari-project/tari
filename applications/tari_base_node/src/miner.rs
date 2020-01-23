@@ -24,30 +24,10 @@
 use futures::channel::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 use tari_core::{
-    base_node::{
-        service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
-        BaseNodeStateMachine,
-        BaseNodeStateMachineConfig,
-        LocalNodeCommsInterface,
-        OutboundNodeCommsInterface,
-    },
-    blocks::Block,
-    chain_storage::{
-        create_lmdb_database,
-        BlockchainBackend,
-        BlockchainDatabase,
-        LMDBDatabase,
-        MemoryDatabase,
-        Validators,
-    },
+    base_node::{BaseNodeStateMachine, LocalNodeCommsInterface},
+    chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
-    mempool::{Mempool, MempoolConfig, MempoolValidators},
     mining::Miner,
-    proof_of_work::DiffAdjManager,
-    transactions::{
-        crypto::keys::SecretKey as SK,
-        types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
-    },
 };
 use tari_service_framework::handles::ServiceHandles;
 
