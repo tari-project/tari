@@ -54,4 +54,8 @@ pub enum StoreAndForwardError {
     DhtHeaderNotProvided,
     /// Failed to spawn blocking task
     JoinError(tokio::task::JoinError),
+    /// Message origin is for all forwarded messages
+    MessageOriginRequired,
+    /// The message was malformed
+    MalformedMessage,
 }

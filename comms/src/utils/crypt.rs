@@ -33,7 +33,7 @@ where PK: PublicKey + DiffieHellmanSharedSecret<PK = PK> {
 }
 
 pub fn decrypt(cipher_key: &CommsPublicKey, cipher_text: &[u8]) -> Result<Vec<u8>, CipherError> {
-    CommsCipher::open_with_integral_nonce(cipher_text, &cipher_key.to_vec())
+    CommsCipher::open_with_integral_nonce(cipher_text, cipher_key.as_bytes())
 }
 
 pub fn encrypt(cipher_key: &CommsPublicKey, plain_text: &Vec<u8>) -> Result<Vec<u8>, CipherError> {

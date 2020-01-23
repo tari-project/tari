@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    envelope::NodeDestination,
+    envelope::{DhtMessageFlags, NodeDestination},
     inbound::DecryptedDhtMessage,
     proto::store_forward::StoredMessage,
     store_forward::{error::StoreAndForwardError, state::SafStorage},
@@ -30,7 +30,10 @@ use crate::{
 use futures::{task::Context, Future};
 use log::*;
 use std::{sync::Arc, task::Poll};
-use tari_comms::peer_manager::{NodeIdentity, PeerManager};
+use tari_comms::{
+    message::MessageExt,
+    peer_manager::{NodeIdentity, PeerManager},
+};
 use tari_comms_middleware::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -133,11 +136,8 @@ where
 /// Responsible for processing a single DecryptedDhtMessage, storing if necessary or passing the message
 /// to the next service.
 struct StoreTask<S> {
-    peer_manager: Arc<PeerManager>,
-    config: DhtConfig,
-    node_identity: Arc<NodeIdentity>,
     next_service: S,
-    storage: Arc<SafStorage>,
+    storage: Option<InnerStorage>,
 }
 
 impl<S> StoreTask<S> {
@@ -150,11 +150,13 @@ impl<S> StoreTask<S> {
     ) -> Self
     {
         Self {
-            config,
-            peer_manager,
-            node_identity,
+            storage: Some(InnerStorage {
+                config,
+                peer_manager,
+                node_identity,
+                storage,
+            }),
             next_service,
-            storage,
         }
     }
 }
@@ -167,18 +169,54 @@ where
     async fn handle(mut self, message: DecryptedDhtMessage) -> Result<(), MiddlewareError> {
         match message.success() {
             Some(_) => {
+                // If message was not originally encrypted and has an origin we want to store a copy for others
+                if message.dht_header.origin.is_some() && !message.dht_header.flags.contains(DhtMessageFlags::ENCRYPTED)
+                {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Cleartext message sent from origin {}. Adding to SAF storage.",
+                        message.origin_public_key()
+                    );
+                    let mut storage = self.storage.take().expect("StoreTask intialized without storage");
+                    let msg_clone = message.clone();
+                    tokio::task::spawn_blocking(move || storage.store(msg_clone)).await??;
+                }
+
                 trace!(target: LOG_TARGET, "Passing message to next service");
                 self.next_service.oneshot(message).await.map_err(Into::into)?;
             },
             None => {
-                debug!(target: LOG_TARGET, "Decryption failed for message. Storing.");
-                self.store(message)?;
+                if message.dht_header.origin.is_none() {
+                    // TODO: #banheuristic
+                    warn!(
+                        target: LOG_TARGET,
+                        "Store task received an encrypted message with no source. This message is invalid and should \
+                         not be stored or propagated. Dropping message. Sent by node '{}'",
+                        message.source_peer.node_id.short_str()
+                    );
+                    return Ok(());
+                }
+                debug!(
+                    target: LOG_TARGET,
+                    "Decryption failed for message. Adding to SAF storage."
+                );
+                let mut storage = self.storage.take().expect("StoreTask intialized without storage");
+                tokio::task::spawn_blocking(move || storage.store(message)).await??;
             },
         }
 
         Ok(())
     }
+}
 
+struct InnerStorage {
+    peer_manager: Arc<PeerManager>,
+    config: DhtConfig,
+    node_identity: Arc<NodeIdentity>,
+    storage: Arc<SafStorage>,
+}
+
+impl InnerStorage {
     fn store(&mut self, message: DecryptedDhtMessage) -> Result<(), StoreAndForwardError> {
         let DecryptedDhtMessage {
             version,
@@ -187,9 +225,12 @@ where
             ..
         } = message;
 
-        let encrypted_body = decryption_result
-            .err()
-            .expect("checked previously that decryption failed");
+        let origin = dht_header.origin.as_ref().expect("already checked");
+
+        let body = match decryption_result {
+            Ok(body) => body.to_encoded_bytes()?,
+            Err(encrypted_body) => encrypted_body,
+        };
 
         let peer_manager = &self.peer_manager;
         let node_identity = &self.node_identity;
@@ -197,16 +238,16 @@ where
         match &dht_header.destination {
             NodeDestination::Unknown => {
                 self.storage.insert(
-                    dht_header.origin_signature.clone(),
-                    StoredMessage::new(version, dht_header, encrypted_body),
+                    origin.signature.clone(),
+                    StoredMessage::new(version, dht_header, body),
                     self.config.saf_low_priority_msg_storage_ttl,
                 );
             },
             NodeDestination::PublicKey(dest_public_key) => {
                 if peer_manager.exists(&dest_public_key) {
                     self.storage.insert(
-                        dht_header.origin_signature.clone(),
-                        StoredMessage::new(version, dht_header, encrypted_body),
+                        origin.signature.clone(),
+                        StoredMessage::new(version, dht_header, body),
                         self.config.saf_high_priority_msg_storage_ttl,
                     );
                 }
@@ -220,8 +261,8 @@ where
                     )?
                 {
                     self.storage.insert(
-                        dht_header.origin_signature.clone(),
-                        StoredMessage::new(version, dht_header, encrypted_body),
+                        origin.signature.clone(),
+                        StoredMessage::new(version, dht_header, body),
                         self.config.saf_high_priority_msg_storage_ttl,
                     );
                 }
@@ -240,28 +281,69 @@ mod test {
         test_utils::{make_dht_inbound_message, make_node_identity, make_peer_manager, service_spy},
     };
     use chrono::{DateTime, Utc};
-    use futures::executor::block_on;
     use std::time::{Duration, UNIX_EPOCH};
     use tari_comms::wrap_in_envelope_body;
 
-    #[test]
-    fn decryption_succeeded() {
+    #[tokio_macros::test_basic]
+    async fn cleartext_message_no_origin() {
         let storage = Arc::new(SafStorage::new(1));
 
         let spy = service_spy();
         let peer_manager = make_peer_manager();
         let node_identity = make_node_identity();
-        let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, storage)
+        let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, storage.clone())
+            .layer(spy.to_service::<MiddlewareError>());
+
+        let mut inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
+        inbound_msg.dht_header.origin = None;
+        let msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(Vec::new()).unwrap(), inbound_msg);
+        service.call(msg).await.unwrap();
+        assert!(spy.is_called());
+        storage.with_lock(|mut lock| {
+            assert_eq!(lock.iter().count(), 0);
+        });
+    }
+
+    #[tokio_macros::test_basic]
+    async fn cleartext_message_with_origin() {
+        let storage = Arc::new(SafStorage::new(1));
+
+        let spy = service_spy();
+        let peer_manager = make_peer_manager();
+        let node_identity = make_node_identity();
+        let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, storage.clone())
             .layer(spy.to_service::<MiddlewareError>());
 
         let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
         let msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(Vec::new()).unwrap(), inbound_msg);
-        block_on(service.call(msg)).unwrap();
+        service.call(msg).await.unwrap();
         assert!(spy.is_called());
+        storage.with_lock(|mut lock| {
+            assert_eq!(lock.iter().count(), 1);
+        });
     }
 
-    #[test]
-    fn decryption_failed() {
+    #[tokio_macros::test_basic]
+    async fn decryption_succeeded_no_store() {
+        let storage = Arc::new(SafStorage::new(1));
+
+        let spy = service_spy();
+        let peer_manager = make_peer_manager();
+        let node_identity = make_node_identity();
+        let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, storage.clone())
+            .layer(spy.to_service::<MiddlewareError>());
+
+        let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::ENCRYPTED);
+        let msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(b"secret".to_vec()).unwrap(), inbound_msg);
+        service.call(msg).await.unwrap();
+        assert!(spy.is_called());
+        storage.with_lock(|mut lock| {
+            assert_eq!(lock.iter().count(), 0);
+        });
+    }
+
+    #[tokio_macros::test_basic]
+    async fn decryption_failed_should_store() {
         let storage = Arc::new(SafStorage::new(1));
         let spy = service_spy();
         let peer_manager = make_peer_manager();
@@ -271,9 +353,11 @@ mod test {
 
         let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
         let msg = DecryptedDhtMessage::failed(inbound_msg.clone());
-        block_on(service.call(msg)).unwrap();
+        service.call(msg).await.unwrap();
         assert_eq!(spy.is_called(), false);
-        let msg = storage.remove(&inbound_msg.dht_header.origin_signature).unwrap();
+        let msg = storage
+            .remove(&inbound_msg.dht_header.origin.unwrap().signature)
+            .unwrap();
         let timestamp: DateTime<Utc> = (UNIX_EPOCH + Duration::from_secs(msg.stored_at.unwrap().seconds as u64)).into();
         assert!((Utc::now() - timestamp).num_seconds() <= 5);
     }

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
+    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageOrigin, NodeDestination},
     inbound::DhtInboundMessage,
     proto::envelope::{DhtEnvelope, DhtMessageType, Network},
 };
@@ -97,11 +97,13 @@ pub fn make_dht_header(node_identity: &NodeIdentity, message: &Vec<u8>, flags: D
     DhtMessageHeader {
         version: 0,
         destination: NodeDestination::Unknown,
-        origin_public_key: node_identity.public_key().clone(),
-        origin_signature: signature::sign(&mut OsRng::new().unwrap(), node_identity.secret_key().clone(), message)
-            .unwrap()
-            .to_binary()
-            .unwrap(),
+        origin: Some(DhtMessageOrigin {
+            public_key: node_identity.public_key().clone(),
+            signature: signature::sign(&mut OsRng::new().unwrap(), node_identity.secret_key().clone(), message)
+                .unwrap()
+                .to_binary()
+                .unwrap(),
+        }),
         message_type: DhtMessageType::None,
         network: Network::LocalTest,
         flags,

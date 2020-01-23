@@ -3,19 +3,17 @@ pub struct DhtHeader {
     #[prost(uint32, tag = "1")]
     pub version: u32,
     /// Origin public key of the message. This can be the same peer that sent the message
-    /// or another peer if the message should be forwarded.
-    #[prost(bytes, tag = "5")]
-    pub origin_public_key: std::vec::Vec<u8>,
-    /// Signature of the message body that can be verified using the origin_public_key above
-    #[prost(bytes, tag = "6")]
-    pub origin_signature: std::vec::Vec<u8>,
+    /// or another peer if the message should be forwarded. This is optional but must be specified
+    /// if the ENCRYPTED flag is set.
+    #[prost(message, optional, tag = "5")]
+    pub origin: ::std::option::Option<DhtOrigin>,
     /// The type of message
-    #[prost(enumeration = "DhtMessageType", tag = "7")]
+    #[prost(enumeration = "DhtMessageType", tag = "6")]
     pub message_type: i32,
     /// The network for which this message is intended (e.g. TestNet, MainNet etc.)
-    #[prost(enumeration = "Network", tag = "8")]
+    #[prost(enumeration = "Network", tag = "7")]
     pub network: i32,
-    #[prost(uint32, tag = "9")]
+    #[prost(uint32, tag = "8")]
     pub flags: u32,
     #[prost(oneof = "dht_header::Destination", tags = "2, 3, 4")]
     pub destination: ::std::option::Option<dht_header::Destination>,
@@ -27,10 +25,10 @@ pub mod dht_header {
         /// the peer being sent to.
         #[prost(bool, tag = "2")]
         Unknown(bool),
-        //// Destined for a particular public key
+        /// Destined for a particular public key
         #[prost(bytes, tag = "3")]
         PublicKey(std::vec::Vec<u8>),
-        //// Destined for a particular node id, or network region
+        /// Destined for a particular node id, or network region
         #[prost(bytes, tag = "4")]
         NodeId(std::vec::Vec<u8>),
     }
@@ -41,6 +39,13 @@ pub struct DhtEnvelope {
     pub header: ::std::option::Option<DhtHeader>,
     #[prost(bytes, tag = "2")]
     pub body: std::vec::Vec<u8>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DhtOrigin {
+    #[prost(bytes, tag = "1")]
+    pub public_key: std::vec::Vec<u8>,
+    #[prost(bytes, tag = "2")]
+    pub signature: std::vec::Vec<u8>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

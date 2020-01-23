@@ -252,11 +252,11 @@ impl Dht {
 
             match msg.dht_header.message_type {
                 DhtMessageType::SafRequestMessages | DhtMessageType::SafStoredMessages => {
-                    // TODO: This is an indication of node misbehaviour
+                    // TODO: #banheuristic This is an indication of node misbehaviour
                     warn!(
                         "Received store and forward message from PublicKey={}. Store and forward feature is not \
                          supported by this node. Discarding message.",
-                        msg.dht_header.origin_public_key
+                        msg.source_peer.public_key
                     );
                     future::ready(Err(FilterError::rejected()))
                 },
@@ -413,7 +413,15 @@ mod test {
         let encrypted_bytes = encrypt(&ecdh_key, &msg.to_encoded_bytes().unwrap()).unwrap();
         let dht_envelope = make_dht_envelope(&node_identity, encrypted_bytes, DhtMessageFlags::ENCRYPTED);
 
-        let origin_sig = dht_envelope.header.as_ref().unwrap().origin_signature.clone();
+        let origin_sig = dht_envelope
+            .header
+            .as_ref()
+            .unwrap()
+            .origin
+            .as_ref()
+            .unwrap()
+            .signature
+            .clone();
         let inbound_message = make_comms_inbound_message(
             &node_identity,
             dht_envelope.to_encoded_bytes().unwrap(),
@@ -426,7 +434,7 @@ mod test {
         let (params, _) = oms_mock_state.pop_call().unwrap();
 
         // Check that OMS got a request to forward with the original Dht Header
-        assert_eq!(params.dht_header.unwrap().origin_signature, origin_sig);
+        assert_eq!(params.dht_header.unwrap().origin.unwrap().signature, origin_sig);
 
         // Check the next service was not called
         assert!(next_service_rx.try_next().is_err());

@@ -167,6 +167,8 @@ impl EnvelopeBody {
         self.parts
     }
 
+    /// Decodes a part of the message body and returns the result. If the part index is out of range Ok(None) is
+    /// returned
     pub fn decode_part<T>(&self, index: usize) -> Result<Option<T>, MessageError>
     where T: prost::Message + Default {
         match self.parts.get(index) {

@@ -21,10 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{actor::DhtRequester, inbound::DhtInboundMessage};
+use digest::Input;
 use futures::{task::Context, Future};
 use log::*;
 use std::task::Poll;
+use tari_comms::types::Challenge;
 use tari_comms_middleware::MiddlewareError;
+use tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::dht::dedup";
@@ -79,18 +82,25 @@ where
     ) -> Result<(), MiddlewareError>
     {
         trace!(target: LOG_TARGET, "Checking inbound message cache for duplicates");
-        // WARN: It is assumed that the message signature has been checked (i.e. by the DeserializeMiddleware)
-        let signature = message.dht_header.origin_signature.clone();
-        if dht_requester.insert_message_signature(signature).await? {
+        let hash = Self::hash_message(&message);
+        if dht_requester.insert_message_hash(hash).await? {
             warn!(
                 target: LOG_TARGET,
-                "Received duplicate message from peer {} (source={}). Message discarded.",
+                "Received duplicate message from peer {} (origin={:?}). Message discarded.",
                 message.source_peer.node_id,
-                message.dht_header.origin_public_key
+                message
+                    .dht_header
+                    .origin
+                    .map(|o| o.public_key.to_hex())
+                    .unwrap_or("<unknown>".to_string()),
             );
             return Ok(());
         }
         next_service.oneshot(message).await.map_err(Into::into)
+    }
+
+    fn hash_message(message: &DhtInboundMessage) -> Vec<u8> {
+        Challenge::new().chain(&message.body).result().to_vec()
     }
 }
 

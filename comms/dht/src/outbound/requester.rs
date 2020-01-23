@@ -193,7 +193,7 @@ impl OutboundMessageRequester {
         self.send_raw(params, body).await
     }
 
-    /// Send a DHT-level message
+    /// Send a message without a domain header part
     pub async fn send_message_no_header<T>(
         &mut self,
         params: FinalSendMessageParams,
