@@ -106,12 +106,10 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${PKG_PATH}" ] && [ "${BUILD_IOS}" -eq 1 ] 
   cd ${DEPENDENCIES} || exit
   rm -rf ${ZMQ_FOLDER}-ios
   echo "${GREEN}iOS build completed${NC}"
+elif [ "${BUILD_IOS}" -eq 1 ]; then
+  echo "${RED}Cannot configure iOS Wallet Library build${NC}"
 else
-  if [ "${BUILD_IOS}" -eq 1 ]; then
-    echo "${RED}Cannot configure iOS Wallet Library build${NC}"
-  else
-    echo "${GREEN}iOS Wallet is configured not to build${NC}"
-  fi
+  echo "${GREEN}iOS Wallet is configured not to build${NC}"
 fi
 
 DEPENDENCIES=$ANDROID_WALLET_PATH
@@ -132,12 +130,12 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ -n "${PKG_PATH}" ] && [
   DEPENDENCIES=${DEPENDENCIES}/jniLibs
 
   ZMQ_BUILD_FOUND=0
-  if [ -f ${DEPENDENCIES}/i686/libzmq.a ] && [ -f ${DEPENDENCIES}/x86_64/libzmq.a ] && [ -f ${DEPENDENCIES}/armeabi-v7a/libzmq.a ] && [ -f ${DEPENDENCIES}/arm64-v8a/libzmq.a ]; then
+  if [ -f ${DEPENDENCIES}/x86/libzmq.a ] && [ -f ${DEPENDENCIES}/x86_64/libzmq.a ] && [ -f ${DEPENDENCIES}/armeabi-v7a/libzmq.a ] && [ -f ${DEPENDENCIES}/arm64-v8a/libzmq.a ]; then
     ZMQ_BUILD_FOUND=1
   fi
 
   SQLITE_BUILD_FOUND=0
-  if [ -f ${DEPENDENCIES}/i686/libsqlite3.a ] && [ -f ${DEPENDENCIES}/x86_64/libsqlite3.a ] && [ -f ${DEPENDENCIES}/armeabi-v7a/libsqlite3.a ] && [ -f ${DEPENDENCIES}/arm64-v8a/libsqlite3.a ]; then
+  if [ -f ${DEPENDENCIES}/x86/libsqlite3.a ] && [ -f ${DEPENDENCIES}/x86_64/libsqlite3.a ] && [ -f ${DEPENDENCIES}/armeabi-v7a/libsqlite3.a ] && [ -f ${DEPENDENCIES}/arm64-v8a/libsqlite3.a ]; then
     SQLITE_BUILD_FOUND=1
   fi
 
@@ -168,6 +166,12 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ -n "${PKG_PATH}" ] && [
   else
     echo "\t${CYAN}ZMQ located${NC}"
   fi
+
+  if [ ${SQLITE_BUILD_FOUND} -eq 0 ]; then
+    touch ${ANDROID_LOG_PATH}/sqlite.txt
+  fi
+  touch ${ANDROID_LOG_PATH}/cargo.txt
+
   for PLATFORMABI in "aarch64-linux-android" "x86_64-linux-android" "i686-linux-android" "armv7-linux-androideabi"
   do
     # Lint warning for loop only running once is acceptable here
@@ -192,6 +196,11 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ -n "${PKG_PATH}" ] && [
       cd ${BUILD_ROOT} || exit
       mkdir -p ${PLATFORM_OUTDIR}
       OUTPUT_DIR=${BUILD_ROOT}/${PLATFORM_OUTDIR}
+
+      if [ ${ZMQ_BUILD_FOUND} -eq 1 ] || [ ${SQLITE_BUILD_FOUND} -eq 1 ]; then
+        mkdir -p ${BUILD_ROOT}/${PLATFORM_OUTDIR}/lib
+      fi
+
       cd ${DEPENDENCIES} || exit
 
       PLATFORMABI_TOOLCHAIN=${PLATFORMABI}
@@ -238,7 +247,7 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ -n "${PKG_PATH}" ] && [
       cd ${SQLITE_FOLDER} || exit
       if [ ${SQLITE_BUILD_FOUND} -eq 0 ]; then
         echo "\t${CYAN}Fetching Sqlite3 source${NC}"
-        curl -s ${SQLITE_SOURCE} | tar -xvf - -C ${PWD} > ${ANDROID_LOG_PATH}/sqlite.txt 2>&1
+        curl -s ${SQLITE_SOURCE} | tar -xvf - -C ${PWD} >> ${ANDROID_LOG_PATH}/sqlite.txt 2>&1
         echo "\t${CYAN}Source fetched${NC}"
         cd * || exit
         echo "\t${CYAN}Building Sqlite3${NC}"
@@ -250,9 +259,8 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ -n "${PKG_PATH}" ] && [
         echo "\t${CYAN}Sqlite3 located${NC}"
       fi
       cd ../..
-
-      cd ${ZMQ_FOLDER} || exit
       if [ ${ZMQ_BUILD_FOUND} -eq 0 ]; then
+        cd ${ZMQ_FOLDER} || exit
         echo "\t${CYAN}Building ZMQ${NC}"
         make clean >> ${ANDROID_LOG_PATH}/zmq.txt 2>&1
         ./autogen.sh >> ${ANDROID_LOG_PATH}/zmq.txt 2>&1
@@ -260,6 +268,7 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ -n "${PKG_PATH}" ] && [
         make install >> ${ANDROID_LOG_PATH}/zmq.txt 2>&1
         echo "\t${CYAN}ZMQ built${NC}"
       fi
+
       if [ "${MACHINE}" == "Mac" ]; then
         if [ "${MAC_SUB_VERSION}" -ge 15 ]; then
           # Not ideal, however necesary for cargo to pass additional flags
@@ -269,7 +278,7 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ -n "${PKG_PATH}" ] && [
       export LDFLAGS="-L${NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/${PLATFORMABI_TOOLCHAIN}/${LEVEL} -L${OUTPUT_DIR}/lib -lc++ -lzmq -lsqilte3"
       cd ${OUTPUT_DIR}/lib || exit
 
-      if [ ${ZMQ_BUILD_FOUND} -eq 1 ]; then
+      if [ ${ZMQ_BUILD_FOUND} -eq 0 ]; then
         rm *.so
         rm *.la
       else
@@ -281,7 +290,7 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ -n "${PKG_PATH}" ] && [
 
       echo "\t${CYAN}Configuring Cargo${NC}"
       cd ${CURRENT_DIR} || exit
-      cargo clean > ${ANDROID_LOG_PATH}/cargo.txt 2>&1
+      cargo clean >> ${ANDROID_LOG_PATH}/cargo.txt 2>&1
       mkdir -p .cargo
       cd .cargo || exit
       if [ "${MACHINE}" == "Mac" ]; then
@@ -343,6 +352,7 @@ EOF
       if [ ${ZMQ_BUILD_FOUND} -eq 0 ]; then
         cp ${OUTPUT_DIR}/lib/libzmq.a ${PWD}
       fi
+      echo "\t${GREEN}Wallet library built for android architecture ${PLATFORM_OUTDIR} with minimum platform level support of ${LEVEL}${NC}"
     done
   done
   cd ${DEPENDENCIES} || exit
@@ -350,10 +360,8 @@ EOF
   rm -rf ${ZMQ_FOLDER}
   rm -rf ${SQLITE_FOLDER}
   echo "${GREEN}Android build completed${NC}"
+elif [ "${BUILD_ANDROID}" -eq 1 ]; then
+  echo "${RED}Cannot configure Android Wallet Library build${NC}"
 else
-  if [ "${BUILD_ANDROID}" -eq 1 ]; then
-    echo "${RED}Cannot configure Android Wallet Library build${NC}"
-  else
-    echo "${GREEN}Android Wallet is configured not to build${NC}"
-  fi
+  echo "${GREEN}Android Wallet is configured not to build${NC}"
 fi
