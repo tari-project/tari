@@ -26,3 +26,4 @@ mod error;
 mod miner;
 
 pub use coinbase_builder::CoinbaseBuilder;
+pub use miner::Miner;

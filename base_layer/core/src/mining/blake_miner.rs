@@ -28,7 +28,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use tari_utilities::{epoch_time::EpochTime, ByteArray, ByteArrayError, Hashable};
+use tari_utilities::epoch_time::EpochTime;
 
 const MAX_TARGET: U256 = U256::MAX;
 

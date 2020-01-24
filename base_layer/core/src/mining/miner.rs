@@ -21,11 +21,12 @@
 
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    blocks::{genesis_block::get_genesis_block, Block, NewBlockTemplate},
+    base_node::comms_interface::LocalNodeCommsInterface,
+    blocks::{Block, NewBlockTemplate},
     chain_storage::BlockchainBackend,
     consensus::{ConsensusConstants, ConsensusManager},
     mining::{blake_miner::CpuBlakePow, error::MinerError, CoinbaseBuilder},
-    proof_of_work::Difficulty,
+    proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         tari_amount::MicroTari,
         transaction::Transaction,
@@ -33,35 +34,38 @@ use crate::{
     },
 };
 use core::sync::atomic::AtomicBool;
-use futures::channel::mpsc::{Receiver, Sender};
 use std::{
     sync::{atomic::Ordering, Arc},
     thread,
     time,
-    time::Duration,
 };
 use tari_crypto::keys::SecretKey;
 
-struct Miner<B: BlockchainBackend> {
+pub struct Miner<B: BlockchainBackend> {
     kill_flag: Arc<AtomicBool>,
     stop_mining_flag: Arc<AtomicBool>,
-    tx: Sender<Block>,
     consensus: ConsensusManager<B>,
+    node_interface: LocalNodeCommsInterface,
 }
 
 impl<B: BlockchainBackend> Miner<B> {
     /// Constructs a new miner
-    pub fn new(stop_flag: Arc<AtomicBool>, tx: Sender<Block>, consensus: ConsensusManager<B>) -> Miner<B> {
+    pub fn new(
+        stop_flag: Arc<AtomicBool>,
+        consensus: ConsensusManager<B>,
+        node_interface: &LocalNodeCommsInterface,
+    ) -> Miner<B>
+    {
         Miner {
-            kill_flag: Arc::new(AtomicBool::new(false)),
-            tx,
+            kill_flag: stop_flag,
             consensus,
-            stop_mining_flag: stop_flag,
+            stop_mining_flag: Arc::new(AtomicBool::new(false)),
+            node_interface: node_interface.clone(),
         }
     }
 
     /// Async function to mine a block
-    pub fn mine(&mut self) -> Result<(), MinerError> {
+    pub async fn mine(&mut self) -> Result<(), MinerError> {
         // Lets make sure its set to mine
         while !self.kill_flag.load(Ordering::Relaxed) {
             while !self.stop_mining_flag.load(Ordering::Relaxed) {
@@ -73,10 +77,10 @@ impl<B: BlockchainBackend> Miner<B> {
             let flag = self.stop_mining_flag.clone();
             flag.store(false, Ordering::Relaxed);
 
-            let mut block_template = self.get_block_template()?;
+            let mut block_template = self.get_block_template().await?;
             self.add_coinbase(&mut block_template)?;
-            let mut block = self.get_block(block_template)?;
-            let difficulty = self.get_req_difficulty()?;
+            let mut block = self.get_block(block_template).await?;
+            let difficulty = self.get_req_difficulty().await?;
             let result = CpuBlakePow::mine(
                 difficulty,
                 block.header,
@@ -85,28 +89,49 @@ impl<B: BlockchainBackend> Miner<B> {
             );
             if result.is_some() {
                 block.header = result.unwrap();
-                self.tx.try_send(block);
+                self.send_block(block).await?;
             }
         }
         Ok(())
     }
 
-    /// Stub function, temp use genesis block as template
-    pub fn get_block_template(&self) -> Result<NewBlockTemplate, MinerError> {
-        Ok(NewBlockTemplate::from(get_genesis_block()))
+    /// function, temp use genesis block as template
+    pub async fn get_block_template(&mut self) -> Result<NewBlockTemplate, MinerError> {
+        Ok(self
+            .node_interface
+            .get_new_block_template()
+            .await
+            .map_err(|e| MinerError::CommunicationError(e.to_string()))?)
     }
 
-    /// Stub function, temp use genesis block as template
-    pub fn get_block(&self, block: NewBlockTemplate) -> Result<Block, MinerError> {
-        Ok(get_genesis_block())
+    ///  function send block
+    pub async fn send_block(&mut self, block: Block) -> Result<(), MinerError> {
+        self.node_interface
+            .submit_block(block)
+            .await
+            .map_err(|e| MinerError::CommunicationError(e.to_string()))?;
+        Ok(())
     }
 
-    /// Stub function
-    pub fn get_req_difficulty(&self) -> Result<Difficulty, MinerError> {
-        Ok(Difficulty::min())
+    /// function, temp use genesis block as template
+    pub async fn get_block(&mut self, block: NewBlockTemplate) -> Result<Block, MinerError> {
+        Ok(self
+            .node_interface
+            .get_new_block(block)
+            .await
+            .map_err(|e| MinerError::CommunicationError(e.to_string()))?)
     }
 
-    /// stub function, this function gets called when a new block event is triggered. It will ensure that the miner
+    /// function to get the required difficulty
+    pub async fn get_req_difficulty(&mut self) -> Result<Difficulty, MinerError> {
+        Ok(self
+            .node_interface
+            .get_target_difficulty(PowAlgorithm::Blake)
+            .await
+            .map_err(|e| MinerError::CommunicationError(e.to_string()))?)
+    }
+
+    /// function, this function gets called when a new block event is triggered. It will ensure that the miner
     /// restarts/starts to mine.
     pub fn new_block_event(&mut self) {
         let flag = self.stop_mining_flag.clone();
@@ -140,8 +165,8 @@ impl<B: BlockchainBackend> Miner<B> {
     /// stub function, get private key and tx_id from wallet
     pub fn get_spending_key(
         &self,
-        amount: MicroTari,
-        maturity_height: u64,
+        _amount: MicroTari,
+        _maturity_height: u64,
     ) -> Result<(u64, PrivateKey, PrivateKey), MinerError>
     {
         let mut rng = rand::OsRng::new().unwrap();
@@ -151,5 +176,5 @@ impl<B: BlockchainBackend> Miner<B> {
     }
 
     /// Stub function to let wallet know about potential tx
-    pub fn submit_tx_to_wallet(&self, tx: &Transaction, id: u64) {}
+    pub fn submit_tx_to_wallet(&self, _tx: &Transaction, _id: u64) {}
 }

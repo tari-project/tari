@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,18 +19,26 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 
-use derive_error::Error;
+use futures::channel::mpsc::{Receiver, Sender};
+use std::sync::Arc;
+use tari_core::{
+    base_node::{BaseNodeStateMachine, LocalNodeCommsInterface},
+    chain_storage::BlockchainBackend,
+    consensus::ConsensusManager,
+    mining::Miner,
+};
+use tari_service_framework::handles::ServiceHandles;
 
-#[derive(Clone, Debug, PartialEq, Error)]
-pub enum MinerError {
-    // Could not construct the coinbase utxo and kernel for the block
-    CoinbaseError,
-    // No block provided to mine
-    MissingBlock,
-    // Config issue
-    ConfigError,
-    // Error communicating to base node or wallet
-    #[error(msg_embedded, non_std, no_from)]
-    CommunicationError(String),
+pub fn build_miner<B: BlockchainBackend>(
+    handles: Arc<ServiceHandles>,
+    node: &BaseNodeStateMachine<B>,
+    consensus_manager: ConsensusManager<B>,
+) -> Miner<B>
+{
+    let stop_flag = node.get_interrupt_flag();
+    let node_local_interface = handles.get_handle::<LocalNodeCommsInterface>().unwrap();
+    let miner = Miner::new(stop_flag, consensus_manager, &node_local_interface);
+    miner
 }
