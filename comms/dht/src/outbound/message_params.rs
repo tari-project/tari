@@ -58,6 +58,7 @@ pub struct FinalSendMessageParams {
     pub destination: NodeDestination,
     pub encryption: OutboundEncryption,
     pub is_discovery_enabled: bool,
+    pub force_origin: bool,
     pub dht_message_type: DhtMessageType,
     pub dht_header: Option<DhtMessageHeader>,
 }
@@ -69,6 +70,7 @@ impl Default for FinalSendMessageParams {
             destination: Default::default(),
             encryption: Default::default(),
             dht_message_type: Default::default(),
+            force_origin: false,
             is_discovery_enabled: true,
             dht_header: None,
         }
@@ -80,16 +82,19 @@ impl SendMessageParams {
         Default::default()
     }
 
+    /// Set broadcast_strategy to DirectPublicKey
     pub fn direct_public_key(&mut self, public_key: CommsPublicKey) -> &mut Self {
         self.params_mut().broadcast_strategy = BroadcastStrategy::DirectPublicKey(public_key);
         self
     }
 
+    /// Set broadcast_strategy to DirectNodeId
     pub fn direct_node_id(&mut self, node_id: NodeId) -> &mut Self {
         self.params_mut().broadcast_strategy = BroadcastStrategy::DirectNodeId(node_id);
         self
     }
 
+    /// Set broadcast_strategy to Closest
     pub fn closest(&mut self, node_id: NodeId, n: usize, excluded_peers: Vec<CommsPublicKey>) -> &mut Self {
         self.params_mut().broadcast_strategy = BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
             excluded_peers,
@@ -99,46 +104,62 @@ impl SendMessageParams {
         self
     }
 
+    /// Set broadcast_strategy to Neighbours
     pub fn neighbours(&mut self, excluded_peers: Vec<CommsPublicKey>) -> &mut Self {
         self.params_mut().broadcast_strategy = BroadcastStrategy::Neighbours(excluded_peers);
         self
     }
 
+    /// Set broadcast_strategy to Flood
     pub fn flood(&mut self) -> &mut Self {
         self.params_mut().broadcast_strategy = BroadcastStrategy::Flood;
         self
     }
 
+    /// Set broadcast_strategy to Random
     pub fn random(&mut self, n: usize) -> &mut Self {
         self.params_mut().broadcast_strategy = BroadcastStrategy::Random(n);
         self
     }
 
+    /// Set destination field in message header.
     pub fn with_destination(&mut self, destination: NodeDestination) -> &mut Self {
         self.params_mut().destination = destination;
         self
     }
 
+    /// Set encryption mode for message.
     pub fn with_encryption(&mut self, encryption: OutboundEncryption) -> &mut Self {
         self.params_mut().encryption = encryption;
         self
     }
 
+    /// Set to true to enable discovery, otherwise false
     pub fn with_discovery(&mut self, is_enabled: bool) -> &mut Self {
         self.params_mut().is_discovery_enabled = is_enabled;
         self
     }
 
+    /// Set the DHT message type
     pub fn with_dht_message_type(&mut self, message_type: DhtMessageType) -> &mut Self {
         self.params_mut().dht_message_type = message_type;
         self
     }
 
+    /// Override the DHtHeader of a message(s) with the given header
     pub fn with_dht_header(&mut self, dht_header: DhtMessageHeader) -> &mut Self {
         self.params_mut().dht_header = Some(dht_header);
         self
     }
 
+    /// Force the message origin to be included in the message. The origin is usually not included in messages without
+    /// encryption, however this setting will force the message origin and signature to be included.
+    pub fn force_origin(&mut self) -> &mut Self {
+        self.params_mut().force_origin = true;
+        self
+    }
+
+    /// Return the final SendMessageParams
     pub fn finish(&mut self) -> FinalSendMessageParams {
         self.params.take().expect("cannot be None")
     }

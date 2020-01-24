@@ -91,19 +91,24 @@ where
             ..
         } = message;
 
+        // The message is being forwarded if the origin public_key is specified and it is not this node
+        let is_forwarded = dht_header
+            .origin
+            .as_ref()
+            .map(|o| &o.public_key != node_identity.public_key())
+            .unwrap_or(false);
+
         // If forwarding the message, the DhtHeader already has a signature that should not change
-        if &dht_header.origin_public_key != node_identity.public_key() {
+        if is_forwarded {
             trace!(target: LOG_TARGET, "Forwarded message. Message will not be signed");
         } else {
-            // Sign the body
-            let signature = DHT_RNG
-                .with(|rng| signature::sign(&mut *rng.borrow_mut(), node_identity.secret_key().clone(), &body))?;
-            dht_header.origin_signature = signature.to_binary()?;
-            trace!(
-                target: LOG_TARGET,
-                "Signed message: {}",
-                dht_header.origin_signature.to_hex()
-            );
+            // Sign the body if the origin public key was previously specified.
+            if let Some(origin) = dht_header.origin.as_mut() {
+                let signature = DHT_RNG
+                    .with(|rng| signature::sign(&mut *rng.borrow_mut(), node_identity.secret_key().clone(), &body))?;
+                origin.signature = signature.to_binary()?;
+                trace!(target: LOG_TARGET, "Signed message: {}", origin.signature.to_hex());
+            }
         }
 
         let envelope = DhtEnvelope::new(dht_header.into(), body);

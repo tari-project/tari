@@ -42,4 +42,6 @@ pub enum DhtInboundError {
     /// One or more NetAddress in the join message were invalid
     InvalidJoinNetAddresses,
     DhtDiscoveryError(DhtDiscoveryError),
+    #[error(msg_embedded, no_from, non_std)]
+    OriginRequired(String),
 }

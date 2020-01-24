@@ -43,25 +43,11 @@ macro_rules! make_async {
         pub async fn $fn<T>(db: BlockchainDatabase<T>) -> Result<$rtype, ChainStorageError>
         where T: BlockchainBackend + 'static {
             tokio::task::spawn_blocking(move || {
-                        db.$fn()
-                    })
-        //            poll_fn(move |_| {
-        //                match blocking(move || db.$fn()) {
-        //                    Poll::Pending => Poll::Pending,
-        //                     Map BlockingError -> ChainStorageError
-        //                    Poll::Ready(Err(e)) => Poll::Ready(Err(ChainStorageError::AccessError(format!(
-        //                        "Could not find a blocking thread to execute DB query. {}",
-        //                        e.to_string()
-        //                    )))),
-        //                     Unwrap and lift ChainStorageError
-        //                    Poll::Ready(Ok(Err(e))) => Poll::Ready(Err(e)),
-        //                     Unwrap and return result
-        //                    Poll::Ready(Ok(Ok(v))) => Poll::Ready(Ok(v)),
-        //                }
-        //            })
-                    .await
-                    .or_else(|err| Err(ChainStorageError::BlockingTaskSpawnError(err.to_string())))
-                    .and_then(|inner_result| inner_result)
+                db.$fn()
+            })
+            .await
+            .or_else(|err| Err(ChainStorageError::BlockingTaskSpawnError(err.to_string())))
+            .and_then(|inner_result| inner_result)
         }
     };
 
@@ -72,86 +58,8 @@ macro_rules! make_async {
                 .await
                 .or_else(|err| Err(ChainStorageError::BlockingTaskSpawnError(err.to_string())))
                 .and_then(|inner_result| inner_result)
-            //            poll_fn(move |_| {
-            //                let db = db.clone();
-            //                match blocking(move || db.$fn(hash)) {
-            //                    Poll::Pending => Poll::Pending,
-            //                    // Map BlockingError -> ChainStorageError
-            //                    Poll::Ready(Err(e)) => Poll::Ready(Err(ChainStorageError::AccessError(format!(
-            //                        "Could not find a blocking thread to execute DB query. {}",
-            //                        e.to_string()
-            //                    )))),
-            //                    // Unwrap and lift ChainStorageError
-            //                    Poll::Ready(Ok(Err(e))) => Poll::Ready(Err(e)),
-            //                    // Unwrap and return result
-            //                    Poll::Ready(Ok(Ok(v))) => Poll::Ready(Ok(v)),
-            //                }
-            //            })
-            //            .await
         }
     };
-
-//    ($fn:ident($param1:ident:$ptype1:ty,$param2:ident:$ptype2:ty) -> $rtype:ty) => {
-//        pub async fn $fn<T>(
-//            db: BlockchainDatabase<T>,
-//            $param1: $ptype1,
-//            $param2: $ptype2,
-//        ) -> Result<$rtype, ChainStorageError>
-//        where
-//            T: BlockchainBackend,
-//        {
-//            poll_fn(move |_| {
-//                let db = db.clone();
-//                let p1 = $param1.clone();
-//                let p2 = $param2.clone();
-//                match blocking(move || db.$fn(p1, p2)) {
-//                    Poll::Pending => Poll::Pending,
-//                    // Map BlockingError -> ChainStorageError
-//                    Poll::Ready(Err(e)) => Poll::Ready(Err(ChainStorageError::AccessError(format!(
-//                        "Could not find a blocking thread to execute DB query. {}",
-//                        e.to_string()
-//                    )))),
-//                    // Unwrap and lift ChainStorageError
-//                    Poll::Ready(Ok(Err(e))) => Poll::Ready(Err(e)),
-//                    // Unwrap and return result
-//                    Poll::Ready(Ok(Ok(v))) => Poll::Ready(Ok(v)),
-//                }
-//            })
-//            .await
-//        }
-//    };
-//
-//    ($fn:ident($param1:ident:$ptype1:ty,$param2:ident:$ptype2:ty,$param3:ident:$ptype3:ty) -> $rtype:ty) => {
-//        pub async fn $fn<T>(
-//            db: BlockchainDatabase<T>,
-//            $param1: $ptype1,
-//            $param2: $ptype2,
-//            $param3: $ptype3,
-//        ) -> Result<$rtype, ChainStorageError>
-//        where
-//            T: BlockchainBackend,
-//        {
-//            poll_fn(move |_| {
-//                let db = db.clone();
-//                let p1 = $param1.clone();
-//                let p2 = $param2.clone();
-//                let p3 = $param3.clone();
-//                match blocking(move || db.$fn(p1, p2, p3)) {
-//                    Poll::Pending => Poll::Pending,
-//                    // Map BlockingError -> ChainStorageError
-//                    Poll::Ready(Err(e)) => Poll::Ready(Err(ChainStorageError::AccessError(format!(
-//                        "Could not find a blocking thread to execute DB query. {}",
-//                        e.to_string()
-//                    )))),
-//                    // Unwrap and lift ChainStorageError
-//                    Poll::Ready(Ok(Err(e))) => Poll::Ready(Err(e)),
-//                    // Unwrap and return result
-//                    Poll::Ready(Ok(Ok(v))) => Poll::Ready(Ok(v)),
-//                }
-//            })
-//            .await
-//        }
-//    };
 }
 
 make_async!(get_metadata() -> ChainMetadata);

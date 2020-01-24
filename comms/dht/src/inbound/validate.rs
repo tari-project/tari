@@ -33,6 +33,7 @@ use log::*;
 use std::task::Poll;
 use tari_comms::message::MessageExt;
 use tari_comms_middleware::MiddlewareError;
+use tari_utilities::ByteArray;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::dht::validate";
@@ -115,7 +116,11 @@ where
                         .with_dht_message_type(DhtMessageType::RejectMsg)
                         .finish(),
                     RejectMessage {
-                        signature: message.dht_header.origin_signature,
+                        signature: message
+                            .dht_header
+                            .origin
+                            .map(|o| o.public_key.to_vec())
+                            .unwrap_or_default(),
                         reason: RejectMessageReason::UnsupportedNetwork as i32,
                     }
                     .to_encoded_bytes()?,

@@ -87,8 +87,7 @@ pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainM
     );
     DomainMessage {
         dht_header: DhtMessageHeader {
-            origin_public_key: peer_source.public_key.clone(),
-            origin_signature: Default::default(),
+            origin: None,
             version: Default::default(),
             message_type: Default::default(),
             flags: Default::default(),

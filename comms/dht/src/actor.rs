@@ -102,9 +102,9 @@ pub enum DhtRequest {
     /// Send a request for stored messages, optionally specifying a date time that the foreign node should
     /// use to filter the returned messages.
     SendRequestStoredMessages(Option<DateTime<Utc>>),
-    /// Inserts a message signature to the signature cache. This operation replies with a boolean
+    /// Inserts a message signature to the msg hash cache. This operation replies with a boolean
     /// which is true if the signature already exists in the cache, otherwise false
-    SignatureCacheInsert(Vec<u8>, oneshot::Sender<bool>),
+    MsgHashCacheInsert(Vec<u8>, oneshot::Sender<bool>),
     /// Fetch selected peers according to the broadcast strategy
     SelectPeers(BroadcastStrategy, oneshot::Sender<Vec<Peer>>),
 }
@@ -131,10 +131,10 @@ impl DhtRequester {
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
 
-    pub async fn insert_message_signature(&mut self, signature: Vec<u8>) -> Result<bool, DhtActorError> {
+    pub async fn insert_message_hash(&mut self, signature: Vec<u8>) -> Result<bool, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(DhtRequest::SignatureCacheInsert(signature, reply_tx))
+            .send(DhtRequest::MsgHashCacheInsert(signature, reply_tx))
             .await?;
 
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
@@ -155,7 +155,7 @@ pub struct DhtActor<'a> {
     config: DhtConfig,
     shutdown_signal: Option<ShutdownSignal>,
     request_rx: Fuse<mpsc::Receiver<DhtRequest>>,
-    signature_cache: TtlCache<Vec<u8>, ()>,
+    msg_hash_cache: TtlCache<Vec<u8>, ()>,
     pending_jobs: FuturesUnordered<BoxFuture<'a, Result<(), DhtActorError>>>,
 }
 
@@ -170,7 +170,7 @@ impl<'a> DhtActor<'a> {
     ) -> Self
     {
         Self {
-            signature_cache: TtlCache::new(config.signature_cache_capacity),
+            msg_hash_cache: TtlCache::new(config.msg_hash_cache_capacity),
             config,
             outbound_requester,
             peer_manager,
@@ -231,12 +231,12 @@ impl<'a> DhtActor<'a> {
                     self.config.num_neighbouring_nodes,
                 ))
             },
-            SignatureCacheInsert(signature, reply_tx) => {
+            MsgHashCacheInsert(hash, reply_tx) => {
                 // No locks needed here. Downside is this isn't really async, however this should be
                 // fine as it is very quick
                 let already_exists = self
-                    .signature_cache
-                    .insert(signature, (), self.config.signature_cache_ttl)
+                    .msg_hash_cache
+                    .insert(hash, (), self.config.msg_hash_cache_ttl)
                     .is_some();
                 let result = reply_tx.send(already_exists).map_err(|_| DhtActorError::ReplyCanceled);
                 Box::pin(future::ready(result))
@@ -293,6 +293,7 @@ impl<'a> DhtActor<'a> {
                 SendMessageParams::new()
                     .closest(node_identity.node_id().clone(), num_neighbouring_nodes, Vec::new())
                     .with_dht_message_type(DhtMessageType::Join)
+                    .force_origin()
                     .finish(),
                 message,
             )
@@ -526,11 +527,11 @@ mod test {
 
             rt.block_on(async move {
                 let signature = vec![1u8, 2, 3];
-                let is_dup = requester.insert_message_signature(signature.clone()).await.unwrap();
+                let is_dup = requester.insert_message_hash(signature.clone()).await.unwrap();
                 assert_eq!(is_dup, false);
-                let is_dup = requester.insert_message_signature(signature).await.unwrap();
+                let is_dup = requester.insert_message_hash(signature).await.unwrap();
                 assert_eq!(is_dup, true);
-                let is_dup = requester.insert_message_signature(Vec::new()).await.unwrap();
+                let is_dup = requester.insert_message_hash(Vec::new()).await.unwrap();
                 assert_eq!(is_dup, false);
             });
         });

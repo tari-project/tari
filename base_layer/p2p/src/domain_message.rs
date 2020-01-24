@@ -45,14 +45,36 @@ impl<T> DomainMessage<T> {
         self.inner
     }
 
-    /// Returns true of this message was forwarded from another peer, otherwise false
-    pub fn is_forwarded(&self) -> bool {
-        self.dht_header.origin_public_key != self.source_peer.public_key
+    /// Consumes this object returning the public key of the original sender of this message and the message itself
+    pub fn into_origin_and_inner(self) -> (CommsPublicKey, T) {
+        let inner = self.inner;
+        let pk = self
+            .dht_header
+            .origin
+            .map(|o| o.public_key)
+            .unwrap_or(self.source_peer.public_key);
+        (pk, inner)
     }
 
-    /// Returns the origin's public key
+    /// Returns true of this message was forwarded from another peer, otherwise false
+    pub fn is_forwarded(&self) -> bool {
+        self.dht_header
+            .origin
+            .as_ref()
+            // If the source and origin are different, then the message was forwarded
+            .map(|o| o.public_key != self.source_peer.public_key)
+            // Otherwise, if no origin is specified, the message was sent directly from the peer
+            .unwrap_or(false)
+    }
+
+    /// Returns the public key that sent this message. If no origin is specified, then the source peer
+    /// sent this message.
     pub fn origin_public_key(&self) -> &CommsPublicKey {
-        &self.dht_header.origin_public_key
+        self.dht_header
+            .origin
+            .as_ref()
+            .map(|o| &o.public_key)
+            .unwrap_or(&self.source_peer.public_key)
     }
 
     /// Converts the wrapped value of a DomainMessage to another compatible type.

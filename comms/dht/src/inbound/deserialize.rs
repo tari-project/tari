@@ -80,17 +80,19 @@ where
         match DhtEnvelope::decode(body.as_slice()) {
             Ok(dht_envelope) => {
                 trace!(target: LOG_TARGET, "Deserialization succeeded. Checking signatures");
-                if !dht_envelope.is_signature_valid() {
-                    // The origin signature is not valid, this message should never have been sent
-                    warn!(
-                        target: LOG_TARGET,
-                        "SECURITY: Origin signature verification failed. Discarding message from NodeId {}",
-                        source_peer.node_id
-                    );
-                    return Ok(());
+                if dht_envelope.has_origin() {
+                    if dht_envelope.is_origin_signature_valid() {
+                        trace!(target: LOG_TARGET, "Origin signature validation passed.");
+                    } else {
+                        // The origin signature is not valid, this message should never have been sent
+                        warn!(
+                            target: LOG_TARGET,
+                            "SECURITY: Origin signature verification failed. Discarding message from NodeId {}",
+                            source_peer.node_id
+                        );
+                        return Ok(());
+                    }
                 }
-
-                trace!(target: LOG_TARGET, "Origin signature validation passed.");
 
                 let inbound_msg =
                     DhtInboundMessage::new(dht_envelope.header.try_into()?, source_peer, dht_envelope.body);

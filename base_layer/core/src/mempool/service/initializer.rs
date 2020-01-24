@@ -118,7 +118,7 @@ async fn extract_transaction(msg: Arc<PeerMessage>) -> Option<DomainMessage<Tran
         Ok(tx) => {
             let tx = match Transaction::try_from(tx) {
                 Err(e) => {
-                    let origin = &msg.dht_header.origin_public_key;
+                    let origin = msg.origin_public_key();
                     warn!(
                         target: LOG_TARGET,
                         "Inbound transaction message from {} was ill-formed. {}", origin, e

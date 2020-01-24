@@ -44,7 +44,7 @@ impl SafStorage {
         acquire_write_lock!(self.message_cache).insert(key, message, ttl)
     }
 
-    pub fn with_inner<F, T>(&self, f: F) -> T
+    pub fn with_lock<F, T>(&self, f: F) -> T
     where F: FnOnce(RwLockWriteGuard<TtlCache<SignatureBytes, StoredMessage>>) -> T {
         f(acquire_write_lock!(self.message_cache))
     }

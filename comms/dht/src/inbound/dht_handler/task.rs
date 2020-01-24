@@ -25,7 +25,7 @@ use crate::{
     discovery::DhtDiscoveryRequester,
     envelope::NodeDestination,
     inbound::{error::DhtInboundError, message::DecryptedDhtMessage},
-    outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageParams},
+    outbound::{OutboundMessageRequester, SendMessageParams},
     proto::{
         dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage},
         envelope::DhtMessageType,
@@ -40,7 +40,7 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_middleware::MiddlewareError;
-use tari_utilities::ByteArray;
+use tari_utilities::{hex::Hex, ByteArray};
 use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::dht::dht_handler";
@@ -157,17 +157,19 @@ where
     }
 
     async fn handle_join(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
-        trace!(
-            target: LOG_TARGET,
-            "Received Join Message from {}",
-            message.dht_header.origin_public_key
-        );
         let DecryptedDhtMessage {
             decryption_result,
             dht_header,
             source_peer,
             ..
         } = message;
+
+        let origin = dht_header.origin.as_ref().ok_or(DhtInboundError::OriginRequired(
+            "Origin is required for this message type".to_string(),
+        ))?;
+
+        trace!(target: LOG_TARGET, "Received Join Message from {}", origin.public_key);
+
         let body = decryption_result.expect("already checked that this message decrypted successfully");
         let join_msg = body
             .decode_part::<JoinMessage>(0)?
@@ -183,10 +185,10 @@ where
             return Err(DhtInboundError::InvalidAddresses);
         }
 
-        let node_id = self.validate_raw_node_id(&dht_header.origin_public_key, &join_msg.node_id)?;
+        let node_id = self.validate_raw_node_id(&origin.public_key, &join_msg.node_id)?;
 
         let origin_peer = self.add_or_update_peer(
-            &dht_header.origin_public_key,
+            &origin.public_key,
             node_id,
             addresses,
             PeerFeatures::from_bits_truncate(join_msg.peer_features),
@@ -232,7 +234,7 @@ where
             .send_raw(
                 SendMessageParams::new()
                     .closest(origin_peer.node_id, self.config.num_neighbouring_nodes, vec![
-                        dht_header.origin_public_key.clone(),
+                        origin.public_key.clone(),
                         source_peer.public_key,
                     ])
                     .with_dht_header(dht_header)
@@ -260,7 +262,12 @@ where
         trace!(
             target: LOG_TARGET,
             "Received Discover Response Message from {}",
-            message.dht_header.origin_public_key
+            message
+                .dht_header
+                .origin
+                .as_ref()
+                .map(|o| o.public_key.to_hex())
+                .unwrap_or("<unknown>".to_string())
         );
 
         let msg = message
@@ -279,12 +286,6 @@ where
     }
 
     async fn handle_discover(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
-        trace!(
-            target: LOG_TARGET,
-            "Received Discover Message from {}",
-            message.dht_header.origin_public_key
-        );
-
         let msg = message
             .success()
             .expect("already checked that this message decrypted successfully");
@@ -292,6 +293,16 @@ where
         let discover_msg = msg
             .decode_part::<DiscoveryMessage>(0)?
             .ok_or(DhtInboundError::InvalidMessageBody)?;
+
+        let origin = message.dht_header.origin.ok_or(DhtInboundError::OriginRequired(
+            "Origin header required for Discovery message".to_string(),
+        ))?;
+
+        trace!(
+            target: LOG_TARGET,
+            "Received Discover Message from {}",
+            origin.public_key,
+        );
 
         let addresses = discover_msg
             .addresses
@@ -303,9 +314,9 @@ where
             return Err(DhtInboundError::InvalidAddresses);
         }
 
-        let node_id = self.validate_raw_node_id(&message.dht_header.origin_public_key, &discover_msg.node_id)?;
+        let node_id = self.validate_raw_node_id(&origin.public_key, &discover_msg.node_id)?;
         let origin_peer = self.add_or_update_peer(
-            &message.dht_header.origin_public_key,
+            &origin.public_key,
             node_id,
             addresses,
             PeerFeatures::from_bits_truncate(discover_msg.peer_features),
@@ -321,7 +332,7 @@ where
         }
 
         // Send the origin the current nodes latest contact info
-        self.send_discovery_response(message.dht_header.origin_public_key, discover_msg.nonce)
+        self.send_discovery_response(origin.public_key, discover_msg.nonce)
             .await?;
 
         Ok(())
@@ -341,8 +352,8 @@ where
                 SendMessageParams::new()
                     .direct_public_key(dest_public_key.clone())
                     .with_destination(NodeDestination::PublicKey(dest_public_key))
-                    .with_encryption(OutboundEncryption::EncryptForPeer)
                     .with_dht_message_type(DhtMessageType::Join)
+                    .force_origin()
                     .finish(),
                 join_msg,
             )
@@ -370,9 +381,8 @@ where
         self.outbound_service
             .send_message_no_header(
                 SendMessageParams::new()
-                    .direct_public_key(dest_public_key.clone())
-                    .with_destination(NodeDestination::PublicKey(dest_public_key))
-                    .with_encryption(OutboundEncryption::EncryptForPeer)
+                    .direct_public_key(dest_public_key)
+                    .with_destination(NodeDestination::Unknown)
                     .with_dht_message_type(DhtMessageType::DiscoveryResponse)
                     .finish(),
                 response,

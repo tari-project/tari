@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{consts::DHT_ENVELOPE_HEADER_VERSION, envelope::DhtMessageHeader};
-use tari_comms::{message::EnvelopeBody, peer_manager::Peer};
+use tari_comms::{message::EnvelopeBody, peer_manager::Peer, types::CommsPublicKey};
 
 #[derive(Debug, Clone)]
 pub struct DhtInboundMessage {
@@ -93,5 +93,13 @@ impl DecryptedDhtMessage {
 
     pub fn decryption_failed(&self) -> bool {
         self.decryption_result.is_err()
+    }
+
+    pub fn origin_public_key(&self) -> &CommsPublicKey {
+        self.dht_header
+            .origin
+            .as_ref()
+            .map(|o| &o.public_key)
+            .unwrap_or(&self.source_peer.public_key)
     }
 }

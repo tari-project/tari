@@ -157,7 +157,7 @@ where
         match msg.inner().kind().ok_or(LivenessError::InvalidPingPongType)? {
             PingPong::Ping => {
                 self.state.inc_pings_received();
-                self.send_pong(msg.inner.nonce, msg.dht_header.origin_public_key)
+                self.send_pong(msg.inner.nonce, msg.source_peer.public_key)
                     .await
                     .unwrap();
                 self.state.inc_pongs_sent();
@@ -391,7 +391,7 @@ mod test {
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     };
     use tari_comms_dht::{
-        envelope::{DhtMessageHeader, Network},
+        envelope::{DhtMessageHeader, DhtMessageType, Network},
         outbound::{DhtOutboundRequest, SendMessageResponse},
     };
     use tari_crypto::keys::PublicKey;
@@ -505,21 +505,15 @@ mod test {
             PeerFeatures::COMMUNICATION_NODE,
         );
         DomainMessage {
-            dht_header: create_dummy_header(peer_source.public_key.clone()),
+            dht_header: DhtMessageHeader::new(
+                Default::default(),
+                DhtMessageType::None,
+                None,
+                Network::LocalTest,
+                Default::default(),
+            ),
             source_peer: peer_source,
             inner,
-        }
-    }
-
-    fn create_dummy_header(origin_public_key: CommsPublicKey) -> DhtMessageHeader {
-        DhtMessageHeader {
-            destination: Default::default(),
-            flags: Default::default(),
-            message_type: Default::default(),
-            origin_signature: Default::default(),
-            version: 0,
-            network: Network::LocalTest,
-            origin_public_key,
         }
     }
 

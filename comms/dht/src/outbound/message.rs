@@ -40,6 +40,7 @@ pub enum OutboundEncryption {
     None,
     /// Message should be encrypted using a shared secret derived from the given public key
     EncryptFor(CommsPublicKey),
+    // TODO: Remove this option as it is redundant (message encryption only needed for forwarded private messages)
     /// Message should be encrypted using a shared secret derived from the destination peer's
     /// public key. Each message sent according to the broadcast strategy will be encrypted for
     /// the destination peer.
@@ -52,6 +53,15 @@ impl OutboundEncryption {
         match self {
             OutboundEncryption::EncryptFor(_) | OutboundEncryption::EncryptForPeer => DhtMessageFlags::ENCRYPTED,
             _ => DhtMessageFlags::NONE,
+        }
+    }
+
+    /// Returns true if encryption is turned on, otherwise false
+    pub fn is_encrypt(&self) -> bool {
+        use OutboundEncryption::*;
+        match self {
+            None => false,
+            EncryptFor(_) | EncryptForPeer => true,
         }
     }
 }

@@ -104,8 +104,14 @@ where
             return Self::success_not_encrypted(next_service, message).await;
         }
 
+        let origin = dht_header
+            .origin
+            .as_ref()
+            // TODO: #banheuristics - this should not have been sent/propagated
+            .ok_or("Message origin field is required for encrypted messages")?;
+
         debug!(target: LOG_TARGET, "Attempting to decrypt message");
-        let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), &dht_header.origin_public_key);
+        let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), &origin.public_key);
         match crypt::decrypt(&shared_secret, &message.body) {
             Ok(decrypted) => Self::decryption_succeeded(next_service, message, &decrypted).await,
             Err(err) => {

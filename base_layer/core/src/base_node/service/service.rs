@@ -285,10 +285,10 @@ where B: BlockchainBackend + 'static
         domain_request_msg: DomainMessage<proto::BaseNodeServiceRequest>,
     ) -> Result<(), BaseNodeServiceError>
     {
-        let DomainMessage::<_> { dht_header, inner, .. } = domain_request_msg;
+        let (origin_public_key, inner_msg) = domain_request_msg.into_origin_and_inner();
 
         // Convert proto::BaseNodeServiceRequest to a BaseNodeServiceRequest
-        let request = inner.request.ok_or(BaseNodeServiceError::InvalidRequest(
+        let request = inner_msg.request.ok_or(BaseNodeServiceError::InvalidRequest(
             "Received invalid base node request".to_string(),
         ))?;
 
@@ -302,13 +302,13 @@ where B: BlockchainBackend + 'static
             .await?;
 
         let message = proto::BaseNodeServiceResponse {
-            request_key: inner.request_key,
+            request_key: inner_msg.request_key,
             response: Some(response.into()),
         };
 
         self.outbound_message_service
             .send_direct(
-                dht_header.origin_public_key,
+                origin_public_key,
                 OutboundEncryption::EncryptForPeer,
                 OutboundDomainMessage::new(TariMessageType::BaseNodeResponse, message),
             )

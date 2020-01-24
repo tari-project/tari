@@ -32,7 +32,7 @@ rand = "0.5.5"
 serde = "1.0.90"
 serde_derive = "1.0.90"
 serde_repr = "0.1.5"
-tokio = "0.2.10"
+tokio = {version="0.2.10", features=["rt-threaded", "blocking"]}
 tower= "0.3.0"
 tower-filter = {version="0.3.0-alpha.2", path="../middleware/tower-filter"}
 ttl_cache = "0.5.1"
@@ -45,6 +45,7 @@ futures-test = { version = "0.3.0-alpha.19", package = "futures-test-preview" }
 lmdb-zero = "0.4.4"
 tempdir = "0.3.7"
 env_logger = "0.7.0"
+tokio-macros = "0.2.3"
 
 [build-dependencies]
 tari_protobuf_build = { version = "^0.0", path="../../infrastructure/protobuf_build"}

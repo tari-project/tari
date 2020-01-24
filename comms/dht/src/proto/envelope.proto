@@ -25,22 +25,21 @@ message DhtHeader {
         // The sender has chosen not to disclose the message destination, or the destination is
         // the peer being sent to.
         bool unknown = 2;
-        /// Destined for a particular public key
+        // Destined for a particular public key
         bytes public_key = 3;
-        /// Destined for a particular node id, or network region
+        // Destined for a particular node id, or network region
         bytes node_id = 4;
     }
 
     // Origin public key of the message. This can be the same peer that sent the message
-    // or another peer if the message should be forwarded.
-    bytes origin_public_key = 5;
-    // Signature of the message body that can be verified using the origin_public_key above
-    bytes origin_signature = 6;
+    // or another peer if the message should be forwarded. This is optional but must be specified
+    // if the ENCRYPTED flag is set.
+    DhtOrigin origin = 5;
     // The type of message
-    DhtMessageType message_type = 7;
+    DhtMessageType message_type = 6;
     // The network for which this message is intended (e.g. TestNet, MainNet etc.)
-    Network network = 8;
-    uint32 flags = 9;
+    Network network = 7;
+    uint32 flags = 8;
 }
 
 enum Network {
@@ -55,4 +54,9 @@ enum Network {
 message DhtEnvelope {
     DhtHeader header = 1;
     bytes body = 2;
+}
+
+message DhtOrigin {
+    bytes public_key = 1;
+    bytes signature = 2;
 }

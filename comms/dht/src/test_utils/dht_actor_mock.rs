@@ -97,7 +97,7 @@ impl DhtActorMock {
         self.state.inc_call_count();
         match req {
             SendJoin => {},
-            SignatureCacheInsert(_, reply_tx) => {
+            MsgHashCacheInsert(_, reply_tx) => {
                 let v = self.state.signature_cache_insert.load(Ordering::SeqCst);
                 reply_tx.send(v).unwrap();
             },

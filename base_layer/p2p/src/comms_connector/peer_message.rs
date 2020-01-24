@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::peer_manager::Peer;
+use tari_comms::{peer_manager::Peer, types::CommsPublicKey};
 use tari_comms_dht::{domain_message::MessageHeader, envelope::DhtMessageHeader};
 
 /// A domain-level message
@@ -43,6 +43,14 @@ impl PeerMessage {
             dht_header,
             source_peer,
         }
+    }
+
+    pub fn origin_public_key(&self) -> &CommsPublicKey {
+        self.dht_header
+            .origin
+            .as_ref()
+            .map(|o| &o.public_key)
+            .unwrap_or(&self.source_peer.public_key)
     }
 
     pub fn decode_message<T>(&self) -> Result<T, prost::DecodeError>

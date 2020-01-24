@@ -197,7 +197,8 @@ where
                 },
                 // Incoming messages from the Comms layer
                 msg = transaction_stream.select_next_some() => {
-                    let result  = self.accept_transaction(msg.dht_header.origin_public_key, msg.inner).await.or_else(|err| {
+                    let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
+                    let result  = self.accept_transaction(origin_public_key, inner_msg).await.or_else(|err| {
                         error!(target: LOG_TARGET, "Failed to handle incoming message: {:?}", err);
                         Err(err)
                     });
@@ -212,7 +213,8 @@ where
                 },
                  // Incoming messages from the Comms layer
                 msg = transaction_reply_stream.select_next_some() => {
-                    let result = self.accept_recipient_reply(msg.dht_header.origin_public_key, msg.inner).await.or_else(|err| {
+                    let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
+                    let result = self.accept_recipient_reply(origin_public_key, inner_msg).await.or_else(|err| {
                         error!(target: LOG_TARGET, "Failed to handle incoming message: {:?}", err);
                         Err(err)
                     });
@@ -227,7 +229,8 @@ where
                 },
                 // Incoming messages from the Comms layer
                 msg = transaction_finalized_stream.select_next_some() => {
-                    let result = self.accept_finalized_transaction(msg.dht_header.origin_public_key, msg.inner).await.or_else(|err| {
+                    let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
+                    let result = self.accept_finalized_transaction(origin_public_key, inner_msg).await.or_else(|err| {
                         error!(target: LOG_TARGET, "Failed to handle incoming message: {:?}", err);
                         Err(err)
                     });
@@ -543,9 +546,7 @@ where
 
             info!(
                 target: LOG_TARGET,
-                "Transaction with TX_ID = {} received from {}. Reply Sent",
-                tx_id,
-                source_pubkey.clone()
+                "Transaction with TX_ID = {} received from {}. Reply Sent", tx_id, source_pubkey,
             );
 
             self.event_publisher

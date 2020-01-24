@@ -25,7 +25,7 @@ use crate::{
     actor::DhtRequester,
     broadcast_strategy::BroadcastStrategy,
     discovery::DhtDiscoveryRequester,
-    envelope::{DhtMessageHeader, NodeDestination},
+    envelope::{DhtMessageHeader, DhtMessageOrigin, NodeDestination},
     outbound::{
         message::{DhtOutboundMessage, OutboundEncryption},
         message_params::FinalSendMessageParams,
@@ -224,6 +224,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
             dht_message_type,
             encryption,
             is_discovery_enabled,
+            force_origin,
             dht_header,
         } = params;
 
@@ -274,7 +275,15 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
                 }
 
                 match self
-                    .generate_send_messages(peers, destination, dht_message_type, encryption, dht_header, body)
+                    .generate_send_messages(
+                        peers,
+                        destination,
+                        dht_message_type,
+                        encryption,
+                        dht_header,
+                        force_origin,
+                        body,
+                    )
                     .await
                 {
                     Ok(msgs) => {
@@ -362,6 +371,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         dht_message_type: DhtMessageType,
         encryption: OutboundEncryption,
         custom_header: Option<DhtMessageHeader>,
+        force_origin: bool,
         body: Vec<u8>,
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
     {
@@ -370,15 +380,24 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         // Create a DHT header
         let dht_header = custom_header
             .or_else(|| {
+                // The origin is specified if encryption is turned on, otherwise it is not
+                let origin = if force_origin || encryption.is_encrypt() {
+                    Some(DhtMessageOrigin {
+                        // Origin public key used to identify the origin and verify the signature
+                        public_key: self.node_identity.public_key().clone(),
+                        // Signing will happen later in the pipeline (SerializeMiddleware), left empty to prevent double
+                        // work
+                        signature: Vec::new(),
+                    })
+                } else {
+                    None
+                };
+
                 Some(DhtMessageHeader::new(
                     // Final destination for this message
                     destination,
-                    // Origin public key used to identify the origin and verify the signature
-                    self.node_identity.public_key().clone(),
-                    // Signing will happen later in the pipeline (SerializeMiddleware), left empty to prevent double
-                    // work
-                    Vec::new(),
                     dht_message_type,
+                    origin,
                     self.target_network.clone(),
                     dht_flags,
                 ))

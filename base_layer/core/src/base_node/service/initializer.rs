@@ -124,7 +124,7 @@ async fn extract_block(msg: Arc<PeerMessage>) -> Option<DomainMessage<Block>> {
         Ok(block) => {
             let block = match Block::try_from(block) {
                 Err(e) => {
-                    let origin = &msg.dht_header.origin_public_key;
+                    let origin = &msg.source_peer.public_key;
                     warn!(
                         target: LOG_TARGET,
                         "Inbound block message from {} was ill-formed. {}", origin, e
