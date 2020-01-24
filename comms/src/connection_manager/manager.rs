@@ -31,10 +31,10 @@ use crate::{
         requester::ConnectionManagerRequest,
     },
     noise::NoiseConfig,
-    peer_manager::{AsyncPeerManager, NodeId},
+    peer_manager::{AsyncPeerManager, NodeId, NodeIdentity},
     protocol::{ProtocolEvent, ProtocolId, ProtocolNotifier},
     transports::Transport,
-    types::{CommsPublicKey, DEFAULT_LISTENER_ADDRESS},
+    types::DEFAULT_LISTENER_ADDRESS,
 };
 use futures::{
     channel::{mpsc, oneshot},
@@ -58,8 +58,8 @@ const ESTABLISHER_CHANNEL_SIZE: usize = 32;
 pub enum ConnectionManagerEvent {
     // Peer connection
     PeerConnected(Box<PeerConnection>),
-    PeerDisconnected(Box<CommsPublicKey>),
-    PeerConnectFailed(Box<CommsPublicKey>, ConnectionManagerError),
+    PeerDisconnected(Box<NodeId>),
+    PeerConnectFailed(Box<NodeId>, ConnectionManagerError),
     PeerInboundConnectFailed(ConnectionManagerError),
 
     // Listener
@@ -67,7 +67,7 @@ pub enum ConnectionManagerEvent {
     ListenFailed(ConnectionManagerError),
 
     // Substreams
-    NewInboundSubstream(Arc<CommsPublicKey>, ProtocolId, yamux::Stream),
+    NewInboundSubstream(Box<NodeId>, ProtocolId, yamux::Stream),
 }
 
 #[derive(Debug, Clone)]
@@ -90,11 +90,10 @@ impl Default for ConnectionManagerConfig {
 }
 
 pub struct ConnectionManager<TTransport, TBackoff> {
-    config: ConnectionManagerConfig,
     executor: runtime::Handle,
     request_rx: Fuse<mpsc::Receiver<ConnectionManagerRequest>>,
     event_rx: Fuse<mpsc::Receiver<ConnectionManagerEvent>>,
-    establisher_tx: mpsc::Sender<DialerRequest>,
+    dialer_tx: mpsc::Sender<DialerRequest>,
     dialer: Option<Dialer<TTransport, TBackoff>>,
     listener: Option<PeerListener<TTransport>>,
     peer_manager: AsyncPeerManager,
@@ -116,6 +115,7 @@ where
         noise_config: NoiseConfig,
         backoff: Arc<TBackoff>,
         request_rx: mpsc::Receiver<ConnectionManagerRequest>,
+        node_identity: Arc<NodeIdentity>,
         peer_manager: AsyncPeerManager,
         protocol_notifier: ProtocolNotifier<yamux::Stream>,
         shutdown_signal: ShutdownSignal,
@@ -126,37 +126,41 @@ where
         let (establisher_tx, establisher_rx) = mpsc::channel(ESTABLISHER_CHANNEL_SIZE);
 
         let supported_protocols = protocol_notifier.get_supported_protocols();
-        let dialer = Dialer::new(
-            executor.clone(),
-            config.clone(),
-            transport.clone(),
-            noise_config.clone(),
-            backoff,
-            establisher_rx,
-            event_tx.clone(),
-            supported_protocols.clone(),
-            shutdown_signal.clone(),
-        );
 
         let listener = PeerListener::new(
             executor.clone(),
             config.listener_address.clone(),
+            transport.clone(),
+            noise_config.clone(),
+            event_tx.clone(),
+            peer_manager.clone(),
+            Arc::clone(&node_identity),
+            supported_protocols.clone(),
+            shutdown_signal.clone(),
+        );
+
+        let dialer = Dialer::new(
+            executor.clone(),
+            config,
+            Arc::clone(&node_identity),
+            peer_manager.clone(),
             transport,
             noise_config,
+            backoff,
+            establisher_rx,
             event_tx,
             supported_protocols,
             shutdown_signal.clone(),
         );
 
         Self {
-            config,
             executor,
             shutdown_signal: Some(shutdown_signal),
             request_rx: request_rx.fuse(),
             peer_manager,
             protocol_notifier,
             event_rx: event_rx.fuse(),
-            establisher_tx,
+            dialer_tx: establisher_tx,
             dialer: Some(dialer),
             listener: Some(listener),
             active_connections: Default::default(),
@@ -255,10 +259,7 @@ where
     {
         match self.peer_manager.find_by_node_id(&node_id).await {
             Ok(peer) => {
-                if let Err(err) = self
-                    .establisher_tx
-                    .try_send(DialerRequest::Dial(Box::new(peer), reply_tx))
-                {
+                if let Err(err) = self.dialer_tx.try_send(DialerRequest::Dial(Box::new(peer), reply_tx)) {
                     error!(
                         target: LOG_TARGET,
                         "Failed to send request to establisher because '{}'", err
@@ -302,12 +303,13 @@ mod test {
     use std::time::Duration;
     use tari_shutdown::Shutdown;
     use tari_test_utils::unpack_enum;
-    use tokio::runtime::Runtime;
+    use tokio::runtime::Handle;
 
-    #[test]
-    fn connect_to_nonexistent_peer() {
-        let mut rt = Runtime::new().unwrap();
-        let noise_config = NoiseConfig::new(build_node_identity(PeerFeatures::COMMUNICATION_NODE));
+    #[tokio_macros::test_basic]
+    async fn connect_to_nonexistent_peer() {
+        let rt_handle = Handle::current();
+        let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        let noise_config = NoiseConfig::new(node_identity.clone());
         let (request_tx, request_rx) = mpsc::channel(1);
         let mut requester = ConnectionManagerRequester::new(request_tx);
         let mut shutdown = Shutdown::new();
@@ -316,19 +318,20 @@ mod test {
 
         let connection_manager = ConnectionManager::new(
             Default::default(),
-            rt.handle().clone(),
+            rt_handle.clone(),
             MemoryTransport,
             noise_config,
             Arc::new(ConstantBackoff::new(Duration::from_secs(1))),
             request_rx,
+            node_identity,
             peer_manager.into(),
             ProtocolNotifier::new(),
             shutdown.to_signal(),
         );
 
-        rt.spawn(connection_manager.run());
+        rt_handle.spawn(connection_manager.run());
 
-        let result = rt.block_on(requester.dial_peer(NodeId::default()));
+        let result = requester.dial_peer(NodeId::default()).await;
         unpack_enum!(Result::Err(err) = result);
         match err {
             ConnectionManagerError::PeerManagerError(PeerManagerError::PeerNotFoundError) => {},

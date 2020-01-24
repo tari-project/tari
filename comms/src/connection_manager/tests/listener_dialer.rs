@@ -31,7 +31,7 @@ use crate::{
     noise::NoiseConfig,
     peer_manager::{Peer, PeerFeatures, PeerFlags},
     protocol::ProtocolId,
-    test_utils::node_identity::build_node_identity,
+    test_utils::{node_identity::build_node_identity, test_node::build_peer_manager},
     transports::MemoryTransport,
 };
 use futures::{
@@ -45,20 +45,27 @@ use multiaddr::Protocol;
 use std::{error::Error, sync::Arc, time::Duration};
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
-use tokio::{runtime::Runtime, time::timeout};
+use tokio::{
+    runtime::{Handle, Runtime},
+    time::timeout,
+};
 
 #[test]
 fn listen() -> Result<(), Box<dyn Error>> {
     let mut rt = Runtime::new()?;
     let (event_tx, mut event_rx) = mpsc::channel(1);
     let mut shutdown = Shutdown::new();
-    let noise_config = NoiseConfig::new(build_node_identity(PeerFeatures::COMMUNICATION_NODE));
+    let peer_manager = build_peer_manager();
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let noise_config = NoiseConfig::new(node_identity.clone());
     let listener = PeerListener::new(
         rt.handle().clone(),
         "/memory/0".parse()?,
         MemoryTransport,
         noise_config.clone(),
         event_tx.clone(),
+        peer_manager.into(),
+        node_identity,
         vec![],
         shutdown.to_signal(),
     );
@@ -79,12 +86,13 @@ fn listen() -> Result<(), Box<dyn Error>> {
     })
 }
 
-#[test]
-fn smoke() {
+#[tokio_macros::test_basic]
+async fn smoke() {
+    env_logger::init();
+    let rt_handle = Handle::current();
     // This test sets up Dialer and Listener components, uses the Dialer to dial the Listener,
     // asserts the emitted events are correct, opens a substream, sends a small message over the substream,
     // receives and checks the message and then disconnects and shuts down.
-    let mut rt = Runtime::new().unwrap();
     let (event_tx, mut event_rx) = mpsc::channel(10);
     let mut shutdown = Shutdown::new();
 
@@ -92,24 +100,30 @@ fn smoke() {
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
     let expected_proto = ProtocolId::from_static(b"/tari/test-proto");
     let supported_protocols = vec![expected_proto.clone()];
+    let peer_manager1 = build_peer_manager();
     let listener = PeerListener::new(
-        rt.handle().clone(),
+        rt_handle.clone(),
         "/memory/0".parse().unwrap(),
         MemoryTransport,
         noise_config1,
         event_tx.clone(),
+        peer_manager1.clone().into(),
+        node_identity1.clone(),
         supported_protocols.clone(),
         shutdown.to_signal(),
     );
 
-    let listener_fut = rt.spawn(listener.run());
+    let listener_fut = rt_handle.spawn(listener.run());
 
     let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config2 = NoiseConfig::new(node_identity2.clone());
     let (mut request_tx, request_rx) = mpsc::channel(1);
+    let peer_manager2 = build_peer_manager();
     let dialer = Dialer::new(
-        rt.handle().clone(),
+        rt_handle.clone(),
         ConnectionManagerConfig::default(),
+        node_identity2.clone(),
+        peer_manager2.clone().into(),
         MemoryTransport,
         noise_config2,
         Arc::new(ConstantBackoff::new(Duration::from_millis(100))),
@@ -119,59 +133,62 @@ fn smoke() {
         shutdown.to_signal(),
     );
 
-    let dialer_fut = rt.spawn(dialer.run());
+    let dialer_fut = rt_handle.spawn(dialer.run());
 
-    rt.block_on(async move {
-        // Get the listening address of the peer
-        let listen_event = event_rx.next().await.unwrap();
-        unpack_enum!(ConnectionManagerEvent::Listening(address) = listen_event);
+    // Get the listening address of the peer
+    let listen_event = event_rx.next().await.unwrap();
+    unpack_enum!(ConnectionManagerEvent::Listening(address) = listen_event);
 
-        let mut peer = Peer::new(
-            node_identity1.public_key().clone(),
-            node_identity1.node_id().clone(),
-            vec![address].into(),
-            PeerFlags::empty(),
-            PeerFeatures::COMMUNICATION_NODE,
-        );
-        peer.set_id_for_test(1);
+    let mut peer = Peer::new(
+        node_identity1.public_key().clone(),
+        node_identity1.node_id().clone(),
+        vec![address].into(),
+        PeerFlags::empty(),
+        PeerFeatures::COMMUNICATION_NODE,
+    );
+    peer.set_id_for_test(1);
 
-        let (reply_tx, reply_rx) = oneshot::channel();
-        request_tx
-            .send(DialerRequest::Dial(Box::new(peer), reply_tx))
-            .await
-            .unwrap();
+    let (reply_tx, reply_rx) = oneshot::channel();
+    request_tx
+        .send(DialerRequest::Dial(Box::new(peer), reply_tx))
+        .await
+        .unwrap();
 
-        let mut outbound_peer_conn = reply_rx.await.unwrap().unwrap();
+    let mut outbound_peer_conn = reply_rx.await.unwrap().unwrap();
 
-        // Open a substream
-        {
-            let mut out_stream = outbound_peer_conn.open_substream("/tari/test-proto").await.unwrap();
-            out_stream.stream.write_all(b"HELLO").await.unwrap();
-            out_stream.stream.flush().await.unwrap();
-        }
+    // Open a substream
+    {
+        let mut out_stream = outbound_peer_conn.open_substream("/tari/test-proto").await.unwrap();
+        out_stream.stream.write_all(b"HELLO").await.unwrap();
+        out_stream.stream.flush().await.unwrap();
+    }
 
-        // Read PeerConnected events - we don't know which connection is which
-        unpack_enum!(ConnectionManagerEvent::PeerConnected(conn1) = event_rx.next().await.unwrap());
-        unpack_enum!(ConnectionManagerEvent::PeerConnected(conn2) = event_rx.next().await.unwrap());
+    // Read PeerConnected events - we don't know which connection is which
+    unpack_enum!(ConnectionManagerEvent::PeerConnected(conn1) = event_rx.next().await.unwrap());
+    unpack_enum!(ConnectionManagerEvent::PeerConnected(_conn2) = event_rx.next().await.unwrap());
 
-        // Next event should be a NewInboundSubstream has been received
-        let listen_event = event_rx.next().await.unwrap();
-        {
-            unpack_enum!(ConnectionManagerEvent::NewInboundSubstream(public_key, proto, in_stream) = listen_event);
-            assert_eq!(&*public_key, node_identity2.public_key());
-            assert_eq!(proto, expected_proto);
+    // Next event should be a NewInboundSubstream has been received
+    let listen_event = event_rx.next().await.unwrap();
+    {
+        unpack_enum!(ConnectionManagerEvent::NewInboundSubstream(node_id, proto, in_stream) = listen_event);
+        assert_eq!(&*node_id, node_identity2.node_id());
+        assert_eq!(proto, expected_proto);
 
-            let mut buf = [0u8; 5];
-            in_stream.read_exact(&mut buf).await.unwrap();
-            assert_eq!(buf, *b"HELLO");
-        }
+        let mut buf = [0u8; 5];
+        in_stream.read_exact(&mut buf).await.unwrap();
+        assert_eq!(buf, *b"HELLO");
+    }
 
-        let _ = conn1.disconnect().await;
-        let _ = conn2.disconnect().await;
+    conn1.disconnect().await.unwrap();
 
-        shutdown.trigger().unwrap();
+    shutdown.trigger().unwrap();
 
-        timeout(Duration::from_secs(5), listener_fut).await.unwrap().unwrap();
-        timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
-    });
+    let peer2 = peer_manager1.find_by_node_id(node_identity2.node_id()).unwrap();
+    let peer1 = peer_manager2.find_by_node_id(node_identity1.node_id()).unwrap();
+
+    assert_eq!(&peer1.public_key, node_identity1.public_key());
+    assert_eq!(&peer2.public_key, node_identity2.public_key());
+
+    timeout(Duration::from_secs(5), listener_fut).await.unwrap().unwrap();
+    timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
 }

@@ -122,7 +122,7 @@ pub fn create_wallet(
         peer_connection_listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
-            listening_address: node_id.control_service_address(),
+            listening_address: node_id.public_address(),
             socks_proxy_address: None,
             public_peer_address: None,
             requested_connection_timeout: Duration::from_millis(500),

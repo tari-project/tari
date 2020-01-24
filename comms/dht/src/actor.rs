@@ -279,7 +279,7 @@ impl<'a> DhtActor<'a> {
     {
         let message = JoinMessage {
             node_id: node_identity.node_id().to_vec(),
-            addresses: vec![node_identity.control_service_address().to_string()],
+            addresses: vec![node_identity.public_address().to_string()],
             peer_features: node_identity.features().bits(),
         };
 

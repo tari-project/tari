@@ -53,7 +53,7 @@ pub fn make_peer() -> Peer {
     Peer::new(
         node_identity.public_key().clone(),
         node_identity.node_id().clone(),
-        vec![node_identity.control_service_address()].into(),
+        vec![node_identity.public_address()].into(),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
     )

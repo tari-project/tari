@@ -62,7 +62,7 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
         // 2. Send a request to connect
         control_client
             .send_request_connection(
-                self.node_identity.control_service_address(),
+                self.node_identity.public_address(),
                 self.node_identity.node_id().clone(),
                 self.node_identity.features().clone(),
             )

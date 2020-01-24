@@ -36,6 +36,7 @@ serde_repr = "0.1.5"
 snow = {version="0.6.2", features=["default-resolver"], optional = true}
 time = "0.1.42"
 tokio = {version="^0.2", features=["blocking", "tcp", "stream", "dns", "sync"]}
+tokio-util = {version="0.2.0", features=["codec"]}
 ttl_cache = "0.5.1"
 yamux = {version="0.4.0", optional = true}
 zmq = "0.9.2"

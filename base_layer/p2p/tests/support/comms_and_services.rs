@@ -48,7 +48,7 @@ where
         initialize_local_test_comms(executor, node_identity, publisher, data_path, Duration::from_secs(1)).unwrap();
 
     for p in peers {
-        let addr = p.control_service_address().clone();
+        let addr = p.public_address().clone();
         comms
             .peer_manager()
             .add_peer(Peer::new(

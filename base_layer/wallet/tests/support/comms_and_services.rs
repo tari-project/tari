@@ -61,7 +61,7 @@ where
     .unwrap();
 
     for p in peers {
-        let addr = p.control_service_address();
+        let addr = p.public_address();
         comms
             .peer_manager()
             .add_peer(Peer::new(

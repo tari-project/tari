@@ -342,7 +342,7 @@ where
     async fn send_join_direct(&mut self, dest_public_key: CommsPublicKey) -> Result<(), DhtInboundError> {
         let join_msg = JoinMessage {
             node_id: self.node_identity.node_id().to_vec(),
-            addresses: vec![self.node_identity.control_service_address().to_string()],
+            addresses: vec![self.node_identity.public_address().to_string()],
             peer_features: self.node_identity.features().bits(),
         };
 
@@ -372,7 +372,7 @@ where
     {
         let response = DiscoveryResponseMessage {
             node_id: self.node_identity.node_id().to_vec(),
-            addresses: vec![self.node_identity.control_service_address().to_string()],
+            addresses: vec![self.node_identity.public_address().to_string()],
             peer_features: self.node_identity.features().bits(),
             nonce,
         };

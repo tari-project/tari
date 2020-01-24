@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{peer_manager::PeerManagerError, protocol::ProtocolError};
+use crate::{
+    peer_manager::PeerManagerError,
+    protocol::{IdentityProtocolError, ProtocolError},
+};
 use derive_error::Error;
 use futures::channel::mpsc;
 
@@ -39,6 +42,9 @@ pub enum ConnectionManagerError {
     DialConnectFailedAllAddresses,
     /// Failed to connect to peer within the maximum number of attempts
     ConnectFailedMaximumAttemptsReached,
+    #[error(msg_embedded, no_from, non_std)]
+    YamuxConnectionError(String),
+    /// Establisher channel is closed or full
     /// Failed to perform yamux upgrade on socket
     #[error(msg_embedded, no_from, non_std)]
     YamuxUpgradeFailure(String),
@@ -54,6 +60,21 @@ pub enum ConnectionManagerError {
     // send the same response to multiple requesters
     #[error(msg_embedded, no_from, non_std)]
     NoiseError(String),
+    /// Incoming listener stream unexpectedly closed
+    IncomingListenerStreamClosed,
+    /// The peer offered a NodeId that failed to validate against it's public key
+    PeerIdentityInvalidNodeId,
+    /// Peer is banned, denying connection
+    PeerBanned,
+    /// Unable to parse any of the network addresses offered by the connecting peer
+    PeerIdentityNoValidAddresses,
+    IdentityProtocolError(IdentityProtocolError),
+}
+
+impl From<yamux::ConnectionError> for ConnectionManagerError {
+    fn from(err: yamux::ConnectionError) -> Self {
+        ConnectionManagerError::YamuxConnectionError(err.to_string())
+    }
 }
 
 #[derive(Debug, Error)]

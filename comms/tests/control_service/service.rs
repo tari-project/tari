@@ -119,7 +119,7 @@ fn request_connection() {
     // --- Request a connection to the peer connection
     client
         .send_request_connection(
-            node_identity_b.control_service_address(),
+            node_identity_b.public_address(),
             NodeId::from_key(node_identity_b.public_key()).unwrap(),
             node_identity_b.features().clone(),
         )
@@ -132,7 +132,7 @@ fn request_connection() {
     let peer = peer_manager.find_by_public_key(node_identity_b.public_key()).unwrap();
     assert_eq!(&peer.public_key, node_identity_b.public_key());
     assert_eq!(&peer.node_id, node_identity_b.node_id());
-    assert_eq!(peer.addresses[0], node_identity_b.control_service_address().into());
+    assert_eq!(peer.addresses[0], node_identity_b.public_address().into());
     assert_eq!(peer.flags, PeerFlags::empty());
     assert_eq!(peer.features, PeerFeatures::COMMUNICATION_NODE);
 

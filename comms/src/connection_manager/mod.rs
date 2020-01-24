@@ -32,7 +32,7 @@ cfg_next! {
     mod manager;
     mod peer_connection;
     mod requester;
-    mod utils;
+    mod common;
 
     pub mod next {
         pub use super::manager::{ConnectionManager, ConnectionManagerConfig, ConnectionManagerEvent};

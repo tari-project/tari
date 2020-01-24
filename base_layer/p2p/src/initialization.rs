@@ -87,7 +87,7 @@ where
     TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
-    let listener_address = node_identity.control_service_address();
+    let listener_address = node_identity.public_address();
     let peer_database_name = {
         let mut rng = thread_rng();
         iter::repeat(())
