@@ -39,6 +39,8 @@ pub struct OutboundServiceConfig {
     pub max_cached_connections: usize,
     /// Maximum attempts to send a message before discarding it. Default: 5
     pub max_attempts: usize,
+    /// The size of the broadcast buffer. Default: 100
+    pub broadcast_channel_buf_size: usize,
 }
 
 impl Default for OutboundServiceConfig {
@@ -46,6 +48,7 @@ impl Default for OutboundServiceConfig {
         Self {
             max_attempts: 5,
             max_cached_connections: 20,
+            broadcast_channel_buf_size: 100,
         }
     }
 }
