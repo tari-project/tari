@@ -111,9 +111,9 @@ impl ProofOfWork {
     /// (as a u256)
     ///
     /// If there are any problems with calculating a difficulty (e.g. an invalid header), then the function returns a
-    /// difficulty of zero.
-    pub fn achieved_difficulty(&self, header: &BlockHeader) -> Difficulty {
-        match self.pow_algo {
+    /// difficulty of one.
+    pub fn achieved_difficulty(header: &BlockHeader) -> Difficulty {
+        match header.pow.pow_algo {
             PowAlgorithm::Monero => monero_difficulty(header),
             PowAlgorithm::Blake => blake_difficulty(header),
         }
@@ -215,7 +215,7 @@ mod test {
         let pow = ProofOfWork::default();
         assert_eq!(
             &format!("{}", pow),
-            "Mining algorithm: Blake, \nTotal accumulated difficulty: \nMonero=0, Blake=0\nPow data: "
+            "Mining algorithm: Blake, \nTotal accumulated difficulty: \nMonero=1, Blake=1\nPow data: "
         );
     }
 

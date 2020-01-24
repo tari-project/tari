@@ -56,7 +56,7 @@ impl Difficulty {
 
 impl Default for Difficulty {
     fn default() -> Self {
-        Difficulty(0)
+        Difficulty::min()
     }
 }
 
@@ -114,7 +114,7 @@ mod test {
             Difficulty::from(1_000) + Difficulty::from(8_000),
             Difficulty::from(9_000)
         );
-        assert_eq!(Difficulty::default() + Difficulty::from(42), Difficulty::from(42));
+        assert_eq!(Difficulty::default() + Difficulty::from(42), Difficulty::from(43));
         assert_eq!(&Difficulty::from(15) + &Difficulty::from(5), Difficulty::from(20));
     }
 }

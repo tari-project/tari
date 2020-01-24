@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{blocks::BlockHeader, proof_of_work::Difficulty};
+use crate::{
+    blocks::BlockHeader,
+    proof_of_work::{Difficulty, ProofOfWork},
+};
 use bigint::uint::U256;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -54,7 +57,7 @@ impl CpuBlakePow {
         let mut nonce: u64 = rng.next_u64();
         let start_nonce = nonce;
         // We're mining over here!
-        let difficulty = header.pow.achieved_difficulty(&header);
+        let difficulty = ProofOfWork::achieved_difficulty(&header);
         while difficulty < target_difficulty {
             if stop_flag.load(Ordering::Relaxed) || kill_flag.load(Ordering::Relaxed) {
                 return None;
