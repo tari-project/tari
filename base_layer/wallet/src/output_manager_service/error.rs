@@ -82,4 +82,6 @@ pub enum OutputManagerStorageError {
     DieselConnectionError(diesel::ConnectionError),
     #[error(msg_embedded, no_from, non_std)]
     DatabaseMigrationError(String),
+    #[error(msg_embedded, non_std, no_from)]
+    BlockingTaskSpawnError(String),
 }

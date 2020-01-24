@@ -48,8 +48,10 @@ use tari_wallet::transaction_service::storage::{
     sqlite_db::TransactionServiceSqliteDatabase,
 };
 use tempdir::TempDir;
+use tokio::runtime::Runtime;
 
-pub fn test_db_backend<T: TransactionBackend>(backend: T) {
+pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
+    let mut runtime = Runtime::new().unwrap();
     let mut db = TransactionDatabase::new(backend);
     let factories = CryptoFactories::default();
     let mut rng = rand::OsRng::new().unwrap();
@@ -88,19 +90,25 @@ pub fn test_db_backend<T: TransactionBackend>(backend: T) {
             timestamp: Utc::now().naive_utc(),
         });
         assert!(
-            !db.transaction_exists(&((i + 10) as u64)).unwrap(),
+            !runtime.block_on(db.transaction_exists(&((i + 10) as u64))).unwrap(),
             "TxId should not exist"
         );
 
-        db.add_pending_outbound_transaction(outbound_txs[i].tx_id, outbound_txs[i].clone())
+        runtime
+            .block_on(db.add_pending_outbound_transaction(outbound_txs[i].tx_id, outbound_txs[i].clone()))
             .unwrap();
-        assert!(db.transaction_exists(&((i + 10) as u64)).unwrap(), "TxId should exist");
+        assert!(
+            runtime.block_on(db.transaction_exists(&((i + 10) as u64))).unwrap(),
+            "TxId should exist"
+        );
     }
 
-    let retrieved_outbound_txs = db.get_pending_outbound_transactions().unwrap();
+    let retrieved_outbound_txs = runtime.block_on(db.get_pending_outbound_transactions()).unwrap();
     assert_eq!(outbound_txs.len(), messages.len());
     for i in 0..messages.len() {
-        let retrieved_outbound_tx = db.get_pending_outbound_transaction(outbound_txs[i].tx_id).unwrap();
+        let retrieved_outbound_tx = runtime
+            .block_on(db.get_pending_outbound_transaction(outbound_txs[i].tx_id))
+            .unwrap();
         assert_eq!(retrieved_outbound_tx, outbound_txs[i]);
 
         assert_eq!(
@@ -128,13 +136,20 @@ pub fn test_db_backend<T: TransactionBackend>(backend: T) {
             message: messages[i].clone(),
             timestamp: Utc::now().naive_utc(),
         });
-        assert!(!db.transaction_exists(&(i as u64)).unwrap(), "TxId should not exist");
-        db.add_pending_inbound_transaction(i as u64, inbound_txs[i].clone())
+        assert!(
+            !runtime.block_on(db.transaction_exists(&(i as u64))).unwrap(),
+            "TxId should not exist"
+        );
+        runtime
+            .block_on(db.add_pending_inbound_transaction(i as u64, inbound_txs[i].clone()))
             .unwrap();
-        assert!(db.transaction_exists(&(i as u64)).unwrap(), "TxId should exist");
+        assert!(
+            runtime.block_on(db.transaction_exists(&(i as u64))).unwrap(),
+            "TxId should exist"
+        );
     }
 
-    let retrieved_inbound_txs = db.get_pending_inbound_transactions().unwrap();
+    let retrieved_inbound_txs = runtime.block_on(db.get_pending_inbound_transactions()).unwrap();
     assert_eq!(inbound_txs.len(), messages.len());
     for i in 0..messages.len() {
         assert_eq!(
@@ -152,23 +167,27 @@ pub fn test_db_backend<T: TransactionBackend>(backend: T) {
             timestamp: Utc::now().naive_utc(),
         });
 
-        assert!(!db.transaction_exists(&((i + 100) as u64)).unwrap());
-        db.add_pending_coinbase_transaction((i + 100) as u64, coinbases[i].clone())
+        assert!(!runtime.block_on(db.transaction_exists(&((i + 100) as u64))).unwrap());
+        runtime
+            .block_on(db.add_pending_coinbase_transaction((i + 100) as u64, coinbases[i].clone()))
             .unwrap();
-        assert!(db.transaction_exists(&&((i + 100) as u64)).unwrap());
+        assert!(runtime.block_on(db.transaction_exists(&&((i + 100) as u64))).unwrap());
     }
 
-    db.add_pending_coinbase_transaction(9999u64, PendingCoinbaseTransaction {
-        tx_id: 9999u64,
-        amount: MicroTari::from(10000),
-        commitment: CommitmentFactory::default().zero(),
-        timestamp: Utc::now().naive_utc(),
-    })
-    .unwrap();
+    runtime
+        .block_on(
+            db.add_pending_coinbase_transaction(9999u64, PendingCoinbaseTransaction {
+                tx_id: 9999u64,
+                amount: MicroTari::from(10000),
+                commitment: CommitmentFactory::default().zero(),
+                timestamp: Utc::now().naive_utc(),
+            }),
+        )
+        .unwrap();
 
-    db.cancel_coinbase_transaction(9999u64).unwrap();
+    runtime.block_on(db.cancel_coinbase_transaction(9999u64)).unwrap();
 
-    let read_coinbases = db.get_pending_coinbase_transactions().unwrap();
+    let read_coinbases = runtime.block_on(db.get_pending_coinbase_transactions()).unwrap();
     assert_eq!(read_coinbases.len(), messages.len());
     for i in 0..messages.len() {
         assert_eq!(read_coinbases.get(&coinbases[i].tx_id).unwrap(), &coinbases[i]);
@@ -193,21 +212,28 @@ pub fn test_db_backend<T: TransactionBackend>(backend: T) {
             message: messages[i].clone(),
             timestamp: Utc::now().naive_utc(),
         });
-        db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone())
+        runtime
+            .block_on(db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone()))
             .unwrap();
-        db.complete_inbound_transaction(inbound_txs[i].tx_id, CompletedTransaction {
-            tx_id: inbound_txs[i].tx_id,
-            ..completed_txs[i].clone()
-        })
-        .unwrap();
-        db.complete_coinbase_transaction(coinbases[i].tx_id, CompletedTransaction {
-            tx_id: coinbases[i].tx_id,
-            ..completed_txs[i].clone()
-        })
-        .unwrap();
+        runtime
+            .block_on(
+                db.complete_inbound_transaction(inbound_txs[i].tx_id, CompletedTransaction {
+                    tx_id: inbound_txs[i].tx_id,
+                    ..completed_txs[i].clone()
+                }),
+            )
+            .unwrap();
+        runtime
+            .block_on(
+                db.complete_coinbase_transaction(coinbases[i].tx_id, CompletedTransaction {
+                    tx_id: coinbases[i].tx_id,
+                    ..completed_txs[i].clone()
+                }),
+            )
+            .unwrap();
     }
 
-    let retrieved_completed_txs = db.get_completed_transactions().unwrap();
+    let retrieved_completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
     assert_eq!(retrieved_completed_txs.len(), 3 * messages.len());
 
     for i in 0..messages.len() {
@@ -232,16 +258,17 @@ pub fn test_db_backend<T: TransactionBackend>(backend: T) {
     }
 
     if cfg!(feature = "test_harness") {
-        let retrieved_completed_txs = db.get_completed_transactions().unwrap();
+        let retrieved_completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
         assert!(retrieved_completed_txs.contains_key(&completed_txs[0].tx_id));
         assert_eq!(
             retrieved_completed_txs.get(&completed_txs[0].tx_id).unwrap().status,
             TransactionStatus::Completed
         );
         #[cfg(feature = "test_harness")]
-        db.broadcast_completed_transaction(completed_txs[0].tx_id.clone())
+        runtime
+            .block_on(db.broadcast_completed_transaction(completed_txs[0].tx_id.clone()))
             .unwrap();
-        let retrieved_completed_txs = db.get_completed_transactions().unwrap();
+        let retrieved_completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
 
         assert!(retrieved_completed_txs.contains_key(&completed_txs[0].tx_id));
         assert_eq!(
@@ -250,8 +277,10 @@ pub fn test_db_backend<T: TransactionBackend>(backend: T) {
         );
 
         #[cfg(feature = "test_harness")]
-        db.mine_completed_transaction(completed_txs[0].tx_id.clone()).unwrap();
-        let retrieved_completed_txs = db.get_completed_transactions().unwrap();
+        runtime
+            .block_on(db.mine_completed_transaction(completed_txs[0].tx_id.clone()))
+            .unwrap();
+        let retrieved_completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
 
         assert!(retrieved_completed_txs.contains_key(&completed_txs[0].tx_id));
         assert_eq!(

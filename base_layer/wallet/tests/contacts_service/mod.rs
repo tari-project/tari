@@ -58,8 +58,9 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
 #[test]
 pub fn test_memory_database_crud() {
     let mut rng = rand::OsRng::new().unwrap();
+    let mut runtime = Runtime::new().unwrap();
 
-    let mut db = ContactsDatabase::new(ContactsServiceMemoryDatabase::new());
+    let db = ContactsDatabase::new(ContactsServiceMemoryDatabase::new());
     let mut contacts = Vec::new();
     for i in 0..5 {
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut rng);
@@ -69,22 +70,24 @@ pub fn test_memory_database_crud() {
             public_key,
         });
 
-        db.save_contact(contacts[i].clone()).unwrap();
+        runtime.block_on(db.save_contact(contacts[i].clone())).unwrap();
         assert_eq!(
-            db.save_contact(contacts[i].clone()),
+            runtime.block_on(db.save_contact(contacts[i].clone())),
             Err(ContactsServiceStorageError::DuplicateContact)
         );
     }
 
-    let got_contacts = db.get_contacts().unwrap();
+    let got_contacts = runtime.block_on(db.get_contacts()).unwrap();
     assert_eq!(contacts, got_contacts);
 
-    let contact = db.get_contact(&contacts[0].public_key).unwrap();
+    let contact = runtime
+        .block_on(db.get_contact(contacts[0].public_key.clone()))
+        .unwrap();
     assert_eq!(contact, contacts[0]);
 
     let (_secret_key, public_key) = PublicKey::random_keypair(&mut rng);
 
-    let contact = db.get_contact(&public_key);
+    let contact = runtime.block_on(db.get_contact(public_key.clone()));
     assert_eq!(
         contact,
         Err(ContactsServiceStorageError::ValueNotFound(DbKey::Contact(
@@ -92,15 +95,17 @@ pub fn test_memory_database_crud() {
         )))
     );
     assert_eq!(
-        db.remove_contact(&public_key),
+        runtime.block_on(db.remove_contact(public_key.clone())),
         Err(ContactsServiceStorageError::ValueNotFound(DbKey::Contact(
             public_key.clone()
         )))
     );
 
-    let _ = db.remove_contact(&contacts[0].public_key).unwrap();
+    let _ = runtime
+        .block_on(db.remove_contact(contacts[0].public_key.clone()))
+        .unwrap();
     contacts.remove(0);
-    let got_contacts = db.get_contacts().unwrap();
+    let got_contacts = runtime.block_on(db.get_contacts()).unwrap();
 
     assert_eq!(contacts, got_contacts);
 }

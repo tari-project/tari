@@ -106,7 +106,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         Ok(result)
     }
 
-    fn write(&mut self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError> {
+    fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError> {
         let mut db = acquire_write_lock!(self.db);
         match op {
             WriteOperation::Insert(kvp) => match kvp {
@@ -162,7 +162,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         Ok(None)
     }
 
-    fn confirm_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
+    fn confirm_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
         let mut db = acquire_write_lock!(self.db);
         let mut pending_tx = db
             .pending_transactions
@@ -185,7 +185,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
     }
 
     fn encumber_outputs(
-        &mut self,
+        &self,
         tx_id: TxId,
         outputs_to_send: &Vec<UnblindedOutput>,
         change_output: Option<UnblindedOutput>,
@@ -217,7 +217,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         Ok(())
     }
 
-    fn cancel_pending_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
+    fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
         let mut db = acquire_write_lock!(self.db);
         let mut pending_tx = db
             .pending_transactions
@@ -232,7 +232,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         Ok(())
     }
 
-    fn timeout_pending_transactions(&mut self, period: Duration) -> Result<(), OutputManagerStorageError> {
+    fn timeout_pending_transactions(&self, period: Duration) -> Result<(), OutputManagerStorageError> {
         let db = acquire_write_lock!(self.db);
         let mut transactions_to_be_cancelled = Vec::new();
         for (tx_id, pt) in db.pending_transactions.iter() {
@@ -248,7 +248,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         Ok(())
     }
 
-    fn increment_key_index(&mut self) -> Result<(), OutputManagerStorageError> {
+    fn increment_key_index(&self) -> Result<(), OutputManagerStorageError> {
         let mut db = acquire_write_lock!(self.db);
 
         if db.key_manager_state.is_none() {

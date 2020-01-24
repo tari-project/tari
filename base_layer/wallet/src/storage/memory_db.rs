@@ -64,7 +64,7 @@ impl WalletBackend for WalletMemoryDatabase {
         Ok(result)
     }
 
-    fn write(&mut self, op: WriteOperation) -> Result<Option<DbValue>, WalletStorageError> {
+    fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, WalletStorageError> {
         let mut db = acquire_write_lock!(self.db);
         match op {
             WriteOperation::Insert(kvp) => match kvp {

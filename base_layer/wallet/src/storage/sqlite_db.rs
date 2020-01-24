@@ -94,7 +94,7 @@ impl WalletBackend for WalletSqliteDatabase {
         Ok(result)
     }
 
-    fn write(&mut self, op: WriteOperation) -> Result<Option<DbValue>, WalletStorageError> {
+    fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, WalletStorageError> {
         let conn = self
             .database_connection_pool
             .clone()

@@ -22,7 +22,10 @@
 
 use crate::error::WalletStorageError;
 use log::*;
-use std::fmt::{Display, Error, Formatter};
+use std::{
+    fmt::{Display, Error, Formatter},
+    sync::Arc,
+};
 use tari_comms::{peer_manager::Peer, types::CommsPublicKey};
 
 const LOG_TARGET: &'static str = "wallet::contacts_service::database";
@@ -32,7 +35,7 @@ pub trait WalletBackend: Send + Sync {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, WalletStorageError>;
     /// Modify the state the of the backend with a write operation
-    fn write(&mut self, op: WriteOperation) -> Result<Option<DbValue>, WalletStorageError>;
+    fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, WalletStorageError>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -57,9 +60,9 @@ pub enum WriteOperation {
 
 // Private macro that pulls out all the boiler plate of extracting a DB query result from its variants
 macro_rules! fetch {
-    ($self:ident, $key_val:expr, $key_var:ident) => {{
+    ($db:ident, $key_val:expr, $key_var:ident) => {{
         let key = DbKey::$key_var($key_val);
-        match $self.db.fetch(&key) {
+        match $db.fetch(&key) {
             Ok(None) => Err(WalletStorageError::ValueNotFound(key)),
             Ok(Some(DbValue::$key_var(k))) => Ok(*k),
             Ok(Some(other)) => unexpected_result(key, other),
@@ -69,24 +72,31 @@ macro_rules! fetch {
 }
 
 pub struct WalletDatabase<T>
-where T: WalletBackend
+where T: WalletBackend + 'static
 {
-    db: T,
+    db: Arc<T>,
 }
 
 impl<T> WalletDatabase<T>
-where T: WalletBackend
+where T: WalletBackend + 'static
 {
     pub fn new(db: T) -> Self {
-        Self { db }
+        Self { db: Arc::new(db) }
     }
 
-    pub fn get_peer(&self, pub_key: &CommsPublicKey) -> Result<Peer, WalletStorageError> {
-        fetch!(self, pub_key.clone(), Peer)
+    pub async fn get_peer(&self, pub_key: CommsPublicKey) -> Result<Peer, WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || fetch!(db_clone, pub_key.clone(), Peer))
+            .await
+            .or_else(|err| Err(WalletStorageError::BlockingTaskSpawnError(err.to_string())))
+            .and_then(|inner_result| inner_result)
     }
 
-    pub fn get_peers(&self) -> Result<Vec<Peer>, WalletStorageError> {
-        let c = match self.db.fetch(&DbKey::Peers) {
+    pub async fn get_peers(&self) -> Result<Vec<Peer>, WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::Peers) {
             Ok(None) => log_error(
                 DbKey::Peers,
                 WalletStorageError::UnexpectedResult("Could not retrieve peers".to_string()),
@@ -94,29 +104,45 @@ where T: WalletBackend
             Ok(Some(DbValue::Peers(c))) => Ok(c),
             Ok(Some(other)) => unexpected_result(DbKey::Peers, other),
             Err(e) => log_error(DbKey::Peers, e),
-        }?;
+        })
+        .await
+        .or_else(|err| Err(WalletStorageError::BlockingTaskSpawnError(err.to_string())))
+        .and_then(|inner_result| inner_result)?;
         Ok(c)
     }
 
-    pub fn save_peer(&mut self, peer: Peer) -> Result<(), WalletStorageError> {
-        self.db.write(WriteOperation::Insert(DbKeyValuePair::Peer(
-            peer.public_key.clone(),
-            peer,
-        )))?;
+    pub async fn save_peer(&self, peer: Peer) -> Result<(), WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || {
+            db_clone.write(WriteOperation::Insert(DbKeyValuePair::Peer(
+                peer.public_key.clone(),
+                peer,
+            )))
+        })
+        .await
+        .or_else(|err| Err(WalletStorageError::BlockingTaskSpawnError(err.to_string())))
+        .and_then(|inner_result| inner_result)?;
         Ok(())
     }
 
-    pub fn remove_peer(&mut self, pub_key: &CommsPublicKey) -> Result<Peer, WalletStorageError> {
-        match self
-            .db
-            .write(WriteOperation::Remove(DbKey::Peer(pub_key.clone())))?
-            .ok_or(WalletStorageError::ValueNotFound(DbKey::Peer(pub_key.clone())))?
-        {
-            DbValue::Peer(c) => Ok(*c),
-            DbValue::Peers(_) => Err(WalletStorageError::UnexpectedResult(
-                "Incorrect response from backend.".to_string(),
-            )),
-        }
+    pub async fn remove_peer(&self, pub_key: CommsPublicKey) -> Result<Peer, WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || {
+            match db_clone
+                .write(WriteOperation::Remove(DbKey::Peer(pub_key.clone())))?
+                .ok_or(WalletStorageError::ValueNotFound(DbKey::Peer(pub_key.clone())))?
+            {
+                DbValue::Peer(c) => Ok(*c),
+                DbValue::Peers(_) => Err(WalletStorageError::UnexpectedResult(
+                    "Incorrect response from backend.".to_string(),
+                )),
+            }
+        })
+        .await
+        .or_else(|err| Err(WalletStorageError::BlockingTaskSpawnError(err.to_string())))
+        .and_then(|inner_result| inner_result)
     }
 }
 
@@ -169,17 +195,20 @@ mod test {
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
         types::{CommsPublicKey, CommsSecretKey},
     };
-    use tari_crypto::keys::PublicKey;
+    use tari_core::transactions::types::PublicKey;
+    use tari_crypto::keys::PublicKey as PublicKeyTrait;
     use tari_test_utils::random::string;
     use tempdir::TempDir;
+    use tokio::runtime::Runtime;
 
     pub fn test_database_crud<T: WalletBackend + 'static>(backend: T) {
+        let mut runtime = Runtime::new().unwrap();
         let mut rng = match rand::OsRng::new() {
             Ok(x) => x,
             Err(_) => unimplemented!(),
         };
 
-        let mut db = WalletDatabase::new(backend);
+        let db = WalletDatabase::new(backend);
         let mut peers = Vec::new();
         for i in 0..5 {
             let (_secret_key, public_key): (CommsSecretKey, CommsPublicKey) = PublicKey::random_keypair(&mut rng);
@@ -194,35 +223,35 @@ mod test {
 
             peers.push(peer);
 
-            db.save_peer(peers[i].clone()).unwrap();
+            runtime.block_on(db.save_peer(peers[i].clone())).unwrap();
 
-            match db.save_peer(peers[i].clone()) {
+            match runtime.block_on(db.save_peer(peers[i].clone())) {
                 Err(WalletStorageError::DuplicateContact) => (),
                 _ => assert!(false),
             }
         }
 
-        let got_peers = db.get_peers().unwrap();
+        let got_peers = runtime.block_on(db.get_peers()).unwrap();
         assert_eq!(peers, got_peers);
 
-        let peer = db.get_peer(&peers[0].public_key).unwrap();
+        let peer = runtime.block_on(db.get_peer(peers[0].public_key.clone())).unwrap();
         assert_eq!(peer, peers[0]);
 
-        let (_secret_key, public_key) = PublicKey::random_keypair(&mut rng);
+        let (_secret_key, public_key): (_, PublicKey) = PublicKeyTrait::random_keypair(&mut rng);
 
-        match db.get_peer(&public_key) {
+        match runtime.block_on(db.get_peer(public_key.clone())) {
             Err(WalletStorageError::ValueNotFound(DbKey::Peer(_p))) => (),
             _ => assert!(false),
         }
 
-        match db.remove_peer(&public_key) {
+        match runtime.block_on(db.remove_peer(public_key.clone())) {
             Err(WalletStorageError::ValueNotFound(DbKey::Peer(_p))) => (),
             _ => assert!(false),
         }
 
-        let _ = db.remove_peer(&peers[0].public_key).unwrap();
+        let _ = runtime.block_on(db.remove_peer(peers[0].public_key.clone())).unwrap();
         peers.remove(0);
-        let got_peers = db.get_peers().unwrap();
+        let got_peers = runtime.block_on(db.get_peers()).unwrap();
 
         assert_eq!(peers, got_peers);
     }

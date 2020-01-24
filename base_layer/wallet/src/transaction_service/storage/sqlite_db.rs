@@ -192,7 +192,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(result)
     }
 
-    fn write(&mut self, op: WriteOperation) -> Result<Option<DbValue>, TransactionStorageError> {
+    fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, TransactionStorageError> {
         let conn = self
             .database_connection_pool
             .clone()
@@ -290,8 +290,21 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(None)
     }
 
+    fn transaction_exists(&self, tx_id: &u64) -> Result<bool, TransactionStorageError> {
+        let conn = self
+            .database_connection_pool
+            .clone()
+            .get()
+            .map_err(|_| TransactionStorageError::R2d2Error)?;
+
+        Ok(OutboundTransactionSql::find(tx_id, &conn).is_ok() ||
+            InboundTransactionSql::find(tx_id, &conn).is_ok() ||
+            PendingCoinbaseTransactionSql::find(tx_id, &conn).is_ok() ||
+            CompletedTransactionSql::find(tx_id, &conn).is_ok())
+    }
+
     fn complete_outbound_transaction(
-        &mut self,
+        &self,
         tx_id: u64,
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>
@@ -323,7 +336,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     }
 
     fn complete_inbound_transaction(
-        &mut self,
+        &self,
         tx_id: u64,
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>
@@ -355,7 +368,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     }
 
     fn complete_coinbase_transaction(
-        &mut self,
+        &self,
         tx_id: u64,
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>
@@ -387,7 +400,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     }
 
     #[cfg(feature = "test_harness")]
-    fn broadcast_completed_transaction(&mut self, tx_id: u64) -> Result<(), TransactionStorageError> {
+    fn broadcast_completed_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
         let conn = self
             .database_connection_pool
             .clone()
@@ -415,7 +428,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     }
 
     #[cfg(feature = "test_harness")]
-    fn mine_completed_transaction(&mut self, tx_id: u64) -> Result<(), TransactionStorageError> {
+    fn mine_completed_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
         let conn = self
             .database_connection_pool
             .clone()
@@ -444,7 +457,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
     #[cfg(feature = "test_harness")]
     fn update_completed_transaction_timestamp(
-        &mut self,
+        &self,
         tx_id: u64,
         timestamp: NaiveDateTime,
     ) -> Result<(), TransactionStorageError>

@@ -80,7 +80,7 @@ pub struct WalletConfig {
 /// the services and provide the APIs that applications will use to interact with the services
 pub struct Wallet<T, U, V, W>
 where
-    T: WalletBackend,
+    T: WalletBackend + 'static,
     U: TransactionBackend + Clone + 'static,
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
@@ -103,7 +103,7 @@ where
 
 impl<T, U, V, W> Wallet<T, U, V, W>
 where
-    T: WalletBackend,
+    T: WalletBackend + 'static,
     U: TransactionBackend + Clone + 'static,
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
@@ -246,7 +246,7 @@ where
 
         self.comms.peer_manager().add_peer(peer.clone())?;
 
-        self.db.save_peer(peer)?;
+        self.runtime.block_on(self.db.save_peer(peer))?;
 
         Ok(())
     }

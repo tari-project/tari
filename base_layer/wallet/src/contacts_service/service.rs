@@ -32,7 +32,7 @@ use tari_service_framework::reply_channel;
 const LOG_TARGET: &'static str = "base_layer::wallet:contacts_service";
 
 pub struct ContactsService<T>
-where T: ContactsBackend
+where T: ContactsBackend + 'static
 {
     db: ContactsDatabase<T>,
     request_stream:
@@ -40,7 +40,7 @@ where T: ContactsBackend
 }
 
 impl<T> ContactsService<T>
-where T: ContactsBackend
+where T: ContactsBackend + 'static
 {
     pub fn new(
         request_stream: reply_channel::Receiver<
@@ -94,19 +94,26 @@ where T: ContactsBackend
     ) -> Result<ContactsServiceResponse, ContactsServiceError>
     {
         Ok(match request {
-            ContactsServiceRequest::GetContact(pk) => {
-                self.db.get_contact(&pk).map(|c| ContactsServiceResponse::Contact(c))?
-            },
-            ContactsServiceRequest::SaveContact(c) => {
-                self.db.save_contact(c).map(|_| ContactsServiceResponse::ContactSaved)?
-            },
+            ContactsServiceRequest::GetContact(pk) => self
+                .db
+                .get_contact(pk)
+                .await
+                .map(|c| ContactsServiceResponse::Contact(c))?,
+            ContactsServiceRequest::SaveContact(c) => self
+                .db
+                .save_contact(c)
+                .await
+                .map(|_| ContactsServiceResponse::ContactSaved)?,
             ContactsServiceRequest::RemoveContact(pk) => self
                 .db
-                .remove_contact(&pk)
+                .remove_contact(pk)
+                .await
                 .map(|c| ContactsServiceResponse::ContactRemoved(c))?,
-            ContactsServiceRequest::GetContacts => {
-                self.db.get_contacts().map(|c| ContactsServiceResponse::Contacts(c))?
-            },
+            ContactsServiceRequest::GetContacts => self
+                .db
+                .get_contacts()
+                .await
+                .map(|c| ContactsServiceResponse::Contacts(c))?,
         })
     }
 }

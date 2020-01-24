@@ -63,7 +63,7 @@ impl ContactsBackend for ContactsServiceMemoryDatabase {
         Ok(result)
     }
 
-    fn write(&mut self, op: WriteOperation) -> Result<Option<DbValue>, ContactsServiceStorageError> {
+    fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, ContactsServiceStorageError> {
         let mut db = acquire_write_lock!(self.db);
         match op {
             WriteOperation::Insert(kvp) => match kvp {

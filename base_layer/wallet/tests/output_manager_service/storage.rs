@@ -39,9 +39,11 @@ use tari_wallet::output_manager_service::{
     },
 };
 use tempdir::TempDir;
+use tokio::runtime::Runtime;
 
-pub fn test_db_backend<T: OutputManagerBackend>(backend: T) {
-    let mut db = OutputManagerDatabase::new(backend);
+pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
+    let mut runtime = Runtime::new().unwrap();
+    let db = OutputManagerDatabase::new(backend);
     let factories = CryptoFactories::default();
     let mut rng = rand::OsRng::new().unwrap();
 
@@ -53,7 +55,7 @@ pub fn test_db_backend<T: OutputManagerBackend>(backend: T) {
             MicroTari::from(100 + rng.next_u64() % 1000),
             &factories.commitment,
         );
-        db.add_unspent_output(uo.clone()).unwrap();
+        runtime.block_on(db.add_unspent_output(uo.clone())).unwrap();
         unspent_outputs.push(uo);
     }
     unspent_outputs.sort();
@@ -83,21 +85,25 @@ pub fn test_db_backend<T: OutputManagerBackend>(backend: T) {
             );
             pending_tx.outputs_to_be_received.push(uo);
         }
-        db.add_pending_transaction_outputs(pending_tx.clone()).unwrap();
+        runtime
+            .block_on(db.add_pending_transaction_outputs(pending_tx.clone()))
+            .unwrap();
         pending_txs.push(pending_tx);
     }
 
-    let outputs = db.fetch_sorted_unspent_outputs().unwrap();
+    let outputs = runtime.block_on(db.fetch_sorted_unspent_outputs()).unwrap();
     assert_eq!(unspent_outputs, outputs);
 
-    let p_tx = db.fetch_all_pending_transaction_outputs().unwrap();
+    let p_tx = runtime.block_on(db.fetch_all_pending_transaction_outputs()).unwrap();
 
     for (k, v) in p_tx.iter() {
         assert_eq!(v, pending_txs.iter().find(|i| &i.tx_id == k).unwrap());
     }
 
     assert_eq!(
-        db.fetch_pending_transaction_outputs(pending_txs[0].tx_id).unwrap(),
+        runtime
+            .block_on(db.fetch_pending_transaction_outputs(pending_txs[0].tx_id))
+            .unwrap(),
         pending_txs[0]
     );
 
@@ -116,14 +122,16 @@ pub fn test_db_backend<T: OutputManagerBackend>(backend: T) {
             .fold(MicroTari::from(0), |acc, x| acc + x.value);
     }
 
-    let balance = db.get_balance().unwrap();
+    let balance = runtime.block_on(db.get_balance()).unwrap();
     assert_eq!(balance, Balance {
         available_balance,
         pending_incoming_balance,
         pending_outgoing_balance
     });
 
-    db.confirm_pending_transaction_outputs(pending_txs[0].tx_id).unwrap();
+    runtime
+        .block_on(db.confirm_pending_transaction_outputs(pending_txs[0].tx_id))
+        .unwrap();
 
     available_balance += pending_txs[0]
         .outputs_to_be_received
@@ -140,14 +148,14 @@ pub fn test_db_backend<T: OutputManagerBackend>(backend: T) {
         .iter()
         .fold(MicroTari::from(0), |acc, x| acc + x.value);
 
-    let balance = db.get_balance().unwrap();
+    let balance = runtime.block_on(db.get_balance()).unwrap();
     assert_eq!(balance, Balance {
         available_balance,
         pending_incoming_balance,
         pending_outgoing_balance
     });
 
-    let spent_outputs = db.fetch_spent_outputs().unwrap();
+    let spent_outputs = runtime.block_on(db.fetch_spent_outputs()).unwrap();
 
     assert!(spent_outputs.len() > 0);
     assert_eq!(
@@ -165,14 +173,15 @@ pub fn test_db_backend<T: OutputManagerBackend>(backend: T) {
     );
     let outputs_to_encumber = vec![outputs[0].clone(), outputs[1].clone()];
     let total_encumbered = outputs[0].clone().value + outputs[1].clone().value;
-    db.encumber_outputs(2, &outputs_to_encumber, Some(uo_change.clone()))
+    runtime
+        .block_on(db.encumber_outputs(2, outputs_to_encumber, Some(uo_change.clone())))
         .unwrap();
 
     available_balance -= total_encumbered;
     pending_incoming_balance += uo_change.clone().value;
     pending_outgoing_balance += total_encumbered;
 
-    let balance = db.get_balance().unwrap();
+    let balance = runtime.block_on(db.get_balance()).unwrap();
     assert_eq!(balance, Balance {
         available_balance,
         pending_incoming_balance,
@@ -184,24 +193,27 @@ pub fn test_db_backend<T: OutputManagerBackend>(backend: T) {
         MicroTari::from(100 + rng.next_u64() % 1000),
         &factories.commitment,
     );
-    db.accept_incoming_pending_transaction(
-        &5,
-        &uo_incoming.value,
-        &uo_incoming.spending_key,
-        OutputFeatures::default(),
-    )
-    .unwrap();
+    runtime
+        .block_on(db.accept_incoming_pending_transaction(
+            5,
+            uo_incoming.value,
+            uo_incoming.spending_key.clone(),
+            OutputFeatures::default(),
+        ))
+        .unwrap();
 
     pending_incoming_balance += uo_incoming.clone().value;
 
-    let balance = db.get_balance().unwrap();
+    let balance = runtime.block_on(db.get_balance()).unwrap();
     assert_eq!(balance, Balance {
         available_balance,
         pending_incoming_balance,
         pending_outgoing_balance
     });
 
-    db.cancel_pending_transaction_outputs(pending_txs[1].tx_id).unwrap();
+    runtime
+        .block_on(db.cancel_pending_transaction_outputs(pending_txs[1].tx_id))
+        .unwrap();
 
     let mut cancelled_incoming = MicroTari(0);
     let mut cancelled_outgoing = MicroTari(0);
@@ -219,33 +231,41 @@ pub fn test_db_backend<T: OutputManagerBackend>(backend: T) {
     pending_incoming_balance -= cancelled_incoming;
     pending_outgoing_balance -= cancelled_outgoing;
 
-    let balance = db.get_balance().unwrap();
+    let balance = runtime.block_on(db.get_balance()).unwrap();
     assert_eq!(balance, Balance {
         available_balance,
         pending_incoming_balance,
         pending_outgoing_balance
     });
 
-    let remaining_p_tx = db.fetch_all_pending_transaction_outputs().unwrap();
+    let remaining_p_tx = runtime.block_on(db.fetch_all_pending_transaction_outputs()).unwrap();
 
-    db.timeout_pending_transaction_outputs(Duration::from_millis(120_000_000_000))
+    runtime
+        .block_on(db.timeout_pending_transaction_outputs(Duration::from_millis(120_000_000_000)))
         .unwrap();
 
     assert_eq!(
-        db.fetch_all_pending_transaction_outputs().unwrap().len(),
+        runtime
+            .block_on(db.fetch_all_pending_transaction_outputs())
+            .unwrap()
+            .len(),
         remaining_p_tx.len()
     );
 
-    db.timeout_pending_transaction_outputs(Duration::from_millis(6_000_000))
+    runtime
+        .block_on(db.timeout_pending_transaction_outputs(Duration::from_millis(6_000_000)))
         .unwrap();
 
     assert_eq!(
-        db.fetch_all_pending_transaction_outputs().unwrap().len(),
+        runtime
+            .block_on(db.fetch_all_pending_transaction_outputs())
+            .unwrap()
+            .len(),
         remaining_p_tx.len() - 1
     );
 
-    assert!(!db
-        .fetch_all_pending_transaction_outputs()
+    assert!(!runtime
+        .block_on(db.fetch_all_pending_transaction_outputs())
         .unwrap()
         .contains_key(&pending_txs[2].tx_id));
 }
@@ -263,12 +283,14 @@ pub fn test_output_manager_sqlite_db() {
     test_db_backend(OutputManagerSqliteDatabase::new(format!("{}/{}", db_folder, db_name).to_string()).unwrap());
 }
 
-pub fn test_key_manager_crud<T: OutputManagerBackend>(backend: T) {
-    let mut db = OutputManagerDatabase::new(backend);
+pub fn test_key_manager_crud<T: OutputManagerBackend + 'static>(backend: T) {
+    let mut runtime = Runtime::new().unwrap();
+
+    let db = OutputManagerDatabase::new(backend);
     let mut rng = rand::OsRng::new().unwrap();
 
-    assert_eq!(db.get_key_manager_state().unwrap(), None);
-    assert!(db.increment_key_index().is_err());
+    assert_eq!(runtime.block_on(db.get_key_manager_state()).unwrap(), None);
+    assert!(runtime.block_on(db.increment_key_index()).is_err());
 
     let state1 = KeyManagerState {
         master_seed: PrivateKey::random(&mut rng),
@@ -276,9 +298,9 @@ pub fn test_key_manager_crud<T: OutputManagerBackend>(backend: T) {
         primary_key_index: 0,
     };
 
-    db.set_key_manager_state(state1.clone()).unwrap();
+    runtime.block_on(db.set_key_manager_state(state1.clone())).unwrap();
 
-    let read_state1 = db.get_key_manager_state().unwrap().unwrap();
+    let read_state1 = runtime.block_on(db.get_key_manager_state()).unwrap().unwrap();
     assert_eq!(state1, read_state1);
 
     let state2 = KeyManagerState {
@@ -287,15 +309,15 @@ pub fn test_key_manager_crud<T: OutputManagerBackend>(backend: T) {
         primary_key_index: 0,
     };
 
-    db.set_key_manager_state(state2.clone()).unwrap();
+    runtime.block_on(db.set_key_manager_state(state2.clone())).unwrap();
 
-    let read_state2 = db.get_key_manager_state().unwrap().unwrap();
+    let read_state2 = runtime.block_on(db.get_key_manager_state()).unwrap().unwrap();
     assert_eq!(state2, read_state2);
 
-    db.increment_key_index().unwrap();
-    db.increment_key_index().unwrap();
+    runtime.block_on(db.increment_key_index()).unwrap();
+    runtime.block_on(db.increment_key_index()).unwrap();
 
-    let read_state3 = db.get_key_manager_state().unwrap().unwrap();
+    let read_state3 = runtime.block_on(db.get_key_manager_state()).unwrap().unwrap();
     assert_eq!(read_state3.primary_key_index, 2);
 }
 #[test]
