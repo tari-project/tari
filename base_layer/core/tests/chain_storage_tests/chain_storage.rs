@@ -21,7 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::helpers::{
-    block_builders::{append_block, create_genesis_block, create_genesis_block_with_utxos, generate_new_block},
+    block_builders::{
+        append_block,
+        create_genesis_block,
+        create_genesis_block_with_utxos,
+        generate_new_block,
+        generate_new_block_with_achieved_difficulty,
+    },
     sample_blockchains::create_new_blockchain,
 };
 use croaring::Bitmap;
@@ -40,6 +46,7 @@ use tari_core::{
         Validators,
     },
     helpers::{create_mem_db, create_orphan_block},
+    proof_of_work::Difficulty,
     transactions::{
         helpers::{create_test_kernel, create_utxo, spend_utxos},
         tari_amount::{uT, MicroTari, T},
@@ -449,58 +456,206 @@ fn rewind_to_height() {
 }
 
 #[test]
-#[ignore] // TODO Wait for reorg logic to be refactored
-fn handle_reorg() {
-    // GB --> A1 --> A2(Main Chain)
-    //          \--> B2(?) --> B3 --> B4 (Orphan Chain)
-    // Initially, the main chain is GB->A1-A2 with orphaned blocks B3, B4. When B2 arrives late and is added to
-    // the blockchain then a reorg is triggered and the main chain is reorganized to GB->A1->B2->B3->B4
+fn handle_tip_reorg() {
+    // GB --> A1 --> A2(Low PoW)      [Main Chain]
+    //          \--> B2(Highest PoW)  [Forked Chain]
+    // Initially, the main chain is GB->A1->A2. B2 has a higher accumulated PoW and when B2 is added the main chain is
+    // reorged to GB->A1->B2
 
+    // Create Main Chain
     let (mut store, mut blocks, mut outputs) = create_new_blockchain();
-    // A parallel store that will "mine" the orphan chain
-    let mut orphan_store = create_mem_db();
-    orphan_store.add_block(blocks[0].clone()).unwrap();
-
     // Block A1
     let txs = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
         to: vec![10 * T, 10 * T, 10 * T, 10 * T]
     )];
-    assert!(generate_new_block(&mut store, &mut blocks, &mut outputs, txs).is_ok());
-    orphan_store.add_block(blocks[1].clone()).unwrap();
-    let mut orphan_blocks = blocks.clone();
-    let mut orphan_outputs = outputs.clone();
-
-    // Fork happens from here.
-
-    // Block A2 - main chain
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(1)
+    )
+    .is_ok());
+    // Block A2
     let txs = vec![txn_schema!(from: vec![outputs[1][3].clone()], to: vec![6 * T])];
-    assert!(generate_new_block(&mut store, &mut blocks, &mut outputs, txs).is_ok());
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(1)
+    )
+    .is_ok());
 
-    // Block B2 - forked chain
+    // Create Forked Chain
+    let mut orphan_store = create_mem_db();
+    orphan_store.add_block(blocks[0].clone()).unwrap();
+    orphan_store.add_block(blocks[1].clone()).unwrap();
+    let mut orphan_blocks = vec![blocks[0].clone(), blocks[1].clone()];
+    let mut orphan_outputs = vec![outputs[0].clone(), outputs[1].clone()];
+    // Block B2
     let txs = vec![txn_schema!(from: vec![orphan_outputs[1][0].clone()], to: vec![5 * T])];
-    assert!(generate_new_block(&mut orphan_store, &mut orphan_blocks, &mut orphan_outputs, txs).is_ok());
-    // Block B3
-    let txs = vec![
-        txn_schema!(from: vec![orphan_outputs[1][3].clone()], to: vec![3 * T]),
-        txn_schema!(from: vec![orphan_outputs[2][0].clone()], to: vec![3 * T]),
-    ];
-    assert!(generate_new_block(&mut orphan_store, &mut orphan_blocks, &mut orphan_outputs, txs).is_ok());
-    // Block B3
-    let txs = vec![txn_schema!(from: vec![orphan_outputs[3][0].clone()], to: vec![1 * T])];
-    assert!(generate_new_block(&mut orphan_store, &mut orphan_blocks, &mut orphan_outputs, txs).is_ok());
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut orphan_store,
+        &mut orphan_blocks,
+        &mut orphan_outputs,
+        txs,
+        Difficulty::from(2)
+    )
+    .is_ok());
 
-    // Now add the fork blocks to the first DB and observe a re-org
-    store.add_block(orphan_blocks[3].clone()).unwrap();
-    store.add_block(orphan_blocks[4].clone()).unwrap();
-    println!("Block 1: {}", blocks[1]);
-    println!("Block 2: {}", blocks[2]);
-    println!("Orphan block 1: {}", orphan_blocks[2]);
-    println!("Orphan block 2: {}", orphan_blocks[3]);
+    // Adding B2 to the main chain will produce a reorg to GB->A1->B2.
     assert_eq!(
         store.add_block(orphan_blocks[2].clone()),
         Ok(BlockAddResult::ChainReorg)
     );
+    assert_eq!(store.fetch_tip_header(), Ok(orphan_blocks[2].header.clone()));
+
+    // Check that B2 was removed from the block orphans and A2 has been orphaned.
+    assert!(store.fetch_orphan(orphan_blocks[2].hash()).is_err());
+    assert!(store.fetch_orphan(blocks[2].hash()).is_ok());
+}
+
+#[test]
+fn handle_reorg() {
+    // GB --> A1 --> A2 --> A3 -----> A4(Low PoW)     [Main Chain]
+    //          \--> B2 --> B3(?) --> B4(Medium PoW)  [Forked Chain 1]
+    //                        \-----> C4(Highest PoW) [Forked Chain 2]
+    // Initially, the main chain is GB->A1->A2->A3->A4 with orphaned blocks B2, B4, C4. When B3 arrives late and is
+    // added to the blockchain then a reorg is triggered and the main chain is reorganized to GB->A1->B2->B3->C4.
+
+    // Create Main Chain
+    let (mut store, mut blocks, mut outputs) = create_new_blockchain();
+    // Block A1
+    let txs = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![10 * T, 10 * T, 10 * T, 10 * T]
+    )];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(1)
+    )
+    .is_ok());
+    // Block A2
+    let txs = vec![txn_schema!(from: vec![outputs[1][3].clone()], to: vec![6 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(3)
+    )
+    .is_ok());
+    // Block A3
+    let txs = vec![txn_schema!(from: vec![outputs[2][0].clone()], to: vec![2 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(1)
+    )
+    .is_ok());
+    // Block A4
+    let txs = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![2 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(1)
+    )
+    .is_ok());
+
+    // Create Forked Chain 1
+    let mut orphan1_store = create_mem_db();
+    orphan1_store.add_block(blocks[0].clone()).unwrap(); // GB
+    orphan1_store.add_block(blocks[1].clone()).unwrap(); // A1
+    let mut orphan1_blocks = vec![blocks[0].clone(), blocks[1].clone()];
+    let mut orphan1_outputs = vec![outputs[0].clone(), outputs[1].clone()];
+    // Block B2
+    let txs = vec![txn_schema!(from: vec![orphan1_outputs[1][0].clone()], to: vec![5 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut orphan1_store,
+        &mut orphan1_blocks,
+        &mut orphan1_outputs,
+        txs,
+        Difficulty::from(1)
+    )
+    .is_ok());
+    // Block B3
+    let txs = vec![
+        txn_schema!(from: vec![orphan1_outputs[1][3].clone()], to: vec![3 * T]),
+        txn_schema!(from: vec![orphan1_outputs[2][0].clone()], to: vec![3 * T]),
+    ];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut orphan1_store,
+        &mut orphan1_blocks,
+        &mut orphan1_outputs,
+        txs,
+        Difficulty::from(1)
+    )
+    .is_ok());
+    // Block B4
+    let txs = vec![txn_schema!(from: vec![orphan1_outputs[3][0].clone()], to: vec![1 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut orphan1_store,
+        &mut orphan1_blocks,
+        &mut orphan1_outputs,
+        txs,
+        Difficulty::from(5)
+    )
+    .is_ok());
+
+    // Create Forked Chain 2
+    let mut orphan2_store = create_mem_db();
+    orphan2_store.add_block(blocks[0].clone()).unwrap(); // GB
+    orphan2_store.add_block(blocks[1].clone()).unwrap(); // A1
+    orphan2_store.add_block(orphan1_blocks[2].clone()).unwrap(); // B2
+    orphan2_store.add_block(orphan1_blocks[3].clone()).unwrap(); // B3
+    let mut orphan2_blocks = vec![
+        blocks[0].clone(),
+        blocks[1].clone(),
+        orphan1_blocks[2].clone(),
+        orphan1_blocks[3].clone(),
+    ];
+    let mut orphan2_outputs = vec![
+        outputs[0].clone(),
+        outputs[1].clone(),
+        orphan1_outputs[2].clone(),
+        orphan1_outputs[3].clone(),
+    ];
+    // Block C4
+    let txs = vec![txn_schema!(from: vec![orphan2_outputs[3][1].clone()], to: vec![1 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut orphan2_store,
+        &mut orphan2_blocks,
+        &mut orphan2_outputs,
+        txs,
+        Difficulty::from(20)
+    )
+    .is_ok());
+
+    // Now add the fork blocks C4, B2, B4 and B3 (out of order) to the first DB and observe a re-org. Blocks are added
+    // out of order to test the forward and reverse chaining.
+    store.add_block(orphan2_blocks[4].clone()).unwrap(); // C4
+    store.add_block(orphan1_blocks[2].clone()).unwrap(); // B2
+    store.add_block(orphan1_blocks[4].clone()).unwrap(); // B4
+    store.add_block(orphan1_blocks[3].clone()).unwrap(); // B3
+    assert_eq!(store.fetch_tip_header(), Ok(orphan2_blocks[4].header.clone()));
+
+    // Check that B2,B3 and C4 were removed from the block orphans and A2,A3,A4 and B4 has been orphaned.
+    assert!(store.fetch_orphan(orphan1_blocks[2].hash()).is_err()); // B2
+    assert!(store.fetch_orphan(orphan1_blocks[3].hash()).is_err()); // B3
+    assert!(store.fetch_orphan(orphan2_blocks[4].hash()).is_err()); // C4
+    assert!(store.fetch_orphan(blocks[2].hash()).is_ok()); // A2
+    assert!(store.fetch_orphan(blocks[3].hash()).is_ok()); // A3
+    assert!(store.fetch_orphan(blocks[4].hash()).is_ok()); // A4
+    assert!(store.fetch_orphan(blocks[4].hash()).is_ok()); // B4
 }
 
 #[test]

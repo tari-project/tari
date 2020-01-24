@@ -22,7 +22,7 @@
 //
 
 use crate::{
-    blocks::{Block, BlockBuilder, BlockHeader, NewBlockTemplate},
+    blocks::{blockheader::BlockHash, Block, BlockBuilder, BlockHeader, NewBlockTemplate},
     chain_storage::{
         db_transaction::{DbKey, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree},
         error::ChainStorageError,
@@ -383,6 +383,12 @@ where T: BlockchainBackend
     /// Returns the block header corresponding` to the provided BlockHash
     pub fn fetch_header_with_block_hash(&self, hash: HashOutput) -> Result<BlockHeader, ChainStorageError> {
         fetch!(self, hash, BlockHash)
+    }
+
+    pub fn fetch_tip_header(&self) -> Result<BlockHeader, ChainStorageError> {
+        self.db.fetch_last_header()?.ok_or(ChainStorageError::InvalidQuery(
+            "Cannot retrieve header. Blockchain DB is empty".into(),
+        ))
     }
 
     /// Returns the UTXO with the given hash.
@@ -746,66 +752,67 @@ where T: BlockchainBackend
             .orphan
             .validate(&block)
             .map_err(|e| ChainStorageError::ValidationError(e))?;
-        // Insert the orphan
-        let mut txn = DbTransaction::new();
-        let orphan = block.clone();
-        txn.insert_orphan(block);
-        self.commit(txn)?;
+        self.insert_orphan(block.clone())?;
         info!(
             target: LOG_TARGET,
             "Added new orphan block to the database. Current best height is {}. Orphan block height is {}",
             db_height,
-            orphan.header.height
+            block.header.height
         );
-        trace!(target: LOG_TARGET, "{}", orphan);
+        trace!(target: LOG_TARGET, "{}", block);
         // Trigger a reorg check for all blocks in the orphan block pool
         debug!(target: LOG_TARGET, "Checking for chain re-org.");
-        self.handle_reorg(orphan)
+        self.handle_reorg(block)
     }
 
     /// The handle_reorg function is triggered by the adding of orphaned blocks. Reorg chains are constructed by
-    /// building a chain of orphaned blocks from the leaf blocks with the highest accumulated difficulties back to the
-    /// main chain. When a valid reorg chain is constructed with a higher accumulated difficulty, then the main chain is
-    /// rewound and updated with the newly un-orphaned blocks from the reorg chain.
+    /// finding the orphan chain tip with the highest accumulated difficulty that can be linked to the newly added
+    /// orphan block and then building a chain from the strongest orphan tip back to the main chain. The newly added
+    /// orphan block is considered to be a orphan tip if no better tips can be found that link to it. When a valid
+    /// reorg chain is constructed with a higher accumulated difficulty, then the main chain is rewound and updated
+    /// with the newly un-orphaned blocks from the reorg chain.
     fn handle_reorg(&self, new_block: Block) -> Result<BlockAddResult, ChainStorageError> {
         // We can assume that the new block is part of the re-org chain if it exists, otherwise the re-org would have
         // happened on the previous call to this function.
         // Try and construct a path from `new_block` to the main chain:
-        let reorg_chain = self.try_construct_fork(new_block)?;
-        let main_chain_hash = reorg_chain
-            .get(0)
-            .expect("The new orphan block should be in the queue")
-            .header
-            .prev_hash
-            .clone();
-        // We've built the longest orphan chain we can going backwards. Now the `prev_hash` of the first element
-        // must exist on the main chain, otherwise the new block is just another orphan block and we can leave it
-        // there.
-        let main_header = match self.fetch_header_with_block_hash(main_chain_hash) {
-            Ok(h) => h,
-            Err(_) => return Ok(BlockAddResult::OrphanBlock),
-        };
-
-        let tree = self.build_orphan_tree(reorg_chain)?;
-
-        match self.find_longer_chain(tree) {
-            None => Ok(BlockAddResult::OrphanBlock),
-            Some(chain) => {
-                self.reorganise_chain(main_header, chain)?;
-                Ok(BlockAddResult::ChainReorg)
-            },
+        let reorg_chain = self.try_construct_fork(new_block.clone())?;
+        if reorg_chain.len() == 0 {
+            return Ok(BlockAddResult::OrphanBlock);
         }
+        // Try and find all orphaned chain tips that can be linked to the new orphan block, if no better orphan chain
+        // tips can be found then the new_block is a tip.
+        let orphan_chain_tips = self.find_orphan_chain_tips(new_block.header.height, new_block.hash());
+        // Check the accumulated difficulty of the best fork chain compared to the main chain.
+        let (fork_accum_difficulty, fork_tip_hash) = self.find_strongest_orphan_tip(orphan_chain_tips)?;
+        let tip_header = self.db.fetch_last_header()?.ok_or(ChainStorageError::InvalidQuery(
+            "Cannot retrieve header. Blockchain DB is empty".into(),
+        ))?;
+        if fork_accum_difficulty > tip_header.total_accumulated_difficulty_inclusive() {
+            // We've built the strongest orphan chain we can by going backwards and forwards from the new orphan block
+            // that is linked with the main chain.
+            let fork_tip_block = self.fetch_orphan(fork_tip_hash.clone())?;
+            let reorg_chain = self.try_construct_fork(fork_tip_block)?;
+            let fork_height = reorg_chain
+                .front()
+                .expect("The new orphan block should be in the queue")
+                .header
+                .height -
+                1;
+            self.reorganize_chain(fork_height, reorg_chain)?;
+            return Ok(BlockAddResult::ChainReorg);
+        }
+        Ok(BlockAddResult::OrphanBlock)
     }
 
     /// We try and build a chain from this block to the main chain. If we can't do that we can stop.
     /// We start with the current, newly received block, and look for a blockchain sequence (via `prev_hash`).
-    /// Each successful link is pushed to the front of the queue.
+    /// Each successful link is pushed to the front of the queue. An empty queue is returned if the fork chain did not
+    /// link to the main chain.
     fn try_construct_fork(&self, new_block: Block) -> Result<VecDeque<Block>, ChainStorageError> {
-        let mut reorg_chain = VecDeque::new();
+        let mut fork_chain = VecDeque::new();
         let mut hash = new_block.header.prev_hash.clone();
         let mut height = new_block.header.height;
-        reorg_chain.push_front(new_block);
-
+        fork_chain.push_front(new_block.clone());
         while let Ok(b) = self.fetch_orphan(hash.clone()) {
             if b.header.height + 1 != height {
                 // Well now. The block heights don't form a sequence, which means that we should not only stop now,
@@ -821,24 +828,69 @@ where T: BlockchainBackend
             }
             hash = b.header.prev_hash.clone();
             height -= 1;
-            reorg_chain.push_front(b);
+            fork_chain.push_front(b);
         }
-
-        Ok(reorg_chain)
+        // Check if the constructed fork chain is connected to the main chain.
+        let fork_start_header = fork_chain
+            .front()
+            .expect("The new orphan block should be in the queue")
+            .header
+            .clone();
+        if let Ok(header) = self.fetch_header_with_block_hash(fork_start_header.prev_hash) {
+            if header.height + 1 == fork_start_header.height {
+                return Ok(fork_chain);
+            }
+        }
+        Ok(VecDeque::new())
     }
 
-    fn build_orphan_tree(&self, _reorg_chain: VecDeque<Block>) -> Result<(), ChainStorageError> {
-        // TODO - Build an return a tree for later blocks leading to new_block
-        Ok(())
+    /// Try to find all orphan chain tips that originate from the current orphan parent block.
+    fn find_orphan_chain_tips(&self, parent_height: u64, parent_hash: BlockHash) -> Vec<BlockHash> {
+        let mut tip_hashes = Vec::<BlockHash>::new();
+        self.db
+            .for_each_orphan(|pair| {
+                let (_, block) = pair.unwrap();
+                if (block.header.prev_hash == parent_hash) && (block.header.height == parent_height + 1) {
+                    let next_parent_hash = block.hash();
+                    let mut orphan_chain_tips =
+                        self.find_orphan_chain_tips(block.header.height, next_parent_hash.clone());
+                    if orphan_chain_tips.len() > 0 {
+                        tip_hashes.append(&mut orphan_chain_tips);
+                    } else {
+                        tip_hashes.push(next_parent_hash);
+                    }
+                }
+            })
+            .expect("Unexpected result for database query");
+        if tip_hashes.len() == 0 {
+            // No chain tips found, then parent must be the tip.
+            tip_hashes.push(parent_hash);
+        }
+        tip_hashes
     }
 
-    fn find_longer_chain(&self, _tree: ()) -> Option<Vec<Block>> {
-        // TODO - Check tree vs main chain for great accum difficulty
-        None
+    /// Find and return the orphan chain tip with the highest accumulated difficulty.
+    fn find_strongest_orphan_tip(
+        &self,
+        orphan_chain_tips: Vec<BlockHash>,
+    ) -> Result<(Difficulty, BlockHash), ChainStorageError>
+    {
+        let mut best_accum_difficulty = Difficulty::default();
+        let mut best_tip_hash: Vec<u8> = vec![0; 32];
+        for tip_hash in orphan_chain_tips {
+            let header = self.fetch_orphan(tip_hash.clone())?.header;
+            let accum_difficulty = header.total_accumulated_difficulty_inclusive();
+            if accum_difficulty > best_accum_difficulty {
+                best_tip_hash = tip_hash;
+                best_accum_difficulty = accum_difficulty;
+            }
+        }
+        Ok((best_accum_difficulty, best_tip_hash))
     }
 
-    fn reorganise_chain(&self, header: BlockHeader, chain: Vec<Block>) -> Result<(), ChainStorageError> {
-        self.rewind_to_height(header.height)?;
+    /// Reorganize the main chain with the provided fork chain, starting at the specified height.
+    fn reorganize_chain(&self, height: u64, chain: VecDeque<Block>) -> Result<(), ChainStorageError> {
+        self.rewind_to_height(height)?;
         let mut txn = DbTransaction::new();
         for block in chain.into_iter() {
             let orphan_hash = block.hash();
@@ -849,10 +901,18 @@ where T: BlockchainBackend
         Ok(())
     }
 
+    /// Insert the provided block into the orphan pool.
+    fn insert_orphan(&self, block: Block) -> Result<(), ChainStorageError> {
+        let mut txn = DbTransaction::new();
+        txn.insert_orphan(block);
+        self.commit(txn)
+    }
+
+    /// Discard the the orphan block from the orphan pool that corresponds to the provided block hash.
     fn remove_orphan(&self, hash: HashOutput) -> Result<(), ChainStorageError> {
-        let mut tx = DbTransaction::new();
-        tx.delete(DbKey::OrphanBlock(hash.clone()));
-        self.commit(tx)
+        let mut txn = DbTransaction::new();
+        txn.delete(DbKey::OrphanBlock(hash));
+        self.commit(txn)
     }
 
     // TODO debugging only. Remove before mainnet

@@ -150,7 +150,15 @@ impl BlockHeader {
 
     /// Calculates and returns the achieved difficulty for this header and associated proof of work.
     pub fn achieved_difficulty(&self) -> Difficulty {
-        self.pow.achieved_difficulty(self)
+        ProofOfWork::achieved_difficulty(self)
+    }
+
+    /// Calculates the total accumulated difficulty for the blockchain from the genesis block up until (and including)
+    /// this block.
+    pub fn total_accumulated_difficulty_inclusive(&self) -> Difficulty {
+        let mut prev_pow = self.pow.clone();
+        prev_pow.add_difficulty(&self.pow, self.achieved_difficulty());
+        prev_pow.total_accumulated_difficulty()
     }
 }
 
@@ -271,11 +279,11 @@ mod test {
     #[test]
     fn from_previous() {
         let mut h1 = crate::proof_of_work::blake_test::get_header();
-        h1.nonce = 327; // Achieved difficulty is 1,034;
+        h1.nonce = 7600; // Achieved difficulty is 18,138;
         assert_eq!(h1.height, 0, "Default block height");
         let hash1 = h1.hash();
         let diff1 = h1.achieved_difficulty();
-        assert_eq!(diff1, 1_034.into());
+        assert_eq!(diff1, 18138.into());
         let h2 = BlockHeader::from_previous(&h1);
         assert_eq!(h2.height, h1.height + 1, "Incrementing block height");
         assert!(h2.timestamp > h1.timestamp, "Timestamp");

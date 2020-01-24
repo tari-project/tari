@@ -26,6 +26,7 @@ mod helpers;
 use crate::helpers::block_builders::{
     create_genesis_block,
     create_genesis_block_with_coinbase_value,
+    find_header_with_achieved_difficulty,
     generate_new_block_with_coinbase,
 };
 use std::sync::Arc;
@@ -49,12 +50,6 @@ use tari_core::{
         ValidationError,
     },
 };
-
-fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_difficulty: Difficulty) {
-    while header.achieved_difficulty() != achieved_difficulty {
-        header.nonce += 1;
-    }
-}
 
 #[test]
 fn validate_header_sequence_and_chaining() {

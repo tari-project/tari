@@ -82,30 +82,30 @@ pub mod test {
     fn validate_max_target() {
         let mut header = get_header();
         header.nonce = 1;
-        assert_eq!(blake_difficulty(&header), Difficulty::from(1));
+        assert_eq!(blake_difficulty(&header), Difficulty::from(5));
     }
 
     #[test]
     fn difficulty_1000() {
         let mut header = get_header();
-        header.nonce = 327;
+        header.nonce = 2606;
         let (diff, hash) = blake_difficulty_with_hash(&header);
-        assert_eq!(diff, Difficulty::from(1_034));
+        assert_eq!(diff, Difficulty::from(1_385));
         assert_eq!(
             hash.to_hex(),
-            "003f54ee9fe7aac9972c2f774db06da5feba7a199b94b745572ec4ac8b331e8f"
+            "002f4dc46d5ac0f0207629095a479d6b0fa7d3db08a1ae1790e4d2078376948d"
         );
     }
 
     #[test]
     fn difficulty_1mil() {
         let mut header = get_header();
-        header.nonce = 1_753_044;
+        header.nonce = 7_945_536;
         let (diff, hash) = blake_difficulty_with_hash(&header);
-        assert_eq!(diff, Difficulty::from(3_039_691));
+        assert_eq!(diff, Difficulty::from(2_459_030));
         assert_eq!(
             hash.to_hex(),
-            "00000584f6336e855c6c881cb24a875e4ce353ddd0c38f47564bdb992f761e6a"
+            "000006d29c3fce2f73e2a96daa9071f3c5c65f0b9334513bca6a39d279c5faaf"
         );
     }
 }
