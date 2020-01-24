@@ -295,10 +295,11 @@ where
     {
         let outbound_stream = self.outbound_stream.take().expect("outbound_stream cannot be None");
         let oms_backoff = self.oms_backoff.take().expect("oms_backoff was None");
-        let (event_tx, _) = broadcast::channel(10);
+        let config = self.outbound_service_config.take().unwrap_or_default();
+        let (event_tx, _) = broadcast::channel(config.broadcast_channel_buf_size);
         (
             OutboundMessageService::with_backoff(
-                self.outbound_service_config.take().unwrap_or_default(),
+                config,
                 outbound_stream,
                 node_identity,
                 connection_manager_requester,
