@@ -73,9 +73,13 @@ pub enum ConnectionManagerEvent {
 #[derive(Debug, Clone)]
 pub struct ConnectionManagerConfig {
     /// The address to listen on for incoming connections. This address must be supported by the transport.
+    /// Default: DEFAULT_LISTENER_ADDRESS constant
     pub listener_address: Multiaddr,
-    /// The number of dial attempts to make before giving up
+    /// The number of dial attempts to make before giving up. Default: 3
     pub max_dial_attempts: usize,
+    /// The maximum number of connection tasks that will be spawned at the same time. Once this limit is reached, peers
+    /// attempting to connect will have to wait for another connection attempt to complete. Default: 20
+    pub max_simultaneous_inbound_connects: usize,
 }
 
 impl Default for ConnectionManagerConfig {
@@ -85,6 +89,7 @@ impl Default for ConnectionManagerConfig {
                 .parse()
                 .expect("DEFAULT_LISTENER_ADDRESS is malformed"),
             max_dial_attempts: 3,
+            max_simultaneous_inbound_connects: 20,
         }
     }
 }
@@ -129,7 +134,7 @@ where
 
         let listener = PeerListener::new(
             executor.clone(),
-            config.listener_address.clone(),
+            config.clone(),
             transport.clone(),
             noise_config.clone(),
             event_tx.clone(),
