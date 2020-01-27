@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::miner;
 use log::*;
 use std::{
     path::Path,
@@ -50,6 +51,7 @@ use tari_core::{
     },
     consensus::ConsensusManager,
     mempool::{Mempool, MempoolConfig, MempoolValidators},
+    mining::Miner,
     proof_of_work::DiffAdjManager,
     transactions::{
         crypto::keys::SecretKey as SK,
@@ -92,6 +94,23 @@ impl NodeType {
             match self {
                 NodeType::LMDB(n) => n.run().await,
                 NodeType::Memory(n) => n.run().await,
+            }
+        }
+        .await;
+    }
+}
+
+pub enum MinerType {
+    LMDB(Miner<LMDBDatabase<HashDigest>>),
+    Memory(Miner<MemoryDatabase<HashDigest>>),
+}
+
+impl MinerType {
+    pub async fn mine(self) {
+        async move {
+            match self {
+                MinerType::LMDB(n) => n.mine().await,
+                MinerType::Memory(n) => n.mine().await,
             }
         }
         .await;
@@ -167,11 +186,12 @@ pub fn configure_and_initialize_node(
     config: &GlobalConfig,
     id: NodeIdentity,
     rt: &mut Runtime,
-) -> Result<(CommsNode, NodeType, Arc<ServiceHandles>), String>
+) -> Result<(CommsNode, NodeType, MinerType), String>
 {
     let id = Arc::new(id);
     let factories = Arc::new(CryptoFactories::default());
     let peers = assign_peers(&config.peer_seeds);
+    let executor = rt.handle().clone();
     let result = match &config.db_type {
         DatabaseType::Memory => {
             let rules = ConsensusManager::default();
@@ -192,18 +212,23 @@ pub fn configure_and_initialize_node(
             let mempool = Mempool::new(db.clone(), MempoolConfig::default(), mempool_validator);
             let diff_adj_manager = DiffAdjManager::new(db.clone()).map_err(|e| e.to_string())?;
             rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
-            let (comms, handles) =
-                setup_comms_services(rt, id.clone(), peers, &config.peer_db_path, db.clone(), mempool, rules);
+            let (comms, handles) = setup_comms_services(
+                rt,
+                id.clone(),
+                peers,
+                &config.peer_db_path,
+                db.clone(),
+                mempool,
+                rules.clone(),
+            );
             let outbound_interface = handles.get_handle::<OutboundNodeCommsInterface>().unwrap();
-            (
-                comms,
-                NodeType::Memory(BaseNodeStateMachine::new(
-                    &db,
-                    &outbound_interface,
-                    BaseNodeStateMachineConfig::default(),
-                )),
-                handles,
-            )
+            let node = NodeType::Memory(BaseNodeStateMachine::new(
+                &db,
+                &outbound_interface,
+                BaseNodeStateMachineConfig::default(),
+            ));
+            let miner = MinerType::Memory(miner::build_miner(handles, node.get_flag(), rules.clone(), executor));
+            (comms, node, miner)
         },
         DatabaseType::LMDB(p) => {
             let rules = ConsensusManager::default();
@@ -228,18 +253,24 @@ pub fn configure_and_initialize_node(
             let mempool = Mempool::new(db.clone(), MempoolConfig::default(), mempool_validator);
             let diff_adj_manager = DiffAdjManager::new(db.clone()).map_err(|e| e.to_string())?;
             rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
-            let (comms, handles) =
-                setup_comms_services(rt, id.clone(), peers, &config.peer_db_path, db.clone(), mempool, rules);
+            let (comms, handles) = setup_comms_services(
+                rt,
+                id.clone(),
+                peers,
+                &config.peer_db_path,
+                db.clone(),
+                mempool,
+                rules.clone(),
+            );
             let outbound_interface = handles.get_handle::<OutboundNodeCommsInterface>().unwrap();
-            (
-                comms,
-                NodeType::LMDB(BaseNodeStateMachine::new(
-                    &db,
-                    &outbound_interface,
-                    BaseNodeStateMachineConfig::default(),
-                )),
-                handles,
-            )
+            let node = NodeType::LMDB(BaseNodeStateMachine::new(
+                &db,
+                &outbound_interface,
+                BaseNodeStateMachineConfig::default(),
+            ));
+
+            let miner = MinerType::LMDB(miner::build_miner(handles, node.get_flag(), rules.clone(), executor));
+            (comms, node, miner)
         },
     };
     Ok(result)
