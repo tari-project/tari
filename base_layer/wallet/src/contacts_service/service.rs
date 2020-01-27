@@ -99,9 +99,9 @@ where T: ContactsBackend + 'static
                 .get_contact(pk)
                 .await
                 .map(|c| ContactsServiceResponse::Contact(c))?,
-            ContactsServiceRequest::SaveContact(c) => self
+            ContactsServiceRequest::UpsertContact(c) => self
                 .db
-                .save_contact(c)
+                .upsert_contact(c)
                 .await
                 .map(|_| ContactsServiceResponse::ContactSaved)?,
             ContactsServiceRequest::RemoveContact(pk) => self

@@ -66,12 +66,10 @@ impl ContactsBackend for ContactsServiceMemoryDatabase {
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, ContactsServiceStorageError> {
         let mut db = acquire_write_lock!(self.db);
         match op {
-            WriteOperation::Insert(kvp) => match kvp {
-                DbKeyValuePair::Contact(pk, c) => {
-                    if db.contacts.iter().any(|c| c.public_key == pk) {
-                        return Err(ContactsServiceStorageError::DuplicateContact);
-                    }
-                    db.contacts.push(c)
+            WriteOperation::Upsert(kvp) => match kvp {
+                DbKeyValuePair::Contact(pk, c) => match db.contacts.iter_mut().find(|i| i.public_key == pk) {
+                    None => db.contacts.push(c),
+                    Some(existing_contact) => existing_contact.alias = c.alias,
                 },
             },
             WriteOperation::Remove(k) => match k {

@@ -208,10 +208,12 @@ pub fn generate_wallet_test_data<
     for i in 0..names.len() {
         let secret_key = CommsSecretKey::from_hex(private_keys[i]).expect("Could not parse hex key");
         let public_key = CommsPublicKey::from_secret_key(&secret_key);
-        wallet.runtime.block_on(wallet.contacts_service.save_contact(Contact {
-            alias: names[i].to_string(),
-            public_key: public_key.clone(),
-        }))?;
+        wallet
+            .runtime
+            .block_on(wallet.contacts_service.upsert_contact(Contact {
+                alias: names[i].to_string(),
+                public_key: public_key.clone(),
+            }))?;
 
         wallet.add_base_node_peer(
             public_key.clone(),

@@ -37,8 +37,6 @@ pub enum ContactsServiceError {
 
 #[derive(Debug, Error, PartialEq)]
 pub enum ContactsServiceStorageError {
-    /// Tried to insert an output that already exists in the database
-    DuplicateContact,
     /// This write operation is not supported for provided DbKey
     OperationNotSupported,
     /// Error converting a type

@@ -211,7 +211,7 @@ fn test_wallet() {
             });
 
             runtime
-                .block_on(alice_wallet.contacts_service.save_contact(contacts[i].clone()))
+                .block_on(alice_wallet.contacts_service.upsert_contact(contacts[i].clone()))
                 .unwrap();
         }
 

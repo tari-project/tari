@@ -290,8 +290,8 @@ bool wallet_test_generate_data(struct TariWallet *wallet, char *datastore_path,i
 // Adds a base node peer to the TariWallet
 bool wallet_add_base_node_peer(struct TariWallet *wallet, struct TariPublicKey *public_key, char *address,int* error_out);
 
-// Adds a TariContact to the TariWallet
-bool wallet_add_contact(struct TariWallet *wallet, struct TariContact *contact,int* error_out);
+// Upserts a TariContact to the TariWallet, if the contact does not exist it is inserted and if it does the alias is updated
+bool wallet_upsert_contact(struct TariWallet *wallet, struct TariContact *contact,int* error_out);
 
 // Removes a TariContact form the TariWallet
 bool wallet_remove_contact(struct TariWallet *wallet, struct TariContact *contact,int* error_out);

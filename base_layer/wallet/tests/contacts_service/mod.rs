@@ -70,11 +70,7 @@ pub fn test_memory_database_crud() {
             public_key,
         });
 
-        runtime.block_on(db.save_contact(contacts[i].clone())).unwrap();
-        assert_eq!(
-            runtime.block_on(db.save_contact(contacts[i].clone())),
-            Err(ContactsServiceStorageError::DuplicateContact)
-        );
+        runtime.block_on(db.upsert_contact(contacts[i].clone())).unwrap();
     }
 
     let got_contacts = runtime.block_on(db.get_contacts()).unwrap();
@@ -126,7 +122,7 @@ pub fn test_contacts_service<T: ContactsBackend + 'static>(backend: T) {
         });
 
         runtime
-            .block_on(contacts_service.save_contact(contacts[i].clone()))
+            .block_on(contacts_service.upsert_contact(contacts[i].clone()))
             .unwrap();
     }
 
@@ -161,6 +157,18 @@ pub fn test_contacts_service<T: ContactsBackend + 'static>(backend: T) {
     let got_contacts = runtime.block_on(contacts_service.get_contacts()).unwrap();
 
     assert_eq!(contacts, got_contacts);
+
+    let mut updated_contact = contacts[1].clone();
+    updated_contact.alias = "Fred".to_string();
+
+    runtime
+        .block_on(contacts_service.upsert_contact(updated_contact.clone()))
+        .unwrap();
+    let new_contact = runtime
+        .block_on(contacts_service.get_contact(updated_contact.public_key))
+        .unwrap();
+
+    assert_eq!(new_contact.alias, updated_contact.alias);
 }
 
 #[test]
