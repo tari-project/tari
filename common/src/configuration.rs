@@ -123,6 +123,7 @@ pub struct GlobalConfig {
     pub address: String,
     pub peer_seeds: Vec<String>,
     pub peer_db_path: String,
+    pub enable_mining: bool,
 }
 
 impl GlobalConfig {
@@ -200,6 +201,13 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
 
     // Peer DB path
     let peer_db_path = sub_dir(&data_dir, "peer_db")?;
+
+    // set base node mining
+    let key = config_string(&net_str, "enable_mining");
+    let enable_mining = cfg
+        .get_bool(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as bool;
+
     Ok(GlobalConfig {
         network,
         data_dir,
@@ -210,6 +218,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         address,
         peer_seeds,
         peer_db_path,
+        enable_mining,
     })
 }
 
@@ -260,6 +269,7 @@ pub fn default_config() -> Config {
     cfg.set_default("base_node.mainnet.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.mainnet.grpc_address", "tcp://127.0.0.1:18041")
         .unwrap();
+    cfg.set_default("base_node.mainnet.enable_mining", false).unwrap();
 
     // Testnet base node defaults
     cfg.set_default("base_node.testnet.db_type", "lmdb").unwrap();
@@ -279,6 +289,7 @@ pub fn default_config() -> Config {
     cfg.set_default("base_node.testnet.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.testnet.grpc_address", "tcp://127.0.0.1:18141")
         .unwrap();
+    cfg.set_default("base_node.testnet.enable_mining", true).unwrap();
 
     cfg
 }

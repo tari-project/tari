@@ -46,7 +46,7 @@ use tari_comms::types::CommsPublicKey;
 const LOG_TARGET: &str = "base_node::comms_interface::inbound_handler";
 
 /// Events that can be published on the Validated Block Event Stream
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BlockEvent {
     Verified((Block, BlockAddResult)),
     Invalid((Block, ChainStorageError)),

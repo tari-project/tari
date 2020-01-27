@@ -21,24 +21,25 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use futures::channel::mpsc::{Receiver, Sender};
+use core::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tari_core::{
-    base_node::{BaseNodeStateMachine, LocalNodeCommsInterface},
+    base_node::LocalNodeCommsInterface,
     chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
     mining::Miner,
 };
 use tari_service_framework::handles::ServiceHandles;
+use tokio::runtime;
 
 pub fn build_miner<B: BlockchainBackend>(
     handles: Arc<ServiceHandles>,
-    node: &BaseNodeStateMachine<B>,
+    stop_flag: Arc<AtomicBool>,
     consensus_manager: ConsensusManager<B>,
+    executor: runtime::Handle,
 ) -> Miner<B>
 {
-    let stop_flag = node.get_interrupt_flag();
     let node_local_interface = handles.get_handle::<LocalNodeCommsInterface>().unwrap();
-    let miner = Miner::new(stop_flag, consensus_manager, &node_local_interface);
+    let miner = Miner::new(stop_flag, consensus_manager, &node_local_interface, executor);
     miner
 }

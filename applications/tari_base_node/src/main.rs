@@ -121,7 +121,7 @@ fn main() {
     };
 
     // Build, node, build!
-    let (comms, node, _handles) = match builder::configure_and_initialize_node(&node_config, node_id, &mut rt) {
+    let (comms, node, miner) = match builder::configure_and_initialize_node(&node_config, node_id, &mut rt) {
         Ok(n) => n,
         Err(e) => {
             error!(target: LOG_TARGET, "Could not instantiate node instance. {}", e);
@@ -132,6 +132,16 @@ fn main() {
     // Configure the shutdown daemon to listen for CTRL-C
     let flag = node.get_flag();
     handle_ctrl_c(&rt, flag);
+
+    // lets run the miner
+    // Todo, enable this on config
+    if node_config.enable_mining {
+        rt.spawn(async move {
+            debug!(target: LOG_TARGET, "starting miner");
+            miner.mine().await;
+            debug!(target: LOG_TARGET, "Miner has shutdown");
+        });
+    };
 
     // Run, node, run!
     let main = async move {
