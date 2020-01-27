@@ -40,6 +40,7 @@ cfg_next! {
     mod protocol;
     mod socks;
 
+    pub mod bounded_executor;
     pub mod memsocket;
     pub mod transports;
 }
