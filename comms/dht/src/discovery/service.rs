@@ -325,7 +325,7 @@ impl DhtDiscoveryService {
 
         let discover_msg = DiscoveryMessage {
             node_id: self.node_identity.node_id().to_vec(),
-            addresses: vec![self.node_identity.control_service_address().to_string()],
+            addresses: vec![self.node_identity.public_address().to_string()],
             peer_features: self.node_identity.features().bits(),
             nonce,
         };

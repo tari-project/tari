@@ -77,7 +77,7 @@ pub trait MessageExt: prost::Message {
     /// Encodes a message, allocating the buffer on the heap as necessary
     fn to_encoded_bytes(&self) -> Result<Vec<u8>, MessageError>
     where Self: Sized {
-        let mut buf = Vec::new();
+        let mut buf = Vec::with_capacity(self.encoded_len());
         self.encode(&mut buf)?;
         Ok(buf)
     }

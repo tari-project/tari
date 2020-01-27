@@ -60,14 +60,14 @@ pub struct NodeIdentity {
     public_key: CommsPublicKey,
     features: PeerFeatures,
     secret_key: CommsSecretKey,
-    control_service_address: RwLock<Multiaddr>,
+    public_address: RwLock<Multiaddr>,
 }
 
 impl NodeIdentity {
     /// Create a new NodeIdentity from the provided key pair and control service address
     pub fn new(
         secret_key: CommsSecretKey,
-        control_service_address: Multiaddr,
+        public_address: Multiaddr,
         features: PeerFeatures,
     ) -> Result<Self, NodeIdentityError>
     {
@@ -79,7 +79,7 @@ impl NodeIdentity {
             public_key,
             features,
             secret_key,
-            control_service_address: RwLock::new(control_service_address),
+            public_address: RwLock::new(public_address),
         })
     }
 
@@ -101,34 +101,32 @@ impl NodeIdentity {
             public_key,
             features,
             secret_key,
-            control_service_address: RwLock::new(control_service_address),
+            public_address: RwLock::new(control_service_address),
         })
     }
 
-    /// Retrieve the control_service_address
-    pub fn control_service_address(&self) -> Multiaddr {
-        acquire_read_lock!(self.control_service_address).clone()
+    /// Retrieve the publicly accessible address that peers must connect to establish a connection
+    pub fn public_address(&self) -> Multiaddr {
+        acquire_read_lock!(self.public_address).clone()
     }
 
     /// Modify the control_service_address
-    pub fn set_control_service_address(&self, control_service_address: Multiaddr) -> Result<(), NodeIdentityError> {
+    pub fn set_public_address(&self, address: Multiaddr) -> Result<(), NodeIdentityError> {
         *self
-            .control_service_address
+            .public_address
             .write()
-            .map_err(|_| NodeIdentityError::PoisonedAccess)? = control_service_address;
+            .map_err(|_| NodeIdentityError::PoisonedAccess)? = address;
         Ok(())
     }
 
     /// This returns a random NodeIdentity for testing purposes. This function can panic. If a control_service_address
     /// is None, 127.0.0.1:9000 will be used (i.e. the caller doesn't care what the control_service_address is).
     #[cfg(test)]
-    pub fn random_for_test(control_service_address: Option<Multiaddr>, features: PeerFeatures) -> Self {
+    pub fn random_for_test(public_address: Option<Multiaddr>, features: PeerFeatures) -> Self {
         use rand::OsRng;
         Self::random(
             &mut OsRng::new().unwrap(),
-            control_service_address
-                .or("/ip4/127.0.0.1/tcp/9000".parse().ok())
-                .unwrap(),
+            public_address.or("/ip4/127.0.0.1/tcp/9000".parse().ok()).unwrap(),
             features,
         )
         .unwrap()
@@ -165,7 +163,7 @@ impl From<NodeIdentity> for Peer {
         Peer::new(
             node_identity.public_key,
             node_identity.node_id,
-            node_identity.control_service_address.read().unwrap().clone().into(),
+            node_identity.public_address.read().unwrap().clone().into(),
             PeerFlags::empty(),
             node_identity.features,
         )
@@ -179,7 +177,7 @@ impl Clone for NodeIdentity {
             public_key: self.public_key.clone(),
             features: self.features.clone(),
             secret_key: self.secret_key.clone(),
-            control_service_address: RwLock::new(self.control_service_address()),
+            public_address: RwLock::new(self.public_address()),
         }
     }
 }

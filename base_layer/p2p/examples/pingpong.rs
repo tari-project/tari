@@ -90,7 +90,7 @@ fn get_lan_address() -> Multiaddr {
 
 fn set_lan_address(identity: &NodeIdentity) {
     let mut addr = get_lan_address();
-    let control_addr = identity.control_service_address();
+    let control_addr = identity.public_address();
     let tcp = control_addr
         .iter()
         .find(|p| match p {
@@ -99,7 +99,7 @@ fn set_lan_address(identity: &NodeIdentity) {
         })
         .expect("no tcp protocol in address");
     addr.push(tcp);
-    identity.set_control_service_address(addr).unwrap();
+    identity.set_public_address(addr).unwrap();
 }
 
 fn main() {
@@ -184,7 +184,7 @@ fn main() {
         control_service: ControlServiceConfig {
             listening_address: {
                 let tcp_port = node_identity
-                    .control_service_address()
+                    .public_address()
                     .iter()
                     .find_map(|p| match p {
                         Protocol::Tcp(port) => Some(port),
@@ -194,7 +194,7 @@ fn main() {
 
                 multiaddr!(Ip4([0, 0, 0, 0]), Tcp(tcp_port))
             },
-            public_peer_address: Some(node_identity.control_service_address()),
+            public_peer_address: Some(node_identity.public_address()),
             socks_proxy_address: proxy,
             requested_connection_timeout: Duration::from_millis(2000),
         },
@@ -215,7 +215,7 @@ fn main() {
     let peer = Peer::new(
         peer_identity.public_key().clone(),
         peer_identity.node_id().clone(),
-        peer_identity.control_service_address().into(),
+        peer_identity.public_address().into(),
         PeerFlags::empty(),
         peer_identity.features().clone(),
     );

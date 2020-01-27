@@ -322,7 +322,7 @@ where
                                                                                                 * configurable */
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
-            listening_address: id.control_service_address(),
+            listening_address: id.public_address(),
             socks_proxy_address: None,
             public_peer_address: None, // TODO - make this configurable
             requested_connection_timeout: Duration::from_millis(2000),
@@ -358,7 +358,7 @@ where
     info!(
         target: LOG_TARGET,
         "Node initialization complete. Listening for connections at {}.",
-        id.control_service_address(),
+        id.public_address(),
     );
     (comms, handles)
 }

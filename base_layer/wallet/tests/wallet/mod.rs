@@ -90,7 +90,7 @@ fn test_wallet() {
             peer_connection_listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             socks_proxy_address: None,
             control_service: ControlServiceConfig {
-                listening_address: alice_identity.control_service_address(),
+                listening_address: alice_identity.public_address(),
                 socks_proxy_address: None,
                 public_peer_address: None,
                 requested_connection_timeout: Duration::from_millis(2000),
@@ -107,7 +107,7 @@ fn test_wallet() {
             peer_connection_listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             socks_proxy_address: None,
             control_service: ControlServiceConfig {
-                listening_address: bob_identity.control_service_address(),
+                listening_address: bob_identity.public_address(),
                 socks_proxy_address: None,
                 public_peer_address: None,
                 requested_connection_timeout: Duration::from_millis(2000),
@@ -155,7 +155,7 @@ fn test_wallet() {
             .peer_manager()
             .add_peer(create_peer(
                 bob_identity.public_key().clone(),
-                bob_identity.control_service_address(),
+                bob_identity.public_address(),
             ))
             .unwrap();
 
@@ -164,7 +164,7 @@ fn test_wallet() {
             .peer_manager()
             .add_peer(create_peer(
                 alice_identity.public_key().clone(),
-                alice_identity.control_service_address(),
+                alice_identity.public_address(),
             ))
             .unwrap();
 
@@ -241,7 +241,7 @@ fn test_data_generation() {
         peer_connection_listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
-            listening_address: node_id.control_service_address(),
+            listening_address: node_id.public_address(),
             socks_proxy_address: None,
             public_peer_address: None,
             requested_connection_timeout: Duration::from_millis(2000),
@@ -411,7 +411,7 @@ fn test_test_harness() {
         peer_connection_listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
-            listening_address: alice_identity.control_service_address(),
+            listening_address: alice_identity.public_address(),
             socks_proxy_address: None,
             public_peer_address: None,
             requested_connection_timeout: Duration::from_millis(2000),
@@ -459,7 +459,7 @@ fn test_test_harness() {
         .peer_manager()
         .add_peer(create_peer(
             bob_identity.public_key().clone(),
-            bob_identity.control_service_address(),
+            bob_identity.public_address(),
         ))
         .unwrap();
 
@@ -468,7 +468,7 @@ fn test_test_harness() {
         .peer_manager()
         .add_peer(create_peer(
             bob_identity.public_key().clone(),
-            bob_identity.control_service_address(),
+            bob_identity.public_address(),
         ))
         .unwrap();
 

@@ -25,3 +25,8 @@ pub(crate) mod envelope;
 
 #[path = "tari.comms.control_service.rs"]
 pub(crate) mod control_service;
+
+cfg_next! {
+    #[path = "tari.comms.identity.rs"]
+    pub(crate) mod identity;
+}

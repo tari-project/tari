@@ -1622,7 +1622,7 @@ pub unsafe extern "C" fn comms_config_create(
                             peer_connection_listening_address: listener_address,
                             socks_proxy_address: None,
                             control_service: ControlServiceConfig {
-                                listening_address: ni.control_service_address(),
+                                listening_address: ni.public_address(),
                                 socks_proxy_address: None,
                                 public_peer_address: None,
                                 requested_connection_timeout: Duration::from_millis(2000),

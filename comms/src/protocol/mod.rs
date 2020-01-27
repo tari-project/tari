@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod error;
+mod identity;
 mod negotiation;
 mod notifiers;
 
@@ -29,5 +30,6 @@ mod notifiers;
 pub type ProtocolId = bytes::Bytes;
 
 pub use error::ProtocolError;
+pub use identity::{identity_exchange, IdentityProtocolError};
 pub use negotiation::ProtocolNegotiation;
 pub use notifiers::{ProtocolEvent, ProtocolNotifier};

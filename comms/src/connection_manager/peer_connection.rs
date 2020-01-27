@@ -23,24 +23,20 @@
 use super::error::ConnectionManagerError;
 use crate::{
     connection::ConnectionDirection,
-    connection_manager::{error::PeerConnectionError, manager::ConnectionManagerEvent, utils::short_str},
-    multiplexing::yamux::{IncomingSubstream, Yamux},
+    connection_manager::{error::PeerConnectionError, manager::ConnectionManagerEvent},
+    multiplexing::yamux::{Incoming, Yamux},
+    peer_manager::NodeId,
     protocol::{ProtocolId, ProtocolNegotiation},
-    types::CommsPublicKey,
 };
 use futures::{
     channel::{mpsc, oneshot},
-    future,
-    future::Either,
     stream::Fuse,
-    AsyncRead,
-    AsyncWrite,
     SinkExt,
     StreamExt,
 };
 use log::*;
 use multiaddr::Multiaddr;
-use std::{fmt, sync::Arc};
+use std::fmt;
 use tari_shutdown::Shutdown;
 use tokio::runtime;
 
@@ -48,42 +44,33 @@ const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 
 const PEER_REQUEST_BUFFER_SIZE: usize = 64;
 
-pub async fn create_peer_connection<TSocket>(
+pub fn create(
     executor: runtime::Handle,
-    socket: TSocket,
+    connection: Yamux,
     peer_addr: Multiaddr,
-    public_key: CommsPublicKey,
+    peer_node_id: NodeId,
     direction: ConnectionDirection,
     event_notifier: mpsc::Sender<ConnectionManagerEvent>,
-    supported_protocols: Vec<ProtocolId>,
+    our_supported_protocols: Vec<ProtocolId>,
 ) -> Result<PeerConnection, ConnectionManagerError>
-where
-    TSocket: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
-    match Yamux::upgrade_connection(socket, direction).await {
-        Ok(connection) => {
-            trace!(
-                target: LOG_TARGET,
-                "(Peer={}) Socket successfully upgraded to multiplexed socket",
-                short_str(&public_key)
-            );
-            let (peer_tx, peer_rx) = mpsc::channel(PEER_REQUEST_BUFFER_SIZE);
-            let peer_public_key = Arc::new(public_key);
-            let peer_conn = PeerConnection::new(peer_tx, Arc::clone(&peer_public_key), peer_addr);
-            let peer_actor = PeerConnectionActor::new(
-                executor.clone(),
-                peer_public_key,
-                connection,
-                peer_rx,
-                event_notifier,
-                supported_protocols,
-            );
-            executor.spawn(peer_actor.run());
+    trace!(
+        target: LOG_TARGET,
+        "(Peer={}) Socket successfully upgraded to multiplexed socket",
+        peer_node_id.short_str()
+    );
+    let (peer_tx, peer_rx) = mpsc::channel(PEER_REQUEST_BUFFER_SIZE);
+    let peer_conn = PeerConnection::new(peer_tx, peer_node_id.clone(), peer_addr, direction);
+    let peer_actor = PeerConnectionActor::new(
+        peer_node_id,
+        connection,
+        peer_rx,
+        event_notifier,
+        our_supported_protocols,
+    );
+    executor.spawn(peer_actor.run());
 
-            Ok(peer_conn)
-        },
-        Err(err) => Err(ConnectionManagerError::YamuxUpgradeFailure(err.to_string())),
-    }
+    Ok(peer_conn)
 }
 
 #[derive(Debug)]
@@ -100,27 +87,34 @@ pub enum PeerConnectionRequest {
 /// Request handle for an active peer connection
 #[derive(Clone, Debug)]
 pub struct PeerConnection {
-    peer_public_key: Arc<CommsPublicKey>,
+    peer_node_id: NodeId,
     request_tx: mpsc::Sender<PeerConnectionRequest>,
     address: Multiaddr,
+    direction: ConnectionDirection,
 }
 
 impl PeerConnection {
     pub fn new(
         request_tx: mpsc::Sender<PeerConnectionRequest>,
-        peer_public_key: Arc<CommsPublicKey>,
+        peer_node_id: NodeId,
         address: Multiaddr,
+        direction: ConnectionDirection,
     ) -> Self
     {
         Self {
             request_tx,
-            peer_public_key,
+            peer_node_id,
             address,
+            direction,
         }
     }
 
-    pub fn peer_public_key(&self) -> &CommsPublicKey {
-        &self.peer_public_key
+    pub fn peer_node_id(&self) -> &NodeId {
+        &self.peer_node_id
+    }
+
+    pub fn direction(&self) -> ConnectionDirection {
+        self.direction
     }
 
     pub async fn open_substream<P: Into<ProtocolId>>(
@@ -150,10 +144,9 @@ impl PeerConnection {
 
 /// Actor for an active connection to a peer.
 pub struct PeerConnectionActor {
-    executor: runtime::Handle,
-    peer_public_key: Arc<CommsPublicKey>,
+    peer_node_id: NodeId,
     request_rx: Fuse<mpsc::Receiver<PeerConnectionRequest>>,
-    incoming_substreams: Option<Fuse<IncomingSubstream<'static>>>,
+    incoming_substreams: Fuse<Incoming>,
     substream_shutdown: Option<Shutdown>,
     control: yamux::Control,
     event_notifier: mpsc::Sender<ConnectionManagerEvent>,
@@ -162,22 +155,18 @@ pub struct PeerConnectionActor {
 }
 
 impl PeerConnectionActor {
-    pub fn new<TSocket>(
-        executor: runtime::Handle,
-        peer_public_key: Arc<CommsPublicKey>,
-        connection: Yamux<TSocket>,
+    pub fn new(
+        peer_node_id: NodeId,
+        connection: Yamux,
         request_rx: mpsc::Receiver<PeerConnectionRequest>,
         event_notifier: mpsc::Sender<ConnectionManagerEvent>,
         supported_protocols: Vec<ProtocolId>,
     ) -> Self
-    where
-        TSocket: AsyncRead + AsyncWrite + Send + Unpin + 'static,
     {
         Self {
-            executor,
-            peer_public_key,
+            peer_node_id,
             control: connection.get_yamux_control(),
-            incoming_substreams: Some(connection.incoming().fuse()),
+            incoming_substreams: connection.incoming().fuse(),
             substream_shutdown: None,
             request_rx: request_rx.fuse(),
             event_notifier,
@@ -187,30 +176,28 @@ impl PeerConnectionActor {
     }
 
     pub async fn run(mut self) {
-        let mut incoming_substreams = self.run_substream_task();
-
         loop {
             futures::select! {
                 request = self.request_rx.select_next_some() => self.handle_request(request).await,
 
-                maybe_substream = incoming_substreams.next() => {
+                maybe_substream = self.incoming_substreams.next() => {
                     match maybe_substream {
                         Some(Ok(substream)) => {
                             if let Err(err) = self.handle_incoming_substream(substream).await {
                                 error!(
                                     target: LOG_TARGET,
                                     "Incoming substream for peer '{}' failed to open because '{error}'",
-                                    short_str(&*self.peer_public_key),
+                                    self.peer_node_id.short_str(),
                                     error = err
                                 )
                             }
                         },
                         Some(Err(err)) => {
-                            warn!(target: LOG_TARGET, "Incoming substream error '{}'. Closing connection for peer '{}'", err, short_str(&*self.peer_public_key));
+                            warn!(target: LOG_TARGET, "Incoming substream error '{}'. Closing connection for peer '{}'", err, self.peer_node_id.short_str());
                             self.disconnect().await;
                         },
                         None => {
-                            warn!(target: LOG_TARGET, "Peer '{}' closed the connection", self.peer_public_key);
+                            warn!(target: LOG_TARGET, "Peer '{}' closed the connection", self.peer_node_id.short_str());
                             self.disconnect().await;
                         },
                     }
@@ -221,48 +208,6 @@ impl PeerConnectionActor {
                 break;
             }
         }
-    }
-
-    fn run_substream_task(&mut self) -> mpsc::Receiver<Result<yamux::Stream, yamux::ConnectionError>> {
-        let (mut incoming_substreams_tx, incoming_substreams_rx) = mpsc::channel(100);
-        let mut incoming_substreams = self
-            .incoming_substreams
-            .take()
-            .expect("PeerManagerActor initialized without incoming_substreams");
-        let shutdown = Shutdown::new();
-        let shutdown_signal = shutdown.to_signal();
-        self.substream_shutdown = Some(shutdown);
-
-        // yamux@0.4.0 requires the incoming substream stream be polled in order to make progress on requests from it's
-        // Control api
-        self.executor.spawn(async move {
-            let mut signal = Some(shutdown_signal);
-            loop {
-                let either = future::select(incoming_substreams.next(), signal.take().expect("cannot fail")).await;
-                match either {
-                    Either::Left((Some(substream_result), sig)) => {
-                        signal = Some(sig);
-                        let _ = incoming_substreams_tx.send(substream_result).await;
-                    },
-                    Either::Left((None, _)) => {
-                        info!(
-                            target: LOG_TARGET,
-                            "Incoming peer substream task is shutting down because the stream ended"
-                        );
-                        break;
-                    },
-                    Either::Right((_, _)) => {
-                        info!(
-                            target: LOG_TARGET,
-                            "Incoming peer substream task is shutting down because the shutdown signal was received"
-                        );
-                        break;
-                    },
-                }
-            }
-        });
-
-        incoming_substreams_rx
     }
 
     async fn handle_request(&mut self, request: PeerConnectionRequest) {
@@ -279,7 +224,8 @@ impl PeerConnectionActor {
             Disconnect(reply_tx) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Disconnect requested for peer with public key '{}'", self.peer_public_key
+                    "Disconnect requested for peer with public key '{}'",
+                    self.peer_node_id.short_str()
                 );
                 self.disconnect().await;
                 let _ = reply_tx.send(());
@@ -293,13 +239,12 @@ impl PeerConnectionActor {
             .negotiate_protocol_inbound(&self.supported_protocols)
             .await?;
 
-        self.event_notifier
-            .send(ConnectionManagerEvent::NewInboundSubstream(
-                Arc::clone(&self.peer_public_key),
-                selected_protocol,
-                stream,
-            ))
-            .await?;
+        self.notify_event(ConnectionManagerEvent::NewInboundSubstream(
+            Box::new(self.peer_node_id.clone()),
+            selected_protocol,
+            stream,
+        ))
+        .await;
 
         Ok(())
     }
@@ -313,7 +258,7 @@ impl PeerConnectionActor {
             target: LOG_TARGET,
             "Negotiating protocol '{}' on new substream for peer '{}'",
             String::from_utf8_lossy(&protocol),
-            short_str(&*self.peer_public_key)
+            self.peer_node_id.short_str()
         );
         let mut stream = self.control.open_stream().await?;
         let selected_protocol = ProtocolNegotiation::new(&mut stream)
@@ -334,7 +279,7 @@ impl PeerConnectionActor {
         if let Err(err) = self.control.close().await {
             error!(
                 target: LOG_TARGET,
-                "Failed to politely close connection to peer '{}' because '{}'", self.peer_public_key, err
+                "Failed to politely close connection to peer '{}' because '{}'", self.peer_node_id, err
             );
         }
         trace!(target: LOG_TARGET, "Connection closed");
@@ -347,7 +292,7 @@ impl PeerConnectionActor {
         });
 
         self.notify_event(ConnectionManagerEvent::PeerDisconnected(Box::new(
-            (*self.peer_public_key).clone(),
+            self.peer_node_id.clone(),
         )))
         .await;
     }

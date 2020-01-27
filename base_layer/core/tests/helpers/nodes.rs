@@ -343,7 +343,7 @@ where
         peer_connection_listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
         socks_proxy_address: None,
         control_service: ControlServiceConfig {
-            listening_address: node_identity.control_service_address(),
+            listening_address: node_identity.public_address(),
             socks_proxy_address: None,
             public_peer_address: None,
             requested_connection_timeout: Duration::from_millis(2000),
@@ -359,7 +359,7 @@ where
     let (comms, dht) = initialize_comms(executor, comms_config, publisher).unwrap();
 
     for p in peers {
-        let addr = p.control_service_address();
+        let addr = p.public_address();
         comms
             .peer_manager()
             .add_peer(Peer::new(

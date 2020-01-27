@@ -83,7 +83,7 @@ fn setup_comms_dht(
         .with_inbound_sink(inbound_tx)
         .with_outbound_stream(outbound_rx)
         .configure_control_service(ControlServiceConfig {
-            listening_address: node_identity.control_service_address(),
+            listening_address: node_identity.public_address(),
             ..Default::default()
         })
         .configure_peer_connections(PeerConnectionConfig {

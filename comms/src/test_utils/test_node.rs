@@ -87,6 +87,7 @@ pub fn build_connection_manager(
         noise_config,
         Arc::new(ConstantBackoff::new(config.dial_backoff_duration)),
         request_rx,
+        config.node_identity.clone(),
         peer_manager.into(),
         ProtocolNotifier::new(),
         shutdown,
