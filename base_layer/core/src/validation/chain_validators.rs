@@ -30,7 +30,6 @@ use crate::{
     transactions::types::CryptoFactories,
     validation::{error::ValidationError, traits::Validation},
 };
-use std::sync::Arc;
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_utilities::hash::Hashable;
 
@@ -38,14 +37,14 @@ use tari_utilities::hash::Hashable;
 /// the chain tip header.
 pub struct ChainTipValidator<B: BlockchainBackend> {
     rules: ConsensusManager<B>,
-    factories: Arc<CryptoFactories>,
+    factories: CryptoFactories,
     db: BlockchainDatabase<B>,
 }
 
 impl<B: BlockchainBackend> ChainTipValidator<B>
 where B: BlockchainBackend
 {
-    pub fn new(rules: ConsensusManager<B>, factories: Arc<CryptoFactories>, db: BlockchainDatabase<B>) -> Self {
+    pub fn new(rules: ConsensusManager<B>, factories: CryptoFactories, db: BlockchainDatabase<B>) -> Self {
         Self { rules, factories, db }
     }
 

@@ -179,7 +179,7 @@ impl<B: BlockchainBackend> Miner<B> {
             fees + self.consensus.emission_schedule().block_reward(height),
             height + ConsensusConstants::current().coinbase_lock_height(),
         )?;
-        let factories = Arc::new(CryptoFactories::default());
+        let factories = CryptoFactories::default();
         let builder = CoinbaseBuilder::new(factories.clone());
         let builder = builder
             .with_block_height(block.header.height)

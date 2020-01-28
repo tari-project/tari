@@ -173,7 +173,7 @@ fn validate_chain_genesis_block() {
         GenesisBlockValidator::new(),
         MockValidator::new(true),
     );
-    let factories = Arc::new(CryptoFactories::default());
+    let factories = CryptoFactories::default();
 
     let db = MemoryDatabase::<HashDigest>::default();
     let mut store = BlockchainDatabase::new(db).unwrap();
@@ -231,7 +231,7 @@ fn create_test_blockchain_with_emission(
 fn validate_accounting_balance() {
     let db = MemoryDatabase::<HashDigest>::default();
     let mut store = BlockchainDatabase::new(db).unwrap();
-    let factories = Arc::new(CryptoFactories::default());
+    let factories = CryptoFactories::default();
     let rules = ConsensusManager::default();
     rules
         .set_diff_manager(DiffAdjManager::new(store.clone()).unwrap())
@@ -277,7 +277,7 @@ fn validate_accounting_balance() {
 fn validate_kernel_mmr_roots() {
     let db = MemoryDatabase::<HashDigest>::default();
     let mut store = BlockchainDatabase::new(db).unwrap();
-    let factories = Arc::new(CryptoFactories::default());
+    let factories = CryptoFactories::default();
     let rules = ConsensusManager::default();
     rules
         .set_diff_manager(DiffAdjManager::new(store.clone()).unwrap())
@@ -310,7 +310,7 @@ fn validate_kernel_mmr_roots() {
 fn validate_output_and_rp_mmr_roots() {
     let db = MemoryDatabase::<HashDigest>::default();
     let mut store = BlockchainDatabase::new(db).unwrap();
-    let factories = Arc::new(CryptoFactories::default());
+    let factories = CryptoFactories::default();
     let rules = ConsensusManager::default();
     rules
         .set_diff_manager(DiffAdjManager::new(store.clone()).unwrap())

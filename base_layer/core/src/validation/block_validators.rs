@@ -36,7 +36,6 @@ use crate::{
         ValidationError,
     },
 };
-use std::sync::Arc;
 use tari_utilities::hash::Hashable;
 
 /// This validator tests whether a candidate block is internally consistent
@@ -65,14 +64,14 @@ impl<B: BlockchainBackend> Validation<Block, B> for StatelessValidator {
 /// next block on the blockchain.
 pub struct FullConsensusValidator<B: BlockchainBackend> {
     rules: ConsensusManager<B>,
-    factories: Arc<CryptoFactories>,
+    factories: CryptoFactories,
     db: BlockchainDatabase<B>,
 }
 
 impl<B: BlockchainBackend> FullConsensusValidator<B>
 where B: BlockchainBackend
 {
-    pub fn new(rules: ConsensusManager<B>, factories: Arc<CryptoFactories>, db: BlockchainDatabase<B>) -> Self {
+    pub fn new(rules: ConsensusManager<B>, factories: CryptoFactories, db: BlockchainDatabase<B>) -> Self {
         Self { rules, factories, db }
     }
 

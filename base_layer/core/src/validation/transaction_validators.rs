@@ -30,11 +30,11 @@ use tari_utilities::hash::Hashable;
 
 /// This validator will only check that a transaction is internally consistent. It requires no state information.
 pub struct StatelessTxValidator {
-    factories: Arc<CryptoFactories>,
+    factories: CryptoFactories,
 }
 
 impl StatelessTxValidator {
-    pub fn new(factories: Arc<CryptoFactories>) -> Self {
+    pub fn new(factories: CryptoFactories) -> Self {
         Self { factories }
     }
 }
@@ -50,14 +50,14 @@ impl<B: BlockchainBackend> Validation<Transaction, B> for StatelessTxValidator {
 /// Transaction integrity, All inputs exist in the backend, All timelocks (kernel lock heights and output maturities)
 /// have passed
 pub struct FullTxValidator<B: BlockchainBackend> {
-    factories: Arc<CryptoFactories>,
+    factories: CryptoFactories,
     db: BlockchainDatabase<B>,
 }
 
 impl<B: BlockchainBackend> FullTxValidator<B>
 where B: BlockchainBackend
 {
-    pub fn new(factories: Arc<CryptoFactories>, db: BlockchainDatabase<B>) -> Self {
+    pub fn new(factories: CryptoFactories, db: BlockchainDatabase<B>) -> Self {
         Self { factories, db }
     }
 }

@@ -35,7 +35,7 @@ use tari_core::{
 
 #[test]
 fn test_genesis_block() {
-    let factories = Arc::new(CryptoFactories::default());
+    let factories = CryptoFactories::default();
     let rules = ConsensusManager::default();
     let backend = MemoryDatabase::<HashDigest>::default();
     let mut db = BlockchainDatabase::new(backend).unwrap();
