@@ -2109,7 +2109,8 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
     }
 }
 
-/// Adds a TariContact to the TariWallet
+/// Upserts a TariContact to the TariWallet. If the contact does not exist it will be Inserted. If it does exist the
+/// Alias will be updated.
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
@@ -2120,7 +2121,7 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
 /// ## Returns
 /// `bool` - Returns if successful or not
 #[no_mangle]
-pub unsafe extern "C" fn wallet_add_contact(
+pub unsafe extern "C" fn wallet_upsert_contact(
     wallet: *mut TariWallet,
     contact: *mut TariContact,
     error_out: *mut c_int,
@@ -2141,7 +2142,7 @@ pub unsafe extern "C" fn wallet_add_contact(
 
     match (*wallet)
         .runtime
-        .block_on((*wallet).contacts_service.save_contact((*contact).clone()))
+        .block_on((*wallet).contacts_service.upsert_contact((*contact).clone()))
     {
         Ok(_) => true,
         Err(e) => {
@@ -3151,7 +3152,7 @@ mod test {
             let test_contact_str = CString::new("Test Contact").unwrap();
             let test_contact_alias: *const c_char = CString::into_raw(test_contact_str) as *const c_char;
             let test_contact = contact_create(test_contact_alias, test_contact_public_key, error_ptr);
-            let contact_added = wallet_add_contact(alice_wallet, test_contact, error_ptr);
+            let contact_added = wallet_upsert_contact(alice_wallet, test_contact, error_ptr);
             assert_eq!(contact_added, true);
             let contact_removed = wallet_remove_contact(alice_wallet, test_contact, error_ptr);
             assert_eq!(contact_removed, true);

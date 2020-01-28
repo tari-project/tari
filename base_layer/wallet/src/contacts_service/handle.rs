@@ -28,7 +28,7 @@ use tower::Service;
 #[derive(Debug)]
 pub enum ContactsServiceRequest {
     GetContact(CommsPublicKey),
-    SaveContact(Contact),
+    UpsertContact(Contact),
     RemoveContact(CommsPublicKey),
     GetContacts,
 }
@@ -66,8 +66,12 @@ impl ContactsServiceHandle {
         }
     }
 
-    pub async fn save_contact(&mut self, contact: Contact) -> Result<(), ContactsServiceError> {
-        match self.handle.call(ContactsServiceRequest::SaveContact(contact)).await?? {
+    pub async fn upsert_contact(&mut self, contact: Contact) -> Result<(), ContactsServiceError> {
+        match self
+            .handle
+            .call(ContactsServiceRequest::UpsertContact(contact))
+            .await??
+        {
             ContactsServiceResponse::ContactSaved => Ok(()),
             _ => Err(ContactsServiceError::UnexpectedApiResponse),
         }

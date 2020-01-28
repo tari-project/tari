@@ -187,12 +187,6 @@ impl From<WalletError> for LibWalletError {
                 message: format!("{:?}", w),
             },
             WalletError::ContactsServiceError(ContactsServiceError::ContactsServiceStorageError(
-                ContactsServiceStorageError::DuplicateContact,
-            )) => Self {
-                code: 402,
-                message: format!("{:?}", w),
-            },
-            WalletError::ContactsServiceError(ContactsServiceError::ContactsServiceStorageError(
                 ContactsServiceStorageError::OperationNotSupported,
             )) => Self {
                 code: 403,

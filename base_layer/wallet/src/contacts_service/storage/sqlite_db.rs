@@ -104,13 +104,14 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
             .map_err(|_| ContactsServiceStorageError::R2d2Error)?;
 
         match op {
-            WriteOperation::Insert(kvp) => match kvp {
-                DbKeyValuePair::Contact(k, c) => {
-                    if let Ok(_) = ContactSql::find(&k.to_vec(), &conn) {
-                        return Err(ContactsServiceStorageError::DuplicateContact);
-                    }
-
-                    ContactSql::from(c).commit(&conn)?;
+            WriteOperation::Upsert(kvp) => match kvp {
+                DbKeyValuePair::Contact(k, c) => match ContactSql::find(&k.to_vec(), &conn) {
+                    Ok(found_c) => {
+                        let _ = found_c.update(UpdateContact { alias: Some(c.alias) }, &conn)?;
+                    },
+                    Err(_) => {
+                        ContactSql::from(c).commit(&conn)?;
+                    },
                 },
             },
             WriteOperation::Remove(k) => match k {
@@ -183,6 +184,25 @@ impl ContactSql {
 
         Ok(())
     }
+
+    pub fn update(
+        &self,
+        updated_contact: UpdateContact,
+        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<ContactSql, ContactsServiceStorageError>
+    {
+        let num_updated = diesel::update(contacts::table.filter(contacts::public_key.eq(&self.public_key)))
+            .set(updated_contact)
+            .execute(conn)?;
+
+        if num_updated == 0 {
+            return Err(ContactsServiceStorageError::UnexpectedResult(
+                "Database update error".to_string(),
+            ));
+        }
+
+        Ok(ContactSql::find(&self.public_key, conn)?)
+    }
 }
 
 /// Conversion from an Contact to the Sql datatype form
@@ -207,9 +227,18 @@ impl From<Contact> for ContactSql {
     }
 }
 
+#[derive(AsChangeset)]
+#[table_name = "contacts"]
+pub struct UpdateContact {
+    alias: Option<String>,
+}
+
 #[cfg(test)]
 mod test {
-    use crate::contacts_service::storage::{database::Contact, sqlite_db::ContactSql};
+    use crate::contacts_service::storage::{
+        database::Contact,
+        sqlite_db::{ContactSql, UpdateContact},
+    };
     use diesel::{r2d2::ConnectionManager, Connection, SqliteConnection};
     use std::convert::TryFrom;
     use tari_core::transactions::types::{PrivateKey, PublicKey};
@@ -272,6 +301,18 @@ mod test {
                 .iter()
                 .find(|v| v == &&ContactSql::from(contacts[0].clone()))
                 .is_none());
+
+            let c = ContactSql::find(&contacts[1].public_key.to_vec(), &conn).unwrap();
+            c.update(
+                UpdateContact {
+                    alias: Some("Fred".to_string()),
+                },
+                &conn,
+            )
+            .unwrap();
+
+            let c_updated = ContactSql::find(&contacts[1].public_key.to_vec(), &conn).unwrap();
+            assert_eq!(c_updated.alias, "Fred".to_string());
         });
     }
 }
