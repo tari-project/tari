@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support::utils::random_string;
+use rand::rngs::OsRng;
 use tari_core::transactions::types::PublicKey;
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_service_framework::StackBuilder;
@@ -57,13 +58,12 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
 
 #[test]
 pub fn test_memory_database_crud() {
-    let mut rng = rand::OsRng::new().unwrap();
     let mut runtime = Runtime::new().unwrap();
 
     let db = ContactsDatabase::new(ContactsServiceMemoryDatabase::new());
     let mut contacts = Vec::new();
     for i in 0..5 {
-        let (_secret_key, public_key) = PublicKey::random_keypair(&mut rng);
+        let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
 
         contacts.push(Contact {
             alias: random_string(8),
@@ -81,7 +81,7 @@ pub fn test_memory_database_crud() {
         .unwrap();
     assert_eq!(contact, contacts[0]);
 
-    let (_secret_key, public_key) = PublicKey::random_keypair(&mut rng);
+    let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
 
     let contact = runtime.block_on(db.get_contact(public_key.clone()));
     assert_eq!(
@@ -107,14 +107,12 @@ pub fn test_memory_database_crud() {
 }
 
 pub fn test_contacts_service<T: ContactsBackend + 'static>(backend: T) {
-    let mut rng = rand::OsRng::new().unwrap();
-
     let mut runtime = Runtime::new().unwrap();
     let (mut contacts_service, _shutdown) = setup_contacts_service(&mut runtime, backend);
 
     let mut contacts = Vec::new();
     for i in 0..5 {
-        let (_secret_key, public_key) = PublicKey::random_keypair(&mut rng);
+        let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
 
         contacts.push(Contact {
             alias: random_string(8),
@@ -134,7 +132,7 @@ pub fn test_contacts_service<T: ContactsBackend + 'static>(backend: T) {
         .unwrap();
     assert_eq!(contact, contacts[0]);
 
-    let (_secret_key, public_key) = PublicKey::random_keypair(&mut rng);
+    let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
 
     let contact = runtime.block_on(contacts_service.get_contact(public_key.clone()));
     assert_eq!(

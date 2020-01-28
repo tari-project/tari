@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::connection::zmq::{ZmqEndpoint, ZmqError};
-use rand::{distributions::Alphanumeric, EntropyRng, Rng};
+use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::{fmt, iter, str::FromStr};
 
 const DEFAULT_INPROC: &str = "inproc://default";
@@ -33,8 +33,7 @@ pub struct InprocAddress(String);
 impl InprocAddress {
     /// Generate a random InprocAddress.
     pub fn random() -> Self {
-        let mut rng = EntropyRng::new();
-        let rand_str: String = iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(8).collect();
+        let rand_str: String = iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(8).collect();
         Self(format!("inproc://{}", rand_str))
     }
 

@@ -40,7 +40,7 @@ use tari_utilities::message_format::MessageFormat;
 pub fn make_node_identity() -> Arc<NodeIdentity> {
     Arc::new(
         NodeIdentity::random(
-            &mut OsRng::new().unwrap(),
+            &mut OsRng,
             "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         )
@@ -62,7 +62,7 @@ pub fn make_peer() -> Peer {
 pub fn make_client_identity() -> Arc<NodeIdentity> {
     Arc::new(
         NodeIdentity::random(
-            &mut OsRng::new().unwrap(),
+            &mut OsRng,
             "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
             PeerFeatures::COMMUNICATION_CLIENT,
         )
@@ -99,7 +99,7 @@ pub fn make_dht_header(node_identity: &NodeIdentity, message: &Vec<u8>, flags: D
         destination: NodeDestination::Unknown,
         origin: Some(DhtMessageOrigin {
             public_key: node_identity.public_key().clone(),
-            signature: signature::sign(&mut OsRng::new().unwrap(), node_identity.secret_key().clone(), message)
+            signature: signature::sign(&mut OsRng, node_identity.secret_key().clone(), message)
                 .unwrap()
                 .to_binary()
                 .unwrap(),

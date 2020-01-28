@@ -26,7 +26,7 @@ use crate::{
 };
 use rand;
 pub fn get_keypair() -> (RistrettoSecretKey, RistrettoPublicKey) {
-    let mut rng = rand::OsRng::new().unwrap();
+    let mut rng = rand::thread_rng();
     let k = RistrettoSecretKey::random(&mut rng);
     let pk = RistrettoPublicKey::from_secret_key(&k);
     (k, pk)

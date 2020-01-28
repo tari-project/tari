@@ -906,6 +906,7 @@ mod test {
     };
     use chrono::Utc;
     use diesel::{r2d2::ConnectionManager, Connection, SqliteConnection};
+    use rand::rngs::OsRng;
     use std::convert::TryFrom;
     use tari_core::transactions::{
         tari_amount::MicroTari,
@@ -924,7 +925,6 @@ mod test {
 
     #[test]
     fn test_crud() {
-        let mut rng = rand::OsRng::new().unwrap();
         let factories = CryptoFactories::default();
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = TempDir::new(string(8).as_str()).unwrap();
@@ -944,25 +944,25 @@ mod test {
 
         let mut builder = SenderTransactionProtocol::builder(1);
         let amount = MicroTari::from(10_000);
-        let input = UnblindedOutput::new(MicroTari::from(100_000), PrivateKey::random(&mut rng), None);
+        let input = UnblindedOutput::new(MicroTari::from(100_000), PrivateKey::random(&mut OsRng), None);
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari::from(177))
-            .with_offset(PrivateKey::random(&mut rng))
-            .with_private_nonce(PrivateKey::random(&mut rng))
+            .with_offset(PrivateKey::random(&mut OsRng))
+            .with_private_nonce(PrivateKey::random(&mut OsRng))
             .with_amount(0, amount)
             .with_message("Yo!".to_string())
             .with_input(
                 input.as_transaction_input(&factories.commitment, OutputFeatures::default()),
                 input.clone(),
             )
-            .with_change_secret(PrivateKey::random(&mut rng));
+            .with_change_secret(PrivateKey::random(&mut OsRng));
 
         let stp = builder.build::<HashDigest>(&factories).unwrap();
 
         let outbound_tx1 = OutboundTransaction {
             tx_id: 1u64,
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut rng)),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             fee: stp.clone().get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
@@ -972,7 +972,7 @@ mod test {
 
         let outbound_tx2 = OutboundTransactionSql::try_from(OutboundTransaction {
             tx_id: 2u64,
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut rng)),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             fee: stp.clone().get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
@@ -1000,15 +1000,15 @@ mod test {
 
         let rtp = ReceiverTransactionProtocol::new(
             TransactionSenderMessage::Single(Box::new(stp.clone().build_single_round_message().unwrap())),
-            PrivateKey::random(&mut rng),
-            PrivateKey::random(&mut rng),
+            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut OsRng),
             OutputFeatures::default(),
             &factories,
         );
 
         let inbound_tx1 = InboundTransaction {
             tx_id: 2,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut rng)),
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             receiver_protocol: rtp.clone(),
             message: "Yo!".to_string(),
@@ -1016,7 +1016,7 @@ mod test {
         };
         let inbound_tx2 = InboundTransaction {
             tx_id: 3,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut rng)),
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             receiver_protocol: rtp.clone(),
             message: "Hey!".to_string(),
@@ -1042,12 +1042,12 @@ mod test {
             InboundTransactionSql::try_from(inbound_tx1.clone()).unwrap()
         );
 
-        let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut rng));
+        let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng));
 
         let completed_tx1 = CompletedTransaction {
             tx_id: 2,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut rng)),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut rng)),
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             fee: MicroTari::from(100),
             transaction: tx.clone(),
@@ -1057,8 +1057,8 @@ mod test {
         };
         let completed_tx2 = CompletedTransaction {
             tx_id: 3,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut rng)),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut rng)),
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             fee: MicroTari::from(100),
             transaction: tx.clone(),

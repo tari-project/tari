@@ -71,22 +71,20 @@ pub fn setup_text_message_service(
 fn test_text_message_service() {
     let runtime = Runtime::new().unwrap();
 
-    let mut rng = rand::OsRng::new().unwrap();
-
     let node_1_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         "127.0.0.1:31523".parse().unwrap(),
         PeerFeatures::communication_node_default(),
     )
     .unwrap();
     let node_2_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         "127.0.0.1:31145".parse().unwrap(),
         PeerFeatures::communication_node_default(),
     )
     .unwrap();
     let node_3_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         "127.0.0.1:31546".parse().unwrap(),
         PeerFeatures::communication_node_default(),
     )
@@ -231,15 +229,14 @@ fn test_text_message_service() {
 #[test]
 fn test_text_message_requester_crud() {
     let runtime = Runtime::new().unwrap();
-    let mut rng = rand::OsRng::new().unwrap();
     let node_1_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         "127.0.0.1:30123".parse().unwrap(),
         PeerFeatures::communication_node_default(),
     )
     .unwrap();
     let node_3_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         "127.0.0.1:30546".parse().unwrap(),
         PeerFeatures::communication_node_default(),
     )

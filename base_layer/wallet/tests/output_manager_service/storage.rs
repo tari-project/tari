@@ -22,7 +22,7 @@
 
 use crate::support::utils::{make_input, random_string};
 use chrono::{Duration as ChronoDuration, Utc};
-use rand::RngCore;
+use rand::{rngs::OsRng, RngCore};
 use std::time::Duration;
 use tari_core::transactions::{
     tari_amount::MicroTari,
@@ -45,14 +45,13 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     let mut runtime = Runtime::new().unwrap();
     let db = OutputManagerDatabase::new(backend);
     let factories = CryptoFactories::default();
-    let mut rng = rand::OsRng::new().unwrap();
 
     // Add some unspent outputs
     let mut unspent_outputs = Vec::new();
     for _ in 0..5 {
         let (_ti, uo) = make_input(
-            &mut rng.clone(),
-            MicroTari::from(100 + rng.next_u64() % 1000),
+            &mut OsRng,
+            MicroTari::from(100 + OsRng.next_u64() % 1000),
             &factories.commitment,
         );
         runtime.block_on(db.add_unspent_output(uo.clone())).unwrap();
@@ -63,24 +62,24 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     let mut pending_txs = Vec::new();
     for i in 0..3 {
         let mut pending_tx = PendingTransactionOutputs {
-            tx_id: rng.next_u64(),
+            tx_id: OsRng.next_u64(),
             outputs_to_be_spent: vec![],
             outputs_to_be_received: vec![],
             timestamp: Utc::now().naive_utc() -
                 ChronoDuration::from_std(Duration::from_millis(120_000_000 * i)).unwrap(),
         };
-        for _ in 0..(rng.next_u64() % 5 + 1) {
+        for _ in 0..(OsRng.next_u64() % 5 + 1) {
             let (_ti, uo) = make_input(
-                &mut rng.clone(),
-                MicroTari::from(100 + rng.next_u64() % 1000),
+                &mut OsRng,
+                MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
             );
             pending_tx.outputs_to_be_spent.push(uo);
         }
-        for _ in 0..(rng.next_u64() % 5 + 1) {
+        for _ in 0..(OsRng.next_u64() % 5 + 1) {
             let (_ti, uo) = make_input(
-                &mut rng.clone(),
-                MicroTari::from(100 + rng.next_u64() % 1000),
+                &mut OsRng,
+                MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
             );
             pending_tx.outputs_to_be_received.push(uo);
@@ -167,8 +166,8 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     );
 
     let (_ti, uo_change) = make_input(
-        &mut rng.clone(),
-        MicroTari::from(100 + rng.next_u64() % 1000),
+        &mut OsRng.clone(),
+        MicroTari::from(100 + OsRng.next_u64() % 1000),
         &factories.commitment,
     );
     let outputs_to_encumber = vec![outputs[0].clone(), outputs[1].clone()];
@@ -189,8 +188,8 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     });
 
     let (_ti, uo_incoming) = make_input(
-        &mut rng.clone(),
-        MicroTari::from(100 + rng.next_u64() % 1000),
+        &mut OsRng.clone(),
+        MicroTari::from(100 + OsRng.next_u64() % 1000),
         &factories.commitment,
     );
     runtime
@@ -287,13 +286,12 @@ pub fn test_key_manager_crud<T: OutputManagerBackend + 'static>(backend: T) {
     let mut runtime = Runtime::new().unwrap();
 
     let db = OutputManagerDatabase::new(backend);
-    let mut rng = rand::OsRng::new().unwrap();
 
     assert_eq!(runtime.block_on(db.get_key_manager_state()).unwrap(), None);
     assert!(runtime.block_on(db.increment_key_index()).is_err());
 
     let state1 = KeyManagerState {
-        master_seed: PrivateKey::random(&mut rng),
+        master_seed: PrivateKey::random(&mut OsRng),
         branch_seed: "blah".to_string(),
         primary_key_index: 0,
     };
@@ -304,7 +302,7 @@ pub fn test_key_manager_crud<T: OutputManagerBackend + 'static>(backend: T) {
     assert_eq!(state1, read_state1);
 
     let state2 = KeyManagerState {
-        master_seed: PrivateKey::random(&mut rng),
+        master_seed: PrivateKey::random(&mut OsRng),
         branch_seed: "blah2".to_string(),
         primary_key_index: 0,
     };

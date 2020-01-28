@@ -135,15 +135,15 @@ where
 #[cfg(test)]
 mod test {
     use crate::{file_backup::*, key_manager::*};
+    use rand::rngs::OsRng;
     use sha2::Sha256;
     use std::fs::remove_file;
     use tari_crypto::ristretto::RistrettoSecretKey;
 
     #[test]
     fn test_new_keymanager() {
-        let mut rng = rand::OsRng::new().unwrap();
-        let km1 = KeyManager::<RistrettoSecretKey, Sha256>::new(&mut rng);
-        let km2 = KeyManager::<RistrettoSecretKey, Sha256>::new(&mut rng);
+        let km1 = KeyManager::<RistrettoSecretKey, Sha256>::new(&mut OsRng);
+        let km2 = KeyManager::<RistrettoSecretKey, Sha256>::new(&mut OsRng);
         assert_ne!(km1.master_key, km2.master_key);
     }
 
@@ -192,8 +192,7 @@ mod test {
 
     #[test]
     fn test_derive_and_next_key() {
-        let mut rng = rand::OsRng::new().unwrap();
-        let mut km = KeyManager::<RistrettoSecretKey, Sha256>::new(&mut rng);
+        let mut km = KeyManager::<RistrettoSecretKey, Sha256>::new(&mut OsRng);
         let next_key1_result = km.next_key();
         let next_key2_result = km.next_key();
         let desired_key_index1 = 1;
@@ -219,8 +218,7 @@ mod test {
 
     #[test]
     fn test_to_file_and_from_file() {
-        let mut rng = rand::OsRng::new().unwrap();
-        let desired_km = KeyManager::<RistrettoSecretKey, Sha256>::new(&mut rng);
+        let desired_km = KeyManager::<RistrettoSecretKey, Sha256>::new(&mut OsRng);
         let backup_filename = "test_km_backup.json".to_string();
         // Backup KeyManager to file
         match desired_km.to_file(&backup_filename) {

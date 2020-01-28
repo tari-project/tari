@@ -25,7 +25,7 @@ use crate::{
     proof_of_work::{Difficulty, ProofOfWork},
 };
 use bigint::uint::U256;
-use rand::RngCore;
+use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -53,8 +53,7 @@ impl CpuBlakePow {
         kill_flag: Arc<AtomicBool>,
     ) -> Option<BlockHeader>
     {
-        let mut rng = rand::OsRng::new().unwrap();
-        let mut nonce: u64 = rng.next_u64();
+        let mut nonce: u64 = OsRng.next_u64();
         let start_nonce = nonce;
         // We're mining over here!
         let difficulty = ProofOfWork::achieved_difficulty(&header);

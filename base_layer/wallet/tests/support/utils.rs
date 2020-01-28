@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::{distributions::Alphanumeric, CryptoRng, OsRng, Rng};
+use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng};
 use std::{fmt::Debug, iter, thread, time::Duration};
 use tari_core::transactions::{
     tari_amount::MicroTari,
@@ -90,6 +90,5 @@ pub fn make_input<R: Rng + CryptoRng>(
 }
 
 pub fn random_string(len: usize) -> String {
-    let mut rng = OsRng::new().unwrap();
-    iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(len).collect()
+    iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
 }

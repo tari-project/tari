@@ -81,7 +81,7 @@ pub fn setup_liveness_service(
 fn end_to_end() {
     let mut runtime = Runtime::new().unwrap();
 
-    let mut rng = rand::rngs::OsRng::new().unwrap();
+    let mut rng = rand::rngs::OsRng;
 
     let node_1_identity = NodeIdentity::random(
         &mut rng,

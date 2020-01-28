@@ -40,7 +40,7 @@ use tari_utilities::ByteArray;
 /// # use tari_crypto::ristretto::{ RistrettoSecretKey, RistrettoPublicKey };
 /// # use tari_crypto::keys::{ SecretKey, PublicKey };
 /// # use rand;
-/// let mut rng = rand::OsRng::new().unwrap();
+/// let mut rng = rand::thread_rng();
 /// let k = RistrettoSecretKey::random(&mut rng);
 /// let p = RistrettoPublicKey::from_secret_key(&k);
 /// ```

@@ -240,6 +240,7 @@ mod test {
         sqlite_db::{ContactSql, UpdateContact},
     };
     use diesel::{r2d2::ConnectionManager, Connection, SqliteConnection};
+    use rand::rngs::OsRng;
     use std::convert::TryFrom;
     use tari_core::transactions::types::{PrivateKey, PublicKey};
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
@@ -249,8 +250,6 @@ mod test {
     #[test]
     fn test_crud() {
         with_temp_dir(|dir_path| {
-            let mut rng = rand::OsRng::new().unwrap();
-
             let db_name = format!("{}.sqlite3", string(8).as_str());
             let db_path = format!("{}/{}", dir_path.to_str().unwrap(), db_name);
 
@@ -270,7 +269,7 @@ mod test {
 
             let mut contacts = Vec::new();
             for i in 0..names.len() {
-                let pub_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+                let pub_key = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
                 contacts.push(Contact {
                     alias: names[i].clone(),
                     public_key: pub_key,

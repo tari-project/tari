@@ -23,8 +23,7 @@
 use crate::services::liveness::state::Metadata;
 
 pub use crate::proto::liveness::{PingPong, PingPongMessage};
-use crate::THREAD_RNG;
-use rand::RngCore;
+use rand::{rngs::OsRng, RngCore};
 
 impl PingPongMessage {
     pub fn new(ping_pong: PingPong, nonce: u64, metadata: Metadata) -> Self {
@@ -37,7 +36,7 @@ impl PingPongMessage {
 
     /// Construct a ping message
     pub fn ping() -> Self {
-        let nonce = THREAD_RNG.with(|rng| rng.borrow_mut().next_u64());
+        let nonce = OsRng.next_u64();
         Self::new(PingPong::Ping, nonce, Default::default())
     }
 

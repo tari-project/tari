@@ -21,16 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    consts::COMMS_RNG,
     peer_manager::{NodeIdentity, PeerFeatures},
 };
 use std::sync::Arc;
 use tari_test_utils::address::get_next_local_address;
+use rand::rngs::OsRng;
 
 pub fn build_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     let public_addr = get_next_local_address().parse().unwrap();
-    COMMS_RNG
-        .with(|rng| NodeIdentity::random(&mut *rng.borrow_mut(), public_addr, features))
-        .map(Arc::new)
-        .unwrap()
+    Arc::new(NodeIdentity::random(&mut OsRng, public_addr, features).unwrap())
 }

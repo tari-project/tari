@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::consts::DHT_RNG;
 use rand::RngCore;
 
 pub trait ToProtoEnum {
@@ -56,10 +55,11 @@ impl<T> OutboundDomainMessage<T> {
 }
 
 pub use crate::proto::message_header::MessageHeader;
+use rand::rngs::OsRng;
 
 impl MessageHeader {
     pub fn new(message_type: i32) -> Self {
-        let nonce = DHT_RNG.with(|rng| rng.borrow_mut().next_u64());
+        let nonce = OsRng.next_u64();
         Self { message_type, nonce }
     }
 }

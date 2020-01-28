@@ -40,7 +40,7 @@
 //! # use std::sync::Arc;
 //! # use tari_storage::LMDBWrapper;
 //!
-//! let mut rng = rand::OsRng::new().unwrap();
+//! let mut rng = rand::rngs::OsRng;
 //! let (dest_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
 //! let node_id = NodeId::from_key(&pk).unwrap();
 //! let net_addresses = NetAddressesWithStats::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());

@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::OsRng;
 use tari_crypto::common::Blake256;
 
 /// Specify the Hash function used by the key manager
@@ -28,6 +27,3 @@ pub type KeyDigest = Blake256;
 
 /// Specify the Hash function used when constructing challenges during transaction building
 pub type HashDigest = Blake256;
-
-/// Specify the Rng to use while building transactions for this wallet
-pub type TransactionRng = OsRng;

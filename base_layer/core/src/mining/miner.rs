@@ -42,15 +42,15 @@ use futures::{
     },
     future::FutureExt,
     pin_mut,
-    stream::Fuse,
     StreamExt,
 };
+use rand::rngs::OsRng;
 use std::{
     sync::{atomic::Ordering, Arc},
     thread,
     time,
 };
-use tari_broadcast_channel::Subscriber;
+
 use tari_crypto::keys::SecretKey;
 use tokio::runtime;
 
@@ -202,9 +202,8 @@ impl<B: BlockchainBackend> Miner<B> {
         _maturity_height: u64,
     ) -> Result<(u64, PrivateKey, PrivateKey), MinerError>
     {
-        let mut rng = rand::OsRng::new().unwrap();
-        let r = PrivateKey::random(&mut rng);
-        let key = PrivateKey::random(&mut rng);
+        let r = PrivateKey::random(&mut OsRng);
+        let key = PrivateKey::random(&mut OsRng);
         Ok((0, key, r))
     }
 

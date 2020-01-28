@@ -44,7 +44,6 @@ use crate::{
         ZmqContext,
     },
     connection_manager::{ConnectionManager, EstablishLockResult},
-    consts::COMMS_RNG,
     message::{Envelope, EnvelopeBody, Frame, FrameSet, MessageEnvelopeHeader, MessageExt, MessageFlags},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManagerError},
     types::CommsPublicKey,
@@ -53,7 +52,7 @@ use crate::{
 use log::*;
 use multiaddr::Multiaddr;
 use prost::Message;
-use rand::RngCore;
+use rand::{rngs::OsRng, RngCore};
 use std::{
     convert::TryInto,
     sync::{
@@ -483,7 +482,7 @@ impl ControlServiceWorker {
     }
 
     fn generate_random_identity(&self) -> ZmqIdentity {
-        COMMS_RNG.with(|rng| rng.borrow_mut().next_u64().to_le_bytes().to_vec())
+        OsRng.next_u64().to_le_bytes().to_vec()
     }
 
     fn should_reject_collision(&self, node_id: &NodeId) -> bool {

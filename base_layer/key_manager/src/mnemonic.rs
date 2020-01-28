@@ -254,7 +254,7 @@ impl<T: SecretKey> Mnemonic<T> for T {
 mod test {
     use super::*;
     use crate::mnemonic;
-    use rand;
+    use rand::{self, rngs::OsRng};
     use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey};
     use tari_utilities::byte_array::ByteArray;
 
@@ -406,8 +406,7 @@ mod test {
 
     #[test]
     fn test_mnemonic_from_bytes_and_to_bytes() {
-        let mut rng = rand::OsRng::new().unwrap();
-        let secretkey_bytes = RistrettoSecretKey::random(&mut rng).to_vec();
+        let secretkey_bytes = RistrettoSecretKey::random(&mut OsRng).to_vec();
         match mnemonic::from_bytes(secretkey_bytes.clone(), &MnemonicLanguage::English) {
             Ok(mnemonic_seq) => match mnemonic::to_bytes(&mnemonic_seq) {
                 Ok(mnemonic_bytes) => {
@@ -427,8 +426,7 @@ mod test {
     #[test]
     fn test_secretkey_to_mnemonic_and_from_mnemonic() {
         // Valid Mnemonic sequence
-        let mut rng = rand::OsRng::new().unwrap();
-        let desired_k = RistrettoSecretKey::random(&mut rng);
+        let desired_k = RistrettoSecretKey::random(&mut OsRng);
         match desired_k.to_mnemonic(&MnemonicLanguage::Japanese) {
             Ok(mnemonic_seq) => {
                 match RistrettoSecretKey::from_mnemonic(&mnemonic_seq) {

@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{consts::DHT_RNG, outbound::message::DhtOutboundMessage, proto::envelope::DhtEnvelope};
+use crate::{outbound::message::DhtOutboundMessage, proto::envelope::DhtEnvelope};
 use futures::{task::Context, Future};
 use log::*;
+use rand::rngs::OsRng;
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
     message::MessageExt,
@@ -104,8 +105,7 @@ where
         } else {
             // Sign the body if the origin public key was previously specified.
             if let Some(origin) = dht_header.origin.as_mut() {
-                let signature = DHT_RNG
-                    .with(|rng| signature::sign(&mut *rng.borrow_mut(), node_identity.secret_key().clone(), &body))?;
+                let signature = signature::sign(&mut OsRng, node_identity.secret_key().clone(), &body)?;
                 origin.signature = signature.to_binary()?;
                 trace!(target: LOG_TARGET, "Signed message: {}", origin.signature.to_hex());
             }

@@ -128,6 +128,7 @@ use tari_wallet::wallet::WalletConfig;
 
 use crate::error::InterfaceError;
 use core::ptr;
+use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{control_service::ControlServiceConfig, multiaddr::Multiaddr, peer_manager::PeerFeatures};
 use tari_comms_dht::DhtConfig;
@@ -513,8 +514,7 @@ pub unsafe extern "C" fn private_key_get_bytes(pk: *mut TariPrivateKey, error_ou
 /// `*mut TariPrivateKey` - Returns a pointer to a TariPrivateKey
 #[no_mangle]
 pub unsafe extern "C" fn private_key_generate() -> *mut TariPrivateKey {
-    let mut rng = rand::OsRng::new().unwrap();
-    let secret_key = TariPrivateKey::random(&mut rng);
+    let secret_key = TariPrivateKey::random(&mut OsRng);
     Box::into_raw(Box::new(secret_key))
 }
 

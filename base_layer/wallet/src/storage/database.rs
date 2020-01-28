@@ -190,6 +190,7 @@ mod test {
             sqlite_db::WalletSqliteDatabase,
         },
     };
+    use rand::rngs::OsRng;
     use tari_comms::{
         multiaddr::Multiaddr,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
@@ -203,15 +204,11 @@ mod test {
 
     pub fn test_database_crud<T: WalletBackend + 'static>(backend: T) {
         let mut runtime = Runtime::new().unwrap();
-        let mut rng = match rand::OsRng::new() {
-            Ok(x) => x,
-            Err(_) => unimplemented!(),
-        };
 
         let db = WalletDatabase::new(backend);
         let mut peers = Vec::new();
         for i in 0..5 {
-            let (_secret_key, public_key): (CommsSecretKey, CommsPublicKey) = PublicKey::random_keypair(&mut rng);
+            let (_secret_key, public_key): (CommsSecretKey, CommsPublicKey) = PublicKey::random_keypair(&mut OsRng);
 
             let peer = Peer::new(
                 public_key.clone(),
@@ -237,7 +234,7 @@ mod test {
         let peer = runtime.block_on(db.get_peer(peers[0].public_key.clone())).unwrap();
         assert_eq!(peer, peers[0]);
 
-        let (_secret_key, public_key): (_, PublicKey) = PublicKeyTrait::random_keypair(&mut rng);
+        let (_secret_key, public_key): (_, PublicKey) = PublicKeyTrait::random_keypair(&mut OsRng);
 
         match runtime.block_on(db.get_peer(public_key.clone())) {
             Err(WalletStorageError::ValueNotFound(DbKey::Peer(_p))) => (),

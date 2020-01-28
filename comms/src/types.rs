@@ -41,7 +41,7 @@ pub type CommsPublicKey = RistrettoPublicKey;
 pub type CommsSecretKey = <CommsPublicKey as PublicKey>::K;
 
 /// Specify the RNG that should be used for random selection
-pub type CommsRng = rand::OsRng;
+pub type CommsRng = rand::rngs::OsRng;
 
 /// Specify what cipher to use for encryption/decryption
 pub type CommsCipher = ChaCha20;

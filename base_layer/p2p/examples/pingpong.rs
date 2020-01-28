@@ -75,8 +75,7 @@ fn load_identity(path: &str) -> NodeIdentity {
 }
 
 pub fn random_string(len: usize) -> String {
-    let mut rng = OsRng::new().unwrap();
-    iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(len).collect()
+    iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
 }
 
 fn get_lan_address() -> Multiaddr {

@@ -113,16 +113,15 @@ mod test {
         },
         types::{CryptoFactories, PrivateKey, PublicKey},
     };
-    use rand::OsRng;
+    use rand::rngs::OsRng;
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
         keys::{PublicKey as PK, SecretKey as SK},
     };
 
     fn generate_output_parms() -> (PrivateKey, PrivateKey, OutputFeatures) {
-        let mut rng = OsRng::new().unwrap();
-        let r = PrivateKey::random(&mut rng);
-        let k = PrivateKey::random(&mut rng);
+        let r = PrivateKey::random(&mut OsRng);
+        let k = PrivateKey::random(&mut OsRng);
         let of = OutputFeatures::default();
         (r, k, of)
     }
@@ -141,10 +140,9 @@ mod test {
 
     #[test]
     fn valid_request() {
-        let mut rng = OsRng::new().unwrap();
         let factories = CryptoFactories::default();
-        let (_xs, pub_xs) = PublicKey::random_keypair(&mut rng);
-        let (_rs, pub_rs) = PublicKey::random_keypair(&mut rng);
+        let (_xs, pub_xs) = PublicKey::random_keypair(&mut OsRng);
+        let (_rs, pub_rs) = PublicKey::random_keypair(&mut OsRng);
         let (r, k, of) = generate_output_parms();
         let pubkey = PublicKey::from_secret_key(&k);
         let pubnonce = PublicKey::from_secret_key(&r);

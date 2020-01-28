@@ -24,7 +24,7 @@ use crate::{
     support::utils::{make_input, random_string},
     transaction_service::service::setup_transaction_service,
 };
-use rand::OsRng;
+use rand::rngs::OsRng;
 use std::{sync::Mutex, time::Duration};
 use tari_comms::peer_manager::{NodeIdentity, PeerFeatures};
 use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
@@ -128,13 +128,12 @@ unsafe extern "C" fn discovery_send_callback(_tx_id: u64, _result: bool) {
 fn test_callback_handler() {
     let mut runtime = Runtime::new().unwrap();
 
-    let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
     CALLBACK_STATE.lock().unwrap().reset();
     // Alice's parameters
     let alice_node_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         "/ip4/127.0.0.1/tcp/33101".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -142,7 +141,7 @@ fn test_callback_handler() {
 
     // Bob's parameters
     let bob_node_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         "/ip4/127.0.0.1/tcp/33102".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -150,7 +149,7 @@ fn test_callback_handler() {
 
     // Carols's parameters
     let carol_node_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         "/ip4/127.0.0.1/tcp/33103".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -203,7 +202,7 @@ fn test_callback_handler() {
     );
 
     let value_ab = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut rng, MicroTari(2500), &factories.commitment);
+    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
 
     runtime.block_on(alice_oms.add_output(uo1)).unwrap();
 
@@ -217,7 +216,7 @@ fn test_callback_handler() {
         .is_err());
 
     let value_ba = MicroTari::from(750);
-    let (_utxo, uo2) = make_input(&mut rng, MicroTari(2500), &factories.commitment);
+    let (_utxo, uo2) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
 
     runtime.block_on(bob_oms.add_output(uo2)).unwrap();
     runtime

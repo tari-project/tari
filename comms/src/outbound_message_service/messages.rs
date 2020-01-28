@@ -20,8 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{consts::COMMS_RNG, message::MessageFlags, peer_manager::node_id::NodeId};
-use rand::Rng;
+use crate::{message::MessageFlags, peer_manager::node_id::NodeId};
+use rand::{rngs::OsRng, RngCore};
 
 /// Represents a tag for a message
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
@@ -29,7 +29,7 @@ pub struct MessageTag(u64);
 
 impl MessageTag {
     pub fn new() -> Self {
-        COMMS_RNG.with(|rng| Self(rng.borrow_mut().gen()))
+        Self(OsRng.next_u64())
     }
 }
 

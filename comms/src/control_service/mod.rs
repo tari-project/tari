@@ -49,12 +49,12 @@
 //! # use tari_comms::{connection::*, control_service::*, connection_manager::*, peer_manager::*, types::*};
 //! # use std::{time::Duration, sync::Arc};
 //! # use std::collections::HashMap;
-//! # use rand::OsRng;
+//! # use rand::rngs::OsRng;
 //! # use tari_storage::lmdb_store::LMDBBuilder;
 //! # use lmdb_zero::db;
 //! # use tari_storage::LMDBWrapper;
 //! # use futures::channel::mpsc::channel;
-//! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng::new().unwrap(), "/ip4/127.0.0.1/tcp/9000".parse().unwrap(), PeerFeatures::COMMUNICATION_NODE).unwrap());
+//! let node_identity = Arc::new(NodeIdentity::random(&mut OsRng, "/ip4/127.0.0.1/tcp/9000".parse().unwrap(), PeerFeatures::COMMUNICATION_NODE).unwrap());
 //!
 //! let context = ZmqContext::new();
 //!

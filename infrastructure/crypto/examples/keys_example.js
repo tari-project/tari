@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,11 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{peer_manager::NodeId, types::CommsPublicKey};
-use rand::rngs::OsRng;
-use tari_crypto::keys::PublicKey;
 
-pub fn random() -> NodeId {
-    let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-    NodeId::from_key(&pk).unwrap()
-}
+import * as wasm from '../pkg/tari_crypto_bg.wasm';
+

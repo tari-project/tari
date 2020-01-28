@@ -241,7 +241,7 @@ impl LivePeerConnections {
 #[cfg(test)]
 mod test {
     use super::*;
-    use rand::OsRng;
+    use rand::rngs::OsRng;
     use std::thread;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
 
@@ -250,7 +250,7 @@ mod test {
     }
 
     fn make_node_id() -> NodeId {
-        let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng::new().unwrap());
+        let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
         NodeId::from_key(&pk).unwrap()
     }
 

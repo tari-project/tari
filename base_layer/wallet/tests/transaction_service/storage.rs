@@ -22,6 +22,7 @@
 
 use crate::support::utils::random_string;
 use chrono::Utc;
+use rand::rngs::OsRng;
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, Transaction, UnblindedOutput},
@@ -54,23 +55,21 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut runtime = Runtime::new().unwrap();
     let mut db = TransactionDatabase::new(backend);
     let factories = CryptoFactories::default();
-    let mut rng = rand::OsRng::new().unwrap();
-
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(MicroTari::from(100_000), PrivateKey::random(&mut rng), None);
+    let input = UnblindedOutput::new(MicroTari::from(100_000), PrivateKey::random(&mut OsRng), None);
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
-        .with_offset(PrivateKey::random(&mut rng))
-        .with_private_nonce(PrivateKey::random(&mut rng))
+        .with_offset(PrivateKey::random(&mut OsRng))
+        .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)
         .with_message("Yo!".to_string())
         .with_input(
             input.as_transaction_input(&factories.commitment, OutputFeatures::default()),
             input.clone(),
         )
-        .with_change_secret(PrivateKey::random(&mut rng));
+        .with_change_secret(PrivateKey::random(&mut OsRng));
 
     let stp = builder.build::<HashDigest>(&factories).unwrap();
 
@@ -82,7 +81,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     for i in 0..messages.len() {
         outbound_txs.push(OutboundTransaction {
             tx_id: (i + 10) as u64,
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut rng)),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount: amounts[i].clone(),
             fee: stp.clone().get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
@@ -119,8 +118,8 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     let rtp = ReceiverTransactionProtocol::new(
         TransactionSenderMessage::Single(Box::new(stp.clone().build_single_round_message().unwrap())),
-        PrivateKey::random(&mut rng),
-        PrivateKey::random(&mut rng),
+        PrivateKey::random(&mut OsRng),
+        PrivateKey::random(&mut OsRng),
         OutputFeatures::default(),
         &factories,
     );
@@ -130,7 +129,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     for i in 0..messages.len() {
         inbound_txs.push(InboundTransaction {
             tx_id: i as u64,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut rng)),
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount: amounts[i].clone(),
             receiver_protocol: rtp.clone(),
             message: messages[i].clone(),
@@ -194,13 +193,13 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     }
 
     let mut completed_txs = Vec::new();
-    let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut rng));
+    let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng));
 
     for i in 0..messages.len() {
         completed_txs.push(CompletedTransaction {
             tx_id: outbound_txs[i].tx_id,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut rng)),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut rng)),
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount: outbound_txs[i].amount,
             fee: MicroTari::from(200),
             transaction: tx.clone(),

@@ -325,14 +325,13 @@ mod test {
         },
         types::CryptoFactories,
     };
-    use rand::OsRng;
+    use rand::rngs::OsRng;
     use tari_crypto::common::Blake256;
 
     /// One input, 2 outputs
     #[test]
     fn no_receivers() {
         // Create some inputs
-        let mut rng = OsRng::new().unwrap();
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         // Start the builder
@@ -349,7 +348,7 @@ mod test {
             .with_offset(p.offset)
             .with_private_nonce(p.nonce);
         builder.with_output(UnblindedOutput::new(MicroTari(100), p.spend_key, None));
-        let (utxo, input) = make_input(&mut rng, MicroTari(500), &factories.commitment);
+        let (utxo, input) = make_input(&mut OsRng, MicroTari(500), &factories.commitment);
         builder.with_input(utxo, input);
         builder.with_fee_per_gram(MicroTari(20));
         let expected_fee = Fee::calculate(MicroTari(20), 1, 2);
@@ -379,10 +378,9 @@ mod test {
     #[test]
     fn no_change_or_receivers() {
         // Create some inputs
-        let mut rng = OsRng::new().unwrap();
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input) = make_input(&mut rng, MicroTari(500), &factories.commitment);
+        let (utxo, input) = make_input(&mut OsRng, MicroTari(500), &factories.commitment);
         let expected_fee = Fee::calculate(MicroTari(20), 1, 1);
         let output = UnblindedOutput::new(MicroTari(500) - expected_fee, p.spend_key, None);
         // Start the builder
@@ -414,10 +412,9 @@ mod test {
     #[test]
     fn change_edge_case() {
         // Create some inputs
-        let mut rng = OsRng::new().unwrap();
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input) = make_input(&mut rng, MicroTari(500), &factories.commitment);
+        let (utxo, input) = make_input(&mut OsRng, MicroTari(500), &factories.commitment);
         let expected_fee = MicroTari::from(BASE_COST + (WEIGHT_PER_INPUT + 1 * WEIGHT_PER_OUTPUT) * 20); // 101, output = 80
                                                                                                          // Pay out so that I should get change, but not enough to pay for the output
         let output = UnblindedOutput::new(MicroTari(500) - expected_fee - MicroTari(50), p.spend_key, None);
@@ -449,7 +446,6 @@ mod test {
     #[test]
     fn too_many_inputs() {
         // Create some inputs
-        let mut rng = OsRng::new().unwrap();
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         let output = UnblindedOutput::new(MicroTari(500), p.spend_key, None);
@@ -462,7 +458,7 @@ mod test {
             .with_output(output)
             .with_fee_per_gram(MicroTari(2));
         for _ in 0..MAX_TRANSACTION_INPUTS + 1 {
-            let (utxo, input) = make_input(&mut rng, MicroTari(50), &factories.commitment);
+            let (utxo, input) = make_input(&mut OsRng, MicroTari(50), &factories.commitment);
             builder.with_input(utxo, input);
         }
         let err = builder.build::<Blake256>(&factories).unwrap_err();
@@ -472,10 +468,9 @@ mod test {
     #[test]
     fn fee_too_low() {
         // Create some inputs
-        let mut rng = OsRng::new().unwrap();
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input) = make_input(&mut rng, MicroTari(500), &factories.commitment);
+        let (utxo, input) = make_input(&mut OsRng, MicroTari(500), &factories.commitment);
         let output = UnblindedOutput::new(MicroTari(400), p.spend_key, None);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
@@ -494,10 +489,9 @@ mod test {
     #[test]
     fn not_enough_funds() {
         // Create some inputs
-        let mut rng = OsRng::new().unwrap();
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input) = make_input(&mut rng, MicroTari(400), &factories.commitment);
+        let (utxo, input) = make_input(&mut OsRng, MicroTari(400), &factories.commitment);
         let output = UnblindedOutput::new(MicroTari(400), p.spend_key, None);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
@@ -516,10 +510,9 @@ mod test {
     #[test]
     fn multi_recipients() {
         // Create some inputs
-        let mut rng = OsRng::new().unwrap();
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input) = make_input(&mut rng, MicroTari(1000), &factories.commitment);
+        let (utxo, input) = make_input(&mut OsRng, MicroTari(1000), &factories.commitment);
         let output = UnblindedOutput::new(MicroTari(150), p.spend_key, None);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(2);
@@ -545,11 +538,10 @@ mod test {
     #[test]
     fn single_recipient() {
         // Create some inputs
-        let mut rng = OsRng::new().unwrap();
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo1, input1) = make_input(&mut rng, MicroTari(2000), &factories.commitment);
-        let (utxo2, input2) = make_input(&mut rng, MicroTari(3000), &factories.commitment);
+        let (utxo1, input1) = make_input(&mut OsRng, MicroTari(2000), &factories.commitment);
+        let (utxo2, input2) = make_input(&mut OsRng, MicroTari(3000), &factories.commitment);
         let weight = MicroTari(30);
         let expected_fee = Fee::calculate(weight, 2, 3);
         let output = UnblindedOutput::new(MicroTari(1500) - expected_fee, p.spend_key, None);
@@ -584,10 +576,9 @@ mod test {
     #[test]
     fn fail_range_proof() {
         // Create some inputs
-        let mut rng = OsRng::new().unwrap();
         let factories = CryptoFactories::new(32);
         let p = TestParams::new();
-        let (utxo1, input1) = make_input(&mut rng, (2u64.pow(32) + 10000u64).into(), &factories.commitment);
+        let (utxo1, input1) = make_input(&mut OsRng, (2u64.pow(32) + 10000u64).into(), &factories.commitment);
         let weight = MicroTari(30);
         let output = UnblindedOutput::new((1u64.pow(32) + 1u64).into(), p.spend_key, None);
         // Start the builder

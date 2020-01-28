@@ -44,7 +44,6 @@ cfg_if! {
         pub mod mining;
         pub mod proof_of_work;
         pub mod proto;
-        pub mod types;
         pub mod validation;
     }
 }

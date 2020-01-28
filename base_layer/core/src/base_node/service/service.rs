@@ -37,7 +37,7 @@ use crate::{
     },
     blocks::Block,
     chain_storage::BlockchainBackend,
-    consts::{BASE_NODE_RNG, BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION, BASE_NODE_SERVICE_REQUEST_TIMEOUT},
+    consts::{BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION, BASE_NODE_SERVICE_REQUEST_TIMEOUT},
     proto::core::Block as ProtoBlock,
 };
 use futures::{
@@ -51,6 +51,7 @@ use futures::{
     Stream,
 };
 use log::*;
+use rand::rngs::OsRng;
 use std::{collections::HashMap, convert::TryInto, time::Duration};
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
@@ -367,7 +368,7 @@ where B: BlockchainBackend + 'static
         request_type: NodeCommsRequestType,
     ) -> Result<(), CommsInterfaceError>
     {
-        let request_key = BASE_NODE_RNG.with(|rng| generate_request_key(&mut *rng.borrow_mut()));
+        let request_key = generate_request_key(&mut OsRng);
         let service_request = proto::BaseNodeServiceRequest {
             request_key,
             request: Some(request.into()),

@@ -20,12 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::consts::COMMS_RNG;
-use rand::RngCore;
+use rand::{rngs::OsRng, RngCore};
 
 /// Represents a local peer id. This number is meaningless outside of this node.
 pub type PeerId = u64;
 
 pub fn generate_peer_key() -> PeerId {
-    COMMS_RNG.with(|rng| rng.borrow_mut().next_u64())
+    OsRng.next_u64()
 }

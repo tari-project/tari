@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support::utils::{make_input, random_string};
+use rand::rngs::OsRng;
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
@@ -69,18 +70,15 @@ fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
 fn test_wallet() {
     with_temp_dir(|dir_path| {
         let mut runtime = Runtime::new().unwrap();
-
-        let mut rng = rand::OsRng::new().unwrap();
         let factories = CryptoFactories::default();
-
         let alice_identity = NodeIdentity::random(
-            &mut rng,
+            &mut OsRng,
             "/ip4/127.0.0.1/tcp/22523".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         )
         .unwrap();
         let bob_identity = NodeIdentity::random(
-            &mut rng,
+            &mut OsRng,
             "/ip4/127.0.0.1/tcp/22145".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         )
@@ -171,7 +169,7 @@ fn test_wallet() {
         let alice_event_stream = alice_wallet.transaction_service.get_event_stream_fused();
 
         let value = MicroTari::from(1000);
-        let (_utxo, uo1) = make_input(&mut rng, MicroTari(2500), &factories.commitment);
+        let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
 
         runtime
             .block_on(alice_wallet.output_manager_service.add_output(uo1))
@@ -203,7 +201,7 @@ fn test_wallet() {
 
         let mut contacts = Vec::new();
         for i in 0..2 {
-            let (_secret_key, public_key) = PublicKey::random_keypair(&mut rng);
+            let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
 
             contacts.push(Contact {
                 alias: random_string(8),
@@ -226,11 +224,8 @@ fn test_data_generation() {
     use tari_wallet::testnet_utils::generate_wallet_test_data;
     let runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-
-    let mut rng = rand::OsRng::new().unwrap();
-
     let node_id = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         "/ip4/127.0.0.1/tcp/22712".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -383,24 +378,21 @@ unsafe extern "C" fn discovery_send_callback(_tx_id: u64, _result: bool) {
 fn test_test_harness() {
     CALLBACK_STATE_HARNESS.lock().unwrap().reset();
 
-    use rand::OsRng;
     use std::thread;
     use tari_wallet::{
         testnet_utils::{complete_sent_transaction, mine_transaction, receive_test_transaction},
         transaction_service::storage::database::TransactionStatus,
     };
-
-    let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         "/ip4/127.0.0.1/tcp/21525".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
     let bob_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         "/ip4/127.0.0.1/tcp/21144".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -473,7 +465,7 @@ fn test_test_harness() {
         .unwrap();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut rng, MicroTari(2500), &factories.commitment);
+    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
 
     alice_wallet
         .runtime

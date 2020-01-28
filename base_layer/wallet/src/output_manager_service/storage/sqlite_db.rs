@@ -876,7 +876,7 @@ mod test {
     };
     use chrono::{Duration as ChronoDuration, Utc};
     use diesel::{r2d2::ConnectionManager, Connection, SqliteConnection};
-    use rand::{distributions::Alphanumeric, CryptoRng, OsRng, Rng, RngCore};
+    use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng, RngCore};
     use std::{convert::TryFrom, iter, time::Duration};
     use tari_core::transactions::{
         tari_amount::MicroTari,
@@ -887,8 +887,7 @@ mod test {
     use tempdir::TempDir;
 
     pub fn random_string(len: usize) -> String {
-        let mut rng = OsRng::new().unwrap();
-        iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(len).collect()
+        iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
     }
 
     pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
@@ -901,8 +900,6 @@ mod test {
 
     #[test]
     fn test_crud() {
-        let mut rng = rand::OsRng::new().unwrap();
-
         let db_name = format!("{}.sqlite3", random_string(8).as_str());
         let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
@@ -924,7 +921,7 @@ mod test {
         let mut outputs_unspent = Vec::new();
 
         for _i in 0..2 {
-            let (_, uo) = make_input(&mut rng.clone(), MicroTari::from(100 + rng.next_u64() % 1000));
+            let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
             let o = OutputSql::new(uo, false, false, false, None);
             outputs.push(o.clone());
             outputs_unspent.push(o.clone());
@@ -932,7 +929,7 @@ mod test {
         }
 
         for _i in 0..3 {
-            let (_, uo) = make_input(&mut rng.clone(), MicroTari::from(100 + rng.next_u64() % 1000));
+            let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
             let o = OutputSql::new(uo, true, false, false, None);
             outputs.push(o.clone());
             outputs_spent.push(o.clone());
@@ -1042,8 +1039,6 @@ mod test {
 
     #[test]
     fn test_key_manager_crud() {
-        let mut rng = rand::OsRng::new().unwrap();
-
         let db_name = format!("{}.sqlite3", random_string(8).as_str());
         let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
@@ -1063,7 +1058,7 @@ mod test {
         assert!(KeyManagerStateSql::get_state(&conn).is_err());
 
         let state1 = KeyManagerState {
-            master_seed: PrivateKey::random(&mut rng),
+            master_seed: PrivateKey::random(&mut OsRng),
             branch_seed: random_string(8),
             primary_key_index: 0,
         };
@@ -1075,7 +1070,7 @@ mod test {
         assert_eq!(state1, KeyManagerState::try_from(state1_read).unwrap());
 
         let state2 = KeyManagerState {
-            master_seed: PrivateKey::random(&mut rng),
+            master_seed: PrivateKey::random(&mut OsRng),
             branch_seed: random_string(8),
             primary_key_index: 0,
         };

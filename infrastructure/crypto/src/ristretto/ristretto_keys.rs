@@ -56,7 +56,7 @@ type HashDigest = Blake2b;
 /// use tari_crypto::keys::SecretKey;
 /// use rand;
 ///
-/// let mut rng = rand::OsRng::new().unwrap();
+/// let mut rng = rand::thread_rng();
 /// let _k1 = RistrettoSecretKey::from_bytes(&[1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0]);
 /// let _k2 = RistrettoSecretKey::from_hex(&"100000002000000030000000040000000");
 /// let _k3 = RistrettoSecretKey::random(&mut rng);
@@ -193,7 +193,7 @@ impl From<u64> for RistrettoSecretKey {
 /// use tari_crypto::keys::{ PublicKey, SecretKey };
 /// use rand;
 ///
-/// let mut rng = rand::OsRng::new().unwrap();
+/// let mut rng = rand::thread_rng();
 /// let _p1 = RistrettoPublicKey::from_bytes(&[224, 196, 24, 247, 200, 217, 196, 205, 215, 57, 91, 147, 234, 18, 79, 58, 217,
 /// 144, 33, 187, 104, 29, 252, 51, 2, 169, 217, 154, 46, 83, 230, 78]);
 /// let _p2 = RistrettoPublicKey::from_hex(&"e882b131016b52c1d3337080187cf768423efccbb517bb495ab812c4160ff44e");
@@ -442,7 +442,7 @@ mod test {
 
     #[test]
     fn test_generation() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let k1 = RistrettoSecretKey::random(&mut rng);
         let k2 = RistrettoSecretKey::random(&mut rng);
         assert_ne!(k1, k2);
@@ -488,7 +488,7 @@ mod test {
 
     #[test]
     fn secret_to_hex() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let sk = RistrettoSecretKey::random(&mut rng);
         let hex = sk.to_hex();
         let sk2 = RistrettoSecretKey::from_hex(&hex).unwrap();
@@ -497,7 +497,7 @@ mod test {
 
     #[test]
     fn pubkey_to_hex() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let sk = RistrettoSecretKey::random(&mut rng);
         let pk = RistrettoPublicKey::from_secret_key(&sk);
         let hex = pk.to_hex();
@@ -507,7 +507,7 @@ mod test {
 
     #[test]
     fn secret_to_vec() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let sk = RistrettoSecretKey::random(&mut rng);
         let vec = sk.to_vec();
         let sk2 = RistrettoSecretKey::from_vec(&vec).unwrap();
@@ -516,7 +516,7 @@ mod test {
 
     #[test]
     fn public_to_vec() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let sk = RistrettoSecretKey::random(&mut rng);
         let pk = RistrettoPublicKey::from_secret_key(&sk);
         let vec = pk.to_vec();
@@ -527,7 +527,7 @@ mod test {
     #[test]
     fn zero_plus_k_is_k() {
         let zero = RistrettoSecretKey::default();
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let k = RistrettoSecretKey::random(&mut rng);
         assert_eq!(&k + &zero, k);
     }
@@ -588,7 +588,7 @@ mod test {
 
     #[test]
     fn create_keypair() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let (k, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         assert_completely_equal(&pk, &RistrettoPublicKey::from_secret_key(&k));
     }
@@ -596,7 +596,7 @@ mod test {
     #[test]
     fn secret_keys_are_cleared_after_drop() {
         let zero = &vec![0u8; 32][..];
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let ptr;
         {
             let k = RistrettoSecretKey::random(&mut rng);
@@ -633,7 +633,7 @@ mod test {
 
     #[test]
     fn serialize_deserialize_base64() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let (k, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let ser_k = k.to_base64().unwrap();
         let ser_pk = pk.to_base64().unwrap();
@@ -645,7 +645,7 @@ mod test {
 
     #[test]
     fn serialize_deserialize_json() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let (k, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let ser_k = k.to_json().unwrap();
         let ser_pk = pk.to_json().unwrap();
@@ -658,7 +658,7 @@ mod test {
 
     #[test]
     fn serialize_deserialize_binary() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let (k, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let ser_k = k.to_binary().unwrap();
         let ser_pk = pk.to_binary().unwrap();

@@ -22,6 +22,7 @@
 
 use crate::miner;
 use log::*;
+use rand::rngs::OsRng;
 use std::{
     path::Path,
     sync::{atomic::AtomicBool, Arc},
@@ -161,8 +162,7 @@ fn new_node_id(private_key: PrivateKey, control_addr: &str) -> Result<NodeIdenti
 
 /// Create a new node id and save it to disk
 pub fn create_and_save_id(path: &Path, control_addr: &str) -> Result<NodeIdentity, String> {
-    let mut rng = rand::OsRng::new().unwrap();
-    let pk = PrivateKey::random(&mut rng);
+    let pk = PrivateKey::random(&mut OsRng);
     // build config file
     let id = new_node_id(pk, control_addr)?;
     let node_str = id.to_json().unwrap();

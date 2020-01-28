@@ -28,7 +28,7 @@ futures= {version= "^0.3.1"}
 log = "0.4.8"
 prost = "0.6.1"
 prost-types = "0.6.1"
-rand = "0.5.5"
+rand = "0.7.2"
 serde = "1.0.90"
 serde_derive = "1.0.90"
 serde_repr = "0.1.5"
