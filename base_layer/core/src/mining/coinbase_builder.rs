@@ -60,7 +60,7 @@ pub enum CoinbaseBuildError {
 }
 
 pub struct CoinbaseBuilder {
-    factories: Arc<CryptoFactories>,
+    factories: CryptoFactories,
     block_height: Option<u64>,
     fees: Option<MicroTari>,
     spend_key: Option<PrivateKey>,
@@ -70,7 +70,7 @@ pub struct CoinbaseBuilder {
 impl CoinbaseBuilder {
     /// Start building a new Coinbase transaction. From here you can build the transaction piecemeal with the builder
     /// methods, or pass in a block to `using_block` to determine most of the coinbase parameters automatically.
-    pub fn new(factories: Arc<CryptoFactories>) -> Self {
+    pub fn new(factories: CryptoFactories) -> Self {
         CoinbaseBuilder {
             factories,
             block_height: None,
@@ -162,9 +162,9 @@ mod test {
     use std::sync::Arc;
     use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
-    fn get_builder() -> (CoinbaseBuilder, ConsensusManager<MockBackend>, Arc<CryptoFactories>) {
+    fn get_builder() -> (CoinbaseBuilder, ConsensusManager<MockBackend>, CryptoFactories) {
         let rules = ConsensusManager::default();
-        let factories = Arc::new(CryptoFactories::default());
+        let factories = CryptoFactories::default();
         (CoinbaseBuilder::new(factories.clone()), rules, factories)
     }
 

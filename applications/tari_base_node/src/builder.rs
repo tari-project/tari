@@ -189,7 +189,7 @@ pub fn configure_and_initialize_node(
 ) -> Result<(CommsNode, NodeType, MinerType), String>
 {
     let id = Arc::new(id);
-    let factories = Arc::new(CryptoFactories::default());
+    let factories = CryptoFactories::default();
     let peers = assign_peers(&config.peer_seeds);
     let executor = rt.handle().clone();
     let result = match &config.db_type {

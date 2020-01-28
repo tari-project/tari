@@ -72,7 +72,7 @@ pub type HashOutput = Vec<u8>;
 pub const MAX_RANGE_PROOF_RANGE: usize = 64; // 2^64
 
 /// A convenience struct wrapping cryptographic factories that are used through-out the rest of the code base
-#[derive(Clone)]
+/// Uses Arcs internally so calling clone on this is cheap, no need to wrap this in an Arc
 pub struct CryptoFactories {
     pub commitment: Arc<CommitmentFactory>,
     pub range_proof: Arc<RangeProofService>,
@@ -99,6 +99,16 @@ impl CryptoFactories {
         Self {
             commitment,
             range_proof,
+        }
+    }
+}
+
+/// Uses Arc's internally so calling clone on this is cheap, no need to wrap this in an Arc
+impl Clone for CryptoFactories {
+    fn clone(&self) -> Self {
+        Self {
+            commitment: self.commitment.clone(),
+            range_proof: self.range_proof.clone(),
         }
     }
 }
