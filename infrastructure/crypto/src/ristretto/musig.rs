@@ -67,7 +67,7 @@ type MessageHashSlice = [u8];
 ///       # use tari_crypto::keys::PublicKey;
 ///       # use sha2::Sha256;
 ///       # use digest::Digest;
-///       let mut rng = rand::OsRng::new().unwrap();
+///       let mut rng = rand::thread_rng();
 ///       // Create a new MuSig instance. The number of signing parties must be known at this time.
 ///       let mut alice = RistrettoMuSig::<Sha256>::new(2);
 ///       let mut bob = RistrettoMuSig::<Sha256>::new(2);
@@ -671,7 +671,7 @@ mod test {
     /// The function returns the MuSig struct as well as a data structure that holds the secret and public keys, the
     /// nonces and public nonces, and the nonce hashes to aid with testing
     fn create_round_one_musig(n: usize, msg: Option<&[u8]>) -> (RistrettoMuSig<Sha256>, MuSigTestData) {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let mut musig = RistrettoMuSig::<Sha256>::new(n);
         let mut pub_keys = Vec::with_capacity(n);
         let mut secret_keys = Vec::with_capacity(n);
@@ -780,7 +780,7 @@ mod test {
 
     #[test]
     fn add_too_many_pub_keys() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let musig = RistrettoMuSig::<Sha256>::new(2);
         let (_, p1) = RistrettoPublicKey::random_keypair(&mut rng);
         let (_, p2) = RistrettoPublicKey::random_keypair(&mut rng);
@@ -801,7 +801,7 @@ mod test {
 
     #[test]
     fn duplicate_pub_key() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let musig = RistrettoMuSig::<Sha256>::new(3);
         let (_, p1) = RistrettoPublicKey::random_keypair(&mut rng);
         let (_, p2) = RistrettoPublicKey::random_keypair(&mut rng);
@@ -821,7 +821,7 @@ mod test {
 
     #[test]
     fn must_wait_until_full() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let musig = RistrettoMuSig::<Sha256>::new(3);
         let (k1, p1) = RistrettoPublicKey::random_keypair(&mut rng);
         let (_, p2) = RistrettoPublicKey::random_keypair(&mut rng);
@@ -834,7 +834,7 @@ mod test {
 
     #[test]
     fn cannot_add_more_keys_after_round0() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let (_, p) = RistrettoPublicKey::random_keypair(&mut rng);
         let (mut musig, _) = create_round_one_musig(25, None);
         // We can't add pub keys anymore!
@@ -883,7 +883,7 @@ mod test {
 
     #[test]
     fn invalid_partial_signature_causes_failure() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let (mut musig, data) = create_round_three_musig(15, Some(b"message"));
         let s = RistrettoSecretKey::random(&mut rng);
         // Create a signature with a valid nonce, but the signature is invalid
@@ -896,7 +896,7 @@ mod test {
 
     #[test]
     fn bad_partial_signature_causes_failure() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let (mut musig, _) = create_round_three_musig(3, Some(b"message"));
         let (s, r) = RistrettoPublicKey::random_keypair(&mut rng);
         // Create a signature with an invalid nonce
@@ -908,7 +908,7 @@ mod test {
 
     #[test]
     fn adding_pubkey_after_initialization_causes_failure() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let (_, p, _, _, _) = get_key_and_nonce(&mut rng);
         let (mut musig, _) = create_round_one_musig(5, None);
         musig = musig.add_public_key(&p);
@@ -995,7 +995,7 @@ mod test_joint_key {
 
     #[test]
     fn too_many_keys() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let mut jk = JKBuilder::new(2).unwrap();
         assert_eq!(jk.num_signers(), 2);
         let (_, p1) = RistrettoPublicKey::random_keypair(&mut rng);
@@ -1016,7 +1016,7 @@ mod test_joint_key {
 
     #[test]
     fn duplicate_key() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let mut jk = JKBuilder::new(3).unwrap();
         let (_, p1) = RistrettoPublicKey::random_keypair(&mut rng);
         let (_, p2) = RistrettoPublicKey::random_keypair(&mut rng);

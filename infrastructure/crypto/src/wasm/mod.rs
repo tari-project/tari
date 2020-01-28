@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,14 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    keys::{PublicKey, SecretKey},
-    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
-};
-use rand;
-pub fn get_keypair() -> (RistrettoSecretKey, RistrettoPublicKey) {
-    let mut rng = rand::thread_rng();
-    let k = RistrettoSecretKey::random(&mut rng);
-    let pk = RistrettoPublicKey::from_secret_key(&k);
-    (k, pk)
+use wasm_bindgen::prelude::*;
+const VERSION: &str = "0.1.0";
+
+mod keyring;
+
+pub mod key_utils;
+pub use keyring::KeyRing;
+
+#[wasm_bindgen]
+pub fn version() -> String {
+    VERSION.into()
 }

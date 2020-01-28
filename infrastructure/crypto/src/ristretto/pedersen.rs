@@ -132,7 +132,7 @@ mod test {
     fn check_open() {
         let factory = PedersenCommitmentFactory::default();
         let H = RISTRETTO_PEDERSEN_H.clone();
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         for _ in 0..100 {
             let v = RistrettoSecretKey::random(&mut rng);
             let k = RistrettoSecretKey::random(&mut rng);
@@ -155,7 +155,7 @@ mod test {
     /// `open(k1+k2, v1+v2)` is true for _C_
     #[test]
     fn check_homomorphism() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         for _ in 0..100 {
             let v1 = RistrettoSecretKey::random(&mut rng);
             let v2 = RistrettoSecretKey::random(&mut rng);
@@ -177,7 +177,7 @@ mod test {
 
     #[test]
     fn sum_commitment_vector() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let mut v_sum = RistrettoSecretKey::default();
         let mut k_sum = RistrettoSecretKey::default();
         let zero = RistrettoSecretKey::default();
@@ -199,7 +199,7 @@ mod test {
 
     #[test]
     fn serialize_deserialize() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let factory = PedersenCommitmentFactory::default();
         let k = RistrettoSecretKey::random(&mut rng);
         let c = factory.commit_value(&k, 420);

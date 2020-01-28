@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use criterion::{criterion_group, Criterion};
-use rand::{OsRng, Rng};
+use rand::{thread_rng, Rng};
 use std::time::Duration;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -35,11 +35,11 @@ use tari_crypto::{
 };
 
 fn setup(n: usize) -> (DalekRangeProofService, RistrettoSecretKey, u64, PedersenCommitment) {
-    let mut rng = OsRng::new().unwrap();
+    let mut rng = thread_rng();
     let base = PedersenCommitmentFactory::default();
     let prover = DalekRangeProofService::new(n, &base).unwrap();
     let k = RistrettoSecretKey::random(&mut rng);
-    let n_max = 1u64 << (n - 1);
+    let n_max = 1u64 << (n as u64 - 1);
     let v = rng.gen_range(1, n_max);
     let c = base.commit_value(&k, v);
     (prover, k, v, c)

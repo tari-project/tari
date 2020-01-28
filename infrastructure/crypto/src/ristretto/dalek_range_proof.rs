@@ -98,14 +98,14 @@ mod test {
             RistrettoSecretKey,
         },
     };
-    use rand::OsRng;
+    use rand::thread_rng;
 
     #[test]
     fn create_and_verify_proof() {
         let base = PedersenCommitmentFactory::default();
         let n: usize = 5;
         let prover = DalekRangeProofService::new(1 << 5, &base).unwrap();
-        let mut rng = OsRng::new().unwrap();
+        let mut rng = thread_rng();
         let k = RistrettoSecretKey::random(&mut rng);
         let v = RistrettoSecretKey::from(42);
         let commitment_factory: PedersenCommitmentFactory = PedersenCommitmentFactory::default();
@@ -142,7 +142,7 @@ mod test {
         let prover = DalekRangeProofService::new(8, &base).unwrap();
         let in_range = 255;
         let out_of_range = 256;
-        let mut rng = OsRng::new().unwrap();
+        let mut rng = thread_rng();
         let k = RistrettoSecretKey::random(&mut rng);
         // Test with value in range
         let v = RistrettoSecretKey::from(in_range);

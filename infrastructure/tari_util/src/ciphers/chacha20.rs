@@ -25,7 +25,7 @@ use crate::{
     ByteArray,
 };
 use clear_on_drop::clear::Clear;
-use rand::{OsRng, RngCore};
+use rand::{thread_rng, RngCore};
 /// This in an implementation of the ChaCha20 stream cipher developed using the Internet Research Task Force (IRTF) 8439 RFC (https://tools.ietf.org/html/rfc8439)
 /// ChaCha20 is a high-speed cipher proposed by D. Bernstein that is not sensitive to timing attacks (http://cr.yp.to/chacha/chacha-20080128.pdf).
 /// Data used in the unit tests were derived from the examples from the IRTF 8439 RFC
@@ -202,7 +202,7 @@ where D: ByteArray
         let mut sized_key = [0; 32];
         sized_key.copy_from_slice(key);
 
-        let mut rng = OsRng::new().unwrap();
+        let mut rng = thread_rng();
         let mut nonce = [0u8; 12];
         rng.fill_bytes(&mut nonce);
 

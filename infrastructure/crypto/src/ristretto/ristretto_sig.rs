@@ -61,7 +61,7 @@ use crate::{
 /// # use digest::Digest;
 ///
 /// fn get_keypair() -> (RistrettoSecretKey, RistrettoPublicKey) {
-///     let mut rng = rand::OsRng::new().unwrap();
+///     let mut rng = rand::thread_rng();
 ///     let k = RistrettoSecretKey::random(&mut rng);
 ///     let pk = RistrettoPublicKey::from_secret_key(&k);
 ///     (k, pk)
@@ -114,7 +114,7 @@ mod test {
     use tari_utilities::ByteArray;
 
     fn get_keypair() -> (RistrettoSecretKey, RistrettoPublicKey) {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::thread_rng();
         let k = RistrettoSecretKey::random(&mut rng);
         let pk = RistrettoPublicKey::from_secret_key(&k);
         (k, pk)

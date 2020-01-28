@@ -16,3 +16,6 @@ pub mod signatures;
 // Implementations
 #[allow(clippy::op_ref)]
 pub mod ristretto;
+
+#[cfg(feature = "wasm")]
+pub mod wasm;
