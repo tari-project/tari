@@ -20,11 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::{CryptoRng, OsRng, Rng};
+use rand::{CryptoRng, Rng};
 use tari_comms::peer_manager::NodeId;
 use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
 
-/// Creates a random node ID witht he given RNG
+/// Creates a random node ID with the given RNG
 pub fn make_random_node_id_with_rng<RNG: CryptoRng + Rng>(rng: &mut RNG) -> NodeId {
     let (_sk, pk) = RistrettoPublicKey::random_keypair(rng);
     NodeId::from_key(&pk).unwrap()
@@ -32,5 +32,5 @@ pub fn make_random_node_id_with_rng<RNG: CryptoRng + Rng>(rng: &mut RNG) -> Node
 
 /// Creates a random node ID using OsRng
 pub fn make_node_id() -> NodeId {
-    make_random_node_id_with_rng(&mut OsRng::new().unwrap())
+    make_random_node_id_with_rng(&mut rand::rngs::OsRng)
 }

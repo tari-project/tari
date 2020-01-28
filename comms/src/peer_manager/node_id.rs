@@ -278,7 +278,7 @@ mod test {
 
     #[test]
     fn test_from_public_key() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::rngs::OsRng;
         let sk = CommsSecretKey::random(&mut rng);
         let pk = CommsPublicKey::from_secret_key(&sk);
         let node_id = NodeId::from_key(&pk).unwrap();

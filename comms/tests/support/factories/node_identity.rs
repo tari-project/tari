@@ -22,7 +22,7 @@
 
 use super::{TestFactory, TestFactoryError};
 use multiaddr::Multiaddr;
-use rand::OsRng;
+use rand::rngs::OsRng;
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     types::CommsSecretKey,
@@ -54,12 +54,7 @@ impl TestFactory for NodeIdentityFactory {
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
         // Generate a test identity, set it and return it
-        let secret_key = self
-            .secret_key
-            .or(Some(CommsSecretKey::random(
-                &mut OsRng::new().map_err(TestFactoryError::build_failed())?,
-            )))
-            .unwrap();
+        let secret_key = self.secret_key.or(Some(CommsSecretKey::random(&mut OsRng))).unwrap();
 
         let control_service_address = self
             .control_service_address

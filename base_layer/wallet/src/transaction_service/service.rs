@@ -35,7 +35,6 @@ use crate::{
             TransactionStatus,
         },
     },
-    types::TransactionRng,
 };
 use chrono::Utc;
 use futures::{
@@ -48,7 +47,7 @@ use futures::{
     StreamExt,
 };
 use log::*;
-use rand::RngCore;
+use rand::{rngs::OsRng, RngCore};
 use std::{collections::HashMap, convert::TryInto, sync::Arc};
 use tari_broadcast_channel::Publisher;
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
@@ -514,8 +513,7 @@ where
                 .output_manager_service
                 .get_recipient_spending_key(data.tx_id, data.amount)
                 .await?;
-            let mut rng = TransactionRng::new().unwrap();
-            let nonce = PrivateKey::random(&mut rng);
+            let nonce = PrivateKey::random(&mut OsRng);
 
             let rtp = ReceiverTransactionProtocol::new(
                 sender_message,
@@ -673,8 +671,7 @@ where
         maturity_height: u64,
     ) -> Result<PendingCoinbaseSpendingKey, TransactionServiceError>
     {
-        let mut rng = rand::OsRng::new().unwrap();
-        let tx_id: TxId = rng.next_u64();
+        let tx_id: TxId = OsRng.next_u64();
 
         let spending_key = self
             .output_manager_service
@@ -898,7 +895,6 @@ where
         };
 
         let (_sender, receiver) = reply_channel::unbounded();
-        let mut rng = rand::OsRng::new().unwrap();
 
         let mut fake_oms = OutputManagerService::new(
             receiver,
@@ -908,7 +904,7 @@ where
         .await?;
 
         use crate::testnet_utils::make_input;
-        let (_ti, uo) = make_input(&mut rng.clone(), amount + 1 * T, &self.factories);
+        let (_ti, uo) = make_input(&mut OsRng, amount + 1 * T, &self.factories);
 
         fake_oms.add_output(uo).await?;
 
@@ -926,7 +922,7 @@ where
             .output_manager_service
             .get_recipient_spending_key(tx_id.clone(), amount.clone())
             .await?;
-        let nonce = PrivateKey::random(&mut rng);
+        let nonce = PrivateKey::random(&mut OsRng);
         let rtp = ReceiverTransactionProtocol::new(
             sender_message,
             nonce,

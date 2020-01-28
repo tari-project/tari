@@ -41,7 +41,7 @@ use crate::transactions::{
     types::{Commitment, CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, Signature},
     SenderTransactionProtocol,
 };
-use rand::{CryptoRng, Rng};
+use rand::{rngs::OsRng, CryptoRng, Rng};
 use std::sync::Arc;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -73,12 +73,11 @@ pub struct TestParams {
 
 impl TestParams {
     pub fn new() -> TestParams {
-        let mut rng = rand::OsRng::new().unwrap();
-        let r = PrivateKey::random(&mut rng);
+        let r = PrivateKey::random(&mut OsRng);
         TestParams {
-            spend_key: PrivateKey::random(&mut rng),
-            change_key: PrivateKey::random(&mut rng),
-            offset: PrivateKey::random(&mut rng),
+            spend_key: PrivateKey::random(&mut OsRng),
+            change_key: PrivateKey::random(&mut OsRng),
+            offset: PrivateKey::random(&mut OsRng),
             public_nonce: PublicKey::from_secret_key(&r),
             nonce: r,
         }
@@ -97,17 +96,17 @@ pub struct TestKeySet {
 /// * a public-private keypair (k, pk)
 /// * a public-private nonce keypair (r, pr)
 pub fn generate_keys() -> TestKeySet {
-    let mut rng = rand::thread_rng();
-    let (k, pk) = PublicKey::random_keypair(&mut rng);
-    let (r, pr) = PublicKey::random_keypair(&mut rng);
+    let _rng = rand::thread_rng();
+    let (k, pk) = PublicKey::random_keypair(&mut OsRng);
+    let (r, pr) = PublicKey::random_keypair(&mut OsRng);
     TestKeySet { k, pk, r, pr }
 }
 
 /// Generate a random transaction signature, returning the public key (excess) and the signature.
 pub fn create_random_signature(fee: MicroTari, lock_height: u64) -> (PublicKey, Signature) {
-    let mut rng = rand::thread_rng();
-    let r = PrivateKey::random(&mut rng);
-    let (k, p) = PublicKey::random_keypair(&mut rng);
+    let _rng = rand::thread_rng();
+    let r = PrivateKey::random(&mut OsRng);
+    let (k, p) = PublicKey::random_keypair(&mut OsRng);
     let tx_meta = TransactionMetadata {
         fee,
         lock_height,
@@ -125,8 +124,8 @@ pub fn create_random_signature_from_s_key(
     lock_height: u64,
 ) -> (PublicKey, Signature)
 {
-    let mut rng = rand::thread_rng();
-    let r = PrivateKey::random(&mut rng);
+    let _rng = rand::thread_rng();
+    let r = PrivateKey::random(&mut OsRng);
     let p = PK::from_secret_key(&s_key);
     let tx_meta = TransactionMetadata {
         fee,
@@ -222,8 +221,7 @@ pub fn create_test_input(
     factory: &CommitmentFactory,
 ) -> (TransactionInput, UnblindedOutput)
 {
-    let mut rng = rand::OsRng::new().unwrap();
-    let spending_key = PrivateKey::random(&mut rng);
+    let spending_key = PrivateKey::random(&mut OsRng);
     let commitment = factory.commit(&spending_key, &PrivateKey::from(amount.clone()));
     let features = OutputFeatures::with_maturity(maturity);
     let input = TransactionInput::new(features.clone(), commitment);
@@ -297,7 +295,6 @@ pub fn create_tx(
 /// This is obviously less efficient, but is offered as a convenience.
 /// The output features will be applied to every output
 pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutput>, TestParams) {
-    let mut rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
     let test_params = TestParams::new();
     let mut stx_builder = SenderTransactionProtocol::builder(0);
@@ -314,7 +311,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
     }
     let mut outputs = Vec::with_capacity(schema.to.len());
     for val in schema.to {
-        let k = PrivateKey::random(&mut rng);
+        let k = PrivateKey::random(&mut OsRng);
         let utxo = UnblindedOutput::new(val.clone(), k, Some(schema.features.clone()));
         outputs.push(utxo.clone());
         stx_builder.with_output(utxo);

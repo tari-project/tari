@@ -511,16 +511,15 @@ mod test {
         },
         types::CryptoFactories,
     };
-    use rand::OsRng;
+    use rand::rngs::OsRng;
     use tari_crypto::common::Blake256;
     use tari_utilities::hex::Hex;
 
     #[test]
     fn zero_recipients() {
-        let mut rng = OsRng::new().unwrap();
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input) = make_input(&mut rng, MicroTari(1200), &factories.commitment);
+        let (utxo, input) = make_input(&mut OsRng, MicroTari(1200), &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(0);
         builder
             .with_lock_height(0)
@@ -546,12 +545,11 @@ mod test {
     #[test]
     fn single_recipient_no_change() {
         let factories = CryptoFactories::default();
-        let mut rng = OsRng::new().unwrap();
         // Alice's parameters
         let a = TestParams::new();
         // Bob's parameters
         let b = TestParams::new();
-        let (utxo, input) = make_input(&mut rng, MicroTari(1200), &factories.commitment);
+        let (utxo, input) = make_input(&mut OsRng, MicroTari(1200), &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
         let fee = Fee::calculate(MicroTari(20), 1, 1);
         builder
@@ -605,12 +603,11 @@ mod test {
     #[test]
     fn single_recipient_with_change() {
         let factories = CryptoFactories::default();
-        let mut rng = OsRng::new().unwrap();
         // Alice's parameters
         let a = TestParams::new();
         // Bob's parameters
         let b = TestParams::new();
-        let (utxo, input) = make_input(&mut rng, MicroTari(2500), &factories.commitment);
+        let (utxo, input) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
         let fee = Fee::calculate(MicroTari(20), 1, 2);
         builder
@@ -680,12 +677,11 @@ mod test {
     #[test]
     fn single_recipient_range_proof_fail() {
         let factories = CryptoFactories::new(32);
-        let mut rng = OsRng::new().unwrap();
         // Alice's parameters
         let a = TestParams::new();
         // Bob's parameters
         let b = TestParams::new();
-        let (utxo, input) = make_input(&mut rng, (2u64.pow(32) + 2001).into(), &factories.commitment);
+        let (utxo, input) = make_input(&mut OsRng, (2u64.pow(32) + 2001).into(), &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
 
         builder

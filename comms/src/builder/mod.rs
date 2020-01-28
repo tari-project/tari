@@ -29,14 +29,14 @@
 //! # use tari_comms::control_service::ControlServiceConfig;
 //! # use tari_comms::peer_manager::{NodeIdentity, PeerFeatures};
 //! # use std::sync::Arc;
-//! # use rand::OsRng;
+//! # use rand::rngs::OsRng;
 //! # use tari_storage::lmdb_store::LMDBBuilder;
 //! # use lmdb_zero::db;
 //! # use tari_storage::LMDBWrapper;
 //! # use tokio::runtime::Runtime;
 //! # use futures::channel::mpsc;
 //! // This should be loaded up from storage
-//! let my_node_identity = NodeIdentity::random(&mut OsRng::new().unwrap(), "/ip4/127.0.0.1/tcp/9000".parse().unwrap(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+//! let my_node_identity = NodeIdentity::random(&mut OsRng, "/ip4/127.0.0.1/tcp/9000".parse().unwrap(), PeerFeatures::COMMUNICATION_NODE).unwrap();
 //!
 //! let database_name = "b_peer_database";
 //! let datastore = LMDBBuilder::new()

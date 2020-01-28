@@ -201,12 +201,12 @@ mod test {
             PeerFeatures,
         },
     };
-    use rand::OsRng;
+    use rand::rngs::OsRng;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::HashmapDatabase;
 
-    fn create_test_peer(rng: &mut OsRng, ban_flag: bool) -> Peer {
-        let (_sk, pk) = RistrettoPublicKey::random_keypair(rng);
+    fn create_test_peer(ban_flag: bool) -> Peer {
+        let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_addresses = NetAddressesWithStats::from("/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap());
         let mut peer = Peer::new(
@@ -226,14 +226,14 @@ mod test {
         let peer_manager = PeerManager::new(HashmapDatabase::new()).unwrap();
         let mut test_peers: Vec<Peer> = Vec::new();
         // Create 20 peers were the 1st and last one is bad
-        let mut rng = rand::OsRng::new().unwrap();
-        test_peers.push(create_test_peer(&mut rng, true));
+        let _rng = rand::rngs::OsRng;
+        test_peers.push(create_test_peer(true));
         assert!(peer_manager.add_peer(test_peers[test_peers.len() - 1].clone()).is_ok());
         for _i in 0..18 {
-            test_peers.push(create_test_peer(&mut rng, false));
+            test_peers.push(create_test_peer(false));
             assert!(peer_manager.add_peer(test_peers[test_peers.len() - 1].clone()).is_ok());
         }
-        test_peers.push(create_test_peer(&mut rng, true));
+        test_peers.push(create_test_peer(true));
         assert!(peer_manager.add_peer(test_peers[test_peers.len() - 1].clone()).is_ok());
 
         // Test Valid Direct
@@ -244,7 +244,7 @@ mod test {
         assert_eq!(selected_peers.node_id, test_peers[2].node_id);
         assert_eq!(selected_peers.public_key, test_peers[2].public_key);
         // Test Invalid Direct
-        let unmanaged_peer = create_test_peer(&mut rng, false);
+        let unmanaged_peer = create_test_peer(false);
         assert!(peer_manager
             .direct_identity_node_id(&unmanaged_peer.node_id)
             .unwrap()
@@ -322,14 +322,14 @@ mod test {
 
     #[test]
     fn test_in_network_region() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let _rng = rand::rngs::OsRng;
         // Create peer manager with random peers
         let peer_manager = PeerManager::new(HashmapDatabase::new()).unwrap();
-        let network_region_node_id = create_test_peer(&mut rng, false).node_id;
+        let network_region_node_id = create_test_peer(false).node_id;
         // Create peers
         let mut test_peers: Vec<Peer> = Vec::new();
         for _ in 0..10 {
-            test_peers.push(create_test_peer(&mut rng, false));
+            test_peers.push(create_test_peer(false));
             assert!(peer_manager.add_peer(test_peers[test_peers.len() - 1].clone()).is_ok());
         }
         test_peers[0].set_banned(true);

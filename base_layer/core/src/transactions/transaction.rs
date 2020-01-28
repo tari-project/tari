@@ -729,13 +729,12 @@ mod test {
         transaction::OutputFeatures,
         types::{BlindingFactor, PrivateKey, PublicKey, RangeProof},
     };
-    use rand;
+    use rand::{self, rngs::OsRng};
     use tari_crypto::{keys::SecretKey as SecretKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
 
     #[test]
     fn unblinded_input() {
-        let mut rng = rand::OsRng::new().unwrap();
-        let k = BlindingFactor::random(&mut rng);
+        let k = BlindingFactor::random(&mut OsRng);
         let factory = PedersenCommitmentFactory::default();
         let i = UnblindedOutput::new(10.into(), k, None);
         let input = i.as_transaction_input(&factory, OutputFeatures::default());
@@ -752,11 +751,10 @@ mod test {
 
     #[test]
     fn range_proof_verification() {
-        let mut rng = rand::OsRng::new().unwrap();
         let factories = CryptoFactories::new(32);
         // Directly test the tx_output verification
-        let k1 = BlindingFactor::random(&mut rng);
-        let k2 = BlindingFactor::random(&mut rng);
+        let k1 = BlindingFactor::random(&mut OsRng);
+        let k2 = BlindingFactor::random(&mut OsRng);
 
         // For testing the max range has been limited to 2^32 so this value is too large.
         let unblinded_output1 = UnblindedOutput::new((2u64.pow(32) - 1u64).into(), k1, None);
@@ -824,9 +822,8 @@ mod test {
 
     #[test]
     fn check_timelocks() {
-        let mut rng = rand::OsRng::new().unwrap();
         let factories = CryptoFactories::new(32);
-        let k = BlindingFactor::random(&mut rng);
+        let k = BlindingFactor::random(&mut OsRng);
         let v = PrivateKey::from(2u64.pow(32) + 1);
         let c = factories.commitment.commit(&k, &v);
 

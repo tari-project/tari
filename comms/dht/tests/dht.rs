@@ -39,12 +39,7 @@ use tari_test_utils::{async_assert_eventually, paths::create_temporary_data_path
 use tower::ServiceBuilder;
 
 fn new_node_identity(control_service_address: Multiaddr) -> NodeIdentity {
-    NodeIdentity::random(
-        &mut OsRng::new().unwrap(),
-        control_service_address,
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap()
+    NodeIdentity::random(&mut OsRng, control_service_address, PeerFeatures::COMMUNICATION_NODE).unwrap()
 }
 
 fn create_peer_storage(peers: Vec<Peer>) -> CommsDatabase {

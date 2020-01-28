@@ -29,7 +29,7 @@ use futures::{
     SinkExt,
 };
 use prost::Message;
-use rand::OsRng;
+use rand::rngs::OsRng;
 use std::{convert::TryInto, sync::Arc, time::Duration};
 use tari_broadcast_channel::bounded;
 use tari_comms::{
@@ -181,7 +181,7 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
         event_publisher,
         Arc::new(
             NodeIdentity::random(
-                &mut OsRng::new().unwrap(),
+                &mut OsRng,
                 "/ip4/0.0.0.0/tcp/41239".parse().unwrap(),
                 PeerFeatures::COMMUNICATION_NODE,
             )
@@ -210,12 +210,11 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
 {
     let mut runtime = create_runtime();
 
-    let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_port = 31501 + port_offset;
     let alice_node_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         format!("/ip4/127.0.0.1/tcp/{}", alice_port).parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -224,7 +223,7 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
     // Bob's parameters
     let bob_port = 32713 + port_offset;
     let bob_node_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         format!("/ip4/127.0.0.1/tcp/{}", bob_port).parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -242,7 +241,7 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut rng, MicroTari(2500), &factories.commitment);
+    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
 
     assert!(runtime
         .block_on(alice_ts.send_transaction(
@@ -364,12 +363,11 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
 )
 {
     let mut runtime = create_runtime();
-    let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_port = 31484 + port_offset;
     let alice_node_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         format!("/ip4/127.0.0.1/tcp/{}", alice_port).parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -378,7 +376,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
     // Bob's parameters
     let bob_port = 31475 + port_offset;
     let bob_node_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         format!("/ip4/127.0.0.1/tcp/{}", bob_port).parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -387,7 +385,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
     // Carols's parameters
     let carol_port = 31488 + port_offset;
     let carol_node_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         format!("/ip4/127.0.0.1/tcp/{}", carol_port).parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -405,11 +403,11 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
     // Add some funds to Alices wallet
-    let (_utxo, uo1a) = make_input(&mut rng, MicroTari(5500), &factories.commitment);
+    let (_utxo, uo1a) = make_input(&mut OsRng, MicroTari(5500), &factories.commitment);
     runtime.block_on(alice_oms.add_output(uo1a)).unwrap();
-    let (_utxo, uo1b) = make_input(&mut rng, MicroTari(3000), &factories.commitment);
+    let (_utxo, uo1b) = make_input(&mut OsRng, MicroTari(3000), &factories.commitment);
     runtime.block_on(alice_oms.add_output(uo1b)).unwrap();
-    let (_utxo, uo1c) = make_input(&mut rng, MicroTari(3000), &factories.commitment);
+    let (_utxo, uo1c) = make_input(&mut OsRng, MicroTari(3000), &factories.commitment);
     runtime.block_on(alice_oms.add_output(uo1c)).unwrap();
 
     // A series of interleaved transactions. First with Bob and Carol offline and then two with them online
@@ -461,9 +459,9 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
     let bob_event_stream = bob_ts.get_event_stream_fused();
     let carol_event_stream = carol_ts.get_event_stream_fused();
 
-    let (_utxo, uo2) = make_input(&mut rng, MicroTari(3500), &factories.commitment);
+    let (_utxo, uo2) = make_input(&mut OsRng, MicroTari(3500), &factories.commitment);
     runtime.block_on(bob_oms.add_output(uo2)).unwrap();
-    let (_utxo, uo3) = make_input(&mut rng, MicroTari(4500), &factories.commitment);
+    let (_utxo, uo3) = make_input(&mut OsRng, MicroTari(4500), &factories.commitment);
     runtime.block_on(carol_oms.add_output(uo3)).unwrap();
 
     runtime
@@ -554,11 +552,10 @@ fn manage_multiple_transactions_sqlite_db() {
 
 fn test_sending_repeated_tx_ids<T: TransactionBackend + Clone + 'static>(alice_backend: T, bob_backend: T) {
     let mut runtime = create_runtime();
-    let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
     let bob_node_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         "/ip4/127.0.0.1/tcp/55741".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -570,7 +567,7 @@ fn test_sending_repeated_tx_ids<T: TransactionBackend + Clone + 'static>(alice_b
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend);
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
-    let (_utxo, uo) = make_input(&mut rng, MicroTari(250000), &factories.commitment);
+    let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment);
 
     runtime.block_on(bob_output_manager.add_output(uo)).unwrap();
 
@@ -643,11 +640,10 @@ fn test_sending_repeated_tx_ids_sqlite_db() {
 
 fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clone + 'static>(alice_backend: T) {
     let mut runtime = create_runtime();
-    let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
     let bob_node_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         "/ip4/127.0.0.1/tcp/31585".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -657,7 +653,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
 
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
-    let (_utxo, uo) = make_input(&mut rng, MicroTari(250000), &factories.commitment);
+    let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment);
 
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
 
@@ -679,7 +675,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
         .unwrap()
         .unwrap();
 
-    let params = TestParams::new(&mut rng);
+    let params = TestParams::new(&mut OsRng);
 
     let rtp = ReceiverTransactionProtocol::new(
         sender_message.try_into().unwrap(),
@@ -692,7 +688,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
     let mut tx_reply = rtp.get_signed_data().unwrap().clone();
     let mut wrong_tx_id = tx_reply.clone();
     wrong_tx_id.tx_id = 2;
-    let (_p, pub_key) = PublicKey::random_keypair(&mut rng);
+    let (_p, pub_key) = PublicKey::random_keypair(&mut OsRng);
     tx_reply.public_spend_key = pub_key;
     runtime
         .block_on(alice_tx_ack_sender.send(create_dummy_message(
@@ -737,7 +733,6 @@ fn test_accepting_unknown_tx_id_and_malformed_reply_sqlite_db() {
 
 fn finalize_tx_with_nonexistent_txid<T: TransactionBackend + Clone + 'static>(alice_backend: T) {
     let mut runtime = create_runtime();
-    let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
     let (
@@ -750,7 +745,7 @@ fn finalize_tx_with_nonexistent_txid<T: TransactionBackend + Clone + 'static>(al
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend);
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
-    let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut rng));
+    let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng));
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
         tx_id: 88u64,
         transaction: Some(tx.clone().into()),
@@ -759,7 +754,7 @@ fn finalize_tx_with_nonexistent_txid<T: TransactionBackend + Clone + 'static>(al
     runtime
         .block_on(alice_tx_finalized.send(create_dummy_message(
             finalized_transaction_message.clone(),
-            &PublicKey::from_secret_key(&PrivateKey::random(&mut rng)),
+            &PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         )))
         .unwrap();
 
@@ -795,7 +790,6 @@ fn finalize_tx_with_nonexistent_txid_sqlite_db() {
 
 fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(alice_backend: T, bob_backend: T) {
     let mut runtime = create_runtime();
-    let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
     let (
@@ -809,7 +803,7 @@ fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(al
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
     let bob_node_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         "/ip4/127.0.0.1/tcp/55741".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -817,7 +811,7 @@ fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(al
     let (_bob_ts, mut bob_output_manager, _bob_outbound_service, _bob_tx_sender, _bob_tx_ack_sender, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend);
 
-    let (_utxo, uo) = make_input(&mut rng, MicroTari(250000), &factories.commitment);
+    let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment);
 
     runtime.block_on(bob_output_manager.add_output(uo)).unwrap();
 
@@ -862,7 +856,7 @@ fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(al
     runtime
         .block_on(alice_tx_finalized.send(create_dummy_message(
             finalized_transaction_message.clone(),
-            &PublicKey::from_secret_key(&PrivateKey::random(&mut rng)),
+            &PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         )))
         .unwrap();
 
@@ -903,7 +897,6 @@ fn finalize_tx_with_incorrect_pubkey_sqlite_db() {
 
 fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alice_backend: T, bob_backend: T) {
     let mut runtime = create_runtime();
-    let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
     let (
@@ -917,7 +910,7 @@ fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alic
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
     let bob_node_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         "/ip4/127.0.0.1/tcp/55714".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -925,7 +918,7 @@ fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alic
     let (_bob_ts, mut bob_output_manager, _bob_outbound_service, _bob_tx_sender, _bob_tx_ack_sender, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend);
 
-    let (_utxo, uo) = make_input(&mut rng, MicroTari(250000), &factories.commitment);
+    let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment);
 
     runtime.block_on(bob_output_manager.add_output(uo)).unwrap();
 
@@ -963,7 +956,7 @@ fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alic
 
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
         tx_id: recipient_reply.tx_id,
-        transaction: Some(Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut rng)).into()),
+        transaction: Some(Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng)).into()),
     };
 
     runtime
@@ -1014,7 +1007,6 @@ fn discovery_async_return_test() {
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
 
     let mut runtime = Runtime::new().unwrap();
-    let mut rng = OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
     let alice_backend = TransactionMemoryDatabase::new();
@@ -1025,7 +1017,7 @@ fn discovery_async_return_test() {
     // Alice's parameters
     let alice_port = 30484 + port_offset;
     let alice_node_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         format!("/ip4/127.0.0.1/tcp/{}", alice_port).parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -1034,7 +1026,7 @@ fn discovery_async_return_test() {
     // Bob's parameters
     let bob_port = 30475 + port_offset;
     let bob_node_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         format!("/ip4/127.0.0.1/tcp/{}", bob_port).parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -1043,7 +1035,7 @@ fn discovery_async_return_test() {
     // Carols's parameters
     let carol_port = 30488 + port_offset;
     let carol_node_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         format!("/ip4/127.0.0.1/tcp/{}", carol_port).parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -1052,7 +1044,7 @@ fn discovery_async_return_test() {
     // Dave's parameters
     let dave_port = 30498 + port_offset;
     let dave_node_identity = NodeIdentity::random(
-        &mut rng,
+        &mut OsRng,
         format!("/ip4/127.0.0.1/tcp/{}", dave_port).parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     )
@@ -1083,11 +1075,11 @@ fn discovery_async_return_test() {
         Duration::from_secs(1),
     );
 
-    let (_utxo, uo1a) = make_input(&mut rng, MicroTari(5500), &factories.commitment);
+    let (_utxo, uo1a) = make_input(&mut OsRng, MicroTari(5500), &factories.commitment);
     runtime.block_on(alice_oms.add_output(uo1a)).unwrap();
-    let (_utxo, uo1b) = make_input(&mut rng, MicroTari(3000), &factories.commitment);
+    let (_utxo, uo1b) = make_input(&mut OsRng, MicroTari(3000), &factories.commitment);
     runtime.block_on(alice_oms.add_output(uo1b)).unwrap();
-    let (_utxo, uo1c) = make_input(&mut rng, MicroTari(3000), &factories.commitment);
+    let (_utxo, uo1c) = make_input(&mut OsRng, MicroTari(3000), &factories.commitment);
     runtime.block_on(alice_oms.add_output(uo1c)).unwrap();
 
     let initial_balance = runtime.block_on(alice_oms.get_balance()).unwrap();

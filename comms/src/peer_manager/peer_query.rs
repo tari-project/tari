@@ -198,13 +198,13 @@ mod test {
         },
     };
     use multiaddr::Multiaddr;
-    use rand::OsRng;
+    use rand::rngs::OsRng;
     use std::iter::repeat_with;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::HashmapDatabase;
 
-    fn create_test_peer(rng: &mut OsRng, ban_flag: bool) -> Peer {
-        let (_sk, pk) = RistrettoPublicKey::random_keypair(rng);
+    fn create_test_peer(ban_flag: bool) -> Peer {
+        let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_addresses = NetAddressesWithStats::from("/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap());
         let mut peer = Peer::new(
@@ -223,17 +223,14 @@ mod test {
         // Create peer manager with random peers
         let mut sample_peers = Vec::new();
         // Create 20 peers were the 1st and last one is bad
-        let mut rng = rand::OsRng::new().unwrap();
-        sample_peers.push(create_test_peer(&mut rng, true));
+        sample_peers.push(create_test_peer(true));
         let db = HashmapDatabase::new();
         let mut id_counter = 0;
 
-        repeat_with(|| create_test_peer(&mut rng, false))
-            .take(5)
-            .for_each(|peer| {
-                db.insert(id_counter, peer).unwrap();
-                id_counter += 1;
-            });
+        repeat_with(|| create_test_peer(false)).take(5).for_each(|peer| {
+            db.insert(id_counter, peer).unwrap();
+            id_counter += 1;
+        });
 
         let peers = PeerQuery::new().limit(4).executor(&db).get_results().unwrap();
 
@@ -245,24 +242,20 @@ mod test {
         // Create peer manager with random peers
         let mut sample_peers = Vec::new();
         // Create 20 peers were the 1st and last one is bad
-        let mut rng = rand::OsRng::new().unwrap();
-        sample_peers.push(create_test_peer(&mut rng, true));
+        let _rng = rand::rngs::OsRng;
+        sample_peers.push(create_test_peer(true));
         let db = HashmapDatabase::new();
         let mut id_counter = 0;
 
-        repeat_with(|| create_test_peer(&mut rng, true))
-            .take(2)
-            .for_each(|peer| {
-                db.insert(id_counter, peer).unwrap();
-                id_counter += 1;
-            });
+        repeat_with(|| create_test_peer(true)).take(2).for_each(|peer| {
+            db.insert(id_counter, peer).unwrap();
+            id_counter += 1;
+        });
 
-        repeat_with(|| create_test_peer(&mut rng, false))
-            .take(5)
-            .for_each(|peer| {
-                db.insert(id_counter, peer).unwrap();
-                id_counter += 1;
-            });
+        repeat_with(|| create_test_peer(false)).take(5).for_each(|peer| {
+            db.insert(id_counter, peer).unwrap();
+            id_counter += 1;
+        });
 
         let peers = PeerQuery::new()
             .select_where(|peer| !peer.is_banned())
@@ -279,24 +272,20 @@ mod test {
         // Create peer manager with random peers
         let mut sample_peers = Vec::new();
         // Create 20 peers were the 1st and last one is bad
-        let mut rng = rand::OsRng::new().unwrap();
-        sample_peers.push(create_test_peer(&mut rng, true));
+        let _rng = rand::rngs::OsRng;
+        sample_peers.push(create_test_peer(true));
         let db = HashmapDatabase::new();
         let mut id_counter = 0;
 
-        repeat_with(|| create_test_peer(&mut rng, true))
-            .take(3)
-            .for_each(|peer| {
-                db.insert(id_counter, peer).unwrap();
-                id_counter += 1;
-            });
+        repeat_with(|| create_test_peer(true)).take(3).for_each(|peer| {
+            db.insert(id_counter, peer).unwrap();
+            id_counter += 1;
+        });
 
-        repeat_with(|| create_test_peer(&mut rng, false))
-            .take(5)
-            .for_each(|peer| {
-                db.insert(id_counter, peer).unwrap();
-                id_counter += 1;
-            });
+        repeat_with(|| create_test_peer(false)).take(5).for_each(|peer| {
+            db.insert(id_counter, peer).unwrap();
+            id_counter += 1;
+        });
 
         let peers = PeerQuery::new()
             .select_where(|peer| peer.is_banned())
@@ -314,24 +303,20 @@ mod test {
         // Create peer manager with random peers
         let mut sample_peers = Vec::new();
         // Create 20 peers were the 1st and last one is bad
-        let mut rng = rand::OsRng::new().unwrap();
-        sample_peers.push(create_test_peer(&mut rng, true));
+        let _rng = rand::rngs::OsRng;
+        sample_peers.push(create_test_peer(true));
         let db = HashmapDatabase::new();
         let mut id_counter = 0;
 
-        repeat_with(|| create_test_peer(&mut rng, true))
-            .take(3)
-            .for_each(|peer| {
-                db.insert(id_counter, peer).unwrap();
-                id_counter += 1;
-            });
+        repeat_with(|| create_test_peer(true)).take(3).for_each(|peer| {
+            db.insert(id_counter, peer).unwrap();
+            id_counter += 1;
+        });
 
-        repeat_with(|| create_test_peer(&mut rng, false))
-            .take(5)
-            .for_each(|peer| {
-                db.insert(id_counter, peer).unwrap();
-                id_counter += 1;
-            });
+        repeat_with(|| create_test_peer(false)).take(5).for_each(|peer| {
+            db.insert(id_counter, peer).unwrap();
+            id_counter += 1;
+        });
 
         let node_id = NodeId::default();
 

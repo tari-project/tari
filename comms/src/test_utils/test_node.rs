@@ -23,7 +23,6 @@
 use crate::{
     backoff::ConstantBackoff,
     connection_manager::next::{ConnectionManager, ConnectionManagerRequester},
-    consts::COMMS_RNG,
     multiaddr::Multiaddr,
     noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
@@ -35,6 +34,7 @@ use std::{sync::Arc, time::Duration};
 use tari_shutdown::ShutdownSignal;
 use tari_storage::HashmapDatabase;
 use tokio::runtime::Runtime;
+use rand::rngs::OsRng;
 
 #[derive(Clone, Debug)]
 pub struct TestNodeConfig {
@@ -46,16 +46,11 @@ pub struct TestNodeConfig {
 
 impl Default for TestNodeConfig {
     fn default() -> Self {
-        let node_identity = COMMS_RNG.with(|rng| {
-            Arc::new(
-                NodeIdentity::random(
-                    &mut *rng.borrow_mut(),
-                    "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
-                    PeerFeatures::COMMUNICATION_NODE,
-                )
-                .unwrap(),
-            )
-        });
+        let node_identity = Arc::new(NodeIdentity::random(
+            &mut OsRng,
+            "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE
+        ).unwrap());
 
         Self {
             listen_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),

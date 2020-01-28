@@ -209,7 +209,7 @@ mod test {
             Some("/ip4/127.0.0.1/tcp/9000".parse().unwrap()),
             PeerFeatures::empty(),
         ));
-        let (_, public_key) = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap());
+        let (_, public_key) = CommsPublicKey::random_keypair(&mut OsRng);
 
         let client = ControlServiceClient::new(node_identity.clone(), public_key.clone(), conn);
         let envelope = client.construct_envelope(MessageType::Ping, PingMessage {}).unwrap();

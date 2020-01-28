@@ -27,10 +27,11 @@ use crate::{
         storage::database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
         TxId,
     },
-    types::{HashDigest, KeyDigest, TransactionRng},
+    types::{HashDigest, KeyDigest},
 };
 use futures::{pin_mut, StreamExt};
 use log::*;
+use rand::rngs::OsRng;
 use std::{collections::HashMap, sync::Mutex, time::Duration};
 use tari_core::transactions::{
     fee::Fee,
@@ -74,12 +75,11 @@ where T: OutputManagerBackend
         factories: CryptoFactories,
     ) -> Result<OutputManagerService<T>, OutputManagerError>
     {
-        let mut rng = rand::OsRng::new().unwrap();
         // Check to see if there is any persisted state, otherwise start fresh
         let key_manager_state = match db.get_key_manager_state().await? {
             None => {
                 let starting_state = KeyManagerState {
-                    master_seed: PrivateKey::random(&mut rng),
+                    master_seed: PrivateKey::random(&mut OsRng),
                     branch_seed: "".to_string(),
                     primary_key_index: 0,
                 };
@@ -286,14 +286,13 @@ where T: OutputManagerBackend
         message: String,
     ) -> Result<SenderTransactionProtocol, OutputManagerError>
     {
-        let mut rng = TransactionRng::new().unwrap();
         let outputs = self
             .select_outputs(amount, fee_per_gram, UTXOSelectionStrategy::Smallest)
             .await?;
         let total = outputs.iter().fold(MicroTari::from(0), |acc, x| acc + x.value);
 
-        let offset = PrivateKey::random(&mut rng);
-        let nonce = PrivateKey::random(&mut rng);
+        let offset = PrivateKey::random(&mut OsRng);
+        let nonce = PrivateKey::random(&mut OsRng);
 
         let mut builder = SenderTransactionProtocol::builder(1);
         builder

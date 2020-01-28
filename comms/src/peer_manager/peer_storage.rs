@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    consts::{COMMS_RNG, PEER_MANAGER_MAX_FLOOD_PEERS},
+    consts::PEER_MANAGER_MAX_FLOOD_PEERS,
     peer_manager::{
         connection_stats::PeerConnectionStats,
         node_id::{NodeDistance, NodeId},
@@ -35,7 +35,7 @@ use crate::{
 };
 use log::*;
 use multiaddr::Multiaddr;
-use rand::Rng;
+use rand::{rngs::OsRng, Rng};
 use std::{cmp::min, collections::HashMap};
 use tari_storage::{IterationResult, KeyValueStore};
 
@@ -306,12 +306,10 @@ where DS: KeyValueStore<PeerId, Peer>
         }
 
         // Shuffle first n elements
-        COMMS_RNG.with(|rng| {
-            for i in 0..max_available {
-                let j = rng.borrow_mut().gen_range(0, peer_keys.len());
-                peer_keys.swap(i, j);
-            }
-        });
+        for i in 0..max_available {
+            let j = OsRng.gen_range(0, peer_keys.len());
+            peer_keys.swap(i, j);
+        }
         // Compile list of first n shuffled elements
         let mut random_identities = Vec::with_capacity(max_available);
         for i in 0..max_available {
@@ -415,7 +413,7 @@ mod test {
     #[test]
     fn test_restore() {
         // Create Peers
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::rngs::OsRng;
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_address1 = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
@@ -470,7 +468,7 @@ mod test {
         let mut peer_storage = PeerStorage::new_indexed(HashmapDatabase::new()).unwrap();
 
         // Create Peers
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::rngs::OsRng;
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_address1 = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();

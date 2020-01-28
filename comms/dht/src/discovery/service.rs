@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    consts::DHT_RNG,
     discovery::{
         requester::{DhtDiscoveryRequest, DiscoverPeerRequest},
         DhtDiscoveryError,
@@ -37,7 +36,7 @@ use futures::{
     StreamExt,
 };
 use log::*;
-use rand::RngCore;
+use rand::{rngs::OsRng, RngCore};
 use std::{collections::HashMap, sync::Arc};
 use tari_comms::{
     log_if_error,
@@ -265,7 +264,7 @@ impl DhtDiscoveryService {
         reply_tx: oneshot::Sender<Result<Peer, DhtDiscoveryError>>,
     ) -> Result<(), DhtDiscoveryError>
     {
-        let nonce = DHT_RNG.with(|rng| rng.borrow_mut().next_u64());
+        let nonce = OsRng.next_u64();
         let public_key = discovery_request.dest_public_key.clone();
         self.send_discover(nonce, discovery_request).await?;
 

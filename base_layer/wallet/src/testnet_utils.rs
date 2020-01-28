@@ -39,7 +39,7 @@ use crate::{
 };
 use chrono::{Duration as ChronoDuration, Utc};
 use log::*;
-use rand::{distributions::Alphanumeric, CryptoRng, OsRng, Rng, RngCore};
+use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng, RngCore};
 use std::{iter, sync::Arc, thread, time::Duration};
 use tari_comms::{
     control_service::ControlServiceConfig,
@@ -97,8 +97,7 @@ pub fn make_input<R: Rng + CryptoRng>(
 }
 
 pub fn random_string(len: usize) -> String {
-    let mut rng = OsRng::new().unwrap();
-    iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(len).collect()
+    iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
 }
 
 /// Create a wallet for testing purposes
@@ -167,7 +166,6 @@ pub fn generate_wallet_test_data<
     transaction_service_backend: U,
 ) -> Result<(), WalletError>
 {
-    let mut rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
     let names = ["Alice", "Bob", "Carol", "Dave"];
     let private_keys = [
@@ -201,7 +199,7 @@ pub fn generate_wallet_test_data<
 
     // attempt to avoid colliding ports for if two wallets are run on the same machine using this test data generation
     // function
-    let random_port_offset = (rng.next_u64() % 100) as usize;
+    let random_port_offset = (OsRng.next_u64() % 100) as usize;
 
     // Generate contacts
     let mut generated_contacts = Vec::new();
@@ -229,7 +227,7 @@ pub fn generate_wallet_test_data<
     // Generate outputs
     let num_outputs = 75;
     for i in 0..num_outputs {
-        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(5_000_000 + i * 35_000), &factories);
+        let (_ti, uo) = make_input(&mut OsRng.clone(), MicroTari::from(5_000_000 + i * 35_000), &factories);
         wallet.runtime.block_on(wallet.output_manager_service.add_output(uo))?;
     }
     info!(target: LOG_TARGET, "Added test outputs to wallet");
@@ -248,7 +246,7 @@ pub fn generate_wallet_test_data<
     );
 
     for i in 0..20 {
-        let (_ti, uo) = make_input(&mut rng.clone(), MicroTari::from(1_500_000 + i * 530_500), &factories);
+        let (_ti, uo) = make_input(&mut OsRng.clone(), MicroTari::from(1_500_000 + i * 530_500), &factories);
         wallet_alice
             .runtime
             .block_on(wallet_alice.output_manager_service.add_output(uo))?;
@@ -268,7 +266,7 @@ pub fn generate_wallet_test_data<
     );
     for i in 0..20 {
         let (_ti, uo) = make_input(
-            &mut rng.clone(),
+            &mut OsRng.clone(),
             MicroTari::from(2_000_000 + i * i * 61_050),
             &factories,
         );
@@ -641,9 +639,8 @@ pub fn receive_test_transaction<
 >(
     wallet: &mut Wallet<T, U, V, W>,
 ) -> Result<(), WalletError> {
-    let mut rng = OsRng::new().unwrap();
     let contacts = wallet.runtime.block_on(wallet.contacts_service.get_contacts()).unwrap();
-    let (_secret_key, mut public_key): (CommsSecretKey, CommsPublicKey) = PublicKey::random_keypair(&mut rng);
+    let (_secret_key, mut public_key): (CommsSecretKey, CommsPublicKey) = PublicKey::random_keypair(&mut OsRng);
 
     if contacts.len() > 0 {
         public_key = contacts[0].public_key.clone();
@@ -652,8 +649,8 @@ pub fn receive_test_transaction<
     wallet
         .runtime
         .block_on(wallet.transaction_service.test_accept_transaction(
-            rng.next_u64(),
-            MicroTari::from(10_000 + rng.next_u64() % 10_1000),
+            OsRng.next_u64(),
+            MicroTari::from(10_000 + OsRng.next_u64() % 10_1000),
             public_key,
         ))?;
 

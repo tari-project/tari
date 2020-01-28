@@ -22,7 +22,7 @@
 
 use crate::{
     chain_storage::BlockchainBackend,
-    consts::{BASE_NODE_RNG, MEMPOOL_SERVICE_REQUEST_TIMEOUT},
+    consts::MEMPOOL_SERVICE_REQUEST_TIMEOUT,
     mempool::{
         proto,
         service::{
@@ -46,6 +46,7 @@ use futures::{
     Stream,
 };
 use log::*;
+use rand::rngs::OsRng;
 use std::{collections::HashMap, convert::TryInto, time::Duration};
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
@@ -301,7 +302,7 @@ where B: BlockchainBackend
         request: MempoolRequest,
     ) -> Result<(), MempoolServiceError>
     {
-        let request_key = BASE_NODE_RNG.with(|rng| generate_request_key(&mut *rng.borrow_mut()));
+        let request_key = generate_request_key(&mut OsRng);
         let service_request = proto::MempoolServiceRequest {
             request_key,
             request: Some(request.into()),

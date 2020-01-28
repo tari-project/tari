@@ -463,7 +463,7 @@ mod test {
 
         let other_peer = {
             let mut p = example_peer.clone();
-            let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap());
+            let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
             p.node_id = NodeId::from_key(&pk).unwrap();
             p.public_key = pk;
             p
@@ -471,7 +471,7 @@ mod test {
 
         let node_identity = Arc::new(
             NodeIdentity::random(
-                &mut OsRng::new().unwrap(),
+                &mut OsRng,
                 "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
                 PeerFeatures::COMMUNICATION_NODE,
             )
@@ -522,7 +522,7 @@ mod test {
 
         let pk = CommsPublicKey::default();
         let node_identity = NodeIdentity::random(
-            &mut OsRng::new().unwrap(),
+            &mut OsRng,
             "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         )
@@ -567,7 +567,7 @@ mod test {
         let mut rt = Runtime::new().unwrap();
 
         let node_identity = NodeIdentity::random(
-            &mut OsRng::new().unwrap(),
+            &mut OsRng,
             "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         )

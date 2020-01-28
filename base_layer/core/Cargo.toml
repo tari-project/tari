@@ -36,7 +36,7 @@ bitflags = "1.0.4"
 chrono = { version = "0.4.6", features = ["serde"]}
 digest = "0.8.0"
 derive-error = "0.0.4"
-rand = "0.5.5"
+rand = "0.7.2"
 serde = { version = "1.0.97", features = ["derive"] }
 rmp-serde = "0.13.7"
 base64 = "0.10.1"

@@ -43,9 +43,10 @@ use tari_p2p::{
 use tari_storage::{LMDBWrapper, lmdb_store::LMDBBuilder};
 use tari_utilities::message_format::MessageFormat;
 use tempdir::TempDir;
+use rand::rngs::OsRng;
 
 fn new_node_identity(control_service_address: NetAddress) -> NodeIdentity {
-    NodeIdentity::random(&mut OsRng::new().unwrap(), control_service_address).unwrap()
+    NodeIdentity::random(&mut OsRng, control_service_address).unwrap()
 }
 
 fn create_peer_storage(tmpdir: &TempDir, database_name: &str, peers: Vec<Peer>) -> CommsDatabase {

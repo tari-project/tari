@@ -566,7 +566,7 @@ mod test {
     }
 
     fn create_peer(address: Multiaddr) -> Peer {
-        let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap());
+        let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
         let node_id = NodeId::from_key(&pk).unwrap();
         Peer::new(pk, node_id, address.into(), PeerFlags::empty(), PeerFeatures::empty())
     }

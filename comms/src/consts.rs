@@ -20,14 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::types::CommsRng;
-use std::cell::RefCell;
-
-thread_local! {
-    /// Thread local RNG for comms
-    pub(crate) static COMMS_RNG: RefCell<CommsRng> = RefCell::new(CommsRng::new().expect("Failed to initialize CommsRng"));
-}
-
 /// The maximum number of peers to return from the flood_identities method in peer manager
 pub const PEER_MANAGER_MAX_FLOOD_PEERS: usize = 1000;
 

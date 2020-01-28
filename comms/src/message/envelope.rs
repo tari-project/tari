@@ -22,7 +22,7 @@
 
 use super::{Frame, MessageError, MessageFlags};
 use crate::{
-    consts::{COMMS_RNG, ENVELOPE_VERSION},
+    consts::ENVELOPE_VERSION,
     types::{CommsPublicKey, CommsSecretKey},
     utils::signature,
 };
@@ -41,6 +41,7 @@ pub struct MessageEnvelopeHeader {
 
 // Re-export protos
 pub use crate::proto::envelope::*;
+use rand::rngs::OsRng;
 
 impl Envelope {
     /// Sign a message, construct an Envelope with a Header
@@ -52,11 +53,11 @@ impl Envelope {
     ) -> Result<Self, MessageError>
     {
         // Sign this body
-        let header_signature = COMMS_RNG.with(|rng| {
-            let sig = signature::sign(&mut *rng.borrow_mut(), secret_key.clone(), &body)
-                .map_err(MessageError::SchnorrSignatureError)?;
+        let header_signature = {
+            let sig =
+                signature::sign(&mut OsRng, secret_key.clone(), &body).map_err(MessageError::SchnorrSignatureError)?;
             sig.to_binary().map_err(MessageError::MessageFormatError)
-        })?;
+        }?;
 
         Ok(Envelope {
             version: ENVELOPE_VERSION,
@@ -187,7 +188,7 @@ mod test {
 
     #[test]
     fn construct_signed() {
-        let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap());
+        let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
         let envelope = Envelope::construct_signed(&sk, &pk, vec![], MessageFlags::all()).unwrap();
         assert_eq!(envelope.get_comms_public_key().unwrap(), pk);
         assert!(envelope.verify_signature().unwrap());
@@ -209,7 +210,7 @@ mod test {
 
     #[test]
     fn is_valid() {
-        let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap());
+        let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
         let mut envelope = Envelope::construct_signed(&sk, &pk, vec![], MessageFlags::all()).unwrap();
         assert_eq!(envelope.is_valid(), true);
         envelope.header = None;

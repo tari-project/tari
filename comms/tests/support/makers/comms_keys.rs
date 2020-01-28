@@ -20,7 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::OsRng;
 use tari_crypto::{
     keys::PublicKey,
     ristretto::{RistrettoPublicKey, RistrettoSecretKey},
@@ -29,5 +28,5 @@ use tari_crypto::{
 /// Creates a random keypair using OsRng
 #[inline]
 pub fn make_random_keypair() -> (RistrettoSecretKey, RistrettoPublicKey) {
-    RistrettoPublicKey::random_keypair(&mut OsRng::new().unwrap())
+    RistrettoPublicKey::random_keypair(&mut rand::rngs::OsRng)
 }

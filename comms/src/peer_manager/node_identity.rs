@@ -123,9 +123,8 @@ impl NodeIdentity {
     /// is None, 127.0.0.1:9000 will be used (i.e. the caller doesn't care what the control_service_address is).
     #[cfg(test)]
     pub fn random_for_test(public_address: Option<Multiaddr>, features: PeerFeatures) -> Self {
-        use rand::OsRng;
         Self::random(
-            &mut OsRng::new().unwrap(),
+            &mut rand::rngs::OsRng,
             public_address.or("/ip4/127.0.0.1/tcp/9000".parse().ok()).unwrap(),
             features,
         )

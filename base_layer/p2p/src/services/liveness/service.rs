@@ -476,8 +476,7 @@ mod test {
             // Run the LivenessService
             rt.spawn(service.run());
 
-            let mut rng = OsRng::new().unwrap();
-            let (_, pk) = CommsPublicKey::random_keypair(&mut rng);
+            let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rngs::OsRng);
             let node_id = NodeId::from_key(&pk).unwrap();
             // Receive outbound request
             rt.spawn(async move {
@@ -495,8 +494,7 @@ mod test {
     }
 
     fn create_dummy_message<T>(inner: T) -> DomainMessage<T> {
-        let mut rng = OsRng::new().unwrap();
-        let (_, pk) = CommsPublicKey::random_keypair(&mut rng);
+        let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
         let peer_source = Peer::new(
             pk.clone(),
             NodeId::from_key(&pk).unwrap(),

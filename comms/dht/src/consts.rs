@@ -23,9 +23,5 @@
 use rand::rngs::OsRng;
 use std::cell::RefCell;
 
-thread_local! {
-    pub(crate) static DHT_RNG: RefCell<OsRng> = RefCell::new(OsRng::new().expect("OsRng failed"));
-}
-
 /// Version for DHT envelope
 pub const DHT_ENVELOPE_HEADER_VERSION: u32 = 0;

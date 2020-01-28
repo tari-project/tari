@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    consts::COMMS_RNG,
     types::{CommsPublicKey, CommsSecretKey},
 };
 use snow::{
@@ -31,6 +30,7 @@ use snow::{
 };
 use tari_crypto::keys::{DiffieHellmanSharedSecret, PublicKey, SecretKey};
 use tari_utilities::ByteArray;
+use rand::rngs::OsRng;
 
 macro_rules! copy_slice {
     ($inslice:expr, $outslice:expr) => {
@@ -91,7 +91,7 @@ impl Dh for CommsDiffieHellman {
     fn generate(&mut self, _: &mut dyn Random) {
         // `&mut dyn Random` is unsized and cannot be used with `CommsSecretKey::random`
         // COMMS_RNG fulfills the RNG requirements anyhow
-        self.secret_key = COMMS_RNG.with(|rng| CommsSecretKey::random(&mut *rng.borrow_mut()));
+        self.secret_key = CommsSecretKey::random(&mut OsRng);
         self.public_key = CommsPublicKey::from_secret_key(&self.secret_key);
     }
 
@@ -139,13 +139,13 @@ mod test {
 
     #[test]
     fn dh() {
-        let (secret_key, public_key) = COMMS_RNG.with(|rng| CommsPublicKey::random_keypair(&mut *rng.borrow_mut()));
+        let (secret_key, public_key) = CommsPublicKey::random_keypair(&mut OsRng);
         let dh = CommsDiffieHellman {
             public_key: public_key.clone(),
             secret_key: secret_key.clone(),
         };
 
-        let (secret_key2, public_key2) = COMMS_RNG.with(|rng| CommsPublicKey::random_keypair(&mut *rng.borrow_mut()));
+        let (secret_key2, public_key2) = CommsPublicKey::random_keypair(&mut OsRng);
         let expected_shared = CommsPublicKey::shared_secret(&secret_key2, &public_key);
 
         let mut out = [0; 32];

@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support::utils::{make_input, random_string, TestParams};
-use rand::RngCore;
+use rand::{rngs::OsRng, RngCore};
 use std::{thread, time::Duration};
 use tari_core::transactions::{
     fee::Fee,
@@ -66,7 +66,6 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 }
 
 fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'static>(backend: T) {
-    let mut rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
@@ -74,8 +73,8 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
     let (mut oms, _shutdown) = setup_output_manager_service(&mut runtime, backend.clone());
 
     let (_ti, uo) = make_input(
-        &mut rng.clone(),
-        MicroTari::from(100 + rng.next_u64() % 1000),
+        &mut OsRng.clone(),
+        MicroTari::from(100 + OsRng.next_u64() % 1000),
         &factories.commitment,
     );
     runtime.block_on(oms.add_output(uo.clone())).unwrap();
@@ -88,8 +87,8 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
     let num_outputs = 20;
     for _i in 0..num_outputs {
         let (_ti, uo) = make_input(
-            &mut rng.clone(),
-            MicroTari::from(100 + rng.next_u64() % 1000),
+            &mut OsRng.clone(),
+            MicroTari::from(100 + OsRng.next_u64() % 1000),
             &factories.commitment,
         );
         runtime.block_on(oms.add_output(uo)).unwrap();
@@ -114,7 +113,7 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
 
     let msg = stp.build_single_round_message().unwrap();
 
-    let b = TestParams::new(&mut rng);
+    let b = TestParams::new(&mut OsRng);
 
     let recv_info =
         SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, OutputFeatures::default(), &factories)
@@ -163,7 +162,6 @@ fn sending_transaction_and_confirmation_sqlite_db() {
 }
 
 fn send_not_enough_funds<T: OutputManagerBackend + 'static>(backend: T) {
-    let mut rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
@@ -172,8 +170,8 @@ fn send_not_enough_funds<T: OutputManagerBackend + 'static>(backend: T) {
     let num_outputs = 20;
     for _i in 0..num_outputs {
         let (_ti, uo) = make_input(
-            &mut rng.clone(),
-            MicroTari::from(100 + rng.next_u64() % 1000),
+            &mut OsRng.clone(),
+            MicroTari::from(100 + OsRng.next_u64() % 1000),
             &factories.commitment,
         );
         runtime.block_on(oms.add_output(uo)).unwrap();
@@ -205,7 +203,6 @@ fn send_not_enough_funds_sqlite_db() {
 }
 
 fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
-    let mut rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
@@ -214,12 +211,12 @@ fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
 
     let fee_per_gram = MicroTari::from(20);
     let fee_without_change = Fee::calculate(fee_per_gram, 2, 1);
-    let key1 = PrivateKey::random(&mut rng);
+    let key1 = PrivateKey::random(&mut OsRng);
     let value1 = 500;
     runtime
         .block_on(oms.add_output(UnblindedOutput::new(MicroTari::from(value1), key1, None)))
         .unwrap();
-    let key2 = PrivateKey::random(&mut rng);
+    let key2 = PrivateKey::random(&mut OsRng);
     let value2 = 800;
     runtime
         .block_on(oms.add_output(UnblindedOutput::new(MicroTari::from(value2), key2, None)))
@@ -240,7 +237,7 @@ fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
 
     let msg = stp.build_single_round_message().unwrap();
 
-    let b = TestParams::new(&mut rng);
+    let b = TestParams::new(&mut OsRng);
 
     let recv_info =
         SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, OutputFeatures::default(), &factories)
@@ -280,20 +277,18 @@ fn send_no_change_sqlite_db() {
 }
 
 fn send_not_enough_for_change<T: OutputManagerBackend + 'static>(backend: T) {
-    let mut rng = rand::OsRng::new().unwrap();
-
     let mut runtime = Runtime::new().unwrap();
 
     let (mut oms, _shutdown) = setup_output_manager_service(&mut runtime, backend);
 
     let fee_per_gram = MicroTari::from(20);
     let fee_without_change = Fee::calculate(fee_per_gram, 2, 1);
-    let key1 = PrivateKey::random(&mut rng);
+    let key1 = PrivateKey::random(&mut OsRng);
     let value1 = 500;
     runtime
         .block_on(oms.add_output(UnblindedOutput::new(MicroTari::from(value1), key1, None)))
         .unwrap();
-    let key2 = PrivateKey::random(&mut rng);
+    let key2 = PrivateKey::random(&mut OsRng);
     let value2 = 800;
     runtime
         .block_on(oms.add_output(UnblindedOutput::new(MicroTari::from(value2), key2, None)))
@@ -365,7 +360,6 @@ fn receiving_and_confirmation_sqlite_db() {
 }
 
 fn cancel_transaction<T: OutputManagerBackend + 'static>(backend: T) {
-    let mut rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
@@ -375,8 +369,8 @@ fn cancel_transaction<T: OutputManagerBackend + 'static>(backend: T) {
     let num_outputs = 20;
     for _i in 0..num_outputs {
         let (_ti, uo) = make_input(
-            &mut rng.clone(),
-            MicroTari::from(100 + rng.next_u64() % 1000),
+            &mut OsRng.clone(),
+            MicroTari::from(100 + OsRng.next_u64() % 1000),
             &factories.commitment,
         );
         runtime.block_on(oms.add_output(uo)).unwrap();
@@ -414,7 +408,6 @@ fn cancel_transaction_sqlite_db() {
 }
 
 fn timeout_transaction<T: OutputManagerBackend + 'static>(backend: T) {
-    let mut rng = rand::OsRng::new().unwrap();
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
@@ -423,8 +416,8 @@ fn timeout_transaction<T: OutputManagerBackend + 'static>(backend: T) {
     let num_outputs = 20;
     for _i in 0..num_outputs {
         let (_ti, uo) = make_input(
-            &mut rng.clone(),
-            MicroTari::from(100 + rng.next_u64() % 1000),
+            &mut OsRng.clone(),
+            MicroTari::from(100 + OsRng.next_u64() % 1000),
             &factories.commitment,
         );
         runtime.block_on(oms.add_output(uo)).unwrap();
@@ -469,7 +462,6 @@ fn timeout_transaction_sqlite_db() {
 
 fn test_get_balance<T: OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
-    let rng = rand::OsRng::new().unwrap();
     let mut runtime = Runtime::new().unwrap();
 
     let (mut oms, _shutdown) = setup_output_manager_service(&mut runtime, backend);
@@ -480,11 +472,11 @@ fn test_get_balance<T: OutputManagerBackend + 'static>(backend: T) {
 
     let mut total = MicroTari::from(0);
     let output_val = MicroTari::from(2000);
-    let (_ti, uo) = make_input(&mut rng.clone(), output_val.clone(), &factories.commitment);
+    let (_ti, uo) = make_input(&mut OsRng.clone(), output_val.clone(), &factories.commitment);
     total += uo.value.clone();
     runtime.block_on(oms.add_output(uo)).unwrap();
 
-    let (_ti, uo) = make_input(&mut rng.clone(), output_val.clone(), &factories.commitment);
+    let (_ti, uo) = make_input(&mut OsRng.clone(), output_val.clone(), &factories.commitment);
     total += uo.value.clone();
     runtime.block_on(oms.add_output(uo)).unwrap();
 

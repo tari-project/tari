@@ -309,16 +309,14 @@ pub fn create_network_with_3_base_nodes_with_config(
 }
 
 fn random_string(len: usize) -> String {
-    let mut rng = OsRng::new().unwrap();
-    iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(len).collect()
+    iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
 }
 
 // Helper function for creating a random node indentity.
 pub fn random_node_identity() -> Arc<NodeIdentity> {
-    let mut rng = OsRng::new().unwrap();
     Arc::new(
         NodeIdentity::random(
-            &mut rng,
+            &mut OsRng,
             get_next_local_address().parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         )

@@ -23,6 +23,6 @@ dirs = "2.0.2"
 futures = { version = "^0.3.1", default-features = false, features = ["alloc"]}
 log = { version = "0.4.8", features = ["std"] }
 log4rs = { version = "0.8.3", features = ["toml_format"] }
-rand = "0.5.5"
+rand = "0.7.2"
 serde_json = "1.0"
 tokio = { version="0.2.10", features = ["signal"] }

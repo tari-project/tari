@@ -165,7 +165,7 @@ mod test {
 
     #[test]
     fn test_is_and_set_banned() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::rngs::OsRng;
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let addresses = NetAddressesWithStats::from("/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap());
@@ -179,7 +179,7 @@ mod test {
 
     #[test]
     fn test_update() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::rngs::OsRng;
         let (_sk, public_key1) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&public_key1).unwrap();
         let net_address1 = "/ip4/124.0.0.124/tcp/7000".parse::<Multiaddr>().unwrap();
