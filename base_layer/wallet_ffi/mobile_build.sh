@@ -172,7 +172,7 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ -n "${PKG_PATH}" ] && [
   fi
   touch ${ANDROID_LOG_PATH}/cargo.txt
 
-  for PLATFORMABI in "aarch64-linux-android" "x86_64-linux-android" "i686-linux-android" "armv7-linux-androideabi"
+  for PLATFORMABI in "x86_64-linux-android" "aarch64-linux-android" "armv7-linux-androideabi"
   do
     # Lint warning for loop only running once is acceptable here
     # shellcheck disable=SC2043
