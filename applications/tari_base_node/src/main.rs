@@ -29,16 +29,20 @@ mod cli;
 mod consts;
 /// Miner lib Todo hide behind feature flag
 mod miner;
+/// Parser module used to control user commands
+mod parser;
 
 use crate::builder::{create_and_save_id, load_identity};
 use log::*;
+use parser::Parser;
+use rustyline::{error::ReadlineError, Editor};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
 use tari_common::{load_configuration, GlobalConfig};
 use tari_utilities::hex::Hex;
-use tokio::{runtime::Runtime, signal, task};
+use tokio::{runtime, runtime::Runtime, signal, task};
 
 const LOG_TARGET: &str = "base_node::app";
 
@@ -128,19 +132,17 @@ fn main() {
             return;
         },
     };
-
-    // Configure the shutdown daemon to listen for CTRL-C
     let flag = node.get_flag();
-    handle_ctrl_c(&rt, flag);
 
     // lets run the miner
-    // Todo, enable this on config
-    if node_config.enable_mining {
-        rt.spawn(async move {
+    let miner_handle = if node_config.enable_mining {
+        Some(rt.spawn(async move {
             debug!(target: LOG_TARGET, "starting miner");
             miner.mine().await;
             debug!(target: LOG_TARGET, "Miner has shutdown");
-        });
+        }))
+    } else {
+        None
     };
 
     // Run, node, run!
@@ -159,7 +161,13 @@ fn main() {
             ),
         }
     };
-    rt.block_on(main);
+    let base_node_handle = rt.spawn(main);
+
+    cli_loop(flag, rt.handle().clone());
+    if let Some(miner) = miner_handle {
+        rt.block_on(miner);
+    }
+    rt.block_on(base_node_handle);
     println!("Goodbye!");
 }
 
@@ -182,15 +190,31 @@ fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
         .map_err(|e| format!("There was an error while building the node runtime. {}", e.to_string()))
 }
 
-/// Set the interrupt flag on the node when Ctrl-C is entered
-fn handle_ctrl_c(rt: &Runtime, flag: Arc<AtomicBool>) -> task::JoinHandle<Result<(), String>> {
-    rt.spawn(async move {
-        signal::ctrl_c().await.map_err(|e| e.to_string())?;
-        info!(
-            target: LOG_TARGET,
-            "Termination signal received from user. Shutting node down."
-        );
-        flag.store(true, Ordering::SeqCst);
-        Ok(())
-    })
+fn cli_loop(shutdown_flag: Arc<AtomicBool>, executor: runtime::Handle) {
+    let mut rl = Editor::<()>::new();
+    let parser = Parser::new(executor);
+    loop {
+        let readline = rl.readline(">> ");
+        match readline {
+            Ok(line) => {
+                rl.add_history_entry(line.as_str());
+                parser.handle_command(&line);
+            },
+            Err(ReadlineError::Interrupted) => {
+                // shutdown section. Will shutdown all interfaces when ctrl-c was pressed
+                println!("CTRL-C received");
+                println!("Shutting down");
+                info!(
+                    target: LOG_TARGET,
+                    "Termination signal received from user. Shutting node down."
+                );
+                shutdown_flag.store(true, Ordering::SeqCst);
+                break;
+            },
+            Err(err) => {
+                println!("Error: {:?}", err);
+                break;
+            },
+        }
+    }
 }
