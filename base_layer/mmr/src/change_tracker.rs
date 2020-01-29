@@ -62,7 +62,11 @@ pub struct MerkleChangeTrackerConfig {
 /// then replaying every checkpoint in sequence until checkpoint p is reached. `rewind_to_start` and `replay` perform
 /// similar functions.
 /// * You can `reset` the ChangeTracker, which clears the current change-set and moves you back to the most recent
-/// checkpoint ('HEAD')
+/// checkpoint ('HEAD').
+///
+/// The number of commits that are kept in change history is configured in `MerkleChangeTrackerConfig`. Once the
+/// number of commits exceeds `max_history_len`, the base node state is shifted up so that it matches the state
+/// `min_history_len` commits back from the current state.
 #[derive(Debug)]
 pub struct MerkleChangeTracker<D, BaseBackend, CpBackend>
 where
@@ -71,7 +75,9 @@ where
 {
     // The base, or anchor point of the change tracker. A rewind always starts at this state
     base: MutableMmr<D, BaseBackend>,
-    // A pruned copy of base. Subsequent changes to the change tracker MMR get made on this structure
+    // This is a working copy of the `base` MMR. When new hashes get pushed to the MMR they are tracked on this data
+    // structure. Base is not modified until the checkpoint history exceeds `config.max_history_len`, at which point
+    // the base is updated to the new horizon point.
     mmr: PrunedMutableMmr<D>,
     // Additions and deletions are periodically `commit`ed and stored in the checkpoint database. These hold the
     // information required to handle rewinding and replaying off the MMR base.
