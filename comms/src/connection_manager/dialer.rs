@@ -31,7 +31,7 @@ use crate::{
         peer_connection,
     },
     multiaddr::Multiaddr,
-    multiplexing::yamux::Yamux,
+    multiplexing::Yamux,
     noise::{NoiseConfig, NoiseSocket},
     peer_manager::{AsyncPeerManager, NodeIdentity, Peer, PeerId},
     protocol::ProtocolId,

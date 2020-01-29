@@ -36,7 +36,7 @@ use crate::{
     },
     transports::MemoryTransport,
 };
-use futures::{channel::mpsc, future};
+use futures::{channel::mpsc, future, StreamExt};
 use std::{sync::Arc, time::Duration};
 use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_stream, unpack_enum};
@@ -116,7 +116,7 @@ async fn simultaneous_dial_events() {
         peer_manager2.clone(),
         shutdown.to_signal(),
     );
-    let subscription2 = conn_man2.subscribe_events();
+    let mut subscription2 = conn_man2.subscribe_events();
     let public_address2 = conn_man2.wait_until_listening().await.unwrap();
 
     peer_manager1
@@ -148,6 +148,13 @@ async fn simultaneous_dial_events() {
 
     result1.unwrap();
     result2.unwrap();
+
+    // Wait for listening and peer connected events
+    let event = Arc::try_unwrap(subscription2.next().await.unwrap().unwrap()).unwrap();
+    unpack_enum!(ConnectionManagerEvent::Listening(_addr) = event);
+
+    let event = Arc::try_unwrap(subscription2.next().await.unwrap().unwrap()).unwrap();
+    unpack_enum!(ConnectionManagerEvent::PeerConnected(_conn) = event);
 
     shutdown.trigger().unwrap();
     drop(conn_man1);

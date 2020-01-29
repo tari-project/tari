@@ -22,6 +22,7 @@
 
 mod error;
 mod identity;
+mod messaging;
 mod negotiation;
 mod notifiers;
 
@@ -32,4 +33,4 @@ pub type ProtocolId = bytes::Bytes;
 pub use error::ProtocolError;
 pub use identity::{identity_exchange, IdentityProtocolError};
 pub use negotiation::ProtocolNegotiation;
-pub use notifiers::{ProtocolEvent, ProtocolNotifier};
+pub use notifiers::{ProtocolEvent, ProtocolNotification, ProtocolNotifier};

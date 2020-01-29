@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,17 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod dialers;
-pub mod node_id;
+use crate::{
+    connection::ConnectionDirection,
+    multiaddr::Multiaddr,
+    multiplexing::Yamux,
+    transports::{MemoryTransport, Transport},
+};
+use futures::{future, StreamExt};
+use tokio::runtime::Handle;
 
-cfg_next! {
-    pub mod node_identity;
-    pub mod transport;
-    pub mod test_node;
+pub async fn build_multiplexed_connections() -> (Multiaddr, Yamux, Yamux) {
+    let rt_handle = Handle::current();
+    let (mut listener, addr) = MemoryTransport.listen("/memory/0".parse().unwrap()).await.unwrap();
+    let (dial_sock, listen_sock) = future::join(MemoryTransport.dial(addr.clone()), listener.next()).await;
 
-    mod connection_manager_mock;
-    pub use connection_manager_mock::{create_connection_manager_mock, ConnectionManagerMockState};
+    let socket_out = dial_sock.unwrap();
+    let muxer_out = Yamux::upgrade_connection(rt_handle.clone(), socket_out, ConnectionDirection::Outbound)
+        .await
+        .unwrap();
 
-    mod peer_connection_mock;
-    pub use peer_connection_mock::{create_peer_connection_mock_pair, PeerConnectionMockState};
+    let socket_in = listen_sock.unwrap().unwrap().0.await.unwrap();
+    let muxer_in = Yamux::upgrade_connection(rt_handle, socket_in, ConnectionDirection::Inbound)
+        .await
+        .unwrap();
+
+    (addr, muxer_out, muxer_in)
 }

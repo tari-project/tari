@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
+    compat::IoCompat,
     connection::ConnectionDirection,
     message::MessageExt,
     peer_manager::NodeIdentity,
     proto::identity::PeerIdentityMsg,
     protocol::{ProtocolError, ProtocolId, ProtocolNegotiation},
-    utils::compat::IoCompat,
 };
 use derive_error::Error;
 use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};

@@ -262,12 +262,16 @@ where
                 },
                 None => self.dial_peer(node_id, reply_tx).await,
             },
-            NotifyListening(reply_tx) => {
-                if let Some(addr) = self.listener_address.as_ref() {
+            NotifyListening(reply_tx) => match self.listener_address.as_ref() {
+                Some(addr) => {
                     let _ = reply_tx.send(addr.clone());
-                } else {
+                },
+                None => {
                     self.listening_notifiers.push(reply_tx);
-                }
+                },
+            },
+            GetActiveConnection(node_id, reply_tx) => {
+                let _ = reply_tx.send(self.active_connections.get(&node_id).map(Clone::clone));
             },
         }
     }
@@ -292,7 +296,7 @@ where
                 log_if_error!(
                     target: LOG_TARGET,
                     self.protocol_notifier
-                        .notify(&protocol, ProtocolEvent::NewSubstream(123, stream))
+                        .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id, stream))
                         .await,
                     "Error sending NewSubstream notification because '{error}'",
                 );

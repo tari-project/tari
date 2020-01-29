@@ -30,7 +30,7 @@ use crate::{
         peer_connection::{self, PeerConnection},
     },
     multiaddr::Multiaddr,
-    multiplexing::yamux::Yamux,
+    multiplexing::Yamux,
     noise::NoiseConfig,
     peer_manager::{AsyncPeerManager, NodeIdentity},
     protocol::ProtocolId,

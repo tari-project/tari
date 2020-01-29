@@ -120,7 +120,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             String::from_utf8_lossy(&self.buf[1..len + 1]),
             len
         );
-        Ok(self.buf[1..len + 1].into())
+        Ok(Bytes::copy_from_slice(&self.buf[1..len + 1]))
     }
 
     async fn write_frame_flush(&mut self, protocol: &ProtocolId) -> Result<(), ProtocolError> {

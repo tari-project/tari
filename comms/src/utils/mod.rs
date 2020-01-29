@@ -24,7 +24,3 @@ pub mod crypt;
 pub mod signature;
 #[macro_use]
 pub mod multiaddr;
-
-cfg_next! {
-    pub mod compat;
-}

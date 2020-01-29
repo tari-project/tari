@@ -23,7 +23,7 @@
 use crate::{
     connection::ConnectionDirection,
     connection_manager::error::ConnectionManagerError,
-    multiplexing::yamux::Yamux,
+    multiplexing::Yamux,
     peer_manager::{AsyncPeerManager, NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     proto::identity::PeerIdentityMsg,
     protocol,

@@ -25,17 +25,20 @@ pub mod deprecated;
 pub use deprecated::*;
 
 cfg_next! {
+    mod common;
     mod dial_state;
     mod dialer;
     mod error;
     mod listener;
     mod manager;
-    mod peer_connection;
     mod requester;
-    mod common;
+
+    mod peer_connection;
+    pub use peer_connection::{PeerConnection, PeerConnectionRequest, NegotiatedSubstream};
 
     pub mod next {
         pub use super::manager::{ConnectionManager, ConnectionManagerConfig, ConnectionManagerEvent};
+        pub use super::error::{ConnectionManagerError, PeerConnectionError};
         pub use super::requester::{ConnectionManagerRequester, ConnectionManagerRequest};
     }
 

@@ -41,11 +41,13 @@ use yamux::Mode;
 type IncomingRx = mpsc::Receiver<Result<yamux::Stream, yamux::ConnectionError>>;
 type IncomingTx = mpsc::Sender<Result<yamux::Stream, yamux::ConnectionError>>;
 
+pub type Control = yamux::Control;
+
 const LOG_TARGET: &str = "comms::multiplexing::yamux";
 
 pub struct Yamux {
     control: yamux::Control,
-    incoming: Incoming,
+    incoming: IncomingSubstreams,
 }
 
 const MAX_BUFFER_SIZE: u32 = 8 * 1024 * 1024; // 8MB
@@ -90,7 +92,7 @@ impl Yamux {
     fn spawn_incoming_stream_worker<TSocket>(
         executor: runtime::Handle,
         connection: yamux::Connection<TSocket>,
-    ) -> Incoming
+    ) -> IncomingSubstreams
     where
         TSocket: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     {
@@ -99,7 +101,7 @@ impl Yamux {
         let stream = yamux::into_stream(connection).boxed();
         let incoming = IncomingWorker::new(stream, incoming_tx, shutdown.to_signal());
         executor.spawn(incoming.run());
-        Incoming::new(incoming_rx, shutdown)
+        IncomingSubstreams::new(incoming_rx, shutdown)
     }
 
     /// Get the yamux control struct
@@ -108,28 +110,28 @@ impl Yamux {
     }
 
     /// Returns a mutable reference to a `Stream` that emits substreams initiated by the remote
-    pub fn incoming_mut(&mut self) -> &mut Incoming {
+    pub fn incoming_mut(&mut self) -> &mut IncomingSubstreams {
         &mut self.incoming
     }
 
     /// Consumes this object and returns a `Stream` that emits substreams initiated by the remote
-    pub fn incoming(self) -> Incoming {
+    pub fn incoming(self) -> IncomingSubstreams {
         self.incoming
     }
 }
 
-pub struct Incoming {
+pub struct IncomingSubstreams {
     inner: IncomingRx,
     shutdown: Shutdown,
 }
 
-impl Incoming {
+impl IncomingSubstreams {
     pub fn new(inner: IncomingRx, shutdown: Shutdown) -> Self {
         Self { inner, shutdown }
     }
 }
 
-impl Stream for Incoming {
+impl Stream for IncomingSubstreams {
     type Item = Result<yamux::Stream, yamux::ConnectionError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -137,7 +139,7 @@ impl Stream for Incoming {
     }
 }
 
-impl Drop for Incoming {
+impl Drop for IncomingSubstreams {
     fn drop(&mut self) {
         let _ = self.shutdown.trigger();
     }

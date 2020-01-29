@@ -33,6 +33,7 @@ use tokio::sync::broadcast;
 pub enum ConnectionManagerRequest {
     DialPeer(NodeId, oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>),
     NotifyListening(oneshot::Sender<Multiaddr>),
+    GetActiveConnection(NodeId, oneshot::Sender<Option<PeerConnection>>),
 }
 
 /// Responsible for constructing requests to the ConnectionManagerService
@@ -71,11 +72,28 @@ impl ConnectionManagerRequester {
             .map_err(|_| ConnectionManagerError::ActorRequestCanceled)?
     }
 
-    /// Attempt to connect to a remote peer
+    /// Return the listening address of this node's listener. This will asynchronously block until the listener has
+    /// initialized and a listening address has been established.
+    ///
+    /// This is useful when using "assigned port" addresses, such as /ip4/0.0.0.0/tcp/0 or /memory/0 for listening and
+    /// you wish to know the final assigned port.
     pub async fn wait_until_listening(&mut self) -> Result<Multiaddr, ConnectionManagerError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
             .send(ConnectionManagerRequest::NotifyListening(reply_tx))
+            .await
+            .map_err(|_| ConnectionManagerError::SendToActorFailed)?;
+        reply_rx.await.map_err(|_| ConnectionManagerError::ActorRequestCanceled)
+    }
+
+    pub async fn get_active_connection(
+        &mut self,
+        node_id: NodeId,
+    ) -> Result<Option<PeerConnection>, ConnectionManagerError>
+    {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(ConnectionManagerRequest::GetActiveConnection(node_id, reply_tx))
             .await
             .map_err(|_| ConnectionManagerError::SendToActorFailed)?;
         reply_rx.await.map_err(|_| ConnectionManagerError::ActorRequestCanceled)
