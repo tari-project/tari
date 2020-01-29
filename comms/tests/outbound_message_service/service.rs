@@ -323,7 +323,7 @@ fn test_outbound_message_pool_fail_and_retry() {
 
     shutdown.trigger().unwrap();
 
-    let events = collect_stream!(rt, event_subscription, timeout = Duration::from_secs(10));
+    let events = rt.block_on(async { collect_stream!(event_subscription, timeout = Duration::from_secs(10)) });
 
     // Check that the PeerDialSuccess event was emitted
     let dialed_node_id = events

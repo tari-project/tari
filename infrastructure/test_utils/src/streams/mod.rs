@@ -35,7 +35,9 @@ where
     })
 }
 
-/// Collect $take items from a stream or timeout for Duration $timeout. Requires the `tokio` runtime
+/// Collect $take items from a stream or timeout for Duration $timeout.
+///
+/// Requires the `tokio` runtime and should be used in an async context.
 ///
 /// ```edition2018
 /// # use tokio::runtime::Runtime;
@@ -45,24 +47,24 @@ where
 ///
 /// let mut rt = Runtime::new().unwrap();
 /// let stream = stream::iter(1..10);
-/// assert_eq!(collect_stream!(rt, stream, take=3, timeout=Duration::from_secs(1)), vec![1,2,3]);
+/// assert_eq!(rt.block_on(async { collect_stream!(stream, take=3, timeout=Duration::from_secs(1)) }), vec![1,2,3]);
 /// ```
 #[macro_export]
 macro_rules! collect_stream {
-    ($runtime:expr, $stream:expr, take=$take:expr, timeout=$timeout:expr $(,)?) => {{
+    ($stream:expr, take=$take:expr, timeout=$timeout:expr $(,)?) => {{
         use futures::{FutureExt, StreamExt};
         use tokio::time;
 
-        $runtime
-            .block_on(async { time::timeout($timeout, $stream.take($take).collect::<Vec<_>>()).await })
+        time::timeout($timeout, $stream.take($take).collect::<Vec<_>>())
+            .await
             .expect(format!("Timeout before stream could collect {} item(s)", $take).as_str())
     }};
-    ($runtime:expr, $stream:expr, timeout=$timeout:expr $(,)?) => {{
+    ($stream:expr, timeout=$timeout:expr $(,)?) => {{
         use futures::{FutureExt, StreamExt};
         use tokio::time;
 
-        $runtime
-            .block_on(async { time::timeout($timeout, $stream.collect::<Vec<_>>()).await })
+        time::timeout($timeout, $stream.collect::<Vec<_>>())
+            .await
             .expect("Stream did not close within timeout")
     }};
 }
@@ -77,19 +79,19 @@ macro_rules! collect_stream {
 ///
 /// let mut rt = Runtime::new().unwrap();
 /// let stream = stream::iter(vec![1,2,2,3,2]);
-/// assert_eq!(collect_stream_count!(rt, stream, timeout=Duration::from_secs(1)).get(&2), Some(&3));
+/// assert_eq!(rt.block_on(async { collect_stream_count!(stream, timeout=Duration::from_secs(1)) }).get(&2), Some(&3));
 /// ```
 #[macro_export]
 macro_rules! collect_stream_count {
-    ($runtime:expr, $stream:expr, take=$take:expr, timeout=$timeout:expr$(,)?) => {{
+    ($stream:expr, take=$take:expr, timeout=$timeout:expr$(,)?) => {{
         use std::collections::HashMap;
-        let items = $crate::collect_stream!($runtime, $stream, take = $take, timeout = $timeout);
+        let items = $crate::collect_stream!($stream, take = $take, timeout = $timeout);
         $crate::streams::get_item_counts(items)
     }};
 
-    ($runtime:expr, $stream:expr, timeout=$timeout:expr $(,)?) => {{
+    ($stream:expr, timeout=$timeout:expr $(,)?) => {{
         use std::collections::HashMap;
-        let items = $crate::collect_stream!($runtime, $stream, timeout = $timeout);
+        let items = $crate::collect_stream!($stream, timeout = $timeout);
         $crate::streams::get_item_counts(items)
     }};
 }

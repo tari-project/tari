@@ -86,7 +86,7 @@ impl NodeIdentity {
     /// Generates a new random NodeIdentity for CommsPublicKey
     pub fn random<R>(
         rng: &mut R,
-        control_service_address: Multiaddr,
+        public_address: Multiaddr,
         features: PeerFeatures,
     ) -> Result<Self, NodeIdentityError>
     where
@@ -101,7 +101,7 @@ impl NodeIdentity {
             public_key,
             features,
             secret_key,
-            public_address: RwLock::new(control_service_address),
+            public_address: RwLock::new(public_address),
         })
     }
 

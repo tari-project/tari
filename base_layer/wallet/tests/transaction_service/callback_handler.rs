@@ -230,12 +230,13 @@ fn test_callback_handler() {
 
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
-    let alice_stream = collect_stream!(
-        runtime,
-        alice_event_stream.map(|i| (*i).clone()),
-        take = 4,
-        timeout = Duration::from_secs(10)
-    );
+    let alice_stream = runtime.block_on(async {
+        collect_stream!(
+            alice_event_stream.map(|i| (*i).clone()),
+            take = 4,
+            timeout = Duration::from_secs(10)
+        )
+    });
 
     let recv_tx = alice_stream.iter().find(|i| {
         if let TransactionEvent::ReceivedTransactionReply(_) = i {
@@ -252,12 +253,13 @@ fn test_callback_handler() {
     };
 
     let alice_event_stream = alice_ts.get_event_stream_fused();
-    let _ = collect_stream!(
-        runtime,
-        alice_event_stream.map(|i| (*i).clone()),
-        take = 5,
-        timeout = Duration::from_secs(10)
-    );
+    let _ = runtime.block_on(async {
+        collect_stream!(
+            alice_event_stream.map(|i| (*i).clone()),
+            take = 5,
+            timeout = Duration::from_secs(10)
+        )
+    });
 
     if let TransactionEvent::ReceivedTransactionReply(tx_id) = recv_tx.unwrap() {
         runtime
@@ -266,12 +268,13 @@ fn test_callback_handler() {
     };
 
     let alice_event_stream = alice_ts.get_event_stream_fused();
-    let _ = collect_stream!(
-        runtime,
-        alice_event_stream.map(|i| (*i).clone()),
-        take = 6,
-        timeout = Duration::from_secs(10)
-    );
+    let _ = runtime.block_on(async {
+        collect_stream!(
+            alice_event_stream.map(|i| (*i).clone()),
+            take = 6,
+            timeout = Duration::from_secs(10)
+        )
+    });
 
     let callback_state = CALLBACK_STATE.lock().unwrap();
     assert!(callback_state.received_tx_callback_called);

@@ -278,17 +278,19 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
     );
 
     assert_eq!(
-        collect_stream!(
-            runtime,
-            alice_event_stream.map(|i| (*i).clone()),
-            take = 1,
-            timeout = Duration::from_secs(10)
-        )
-        .iter()
-        .fold(0, |acc, x| match x {
-            TransactionEvent::ReceivedTransactionReply(_) => acc + 1,
-            _ => acc,
-        }),
+        runtime
+            .block_on(async {
+                collect_stream!(
+                    alice_event_stream.map(|i| (*i).clone()),
+                    take = 1,
+                    timeout = Duration::from_secs(10)
+                )
+            })
+            .iter()
+            .fold(0, |acc, x| match x {
+                TransactionEvent::ReceivedTransactionReply(_) => acc + 1,
+                _ => acc,
+            }),
         1
     );
 
@@ -482,21 +484,23 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
         .unwrap();
 
     assert_eq!(
-        collect_stream!(
-            runtime,
-            alice_event_stream.map(|i| (*i).clone()),
-            take = 5,
-            timeout = Duration::from_secs(30)
-        )
-        .iter()
-        .fold(0, |acc, x| match x {
-            TransactionEvent::ReceivedTransactionReply(_) => acc + 1,
-            _ => acc,
-        }),
+        runtime
+            .block_on(async {
+                collect_stream!(
+                    alice_event_stream.map(|i| (*i).clone()),
+                    take = 5,
+                    timeout = Duration::from_secs(30)
+                )
+            })
+            .iter()
+            .fold(0, |acc, x| match x {
+                TransactionEvent::ReceivedTransactionReply(_) => acc + 1,
+                _ => acc,
+            }),
         3
     );
 
-    let _ = collect_stream!(runtime, bob_event_stream, take = 5, timeout = Duration::from_secs(30));
+    let _ = runtime.block_on(async { collect_stream!(bob_event_stream, take = 5, timeout = Duration::from_secs(30)) });
 
     let alice_pending_outbound = runtime.block_on(alice_ts.get_pending_outbound_transactions()).unwrap();
     let alice_completed_tx = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
@@ -506,7 +510,8 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
     let bob_completed_tx = runtime.block_on(bob_ts.get_completed_transactions()).unwrap();
     assert_eq!(bob_pending_outbound.len(), 0);
     assert_eq!(bob_completed_tx.len(), 3);
-    let _ = collect_stream!(runtime, carol_event_stream, take = 2, timeout = Duration::from_secs(30));
+    let _ =
+        runtime.block_on(async { collect_stream!(carol_event_stream, take = 2, timeout = Duration::from_secs(30)) });
     let carol_pending_inbound = runtime.block_on(carol_ts.get_pending_inbound_transactions()).unwrap();
     let carol_completed_tx = runtime.block_on(carol_ts.get_completed_transactions()).unwrap();
     assert_eq!(carol_pending_inbound.len(), 0);
@@ -588,12 +593,13 @@ fn test_sending_repeated_tx_ids<T: TransactionBackend + Clone + 'static>(alice_b
     runtime.block_on(alice_tx_sender.send(tx_message.clone())).unwrap();
     runtime.block_on(alice_tx_sender.send(tx_message.clone())).unwrap();
 
-    let result = collect_stream!(
-        runtime,
-        alice_event_stream.map(|i| (*i).clone()),
-        take = 2,
-        timeout = Duration::from_secs(10)
-    );
+    let result = runtime.block_on(async {
+        collect_stream!(
+            alice_event_stream.map(|i| (*i).clone()),
+            take = 2,
+            timeout = Duration::from_secs(10)
+        )
+    });
 
     alice_outbound_service
         .wait_call_count(1, Duration::from_secs(10))
@@ -701,19 +707,21 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
         .block_on(alice_tx_ack_sender.send(create_dummy_message(tx_reply.into(), &bob_node_identity.public_key())))
         .unwrap();
 
-    assert!(collect_stream!(
-        runtime,
-        alice_event_stream.map(|i| (*i).clone()),
-        take = 2,
-        timeout = Duration::from_secs(10)
-    )
-    .iter()
-    .find(|i| if let TransactionEvent::Error(s) = i {
-        s == &"Error handling Transaction Recipient Reply message".to_string()
-    } else {
-        false
-    })
-    .is_some());
+    assert!(runtime
+        .block_on(async {
+            collect_stream!(
+                alice_event_stream.map(|i| (*i).clone()),
+                take = 2,
+                timeout = Duration::from_secs(10)
+            )
+        })
+        .iter()
+        .find(|i| if let TransactionEvent::Error(s) = i {
+            s == &"Error handling Transaction Recipient Reply message".to_string()
+        } else {
+            false
+        })
+        .is_some());
 }
 
 #[test]
@@ -758,19 +766,21 @@ fn finalize_tx_with_nonexistent_txid<T: TransactionBackend + Clone + 'static>(al
         )))
         .unwrap();
 
-    assert!(collect_stream!(
-        runtime,
-        alice_event_stream.map(|i| (*i).clone()),
-        take = 1,
-        timeout = Duration::from_secs(10)
-    )
-    .iter()
-    .find(|i| if let TransactionEvent::Error(s) = i {
-        s == &"Error handling Transaction Finalized message".to_string()
-    } else {
-        false
-    })
-    .is_some());
+    assert!(runtime
+        .block_on(async {
+            collect_stream!(
+                alice_event_stream.map(|i| (*i).clone()),
+                take = 1,
+                timeout = Duration::from_secs(10)
+            )
+        })
+        .iter()
+        .find(|i| if let TransactionEvent::Error(s) = i {
+            s == &"Error handling Transaction Finalized message".to_string()
+        } else {
+            false
+        })
+        .is_some());
 }
 
 #[test]
@@ -860,19 +870,21 @@ fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(al
         )))
         .unwrap();
 
-    assert!(collect_stream!(
-        runtime,
-        alice_event_stream.map(|i| (*i).clone()),
-        take = 2,
-        timeout = Duration::from_secs(10)
-    )
-    .iter()
-    .find(|i| if let TransactionEvent::Error(s) = i {
-        s == &"Error handling Transaction Finalized message".to_string()
-    } else {
-        false
-    })
-    .is_some());
+    assert!(runtime
+        .block_on(async {
+            collect_stream!(
+                alice_event_stream.map(|i| (*i).clone()),
+                take = 2,
+                timeout = Duration::from_secs(10)
+            )
+        })
+        .iter()
+        .find(|i| if let TransactionEvent::Error(s) = i {
+            s == &"Error handling Transaction Finalized message".to_string()
+        } else {
+            false
+        })
+        .is_some());
 }
 
 #[test]
@@ -966,19 +978,21 @@ fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alic
         )))
         .unwrap();
 
-    assert!(collect_stream!(
-        runtime,
-        alice_event_stream.map(|i| (*i).clone()),
-        take = 2,
-        timeout = Duration::from_secs(10)
-    )
-    .iter()
-    .find(|i| if let TransactionEvent::Error(s) = i {
-        s == &"Error handling Transaction Finalized message".to_string()
-    } else {
-        false
-    })
-    .is_some());
+    assert!(runtime
+        .block_on(async {
+            collect_stream!(
+                alice_event_stream.map(|i| (*i).clone()),
+                take = 2,
+                timeout = Duration::from_secs(10)
+            )
+        })
+        .iter()
+        .find(|i| if let TransactionEvent::Error(s) = i {
+            s == &"Error handling Transaction Finalized message".to_string()
+        } else {
+            false
+        })
+        .is_some());
 }
 
 #[test]
@@ -1100,21 +1114,23 @@ fn discovery_async_return_test() {
     };
     assert_ne!(initial_balance, runtime.block_on(alice_oms.get_balance()).unwrap());
 
-    assert!(collect_stream!(
-        runtime,
-        alice_event_stream.map(|i| (*i).clone()),
-        take = 1,
-        timeout = Duration::from_secs(10)
-    )
-    .iter()
-    .find(
-        |i| if let TransactionEvent::TransactionSendDiscoveryComplete(t, result) = i {
-            t == &tx_id && !(*result)
-        } else {
-            false
-        }
-    )
-    .is_some());
+    assert!(runtime
+        .block_on(async {
+            collect_stream!(
+                alice_event_stream.map(|i| (*i).clone()),
+                take = 1,
+                timeout = Duration::from_secs(10)
+            )
+        })
+        .iter()
+        .find(
+            |i| if let TransactionEvent::TransactionSendDiscoveryComplete(t, result) = i {
+                t == &tx_id && !(*result)
+            } else {
+                false
+            }
+        )
+        .is_some());
 
     assert_eq!(initial_balance, runtime.block_on(alice_oms.get_balance()).unwrap());
 
@@ -1141,12 +1157,13 @@ fn discovery_async_return_test() {
         },
     };
     let alice_event_stream = alice_ts.get_event_stream_fused();
-    let result = collect_stream!(
-        runtime,
-        alice_event_stream.map(|i| (*i).clone()),
-        take = 3,
-        timeout = Duration::from_secs(10)
-    );
+    let result = runtime.block_on(async {
+        collect_stream!(
+            alice_event_stream.map(|i| (*i).clone()),
+            take = 3,
+            timeout = Duration::from_secs(10)
+        )
+    });
     assert!(result
         .iter()
         .find(

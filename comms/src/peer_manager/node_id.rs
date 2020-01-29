@@ -187,6 +187,12 @@ impl PartialOrd<NodeId> for NodeId {
     }
 }
 
+impl Ord for NodeId {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.cmp(&other.0)
+    }
+}
+
 impl TryFrom<&[u8]> for NodeId {
     type Error = NodeIdError;
 

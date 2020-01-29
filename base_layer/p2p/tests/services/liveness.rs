@@ -135,12 +135,13 @@ fn end_to_end() {
             .unwrap();
     }
 
-    let events = collect_stream!(
-        runtime,
-        liveness1.get_event_stream_fused(),
-        take = 18,
-        timeout = Duration::from_secs(20),
-    );
+    let events = runtime.block_on(async {
+        collect_stream!(
+            liveness1.get_event_stream_fused(),
+            take = 18,
+            timeout = Duration::from_secs(20),
+        )
+    });
 
     let ping_count = events
         .iter()
@@ -162,12 +163,13 @@ fn end_to_end() {
 
     assert_eq!(pong_count, 8);
 
-    let events = collect_stream!(
-        runtime,
-        liveness2.get_event_stream_fused(),
-        take = 18,
-        timeout = Duration::from_secs(10),
-    );
+    let events = runtime.block_on(async {
+        collect_stream!(
+            liveness2.get_event_stream_fused(),
+            take = 18,
+            timeout = Duration::from_secs(10),
+        )
+    });
 
     let ping_count = events
         .iter()

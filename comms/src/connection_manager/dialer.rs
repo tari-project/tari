@@ -62,12 +62,11 @@ type DialFuturesUnordered =
     FuturesUnordered<BoxFuture<'static, Option<(DialState, Result<PeerConnection, ConnectionManagerError>)>>>;
 
 #[derive(Debug)]
-pub enum DialerRequest {
+pub(crate) enum DialerRequest {
     Dial(
         Box<Peer>,
         oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
     ),
-    CancelPending(PeerId),
 }
 
 pub struct Dialer<TTransport, TBackoff> {
@@ -92,7 +91,7 @@ where
     TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
     TBackoff: Backoff + Send + Sync + 'static,
 {
-    pub fn new(
+    pub(crate) fn new(
         executor: runtime::Handle,
         config: ConnectionManagerConfig,
         node_identity: Arc<NodeIdentity>,
@@ -162,17 +161,6 @@ where
                 }
                 self.handle_dial_peer_request(pending_dials, *peer, reply_tx);
             },
-            CancelPending(peer_id) => {
-                debug!(target: LOG_TARGET, "Cancelling dial for peer id '{}'", peer_id);
-                if let Some(mut signal) = self.cancel_signals.remove(&peer_id) {
-                    log_if_error_fmt!(
-                        target: LOG_TARGET,
-                        signal.trigger(),
-                        "Failed to cancel dial for peer Id('{}')",
-                        peer_id
-                    );
-                }
-            },
         }
     }
 
@@ -212,7 +200,7 @@ where
         let peer_id_short_str = peer.node_id.short_str();
         match &dial_result {
             Ok(conn) => {
-                self.notify_connection_manager(ConnectionManagerEvent::PeerConnected(Box::new(conn.clone())))
+                self.notify_connection_manager(ConnectionManagerEvent::PeerConnected(conn.clone()))
                     .await
             },
             Err(err) => {

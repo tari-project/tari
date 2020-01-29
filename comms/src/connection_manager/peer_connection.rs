@@ -81,7 +81,7 @@ pub enum PeerConnectionRequest {
         oneshot::Sender<Result<NegotiatedSubstream, PeerConnectionError>>,
     ),
     /// Disconnect all substreams and close the transport connection
-    Disconnect(oneshot::Sender<()>),
+    Disconnect(bool, oneshot::Sender<()>),
 }
 
 /// Request handle for an active peer connection
@@ -134,7 +134,17 @@ impl PeerConnection {
     pub async fn disconnect(&mut self) -> Result<(), PeerConnectionError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.request_tx
-            .send(PeerConnectionRequest::Disconnect(reply_tx))
+            .send(PeerConnectionRequest::Disconnect(false, reply_tx))
+            .await?;
+        Ok(reply_rx
+            .await
+            .map_err(|_| PeerConnectionError::InternalReplyCancelled)?)
+    }
+
+    pub(crate) async fn disconnect_silent(&mut self) -> Result<(), PeerConnectionError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.request_tx
+            .send(PeerConnectionRequest::Disconnect(true, reply_tx))
             .await?;
         Ok(reply_rx
             .await
@@ -194,11 +204,11 @@ impl PeerConnectionActor {
                         },
                         Some(Err(err)) => {
                             warn!(target: LOG_TARGET, "Incoming substream error '{}'. Closing connection for peer '{}'", err, self.peer_node_id.short_str());
-                            self.disconnect().await;
+                            self.disconnect(false).await;
                         },
                         None => {
                             warn!(target: LOG_TARGET, "Peer '{}' closed the connection", self.peer_node_id.short_str());
-                            self.disconnect().await;
+                            self.disconnect(false).await;
                         },
                     }
                 }
@@ -221,13 +231,13 @@ impl PeerConnectionActor {
                     "Reply oneshot closed when sending reply",
                 );
             },
-            Disconnect(reply_tx) => {
+            Disconnect(silent, reply_tx) => {
                 debug!(
                     target: LOG_TARGET,
                     "Disconnect requested for peer with public key '{}'",
                     self.peer_node_id.short_str()
                 );
-                self.disconnect().await;
+                self.disconnect(silent).await;
                 let _ = reply_tx.send(());
             },
         }
@@ -275,7 +285,12 @@ impl PeerConnectionActor {
         );
     }
 
-    async fn disconnect(&mut self) {
+    /// Disconnect this peer connection.
+    ///
+    /// # Arguments
+    ///
+    /// silent - true to supress the PeerDisconnected event, false to publish the event
+    async fn disconnect(&mut self, silent: bool) {
         if let Err(err) = self.control.close().await {
             error!(
                 target: LOG_TARGET,
@@ -291,10 +306,12 @@ impl PeerConnectionActor {
             Some(())
         });
 
-        self.notify_event(ConnectionManagerEvent::PeerDisconnected(Box::new(
-            self.peer_node_id.clone(),
-        )))
-        .await;
+        if !silent {
+            self.notify_event(ConnectionManagerEvent::PeerDisconnected(Box::new(
+                self.peer_node_id.clone(),
+            )))
+            .await;
+        }
     }
 }
 
