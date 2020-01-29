@@ -63,7 +63,7 @@ where
     TTransport: Transport,
     TTransport::Output: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
-    pub fn new(
+    pub(crate) fn new(
         executor: runtime::Handle,
         config: ConnectionManagerConfig,
         transport: TTransport,
@@ -158,7 +158,7 @@ where
                         log_if_error!(
                             target: LOG_TARGET,
                             conn_man_notifier
-                                .send(ConnectionManagerEvent::PeerConnected(Box::new(peer_conn)))
+                                .send(ConnectionManagerEvent::PeerConnected(peer_conn))
                                 .await,
                             "Failed to publish event because '{error}'",
                         );

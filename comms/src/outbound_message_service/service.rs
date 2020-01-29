@@ -641,7 +641,7 @@ mod test {
         assert_send_msg(msg, b"E");
 
         // Connection should be reused, so connection manager should not receive another request to connect.
-        let requests = collect_stream!(rt, conn_man_rx, take = 2, timeout = Duration::from_secs(3));
+        let requests = rt.block_on(async { collect_stream!(conn_man_rx, take = 2, timeout = Duration::from_secs(3)) });
         assert!(requests.iter().all(|req| {
             match req {
                 ConnectionManagerRequest::DialPeer(_) => false,

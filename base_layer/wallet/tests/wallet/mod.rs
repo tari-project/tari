@@ -185,17 +185,19 @@ fn test_wallet() {
             .unwrap();
 
         assert_eq!(
-            collect_stream!(
-                runtime,
-                alice_event_stream.map(|i| (*i).clone()),
-                take = 1,
-                timeout = Duration::from_secs(10)
-            )
-            .iter()
-            .fold(0, |acc, x| match x {
-                TransactionEvent::ReceivedTransactionReply(_) => acc + 1,
-                _ => acc,
-            }),
+            runtime
+                .block_on(async {
+                    collect_stream!(
+                        alice_event_stream.map(|i| (*i).clone()),
+                        take = 1,
+                        timeout = Duration::from_secs(10)
+                    )
+                })
+                .iter()
+                .fold(0, |acc, x| match x {
+                    TransactionEvent::ReceivedTransactionReply(_) => acc + 1,
+                    _ => acc,
+                }),
             1
         );
 

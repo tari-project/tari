@@ -379,38 +379,42 @@ pub fn generate_wallet_test_data<
     let alice_event_stream = wallet_alice.transaction_service.get_event_stream_fused();
     let bob_event_stream = wallet_bob.transaction_service.get_event_stream_fused();
 
-    let _alice_stream = collect_stream!(
-        wallet_alice.runtime,
-        alice_event_stream.map(|i| (*i).clone()),
-        take = 12,
-        timeout = Duration::from_secs(60)
-    );
+    let _alice_stream = wallet_alice.runtime.block_on(async {
+        collect_stream!(
+            alice_event_stream.map(|i| (*i).clone()),
+            take = 12,
+            timeout = Duration::from_secs(60)
+        )
+    });
 
-    let _bob_stream = collect_stream!(
-        wallet_bob.runtime,
-        bob_event_stream.map(|i| (*i).clone()),
-        take = 8,
-        timeout = Duration::from_secs(60)
-    );
+    let _bob_stream = wallet_bob.runtime.block_on(async {
+        collect_stream!(
+            bob_event_stream.map(|i| (*i).clone()),
+            take = 8,
+            timeout = Duration::from_secs(60)
+        )
+    });
 
     // Make sure that the messages have been received by the alice and bob wallets before they start sending messages so
     // that they have the wallet in their peer_managers
     let alice_event_stream = wallet_alice.transaction_service.get_event_stream_fused();
     let bob_event_stream = wallet_bob.transaction_service.get_event_stream_fused();
 
-    let _alice_stream = collect_stream!(
-        wallet_alice.runtime,
-        alice_event_stream.map(|i| (*i).clone()),
-        take = 6,
-        timeout = Duration::from_secs(60)
-    );
+    let _alice_stream = wallet_bob.runtime.block_on(async {
+        collect_stream!(
+            alice_event_stream.map(|i| (*i).clone()),
+            take = 6,
+            timeout = Duration::from_secs(60)
+        )
+    });
 
-    let _bob_stream = collect_stream!(
-        wallet_bob.runtime,
-        bob_event_stream.map(|i| (*i).clone()),
-        take = 2,
-        timeout = Duration::from_secs(60)
-    );
+    let _bob_stream = wallet_bob.runtime.block_on(async {
+        collect_stream!(
+            bob_event_stream.map(|i| (*i).clone()),
+            take = 2,
+            timeout = Duration::from_secs(60)
+        )
+    });
 
     // Pending Inbound
     wallet_alice
@@ -463,12 +467,13 @@ pub fn generate_wallet_test_data<
         ))?;
 
     let wallet_event_stream = wallet.transaction_service.get_event_stream_fused();
-    let _wallet_stream = collect_stream!(
-        wallet.runtime,
-        wallet_event_stream.map(|i| (*i).clone()),
-        take = 20,
-        timeout = Duration::from_secs(60)
-    );
+    let _wallet_stream = wallet.runtime.block_on(async {
+        collect_stream!(
+            wallet_event_stream.map(|i| (*i).clone()),
+            take = 20,
+            timeout = Duration::from_secs(60)
+        )
+    });
 
     let txs = wallet
         .runtime
