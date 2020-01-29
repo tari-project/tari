@@ -45,22 +45,22 @@ use multiaddr::Protocol;
 use std::{error::Error, sync::Arc, time::Duration};
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
-use tokio::{
-    runtime::{Handle, Runtime},
-    time::timeout,
-};
+use tokio::{runtime::Handle, time::timeout};
 
-#[test]
-fn listen() -> Result<(), Box<dyn Error>> {
-    let mut rt = Runtime::new()?;
+#[tokio_macros::test_basic]
+async fn listen() -> Result<(), Box<dyn Error>> {
+    let rt_handle = Handle::current();
     let (event_tx, mut event_rx) = mpsc::channel(1);
     let mut shutdown = Shutdown::new();
     let peer_manager = build_peer_manager();
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config = NoiseConfig::new(node_identity.clone());
     let listener = PeerListener::new(
-        rt.handle().clone(),
-        "/memory/0".parse()?,
+        rt_handle.clone(),
+        ConnectionManagerConfig {
+            listener_address: "/memory/0".parse()?,
+            ..Default::default()
+        },
         MemoryTransport,
         noise_config.clone(),
         event_tx.clone(),
@@ -70,25 +70,22 @@ fn listen() -> Result<(), Box<dyn Error>> {
         shutdown.to_signal(),
     );
 
-    let listener_fut = rt.spawn(listener.run());
+    let listener_fut = rt_handle.spawn(listener.run());
 
-    rt.block_on(async move {
-        let listen_event = event_rx.next().await.unwrap();
-        unpack_enum!(ConnectionManagerEvent::Listening(address) = listen_event);
-        unpack_enum!(Protocol::Memory(port) = address.pop().unwrap());
-        assert!(port > 0);
+    let listen_event = event_rx.next().await.unwrap();
+    unpack_enum!(ConnectionManagerEvent::Listening(address) = listen_event);
+    unpack_enum!(Protocol::Memory(port) = address.pop().unwrap());
+    assert!(port > 0);
 
-        shutdown.trigger().unwrap();
+    shutdown.trigger().unwrap();
 
-        timeout(Duration::from_secs(5), listener_fut).await.unwrap().unwrap();
+    timeout(Duration::from_secs(5), listener_fut).await.unwrap().unwrap();
 
-        Ok(())
-    })
+    Ok(())
 }
 
 #[tokio_macros::test_basic]
 async fn smoke() {
-    env_logger::init();
     let rt_handle = Handle::current();
     // This test sets up Dialer and Listener components, uses the Dialer to dial the Listener,
     // asserts the emitted events are correct, opens a substream, sends a small message over the substream,
@@ -103,7 +100,10 @@ async fn smoke() {
     let peer_manager1 = build_peer_manager();
     let listener = PeerListener::new(
         rt_handle.clone(),
-        "/memory/0".parse().unwrap(),
+        ConnectionManagerConfig {
+            listener_address: "/memory/0".parse().unwrap(),
+            ..Default::default()
+        },
         MemoryTransport,
         noise_config1,
         event_tx.clone(),
