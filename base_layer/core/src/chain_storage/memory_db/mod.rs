@@ -20,35 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_core::{
-    blocks::genesis_block::get_genesis_block,
-    chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
-    consensus::ConsensusManager,
-    proof_of_work::DiffAdjManager,
-    transactions::types::{CryptoFactories, HashDigest},
-    validation::{
-        block_validators::{FullConsensusValidator, StatelessValidator},
-        mocks::MockValidator,
-    },
-};
+mod mem_db_vec;
+mod memory_db;
 
-#[test]
-fn test_genesis_block() {
-    let factories = CryptoFactories::default();
-    let rules = ConsensusManager::default();
-    let backend = MemoryDatabase::<HashDigest>::default();
-    let mut db = BlockchainDatabase::new(backend).unwrap();
-    let validators = Validators::new(
-        FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
-        StatelessValidator::new(),
-        MockValidator::new(true),
-        MockValidator::new(true),
-        MockValidator::new(true),
-    );
-    db.set_validators(validators);
-    let diff_adj_manager = DiffAdjManager::new(db.clone()).unwrap();
-    rules.set_diff_manager(diff_adj_manager).unwrap();
-    let block = get_genesis_block();
-    let result = db.add_block(block);
-    assert!(result.is_ok());
-}
+// Public API exports
+pub use memory_db::MemoryDatabase;

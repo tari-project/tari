@@ -26,9 +26,6 @@
 // Tracking issue: https://github.com/rust-lang/rust/issues/63063
 #![feature(type_alias_impl_trait)]
 
-use rand::rngs::OsRng;
-use std::cell::RefCell;
-
 #[cfg(test)]
 #[macro_use]
 mod test_utils;

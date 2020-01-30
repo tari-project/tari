@@ -89,8 +89,11 @@ where D: Digest
     orphans_db: DatabaseRef,
     bitmaps_db: DatabaseRef,
     utxo_mmr: RwLock<MerkleChangeTracker<D, LMDBVec<MmrHash>, LMDBVec<MerkleCheckPoint>>>,
+    utxo_checkpoints: LMDBVec<MerkleCheckPoint>,
     kernel_mmr: RwLock<MerkleChangeTracker<D, LMDBVec<MmrHash>, LMDBVec<MerkleCheckPoint>>>,
+    kernel_checkpoints: LMDBVec<MerkleCheckPoint>,
     range_proof_mmr: RwLock<MerkleChangeTracker<D, LMDBVec<MmrHash>, LMDBVec<MerkleCheckPoint>>>,
+    range_proof_checkpoints: LMDBVec<MerkleCheckPoint>,
 }
 
 impl<D> LMDBDatabase<D>
@@ -105,7 +108,7 @@ where D: Digest + Send + Sync
                 .db()
                 .clone(),
         );
-        let utxo_mmr_cp_backend = LMDBVec::new(
+        let utxo_checkpoints = LMDBVec::new(
             store.env(),
             store
                 .get_handle(LMDB_DB_UTXO_MMR_CP_BACKEND)
@@ -121,7 +124,7 @@ where D: Digest + Send + Sync
                 .db()
                 .clone(),
         );
-        let kernel_mmr_cp_backend = LMDBVec::new(
+        let kernel_checkpoints = LMDBVec::new(
             store.env(),
             store
                 .get_handle(LMDB_DB_KERNEL_MMR_CP_BACKEND)
@@ -137,7 +140,7 @@ where D: Digest + Send + Sync
                 .db()
                 .clone(),
         );
-        let range_proof_mmr_cp_backend = LMDBVec::new(
+        let range_proof_checkpoints = LMDBVec::new(
             store.env(),
             store
                 .get_handle(LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND)
@@ -205,21 +208,24 @@ where D: Digest + Send + Sync
             bitmaps_db,
             utxo_mmr: RwLock::new(MerkleChangeTracker::new(
                 MutableMmr::new(utxo_mmr_base_backend, utxo_bitmap),
-                utxo_mmr_cp_backend,
+                utxo_checkpoints.clone(),
                 mct_config,
             )?),
+            utxo_checkpoints,
             kernel_mmr: RwLock::new(MerkleChangeTracker::new(
                 // Kernels are never deleted, so the bitmap is always empty
                 MutableMmr::new(kernel_mmr_base_backend, Bitmap::create()),
-                kernel_mmr_cp_backend,
+                kernel_checkpoints.clone(),
                 mct_config,
             )?),
+            kernel_checkpoints,
             range_proof_mmr: RwLock::new(MerkleChangeTracker::new(
                 // The range proof MMR is immutable, so use an empty bitmap
                 MutableMmr::new(range_proof_mmr_base_backend, Bitmap::create()),
-                range_proof_mmr_cp_backend,
+                range_proof_checkpoints.clone(),
                 mct_config,
             )?),
+            range_proof_checkpoints,
             env: store.env(),
         })
     }

@@ -28,6 +28,7 @@ use crate::{
         blockchain_database::{BlockchainBackend, MutableMmrState},
         db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataValue, MmrTree, WriteOperation},
         error::ChainStorageError,
+        memory_db::mem_db_vec::MemDbVec,
     },
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
@@ -72,9 +73,12 @@ where D: Digest
     kernels: HashMap<HashOutput, TransactionKernel>,
     orphans: HashMap<HashOutput, Block>,
     // Define MMRs to use both a memory-backed base and a memory-backed pruned MMR
-    utxo_mmr: MerkleChangeTracker<D, Vec<MmrHash>, Vec<MerkleCheckPoint>>,
-    kernel_mmr: MerkleChangeTracker<D, Vec<MmrHash>, Vec<MerkleCheckPoint>>,
-    range_proof_mmr: MerkleChangeTracker<D, Vec<MmrHash>, Vec<MerkleCheckPoint>>,
+    utxo_mmr: MerkleChangeTracker<D, MemDbVec<MmrHash>, MemDbVec<MerkleCheckPoint>>,
+    utxo_checkpoints: MemDbVec<MerkleCheckPoint>,
+    kernel_mmr: MerkleChangeTracker<D, MemDbVec<MmrHash>, MemDbVec<MerkleCheckPoint>>,
+    kernel_checkpoints: MemDbVec<MerkleCheckPoint>,
+    range_proof_mmr: MerkleChangeTracker<D, MemDbVec<MmrHash>, MemDbVec<MerkleCheckPoint>>,
+    range_proof_checkpoints: MemDbVec<MerkleCheckPoint>,
 }
 
 /// A memory-backed blockchain database. The data is stored in RAM; and so all data will be lost when the program
@@ -91,15 +95,27 @@ impl<D> MemoryDatabase<D>
 where D: Digest
 {
     pub fn new(mct_config: MerkleChangeTrackerConfig) -> Self {
-        let utxo_mmr =
-            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new(), Bitmap::create()), Vec::new(), mct_config)
-                .unwrap();
-        let kernel_mmr =
-            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new(), Bitmap::create()), Vec::new(), mct_config)
-                .unwrap();
-        let range_proof_mmr =
-            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new(), Bitmap::create()), Vec::new(), mct_config)
-                .unwrap();
+        let utxo_checkpoints = MemDbVec::<MerkleCheckPoint>::new();
+        let utxo_mmr = MerkleChangeTracker::<D, _, _>::new(
+            MutableMmr::new(MemDbVec::new(), Bitmap::create()),
+            utxo_checkpoints.clone(),
+            mct_config,
+        )
+        .unwrap();
+        let kernel_checkpoints = MemDbVec::<MerkleCheckPoint>::new();
+        let kernel_mmr = MerkleChangeTracker::<D, _, _>::new(
+            MutableMmr::new(MemDbVec::new(), Bitmap::create()),
+            kernel_checkpoints.clone(),
+            mct_config,
+        )
+        .unwrap();
+        let range_proof_checkpoints = MemDbVec::<MerkleCheckPoint>::new();
+        let range_proof_mmr = MerkleChangeTracker::<D, _, _>::new(
+            MutableMmr::new(MemDbVec::new(), Bitmap::create()),
+            range_proof_checkpoints.clone(),
+            mct_config,
+        )
+        .unwrap();
         Self {
             db: Arc::new(RwLock::new(InnerDatabase {
                 metadata: HashMap::default(),
@@ -110,8 +126,11 @@ where D: Digest
                 kernels: HashMap::default(),
                 orphans: HashMap::default(),
                 utxo_mmr,
+                utxo_checkpoints,
                 kernel_mmr,
+                kernel_checkpoints,
                 range_proof_mmr,
+                range_proof_checkpoints,
             })),
         }
     }
@@ -527,15 +546,27 @@ where D: Digest
             min_history_len: 900,
             max_history_len: 1000,
         };
-        let utxo_mmr =
-            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new(), Bitmap::create()), Vec::new(), mct_config)
-                .unwrap();
-        let kernel_mmr =
-            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new(), Bitmap::create()), Vec::new(), mct_config)
-                .unwrap();
-        let range_proof_mmr =
-            MerkleChangeTracker::<D, _, _>::new(MutableMmr::new(Vec::new(), Bitmap::create()), Vec::new(), mct_config)
-                .unwrap();
+        let utxo_checkpoints = MemDbVec::new();
+        let utxo_mmr = MerkleChangeTracker::<D, _, _>::new(
+            MutableMmr::new(MemDbVec::new(), Bitmap::create()),
+            utxo_checkpoints.clone(),
+            mct_config,
+        )
+        .unwrap();
+        let kernel_checkpoints = MemDbVec::new();
+        let kernel_mmr = MerkleChangeTracker::<D, _, _>::new(
+            MutableMmr::new(MemDbVec::new(), Bitmap::create()),
+            kernel_checkpoints.clone(),
+            mct_config,
+        )
+        .unwrap();
+        let range_proof_checkpoints = MemDbVec::new();
+        let range_proof_mmr = MerkleChangeTracker::<D, _, _>::new(
+            MutableMmr::new(MemDbVec::new(), Bitmap::create()),
+            range_proof_checkpoints.clone(),
+            mct_config,
+        )
+        .unwrap();
         Self {
             metadata: HashMap::default(),
             headers: HashMap::default(),
@@ -545,8 +576,11 @@ where D: Digest
             kernels: HashMap::default(),
             orphans: HashMap::default(),
             utxo_mmr,
+            utxo_checkpoints,
             kernel_mmr,
+            kernel_checkpoints,
             range_proof_mmr,
+            range_proof_checkpoints,
         }
     }
 }
