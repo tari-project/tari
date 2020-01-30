@@ -110,7 +110,11 @@ impl CoinbaseBuilder {
     ///
     /// After `build` is called, the struct is destroyed and the private keys stored are dropped and the memory zeroed
     /// out (by virtue of the zero_on_drop crate).
-    pub fn build<B: BlockchainBackend>(self, rules: ConsensusManager<B>) -> Result<Transaction, CoinbaseBuildError> {
+    pub fn build<B: BlockchainBackend>(
+        self,
+        rules: ConsensusManager<B>,
+    ) -> Result<(Transaction, UnblindedOutput), CoinbaseBuildError>
+    {
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
         let reward =
             rules.emission_schedule().block_reward(height) + self.fees.ok_or(CoinbaseBuildError::MissingFees)?;
@@ -125,8 +129,8 @@ impl CoinbaseBuilder {
         let challenge = build_challenge(&public_nonce, &metadata);
         let sig = Signature::sign(key.clone(), nonce, &challenge)
             .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
-        let output = UnblindedOutput::new(reward, key, Some(output_features));
-        let output = output
+        let unblinded_output = UnblindedOutput::new(reward, key, Some(output_features));
+        let output = unblinded_output
             .as_transaction_output(&self.factories)
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
         let kernel = KernelBuilder::new()
@@ -144,9 +148,10 @@ impl CoinbaseBuilder {
             .add_offset(BlindingFactor::default())
             .with_reward(reward)
             .with_kernel(kernel);
-        builder
+        let tx = builder
             .build(&self.factories)
-            .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))
+            .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
+        Ok((tx, unblinded_output))
     }
 }
 
@@ -156,7 +161,12 @@ mod test {
         consensus::ConsensusManager,
         helpers::MockBackend,
         mining::{coinbase_builder::CoinbaseBuildError, CoinbaseBuilder},
-        transactions::{helpers::TestParams, tari_amount::uT, transaction::OutputFlags, types::CryptoFactories},
+        transactions::{
+            helpers::TestParams,
+            tari_amount::uT,
+            transaction::{OutputFlags, UnblindedOutput},
+            types::CryptoFactories,
+        },
     };
     use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
@@ -199,9 +209,11 @@ mod test {
             .with_fees(145 * uT)
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone());
-        let tx = builder.build(rules.clone()).unwrap();
+        let (tx, unblinded_output) = builder.build(rules.clone()).unwrap();
         let utxo = &tx.body.outputs()[0];
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
+        let unblinded_test = UnblindedOutput::new(block_reward, p.spend_key.clone(), Some(utxo.features.clone()));
+        assert_eq!(unblinded_output, unblinded_test);
         assert!(factories
             .commitment
             .open_value(&p.spend_key, block_reward.into(), utxo.commitment()));

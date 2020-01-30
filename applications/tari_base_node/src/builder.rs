@@ -21,6 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::miner;
+use futures::channel::{
+    mpsc,
+    mpsc::{Receiver, Sender},
+};
 use log::*;
 use rand::rngs::OsRng;
 use std::{
@@ -56,6 +60,7 @@ use tari_core::{
     proof_of_work::DiffAdjManager,
     transactions::{
         crypto::keys::SecretKey as SK,
+        transaction::UnblindedOutput,
         types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
     },
     validation::{
@@ -141,6 +146,13 @@ impl MinerType {
             }
         }
         .await;
+    }
+
+    pub fn get_utxo_receiver_channel(&mut self) -> Receiver<UnblindedOutput> {
+        match self {
+            MinerType::LMDB(n) => n.get_utxo_receiver_channel(),
+            MinerType::Memory(n) => n.get_utxo_receiver_channel(),
+        }
     }
 }
 
