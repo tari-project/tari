@@ -174,6 +174,16 @@ where
     }
 }
 
+impl<T> Clone for LMDBVec<T>
+where
+    T: serde::Serialize,
+    for<'t> T: serde::de::DeserializeOwned,
+{
+    fn clone(&self) -> Self {
+        LMDBVec::new(self.env.clone(), self.db.clone())
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

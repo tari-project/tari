@@ -29,7 +29,6 @@ use crate::helpers::block_builders::{
     find_header_with_achieved_difficulty,
     generate_new_block_with_coinbase,
 };
-use std::sync::Arc;
 use tari_core::{
     blocks::{genesis_block::get_genesis_block, Block, BlockHeader, BlockHeaderValidationError},
     chain_storage::{BlockchainDatabase, ChainStorageError, DbTransaction, MemoryDatabase, Validators},

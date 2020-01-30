@@ -25,7 +25,6 @@ use crate::{
     transactions::{transaction::Transaction, types::CryptoFactories},
     validation::{Validation, ValidationError},
 };
-use std::sync::Arc;
 use tari_utilities::hash::Hashable;
 
 /// This validator will only check that a transaction is internally consistent. It requires no state information.

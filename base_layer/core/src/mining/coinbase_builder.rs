@@ -39,7 +39,6 @@ use crate::{
     },
 };
 use derive_error::Error;
-use std::sync::Arc;
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PK};
 
 #[derive(Debug, Clone, Error, PartialEq)]
@@ -159,7 +158,6 @@ mod test {
         mining::{coinbase_builder::CoinbaseBuildError, CoinbaseBuilder},
         transactions::{helpers::TestParams, tari_amount::uT, transaction::OutputFlags, types::CryptoFactories},
     };
-    use std::sync::Arc;
     use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager<MockBackend>, CryptoFactories) {
