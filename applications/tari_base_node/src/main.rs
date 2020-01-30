@@ -125,7 +125,7 @@ fn main() {
     };
 
     // Build, node, build!
-    let (comms, node, miner) = match builder::configure_and_initialize_node(&node_config, node_id, &mut rt) {
+    let (comms, node, miner, wallet) = match builder::configure_and_initialize_node(&node_config, node_id, &mut rt) {
         Ok(n) => n,
         Err(e) => {
             error!(target: LOG_TARGET, "Could not instantiate node instance. {}", e);

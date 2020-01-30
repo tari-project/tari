@@ -24,7 +24,7 @@ use crate::miner;
 use log::*;
 use rand::rngs::OsRng;
 use std::{
-    path::Path,
+    path::{Path, PathBuf},
     sync::{atomic::AtomicBool, Arc},
     time::Duration,
 };
@@ -75,7 +75,32 @@ use tari_service_framework::{handles::ServiceHandles, StackBuilder};
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tokio::runtime::Runtime;
 
+use tari_wallet::{
+    output_manager_service::{
+        handle::OutputManagerHandle,
+        service::OutputManagerService,
+        storage::{database::OutputManagerDatabase, sqlite_db::OutputManagerSqliteDatabase},
+        OutputManagerServiceInitializer,
+    },
+    transaction_service::{
+        error::TransactionServiceError,
+        handle::{TransactionEvent, TransactionServiceHandle},
+        service::TransactionService,
+        storage::{
+            database::{TransactionBackend, TransactionDatabase},
+            memory_db::TransactionMemoryDatabase,
+            sqlite_db::TransactionServiceSqliteDatabase,
+        },
+        TransactionServiceInitializer,
+    },
+};
+
 const LOG_TARGET: &str = "base_node::initialization";
+
+pub struct Wallet {
+    pub transaction_service: TransactionServiceHandle,
+    pub output_service: OutputManagerHandle,
+}
 
 pub enum NodeType {
     LMDB(BaseNodeStateMachine<LMDBDatabase<HashDigest>>),
@@ -186,7 +211,7 @@ pub fn configure_and_initialize_node(
     config: &GlobalConfig,
     id: NodeIdentity,
     rt: &mut Runtime,
-) -> Result<(CommsNode, NodeType, MinerType), String>
+) -> Result<(CommsNode, NodeType, MinerType, Wallet), String>
 {
     let id = Arc::new(id);
     let factories = CryptoFactories::default();
@@ -217,18 +242,33 @@ pub fn configure_and_initialize_node(
                 id.clone(),
                 peers,
                 &config.peer_db_path,
+                &config.wallet_file,
                 db.clone(),
                 mempool,
                 rules.clone(),
+                factories.clone(),
             );
-            let outbound_interface = handles.get_handle::<OutboundNodeCommsInterface>().unwrap();
+            let outbound_interface = handles
+                .get_handle::<OutboundNodeCommsInterface>()
+                .expect("Problem getting node interface handle");
+            let wallet_output_manager_service = handles
+                .get_handle::<OutputManagerHandle>()
+                .expect("Problem getting wallet interface handle");
+            let wallet_transaction_service = handles
+                .get_handle::<TransactionServiceHandle>()
+                .expect("Problem getting wallet interface handle");
             let node = NodeType::Memory(BaseNodeStateMachine::new(
                 &db,
                 &outbound_interface,
                 BaseNodeStateMachineConfig::default(),
             ));
+
+            let wallet = Wallet {
+                output_service: wallet_output_manager_service,
+                transaction_service: wallet_transaction_service,
+            };
             let miner = MinerType::Memory(miner::build_miner(handles, node.get_flag(), rules.clone(), executor));
-            (comms, node, miner)
+            (comms, node, miner, wallet)
         },
         DatabaseType::LMDB(p) => {
             let rules = ConsensusManager::default();
@@ -258,19 +298,32 @@ pub fn configure_and_initialize_node(
                 id.clone(),
                 peers,
                 &config.peer_db_path,
+                &config.wallet_file,
                 db.clone(),
                 mempool,
                 rules.clone(),
+                factories.clone(),
             );
-            let outbound_interface = handles.get_handle::<OutboundNodeCommsInterface>().unwrap();
+            let outbound_interface = handles
+                .get_handle::<OutboundNodeCommsInterface>()
+                .expect("Problem getting node interface handle");
             let node = NodeType::LMDB(BaseNodeStateMachine::new(
                 &db,
                 &outbound_interface,
                 BaseNodeStateMachineConfig::default(),
             ));
-
+            let wallet_output_manager_service = handles
+                .get_handle::<OutputManagerHandle>()
+                .expect("Problem getting wallet interface handle");
+            let wallet_transaction_service = handles
+                .get_handle::<TransactionServiceHandle>()
+                .expect("Problem getting wallet interface handle");
+            let wallet = Wallet {
+                output_service: wallet_output_manager_service,
+                transaction_service: wallet_transaction_service,
+            };
             let miner = MinerType::LMDB(miner::build_miner(handles, node.get_flag(), rules.clone(), executor));
-            (comms, node, miner)
+            (comms, node, miner, wallet)
         },
     };
     Ok(result)
@@ -337,13 +390,21 @@ fn setup_comms_services<T>(
     id: Arc<NodeIdentity>,
     peers: Vec<Peer>,
     peer_db_path: &str,
+    wallet_file: &str,
     db: BlockchainDatabase<T>,
     mempool: Mempool<T>,
     consensus_manager: ConsensusManager<T>,
+    factories: CryptoFactories,
 ) -> (CommsNode, Arc<ServiceHandles>)
 where
     T: BlockchainBackend + 'static,
 {
+    // sql lite for wallet, create folders for sql lite
+    let mut wallet_db_folder = PathBuf::from(wallet_file);
+    wallet_db_folder.set_extension("dat");
+    let wallet_path = PathBuf::from(wallet_db_folder.file_stem().expect("unable to get wallet db path"));
+    let _ = std::fs::create_dir_all(&wallet_path).unwrap_or_default();
+
     let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
     let (publisher, subscription_factory) = pubsub_connector(rt.handle().clone(), 100);
     let subscription_factory = Arc::new(subscription_factory);
@@ -366,21 +427,39 @@ where
         dht: Default::default(), // TODO - make this configurable
     };
 
-    let (comms, dht) = initialize_comms(rt.handle().clone(), comms_config, publisher).unwrap();
+    let (comms, dht) =
+        initialize_comms(rt.handle().clone(), comms_config, publisher).expect("Could not create comms layer");
 
     for p in peers {
         debug!(target: LOG_TARGET, "Adding seed peer [{}]", p.node_id);
-        comms.peer_manager().add_peer(p).unwrap();
+        comms
+            .peer_manager()
+            .add_peer(p)
+            .expect("Could not add peer to comms layer");
     }
 
     let fut = StackBuilder::new(rt.handle().clone(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(BaseNodeServiceInitializer::new(
-            subscription_factory,
+            subscription_factory.clone(),
             db,
             mempool,
             consensus_manager,
             node_config,
+        ))
+        .add_initializer(OutputManagerServiceInitializer::new(
+            OutputManagerSqliteDatabase::new(wallet_db_folder.to_str().expect("could not create db path").to_string())
+                .expect("could not create sql db"),
+            factories.clone(),
+        ))
+        .add_initializer(TransactionServiceInitializer::new(
+            subscription_factory,
+            TransactionServiceSqliteDatabase::new(
+                wallet_db_folder.to_str().expect("could not create db path").to_string(),
+            )
+            .expect("Problem initializing wallet transaction service"),
+            id.clone(),
+            factories.clone(),
         ))
         .finish();
 
