@@ -214,12 +214,15 @@ where
     async fn disconnect_all(&mut self) {
         let mut node_ids = Vec::with_capacity(self.active_connections.len());
         for (node_id, mut conn) in self.active_connections.drain() {
-            log_if_error!(
+            if log_if_error!(
                 target: LOG_TARGET,
                 conn.disconnect_silent().await,
                 "Failed to disconnect because '{error}'",
-            );
-            node_ids.push(node_id);
+            )
+            .is_some()
+            {
+                node_ids.push(node_id);
+            }
         }
 
         for node_id in node_ids {
