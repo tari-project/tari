@@ -19,14 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#[cfg(feature = "c_integration")]
-use crate::output_manager_service::TxId;
-#[cfg(feature = "c_integration")]
-use crate::transaction_service::callback_handler::CallbackHandler;
-#[cfg(feature = "c_integration")]
-use crate::transaction_service::storage::database::TransactionDatabase;
-#[cfg(feature = "c_integration")]
-use crate::transaction_service::storage::database::{CompletedTransaction, InboundTransaction};
+
 use crate::{
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::WalletError,
@@ -37,6 +30,7 @@ use crate::{
     },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
+        config::TransactionServiceConfig,
         handle::TransactionServiceHandle,
         storage::database::TransactionBackend,
         TransactionServiceInitializer,
@@ -49,7 +43,7 @@ use log4rs::{
     encode::pattern::PatternEncoder,
     Handle as LogHandle,
 };
-use std::{marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc, time::Duration};
 use tari_comms::{
     builder::CommsNode,
     multiaddr::Multiaddr,
@@ -63,7 +57,7 @@ use tari_p2p::{
     initialization::{initialize_comms, CommsConfig},
     services::{
         comms_outbound::CommsOutboundServiceInitializer,
-        liveness::{LivenessHandle, LivenessInitializer},
+        liveness::{LivenessConfig, LivenessHandle, LivenessInitializer},
     },
 };
 use tari_service_framework::StackBuilder;
@@ -148,7 +142,12 @@ where
         let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
             .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
             .add_initializer(LivenessInitializer::new(
-                Default::default(),
+                LivenessConfig {
+                    auto_ping_interval: Some(Duration::from_secs(30)),
+                    enable_auto_join: false,
+                    enable_auto_stored_message_request: false,
+                    refresh_neighbours_interval: Default::default(),
+                },
                 Arc::clone(&subscription_factory),
                 dht.dht_requester(),
             ))
@@ -157,6 +156,7 @@ where
                 factories.clone(),
             ))
             .add_initializer(TransactionServiceInitializer::new(
+                TransactionServiceConfig::default(),
                 subscription_factory.clone(),
                 transaction_backend,
                 comms.node_identity().clone(),
@@ -170,7 +170,7 @@ where
         let output_manager_handle = handles
             .get_handle::<OutputManagerHandle>()
             .expect("Could not get Output Manager Service Handle");
-        let transaction_service_handle = handles
+        let mut transaction_service_handle = handles
             .get_handle::<TransactionServiceHandle>()
             .expect("Could not get Transaction Service Handle");
         let liveness_handle = handles
@@ -180,6 +180,13 @@ where
             .get_handle::<ContactsServiceHandle>()
             .expect("Could not get Contacts Service Handle");
 
+        let db = WalletDatabase::new(wallet_backend);
+        let base_node_peers = runtime.block_on(db.get_peers())?;
+
+        for p in base_node_peers {
+            runtime.block_on(transaction_service_handle.set_base_node_public_key(p.public_key.clone()))?;
+        }
+
         Ok(Wallet {
             comms,
             dht_service: dht,
@@ -187,7 +194,7 @@ where
             output_manager_service: output_manager_handle,
             transaction_service: transaction_service_handle,
             contacts_service: contacts_handle,
-            db: WalletDatabase::new(wallet_backend),
+            db,
             runtime,
             log_handle,
             #[cfg(feature = "test_harness")]
@@ -198,33 +205,6 @@ where
         })
     }
 
-    #[cfg(feature = "c_integration")]
-    pub fn set_callbacks(
-        &mut self,
-        backend: U,
-        callback_received_transaction: unsafe extern "C" fn(*mut InboundTransaction),
-        callback_received_transaction_reply: unsafe extern "C" fn(*mut CompletedTransaction),
-        callback_received_finalized_transaction: unsafe extern "C" fn(*mut CompletedTransaction),
-        callback_transaction_broadcast: unsafe extern "C" fn(*mut CompletedTransaction),
-        callback_transaction_mined: unsafe extern "C" fn(*mut CompletedTransaction),
-        callback_discovery_process_complete: unsafe extern "C" fn(TxId, bool),
-    )
-    {
-        let callback_handler = CallbackHandler::new(
-            TransactionDatabase::new(backend),
-            self.transaction_service.get_event_stream_fused(),
-            self.comms.shutdown_signal(),
-            callback_received_transaction,
-            callback_received_transaction_reply,
-            callback_received_finalized_transaction,
-            callback_transaction_broadcast,
-            callback_transaction_mined,
-            callback_discovery_process_complete,
-        );
-
-        self.runtime.spawn(callback_handler.start());
-    }
-
     /// This method consumes the wallet so that the handles are dropped which will result in the services async loops
     /// exiting.
     pub fn shutdown(self) -> Result<(), WalletError> {
@@ -233,8 +213,9 @@ where
         Ok(())
     }
 
-    /// This function will add a base_node
-    pub fn add_base_node_peer(&mut self, public_key: CommsPublicKey, net_address: String) -> Result<(), WalletError> {
+    /// This function will set the base_node that the wallet uses to broadcast transactions and monitor the blockchain
+    /// state
+    pub fn set_base_node_peer(&mut self, public_key: CommsPublicKey, net_address: String) -> Result<(), WalletError> {
         let address = net_address.parse::<Multiaddr>()?;
         let peer = Peer::new(
             public_key.clone(),
@@ -244,9 +225,18 @@ where
             PeerFeatures::COMMUNICATION_NODE,
         );
 
-        self.comms.peer_manager().add_peer(peer.clone())?;
+        let existing_peers = self.runtime.block_on(self.db.get_peers())?;
+        self.runtime.block_on(self.db.save_peer(peer.clone()))?;
+        // Remove any peers in db to only persist a single peer at a time.
+        for p in existing_peers {
+            let _ = self.runtime.block_on(self.db.remove_peer(p.public_key.clone()))?;
+        }
 
-        self.runtime.block_on(self.db.save_peer(peer))?;
+        self.comms.peer_manager().add_peer(peer.clone())?;
+        self.runtime.block_on(
+            self.transaction_service
+                .set_base_node_public_key(peer.public_key.clone()),
+        )?;
 
         Ok(())
     }

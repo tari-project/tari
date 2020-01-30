@@ -23,18 +23,12 @@
 // Required for `super::types` used in generated files
 use crate::transactions::proto::types;
 
-#[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod mempool {
     tari_utilities::include_proto_package!("tari.mempool");
 }
 
-cfg_if! {
-    if #[cfg(feature = "base_node")] {
-        pub mod mempool_request;
-        pub mod mempool_response;
-        pub mod stats_response;
-        pub mod tx_storage_response;
-
-        pub use mempool::{MempoolServiceRequest, MempoolServiceResponse};
-    }
-}
+pub mod mempool_request;
+pub mod mempool_response;
+pub mod stats_response;
+pub mod tx_storage_response;
+pub use mempool::{MempoolServiceRequest, MempoolServiceResponse};

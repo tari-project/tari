@@ -28,11 +28,10 @@ cfg_if! {
         mod pending_pool;
         mod priority;
         mod reorg_pool;
-        mod service;
         mod unconfirmed_pool;
         // Public re-exports
         pub use error::MempoolError;
-        pub use mempool::{Mempool, MempoolConfig, MempoolValidators, TxStorageResponse};
+        pub use mempool::{Mempool, MempoolConfig, MempoolValidators};
         pub use service::{
             MempoolServiceConfig,
             MempoolServiceError,
@@ -41,5 +40,29 @@ cfg_if! {
         };
     }
 }
-#[cfg(any(feature = "base_node", feature = "mempool_proto"))]
-pub mod proto;
+cfg_if! {
+    if #[cfg(any(feature = "base_node", feature = "mempool_proto"))] {
+        pub mod proto;
+        pub mod service;
+     }
+}
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct StatsResponse {
+    pub total_txs: usize,
+    pub unconfirmed_txs: usize,
+    pub orphan_txs: usize,
+    pub timelocked_txs: usize,
+    pub published_txs: usize,
+    pub total_weight: u64,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub enum TxStorageResponse {
+    UnconfirmedPool,
+    OrphanPool,
+    PendingPool,
+    ReorgPool,
+    NotStored,
+}

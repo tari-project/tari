@@ -271,12 +271,12 @@ fn test_median_timestamp() {
         .get_median_timestamp()
         .expect("median returned an error");
     assert_eq!(timestamp, 1575018842.into());
-    let mut prev_timestamp: EpochTime = 1575018842.into();
+
     let pow_algos = vec![PowAlgorithm::Blake];
     // lets add 1
     let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
     append_to_pow_blockchain(&store, tip, pow_algos.clone());
-    prev_timestamp = 1575018842.into();
+    let mut prev_timestamp: EpochTime = 1575018842.into();
     prev_timestamp = prev_timestamp.increase(consensus.get_target_block_interval());
     timestamp = diff_adj_manager
         .get_median_timestamp()
@@ -365,12 +365,11 @@ fn test_median_timestamp_odd_order() {
         .get_median_timestamp()
         .expect("median returned an error");
     assert_eq!(timestamp, 1575018842.into());
-    let mut prev_timestamp: EpochTime = 1575018842.into();
     let pow_algos = vec![PowAlgorithm::Blake];
     // lets add 1
     let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
     append_to_pow_blockchain(&store, tip, pow_algos.clone());
-    prev_timestamp = 1575018842.into();
+    let mut prev_timestamp: EpochTime = 1575018842.into();
     prev_timestamp = prev_timestamp.increase(consensus.get_target_block_interval());
     timestamp = diff_adj_manager
         .get_median_timestamp()

@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(feature = "test_harness")]
-use crate::transaction_service::storage::database::TransactionStatus;
 use crate::{
     output_manager_service::TxId,
     transaction_service::{
@@ -35,6 +33,7 @@ use crate::{
             OutboundTransaction,
             PendingCoinbaseTransaction,
             TransactionBackend,
+            TransactionStatus,
             WriteOperation,
         },
     },
@@ -280,7 +279,6 @@ impl TransactionBackend for TransactionMemoryDatabase {
         Ok(())
     }
 
-    #[cfg(feature = "test_harness")]
     fn broadcast_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let mut db = acquire_write_lock!(self.db);
 
@@ -290,7 +288,10 @@ impl TransactionBackend for TransactionMemoryDatabase {
                 .ok_or(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
                     tx_id.clone(),
                 )))?;
-        completed_tx.status = TransactionStatus::Broadcast;
+
+        if completed_tx.status == TransactionStatus::Completed {
+            completed_tx.status = TransactionStatus::Broadcast;
+        }
 
         Ok(())
     }

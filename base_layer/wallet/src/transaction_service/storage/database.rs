@@ -26,6 +26,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
+    convert::TryFrom,
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
@@ -75,7 +76,6 @@ pub trait TransactionBackend: Send + Sync {
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>;
     /// Indicated that a completed transaction has been broadcast to the mempools
-    #[cfg(feature = "test_harness")]
     fn broadcast_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Indicated that a completed transaction has been detected as mined on the base layer
     #[cfg(feature = "test_harness")]
@@ -98,6 +98,19 @@ pub enum TransactionStatus {
     Broadcast,
     /// This transaction has been mined and included in a block.
     Mined,
+}
+
+impl TryFrom<i32> for TransactionStatus {
+    type Error = TransactionStorageError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(TransactionStatus::Completed),
+            1 => Ok(TransactionStatus::Broadcast),
+            2 => Ok(TransactionStatus::Mined),
+            _ => Err(TransactionStorageError::ConversionError),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -476,7 +489,6 @@ where T: TransactionBackend + 'static
     }
 
     /// Indicated that the specified completed transaction has been broadcast into the mempool
-    #[cfg(feature = "test_harness")]
     pub async fn broadcast_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
 

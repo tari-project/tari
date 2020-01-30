@@ -22,8 +22,9 @@
 
 use crate::{
     mempool::{
-        mempool::{StatsResponse, TxStorageResponse},
         service::{MempoolRequest, MempoolResponse, MempoolServiceError},
+        StatsResponse,
+        TxStorageResponse,
     },
     transactions::{transaction::Transaction, types::Signature},
 };

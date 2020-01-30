@@ -20,9 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::mempool::mempool_service_request::Request as ProtoMempoolRequest;
-use crate::mempool::service::MempoolRequest;
-use std::convert::TryInto;
+use super::mempool::{
+    mempool_service_request::Request as ProtoMempoolRequest,
+    MempoolServiceRequest as ProtoMempoolServiceRequest,
+};
+use crate::mempool::service::{MempoolRequest, MempoolServiceRequest};
+use std::convert::{TryFrom, TryInto};
 use tari_utilities::ByteArrayError;
 
 impl TryInto<MempoolRequest> for ProtoMempoolRequest {
@@ -48,5 +51,19 @@ impl From<MempoolRequest> for ProtoMempoolRequest {
             GetStats => ProtoMempoolRequest::GetStats(true),
             GetTxStateWithExcessSig(excess_sig) => ProtoMempoolRequest::GetTxStateWithExcessSig(excess_sig.into()),
         }
+    }
+}
+
+impl TryFrom<ProtoMempoolServiceRequest> for MempoolServiceRequest {
+    type Error = String;
+
+    fn try_from(request: ProtoMempoolServiceRequest) -> Result<Self, Self::Error> {
+        Ok(Self {
+            request_key: request.request_key,
+            request: request
+                .request
+                .ok_or("Response field not present".to_string())?
+                .try_into()?,
+        })
     }
 }

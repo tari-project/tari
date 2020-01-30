@@ -105,15 +105,18 @@
 //!     change the status of the `CompletedTransaction` from    `Broadcast` to `Mined`. The pending funds will also
 //!     become finalized as spent and available funds respectively
 
+#![recursion_limit = "256"]
+
 #[cfg(test)]
 #[macro_use]
 extern crate lazy_static;
 
 extern crate libc;
 extern crate tari_wallet;
+mod callback_handler;
 mod error;
-use error::LibWalletError;
 
+use error::LibWalletError;
 use libc::{c_char, c_int, c_longlong, c_uchar, c_uint, c_ulonglong};
 use std::{
     boxed::Box,
@@ -126,7 +129,7 @@ use tari_crypto::keys::SecretKey;
 use tari_utilities::ByteArray;
 use tari_wallet::wallet::WalletConfig;
 
-use crate::error::InterfaceError;
+use crate::{callback_handler::CallbackHandler, error::InterfaceError};
 use core::ptr;
 use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
@@ -148,7 +151,7 @@ use tari_wallet::{
         mine_transaction,
         receive_test_transaction,
     },
-    transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
+    transaction_service::storage::{database::TransactionDatabase, sqlite_db::TransactionServiceSqliteDatabase},
 };
 use tokio::runtime::Runtime;
 
@@ -1749,10 +1752,12 @@ pub unsafe extern "C" fn wallet_create(
             );
 
             match w {
-                Ok(mut w) => {
-                    // Register callbacks
-                    w.set_callbacks(
-                        transaction_backend,
+                Ok(w) => {
+                    // Start Callback Handler
+                    let callback_handler = CallbackHandler::new(
+                        TransactionDatabase::new(transaction_backend.clone()),
+                        w.transaction_service.get_event_stream_fused(),
+                        w.comms.shutdown_signal(),
                         callback_received_transaction,
                         callback_received_transaction_reply,
                         callback_received_finalized_transaction,
@@ -1760,6 +1765,9 @@ pub unsafe extern "C" fn wallet_create(
                         callback_transaction_mined,
                         callback_discovery_process_complete,
                     );
+
+                    w.runtime.spawn(callback_handler.start());
+
                     Box::into_raw(Box::new(w))
                 },
                 Err(e) => {
@@ -2099,7 +2107,7 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
         return false;
     }
 
-    match (*wallet).add_base_node_peer((*public_key).clone(), address_string) {
+    match (*wallet).set_base_node_peer((*public_key).clone(), address_string) {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -2735,6 +2743,7 @@ mod test {
         pub broadcast_tx_callback_called: bool,
         pub mined_tx_callback_called: bool,
         pub discovery_send_callback_called: bool,
+        pub base_node_error_callback_called: bool,
     }
 
     impl CallbackState {
@@ -2746,6 +2755,7 @@ mod test {
                 broadcast_tx_callback_called: false,
                 mined_tx_callback_called: false,
                 discovery_send_callback_called: false,
+                base_node_error_callback_called: false,
             }
         }
 
@@ -2756,6 +2766,7 @@ mod test {
             self.broadcast_tx_callback_called = false;
             self.mined_tx_callback_called = false;
             self.discovery_send_callback_called = false;
+            self.base_node_error_callback_called = false;
         }
     }
 
