@@ -124,6 +124,7 @@ pub struct GlobalConfig {
     pub peer_seeds: Vec<String>,
     pub peer_db_path: String,
     pub enable_mining: bool,
+    pub wallet_file: String,
 }
 
 impl GlobalConfig {
@@ -208,6 +209,12 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .get_bool(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as bool;
 
+    // set wallet_file
+    let key = "wallet.wallet_file".to_string();
+    let wallet_file = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as String;
+
     Ok(GlobalConfig {
         network,
         data_dir,
@@ -219,6 +226,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         peer_seeds,
         peer_db_path,
         enable_mining,
+        wallet_file,
     })
 }
 
