@@ -20,6 +20,8 @@ chrono = { version = "0.4.6", features = ["serde"]}
 tari_broadcast_channel = { version="^0.0",  path = "../../infrastructure/broadcast_channel" }
 derive-error = "0.0.4"
 log = "0.4.6"
+digest = "0.8.0"
+blake2 = "0.8.0"
 
 [lib]
 crate-type = ["staticlib","cdylib"]

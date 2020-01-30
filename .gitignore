@@ -28,11 +28,11 @@ report
 
 # On development branch only. This should be removed for point releases
 Cargo.lock
-
 *.log
 
-# Ignore DataStore and Database files
+# Ignore DataStore, Database and Log files
 *.mdb
 /data/
 *.sqlite3
 base_layer/wallet_ffi/build.config
+/base_layer/wallet_ffi/logs/

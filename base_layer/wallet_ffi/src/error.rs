@@ -25,6 +25,7 @@ use tari_comms::{
     multiaddr,
     peer_manager::{node_id::NodeIdError, node_identity::NodeIdentityError},
 };
+use tari_crypto::signatures::SchnorrSignatureError;
 use tari_utilities::{hex::HexError, ByteArrayError};
 use tari_wallet::{
     contacts_service::error::{ContactsServiceError, ContactsServiceStorageError},
@@ -304,6 +305,18 @@ impl From<multiaddr::Error> for LibWalletError {
             err => Self {
                 code: 810,
                 message: format!("Multiaddr error: {:?}", err).to_string(),
+            },
+        }
+    }
+}
+
+impl From<SchnorrSignatureError> for LibWalletError {
+    fn from(err: SchnorrSignatureError) -> Self {
+        error!(target: LOG_TARGET, "{}", format!("{:?}", err));
+        match err {
+            SchnorrSignatureError::InvalidChallenge => Self {
+                code: 901,
+                message: format!("{:?}", err).to_string(),
             },
         }
     }
