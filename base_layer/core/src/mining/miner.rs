@@ -30,7 +30,7 @@ use crate::{
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         tari_amount::MicroTari,
-        transaction::Transaction,
+        transaction::{Transaction, UnblindedOutput},
         types::{CryptoFactories, PrivateKey},
     },
 };
@@ -50,9 +50,8 @@ use std::{
     thread,
     time,
 };
-
 use tari_crypto::keys::SecretKey;
-use tokio::runtime;
+use tokio::{runtime, task::spawn_blocking};
 
 pub struct Miner<B: BlockchainBackend> {
     kill_flag: Arc<AtomicBool>,
@@ -60,6 +59,7 @@ pub struct Miner<B: BlockchainBackend> {
     consensus: ConsensusManager<B>,
     node_interface: LocalNodeCommsInterface,
     executor: runtime::Handle,
+    utxo_sender: Sender<UnblindedOutput>,
 }
 
 impl<B: BlockchainBackend> Miner<B> {
@@ -71,13 +71,23 @@ impl<B: BlockchainBackend> Miner<B> {
         executor: runtime::Handle,
     ) -> Miner<B>
     {
+        let (utxo_sender, _): (Sender<UnblindedOutput>, Receiver<UnblindedOutput>) = mpsc::channel(1);
         Miner {
             kill_flag: stop_flag,
             consensus,
             received_new_block_flag: Arc::new(AtomicBool::new(false)),
             node_interface: node_interface.clone(),
             executor,
+            utxo_sender,
         }
+    }
+
+    /// This function instanciates a new channel and returns the receiver so that the miner can send out a unblinded
+    /// output. This output is only sent if the miner successfully mines a block
+    pub fn get_utxo_receiver_channel(&mut self) -> Receiver<UnblindedOutput> {
+        let (sender, receiver): (Sender<UnblindedOutput>, Receiver<UnblindedOutput>) = mpsc::channel(1);
+        self.utxo_sender = sender;
+        receiver
     }
 
     /// Async function to mine a block
@@ -94,28 +104,20 @@ impl<B: BlockchainBackend> Miner<B> {
             flag.store(false, Ordering::Relaxed);
 
             let mut block_template = self.get_block_template().await?;
-            self.add_coinbase(&mut block_template)?;
+            let output = self.add_coinbase(&mut block_template)?;
             let mut block = self.get_block(block_template).await?;
             let difficulty = self.get_req_difficulty().await?;
-            let (mut tx, mut rx): (Sender<Option<BlockHeader>>, Receiver<Option<BlockHeader>>) = mpsc::channel(1);
             let new_block_event_flag = self.received_new_block_flag.clone();
             let kill = self.kill_flag.clone();
             let header = block.header.clone();
-            self.executor.spawn(async move {
-                let result = CpuBlakePow::mine(difficulty, header, new_block_event_flag, kill);
-                tx.try_send(result);
-            });
-
-            let local_node_interface = self.node_interface.clone();
-            let recv_fut = async move {
-                let rcvd = rx.next().await;
-                let result = rcvd.unwrap();
-                if result.is_some() {
-                    block.header = result.unwrap();
-                    send_block(local_node_interface, block).await;
-                }
-            };
-            let _rcvd = recv_fut.await;
+            let mining_handle =
+                spawn_blocking(move || CpuBlakePow::mine(difficulty, header, new_block_event_flag, kill));
+            let result = mining_handle.await.unwrap_or(None);
+            if result.is_some() {
+                block.header = result.unwrap();
+                self.send_block(block).await;
+                self.utxo_sender.try_send(output);
+            }
         }
         Ok(())
     }
@@ -172,13 +174,10 @@ impl<B: BlockchainBackend> Miner<B> {
     }
 
     // add the coinbase to the NewBlockTemplate
-    fn add_coinbase(&self, block: &mut NewBlockTemplate) -> Result<(), MinerError> {
+    fn add_coinbase(&self, block: &mut NewBlockTemplate) -> Result<(UnblindedOutput), MinerError> {
         let fees = block.body.get_total_fee();
         let height = block.header.height;
-        let (tx_id, key, r) = self.get_spending_key(
-            fees + self.consensus.emission_schedule().block_reward(height),
-            height + ConsensusConstants::current().coinbase_lock_height(),
-        )?;
+        let (key, r) = self.get_spending_key()?;
         let factories = CryptoFactories::default();
         let builder = CoinbaseBuilder::new(factories.clone());
         let builder = builder
@@ -186,35 +185,27 @@ impl<B: BlockchainBackend> Miner<B> {
             .with_fees(fees)
             .with_nonce(r)
             .with_spend_key(key);
-        let tx = builder
+        let (tx, unblinded_output) = builder
             .build(self.consensus.clone())
             .expect("invalid constructed coinbase");
-        self.submit_tx_to_wallet(&tx, tx_id);
         block.body.add_output(tx.body.outputs()[0].clone());
         block.body.add_kernel(tx.body.kernels()[0].clone());
-        Ok(())
+        Ok((unblinded_output))
     }
 
-    /// stub function, get private key and tx_id from wallet
-    pub fn get_spending_key(
-        &self,
-        _amount: MicroTari,
-        _maturity_height: u64,
-    ) -> Result<(u64, PrivateKey, PrivateKey), MinerError>
-    {
+    /// function to create private key and nonce for coinbase
+    pub fn get_spending_key(&self) -> Result<(PrivateKey, PrivateKey), MinerError> {
         let r = PrivateKey::random(&mut OsRng);
         let key = PrivateKey::random(&mut OsRng);
-        Ok((0, key, r))
+        Ok((key, r))
     }
 
-    /// Stub function to let wallet know about potential tx
-    pub fn submit_tx_to_wallet(&self, _tx: &Transaction, _id: u64) {}
-}
-///  function to send a block
-async fn send_block(mut node_interface: LocalNodeCommsInterface, block: Block) -> Result<(), MinerError> {
-    node_interface
-        .submit_block(block)
-        .await
-        .map_err(|e| MinerError::CommunicationError(e.to_string()))?;
-    Ok(())
+    ///  function to send a block
+    async fn send_block(&mut self, block: Block) -> Result<(), MinerError> {
+        self.node_interface
+            .submit_block(block)
+            .await
+            .map_err(|e| MinerError::CommunicationError(e.to_string()))?;
+        Ok(())
+    }
 }

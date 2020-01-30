@@ -33,6 +33,13 @@ mod miner;
 mod parser;
 
 use crate::builder::{create_and_save_id, load_identity};
+use futures::{
+    channel::{
+        mpsc,
+        mpsc::{Receiver, Sender},
+    },
+    stream::StreamExt,
+};
 use log::*;
 use parser::Parser;
 use rustyline::{error::ReadlineError, Editor};
@@ -125,17 +132,24 @@ fn main() {
     };
 
     // Build, node, build!
-    let (comms, node, miner, wallet) = match builder::configure_and_initialize_node(&node_config, node_id, &mut rt) {
-        Ok(n) => n,
-        Err(e) => {
-            error!(target: LOG_TARGET, "Could not instantiate node instance. {}", e);
-            return;
-        },
-    };
+    let (comms, node, mut miner, mut wallet) =
+        match builder::configure_and_initialize_node(&node_config, node_id, &mut rt) {
+            Ok(n) => n,
+            Err(e) => {
+                error!(target: LOG_TARGET, "Could not instantiate node instance. {}", e);
+                return;
+            },
+        };
     let flag = node.get_flag();
 
     // lets run the miner
     let miner_handle = if node_config.enable_mining {
+        let mut rx = miner.get_utxo_receiver_channel();
+        rt.spawn(async move {
+            while let Some(utxo) = rx.next().await {
+                wallet.output_service.add_output(utxo).await;
+            }
+        });
         Some(rt.spawn(async move {
             debug!(target: LOG_TARGET, "starting miner");
             miner.mine().await;
