@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 pub type RequestKey = u64; // TODO: BaseNodeService and MempoolService uses RequestKey
 
 /// Generate a new random request key to uniquely identify a request and its corresponding responses.
+/// TODO this produces an unused function warning when compiling with only the mempool proto feature flag
 pub fn generate_request_key<R>(rng: &mut R) -> RequestKey
 where R: RngCore {
     rng.next_u64()

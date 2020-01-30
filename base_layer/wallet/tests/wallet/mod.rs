@@ -22,10 +22,7 @@
 
 use crate::support::utils::{make_input, random_string};
 use rand::rngs::OsRng;
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 use tari_comms::{
     control_service::ControlServiceConfig,
     multiaddr::Multiaddr,
@@ -38,12 +35,7 @@ use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
 use tari_crypto::keys::PublicKey;
 use tari_p2p::initialization::CommsConfig;
 use tari_test_utils::{collect_stream, paths::with_temp_dir};
-#[cfg(feature = "test_harness")]
-use tari_wallet::testnet_utils::broadcast_transaction;
-#[cfg(feature = "test_harness")]
-use tari_wallet::testnet_utils::finalize_received_transaction;
-#[cfg(feature = "test_harness")]
-use tari_wallet::transaction_service::storage::database::{CompletedTransaction, InboundTransaction};
+
 use tari_wallet::{
     contacts_service::storage::{database::Contact, memory_db::ContactsServiceMemoryDatabase},
     output_manager_service::storage::memory_db::OutputManagerMemoryDatabase,
@@ -83,6 +75,14 @@ fn test_wallet() {
             PeerFeatures::COMMUNICATION_NODE,
         )
         .unwrap();
+
+        let base_node_identity = NodeIdentity::random(
+            &mut OsRng,
+            "/ip4/127.0.0.1/tcp/54225".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        )
+        .unwrap();
+
         let comms_config1 = CommsConfig {
             node_identity: Arc::new(alice_identity.clone()),
             peer_connection_listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
@@ -164,6 +164,13 @@ fn test_wallet() {
                 alice_identity.public_key().clone(),
                 alice_identity.public_address(),
             ))
+            .unwrap();
+
+        alice_wallet
+            .set_base_node_peer(
+                (*base_node_identity.public_key()).clone(),
+                "/ip4/127.0.0.1/tcp/54225".to_string(),
+            )
             .unwrap();
 
         let alice_event_stream = alice_wallet.transaction_service.get_event_stream_fused();
@@ -296,337 +303,4 @@ fn test_data_generation() {
     assert!(completed_tx.len() > 0);
 
     wallet.shutdown().unwrap();
-}
-
-#[derive(Debug)]
-struct CallbackState {
-    pub received_tx_callback_called: bool,
-    pub received_tx_reply_callback_called: bool,
-    pub received_finalized_tx_callback_called: bool,
-    pub broadcast_tx_callback_called: bool,
-    pub mined_tx_callback_called: bool,
-    pub discovery_send_callback_called: bool,
-}
-
-impl CallbackState {
-    fn new() -> Self {
-        Self {
-            received_tx_callback_called: false,
-            received_tx_reply_callback_called: false,
-            received_finalized_tx_callback_called: false,
-            broadcast_tx_callback_called: false,
-            mined_tx_callback_called: false,
-            discovery_send_callback_called: false,
-        }
-    }
-
-    #[allow(dead_code)]
-    fn reset(&mut self) {
-        self.received_tx_callback_called = false;
-        self.received_tx_reply_callback_called = false;
-        self.received_finalized_tx_callback_called = false;
-        self.broadcast_tx_callback_called = false;
-        self.mined_tx_callback_called = false;
-        self.discovery_send_callback_called = false;
-    }
-}
-lazy_static! {
-    static ref CALLBACK_STATE_HARNESS: Mutex<CallbackState> = {
-        let c = Mutex::new(CallbackState::new());
-        c
-    };
-}
-#[cfg(feature = "test_harness")]
-unsafe extern "C" fn received_tx_callback(_tx: *mut InboundTransaction) {
-    assert_eq!(_tx.is_null(), false);
-    CALLBACK_STATE_HARNESS.lock().unwrap().received_tx_callback_called = true;
-    Box::from_raw(_tx);
-}
-#[cfg(feature = "test_harness")]
-unsafe extern "C" fn received_tx_reply_callback(_tx: *mut CompletedTransaction) {
-    assert_eq!(_tx.is_null(), false);
-    CALLBACK_STATE_HARNESS.lock().unwrap().received_tx_reply_callback_called = true;
-    Box::from_raw(_tx);
-}
-#[cfg(feature = "test_harness")]
-unsafe extern "C" fn received_finalized_tx_callback(_tx: *mut CompletedTransaction) {
-    assert_eq!(_tx.is_null(), false);
-    CALLBACK_STATE_HARNESS
-        .lock()
-        .unwrap()
-        .received_finalized_tx_callback_called = true;
-    Box::from_raw(_tx);
-}
-#[cfg(feature = "test_harness")]
-unsafe extern "C" fn broadcast_tx_callback(_tx: *mut CompletedTransaction) {
-    assert_eq!(_tx.is_null(), false);
-    CALLBACK_STATE_HARNESS.lock().unwrap().broadcast_tx_callback_called = true;
-    Box::from_raw(_tx);
-}
-#[cfg(feature = "test_harness")]
-unsafe extern "C" fn mined_tx_callback(_tx: *mut CompletedTransaction) {
-    assert_eq!(_tx.is_null(), false);
-    CALLBACK_STATE_HARNESS.lock().unwrap().mined_tx_callback_called = true;
-    Box::from_raw(_tx);
-}
-#[cfg(feature = "test_harness")]
-unsafe extern "C" fn discovery_send_callback(_tx_id: u64, _result: bool) {
-    CALLBACK_STATE_HARNESS.lock().unwrap().discovery_send_callback_called = true;
-    assert!(true);
-}
-
-#[cfg(feature = "test_harness")]
-#[test]
-fn test_test_harness() {
-    CALLBACK_STATE_HARNESS.lock().unwrap().reset();
-
-    use std::thread;
-    use tari_wallet::{
-        testnet_utils::{complete_sent_transaction, mine_transaction, receive_test_transaction},
-        transaction_service::storage::database::TransactionStatus,
-    };
-    let factories = CryptoFactories::default();
-    // Alice's parameters
-    let alice_identity = NodeIdentity::random(
-        &mut OsRng,
-        "/ip4/127.0.0.1/tcp/21525".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
-    let bob_identity = NodeIdentity::random(
-        &mut OsRng,
-        "/ip4/127.0.0.1/tcp/21144".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
-    let alice_dir = TempDir::new(random_string(8).as_str()).unwrap();
-    let comms_config1 = CommsConfig {
-        node_identity: Arc::new(alice_identity.clone()),
-        peer_connection_listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
-        socks_proxy_address: None,
-        control_service: ControlServiceConfig {
-            listening_address: alice_identity.public_address(),
-            socks_proxy_address: None,
-            public_peer_address: None,
-            requested_connection_timeout: Duration::from_millis(2000),
-        },
-        datastore_path: alice_dir.path().to_str().unwrap().to_string(),
-        establish_connection_timeout: Duration::from_secs(10),
-        peer_database_name: random_string(8),
-        inbound_buffer_size: 100,
-        outbound_buffer_size: 100,
-        dht: DhtConfig {
-            discovery_request_timeout: Duration::from_millis(500),
-            ..Default::default()
-        },
-    };
-    let config1 = WalletConfig {
-        comms_config: comms_config1,
-        factories: factories.clone(),
-        logging_path: None,
-    };
-
-    let runtime = Runtime::new().unwrap();
-    let tx_backend = TransactionMemoryDatabase::new();
-    let mut alice_wallet = Wallet::new(
-        config1,
-        runtime,
-        WalletMemoryDatabase::new(),
-        tx_backend.clone(),
-        OutputManagerMemoryDatabase::new(),
-        ContactsServiceMemoryDatabase::new(),
-    )
-    .unwrap();
-
-    alice_wallet.set_callbacks(
-        tx_backend,
-        received_tx_callback,
-        received_tx_reply_callback,
-        received_finalized_tx_callback,
-        broadcast_tx_callback,
-        mined_tx_callback,
-        discovery_send_callback,
-    );
-
-    alice_wallet
-        .comms
-        .peer_manager()
-        .add_peer(create_peer(
-            bob_identity.public_key().clone(),
-            bob_identity.public_address(),
-        ))
-        .unwrap();
-
-    alice_wallet
-        .comms
-        .peer_manager()
-        .add_peer(create_peer(
-            bob_identity.public_key().clone(),
-            bob_identity.public_address(),
-        ))
-        .unwrap();
-
-    let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
-
-    alice_wallet
-        .runtime
-        .block_on(alice_wallet.output_manager_service.add_output(uo1))
-        .unwrap();
-
-    alice_wallet
-        .runtime
-        .block_on(alice_wallet.transaction_service.send_transaction(
-            bob_identity.public_key().clone(),
-            value,
-            MicroTari::from(20),
-            "".to_string(),
-        ))
-        .unwrap();
-
-    thread::sleep(Duration::from_millis(500));
-
-    let alice_pending_outbound = alice_wallet
-        .runtime
-        .block_on(alice_wallet.transaction_service.get_pending_outbound_transactions())
-        .unwrap();
-    let alice_completed_tx = alice_wallet
-        .runtime
-        .block_on(alice_wallet.transaction_service.get_completed_transactions())
-        .unwrap();
-    assert_eq!(alice_pending_outbound.len(), 1);
-    assert_eq!(alice_completed_tx.len(), 0);
-
-    let mut tx_id = 0u64;
-    for k in alice_pending_outbound.keys() {
-        tx_id = k.clone();
-    }
-
-    complete_sent_transaction(&mut alice_wallet, tx_id.clone()).unwrap();
-
-    let alice_pending_outbound = alice_wallet
-        .runtime
-        .block_on(alice_wallet.transaction_service.get_pending_outbound_transactions())
-        .unwrap();
-    let alice_completed_tx = alice_wallet
-        .runtime
-        .block_on(alice_wallet.transaction_service.get_completed_transactions())
-        .unwrap();
-    assert_eq!(alice_pending_outbound.len(), 0);
-    assert_eq!(alice_completed_tx.len(), 1);
-    for (_k, v) in alice_completed_tx.clone().drain().take(1) {
-        assert_eq!(v.status, TransactionStatus::Completed);
-    }
-
-    broadcast_transaction(&mut alice_wallet, tx_id.clone()).unwrap();
-
-    let alice_pending_outbound = alice_wallet
-        .runtime
-        .block_on(alice_wallet.transaction_service.get_pending_outbound_transactions())
-        .unwrap();
-    let alice_completed_tx = alice_wallet
-        .runtime
-        .block_on(alice_wallet.transaction_service.get_completed_transactions())
-        .unwrap();
-    assert_eq!(alice_pending_outbound.len(), 0);
-    assert_eq!(alice_completed_tx.len(), 1);
-    for (_k, v) in alice_completed_tx.clone().drain().take(1) {
-        assert_eq!(v.status, TransactionStatus::Broadcast);
-    }
-
-    let pre_mined_balance = alice_wallet
-        .runtime
-        .block_on(alice_wallet.output_manager_service.get_balance())
-        .unwrap();
-
-    mine_transaction(&mut alice_wallet, tx_id.clone()).unwrap();
-
-    let alice_completed_tx = alice_wallet
-        .runtime
-        .block_on(alice_wallet.transaction_service.get_completed_transactions())
-        .unwrap();
-    assert_eq!(alice_completed_tx.len(), 1);
-    for (_k, v) in alice_completed_tx.clone().drain().take(1) {
-        assert_eq!(v.status, TransactionStatus::Mined);
-    }
-
-    let post_mined_balance = alice_wallet
-        .runtime
-        .block_on(alice_wallet.output_manager_service.get_balance())
-        .unwrap();
-
-    assert_eq!(
-        pre_mined_balance.pending_incoming_balance,
-        post_mined_balance.available_balance
-    );
-
-    receive_test_transaction(&mut alice_wallet).unwrap();
-
-    let alice_pending_inbound = alice_wallet
-        .runtime
-        .block_on(alice_wallet.transaction_service.get_pending_inbound_transactions())
-        .unwrap();
-
-    assert_eq!(alice_pending_inbound.len(), 1);
-
-    let mut inbound_tx_id = None;
-    for (_k, v) in alice_pending_inbound.clone().drain().take(1) {
-        inbound_tx_id = Some(v.tx_id);
-    }
-    assert!(inbound_tx_id.is_some());
-
-    finalize_received_transaction(&mut alice_wallet, inbound_tx_id.clone().unwrap()).unwrap();
-
-    let alice_completed_tx = alice_wallet
-        .runtime
-        .block_on(alice_wallet.transaction_service.get_completed_transactions())
-        .unwrap();
-
-    assert_eq!(alice_completed_tx.len(), 2);
-    let tx = alice_completed_tx.get(&inbound_tx_id.clone().take().unwrap()).unwrap();
-    assert_eq!(tx.status, TransactionStatus::Completed);
-
-    broadcast_transaction(&mut alice_wallet, inbound_tx_id.clone().unwrap()).unwrap();
-
-    let alice_completed_tx = alice_wallet
-        .runtime
-        .block_on(alice_wallet.transaction_service.get_completed_transactions())
-        .unwrap();
-
-    assert_eq!(alice_completed_tx.len(), 2);
-    let tx = alice_completed_tx.get(&inbound_tx_id.clone().take().unwrap()).unwrap();
-    assert_eq!(tx.status, TransactionStatus::Broadcast);
-
-    let pre_mined_balance = alice_wallet
-        .runtime
-        .block_on(alice_wallet.output_manager_service.get_balance())
-        .unwrap();
-
-    mine_transaction(&mut alice_wallet, inbound_tx_id.clone().take().unwrap()).unwrap();
-
-    let alice_completed_tx = alice_wallet
-        .runtime
-        .block_on(alice_wallet.transaction_service.get_completed_transactions())
-        .unwrap();
-    assert_eq!(alice_completed_tx.len(), 2);
-    let tx = alice_completed_tx.get(&inbound_tx_id.clone().take().unwrap()).unwrap();
-    assert_eq!(tx.status, TransactionStatus::Mined);
-
-    let post_mined_balance = alice_wallet
-        .runtime
-        .block_on(alice_wallet.output_manager_service.get_balance())
-        .unwrap();
-
-    assert_eq!(
-        pre_mined_balance.pending_incoming_balance + pre_mined_balance.available_balance,
-        post_mined_balance.available_balance
-    );
-
-    let callback_state = CALLBACK_STATE_HARNESS.lock().unwrap();
-    assert!(callback_state.received_tx_callback_called);
-    assert!(callback_state.received_finalized_tx_callback_called);
-    assert!(callback_state.broadcast_tx_callback_called);
-    assert!(callback_state.mined_tx_callback_called);
-
-    alice_wallet.shutdown().unwrap();
 }

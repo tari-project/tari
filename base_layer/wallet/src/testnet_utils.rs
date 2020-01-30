@@ -213,7 +213,7 @@ pub fn generate_wallet_test_data<
                 public_key: public_key.clone(),
             }))?;
 
-        wallet.add_base_node_peer(
+        wallet.set_base_node_peer(
             public_key.clone(),
             format!("/ip4/127.0.0.1/tcp/{}", 15200 + i + random_port_offset).to_string(),
         )?;

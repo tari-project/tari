@@ -19,8 +19,8 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#[cfg(feature = "c_integration")]
-pub mod callback_handler;
+
+pub mod config;
 pub mod error;
 pub mod handle;
 pub mod service;
@@ -29,6 +29,7 @@ pub mod storage;
 use crate::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{
+        config::TransactionServiceConfig,
         handle::TransactionServiceHandle,
         service::TransactionService,
         storage::database::{TransactionBackend, TransactionDatabase},
@@ -40,7 +41,10 @@ use std::sync::Arc;
 use tari_broadcast_channel::bounded;
 use tari_comms::peer_manager::NodeIdentity;
 use tari_comms_dht::outbound::OutboundMessageRequester;
-use tari_core::transactions::{transaction_protocol::proto, types::CryptoFactories};
+use tari_core::{
+    mempool::proto::mempool as MempoolProto,
+    transactions::{transaction_protocol::proto, types::CryptoFactories},
+};
 use tari_p2p::{
     comms_connector::PeerMessage,
     domain_message::DomainMessage,
@@ -62,6 +66,7 @@ const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service";
 pub struct TransactionServiceInitializer<T>
 where T: TransactionBackend
 {
+    config: TransactionServiceConfig,
     subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
     backend: Option<T>,
     node_identity: Arc<NodeIdentity>,
@@ -72,6 +77,7 @@ impl<T> TransactionServiceInitializer<T>
 where T: TransactionBackend
 {
     pub fn new(
+        config: TransactionServiceConfig,
         subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
         backend: T,
         node_identity: Arc<NodeIdentity>,
@@ -79,6 +85,7 @@ where T: TransactionBackend
     ) -> Self
     {
         Self {
+            config,
             subscription_factory,
             backend: Some(backend),
             node_identity,
@@ -107,6 +114,13 @@ where T: TransactionBackend
             .map(map_decode::<proto::TransactionFinalizedMessage>)
             .filter_map(ok_or_skip_result)
     }
+
+    fn mempool_response_stream(&self) -> impl Stream<Item = DomainMessage<MempoolProto::MempoolServiceResponse>> {
+        self.subscription_factory
+            .get_subscription(TariMessageType::MempoolResponse)
+            .map(map_decode::<MempoolProto::MempoolServiceResponse>)
+            .filter_map(ok_or_skip_result)
+    }
 }
 
 impl<T> ServiceInitializer for TransactionServiceInitializer<T>
@@ -125,6 +139,7 @@ where T: TransactionBackend + Clone + 'static
         let transaction_stream = self.transaction_stream();
         let transaction_reply_stream = self.transaction_reply_stream();
         let transaction_finalized_stream = self.transaction_finalized_stream();
+        let mempool_response_stream = self.mempool_response_stream();
 
         let (publisher, subscriber) = bounded(100);
 
@@ -140,6 +155,8 @@ where T: TransactionBackend + Clone + 'static
 
         let node_identity = self.node_identity.clone();
         let factories = self.factories.clone();
+        let config = self.config.clone();
+
         executor.spawn(async move {
             let handles = handles_fut.await;
 
@@ -151,11 +168,13 @@ where T: TransactionBackend + Clone + 'static
                 .expect("Output Manager Service handle required for TransactionService");
 
             let service = TransactionService::new(
+                config,
                 TransactionDatabase::new(backend),
                 receiver,
                 transaction_stream,
                 transaction_reply_stream,
                 transaction_finalized_stream,
+                mempool_response_stream,
                 output_manager_service,
                 outbound_message_service,
                 publisher,

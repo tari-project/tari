@@ -42,6 +42,7 @@ pub enum TransactionServiceRequest {
     GetPendingInboundTransactions,
     GetPendingOutboundTransactions,
     GetCompletedTransactions,
+    SetBaseNodePublicKey(CommsPublicKey),
     SendTransaction((CommsPublicKey, MicroTari, MicroTari, String)),
     RequestCoinbaseSpendingKey((MicroTari, u64)),
     CompleteCoinbaseTransaction((TxId, Transaction)),
@@ -68,6 +69,7 @@ pub enum TransactionServiceResponse {
     CoinbaseKey(PendingCoinbaseSpendingKey),
     CompletedCoinbaseTransactionReceived,
     CoinbaseTransactionCancelled,
+    BaseNodePublicKeySet,
     #[cfg(feature = "test_harness")]
     CompletedPendingTransaction,
     #[cfg(feature = "test_harness")]
@@ -83,6 +85,7 @@ pub enum TransactionServiceResponse {
 /// Events that can be published on the Text Message Service Event Stream
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum TransactionEvent {
+    MempoolBroadcastTimedOut(TxId),
     ReceivedTransaction(TxId),
     ReceivedTransactionReply(TxId),
     ReceivedFinalizedTransaction(TxId),
@@ -222,6 +225,21 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::CoinbaseTransactionCancelled => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn set_base_node_public_key(
+        &mut self,
+        public_key: CommsPublicKey,
+    ) -> Result<(), TransactionServiceError>
+    {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SetBaseNodePublicKey(public_key))
+            .await??
+        {
+            TransactionServiceResponse::BaseNodePublicKeySet => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

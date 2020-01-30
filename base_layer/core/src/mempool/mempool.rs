@@ -29,31 +29,13 @@ use crate::{
         pending_pool::{PendingPool, PendingPoolConfig},
         reorg_pool::{ReorgPool, ReorgPoolConfig},
         unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolConfig},
+        StatsResponse,
+        TxStorageResponse,
     },
     transactions::{transaction::Transaction, types::Signature},
     validation::{Validation, ValidationError, Validator},
 };
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub enum TxStorageResponse {
-    UnconfirmedPool,
-    OrphanPool,
-    PendingPool,
-    ReorgPool,
-    NotStored,
-}
-
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct StatsResponse {
-    pub total_txs: usize,
-    pub unconfirmed_txs: usize,
-    pub orphan_txs: usize,
-    pub timelocked_txs: usize,
-    pub published_txs: usize,
-    pub total_weight: u64,
-}
 
 /// Configuration for the Mempool.
 #[derive(Clone, Copy)]

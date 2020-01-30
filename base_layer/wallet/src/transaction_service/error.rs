@@ -70,6 +70,8 @@ pub enum TransactionServiceError {
     DiscoveryProcessFailed(TxId),
     /// Invalid Completed Transaction provided
     InvalidCompletedTransaction,
+    /// No Base Node public keys are provided for Base chain broadcast and monitoring
+    NoBaseNodeKeysProvided,
     DhtOutboundError(DhtOutboundError),
     OutputManagerError(OutputManagerError),
     TransportChannelError(TransportChannelError),

@@ -10,6 +10,7 @@ pub mod output_manager_service;
 pub mod storage;
 pub mod transaction_service;
 pub mod types;
+pub mod util;
 pub mod wallet;
 
 #[cfg(feature = "test_harness")]

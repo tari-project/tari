@@ -399,7 +399,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
-    #[cfg(feature = "test_harness")]
     fn broadcast_completed_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
         let conn = self
             .database_connection_pool
@@ -409,13 +408,15 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
         match CompletedTransactionSql::find(&tx_id, &conn) {
             Ok(v) => {
-                let _ = v.update(
-                    UpdateCompletedTransaction {
-                        status: Some(TransactionStatus::Broadcast),
-                        timestamp: None,
-                    },
-                    &conn,
-                )?;
+                if TransactionStatus::try_from(v.status)? == TransactionStatus::Completed {
+                    let _ = v.update(
+                        UpdateCompletedTransaction {
+                            status: Some(TransactionStatus::Broadcast),
+                            timestamp: None,
+                        },
+                        &conn,
+                    )?;
+                }
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                 return Err(TransactionStorageError::ValueNotFound(
@@ -797,7 +798,6 @@ impl CompletedTransactionSql {
         Ok(())
     }
 
-    #[cfg(feature = "test_harness")]
     pub fn update(
         &self,
         updated_tx: UpdateCompletedTransaction,
@@ -850,12 +850,7 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
             amount: MicroTari::from(c.amount as u64),
             fee: MicroTari::from(c.fee as u64),
             transaction: serde_json::from_str(&c.transaction_protocol)?,
-            status: match c.status {
-                0 => TransactionStatus::Completed,
-                1 => TransactionStatus::Broadcast,
-                2 => TransactionStatus::Mined,
-                _ => return Err(TransactionStorageError::ConversionError),
-            },
+            status: TransactionStatus::try_from(c.status)?,
             message: c.message,
             timestamp: c.timestamp,
         })

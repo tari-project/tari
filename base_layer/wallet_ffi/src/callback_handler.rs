@@ -20,17 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
+use futures::{stream::Fuse, StreamExt};
+use log::*;
+use tari_broadcast_channel::Subscriber;
+use tari_shutdown::ShutdownSignal;
+use tari_wallet::{
     output_manager_service::TxId,
     transaction_service::{
         handle::TransactionEvent,
         storage::database::{CompletedTransaction, InboundTransaction, TransactionBackend, TransactionDatabase},
     },
 };
-use futures::{stream::Fuse, StreamExt};
-use log::*;
-use tari_broadcast_channel::Subscriber;
-use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service::callback_handler";
 

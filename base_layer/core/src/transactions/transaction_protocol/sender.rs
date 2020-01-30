@@ -101,7 +101,7 @@ pub struct SingleRoundSenderData {
     pub message: String,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TransactionSenderMessage {
     None,
     Single(Box<SingleRoundSenderData>),

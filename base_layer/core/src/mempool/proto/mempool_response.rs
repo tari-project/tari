@@ -21,8 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::mempool::mempool_service_response::Response as ProtoMempoolResponse;
-use crate::mempool::{proto::mempool::TxStorageResponse as ProtoTxStorageResponse, service::MempoolResponse};
-use std::convert::TryInto;
+use crate::mempool::{
+    proto::mempool::{
+        MempoolServiceResponse as ProtoMempoolServiceResponse,
+        TxStorageResponse as ProtoTxStorageResponse,
+    },
+    service::{MempoolResponse, MempoolServiceResponse},
+};
+use std::convert::{TryFrom, TryInto};
 
 impl TryInto<MempoolResponse> for ProtoMempoolResponse {
     type Error = String;
@@ -38,6 +44,20 @@ impl TryInto<MempoolResponse> for ProtoMempoolResponse {
             },
         };
         Ok(response)
+    }
+}
+
+impl TryFrom<ProtoMempoolServiceResponse> for MempoolServiceResponse {
+    type Error = String;
+
+    fn try_from(response: ProtoMempoolServiceResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            request_key: response.request_key,
+            response: response
+                .response
+                .ok_or("Response field not present to convert".to_string())?
+                .try_into()?,
+        })
     }
 }
 

@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::mempool::{
-    mempool::{StatsResponse, TxStorageResponse},
-    service::RequestKey,
-};
+use crate::mempool::{service::RequestKey, StatsResponse, TxStorageResponse};
 use serde::{Deserialize, Serialize};
 
 /// API Response enum for Mempool responses.

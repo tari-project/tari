@@ -227,6 +227,7 @@ where
             },
             AddNodeId(node_id) => {
                 self.state.add_node_id(&node_id);
+                self.send_ping(node_id.clone()).await?;
                 Ok(LivenessResponse::NodeIdAdded)
             },
             GetNodeIdStats(node_id) => self

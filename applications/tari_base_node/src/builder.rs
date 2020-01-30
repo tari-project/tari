@@ -83,6 +83,7 @@ use tari_wallet::{
         OutputManagerServiceInitializer,
     },
     transaction_service::{
+        config::TransactionServiceConfig,
         error::TransactionServiceError,
         handle::{TransactionEvent, TransactionServiceHandle},
         service::TransactionService,
@@ -453,6 +454,7 @@ where
             factories.clone(),
         ))
         .add_initializer(TransactionServiceInitializer::new(
+            TransactionServiceConfig::default(),
             subscription_factory,
             TransactionServiceSqliteDatabase::new(
                 wallet_db_folder.to_str().expect("could not create db path").to_string(),
