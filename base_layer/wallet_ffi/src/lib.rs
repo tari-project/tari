@@ -130,13 +130,14 @@ use tari_utilities::ByteArray;
 use tari_wallet::wallet::WalletConfig;
 
 use crate::{callback_handler::CallbackHandler, error::InterfaceError};
+use blake2::Digest;
 use core::ptr;
 use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{control_service::ControlServiceConfig, multiaddr::Multiaddr, peer_manager::PeerFeatures};
 use tari_comms_dht::DhtConfig;
 use tari_core::transactions::types::CryptoFactories;
-use tari_crypto::keys::PublicKey;
+use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoSchnorr};
 use tari_utilities::hex::Hex;
 use tari_wallet::{
     contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
@@ -1785,6 +1786,126 @@ pub unsafe extern "C" fn wallet_create(
     }
 }
 
+/// Signs a message using the public key of the TariWallet
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `msg` - The message pointer.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+/// ## Returns
+/// `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
+/// public nonce, seperated by a pipe character. Empty if an error occured.
+#[no_mangle]
+pub unsafe extern "C" fn wallet_sign_message(
+    wallet: *mut TariWallet,
+    msg: *mut c_char,
+    error_out: *mut c_int,
+) -> *mut c_char
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    let mut result = CString::new("").unwrap();
+    let nonce;
+    let message;
+    let secret;
+    if msg.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return result.into_raw();
+    }
+    nonce = TariPrivateKey::random(&mut OsRng);
+    secret = (*wallet).comms.node_identity().secret_key().clone();
+    message = CString::from_raw(msg).to_str().unwrap().to_owned();
+    let challenge = Blake256::digest(message.as_bytes());
+    let signature = RistrettoSchnorr::sign(secret, nonce, challenge.as_slice());
+    match signature {
+        Ok(s) => {
+            let hex_sig = s.get_signature().to_hex();
+            let hex_nonce = s.get_public_nonce().to_hex();
+            let hex_return = format!("{}|{}", hex_sig, hex_nonce);
+            result = CString::new(hex_return).unwrap();
+        },
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+        },
+    }
+    result.into_raw()
+}
+
+/// Verifies the signature of the message signed by a TariWallet
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `hex_sig_nonce` - The pointer to the sting containing the hexadecimal representation of the
+/// signature and public nonce seperated by a pipe character.
+/// `hex_sig_nonce` - The pointer to the msg the signature will be checked against.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+/// ## Returns
+/// `bool` - Returns if the signature is valid or not, will be false if an error occurs.
+#[no_mangle]
+pub unsafe extern "C" fn wallet_verify_message_signature(
+    public_key: *mut TariPublicKey,
+    hex_sig_nonce: *mut c_char,
+    msg: *mut c_char,
+    error_out: *mut c_int,
+) -> bool
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    let mut result = false;
+    if public_key.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("public key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return result;
+    }
+    if hex_sig_nonce.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("signature".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return result;
+    }
+    if msg.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return result;
+    }
+    let message = CString::from_raw(msg).to_str().unwrap().to_owned();
+    let hex = CString::from_raw(hex_sig_nonce).to_str().unwrap().to_owned();
+    let hex_keys: Vec<&str> = hex.split('|').collect();
+    if hex_keys.len() != 2 {
+        error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return result;
+    }
+    let secret = TariPrivateKey::from_hex(hex_keys.get(0).unwrap());
+    match secret {
+        Ok(p) => {
+            let public_nonce = TariPublicKey::from_hex(hex_keys.get(1).unwrap());
+            match public_nonce {
+                Ok(pn) => {
+                    let signature = RistrettoSchnorr::new(pn, p);
+                    let challenge = Blake256::digest(message.as_bytes());
+                    result = signature.verify_challenge(&(*public_key), challenge.as_slice());
+                },
+                Err(e) => {
+                    error = LibWalletError::from(e).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                },
+            }
+        },
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+        },
+    }
+
+    result
+}
+
 /// This function will generate some test data in the wallet. The data generated will be
 /// as follows:
 ///
@@ -3151,6 +3272,17 @@ mod test {
                 discovery_process_complete_callback_bob,
                 error_ptr,
             );
+
+            let sig_msg = CString::new("Test Contact").unwrap();
+            let sig_msg_str: *mut c_char = CString::into_raw(sig_msg) as *mut c_char;
+            let sig_msg_compare = CString::new("Test Contact").unwrap();
+            let sig_msg_compare_str: *mut c_char = CString::into_raw(sig_msg_compare) as *mut c_char;
+            let sig_nonce_str: *mut c_char =
+                wallet_sign_message(alice_wallet, sig_msg_str, error_ptr) as *mut c_char as *mut c_char;
+            let alice_wallet_key = wallet_get_public_key(alice_wallet, error_ptr);
+            let verify_msg =
+                wallet_verify_message_signature(alice_wallet_key, sig_nonce_str, sig_msg_compare_str, error_ptr);
+            assert_eq!(verify_msg, true);
 
             let mut peer_added =
                 wallet_add_base_node_peer(alice_wallet, public_key_bob.clone(), address_bob_str, error_ptr);
