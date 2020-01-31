@@ -36,10 +36,10 @@ pub fn build_miner<B: BlockchainBackend>(
     handles: Arc<ServiceHandles>,
     stop_flag: Arc<AtomicBool>,
     consensus_manager: ConsensusManager<B>,
-    executor: runtime::Handle,
+    _executor: runtime::Handle,
 ) -> Miner<B>
 {
     let node_local_interface = handles.get_handle::<LocalNodeCommsInterface>().unwrap();
-    let miner = Miner::new(stop_flag, consensus_manager, &node_local_interface, executor);
+    let miner = Miner::new(stop_flag, consensus_manager, &node_local_interface);
     miner
 }

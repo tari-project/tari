@@ -24,7 +24,6 @@ use crate::{
     blocks::BlockHeader,
     proof_of_work::{Difficulty, ProofOfWork},
 };
-use bigint::uint::U256;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::sync::{
@@ -32,8 +31,6 @@ use std::sync::{
     Arc,
 };
 use tari_utilities::epoch_time::EpochTime;
-
-const MAX_TARGET: U256 = U256::MAX;
 
 /// A simple Blake2b-based proof of work. This is currently intended to be used for testing and perhaps Testnet until
 /// Monero merge-mining is active.

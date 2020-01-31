@@ -23,14 +23,13 @@
 
 use crate::{
     base_node::comms_interface::{BlockEvent, LocalNodeCommsInterface},
-    blocks::{Block, BlockHeader, NewBlockTemplate},
+    blocks::{Block, NewBlockTemplate},
     chain_storage::{BlockAddResult, BlockchainBackend},
-    consensus::{ConsensusConstants, ConsensusManager},
+    consensus::ConsensusManager,
     mining::{blake_miner::CpuBlakePow, error::MinerError, CoinbaseBuilder},
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
-        tari_amount::MicroTari,
-        transaction::{Transaction, UnblindedOutput},
+        transaction::UnblindedOutput,
         types::{CryptoFactories, PrivateKey},
     },
 };
@@ -51,14 +50,13 @@ use std::{
     time,
 };
 use tari_crypto::keys::SecretKey;
-use tokio::{runtime, task::spawn_blocking};
+use tokio::task::spawn_blocking;
 
 pub struct Miner<B: BlockchainBackend> {
     kill_flag: Arc<AtomicBool>,
     received_new_block_flag: Arc<AtomicBool>,
     consensus: ConsensusManager<B>,
     node_interface: LocalNodeCommsInterface,
-    executor: runtime::Handle,
     utxo_sender: Sender<UnblindedOutput>,
 }
 
@@ -68,7 +66,6 @@ impl<B: BlockchainBackend> Miner<B> {
         stop_flag: Arc<AtomicBool>,
         consensus: ConsensusManager<B>,
         node_interface: &LocalNodeCommsInterface,
-        executor: runtime::Handle,
     ) -> Miner<B>
     {
         let (utxo_sender, _): (Sender<UnblindedOutput>, Receiver<UnblindedOutput>) = mpsc::channel(1);
@@ -77,7 +74,6 @@ impl<B: BlockchainBackend> Miner<B> {
             consensus,
             received_new_block_flag: Arc::new(AtomicBool::new(false)),
             node_interface: node_interface.clone(),
-            executor,
             utxo_sender,
         }
     }
@@ -115,8 +111,11 @@ impl<B: BlockchainBackend> Miner<B> {
             let result = mining_handle.await.unwrap_or(None);
             if result.is_some() {
                 block.header = result.unwrap();
-                self.send_block(block).await;
-                self.utxo_sender.try_send(output);
+                let _ = self.send_block(block).await?;
+                let _ = self
+                    .utxo_sender
+                    .try_send(output)
+                    .map_err(|e| MinerError::CommunicationError(e.to_string()))?;
             }
         }
         Ok(())
@@ -174,9 +173,8 @@ impl<B: BlockchainBackend> Miner<B> {
     }
 
     // add the coinbase to the NewBlockTemplate
-    fn add_coinbase(&self, block: &mut NewBlockTemplate) -> Result<(UnblindedOutput), MinerError> {
+    fn add_coinbase(&self, block: &mut NewBlockTemplate) -> Result<UnblindedOutput, MinerError> {
         let fees = block.body.get_total_fee();
-        let height = block.header.height;
         let (key, r) = self.get_spending_key()?;
         let factories = CryptoFactories::default();
         let builder = CoinbaseBuilder::new(factories.clone());
@@ -190,7 +188,7 @@ impl<B: BlockchainBackend> Miner<B> {
             .expect("invalid constructed coinbase");
         block.body.add_output(tx.body.outputs()[0].clone());
         block.body.add_kernel(tx.body.kernels()[0].clone());
-        Ok((unblinded_output))
+        Ok(unblinded_output)
     }
 
     /// function to create private key and nonce for coinbase

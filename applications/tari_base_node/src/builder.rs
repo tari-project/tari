@@ -21,10 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::miner;
-use futures::channel::{
-    mpsc,
-    mpsc::{Receiver, Sender},
-};
+use futures::channel::mpsc::Receiver;
 use log::*;
 use rand::rngs::OsRng;
 use std::{
@@ -83,20 +80,13 @@ use tokio::runtime::Runtime;
 use tari_wallet::{
     output_manager_service::{
         handle::OutputManagerHandle,
-        service::OutputManagerService,
-        storage::{database::OutputManagerDatabase, sqlite_db::OutputManagerSqliteDatabase},
+        storage::sqlite_db::OutputManagerSqliteDatabase,
         OutputManagerServiceInitializer,
     },
     transaction_service::{
         config::TransactionServiceConfig,
-        error::TransactionServiceError,
-        handle::{TransactionEvent, TransactionServiceHandle},
-        service::TransactionService,
-        storage::{
-            database::{TransactionBackend, TransactionDatabase},
-            memory_db::TransactionMemoryDatabase,
-            sqlite_db::TransactionServiceSqliteDatabase,
-        },
+        handle::TransactionServiceHandle,
+        storage::sqlite_db::TransactionServiceSqliteDatabase,
         TransactionServiceInitializer,
     },
 };
