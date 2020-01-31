@@ -22,7 +22,6 @@
 
 use crate::{
     chain_storage::BlockchainBackend,
-    consts::MEMPOOL_SERVICE_REQUEST_TIMEOUT,
     mempool::{
         proto,
         service::{
@@ -32,6 +31,7 @@ use crate::{
             MempoolRequest,
             MempoolResponse,
         },
+        MempoolServiceConfig,
     },
     transactions::{proto::types::Transaction as ProtoTransaction, transaction::Transaction},
 };
@@ -59,21 +59,6 @@ use tari_service_framework::RequestContext;
 use tokio::runtime;
 
 const LOG_TARGET: &'static str = "tari_core::base_node::mempool::service";
-
-/// Configuration for the MempoolService.
-#[derive(Clone, Copy)]
-pub struct MempoolServiceConfig {
-    /// The allocated waiting time for a request waiting for service responses from the Mempools of remote Base nodes.
-    pub request_timeout: Duration,
-}
-
-impl Default for MempoolServiceConfig {
-    fn default() -> Self {
-        Self {
-            request_timeout: MEMPOOL_SERVICE_REQUEST_TIMEOUT,
-        }
-    }
-}
 
 /// A convenience struct to hold all the Mempool service streams
 pub struct MempoolStreams<SOutReq, SInReq, SInRes, STxIn> {

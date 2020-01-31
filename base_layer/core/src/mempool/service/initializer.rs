@@ -28,8 +28,9 @@ use crate::{
         service::{
             inbound_handlers::MempoolInboundHandlers,
             outbound_interface::OutboundMempoolServiceInterface,
-            service::{MempoolService, MempoolServiceConfig, MempoolStreams},
+            service::{MempoolService, MempoolStreams},
         },
+        MempoolServiceConfig,
     },
     transactions::{proto::types::Transaction as ProtoTransaction, transaction::Transaction},
 };

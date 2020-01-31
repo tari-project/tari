@@ -38,6 +38,7 @@ mod chain_metadata_service;
 mod proto;
 
 pub mod comms_interface;
+pub mod consts;
 pub mod service;
 pub mod states;
 

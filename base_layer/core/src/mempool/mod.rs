@@ -22,6 +22,8 @@
 
 cfg_if! {
     if #[cfg(feature = "base_node")] {
+        mod config;
+        mod consts;
         mod error;
         mod mempool;
         mod orphan_pool;
@@ -30,16 +32,13 @@ cfg_if! {
         mod reorg_pool;
         mod unconfirmed_pool;
         // Public re-exports
+        pub use self::config::{MempoolConfig, MempoolServiceConfig};
         pub use error::MempoolError;
-        pub use mempool::{Mempool, MempoolConfig, MempoolValidators};
-        pub use service::{
-            MempoolServiceConfig,
-            MempoolServiceError,
-            MempoolServiceInitializer,
-            OutboundMempoolServiceInterface,
-        };
+        pub use mempool::{Mempool, MempoolValidators};
+        pub use service::{MempoolServiceError, MempoolServiceInitializer, OutboundMempoolServiceInterface};
     }
 }
+
 cfg_if! {
     if #[cfg(any(feature = "base_node", feature = "mempool_proto"))] {
         pub mod proto;

@@ -152,6 +152,109 @@ peer_seeds = []
 
 ########################################################################################################################
 #                                                                                                                      #
+#                                             Mempool Configuration Options                                            #
+#                                                                                                                      #
+########################################################################################################################
+[mempool.testnet]
+
+# The maximum period the mempool will wait for responses to requests made to base nodes [default: 60 seconds].
+# request_timeout = 60
+
+# The maximum number of transactions that can be stored in the Unconfirmed Transaction pool. This is the main waiting
+# area in the mempool and almost all transactions will end up in this pool before being mined. It's for this reason
+# that this parameter will have the greatest impact on actual memory usage by your mempool. If you are not mining,
+# you can reduce this parameter to reduce memory consumption by your node, at the expense of network bandwith. For
+# reference, a single block can hold about 4,000 transactions
+# Default = 40,000 transactions
+# unconfirmed_pool_storage_capacity = 40000
+
+# The maximum number of transactions that can be stored in the Orphan Transaction pool. This pool keep transactions
+# that are 'orphans', i.e. transactions with inputs that don't exist in the UTXO set. If you're not mining, and
+# memory usage is a concern, this can safely be set to zero. Even so, orphan transactions do not appear that often
+# (it's usually a short chain of spends that are broadcast in quick succession). The other potential source of orphan
+# transactions are from DOS attacks and setting the `tx_ttl` parameter to a low value is an effective countermeasure
+# in this case. Default: 250 transactions
+# orphan_pool_storage_capacity = 250
+
+# The maximum amount of time an orphan transaction will be permitted to stay in the mempool before being rejected.
+# This should be set to a fairly long enough to allow the parent transaction to arrive; but low enough also to thwart
+# DOS attacks. Default: 300 seconds
+#orphan_tx_ttl = 300
+
+# The maximum number of transactions that can be stored in the Pending Transaction pool. This pool holds transactions
+# that are valid, but cannot be included in a block yet becuase there is a consensus rule holding it back, usually a
+# time lock. Once the conditions holding the transaction in the pending pool are resolved, the transaction will move
+# into the unconfirmed pool.  Default: 5,000 transactions
+# pending_pool_storage_capacity = 5000
+
+# The ReorgPool consists of all transactions that have recently been added to blocks.
+# When a potential blockchain reorganization occurs the transactions can be recovered from the ReorgPool and can be
+# added back into the UnconfirmedPool. Transactions in the ReOrg pool have a limited Time-to-live and will be removed
+# from the pool when the Time-to-live thresholds is reached. Also, when the capacity of the pool has been reached, the
+# oldest transactions will be removed to make space for incoming transactions. The pool capacity and TTL parameters
+# have the same meaning as those for the pending pool, but applied to the re-org pool; obviously.
+# Defaults: 10,000 transactions and 300 seconds
+#reorg_pool_storage_capacity = 10_000
+#reorg_tx_ttl = 300
+
+# The maximum number of transactions that can be skipped when compiling a set of highest priority transactions,
+# skipping over large transactions are performed in an attempt to fit more transactions into the remaining space.
+# This parameter only affects mining nodes. You can ignore it if you are only running a base node. Even so, changing
+# this parameter should not affect profitabilty in any meaningful way, since the transaction weights are selected to
+# closely mirror how much block space they take up
+#weight_tx_skip_count = 20
+
+[mempool.mainnet]
+
+# The maximum period the mempool will wait for responses to requests made to base nodes [default: 60 seconds].
+# request_timeout = 60
+
+# The maximum number of transactions that can be stored in the Unconfirmed Transaction pool. This is the main waiting
+# area in the mempool and almost all transactions will end up in this pool before being mined. It's for this reason
+# that this parameter will have the greatest impact on actual memory usage by your mempool. If you are not mining,
+# you can reduce this parameter to reduce memory consumption by your node, at the expense of network bandwith. For
+# reference, a single block can hold about 4,000 transactions
+# Default = 40,000 transactions
+# unconfirmed_pool_storage_capacity = 40000
+
+# The maximum number of transactions that can be stored in the Orphan Transaction pool. This pool keep transactions
+# that are 'orphans', i.e. transactions with inputs that don't exist in the UTXO set. If you're not mining, and
+# memory usage is a concern, this can safely be set to zero. Even so, orphan transactions do not appear that often
+# (it's usually a short chain of spends that are broadcast in quick succession). The other potential source of orphan
+# transactions are from DOS attacks and setting the `tx_ttl` parameter to a low value is an effective countermeasure
+# in this case. Default: 250 transactions
+# orphan_pool_storage_capacity = 250
+
+# The maximum amount of time an orphan transaction will be permitted to stay in the mempool before being rejected.
+# This should be set to a fairly long enough to allow the parent transaction to arrive; but low enough also to thwart
+# DOS attacks. Default: 300 seconds
+#orphan_tx_ttl = 300
+
+# The maximum number of transactions that can be stored in the Pending Transaction pool. This pool holds transactions
+# that are valid, but cannot be included in a block yet becuase there is a consensus rule holding it back, usually a
+# time lock. Once the conditions holding the transaction in the pending pool are resolved, the transaction will move
+# into the unconfirmed pool.  Default: 5,000 transactions
+# pending_pool_storage_capacity = 5000
+
+# The ReorgPool consists of all transactions that have recently been added to blocks.
+# When a potential blockchain reorganization occurs the transactions can be recovered from the ReorgPool and can be
+# added back into the UnconfirmedPool. Transactions in the ReOrg pool have a limited Time-to-live and will be removed
+# from the pool when the Time-to-live thresholds is reached. Also, when the capacity of the pool has been reached, the
+# oldest transactions will be removed to make space for incoming transactions. The pool capacity and TTL parameters
+# have the same meaning as those for the pending pool, but applied to the re-org pool; obviously.
+# Defaults: 10,000 transactions and 300 seconds
+#reorg_pool_storage_capacity = 10_000
+#reorg_tx_ttl = 300
+
+# The maximum number of transactions that can be skipped when compiling a set of highest priority transactions,
+# skipping over large transactions are performed in an attempt to fit more transactions into the remaining space.
+# This parameter only affects mining nodes. You can ignore it if you are only running a base node. Even so, changing
+# this parameter should not affect profitabilty in any meaningful way, since the transaction weights are selected to
+# closely mirror how much block space they take up
+#weight_tx_skip_count = 20
+
+########################################################################################################################
+#                                                                                                                      #
 #                                         Validator Node Configuration Options                                         #
 #                                                                                                                      #
 ########################################################################################################################

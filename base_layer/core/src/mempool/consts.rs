@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,39 +19,28 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 
-// Needed to make futures::select! work
-#![recursion_limit = "1024"]
-// Used to eliminate the need for boxing futures in many cases.
-// Tracking issue: https://github.com/rust-lang/rust/issues/63063
-#![feature(type_alias_impl_trait)]
-// Enable usage of Vec::shrink_to
-#![feature(shrink_to)]
+use std::time::Duration;
 
-#[macro_use]
-extern crate bitflags;
-#[macro_use]
-extern crate cfg_if;
+/// The maximum number of transactions that can be stored in the Unconfirmed Transaction pool
+pub const MEMPOOL_UNCONFIRMED_POOL_STORAGE_CAPACITY: usize = 40_000;
+/// The maximum number of transactions that can be skipped when compiling a set of highest priority transactions,
+/// skipping over large transactions are performed in an attempt to fit more transactions into the remaining space.
+pub const MEMPOOL_UNCONFIRMED_POOL_WEIGHT_TRANSACTION_SKIP_COUNT: usize = 20;
 
-cfg_if! {
-    if #[cfg(feature = "base_node")] {
-        pub mod base_node;
-        pub mod blocks;
-        pub mod chain_storage;
-        pub mod consensus;
-        pub mod helpers;
-        pub mod mining;
-        pub mod proof_of_work;
-        pub mod proto;
-        pub mod validation;
-    }
-}
+/// The maximum number of transactions that can be stored in the Orphan pool
+pub const MEMPOOL_ORPHAN_POOL_STORAGE_CAPACITY: usize = 250;
+/// The time-to-live duration used for transactions stored in the OrphanPool
+pub const MEMPOOL_ORPHAN_POOL_CACHE_TTL: Duration = Duration::from_secs(300);
 
-#[cfg(any(feature = "base_node", feature = "mempool_proto"))]
-pub mod mempool;
+/// The maximum number of transactions that can be stored in the Pending pool
+pub const MEMPOOL_PENDING_POOL_STORAGE_CAPACITY: usize = 5_000;
 
-#[cfg(feature = "transactions")]
-pub mod transactions;
+/// The maximum number of transactions that can be stored in the Reorg pool
+pub const MEMPOOL_REORG_POOL_STORAGE_CAPACITY: usize = 5_000;
+/// The time-to-live duration used for transactions stored in the ReorgPool
+pub const MEMPOOL_REORG_POOL_CACHE_TTL: Duration = Duration::from_secs(300);
 
-// Re-export the crypto crate to make exposing traits etc easier for clients of this crate
-pub use tari_crypto as crypto;
+/// The allocated waiting time for a request waiting for service responses from the mempools of remote base nodes.
+pub const MEMPOOL_SERVICE_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
