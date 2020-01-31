@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    peer_manager::PeerId,
+    peer_manager::NodeId,
     protocol::{ProtocolError, ProtocolId},
 };
 use futures::{channel::mpsc, SinkExt};
@@ -29,16 +29,16 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub enum ProtocolEvent<TSubstream> {
-    NewSubstream(PeerId, TSubstream),
+    NewInboundSubstream(Box<NodeId>, TSubstream),
 }
 
 #[derive(Debug, Clone)]
-pub struct Notification<TSubstream> {
+pub struct ProtocolNotification<TSubstream> {
     pub event: ProtocolEvent<TSubstream>,
     pub protocol: ProtocolId,
 }
 
-impl<TSubstream> Notification<TSubstream> {
+impl<TSubstream> ProtocolNotification<TSubstream> {
     pub fn new(protocol: ProtocolId, event: ProtocolEvent<TSubstream>) -> Self {
         Self { protocol, event }
     }
@@ -46,7 +46,7 @@ impl<TSubstream> Notification<TSubstream> {
 
 #[derive(Clone)]
 pub struct ProtocolNotifier<TSubstream> {
-    notifiers: HashMap<ProtocolId, mpsc::Sender<Notification<TSubstream>>>,
+    notifiers: HashMap<ProtocolId, mpsc::Sender<ProtocolNotification<TSubstream>>>,
 }
 
 impl<TSubstream> Default for ProtocolNotifier<TSubstream> {
@@ -62,7 +62,7 @@ impl<TSubstream> ProtocolNotifier<TSubstream> {
         Default::default()
     }
 
-    pub fn add(&mut self, protocols: &[ProtocolId], notifier: mpsc::Sender<Notification<TSubstream>>) {
+    pub fn add(&mut self, protocols: &[ProtocolId], notifier: mpsc::Sender<ProtocolNotification<TSubstream>>) {
         self.notifiers
             .extend(protocols.iter().map(|p| (p.clone(), notifier.clone())));
     }
@@ -79,7 +79,7 @@ impl<TSubstream> ProtocolNotifier<TSubstream> {
     {
         match self.notifiers.get_mut(protocol) {
             Some(sender) => {
-                sender.send(Notification::new(protocol.clone(), event)).await?;
+                sender.send(ProtocolNotification::new(protocol.clone(), event)).await?;
                 Ok(())
             },
             None => Err(ProtocolError::ProtocolNotRegistered),
@@ -97,15 +97,16 @@ mod test {
     fn add() {
         let mut notifiers = ProtocolNotifier::<()>::new();
         let (tx, _) = mpsc::channel(1);
-        let protocols = &[
+        let protocols = [
             ProtocolId::from_static(b"/tari/test/1"),
             ProtocolId::from_static(b"/tari/test/2"),
         ];
-        notifiers.add(protocols, tx);
+        notifiers.add(&protocols.clone(), tx);
 
         assert!(notifiers
             .get_supported_protocols()
-            .contains(&&ProtocolId::from_static(b"/tari/test/2")))
+            .iter()
+            .all(|p| protocols.contains(p)));
     }
 
     #[tokio_macros::test_basic]
@@ -118,14 +119,14 @@ mod test {
         notifiers
             .notify(
                 &ProtocolId::from_static(b"/tari/test/1"),
-                ProtocolEvent::NewSubstream(123, ()),
+                ProtocolEvent::NewInboundSubstream(Box::new(NodeId::new()), ()),
             )
             .await
             .unwrap();
 
         let notification = rx.next().await.unwrap();
-        unpack_enum!(ProtocolEvent::NewSubstream(peer_id, _s) = notification.event);
-        assert_eq!(peer_id, 123);
+        unpack_enum!(ProtocolEvent::NewInboundSubstream(peer_id, _s) = notification.event);
+        assert_eq!(*peer_id, NodeId::new());
     }
 
     #[tokio_macros::test_basic]
@@ -135,7 +136,7 @@ mod test {
         let err = notifiers
             .notify(
                 &ProtocolId::from_static(b"/tari/test/0"),
-                ProtocolEvent::NewSubstream(123, ()),
+                ProtocolEvent::NewInboundSubstream(Box::new(NodeId::new()), ()),
             )
             .await
             .unwrap_err();

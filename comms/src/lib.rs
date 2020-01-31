@@ -41,6 +41,7 @@ cfg_next! {
     mod socks;
 
     pub mod bounded_executor;
+    pub mod compat;
     pub mod memsocket;
     pub mod transports;
 }

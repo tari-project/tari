@@ -24,9 +24,10 @@ use super::error::ConnectionManagerError;
 use crate::{
     connection::ConnectionDirection,
     connection_manager::{error::PeerConnectionError, manager::ConnectionManagerEvent},
-    multiplexing::yamux::{Incoming, Yamux},
+    multiplexing::{IncomingSubstreams, Yamux},
     peer_manager::NodeId,
     protocol::{ProtocolId, ProtocolNegotiation},
+    types::CommsSubstream,
 };
 use futures::{
     channel::{mpsc, oneshot},
@@ -78,7 +79,7 @@ pub enum PeerConnectionRequest {
     /// Open a new substream and negotiate the given protocol
     OpenSubstream(
         ProtocolId,
-        oneshot::Sender<Result<NegotiatedSubstream, PeerConnectionError>>,
+        oneshot::Sender<Result<NegotiatedSubstream<CommsSubstream>, PeerConnectionError>>,
     ),
     /// Disconnect all substreams and close the transport connection
     Disconnect(bool, oneshot::Sender<()>),
@@ -120,7 +121,7 @@ impl PeerConnection {
     pub async fn open_substream<P: Into<ProtocolId>>(
         &mut self,
         protocol_id: P,
-    ) -> Result<NegotiatedSubstream, PeerConnectionError>
+    ) -> Result<NegotiatedSubstream<CommsSubstream>, PeerConnectionError>
     {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.request_tx
@@ -156,7 +157,7 @@ impl PeerConnection {
 pub struct PeerConnectionActor {
     peer_node_id: NodeId,
     request_rx: Fuse<mpsc::Receiver<PeerConnectionRequest>>,
-    incoming_substreams: Fuse<Incoming>,
+    incoming_substreams: Fuse<IncomingSubstreams>,
     substream_shutdown: Option<Shutdown>,
     control: yamux::Control,
     event_notifier: mpsc::Sender<ConnectionManagerEvent>,
@@ -234,7 +235,7 @@ impl PeerConnectionActor {
             Disconnect(silent, reply_tx) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Disconnect requested for peer with public key '{}'",
+                    "Disconnect requested for peer '{}'",
                     self.peer_node_id.short_str()
                 );
                 self.disconnect(silent).await;
@@ -245,7 +246,6 @@ impl PeerConnectionActor {
 
     async fn handle_incoming_substream(&mut self, mut stream: yamux::Stream) -> Result<(), PeerConnectionError> {
         let selected_protocol = ProtocolNegotiation::new(&mut stream)
-            // TODO: Will always fail. Get supported protocols when the protocol registry is implemented
             .negotiate_protocol_inbound(&self.supported_protocols)
             .await?;
 
@@ -262,7 +262,7 @@ impl PeerConnectionActor {
     async fn open_negotiated_protocol_stream(
         &mut self,
         protocol: ProtocolId,
-    ) -> Result<NegotiatedSubstream, PeerConnectionError>
+    ) -> Result<NegotiatedSubstream<CommsSubstream>, PeerConnectionError>
     {
         debug!(
             target: LOG_TARGET,
@@ -292,9 +292,11 @@ impl PeerConnectionActor {
     /// silent - true to supress the PeerDisconnected event, false to publish the event
     async fn disconnect(&mut self, silent: bool) {
         if let Err(err) = self.control.close().await {
-            error!(
+            warn!(
                 target: LOG_TARGET,
-                "Failed to politely close connection to peer '{}' because '{}'", self.peer_node_id, err
+                "Failed to politely close connection to peer '{}' because '{}'",
+                self.peer_node_id.short_str(),
+                err
             );
         }
         trace!(target: LOG_TARGET, "Connection closed");
@@ -315,23 +317,22 @@ impl PeerConnectionActor {
     }
 }
 
-pub struct NegotiatedSubstream {
+pub struct NegotiatedSubstream<TSubstream> {
     pub protocol: ProtocolId,
-    pub stream: yamux::Stream,
+    pub stream: TSubstream,
 }
 
-impl NegotiatedSubstream {
-    pub fn new(protocol: ProtocolId, stream: yamux::Stream) -> Self {
+impl<TSubstream> NegotiatedSubstream<TSubstream> {
+    pub fn new(protocol: ProtocolId, stream: TSubstream) -> Self {
         Self { protocol, stream }
     }
 }
 
-impl fmt::Debug for NegotiatedSubstream {
+impl<TSubstream> fmt::Debug for NegotiatedSubstream<TSubstream> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "NegotiatedSubstream {{ protocol: {:?}, substream: ... }}",
-            self.protocol,
-        )
+        f.debug_struct("NegotiatedSubstream")
+            .field("protocol", &format!("{:?}", self.protocol))
+            .field("stream", &"...".to_string())
+            .finish()
     }
 }
