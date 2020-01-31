@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{inbound::DhtInboundMessage, proto::envelope::DhtEnvelope};
+use crate::{inbound::DhtInboundMessage, proto::envelope::DhtEnvelope, PipelineError};
 use futures::{task::Context, Future};
 use log::*;
 use prost::Message;
 use std::{convert::TryInto, task::Poll};
-use tari_comms::{message::InboundMessage, middleware::MiddlewareError};
+use tari_comms::message::InboundMessage;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::dht::deserialize";
@@ -49,9 +49,9 @@ impl<S> DhtDeserializeMiddleware<S> {
 impl<S> Service<InboundMessage> for DhtDeserializeMiddleware<S>
 where
     S: Service<DhtInboundMessage, Response = ()> + Clone + 'static,
-    S::Error: Into<MiddlewareError>,
+    S::Error: Into<PipelineError>,
 {
-    type Error = MiddlewareError;
+    type Error = PipelineError;
     type Response = ();
 
     type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
@@ -68,9 +68,9 @@ where
 impl<S> DhtDeserializeMiddleware<S>
 where
     S: Service<DhtInboundMessage, Response = ()>,
-    S::Error: Into<MiddlewareError>,
+    S::Error: Into<PipelineError>,
 {
-    pub async fn deserialize(mut next_service: S, message: InboundMessage) -> Result<(), MiddlewareError> {
+    pub async fn deserialize(mut next_service: S, message: InboundMessage) -> Result<(), PipelineError> {
         trace!(target: LOG_TARGET, "Deserializing InboundMessage");
         next_service.ready().await.map_err(Into::into)?;
 
@@ -137,7 +137,7 @@ mod test {
     #[test]
     fn deserialize() {
         let spy = service_spy();
-        let mut deserialize = DeserializeLayer::new().layer(spy.to_service::<MiddlewareError>());
+        let mut deserialize = DeserializeLayer::new().layer(spy.to_service::<PipelineError>());
 
         panic_context!(cx);
 

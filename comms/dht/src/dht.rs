@@ -31,13 +31,13 @@ use crate::{
     proto::envelope::DhtMessageType,
     store_forward,
     DhtConfig,
+    PipelineError,
 };
 use futures::{channel::mpsc, future, Future};
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
     message::InboundMessage,
-    middleware::MiddlewareError,
     outbound_message_service::OutboundMessage,
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
 };
@@ -158,13 +158,13 @@ impl Dht {
         Service = impl Service<
             InboundMessage,
             Response = (),
-            Error = MiddlewareError,
-            Future = impl Future<Output = Result<(), MiddlewareError>> + Send,
+            Error = PipelineError,
+            Future = impl Future<Output = Result<(), PipelineError>> + Send,
         > + Clone
                       + Send,
     >
     where
-        S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError> + Clone + Send + Sync + 'static,
+        S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + Sync + 'static,
         S::Future: Send,
     {
         let saf_storage = Arc::new(store_forward::SafStorage::new(
@@ -217,13 +217,13 @@ impl Dht {
         Service = impl Service<
             DhtOutboundRequest,
             Response = (),
-            Error = MiddlewareError,
-            Future = impl Future<Output = Result<(), MiddlewareError>> + Send,
+            Error = PipelineError,
+            Future = impl Future<Output = Result<(), PipelineError>> + Send,
         > + Clone
                       + Send,
     >
     where
-        S: Service<OutboundMessage, Response = (), Error = MiddlewareError> + Clone + Send + 'static,
+        S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone + Send + 'static,
         S::Future: Send,
     {
         ServiceBuilder::new()
@@ -285,7 +285,7 @@ mod test {
     use std::{sync::Arc, time::Duration};
     use tari_comms::{
         message::{MessageExt, MessageFlags},
-        middleware::SinkMiddleware,
+        pipeline::SinkService,
         utils::crypt::{encrypt, generate_ecdh_secret},
         wrap_in_envelope_body,
     };
@@ -311,7 +311,7 @@ mod test {
 
         let (out_tx, mut out_rx) = mpsc::channel(10);
 
-        let mut service = dht.inbound_middleware_layer().layer(SinkMiddleware::new(out_tx));
+        let mut service = dht.inbound_middleware_layer().layer(SinkService::new(out_tx));
 
         let msg = wrap_in_envelope_body!(b"secret".to_vec()).unwrap();
         let dht_envelope = make_dht_envelope(
@@ -354,7 +354,7 @@ mod test {
 
         let (out_tx, mut out_rx) = mpsc::channel(10);
 
-        let mut service = dht.inbound_middleware_layer().layer(SinkMiddleware::new(out_tx));
+        let mut service = dht.inbound_middleware_layer().layer(SinkService::new(out_tx));
 
         let msg = wrap_in_envelope_body!(b"secret".to_vec()).unwrap();
         // Encrypt for self
@@ -401,9 +401,7 @@ mod test {
         let oms_mock_state = oms_mock.get_state();
         rt.spawn(oms_mock.run());
 
-        let mut service = dht
-            .inbound_middleware_layer()
-            .layer(SinkMiddleware::new(next_service_tx));
+        let mut service = dht.inbound_middleware_layer().layer(SinkService::new(next_service_tx));
 
         let msg = wrap_in_envelope_body!(b"unencrypteable".to_vec()).unwrap();
 
@@ -457,9 +455,7 @@ mod test {
 
         let (next_service_tx, mut next_service_rx) = mpsc::channel(10);
 
-        let mut service = dht
-            .inbound_middleware_layer()
-            .layer(SinkMiddleware::new(next_service_tx));
+        let mut service = dht.inbound_middleware_layer().layer(SinkService::new(next_service_tx));
 
         let msg = wrap_in_envelope_body!(b"secret".to_vec()).unwrap();
         let mut dht_envelope = make_dht_envelope(

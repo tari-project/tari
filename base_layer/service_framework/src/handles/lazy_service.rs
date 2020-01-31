@@ -95,7 +95,6 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::tower::service_fn;
     use futures::future::{self, poll_fn};
     use futures_test::task::panic_context;
     use std::{
@@ -105,6 +104,7 @@ mod test {
         },
         task::Poll,
     };
+    use tower::service_fn;
 
     fn mock_fut(flag: Arc<AtomicBool>) -> impl Future<Output = ()> {
         poll_fn::<_, _>(move |_: &mut Context<'_>| {

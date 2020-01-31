@@ -134,3 +134,5 @@ pub use actor::{DhtActorError, DhtRequest, DhtRequester};
 pub use builder::DhtBuilder;
 pub use config::DhtConfig;
 pub use dht::Dht;
+
+pub type PipelineError = Box<dyn std::error::Error + Send + Sync>;

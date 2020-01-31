@@ -101,11 +101,12 @@ impl StackBuilder {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{handles::ServiceHandlesFuture, initializer::ServiceInitializer, tower::service_fn};
+    use crate::{handles::ServiceHandlesFuture, initializer::ServiceInitializer};
     use futures::{executor::block_on, future, Future};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tari_shutdown::Shutdown;
     use tokio::runtime::Runtime;
+    use tower::service_fn;
 
     #[test]
     fn service_defn_simple() {

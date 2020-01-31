@@ -20,12 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{message::MessageEnvelopeHeader, peer_manager::Peer};
+use crate::{message::MessageEnvelopeHeader, outbound_message_service::MessageTag, peer_manager::Peer};
 use bytes::Bytes;
 
 /// Authenticated inbound message
 #[derive(Clone, Debug)]
 pub struct InboundMessage {
+    pub tag: MessageTag,
     /// The deserialized message envelope header
     pub envelope_header: MessageEnvelopeHeader,
     /// The connected peer which sent this message
@@ -38,6 +39,7 @@ impl InboundMessage {
     /// Construct a new InboundMessage
     pub fn new(source_peer: Peer, envelope_header: MessageEnvelopeHeader, body: Bytes) -> Self {
         Self {
+            tag: MessageTag::new(),
             source_peer,
             envelope_header,
             body,

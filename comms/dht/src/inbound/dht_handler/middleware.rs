@@ -26,13 +26,11 @@ use crate::{
     discovery::DhtDiscoveryRequester,
     inbound::DecryptedDhtMessage,
     outbound::OutboundMessageRequester,
+    PipelineError,
 };
 use futures::{task::Context, Future};
 use std::{sync::Arc, task::Poll};
-use tari_comms::{
-    middleware::MiddlewareError,
-    peer_manager::{NodeIdentity, PeerManager},
-};
+use tari_comms::peer_manager::{NodeIdentity, PeerManager};
 use tower::Service;
 
 #[derive(Clone)]
@@ -70,9 +68,9 @@ impl<S> DhtHandlerMiddleware<S> {
 impl<S> Service<DecryptedDhtMessage> for DhtHandlerMiddleware<S>
 where
     S: Service<DecryptedDhtMessage, Response = ()> + Clone,
-    S::Error: Into<MiddlewareError>,
+    S::Error: Into<PipelineError>,
 {
-    type Error = MiddlewareError;
+    type Error = PipelineError;
     type Response = ();
 
     type Future = impl Future<Output = Result<Self::Response, Self::Error>>;

@@ -22,9 +22,10 @@
 
 mod error;
 mod identity;
-mod messaging;
 mod negotiation;
 mod protocols;
+
+pub mod messaging;
 
 /// Represents a protocol id string (e.g. /tari/transactions/1.0.0).
 /// This is atomically reference counted, so clones are shallow and cheap

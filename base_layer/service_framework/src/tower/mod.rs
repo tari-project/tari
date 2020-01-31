@@ -21,9 +21,5 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod service_ext;
-mod service_fn;
 
-pub use self::{
-    service_ext::{ServiceCallReady, ServiceExt},
-    service_fn::{service_fn, ServiceFn},
-};
+pub use self::service_ext::{ServiceCallReady, ServiceExt};

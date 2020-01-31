@@ -24,8 +24,7 @@ use super::peer_message::PeerMessage;
 use futures::{task::Context, Future, Sink, SinkExt};
 use log::*;
 use std::{error::Error, pin::Pin, sync::Arc, task::Poll};
-use tari_comms::middleware::MiddlewareError;
-use tari_comms_dht::{domain_message::MessageHeader, inbound::DecryptedDhtMessage};
+use tari_comms_dht::{domain_message::MessageHeader, inbound::DecryptedDhtMessage, PipelineError};
 use tower::Service;
 
 const LOG_TARGET: &'static str = "comms::middleware::inbound_domain_connector";
@@ -48,7 +47,7 @@ where
     TSink: Sink<Arc<PeerMessage>> + Unpin + Clone,
     TSink::Error: Error + Send + Sync + 'static,
 {
-    type Error = MiddlewareError;
+    type Error = PipelineError;
     type Response = ();
 
     type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
@@ -67,7 +66,7 @@ where
     TSink: Sink<Arc<PeerMessage>> + Unpin,
     TSink::Error: Error + Send + Sync + 'static,
 {
-    async fn handle_message(mut sink: TSink, mut inbound_message: DecryptedDhtMessage) -> Result<(), MiddlewareError> {
+    async fn handle_message(mut sink: TSink, mut inbound_message: DecryptedDhtMessage) -> Result<(), PipelineError> {
         let envelope_body = inbound_message.success_mut().ok_or("Message failed to decrypt")?;
         let header = envelope_body
             .decode_part::<MessageHeader>(0)?

@@ -32,7 +32,7 @@ use std::{
 pub type Result<T> = std::result::Result<T, SocksError>;
 
 /// Authentication methods
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Authentication {
     Password { username: String, password: String },
     None,

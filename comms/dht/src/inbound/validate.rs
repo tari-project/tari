@@ -27,11 +27,12 @@ use crate::{
         dht::{RejectMessage, RejectMessageReason},
         envelope::{DhtMessageType, Network},
     },
+    PipelineError,
 };
 use futures::{task::Context, Future};
 use log::*;
 use std::task::Poll;
-use tari_comms::{message::MessageExt, middleware::MiddlewareError};
+use tari_comms::message::MessageExt;
 use tari_utilities::ByteArray;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -61,9 +62,9 @@ impl<S> ValidateMiddleware<S> {
 impl<S> Service<DhtInboundMessage> for ValidateMiddleware<S>
 where
     S: Service<DhtInboundMessage, Response = ()> + Clone + 'static,
-    S::Error: Into<MiddlewareError>,
+    S::Error: Into<PipelineError>,
 {
-    type Error = MiddlewareError;
+    type Error = PipelineError;
     type Response = ();
 
     type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
@@ -85,14 +86,14 @@ where
 impl<S> ValidateMiddleware<S>
 where
     S: Service<DhtInboundMessage, Response = ()>,
-    S::Error: Into<MiddlewareError>,
+    S::Error: Into<PipelineError>,
 {
     pub async fn process_message(
         next_service: S,
         target_network: Network,
         mut outbound_requester: OutboundMessageRequester,
         message: DhtInboundMessage,
-    ) -> Result<(), MiddlewareError>
+    ) -> Result<(), PipelineError>
     {
         trace!(
             target: LOG_TARGET,
@@ -174,7 +175,7 @@ mod test {
         rt.spawn(mock.run());
 
         let mut validate =
-            ValidateLayer::new(Network::LocalTest, out_requester).layer(spy.to_service::<MiddlewareError>());
+            ValidateLayer::new(Network::LocalTest, out_requester).layer(spy.to_service::<PipelineError>());
 
         panic_context!(cx);
 

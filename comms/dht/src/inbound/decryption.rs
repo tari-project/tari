@@ -23,12 +23,13 @@
 use crate::{
     envelope::DhtMessageFlags,
     inbound::message::{DecryptedDhtMessage, DhtInboundMessage},
+    PipelineError,
 };
 use futures::{task::Context, Future};
 use log::*;
 use prost::Message;
 use std::{sync::Arc, task::Poll};
-use tari_comms::{message::EnvelopeBody, middleware::MiddlewareError, peer_manager::NodeIdentity, utils::crypt};
+use tari_comms::{message::EnvelopeBody, peer_manager::NodeIdentity, utils::crypt};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::middleware::encryption";
@@ -71,9 +72,9 @@ impl<S> DecryptionService<S> {
 impl<S> Service<DhtInboundMessage> for DecryptionService<S>
 where
     S: Service<DecryptedDhtMessage, Response = ()> + Clone,
-    S::Error: Into<MiddlewareError>,
+    S::Error: Into<PipelineError>,
 {
-    type Error = MiddlewareError;
+    type Error = PipelineError;
     type Response = ();
 
     type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
@@ -90,13 +91,13 @@ where
 impl<S> DecryptionService<S>
 where
     S: Service<DecryptedDhtMessage, Response = ()>,
-    S::Error: Into<MiddlewareError>,
+    S::Error: Into<PipelineError>,
 {
     async fn handle_message(
         next_service: S,
         node_identity: Arc<NodeIdentity>,
         message: DhtInboundMessage,
-    ) -> Result<(), MiddlewareError>
+    ) -> Result<(), PipelineError>
     {
         let dht_header = &message.dht_header;
         if !dht_header.flags.contains(DhtMessageFlags::ENCRYPTED) {
@@ -124,7 +125,7 @@ where
         next_service: S,
         message: DhtInboundMessage,
         decrypted: &[u8],
-    ) -> Result<(), MiddlewareError>
+    ) -> Result<(), PipelineError>
     {
         // Deserialization into an EnvelopeBody is done here to determine if the
         // decryption produced valid bytes or not.
@@ -162,7 +163,7 @@ where
         }
     }
 
-    async fn success_not_encrypted(next_service: S, message: DhtInboundMessage) -> Result<(), MiddlewareError> {
+    async fn success_not_encrypted(next_service: S, message: DhtInboundMessage) -> Result<(), PipelineError> {
         match EnvelopeBody::decode(message.body.as_slice()) {
             Ok(deserialized) => {
                 debug!(
@@ -184,7 +185,7 @@ where
         }
     }
 
-    async fn decryption_failed(next_service: S, message: DhtInboundMessage) -> Result<(), MiddlewareError> {
+    async fn decryption_failed(next_service: S, message: DhtInboundMessage) -> Result<(), PipelineError> {
         let msg = DecryptedDhtMessage::failed(message);
         next_service.oneshot(msg).await.map_err(Into::into)
     }
@@ -204,7 +205,7 @@ mod test {
 
     #[test]
     fn poll_ready() {
-        let inner = service_fn(|_: DecryptedDhtMessage| future::ready(Result::<(), MiddlewareError>::Ok(())));
+        let inner = service_fn(|_: DecryptedDhtMessage| future::ready(Result::<(), PipelineError>::Ok(())));
         let node_identity = make_node_identity();
         let mut service = DecryptionService::new(inner, node_identity);
 
@@ -220,7 +221,7 @@ mod test {
         let result = Mutex::new(None);
         let inner = service_fn(|msg: DecryptedDhtMessage| {
             *result.lock().unwrap() = Some(msg);
-            future::ready(Result::<(), MiddlewareError>::Ok(()))
+            future::ready(Result::<(), PipelineError>::Ok(()))
         });
         let node_identity = make_node_identity();
         let mut service = DecryptionService::new(inner, Arc::clone(&node_identity));
@@ -241,7 +242,7 @@ mod test {
         let result = Mutex::new(None);
         let inner = service_fn(|msg: DecryptedDhtMessage| {
             *result.lock().unwrap() = Some(msg);
-            future::ready(Result::<(), MiddlewareError>::Ok(()))
+            future::ready(Result::<(), PipelineError>::Ok(()))
         });
         let node_identity = make_node_identity();
         let mut service = DecryptionService::new(inner, Arc::clone(&node_identity));

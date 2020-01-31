@@ -25,5 +25,14 @@ mod inbound;
 mod messaging;
 mod outbound;
 
+pub use messaging::{
+    MessagingEvent,
+    MessagingEventReceiver,
+    MessagingEventSender,
+    MessagingProtocol,
+    MessagingRequest,
+    MESSAGING_PROTOCOL,
+};
+
 #[cfg(test)]
 mod test;

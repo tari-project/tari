@@ -20,41 +20,30 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::MiddlewareError;
-use futures::{task::Context, Future, Sink, SinkExt};
-use log::*;
-use std::{error::Error, pin::Pin, task::Poll};
-use tower::Service;
+//! # Comms Middleware
+//!
+//! Comms Middleware contains the middleware layers that can be composed when processing
+//! inbound and outbound comms messages.
+//!
+//! For example, should you want your messages to be encrypted, you'll add the EncryptionLayer to
+//! the outbound middleware stack and the DecryptionLayer to the inbound stack.
+//!
+//! Middlewares use `tower_layer` and `tower_service`. A Middleware is simply any service which
+//! is `Service<InboundMessage, Response = (), Error = MiddlewareError>`. This service will usually
+//! be composed of other services by using the `tower_util::ServiceBuilder`.
 
-const LOG_TARGET: &'static str = "comms::middleware::sink";
+mod builder;
+mod pipeline;
+mod sink;
 
-/// A middleware which forwards and messages it gets to the given Sink
-#[derive(Clone)]
-pub struct SinkMiddleware<TSink>(TSink);
+pub use builder::{Builder, Config, PipelineBuilderError};
+pub use pipeline::ServicePipeline;
+pub use sink::SinkService;
 
-impl<TSink> SinkMiddleware<TSink> {
-    pub fn new(sink: TSink) -> Self {
-        SinkMiddleware(sink)
-    }
-}
+cfg_next! {
+    mod inbound;
+    mod outbound;
 
-impl<T, TSink> Service<T> for SinkMiddleware<TSink>
-where
-    TSink: Sink<T> + Unpin + Clone + 'static,
-    TSink::Error: Error + Send + Sync + 'static,
-{
-    type Error = MiddlewareError;
-    type Response = ();
-
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
-
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.0).poll_ready(cx).map_err(Into::into)
-    }
-
-    fn call(&mut self, item: T) -> Self::Future {
-        let mut sink = self.0.clone();
-        trace!(target: LOG_TARGET, "Sending item to sink");
-        async move { sink.send(item).await.map_err(Into::into) }
-    }
+    pub(crate) use inbound::Inbound;
+    pub(crate) use outbound::Outbound;
 }

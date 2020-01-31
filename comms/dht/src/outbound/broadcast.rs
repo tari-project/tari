@@ -32,6 +32,7 @@ use crate::{
         SendMessageResponse,
     },
     proto::envelope::{DhtMessageType, Network},
+    PipelineError,
 };
 use futures::{
     channel::oneshot,
@@ -44,7 +45,6 @@ use log::*;
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
     message::MessageFlags,
-    middleware::MiddlewareError,
     peer_manager::{NodeId, NodeIdentity, Peer},
     types::CommsPublicKey,
 };
@@ -121,9 +121,9 @@ impl<S> BroadcastMiddleware<S> {
 }
 
 impl<S> Service<DhtOutboundRequest> for BroadcastMiddleware<S>
-where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError> + Clone
+where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError> + Clone
 {
-    type Error = MiddlewareError;
+    type Error = PipelineError;
     type Response = ();
 
     type Future = impl Future<Output = Result<(), Self::Error>>;
@@ -155,7 +155,7 @@ struct BroadcastTask<S> {
 }
 
 impl<S> BroadcastTask<S>
-where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
+where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 {
     pub fn new(
         service: S,
@@ -176,7 +176,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = MiddlewareError>
         }
     }
 
-    pub async fn handle(mut self) -> Result<(), MiddlewareError> {
+    pub async fn handle(mut self) -> Result<(), PipelineError> {
         let request = self.request.take().expect("request cannot be None");
         debug!(target: LOG_TARGET, "Processing outbound request {}", request);
         let messages = self.generate_outbound_messages(request).await?;

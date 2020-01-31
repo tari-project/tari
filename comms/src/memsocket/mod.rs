@@ -31,13 +31,71 @@ use futures::{
     stream::{FusedStream, Stream},
     task::{Context, Poll},
 };
-use std::{collections::HashMap, num::NonZeroU16, pin::Pin, sync::Mutex};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    num::NonZeroU16,
+    pin::Pin,
+    sync::Mutex,
+};
 
 lazy_static! {
     static ref SWITCHBOARD: Mutex<SwitchBoard> = Mutex::new(SwitchBoard(HashMap::default(), 1));
 }
 
-struct SwitchBoard(HashMap<NonZeroU16, UnboundedSender<MemorySocket>>, u16);
+enum Slot<T> {
+    InUse(T),
+    Acquired,
+}
+
+impl<T> Slot<T> {
+    pub fn in_use(&self) -> Option<&T> {
+        match &self {
+            Slot::InUse(t) => Some(t),
+            _ => None,
+        }
+    }
+}
+
+struct SwitchBoard(HashMap<NonZeroU16, Slot<UnboundedSender<MemorySocket>>>, u16);
+
+pub fn acquire_next_memsocket_port() -> NonZeroU16 {
+    let mut switchboard = (&*SWITCHBOARD).lock().unwrap();
+    let port = loop {
+        let port = NonZeroU16::new(switchboard.1).unwrap_or_else(|| unreachable!());
+
+        // The switchboard is full and all ports are in use
+        if switchboard.0.len() == (std::u16::MAX - 1) as usize {
+            panic!("All memsocket addresses in use!");
+        }
+
+        // Instead of overflowing to 0, resume searching at port 1 since port 0 isn't a
+        // valid port to bind to.
+        if switchboard.1 == std::u16::MAX {
+            switchboard.1 = 1;
+        } else {
+            switchboard.1 += 1;
+        }
+
+        if !switchboard.0.contains_key(&port) {
+            break port;
+        }
+    };
+
+    switchboard.0.insert(port, Slot::Acquired);
+    port
+}
+
+pub fn release_memsocket_port(port: NonZeroU16) {
+    let mut switchboard = (&*SWITCHBOARD).lock().unwrap();
+    if let Entry::Occupied(entry) = switchboard.0.entry(port) {
+        match *entry.get() {
+            Slot::Acquired => {
+                entry.remove_entry();
+            },
+            Slot::InUse(_) => panic!("cannot release memsocket port while InUse"),
+        }
+    }
+}
 
 /// An in-memory socket server, listening for connections.
 ///
@@ -117,10 +175,10 @@ impl MemoryListener {
 
         // Get the port we should bind to.  If 0 was given, use a random port
         let port = if let Some(port) = NonZeroU16::new(port) {
-            if switchboard.0.contains_key(&port) {
-                return Err(ErrorKind::AddrInUse.into());
+            match switchboard.0.get(&port) {
+                Some(Slot::InUse(_)) => return Err(ErrorKind::AddrInUse.into()),
+                Some(Slot::Acquired) | None => port,
             }
-            port
         } else {
             loop {
                 let port = NonZeroU16::new(switchboard.1).unwrap_or_else(|| unreachable!());
@@ -145,7 +203,7 @@ impl MemoryListener {
         };
 
         let (sender, receiver) = mpsc::unbounded();
-        switchboard.0.insert(port, sender);
+        switchboard.0.insert(port, Slot::InUse(sender));
 
         Ok(Self {
             incoming: receiver,
@@ -322,6 +380,7 @@ impl MemorySocket {
         let sender = switchboard
             .0
             .get_mut(&port)
+            .and_then(|slot| slot.in_use())
             .ok_or_else(|| ErrorKind::AddrNotAvailable)?;
 
         let (socket_a, socket_b) = Self::new_pair();

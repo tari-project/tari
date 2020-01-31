@@ -20,13 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::error::MessagingProtocolError;
+use super::{error::MessagingProtocolError, MessagingEventSender};
 use crate::{
     connection_manager::{next::ConnectionManagerRequester, NegotiatedSubstream, PeerConnection},
     message::{Envelope, MessageExt},
     outbound_message_service::OutboundMessage,
     peer_manager::{NodeId, NodeIdentity},
-    protocol::messaging::messaging::{Messaging, MessagingEvent, PROTOCOL_MESSAGING},
+    protocol::messaging::messaging::{MessagingEvent, MessagingProtocol, MESSAGING_PROTOCOL},
     types::CommsSubstream,
 };
 use bytes::Bytes;
@@ -40,7 +40,7 @@ pub struct OutboundMessaging {
     conn_man_requester: ConnectionManagerRequester,
     node_identity: Arc<NodeIdentity>,
     request_rx: mpsc::Receiver<OutboundMessage>,
-    messaging_events_tx: mpsc::Sender<MessagingEvent>,
+    messaging_events_tx: MessagingEventSender,
     peer_node_id: NodeId,
 }
 
@@ -48,7 +48,7 @@ impl OutboundMessaging {
     pub fn new(
         conn_man_requester: ConnectionManagerRequester,
         node_identity: Arc<NodeIdentity>,
-        messaging_events_tx: mpsc::Sender<MessagingEvent>,
+        messaging_events_tx: MessagingEventSender,
         request_rx: mpsc::Receiver<OutboundMessage>,
         peer_node_id: NodeId,
     ) -> Self
@@ -70,7 +70,7 @@ impl OutboundMessaging {
         );
         let conn = self.try_dial_peer().await?;
         let substream = self.try_open_substream(conn).await?;
-        debug_assert_eq!(substream.protocol, PROTOCOL_MESSAGING);
+        debug_assert_eq!(substream.protocol, MESSAGING_PROTOCOL);
         self.start_forwarding_messages(substream.stream).await?;
 
         Ok(())
@@ -97,7 +97,7 @@ impl OutboundMessaging {
         mut conn: PeerConnection,
     ) -> Result<NegotiatedSubstream<CommsSubstream>, MessagingProtocolError>
     {
-        match conn.open_substream(PROTOCOL_MESSAGING).await {
+        match conn.open_substream(MESSAGING_PROTOCOL).await {
             Ok(substream) => Ok(substream),
             Err(err) => {
                 error!(
@@ -113,7 +113,7 @@ impl OutboundMessaging {
     }
 
     async fn start_forwarding_messages(mut self, substream: CommsSubstream) -> Result<(), MessagingProtocolError> {
-        let mut framed = Messaging::framed(substream);
+        let mut framed = MessagingProtocol::framed(substream);
         while let Some(out_msg) = self.request_rx.next().await {
             match self.to_envelope_bytes(&out_msg).await {
                 Ok(body) => {
@@ -126,8 +126,7 @@ impl OutboundMessaging {
                         );
                         let _ = self
                             .messaging_events_tx
-                            .send(MessagingEvent::SendMessageFailed(out_msg))
-                            .await;
+                            .send(Arc::new(MessagingEvent::SendMessageFailed(out_msg)));
                         // FATAL: Failed to send on the substream
                         self.flush_all_messages_to_failed_event().await;
                         return Err(MessagingProtocolError::OutboundSubstreamFailure);
@@ -135,8 +134,7 @@ impl OutboundMessaging {
 
                     let _ = self
                         .messaging_events_tx
-                        .send(MessagingEvent::SendMessageSucceeded(out_msg.tag))
-                        .await;
+                        .send(Arc::new(MessagingEvent::MessageSent(out_msg.tag)));
                 },
                 Err(err) => {
                     debug!(
@@ -147,8 +145,7 @@ impl OutboundMessaging {
                     );
                     let _ = self
                         .messaging_events_tx
-                        .send(MessagingEvent::SendMessageFailed(out_msg))
-                        .await;
+                        .send(Arc::new(MessagingEvent::SendMessageFailed(out_msg)));
                 },
             }
         }
@@ -161,16 +158,9 @@ impl OutboundMessaging {
         // to a failed event
         self.request_rx.close();
         while let Some(out_msg) = self.request_rx.next().await {
-            let result = self
+            let _ = self
                 .messaging_events_tx
-                .send(MessagingEvent::SendMessageFailed(out_msg))
-                .await;
-
-            log_if_error!(
-                target: LOG_TARGET,
-                result,
-                "OutboundMessaging failed to send SendMessageFailed event because '{error}'",
-            );
+                .send(Arc::new(MessagingEvent::SendMessageFailed(out_msg)));
         }
     }
 
@@ -195,7 +185,7 @@ impl OutboundMessaging {
             "[Node={}] Sending message ({} bytes) to peer '{}'",
             self.node_identity.node_id().short_str(),
             body.len(),
-            peer_node_id
+            peer_node_id.short_str(),
         );
 
         Ok(body.into())

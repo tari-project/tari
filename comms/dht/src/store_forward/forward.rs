@@ -25,11 +25,12 @@ use crate::{
     inbound::DecryptedDhtMessage,
     outbound::{OutboundMessageRequester, SendMessageParams},
     store_forward::error::StoreAndForwardError,
+    PipelineError,
 };
 use futures::{task::Context, Future};
 use log::*;
 use std::{sync::Arc, task::Poll};
-use tari_comms::{middleware::MiddlewareError, peer_manager::PeerManager, types::CommsPublicKey};
+use tari_comms::{peer_manager::PeerManager, types::CommsPublicKey};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::store_forward::forward";
@@ -85,9 +86,9 @@ impl<S> ForwardMiddleware<S> {
 impl<S> Service<DecryptedDhtMessage> for ForwardMiddleware<S>
 where
     S: Service<DecryptedDhtMessage, Response = ()> + Clone + 'static,
-    S::Error: Into<MiddlewareError>,
+    S::Error: Into<PipelineError>,
 {
-    type Error = MiddlewareError;
+    type Error = PipelineError;
     type Response = ();
 
     type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
@@ -127,9 +128,9 @@ impl<S> Forwarder<S> {
 impl<S> Forwarder<S>
 where
     S: Service<DecryptedDhtMessage, Response = ()>,
-    S::Error: Into<MiddlewareError>,
+    S::Error: Into<PipelineError>,
 {
-    async fn handle(mut self, message: DecryptedDhtMessage) -> Result<(), MiddlewareError> {
+    async fn handle(mut self, message: DecryptedDhtMessage) -> Result<(), PipelineError> {
         if message.decryption_failed() {
             debug!(target: LOG_TARGET, "Decryption failed. Forwarding message");
             self.forward(&message).await?;
@@ -222,7 +223,7 @@ mod test {
         let peer_manager = make_peer_manager();
         let (oms_tx, mut oms_rx) = mpsc::channel(1);
         let oms = OutboundMessageRequester::new(oms_tx);
-        let mut service = ForwardLayer::new(peer_manager, oms).layer(spy.to_service::<MiddlewareError>());
+        let mut service = ForwardLayer::new(peer_manager, oms).layer(spy.to_service::<PipelineError>());
 
         let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
         let msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(Vec::new()).unwrap(), inbound_msg);
@@ -240,7 +241,7 @@ mod test {
         let oms_mock_state = oms_mock.get_state();
         rt.spawn(oms_mock.run());
 
-        let mut service = ForwardLayer::new(peer_manager, oms_requester).layer(spy.to_service::<MiddlewareError>());
+        let mut service = ForwardLayer::new(peer_manager, oms_requester).layer(spy.to_service::<PipelineError>());
 
         let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
         let msg = DecryptedDhtMessage::failed(inbound_msg);

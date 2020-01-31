@@ -78,5 +78,4 @@ pub use self::{
     initializer::{ServiceInitializationError, ServiceInitializer},
     reply_channel::RequestContext,
     stack::StackBuilder,
-    tower::{service_fn, ServiceFn},
 };

@@ -30,9 +30,9 @@ use tari_comms::{
     builder::{CommsBuilderError, CommsError, CommsNode},
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
-    middleware::{ServicePipeline, SinkMiddleware},
     multiaddr::Multiaddr,
     peer_manager::{node_identity::NodeIdentityError, NodeIdentity},
+    pipeline::{ServicePipeline, SinkService},
     CommsBuilder,
 };
 use tari_comms_dht as comms_dht;
@@ -166,7 +166,7 @@ where
         // Messages going OUT from DHT to comms
         ServiceBuilder::new()
             .layer(dht.outbound_middleware_layer())
-            .service(SinkMiddleware::new(outbound_tx)),
+            .service(SinkService::new(outbound_tx)),
     )
     .with_shutdown_signal(comms.shutdown_signal())
     .spawn_with(executor);
@@ -249,7 +249,7 @@ where
         // Messages going OUT from DHT to comms
         ServiceBuilder::new()
             .layer(dht.outbound_middleware_layer())
-            .service(SinkMiddleware::new(outbound_tx)),
+            .service(SinkService::new(outbound_tx)),
     )
     .with_shutdown_signal(comms.shutdown_signal())
     .spawn_with(executor);

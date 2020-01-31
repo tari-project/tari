@@ -44,15 +44,22 @@ impl<TSubstream> ProtocolNotification<TSubstream> {
     }
 }
 
-#[derive(Clone)]
 pub struct Protocols<TSubstream> {
-    notifiers: HashMap<ProtocolId, mpsc::Sender<ProtocolNotification<TSubstream>>>,
+    protocols: HashMap<ProtocolId, mpsc::Sender<ProtocolNotification<TSubstream>>>,
+}
+
+impl<TSubstream> Clone for Protocols<TSubstream> {
+    fn clone(&self) -> Self {
+        Self {
+            protocols: self.protocols.clone(),
+        }
+    }
 }
 
 impl<TSubstream> Default for Protocols<TSubstream> {
     fn default() -> Self {
         Self {
-            notifiers: HashMap::default(),
+            protocols: HashMap::default(),
         }
     }
 }
@@ -62,13 +69,19 @@ impl<TSubstream> Protocols<TSubstream> {
         Default::default()
     }
 
-    pub fn add(&mut self, protocols: &[ProtocolId], notifier: mpsc::Sender<ProtocolNotification<TSubstream>>) {
-        self.notifiers
-            .extend(protocols.iter().map(|p| (p.clone(), notifier.clone())));
+    pub fn add<I: AsRef<[ProtocolId]>>(
+        mut self,
+        protocols: I,
+        notifier: mpsc::Sender<ProtocolNotification<TSubstream>>,
+    ) -> Self
+    {
+        self.protocols
+            .extend(protocols.as_ref().iter().map(|p| (p.clone(), notifier.clone())));
+        self
     }
 
     pub fn get_supported_protocols(&self) -> Vec<ProtocolId> {
-        self.notifiers.keys().cloned().collect()
+        self.protocols.keys().cloned().collect()
     }
 
     pub async fn notify(
@@ -77,7 +90,7 @@ impl<TSubstream> Protocols<TSubstream> {
         event: ProtocolEvent<TSubstream>,
     ) -> Result<(), ProtocolError>
     {
-        match self.notifiers.get_mut(protocol) {
+        match self.protocols.get_mut(protocol) {
             Some(sender) => {
                 sender.send(ProtocolNotification::new(protocol.clone(), event)).await?;
                 Ok(())
@@ -95,30 +108,25 @@ mod test {
 
     #[test]
     fn add() {
-        let mut notifiers = Protocols::<()>::new();
         let (tx, _) = mpsc::channel(1);
-        let protocols = [
+        let protos = [
             ProtocolId::from_static(b"/tari/test/1"),
             ProtocolId::from_static(b"/tari/test/2"),
         ];
-        notifiers.add(&protocols.clone(), tx);
+        let protocols = Protocols::<()>::new().add(&protos, tx);
 
-        assert!(notifiers
-            .get_supported_protocols()
-            .iter()
-            .all(|p| protocols.contains(p)));
+        assert!(protocols.get_supported_protocols().iter().all(|p| protos.contains(p)));
     }
 
     #[tokio_macros::test_basic]
     async fn notify() {
-        let mut notifiers = Protocols::<()>::new();
         let (tx, mut rx) = mpsc::channel(1);
-        let protocols = &[ProtocolId::from_static(b"/tari/test/1")];
-        notifiers.add(protocols, tx);
+        let protos = [ProtocolId::from_static(b"/tari/test/1")];
+        let mut protocols = Protocols::<()>::new().add(&protos, tx);
 
-        notifiers
+        protocols
             .notify(
-                &ProtocolId::from_static(b"/tari/test/1"),
+                &protos[0],
                 ProtocolEvent::NewInboundSubstream(Box::new(NodeId::new()), ()),
             )
             .await
@@ -131,9 +139,9 @@ mod test {
 
     #[tokio_macros::test_basic]
     async fn notify_fail_not_registered() {
-        let mut notifiers = Protocols::<()>::new();
+        let mut protocols = Protocols::<()>::new();
 
-        let err = notifiers
+        let err = protocols
             .notify(
                 &ProtocolId::from_static(b"/tari/test/0"),
                 ProtocolEvent::NewInboundSubstream(Box::new(NodeId::new()), ()),

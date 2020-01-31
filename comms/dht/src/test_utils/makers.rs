@@ -82,7 +82,7 @@ pub fn make_comms_inbound_message(node_identity: &NodeIdentity, message: Bytes, 
         ),
         MessageEnvelopeHeader {
             public_key: node_identity.public_key().clone(),
-            signature: Vec::new(),
+            signature: Bytes::new(),
             flags,
         },
         message,

@@ -20,22 +20,32 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # Comms Middleware
-//!
-//! Comms Middleware contains the middleware layers that can be composed when processing
-//! inbound and outbound comms messages.
-//!
-//! For example, should you want your messages to be encrypted, you'll add the EncryptionLayer to
-//! the outbound middleware stack and the DecryptionLayer to the inbound stack.
-//!
-//! Middlewares use `tower_layer` and `tower_service`. A Middleware is simply any service which
-//! is `Service<InboundMessage, Response = (), Error = MiddlewareError>`. This service will usually
-//! be composed of other services by using the `tower_util::ServiceBuilder`.
+use futures::future;
+use std::{
+    marker::PhantomData,
+    task::{Context, Poll},
+};
+use tower::Service;
 
-pub type MiddlewareError = Box<dyn std::error::Error + Send + Sync>;
+/// A service which is used as a placeholder type. This service will panic if used.
+pub struct PlaceholderService<TReq, TResp, TErr>(PhantomData<(TReq, TResp, TErr)>);
 
-mod pipeline;
-mod sink;
+impl<TReq, TResp, TErr> Service<TReq> for PlaceholderService<TReq, TResp, TErr> {
+    type Error = TErr;
+    type Future = future::Ready<Result<Self::Response, Self::Error>>;
+    type Response = TResp;
 
-pub use pipeline::ServicePipeline;
-pub use sink::SinkMiddleware;
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        panic!("poll_ready called on PlaceholderService")
+    }
+
+    fn call(&mut self, _: TReq) -> Self::Future {
+        panic!("call called on PlaceholderService")
+    }
+}
+
+impl<TReq, TResp, TErr> Clone for PlaceholderService<TReq, TResp, TErr> {
+    fn clone(&self) -> Self {
+        Self(PhantomData)
+    }
+}

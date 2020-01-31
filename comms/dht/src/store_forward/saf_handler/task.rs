@@ -32,6 +32,7 @@ use crate::{
     },
     store_forward::{error::StoreAndForwardError, SafStorage},
     utils::hoist_nested_result,
+    PipelineError,
 };
 use digest::Digest;
 use futures::{future, stream, Future, FutureExt, StreamExt};
@@ -40,7 +41,6 @@ use prost::Message;
 use std::{convert::TryInto, sync::Arc};
 use tari_comms::{
     message::EnvelopeBody,
-    middleware::MiddlewareError,
     peer_manager::{NodeIdentity, Peer, PeerManager, PeerManagerError},
     types::Challenge,
     utils::{crypt, signature},
@@ -63,7 +63,7 @@ pub struct MessageHandlerTask<S> {
 }
 
 impl<S> MessageHandlerTask<S>
-where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
+where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 {
     pub fn new(
         config: DhtConfig,
@@ -88,7 +88,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = MiddlewareError>
         }
     }
 
-    pub async fn run(mut self) -> Result<(), MiddlewareError> {
+    pub async fn run(mut self) -> Result<(), PipelineError> {
         let message = self
             .message
             .take()
@@ -419,6 +419,7 @@ mod test {
             service_spy,
             DhtMockState,
         },
+        PipelineError,
     };
     use chrono::Utc;
     use futures::channel::mpsc;
@@ -477,7 +478,7 @@ mod test {
 
         let task = MessageHandlerTask::new(
             Default::default(),
-            spy.to_service::<MiddlewareError>(),
+            spy.to_service::<PipelineError>(),
             storage,
             dht_requester,
             peer_manager,
@@ -559,7 +560,7 @@ mod test {
 
         let task = MessageHandlerTask::new(
             Default::default(),
-            spy.to_service::<MiddlewareError>(),
+            spy.to_service::<PipelineError>(),
             storage,
             dht_requester,
             peer_manager,
