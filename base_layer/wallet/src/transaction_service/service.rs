@@ -219,7 +219,7 @@ where
                 //Incoming request
                 request_context = request_stream.select_next_some() => {
                     let (request, reply_tx) = request_context.split();
-                    let _ = reply_tx.send(self.handle_request(request, &mut discovery_process_futures).await.or_else(|resp| {
+                    let _ = reply_tx.send(self.handle_request(request, &mut discovery_process_futures, &mut  broadcast_timeout_futures).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling request: {:?}", resp);
                         Err(resp)
                     })).or_else(|resp| {
@@ -262,7 +262,7 @@ where
                // Incoming messages from the Comms layer
                 msg = transaction_finalized_stream.select_next_some() => {
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
-                    let result = self.accept_finalized_transaction(origin_public_key, inner_msg).await.or_else(|err| {
+                    let result = self.accept_finalized_transaction(origin_public_key, inner_msg, &mut broadcast_timeout_futures).await.or_else(|err| {
                         error!(target: LOG_TARGET, "Failed to handle incoming message: {:?}", err);
                         Err(err)
                     });
@@ -322,6 +322,7 @@ where
         &mut self,
         request: TransactionServiceRequest,
         discovery_process_futures: &mut FuturesUnordered<BoxFuture<'static, Result<TxId, TransactionServiceError>>>,
+        broadcast_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
     ) -> Result<TransactionServiceResponse, TransactionServiceError>
     {
         match request {
@@ -353,7 +354,8 @@ where
                 Ok(TransactionServiceResponse::CoinbaseTransactionCancelled)
             },
             TransactionServiceRequest::SetBaseNodePublicKey(public_key) => self
-                .set_base_node_public_key(public_key)
+                .set_base_node_public_key(public_key, broadcast_timeout_futures)
+                .await
                 .map(|_| TransactionServiceResponse::BaseNodePublicKeySet),
             #[cfg(feature = "test_harness")]
             TransactionServiceRequest::CompletePendingOutboundTransaction(completed_transaction) => {
@@ -625,6 +627,7 @@ where
         &mut self,
         source_pubkey: CommsPublicKey,
         finalized_transaction: proto::TransactionFinalizedMessage,
+        broadcast_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
     ) -> Result<(), TransactionServiceError>
     {
         let tx_id = finalized_transaction.tx_id.clone();
@@ -639,7 +642,6 @@ where
                     "Cannot convert Transaction field from TransactionFinalized message".to_string(),
                 )
             })?;
-
         info!(
             target: LOG_TARGET,
             "Finalized Transaction with TX_ID = {} received from {}",
@@ -698,8 +700,6 @@ where
             .complete_inbound_transaction(tx_id.clone(), completed_transaction.clone())
             .await?;
 
-        // TODO Actually Broadcast this Transaction to a base node
-
         self.event_publisher
             .send(TransactionEvent::ReceivedFinalizedTransaction(tx_id))
             .await
@@ -711,6 +711,9 @@ where
             tx_id,
             source_pubkey.clone()
         );
+
+        self.broadcast_completed_transaction_to_mempool(tx_id, broadcast_timeout_futures)
+            .await?;
 
         Ok(())
     }
@@ -844,14 +847,30 @@ where
     }
 
     /// Add a base node public key to the list that will be used to broadcast transactions and monitor the base chain
-    /// for the presence of spendable outputs
-    pub fn set_base_node_public_key(
+    /// for the presence of spendable outputs. If this is the first time the base node public key is set do the initial
+    /// mempool broadcast
+    async fn set_base_node_public_key(
         &mut self,
         base_node_public_key: CommsPublicKey,
+        broadcast_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
     ) -> Result<(), TransactionServiceError>
     {
+        let startup_broadcast = self.base_node_public_key.is_none();
+
         self.base_node_public_key = Some(base_node_public_key);
 
+        if startup_broadcast {
+            let _ = self
+                .broadcast_all_completed_transactions_to_mempool(broadcast_timeout_futures)
+                .await
+                .or_else(|resp| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Error broadcasting all completed transactions: {:?}", resp
+                    );
+                    Err(resp)
+                });
+        }
         Ok(())
     }
 
@@ -905,6 +924,24 @@ where
 
                 broadcast_timeout_futures.push(state_timeout.delay().boxed());
             },
+        }
+
+        Ok(())
+    }
+
+    /// Go through all completed transactions that have not yet been broadcast and broadcast all of them to the base
+    /// node followed by mempool requests to confirm that they have been received
+    async fn broadcast_all_completed_transactions_to_mempool(
+        &mut self,
+        broadcast_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
+    ) -> Result<(), TransactionServiceError>
+    {
+        let completed_txs = self.db.get_completed_transactions().await?;
+        for completed_tx in completed_txs.values() {
+            if completed_tx.status == TransactionStatus::Completed {
+                self.broadcast_completed_transaction_to_mempool(completed_tx.tx_id.clone(), broadcast_timeout_futures)
+                    .await?;
+            }
         }
 
         Ok(())
