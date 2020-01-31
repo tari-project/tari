@@ -37,10 +37,10 @@ use log::*;
 use std::sync::Arc;
 use tari_comms::{
     message::InboundMessage,
+    middleware::MiddlewareError,
     outbound_message_service::OutboundMessage,
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
 };
-use tari_comms_middleware::MiddlewareError;
 use tari_shutdown::ShutdownSignal;
 use tokio::runtime;
 use tower::{layer::Layer, Service, ServiceBuilder};
@@ -285,10 +285,10 @@ mod test {
     use std::{sync::Arc, time::Duration};
     use tari_comms::{
         message::{MessageExt, MessageFlags},
+        middleware::SinkMiddleware,
         utils::crypt::{encrypt, generate_ecdh_secret},
         wrap_in_envelope_body,
     };
-    use tari_comms_middleware::sink::SinkMiddleware;
     use tari_shutdown::Shutdown;
     use tokio::{runtime::Runtime, time};
     use tower::{layer::Layer, Service};

@@ -32,9 +32,9 @@ use log::*;
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
     message::MessageExt,
+    middleware::MiddlewareError,
     peer_manager::{NodeIdentity, PeerManager},
 };
-use tari_comms_middleware::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::middleware::forward";

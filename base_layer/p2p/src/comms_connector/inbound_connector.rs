@@ -24,8 +24,8 @@ use super::peer_message::PeerMessage;
 use futures::{task::Context, Future, Sink, SinkExt};
 use log::*;
 use std::{error::Error, pin::Pin, sync::Arc, task::Poll};
+use tari_comms::middleware::MiddlewareError;
 use tari_comms_dht::{domain_message::MessageHeader, inbound::DecryptedDhtMessage};
-use tari_comms_middleware::MiddlewareError;
 use tower::Service;
 
 const LOG_TARGET: &'static str = "comms::middleware::inbound_domain_connector";

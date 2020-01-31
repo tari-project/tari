@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,9 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//
-///// Box any Error and coerce into a MiddlewareError
-// pub fn box_as_middleware_error<E>(err: E) -> MiddlewareError
-// where E: std::error::Error + Send + Sync + 'static {
-//    Box::new(err) as MiddlewareError
-//}
+//! # Comms Middleware
+//!
+//! Comms Middleware contains the middleware layers that can be composed when processing
+//! inbound and outbound comms messages.
+//!
+//! For example, should you want your messages to be encrypted, you'll add the EncryptionLayer to
+//! the outbound middleware stack and the DecryptionLayer to the inbound stack.
+//!
+//! Middlewares use `tower_layer` and `tower_service`. A Middleware is simply any service which
+//! is `Service<InboundMessage, Response = (), Error = MiddlewareError>`. This service will usually
+//! be composed of other services by using the `tower_util::ServiceBuilder`.
+
+pub type MiddlewareError = Box<dyn std::error::Error + Send + Sync>;
+
+mod pipeline;
+mod sink;
+
+pub use pipeline::ServicePipeline;
+pub use sink::SinkMiddleware;

@@ -25,8 +25,7 @@ use digest::Input;
 use futures::{task::Context, Future};
 use log::*;
 use std::task::Poll;
-use tari_comms::types::Challenge;
-use tari_comms_middleware::MiddlewareError;
+use tari_comms::{middleware::MiddlewareError, types::Challenge};
 use tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
 

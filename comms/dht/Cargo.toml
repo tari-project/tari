@@ -14,7 +14,6 @@ test-mocks = []
 
 [dependencies]
 tari_comms = { version = "^0.0", path = "../"}
-tari_comms_middleware = { version = "^0.0", path = "../middleware"}
 tari_crypto = { version = "^0.0", path = "../../infrastructure/crypto"}
 tari_shutdown = { version = "^0.0", path = "../../infrastructure/shutdown"}
 tari_utilities = { version = "^0.0", path = "../../infrastructure/tari_util"}
@@ -34,7 +33,7 @@ serde_derive = "1.0.90"
 serde_repr = "0.1.5"
 tokio = {version="0.2.10", features=["rt-threaded", "blocking"]}
 tower= "0.3.0"
-tower-filter = {version="0.3.0-alpha.2", path="../middleware/tower-filter"}
+tower-filter = {version="0.3.0-alpha.2", path="../tower-filter"}
 ttl_cache = "0.5.1"
 
 [dev-dependencies]

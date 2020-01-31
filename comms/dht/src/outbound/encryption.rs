@@ -24,8 +24,7 @@ use crate::outbound::message::{DhtOutboundMessage, OutboundEncryption};
 use futures::{task::Context, Future};
 use log::*;
 use std::{sync::Arc, task::Poll};
-use tari_comms::{peer_manager::NodeIdentity, utils::crypt};
-use tari_comms_middleware::MiddlewareError;
+use tari_comms::{middleware::MiddlewareError, peer_manager::NodeIdentity, utils::crypt};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::middleware::encryption";

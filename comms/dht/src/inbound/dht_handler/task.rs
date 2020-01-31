@@ -35,11 +35,11 @@ use log::*;
 use std::sync::Arc;
 use tari_comms::{
     message::MessageExt,
+    middleware::MiddlewareError,
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     types::CommsPublicKey,
 };
-use tari_comms_middleware::MiddlewareError;
 use tari_utilities::{hex::Hex, ByteArray};
 use tower::{Service, ServiceExt};
 

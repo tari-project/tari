@@ -29,6 +29,7 @@ pub mod connection_manager;
 mod consts;
 pub mod control_service;
 pub mod inbound_message_service;
+pub mod middleware;
 pub mod outbound_message_service;
 pub mod peer_manager;
 mod proto;

@@ -25,8 +25,7 @@ use futures::{task::Context, Future};
 use log::*;
 use prost::Message;
 use std::{convert::TryInto, task::Poll};
-use tari_comms::message::InboundMessage;
-use tari_comms_middleware::MiddlewareError;
+use tari_comms::{message::InboundMessage, middleware::MiddlewareError};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::dht::deserialize";

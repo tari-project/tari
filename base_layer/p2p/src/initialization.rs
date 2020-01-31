@@ -30,13 +30,13 @@ use tari_comms::{
     builder::{CommsBuilderError, CommsError, CommsNode},
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
+    middleware::{ServicePipeline, SinkMiddleware},
     multiaddr::Multiaddr,
     peer_manager::{node_identity::NodeIdentityError, NodeIdentity},
     CommsBuilder,
 };
 use tari_comms_dht as comms_dht;
 use tari_comms_dht::{Dht, DhtConfig};
-use tari_comms_middleware::{pipeline::ServicePipeline, sink::SinkMiddleware};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tokio::runtime;
 use tower::ServiceBuilder;

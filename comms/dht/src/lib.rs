@@ -18,7 +18,7 @@
 //!
 //! `InboundMessage`s are received from the incoming comms channel (as in the receiver side of
 //! of the mpsc channel which goes into `CommsBuilder::new().incoming_message_sink(sender)`).
-//! Typically, a `ServicePipeline` from the `tari_comms_middleware` crate is used to connect
+//! Typically, a `ServicePipeline` from the `tari_comms::middleware` crate is used to connect
 //! a stream from comms to the middleware service.
 //!
 //! `InboundMessage`(comms) -> _DHT Inbound Middleware_ -> `DhtInboundMessage`(domain)
@@ -37,7 +37,7 @@
 //!
 //! `OutboundMessage`s are sent to the outgoing comms channel (as in the receiver side of
 //! of the mpsc channel which goes into `CommsBuilder::new().outgoing_message_stream(receiver)`).
-//! Typically, a `ServicePipeline` from the `tari_comms_middleware` crate is used to connect
+//! Typically, a `ServicePipeline` from the `tari_comms::middleware` crate is used to connect
 //! a stream from the domain-level to the middleware service and a `SinkMiddleware` to connect
 //! the middleware to the OMS in comms. Outbound requests to the DHT middleware are furnished by
 //! the `OutboundMessageRequester`, obtained from the `Dht::outbound_requester` factory method.
@@ -56,9 +56,9 @@
 //! ## Usage
 //!
 //! ```edition2018,compile_fail
-//! #use tari_comms_middleware::pipeline::ServicePipeline;
+//! #use tari_comms::middleware::ServicePipeline;
 //! #use tari_comms_dht::DhtBuilder;
-//! #use tari_comms_middleware::sink::SinkMiddleware;
+//! #use tari_comms::middleware::sink::SinkMiddleware;
 //! #use tari_comms::peer_manager::NodeIdentity;
 //! #use rand::rngs::OsRng;
 //! #use std::sync::Arc;
