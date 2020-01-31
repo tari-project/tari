@@ -915,11 +915,6 @@ where T: BlockchainBackend
         self.commit(txn)
     }
 
-    // TODO debugging only. Remove before mainnet
-    pub(crate) fn db(&self) -> Arc<T> {
-        self.db.clone()
-    }
-
     /// Perform validation on the horizon state of the synced blockchain and updates the metadata.
     pub fn validate_horizon_state(&self) -> Result<(), ChainStorageError> {
         let genesis_block_header = self.fetch_header(0)?;

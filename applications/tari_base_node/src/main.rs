@@ -33,13 +33,7 @@ mod miner;
 mod parser;
 
 use crate::builder::{create_and_save_id, load_identity};
-use futures::{
-    channel::{
-        mpsc,
-        mpsc::{Receiver, Sender},
-    },
-    stream::StreamExt,
-};
+use futures::stream::StreamExt;
 use log::*;
 use parser::Parser;
 use rustyline::{error::ReadlineError, Editor};
@@ -49,7 +43,7 @@ use std::sync::{
 };
 use tari_common::{load_configuration, GlobalConfig};
 use tari_utilities::hex::Hex;
-use tokio::{runtime, runtime::Runtime, signal, task};
+use tokio::{runtime, runtime::Runtime};
 
 const LOG_TARGET: &str = "base_node::app";
 
