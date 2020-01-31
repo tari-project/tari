@@ -29,8 +29,10 @@ use crate::{
 };
 use futures::{task::Context, Future};
 use std::{sync::Arc, task::Poll};
-use tari_comms::peer_manager::{NodeIdentity, PeerManager};
-use tari_comms_middleware::MiddlewareError;
+use tari_comms::{
+    middleware::MiddlewareError,
+    peer_manager::{NodeIdentity, PeerManager},
+};
 use tower::Service;
 
 #[derive(Clone)]

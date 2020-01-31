@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -112,7 +112,6 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::service_fn;
     use futures::{future, stream};
     use std::{
         sync::{Arc, Mutex},
@@ -120,6 +119,7 @@ mod test {
     };
     use tari_test_utils::async_assert_eventually;
     use tokio::runtime::Runtime;
+    use tower::service_fn;
 
     #[test]
     fn run() {

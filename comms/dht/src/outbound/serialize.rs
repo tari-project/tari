@@ -27,11 +27,11 @@ use rand::rngs::OsRng;
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
     message::MessageExt,
+    middleware::MiddlewareError,
     outbound_message_service::OutboundMessage,
     peer_manager::NodeIdentity,
     utils::signature,
 };
-use tari_comms_middleware::MiddlewareError;
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tower::{layer::Layer, Service, ServiceExt};
 

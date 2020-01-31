@@ -27,13 +27,13 @@ use tari_comms::{
     builder::CommsNode,
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
+    middleware::{ServicePipeline, SinkMiddleware},
     multiaddr::Multiaddr,
     peer_manager::{peer_storage::PeerStorage, NodeIdentity, Peer, PeerFeatures},
     types::CommsDatabase,
     CommsBuilder,
 };
 use tari_comms_dht::{envelope::NodeDestination, inbound::DecryptedDhtMessage, Dht, DhtBuilder};
-use tari_comms_middleware::{pipeline::ServicePipeline, sink::SinkMiddleware};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tari_test_utils::{async_assert_eventually, paths::create_temporary_data_path, random, runtime};
 use tower::ServiceBuilder;

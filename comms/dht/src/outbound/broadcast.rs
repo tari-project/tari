@@ -44,10 +44,10 @@ use log::*;
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
     message::MessageFlags,
+    middleware::MiddlewareError,
     peer_manager::{NodeId, NodeIdentity, Peer},
     types::CommsPublicKey,
 };
-use tari_comms_middleware::MiddlewareError;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::dht::outbound::broadcast_middleware";

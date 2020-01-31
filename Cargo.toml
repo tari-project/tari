@@ -11,7 +11,6 @@ members = [
     "base_layer/wallet_ffi",
     "comms",
     "comms/dht",
-    "comms/middleware",
     "digital_assets_layer/core",
     "infrastructure/broadcast_channel",
     "infrastructure/crypto",

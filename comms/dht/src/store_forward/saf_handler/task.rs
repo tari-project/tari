@@ -40,11 +40,11 @@ use prost::Message;
 use std::{convert::TryInto, sync::Arc};
 use tari_comms::{
     message::EnvelopeBody,
+    middleware::MiddlewareError,
     peer_manager::{NodeIdentity, Peer, PeerManager, PeerManagerError},
     types::Challenge,
     utils::{crypt, signature},
 };
-use tari_comms_middleware::MiddlewareError;
 use tari_utilities::ByteArray;
 use tokio::{runtime, task};
 use tower::{Service, ServiceExt};

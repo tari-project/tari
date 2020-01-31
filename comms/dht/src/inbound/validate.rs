@@ -31,8 +31,7 @@ use crate::{
 use futures::{task::Context, Future};
 use log::*;
 use std::task::Poll;
-use tari_comms::message::MessageExt;
-use tari_comms_middleware::MiddlewareError;
+use tari_comms::{message::MessageExt, middleware::MiddlewareError};
 use tari_utilities::ByteArray;
 use tower::{layer::Layer, Service, ServiceExt};
 

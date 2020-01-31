@@ -29,8 +29,7 @@ use crate::{
 use futures::{task::Context, Future};
 use log::*;
 use std::{sync::Arc, task::Poll};
-use tari_comms::{peer_manager::PeerManager, types::CommsPublicKey};
-use tari_comms_middleware::MiddlewareError;
+use tari_comms::{middleware::MiddlewareError, peer_manager::PeerManager, types::CommsPublicKey};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::store_forward::forward";

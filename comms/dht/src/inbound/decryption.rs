@@ -28,8 +28,7 @@ use futures::{task::Context, Future};
 use log::*;
 use prost::Message;
 use std::{sync::Arc, task::Poll};
-use tari_comms::{message::EnvelopeBody, peer_manager::NodeIdentity, utils::crypt};
-use tari_comms_middleware::MiddlewareError;
+use tari_comms::{message::EnvelopeBody, middleware::MiddlewareError, peer_manager::NodeIdentity, utils::crypt};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::middleware::encryption";
