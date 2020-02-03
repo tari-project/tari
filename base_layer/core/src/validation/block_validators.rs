@@ -56,6 +56,7 @@ impl<B: BlockchainBackend> Validation<Block, B> for StatelessValidator {
         check_coinbase_output(block)?;
         // Check that the inputs are are allowed to be spent
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
+        check_cut_through(block)?;
         Ok(())
     }
 }
@@ -90,6 +91,7 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator<B> {
     /// 1. Is the achieved difficulty of this block >= the target difficulty for this block?
     fn validate(&self, block: &Block) -> Result<(), ValidationError> {
         check_coinbase_output(block)?;
+        check_cut_through(block)?;
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
         check_accounting_balance(block, self.rules.clone(), &self.factories)?;
         check_inputs_are_utxos(block, self.db()?)?;
@@ -160,4 +162,11 @@ fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: BlockchainDatabase<B
     } else {
         Ok(())
     }
+}
+
+fn check_cut_through(block: &Block) -> Result<(), ValidationError> {
+    if !block.body.cut_through_check() {
+        return Err(ValidationError::BlockError(BlockValidationError::NoCutThrough));
+    }
+    return Ok(());
 }

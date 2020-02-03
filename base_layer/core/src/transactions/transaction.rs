@@ -47,6 +47,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     cmp::{max, min, Ordering},
     fmt::{Display, Formatter},
+    ops::Add,
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -254,6 +255,12 @@ impl TransactionInput {
     pub fn opened_by(&self, input: &UnblindedOutput, factory: &CommitmentFactory) -> bool {
         factory.open(&input.spending_key, &input.value.into(), &self.commitment)
     }
+
+    /// This will check if the input and the output is the same commitment by looking at the commitment and features.
+    /// This will ignore the output rangeproof
+    pub fn is_equal_to(&self, output: &TransactionOutput) -> bool {
+        self.commitment == output.commitment && self.features == output.features
+    }
 }
 
 impl From<TransactionOutput> for TransactionInput {
@@ -321,6 +328,12 @@ impl TransactionOutput {
     /// Verify that range proof is valid
     pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<bool, TransactionError> {
         Ok(prover.verify(&self.proof.to_vec(), &self.commitment))
+    }
+
+    /// This will check if the input and the output is the same commitment by looking at the commitment and features.
+    /// This will ignore the output rangeproof
+    pub fn is_equal_to(&self, output: &TransactionInput) -> bool {
+        self.commitment == output.commitment && self.features == output.features
     }
 }
 
@@ -638,6 +651,28 @@ impl Transaction {
     pub fn min_spendable_height(&self) -> u64 {
         max(self.max_kernel_timelock(), self.max_input_maturity())
     }
+
+    /// This function adds two transactions together. It does not do cut-through. Calling Tx1 + Tx2 will result in
+    /// vut-through being applied.
+    pub fn add_no_cut_through(mut self, other: Self) -> Self {
+        self.offset = self.offset + other.offset;
+        let (mut inputs, mut outputs, mut kernels) = other.body.dissolve();
+        self.body.add_inputs(&mut inputs);
+        self.body.add_outputs(&mut outputs);
+        self.body.add_kernels(&mut kernels);
+        self
+    }
+}
+
+impl Add for Transaction {
+    type Output = Self;
+
+    // Note this will also do cut-through
+    fn add(mut self, other: Self) -> Self {
+        self = self.add_no_cut_through(other);
+        self.body.do_cut_through();
+        self
+    }
 }
 
 //----------------------------------------  Transaction Builder   ----------------------------------------------------//
@@ -724,10 +759,14 @@ impl Default for TransactionBuilder {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::transactions::{
-        helpers::{create_test_kernel, create_tx},
-        transaction::OutputFeatures,
-        types::{BlindingFactor, PrivateKey, PublicKey, RangeProof},
+    use crate::{
+        transactions::{
+            helpers::{create_test_kernel, create_tx, spend_utxos},
+            tari_amount::T,
+            transaction::OutputFeatures,
+            types::{BlindingFactor, PrivateKey, PublicKey, RangeProof},
+        },
+        txn_schema,
     };
     use rand::{self, rngs::OsRng};
     use tari_crypto::{keys::SecretKey as SecretKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
@@ -866,5 +905,52 @@ mod test {
 
         let factories = CryptoFactories::default();
         assert!(tx.validate_internal_consistency(&factories, None).is_ok());
+    }
+
+    #[test]
+    fn check_cut_through_() {
+        let (tx, _, outputs) = create_tx(50000000.into(), 15.into(), 1, 2, 1, 2);
+        dbg!(&tx.body.outputs().len());
+        dbg!(&tx.body.inputs().len());
+        dbg!(&tx.body.kernels().len());
+
+        assert_eq!(tx.body.inputs().len(), 2);
+        assert_eq!(tx.body.outputs().len(), 2);
+        assert_eq!(tx.body.kernels().len(), 1);
+
+        let factories = CryptoFactories::default();
+        assert!(tx.validate_internal_consistency(&factories, None).is_ok());
+
+        let schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T, 2 * T]);
+        let (tx2, outputs, _) = spend_utxos(schema);
+
+        assert_eq!(tx2.body.inputs().len(), 1);
+        assert_eq!(tx2.body.outputs().len(), 3);
+        assert_eq!(tx2.body.kernels().len(), 1);
+
+        let mut tx3 = tx.clone().add_no_cut_through(tx2.clone());
+        let tx = tx + tx2;
+        // check that all inputs are as we expect them to be
+        assert_eq!(tx3.body.inputs().len(), 3);
+        assert_eq!(tx3.body.outputs().len(), 5);
+        assert_eq!(tx3.body.kernels().len(), 2);
+        // check that cut-though has not been applied
+        assert!(!tx3.body.cut_through_check());
+
+        // apply cut-through
+        tx3.body.do_cut_through();
+
+        // check that cut-through has been applied.
+        assert!(tx.body.cut_through_check());
+        assert!(tx.validate_internal_consistency(&factories, None).is_ok());
+        assert_eq!(tx.body.inputs().len(), 2);
+        assert_eq!(tx.body.outputs().len(), 4);
+        assert_eq!(tx.body.kernels().len(), 2);
+
+        assert!(tx3.body.cut_through_check());
+        assert!(tx3.validate_internal_consistency(&factories, None).is_ok());
+        assert_eq!(tx3.body.inputs().len(), 2);
+        assert_eq!(tx3.body.outputs().len(), 4);
+        assert_eq!(tx3.body.kernels().len(), 2);
     }
 }
