@@ -100,7 +100,7 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${PKG_PATH}" ] && [ "${BUILD_IOS}" -eq 1 ] 
   cd target || exit
   cd universal || exit
   cd release || exit
-  cp libwallet_ffi.a "${DEPENDENCIES}/MobileWallet/TariLib/"
+  cp libtari_wallet_ffi.a "${DEPENDENCIES}/MobileWallet/TariLib/"
   cd ../../.. || exit
   rm -rf target
   cd ${DEPENDENCIES} || exit
@@ -339,7 +339,7 @@ EOF
       cd target || exit
       cd ${PLATFORMABI} || exit
       cd release || exit
-      cp libwallet_ffi.a ${OUTPUT_DIR}
+      cp libtari_wallet_ffi.a ${OUTPUT_DIR}
       cd ../..
       rm -rf target
       cd ${DEPENDENCIES} || exit
@@ -348,7 +348,7 @@ EOF
       if [ ${SQLITE_BUILD_FOUND} -eq 0 ]; then
         cp ${OUTPUT_DIR}/lib/libsqlite3.a ${PWD}
       fi
-      cp ${OUTPUT_DIR}/libwallet_ffi.a ${PWD}
+      cp ${OUTPUT_DIR}/libtari_wallet_ffi.a ${PWD}
       if [ ${ZMQ_BUILD_FOUND} -eq 0 ]; then
         cp ${OUTPUT_DIR}/lib/libzmq.a ${PWD}
       fi
