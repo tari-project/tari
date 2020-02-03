@@ -58,6 +58,8 @@ pub enum BlockValidationError {
     InvalidCoinbase,
     // Mismatched MMR roots
     MismatchedMmrRoots,
+    // The block contains transactions that should have been cut through.
+    NoCutThrough,
 }
 
 /// A Tari block. Blocks are linked together into a blockchain.
@@ -226,6 +228,7 @@ impl BlockBuilder {
             header: self.header,
             body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
         };
+        block.body.do_cut_through();
         block.body.sort();
         block
     }

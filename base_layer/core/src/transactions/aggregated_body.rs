@@ -28,6 +28,7 @@ use crate::transactions::{
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::pedersen::PedersenCommitment};
+use tari_utilities::hash::Hashable;
 
 /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
 /// cut-through means that blocks and transactions have the same structure.
@@ -117,9 +118,40 @@ impl AggregateBody {
         self.kernels.push(kernel);
     }
 
+    /// Add a kernels to the existing aggregate body
+    pub fn add_kernels(&mut self, new_kernels: &mut Vec<TransactionKernel>) {
+        self.kernels.append(new_kernels);
+        self.sorted = false;
+    }
+
     /// Set the kernel of the aggregate body, replacing any previous kernels
     pub fn set_kernel(&mut self, kernel: TransactionKernel) {
         self.kernels = vec![kernel];
+    }
+
+    /// This will perform cut-through on the aggregate body. It will remove all outputs (and inputs) that are being
+    /// spent as inputs.
+    pub fn do_cut_through(&mut self) {
+        let double_inputs: Vec<TransactionInput> = self
+            .inputs
+            .iter()
+            .filter(|input| self.outputs.iter().any(|o| o.is_equal_to(input)))
+            .map(|input| input.clone())
+            .collect();
+
+        for input in double_inputs {
+            self.outputs.retain(|x| !input.is_equal_to(x));
+            self.inputs.retain(|x| *x != input);
+        }
+    }
+
+    /// This will perform a check that cut-through was performed on the aggregate body. It will return true if there are
+    /// no outputs that are being spent as inputs.
+    pub fn cut_through_check(&self) -> bool {
+        !self
+            .inputs
+            .iter()
+            .any(|input| self.outputs.iter().any(|o| o.is_equal_to(input)))
     }
 
     /// Sort the component lists of the aggregate body

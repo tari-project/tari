@@ -163,7 +163,6 @@ where T: BlockchainBackend + 'static
                         .with_transactions(transactions)
                         .build(),
                 );
-
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {
