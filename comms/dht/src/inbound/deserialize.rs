@@ -74,9 +74,11 @@ where
         trace!(target: LOG_TARGET, "Deserializing InboundMessage");
         next_service.ready().await.map_err(Into::into)?;
 
-        let InboundMessage { source_peer, body, .. } = message;
+        let InboundMessage {
+            source_peer, mut body, ..
+        } = message;
 
-        match DhtEnvelope::decode(body.as_slice()) {
+        match DhtEnvelope::decode(&mut body) {
             Ok(dht_envelope) => {
                 trace!(target: LOG_TARGET, "Deserialization succeeded. Checking signatures");
                 if dht_envelope.has_origin() {
@@ -144,7 +146,7 @@ mod test {
         let dht_envelope = make_dht_envelope(&node_identity, b"A".to_vec(), DhtMessageFlags::empty());
         block_on(deserialize.call(make_comms_inbound_message(
             &node_identity,
-            dht_envelope.to_encoded_bytes().unwrap(),
+            dht_envelope.to_encoded_bytes().unwrap().into(),
             MessageFlags::empty(),
         )))
         .unwrap();

@@ -20,15 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{Frame, MessageError, MessageFlags};
+use super::{MessageError, MessageFlags};
 use crate::{
     consts::ENVELOPE_VERSION,
     types::{CommsPublicKey, CommsSecretKey},
     utils::signature,
 };
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use tari_utilities::{message_format::MessageFormat, ByteArray};
+
+// Re-export protos
+pub use crate::proto::envelope::*;
+use bytes::Bytes;
 
 /// Represents data that every message contains.
 /// As described in [RFC-0172](https://rfc.tari.com/RFC-0172_PeerToPeerMessagingProtocol.html#messaging-structure)
@@ -39,16 +44,12 @@ pub struct MessageEnvelopeHeader {
     pub flags: MessageFlags,
 }
 
-// Re-export protos
-pub use crate::proto::envelope::*;
-use rand::rngs::OsRng;
-
 impl Envelope {
     /// Sign a message, construct an Envelope with a Header
     pub fn construct_signed(
         secret_key: &CommsSecretKey,
         public_key: &CommsPublicKey,
-        body: Frame,
+        body: Bytes,
         flags: MessageFlags,
     ) -> Result<Self, MessageError>
     {
@@ -66,7 +67,7 @@ impl Envelope {
                 signature: header_signature,
                 flags: flags.bits(),
             }),
-            body,
+            body: body.to_vec(),
         })
     }
 
@@ -189,7 +190,7 @@ mod test {
     #[test]
     fn construct_signed() {
         let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-        let envelope = Envelope::construct_signed(&sk, &pk, vec![], MessageFlags::all()).unwrap();
+        let envelope = Envelope::construct_signed(&sk, &pk, Bytes::new(), MessageFlags::all()).unwrap();
         assert_eq!(envelope.get_comms_public_key().unwrap(), pk);
         assert!(envelope.verify_signature().unwrap());
     }
@@ -211,7 +212,7 @@ mod test {
     #[test]
     fn is_valid() {
         let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-        let mut envelope = Envelope::construct_signed(&sk, &pk, vec![], MessageFlags::all()).unwrap();
+        let mut envelope = Envelope::construct_signed(&sk, &pk, Bytes::new(), MessageFlags::all()).unwrap();
         assert_eq!(envelope.is_valid(), true);
         envelope.header = None;
         assert_eq!(envelope.is_valid(), false);

@@ -46,7 +46,7 @@ pub type Control = yamux::Control;
 const LOG_TARGET: &str = "comms::multiplexing::yamux";
 
 pub struct Yamux {
-    control: yamux::Control,
+    control: Control,
     incoming: IncomingSubstreams,
 }
 

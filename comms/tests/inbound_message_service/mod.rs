@@ -24,6 +24,7 @@ use crate::support::{
     factories::{self, TestFactory},
     helpers::database::init_datastore,
 };
+use bytes::Bytes;
 use futures::{channel::mpsc, SinkExt, StreamExt};
 use multiaddr::Multiaddr;
 use std::{sync::Arc, time::Duration};
@@ -41,7 +42,7 @@ use tokio::{runtime::Runtime, time::timeout};
 /// FrameSet that deserializes into a MessageEnvelope
 /// ## Returns:
 /// - `FrameSet`: Two frames, the node id of the source peer and the encoded envelope
-fn construct_message(message_body: Vec<u8>, node_identity: Arc<NodeIdentity>) -> FrameSet {
+fn construct_message(message_body: Bytes, node_identity: Arc<NodeIdentity>) -> FrameSet {
     // Construct test message
     let envelope = Envelope::construct_signed(
         node_identity.secret_key(),
@@ -87,7 +88,7 @@ fn smoke_test() {
 
     // Send some messages NodeDestination::Unknown and unencrypted
     let mut sent_messages = Vec::new();
-    let body = "First message".as_bytes().to_vec();
+    let body = Bytes::from_static(b"First message");
     let msg_body = construct_message(body.clone(), Arc::clone(&node_identity));
     sent_messages.push(body);
     rt.block_on(async {

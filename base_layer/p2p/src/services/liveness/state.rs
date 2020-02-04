@@ -164,13 +164,13 @@ impl LivenessState {
 
         match self.inflight_pings.remove_entry(&node_id) {
             Some((node_id, sent_time)) => {
+                let now = Utc::now().naive_utc();
                 if let Some(ns) = self.nodes_to_monitor.get_mut(&node_id) {
                     ns.last_pong_received = Some(sent_time.clone());
-                    ns.average_latency
-                        .add_sample(convert_to_std_duration(Utc::now().naive_utc() - sent_time));
+                    ns.average_latency.add_sample(convert_to_std_duration(now - sent_time));
                 }
                 let latency = self
-                    .add_latency_sample(node_id, convert_to_std_duration(Utc::now().naive_utc() - sent_time))
+                    .add_latency_sample(node_id, convert_to_std_duration(now - sent_time))
                     .calc_average();
                 Some(latency)
             },

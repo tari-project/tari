@@ -24,6 +24,7 @@ use crate::support::{
     factories::{self, TestFactory},
     helpers::{streams::stream_assert_count, ConnectionMessageCounter},
 };
+use bytes::Bytes;
 use futures::channel::mpsc::channel;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
@@ -113,7 +114,7 @@ fn establish_control_service_connection_succeed() {
             .unwrap();
 
         let shared_secret = crypt::generate_ecdh_secret(node_identity2.secret_key(), node_identity1.public_key());
-        let encrypted_body = crypt::encrypt(&shared_secret, &body).unwrap();
+        let encrypted_body = Bytes::from(crypt::encrypt(&shared_secret, &body).unwrap());
 
         let envelope = Envelope::construct_signed(
             node_identity1.secret_key(),

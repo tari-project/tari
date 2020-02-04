@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,18 +20,40 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod dialers;
-pub mod node_id;
+use crate::{
+    connection_manager::next::PeerConnectionError,
+    message::MessageError,
+    outbound_message_service::OutboundMessage,
+    peer_manager::PeerManagerError,
+    protocol::ProtocolError,
+};
+use derive_error::Error;
 
-cfg_next! {
-    pub mod node_identity;
-    pub mod transport;
-    pub mod test_node;
-    pub mod peer_manager;
-
-    mod connection_manager_mock;
-    pub use connection_manager_mock::{create_connection_manager_mock, ConnectionManagerMockState};
-
-    mod peer_connection_mock;
-    pub use peer_connection_mock::{create_peer_connection_mock_pair, PeerConnectionMockState};
+#[derive(Debug, Error)]
+pub enum InboundMessagingError {
+    /// The source peer did not exist in the peer manager
+    CannotFindSourcePeer,
+    PeerManagerError(PeerManagerError),
+    /// Inbound message signatures are invalid
+    InvalidMessageSignature,
+    /// The received envelope is invalid
+    InvalidEnvelope,
+    /// The connected peer sent a public key which did not match the public key of the connected peer
+    PeerPublicKeyMismatch,
+    /// Failed to decode message
+    MessageDecodeError(prost::DecodeError),
+    MessageError(MessageError),
+}
+#[derive(Debug, Error)]
+pub enum MessagingProtocolError {
+    /// Failed to send message
+    #[error(no_from, non_std)]
+    MessageSendFailed(OutboundMessage), // Msg returned to sender
+    ProtocolError(ProtocolError),
+    PeerConnectionError(PeerConnectionError),
+    /// Failed to dial peer
+    PeerDialFailed,
+    /// Failure when sending on an outbound substream
+    OutboundSubstreamFailure,
+    MessageError(MessageError),
 }

@@ -139,7 +139,11 @@ where
 
         let Envelope { header, body, .. } = envelope;
 
-        let inbound_message = InboundMessage::new(peer, header.expect("already checked").try_into().expect(""), body);
+        let inbound_message = InboundMessage::new(
+            peer,
+            header.expect("already checked").try_into().expect(""),
+            body.into(),
+        );
 
         self.message_sink.send(inbound_message).await.map_err(Into::into)?;
 

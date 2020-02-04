@@ -22,7 +22,6 @@
 
 mod future;
 mod lazy_service;
-
 use std::{
     any::{Any, TypeId},
     collections::HashMap,

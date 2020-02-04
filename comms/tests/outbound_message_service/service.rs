@@ -24,6 +24,7 @@ use crate::support::{
     factories::{self, TestFactory},
     helpers::{database::init_datastore, streams::stream_assert_count},
 };
+use bytes::Bytes;
 use futures::{channel::mpsc, SinkExt, StreamExt};
 use std::{sync::Arc, thread, time::Duration};
 use tari_comms::{
@@ -166,7 +167,7 @@ fn outbound_message_pool_no_retry() {
         let node_id = node_B_peer.node_id.clone();
         rt.spawn(async move {
             sink_clone
-                .send(OutboundMessage::new(node_id, MessageFlags::NONE, vec![0]))
+                .send(OutboundMessage::new(node_id, MessageFlags::NONE, Bytes::new()))
                 .await
                 .unwrap()
         });
@@ -276,7 +277,7 @@ fn test_outbound_message_pool_fail_and_retry() {
                     expected_tag,
                     node_id,
                     MessageFlags::empty(),
-                    vec![0],
+                    Bytes::new(),
                 ))
                 .await
                 .unwrap()

@@ -24,7 +24,7 @@ mod error;
 mod identity;
 mod messaging;
 mod negotiation;
-mod notifiers;
+mod protocols;
 
 /// Represents a protocol id string (e.g. /tari/transactions/1.0.0).
 /// This is atomically reference counted, so clones are shallow and cheap
@@ -33,4 +33,4 @@ pub type ProtocolId = bytes::Bytes;
 pub use error::ProtocolError;
 pub use identity::{identity_exchange, IdentityProtocolError};
 pub use negotiation::ProtocolNegotiation;
-pub use notifiers::{ProtocolEvent, ProtocolNotification, ProtocolNotifier};
+pub use protocols::{ProtocolEvent, ProtocolNotification, Protocols};

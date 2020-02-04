@@ -35,6 +35,9 @@ pub mod peer_manager;
 mod proto;
 pub mod types;
 
+// Re-export
+pub use bytes::Bytes;
+
 cfg_next! {
     mod multiplexing;
     mod noise;

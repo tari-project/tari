@@ -31,6 +31,7 @@ use tari_comms::{
     outbound_message_service::OutboundMessage,
     peer_manager::NodeIdentity,
     utils::signature,
+    Bytes,
 };
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tower::{layer::Layer, Service, ServiceExt};
@@ -113,7 +114,7 @@ where
 
         let envelope = DhtEnvelope::new(dht_header.into(), body);
 
-        let body = envelope.to_encoded_bytes()?;
+        let body = Bytes::from(envelope.to_encoded_bytes()?);
 
         next_service
             .oneshot(OutboundMessage::new(destination_peer.node_id, comms_flags, body))
@@ -183,8 +184,8 @@ mod test {
         );
         block_on(serialize.call(msg)).unwrap();
 
-        let msg = spy.pop_request().unwrap();
-        let dht_envelope = DhtEnvelope::decode(msg.body.as_slice()).unwrap();
+        let mut msg = spy.pop_request().unwrap();
+        let dht_envelope = DhtEnvelope::decode(&mut msg.body).unwrap();
         assert_eq!(dht_envelope.body, b"A".to_vec());
         assert_eq!(msg.peer_node_id, NodeId::default());
     }

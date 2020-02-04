@@ -32,6 +32,7 @@ use tari_comms::{
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     types::CommsDatabase,
     utils::signature,
+    Bytes,
 };
 use tari_storage::lmdb_store::LMDBBuilder;
 use tari_test_utils::{paths::create_temporary_data_path, random};
@@ -70,12 +71,7 @@ pub fn make_client_identity() -> Arc<NodeIdentity> {
     )
 }
 
-pub fn make_comms_inbound_message(
-    node_identity: &NodeIdentity,
-    message: Vec<u8>,
-    flags: MessageFlags,
-) -> InboundMessage
-{
+pub fn make_comms_inbound_message(node_identity: &NodeIdentity, message: Bytes, flags: MessageFlags) -> InboundMessage {
     InboundMessage::new(
         Peer::new(
             node_identity.public_key().clone(),
