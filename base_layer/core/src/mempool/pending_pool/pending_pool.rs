@@ -22,8 +22,10 @@
 
 use crate::{
     blocks::Block,
-    consts::MEMPOOL_PENDING_POOL_STORAGE_CAPACITY,
-    mempool::pending_pool::{PendingPoolError, PendingPoolStorage},
+    mempool::{
+        consts::MEMPOOL_PENDING_POOL_STORAGE_CAPACITY,
+        pending_pool::{PendingPoolError, PendingPoolStorage},
+    },
     transactions::{transaction::Transaction, types::Signature},
 };
 use std::sync::{Arc, RwLock};

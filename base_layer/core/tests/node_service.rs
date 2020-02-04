@@ -44,12 +44,12 @@ use std::time::Duration;
 use tari_core::{
     base_node::{
         comms_interface::{BlockEvent, CommsInterfaceError},
+        consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
         service::BaseNodeServiceConfig,
     },
     blocks::BlockHeader,
     chain_storage::{BlockAddResult, DbTransaction, MmrTree},
     consensus::ConsensusConstants,
-    consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
     mempool::MempoolServiceConfig,
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{

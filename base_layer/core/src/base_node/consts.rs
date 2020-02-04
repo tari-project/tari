@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,38 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Needed to make futures::select! work
-#![recursion_limit = "1024"]
-// Used to eliminate the need for boxing futures in many cases.
-// Tracking issue: https://github.com/rust-lang/rust/issues/63063
-#![feature(type_alias_impl_trait)]
-// Enable usage of Vec::shrink_to
-#![feature(shrink_to)]
+use std::time::Duration;
 
-#[macro_use]
-extern crate bitflags;
-#[macro_use]
-extern crate cfg_if;
-
-cfg_if! {
-    if #[cfg(feature = "base_node")] {
-        pub mod base_node;
-        pub mod blocks;
-        pub mod chain_storage;
-        pub mod consensus;
-        pub mod helpers;
-        pub mod mining;
-        pub mod proof_of_work;
-        pub mod proto;
-        pub mod validation;
-    }
-}
-
-#[cfg(any(feature = "base_node", feature = "mempool_proto"))]
-pub mod mempool;
-
-#[cfg(feature = "transactions")]
-pub mod transactions;
-
-// Re-export the crypto crate to make exposing traits etc easier for clients of this crate
-pub use tari_crypto as crypto;
+/// The allocated waiting time for a request waiting for service responses from remote base nodes.
+pub const BASE_NODE_SERVICE_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+/// The fraction of responses that need to be received for a corresponding service request to be finalize.
+pub const BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION: f32 = 0.6;

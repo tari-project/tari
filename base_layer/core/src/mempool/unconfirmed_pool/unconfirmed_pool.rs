@@ -22,8 +22,10 @@
 
 use crate::{
     blocks::Block,
-    consts::{MEMPOOL_UNCONFIRMED_POOL_STORAGE_CAPACITY, MEMPOOL_UNCONFIRMED_POOL_WEIGHT_TRANSACTION_SKIP_COUNT},
-    mempool::unconfirmed_pool::{UnconfirmedPoolError, UnconfirmedPoolStorage},
+    mempool::{
+        consts::{MEMPOOL_UNCONFIRMED_POOL_STORAGE_CAPACITY, MEMPOOL_UNCONFIRMED_POOL_WEIGHT_TRANSACTION_SKIP_COUNT},
+        unconfirmed_pool::{UnconfirmedPoolError, UnconfirmedPoolStorage},
+    },
     transactions::{transaction::Transaction, types::Signature},
 };
 use std::sync::{Arc, RwLock};

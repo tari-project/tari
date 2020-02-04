@@ -22,8 +22,10 @@
 
 use crate::{
     blocks::Block,
-    consts::{MEMPOOL_REORG_POOL_CACHE_TTL, MEMPOOL_REORG_POOL_STORAGE_CAPACITY},
-    mempool::reorg_pool::{ReorgPoolError, ReorgPoolStorage},
+    mempool::{
+        consts::{MEMPOOL_REORG_POOL_CACHE_TTL, MEMPOOL_REORG_POOL_STORAGE_CAPACITY},
+        reorg_pool::{ReorgPoolError, ReorgPoolStorage},
+    },
     transactions::{transaction::Transaction, types::Signature},
 };
 use std::{

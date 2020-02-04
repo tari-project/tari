@@ -59,13 +59,13 @@ pub use configuration::{
     default_config,
     install_default_config_file,
     load_configuration,
+    ConfigExtractor,
     ConfigurationError,
     DatabaseType,
     GlobalConfig,
     Network,
 };
 pub use logging::initialize_logging;
-
 pub const DEFAULT_CONFIG: &str = "config.toml";
 pub const DEFAULT_LOG_CONFIG: &str = "log4rs.yml";
 

@@ -22,20 +22,21 @@
 
 cfg_if! {
     if #[cfg(feature = "base_node")] {
-        mod error;
-        mod inbound_handlers;
-        mod initializer;
-        mod outbound_interface;
-        mod service;
-        // Public re-exports
-        pub use error::MempoolServiceError;
-        pub use initializer::MempoolServiceInitializer;
-        pub use outbound_interface::OutboundMempoolServiceInterface;
-        pub use service::{MempoolService, MempoolServiceConfig};
+mod error;
+mod inbound_handlers;
+mod initializer;
+mod outbound_interface;
+mod service;
+// Public re-exports
+pub use error::MempoolServiceError;
+pub use initializer::MempoolServiceInitializer;
+pub use outbound_interface::OutboundMempoolServiceInterface;
+pub use service::MempoolService;
     }
 }
 
 mod request;
 mod response;
+
 pub use request::{MempoolRequest, MempoolServiceRequest, RequestKey};
 pub use response::{MempoolResponse, MempoolServiceResponse};

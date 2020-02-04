@@ -29,6 +29,7 @@ use crate::{
             NodeCommsRequestType,
             NodeCommsResponse,
         },
+        consts::{BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION, BASE_NODE_SERVICE_REQUEST_TIMEOUT},
         proto,
         service::{
             error::BaseNodeServiceError,
@@ -37,7 +38,6 @@ use crate::{
     },
     blocks::Block,
     chain_storage::BlockchainBackend,
-    consts::{BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION, BASE_NODE_SERVICE_REQUEST_TIMEOUT},
     proto::core::Block as ProtoBlock,
 };
 use futures::{

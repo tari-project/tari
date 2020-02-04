@@ -97,13 +97,52 @@ impl TryFrom<String> for Network {
 impl Display for Network {
     fn fmt(&self, f: &mut Formatter) -> FormatResult {
         let msg = match self {
-            Self::MainNet => "MainNet",
-            Self::TestNet => "TestNet",
+            Self::MainNet => "mainnet",
+            Self::TestNet => "testnet",
         };
         f.write_str(msg)
     }
 }
 
+//-------------------------------------------    ConfigExtractor trait    ------------------------------------------//
+/// Extract parts of the global Config file into custom configuration objects that are more specific and localised.
+/// The expected use case for this is to use `load_configuration` to load the global configuration file into a Config
+/// object. This is then used to generate other, localised configuration objects, for example, `MempoolConfig` etc.
+///
+/// # Example
+///
+/// ```edition2018
+/// # use tari_common::*;
+/// # use config::Config;
+/// struct MyConf {
+///     foo: usize,
+/// }
+///
+/// impl ConfigExtractor for MyConf {
+///     fn set_default(cfg: &mut Config) {
+///         cfg.set_default("main.foo", 5);
+///         cfg.set_default("test.foo", 6);
+///     }
+///
+///     fn extract_configuration(cfg: &Config, network: Network) -> Result<Self, ConfigurationError> {
+///         let key = match network {
+///             Network::MainNet => "main.foo",
+///             Network::TestNet => "test.foo",
+///         };
+///         let foo = cfg.get_int(key).map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+///         Ok(MyConf { foo })
+///     }
+/// }
+/// ```
+pub trait ConfigExtractor {
+    /// Provides the default values for the Config object. This is used before `load_configuration` and ensures that
+    /// all config parameters have at least the default value set.
+    fn set_default(cfg: &mut Config);
+    /// After `load_configuration` has been called, you can construct a specific configuration object by calling
+    /// `extract_configuration` and it will create the object using values from the config file / environment variables
+    fn extract_configuration(cfg: &Config, network: Network) -> Result<Self, ConfigurationError>
+    where Self: Sized;
+}
 //---------------------------------------------      Database type        ------------------------------------------//
 
 pub enum DatabaseType {

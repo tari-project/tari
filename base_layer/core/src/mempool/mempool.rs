@@ -25,10 +25,11 @@ use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     mempool::{
         error::MempoolError,
-        orphan_pool::{OrphanPool, OrphanPoolConfig},
-        pending_pool::{PendingPool, PendingPoolConfig},
-        reorg_pool::{ReorgPool, ReorgPoolConfig},
-        unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolConfig},
+        orphan_pool::OrphanPool,
+        pending_pool::PendingPool,
+        reorg_pool::ReorgPool,
+        unconfirmed_pool::UnconfirmedPool,
+        MempoolConfig,
         StatsResponse,
         TxStorageResponse,
     },
@@ -36,26 +37,6 @@ use crate::{
     validation::{Validation, ValidationError, Validator},
 };
 use std::sync::Arc;
-
-/// Configuration for the Mempool.
-#[derive(Clone, Copy)]
-pub struct MempoolConfig {
-    pub unconfirmed_pool_config: UnconfirmedPoolConfig,
-    pub orphan_pool_config: OrphanPoolConfig,
-    pub pending_pool_config: PendingPoolConfig,
-    pub reorg_pool_config: ReorgPoolConfig,
-}
-
-impl Default for MempoolConfig {
-    fn default() -> Self {
-        Self {
-            unconfirmed_pool_config: UnconfirmedPoolConfig::default(),
-            orphan_pool_config: OrphanPoolConfig::default(),
-            pending_pool_config: PendingPoolConfig::default(),
-            reorg_pool_config: ReorgPoolConfig::default(),
-        }
-    }
-}
 
 /// Struct containing the validators the mempool needs to run, It forces the correct amount of validators are given
 pub struct MempoolValidators<B: BlockchainBackend> {
