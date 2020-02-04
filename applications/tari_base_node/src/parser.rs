@@ -20,21 +20,159 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use super::LOG_TARGET;
+use crate::builder::BaseNodeContext;
+use log::*;
+use rustyline::{
+    completion::Completer,
+    error::ReadlineError,
+    hint::{Hinter, HistoryHinter},
+    line_buffer::LineBuffer,
+    Context,
+};
+use rustyline_derive::{Helper, Highlighter, Validator};
+use std::{
+    fmt,
+    str::FromStr,
+    string::ToString,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
+use strum::IntoEnumIterator;
+use strum_macros::{Display, EnumIter, EnumString};
 use tokio::runtime;
 
+/// Enum representing commands used by the basenode
+#[derive(Clone, PartialEq, Debug, Display, EnumIter, EnumString)]
+#[strum(serialize_all = "snake_case")]
+pub enum BaseNodeCommand {
+    Help,
+    GetBalance,
+    SendTari,
+    GetChainMetadata,
+    Quit,
+    Exit,
+}
+
 /// This is used to parse commands from the user and execute them
+#[derive(Helper, Validator, Highlighter)]
 pub struct Parser {
     executor: runtime::Handle,
+    base_node_context: BaseNodeContext,
+    shutdown_flag: Arc<AtomicBool>,
+    commands: Vec<String>,
+    hinter: HistoryHinter,
+}
+
+// This will go through all instructions and look for potential matches
+impl Completer for Parser {
+    type Candidate = String;
+
+    fn complete(&self, line: &str, pos: usize, _ctx: &Context<'_>) -> Result<(usize, Vec<String>), ReadlineError> {
+        let mut completions: Vec<String> = Vec::new();
+        for command in &self.commands {
+            if command.starts_with(line) {
+                completions.push(command.to_string());
+            }
+        }
+
+        Ok((pos, completions))
+    }
+
+    fn update(&self, line: &mut LineBuffer, start: usize, elected: &str) {
+        line.update(elected, start);
+    }
+}
+
+// This allows us to make hints based on historic inputs
+impl Hinter for Parser {
+    fn hint(&self, line: &str, pos: usize, ctx: &rustyline::Context<'_>) -> Option<String> {
+        self.hinter.hint(line, pos, ctx)
+    }
 }
 
 impl Parser {
     /// creates a new parser struct
-    pub fn new(executor: runtime::Handle) -> Self {
-        Parser { executor }
+    pub fn new(executor: runtime::Handle, base_node_context: BaseNodeContext, shutdown_flag: Arc<AtomicBool>) -> Self {
+        Parser {
+            executor,
+            base_node_context,
+            shutdown_flag,
+            commands: BaseNodeCommand::iter().map(|x| x.to_string()).collect(),
+            hinter: HistoryHinter {},
+        }
     }
 
     /// This will parse the provided command and execute the task
-    pub fn handle_command(&self, command: &str) {
-        println!("Line: {}", command);
+    pub fn handle_command(&mut self, command_str: &str) {
+        let commands: Vec<&str> = command_str.split(' ').collect();
+        let command = BaseNodeCommand::from_str(commands[0]);
+        if command.is_err() {
+            println!(
+                "Received: {}, this is not a valid command, please enter a valid command",
+                command_str
+            );
+            println!("Enter help or press tab for available commands");
+            return;
+        }
+        let command = command.unwrap();
+        let help_command = if commands.len() > 1 {
+            Some(BaseNodeCommand::from_str(commands[1]).unwrap_or(BaseNodeCommand::Help))
+        } else {
+            None
+        };
+        if help_command != Some(BaseNodeCommand::Help) {
+            return self.process_command(command, commands);
+        }
+        match command {
+            BaseNodeCommand::Help => {
+                println!("Available commands are: ");
+                let joined = self.commands.join(", ");
+                println!("{}", joined);
+            },
+            BaseNodeCommand::GetBalance => {
+                println!("This command gets your balance");
+            },
+            BaseNodeCommand::SendTari => {
+                println!("This command sends an amount of Tari to a address call this command via:");
+                println!("send_tari [amount of tari to send] [public key to send to]");
+            },
+            BaseNodeCommand::GetChainMetadata => {
+                println!("This command gets your base node chain meta data");
+            },
+            BaseNodeCommand::Exit | BaseNodeCommand::Quit => {
+                println!("This command exits the base node");
+            },
+        }
+    }
+
+    fn process_command(&mut self, command: BaseNodeCommand, command_arg: Vec<&str>) {
+        match command {
+            BaseNodeCommand::Help => {
+                println!("Available commands are: ");
+                let joined = self.commands.join(", ");
+                println!("{}", joined);
+            },
+            BaseNodeCommand::GetBalance => {
+                println!("Your balance is 0 Tari");
+            },
+            BaseNodeCommand::SendTari => {
+                println!("sending Tari");
+            },
+            BaseNodeCommand::GetChainMetadata => {
+                println!("Base Node meta is: ");
+            },
+            BaseNodeCommand::Exit | BaseNodeCommand::Quit => {
+                println!("quit received");
+                println!("Shutting down");
+                info!(
+                    target: LOG_TARGET,
+                    "Termination signal received from user. Shutting node down."
+                );
+                self.shutdown_flag.store(true, Ordering::SeqCst);
+            },
+        }
     }
 }
