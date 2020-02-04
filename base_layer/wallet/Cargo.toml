@@ -50,4 +50,4 @@ prost = "0.6.1"
 path = "../../base_layer/core"
 version = "^0.0"
 default-features = false
-features = ["transactions", "mempool_proto"]
+features = ["transactions", "mempool_proto", "base_node_proto"]

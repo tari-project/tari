@@ -428,7 +428,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
-    #[cfg(feature = "test_harness")]
     fn mine_completed_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
         let conn = self
             .database_connection_pool

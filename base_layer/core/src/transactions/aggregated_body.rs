@@ -28,7 +28,6 @@ use crate::transactions::{
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::pedersen::PedersenCommitment};
-use tari_utilities::hash::Hashable;
 
 /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
 /// cut-through means that blocks and transactions have the same structure.

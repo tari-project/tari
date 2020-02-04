@@ -23,12 +23,14 @@
 #[derive(Clone)]
 pub struct TransactionServiceConfig {
     pub mempool_broadcast_timeout_in_secs: u64,
+    pub base_node_mined_timeout_in_secs: u64,
 }
 
 impl Default for TransactionServiceConfig {
     fn default() -> Self {
         Self {
             mempool_broadcast_timeout_in_secs: 30,
+            base_node_mined_timeout_in_secs: 30,
         }
     }
 }

@@ -42,6 +42,7 @@ use tari_broadcast_channel::bounded;
 use tari_comms::peer_manager::NodeIdentity;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
+    base_node::proto::base_node as BaseNodeProto,
     mempool::proto::mempool as MempoolProto,
     transactions::{transaction_protocol::proto, types::CryptoFactories},
 };
@@ -121,6 +122,13 @@ where T: TransactionBackend
             .map(map_decode::<MempoolProto::MempoolServiceResponse>)
             .filter_map(ok_or_skip_result)
     }
+
+    fn base_node_response_stream(&self) -> impl Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>> {
+        self.subscription_factory
+            .get_subscription(TariMessageType::BaseNodeResponse)
+            .map(map_decode::<BaseNodeProto::BaseNodeServiceResponse>)
+            .filter_map(ok_or_skip_result)
+    }
 }
 
 impl<T> ServiceInitializer for TransactionServiceInitializer<T>
@@ -140,6 +148,7 @@ where T: TransactionBackend + Clone + 'static
         let transaction_reply_stream = self.transaction_reply_stream();
         let transaction_finalized_stream = self.transaction_finalized_stream();
         let mempool_response_stream = self.mempool_response_stream();
+        let base_node_response_stream = self.base_node_response_stream();
 
         let (publisher, subscriber) = bounded(100);
 
@@ -175,6 +184,7 @@ where T: TransactionBackend + Clone + 'static
                 transaction_reply_stream,
                 transaction_finalized_stream,
                 mempool_response_stream,
+                base_node_response_stream,
                 output_manager_service,
                 outbound_message_service,
                 publisher,

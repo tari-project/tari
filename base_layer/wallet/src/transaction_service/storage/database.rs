@@ -78,7 +78,6 @@ pub trait TransactionBackend: Send + Sync {
     /// Indicated that a completed transaction has been broadcast to the mempools
     fn broadcast_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Indicated that a completed transaction has been detected as mined on the base layer
-    #[cfg(feature = "test_harness")]
     fn mine_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Update a completed transactions timestamp for use in test data generation
     #[cfg(feature = "test_harness")]
@@ -499,7 +498,6 @@ where T: TransactionBackend + 'static
     }
 
     /// Indicated that the specified completed transaction has been detected as mined on the base layer
-    #[cfg(feature = "test_harness")]
     pub async fn mine_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
 

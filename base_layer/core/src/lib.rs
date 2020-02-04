@@ -35,15 +35,20 @@ extern crate cfg_if;
 
 cfg_if! {
     if #[cfg(feature = "base_node")] {
-        pub mod base_node;
         pub mod blocks;
         pub mod chain_storage;
         pub mod consensus;
         pub mod helpers;
         pub mod mining;
         pub mod proof_of_work;
-        pub mod proto;
         pub mod validation;
+    }
+}
+
+cfg_if! {
+    if #[cfg(any(feature = "base_node", feature = "base_node_proto"))] {
+        pub mod base_node;
+        pub mod proto;
     }
 }
 

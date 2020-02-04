@@ -10,10 +10,11 @@ version = "0.0.5"
 edition = "2018"
 
 [features]
-default = ["croaring", "tari_mmr", "transactions", "base_node", "mempool_proto", "monero", "randomx-rs"]
+default = ["croaring", "tari_mmr", "transactions", "base_node", "mempool_proto", "monero", "randomx-rs", "base_node_proto"]
 transactions = []
 mempool_proto = []
 base_node = []
+base_node_proto = []
 
 [dependencies]
 tari_comms = { version = "^0.0", path = "../../comms"}
