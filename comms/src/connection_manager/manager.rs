@@ -33,7 +33,7 @@ use crate::{
     },
     noise::NoiseConfig,
     peer_manager::{AsyncPeerManager, NodeId, NodeIdentity},
-    protocol::{ProtocolEvent, ProtocolId, ProtocolNotifier},
+    protocol::{ProtocolEvent, ProtocolId, Protocols},
     transports::Transport,
     types::DEFAULT_LISTENER_ADDRESS,
 };
@@ -106,7 +106,7 @@ pub struct ConnectionManager<TTransport, TBackoff> {
     node_identity: Arc<NodeIdentity>,
     active_connections: HashMap<NodeId, PeerConnection>,
     shutdown_signal: Option<ShutdownSignal>,
-    protocol_notifier: ProtocolNotifier<yamux::Stream>,
+    protocol_notifier: Protocols<yamux::Stream>,
     listener_address: Option<Multiaddr>,
     listening_notifiers: Vec<oneshot::Sender<Multiaddr>>,
     connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
@@ -127,7 +127,7 @@ where
         request_rx: mpsc::Receiver<ConnectionManagerRequest>,
         node_identity: Arc<NodeIdentity>,
         peer_manager: AsyncPeerManager,
-        protocol_notifier: ProtocolNotifier<yamux::Stream>,
+        protocol_notifier: Protocols<yamux::Stream>,
         connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
         shutdown_signal: ShutdownSignal,
     ) -> Self

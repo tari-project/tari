@@ -45,11 +45,11 @@ impl<TSubstream> ProtocolNotification<TSubstream> {
 }
 
 #[derive(Clone)]
-pub struct ProtocolNotifier<TSubstream> {
+pub struct Protocols<TSubstream> {
     notifiers: HashMap<ProtocolId, mpsc::Sender<ProtocolNotification<TSubstream>>>,
 }
 
-impl<TSubstream> Default for ProtocolNotifier<TSubstream> {
+impl<TSubstream> Default for Protocols<TSubstream> {
     fn default() -> Self {
         Self {
             notifiers: HashMap::default(),
@@ -57,7 +57,7 @@ impl<TSubstream> Default for ProtocolNotifier<TSubstream> {
     }
 }
 
-impl<TSubstream> ProtocolNotifier<TSubstream> {
+impl<TSubstream> Protocols<TSubstream> {
     pub fn new() -> Self {
         Default::default()
     }
@@ -95,7 +95,7 @@ mod test {
 
     #[test]
     fn add() {
-        let mut notifiers = ProtocolNotifier::<()>::new();
+        let mut notifiers = Protocols::<()>::new();
         let (tx, _) = mpsc::channel(1);
         let protocols = [
             ProtocolId::from_static(b"/tari/test/1"),
@@ -111,7 +111,7 @@ mod test {
 
     #[tokio_macros::test_basic]
     async fn notify() {
-        let mut notifiers = ProtocolNotifier::<()>::new();
+        let mut notifiers = Protocols::<()>::new();
         let (tx, mut rx) = mpsc::channel(1);
         let protocols = &[ProtocolId::from_static(b"/tari/test/1")];
         notifiers.add(protocols, tx);
@@ -131,7 +131,7 @@ mod test {
 
     #[tokio_macros::test_basic]
     async fn notify_fail_not_registered() {
-        let mut notifiers = ProtocolNotifier::<()>::new();
+        let mut notifiers = Protocols::<()>::new();
 
         let err = notifiers
             .notify(

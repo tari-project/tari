@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{message::MessageFlags, peer_manager::node_id::NodeId};
+use bytes::Bytes;
 use rand::{rngs::OsRng, RngCore};
 
 /// Represents a tag for a message
@@ -33,24 +34,24 @@ impl MessageTag {
     }
 }
 
-/// The OutboundMessage has a copy of the MessageEnvelope. OutboundMessageService will create the
-/// OutboundMessage and forward it to the OutboundMessagePool.
+/// Contains details required to build a message envelope and send a message to a peer. OutboundMessage will not copy
+/// the body bytes when cloned and is 'cheap to clone(tm)'.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OutboundMessage {
     pub tag: MessageTag,
     pub peer_node_id: NodeId,
     pub flags: MessageFlags,
-    pub body: Vec<u8>,
+    pub body: Bytes,
 }
 
 impl OutboundMessage {
-    /// Create a new OutboundMessage from the destination_node_id and message_frames
-    pub fn new(peer_node_id: NodeId, flags: MessageFlags, body: Vec<u8>) -> OutboundMessage {
+    /// Create a new OutboundMessage
+    pub fn new(peer_node_id: NodeId, flags: MessageFlags, body: Bytes) -> OutboundMessage {
         Self::with_tag(MessageTag::new(), peer_node_id, flags, body)
     }
 
-    /// Create a new OutboundMessage from the destination_node_id and message_frames
-    pub fn with_tag(tag: MessageTag, peer_node_id: NodeId, flags: MessageFlags, body: Vec<u8>) -> OutboundMessage {
+    /// Create a new OutboundMessage with the specified MessageTag
+    pub fn with_tag(tag: MessageTag, peer_node_id: NodeId, flags: MessageFlags, body: Bytes) -> OutboundMessage {
         OutboundMessage {
             tag,
             peer_node_id,
@@ -66,11 +67,12 @@ mod test {
 
     #[test]
     fn with_tag() {
+        static TEST_MSG: Bytes = Bytes::from_static(b"The ghost brigades");
         let node_id = NodeId::new();
         let tag = MessageTag::new();
-        let subject = OutboundMessage::with_tag(tag, node_id.clone(), MessageFlags::empty(), vec![1]);
+        let subject = OutboundMessage::with_tag(tag, node_id.clone(), MessageFlags::empty(), TEST_MSG.clone());
         assert_eq!(tag, subject.tag);
-        assert_eq!(subject.body, vec![1]);
+        assert_eq!(subject.body, TEST_MSG);
         assert_eq!(subject.peer_node_id, node_id);
     }
 }

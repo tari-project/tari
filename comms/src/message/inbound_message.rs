@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{message::MessageEnvelopeHeader, peer_manager::Peer};
+use bytes::Bytes;
 
 /// Authenticated inbound message
 #[derive(Clone, Debug)]
@@ -30,12 +31,12 @@ pub struct InboundMessage {
     /// The connected peer which sent this message
     pub source_peer: Peer,
     /// The raw message envelope
-    pub body: Vec<u8>,
+    pub body: Bytes,
 }
 
 impl InboundMessage {
     /// Construct a new InboundMessage
-    pub fn new(source_peer: Peer, envelope_header: MessageEnvelopeHeader, body: Vec<u8>) -> Self {
+    pub fn new(source_peer: Peer, envelope_header: MessageEnvelopeHeader, body: Bytes) -> Self {
         Self {
             source_peer,
             envelope_header,

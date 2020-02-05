@@ -79,7 +79,13 @@ impl<TReq, TRes> Service<TReq> for SenderService<TReq, TRes> {
     type Response = TRes;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.tx.poll_ready(cx).map_err(Into::into)
+        self.tx.poll_ready(cx).map_err(|err| {
+            if err.is_disconnected() {
+                return TransportChannelError::ChannelClosed;
+            }
+
+            unreachable!("unbounded channels can never be full");
+        })
     }
 
     fn call(&mut self, request: TReq) -> Self::Future {
@@ -197,6 +203,10 @@ impl<TReq, TResp> Receiver<TReq, TResp> {
     pub fn new(rx: Rx<TReq, TResp>) -> Self {
         Self { rx }
     }
+
+    pub fn close(&mut self) {
+        self.rx.close();
+    }
 }
 
 impl<TReq, TResp> Stream for Receiver<TReq, TResp> {
@@ -214,35 +224,22 @@ impl<TReq, TResp> Stream for Receiver<TReq, TResp> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use futures::executor::block_on;
-    use futures_test::task::panic_context;
+    use futures::{executor::block_on, future};
     use std::fmt::Debug;
-    use tari_test_utils::counter_context;
+    use tari_test_utils::unpack_enum;
+    use tower::ServiceExt;
 
     #[test]
     fn await_response_future_new() {
         let (tx, rx) = oneshot::channel::<Result<(), ()>>();
         tx.send(Ok(())).unwrap();
-
-        let mut cx = panic_context();
-
-        let mut fut = TransportResponseFuture::new(rx);
-        match fut.poll_unpin(&mut cx) {
-            Poll::Ready(res) => assert!(res.is_ok()),
-            _ => panic!("expected future to be ready"),
-        }
+        block_on(TransportResponseFuture::new(rx)).unwrap().unwrap();
     }
 
     #[test]
     fn await_response_future_closed() {
-        let mut fut = TransportResponseFuture::<()>::closed();
-
-        let mut cx = panic_context();
-
-        match fut.poll_unpin(&mut cx) {
-            Poll::Ready(Err(TransportChannelError::ChannelClosed)) => {},
-            _ => panic!("unexpected poll result"),
-        }
+        let err = block_on(TransportResponseFuture::<()>::closed()).unwrap_err();
+        unpack_enum!(TransportChannelError::ChannelClosed = err);
     }
 
     async fn reply<TReq, TResp>(mut rx: Rx<TReq, TResp>, msg: TResp)
@@ -260,89 +257,68 @@ mod test {
         let (tx, rx) = mpsc::unbounded();
         let mut requestor = SenderService::<_, _>::new(tx);
 
-        counter_context!(cx, wake_counter);
+        block_on(requestor.ready()).unwrap();
+        let fut = future::join(requestor.call("PING"), reply(rx, "PONG"));
 
-        let mut fut = requestor.call("PING");
-        assert!(fut.poll_unpin(&mut cx).is_pending());
-
-        block_on(reply(rx, "PONG"));
-
-        match fut.poll_unpin(&mut cx) {
-            Poll::Ready(Ok(msg)) => assert_eq!(msg, "PONG"),
-            x => panic!("Unexpected poll result: {:?}", x),
-        }
-        assert_eq!(wake_counter.get(), 1);
+        let msg = block_on(fut.map(|(r, _)| r.unwrap()));
+        assert_eq!(msg, "PONG");
     }
 
     #[test]
     fn requestor_channel_closed() {
-        let (mut requestor, request_stream) = super::unbounded::<_, ()>();
-        drop(request_stream);
+        let (requestor, mut request_stream) = super::unbounded::<_, ()>();
+        request_stream.close();
 
-        let mut cx = panic_context();
-
-        let mut fut = requestor.call(());
-        match fut.poll_unpin(&mut cx) {
-            Poll::Ready(Err(TransportChannelError::ChannelClosed)) => {},
-            x => panic!("Unexpected poll result: {:?}", x),
-        }
-    }
-
-    #[test]
-    fn request_response_success() {
-        let (mut requestor, mut request_stream) = super::unbounded::<_, &str>();
-
-        counter_context!(cx);
-
-        let mut fut = requestor.call("PING");
-        // Receive the RequestContext and reply
-        match request_stream.poll_next_unpin(&mut cx) {
-            Poll::Ready(Some(req)) => req.reply("PONG").unwrap(),
-            _ => panic!("Unexpected Pending result from resonder"),
-        }
-        match fut.poll_unpin(&mut cx) {
-            Poll::Ready(Ok(msg)) => assert_eq!(msg, "PONG"),
-            x => panic!("Unexpected poll result: {:?}", x),
-        }
+        let err = block_on(requestor.oneshot(())).unwrap_err();
+        // Behaviour change in futures 0.3 - the sender does not indicate that the channel is disconnected
+        unpack_enum!(TransportChannelError::ChannelClosed = err);
     }
 
     #[test]
     fn request_response_request_abort() {
         let (mut requestor, mut request_stream) = super::unbounded::<_, &str>();
 
-        counter_context!(cx);
-
-        // `_` drops the response receiver, so when a reply is sent it will fail
-        let _ = requestor.call("PING");
-
-        // Receive the RequestContext and reply
-        let reply_result = match request_stream.poll_next_unpin(&mut cx) {
-            Poll::Ready(Some(req)) => req.reply("PONG"),
-            _ => panic!("Unexpected Pending result from request_stream"),
-        };
-
-        match reply_result {
-            Err(req) => assert_eq!(req, "PONG"),
-            x => panic!("Unexpected reply result: {:?}", x),
-        }
+        block_on(future::join(
+            async move {
+                requestor.ready().await.unwrap();
+                // `_` drops the response receiver, so when a reply is sent it will fail
+                let _ = requestor.call("PING");
+            },
+            async move {
+                let a = request_stream.next().await.unwrap();
+                let req = a.reply_tx.send("PONG").unwrap_err();
+                assert_eq!(req, "PONG");
+            },
+        ));
     }
 
     #[test]
     fn request_response_response_canceled() {
         let (mut requestor, mut request_stream) = super::unbounded::<_, &str>();
 
-        counter_context!(cx);
+        block_on(future::join(
+            async move {
+                requestor.ready().await.unwrap();
+                let err = requestor.call("PING").await.unwrap_err();
+                assert_eq!(err, TransportChannelError::Canceled);
+            },
+            async move {
+                let req = request_stream.next().await.unwrap();
+                drop(req);
+            },
+        ));
+    }
 
-        let mut fut = requestor.call("PING");
-        // Receive the RequestContext and reply
-        match request_stream.poll_next_unpin(&mut cx) {
-            Poll::Ready(Some(req)) => drop(req),
-            _ => panic!("Unexpected Pending result from request_stream"),
-        }
+    #[test]
+    fn request_response_success() {
+        let (mut requestor, mut request_stream) = super::unbounded::<_, &str>();
 
-        match fut.poll_unpin(&mut cx) {
-            Poll::Ready(Err(TransportChannelError::Canceled)) => {},
-            x => panic!("Unexpected poll result: {:?}", x),
-        }
+        block_on(requestor.ready()).unwrap();
+        let (result, _) = block_on(future::join(requestor.call("PING"), async move {
+            let req = request_stream.next().await.unwrap();
+            req.reply("PONG").unwrap();
+        }));
+
+        assert_eq!(result.unwrap(), "PONG");
     }
 }

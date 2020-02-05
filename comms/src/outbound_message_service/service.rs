@@ -513,6 +513,7 @@ mod test {
         peer_manager::PeerFeatures,
         test_utils::node_id,
     };
+    use bytes::Bytes;
     use futures::{channel::mpsc, stream, SinkExt};
     use prost::Message;
     use std::time::Duration;
@@ -572,12 +573,13 @@ mod test {
         // Send a batch of messages
         let mut messages = stream::iter(
             vec![
-                (node_id1.clone(), b"A".to_vec()),
-                (node_id2.clone(), b"B".to_vec()),
-                (node_id1.clone(), b"C".to_vec()),
-                (node_id1.clone(), b"D".to_vec()),
+                (node_id1.clone(), b"A"),
+                (node_id2.clone(), b"B"),
+                (node_id1.clone(), b"C"),
+                (node_id1.clone(), b"D"),
             ]
             .into_iter()
+            .map(|(node_id, msg)| (node_id, Bytes::from_static(msg)))
             .map(|(node_id, msg)| Ok(OutboundMessage::new(node_id, MessageFlags::empty(), msg))),
         );
 
@@ -631,7 +633,7 @@ mod test {
         rt.block_on(new_message_tx.send(OutboundMessage::new(
             node_id1.clone(),
             MessageFlags::empty(),
-            b"E".to_vec(),
+            Bytes::from_static(b"E"),
         )))
         .unwrap();
 

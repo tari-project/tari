@@ -31,6 +31,7 @@ use crate::{
     types::CommsPublicKey,
     utils::crypt,
 };
+use bytes::Bytes;
 use log::*;
 use multiaddr::Multiaddr;
 use prost::Message;
@@ -180,7 +181,7 @@ impl ControlServiceClient {
         Envelope::construct_signed(
             self.node_identity.secret_key(),
             self.node_identity.public_key(),
-            encrypted_bytes,
+            Bytes::from(encrypted_bytes),
             MessageFlags::ENCRYPTED,
         )
         .map_err(ControlServiceError::MessageError)

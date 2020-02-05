@@ -25,7 +25,7 @@ use crate::{
     connection_manager::next::{ConnectionManager, ConnectionManagerConfig, ConnectionManagerRequester},
     noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
-    protocol::ProtocolNotifier,
+    protocol::Protocols,
     transports::MemoryTransport,
 };
 use futures::channel::mpsc;
@@ -89,7 +89,7 @@ pub fn build_connection_manager(
         request_rx,
         config.node_identity,
         peer_manager.into(),
-        ProtocolNotifier::new(),
+        Protocols::new(),
         event_tx,
         shutdown,
     );

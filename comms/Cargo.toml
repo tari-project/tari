@@ -18,7 +18,7 @@ tari_utilities = { version="^0.0",  path = "../infrastructure/tari_util" }
 tari_shutdown = { version="^0.0",  path = "../infrastructure/shutdown" }
 
 bitflags = "1.0.4"
-bytes = "0.5.0"
+bytes = "0.5.x"
 chrono = { version = "0.4.6", features = ["serde"] }
 clear_on_drop = "0.2.3"
 derive-error = "0.0.4"

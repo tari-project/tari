@@ -321,7 +321,7 @@ mod test {
         );
         let inbound_message = make_comms_inbound_message(
             &node_identity,
-            dht_envelope.to_encoded_bytes().unwrap(),
+            dht_envelope.to_encoded_bytes().unwrap().into(),
             MessageFlags::empty(),
         );
 
@@ -363,7 +363,7 @@ mod test {
         let dht_envelope = make_dht_envelope(&node_identity, encrypted_bytes, DhtMessageFlags::ENCRYPTED);
         let inbound_message = make_comms_inbound_message(
             &node_identity,
-            dht_envelope.to_encoded_bytes().unwrap(),
+            dht_envelope.to_encoded_bytes().unwrap().into(),
             MessageFlags::empty(),
         );
 
@@ -424,7 +424,7 @@ mod test {
             .clone();
         let inbound_message = make_comms_inbound_message(
             &node_identity,
-            dht_envelope.to_encoded_bytes().unwrap(),
+            dht_envelope.to_encoded_bytes().unwrap().into(),
             MessageFlags::empty(),
         );
 
@@ -473,7 +473,7 @@ mod test {
         });
         let inbound_message = make_comms_inbound_message(
             &node_identity,
-            dht_envelope.to_encoded_bytes().unwrap(),
+            dht_envelope.to_encoded_bytes().unwrap().into(),
             MessageFlags::empty(),
         );
 

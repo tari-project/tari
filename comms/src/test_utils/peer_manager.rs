@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,18 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod dialers;
-pub mod node_id;
+use crate::{peer_manager::PeerManager, types::CommsDatabase};
+use std::sync::Arc;
 
-cfg_next! {
-    pub mod node_identity;
-    pub mod transport;
-    pub mod test_node;
-    pub mod peer_manager;
-
-    mod connection_manager_mock;
-    pub use connection_manager_mock::{create_connection_manager_mock, ConnectionManagerMockState};
-
-    mod peer_connection_mock;
-    pub use peer_connection_mock::{create_peer_connection_mock_pair, PeerConnectionMockState};
+pub fn build_peer_manager() -> Arc<PeerManager> {
+    PeerManager::new(CommsDatabase::new()).map(Arc::new).unwrap()
 }

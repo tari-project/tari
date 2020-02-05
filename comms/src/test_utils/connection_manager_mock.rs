@@ -22,7 +22,7 @@
 
 use crate::{
     connection_manager::{
-        next::{ConnectionManagerEvent, ConnectionManagerRequest, ConnectionManagerRequester},
+        next::{ConnectionManagerError, ConnectionManagerEvent, ConnectionManagerRequest, ConnectionManagerRequester},
         PeerConnection,
     },
     peer_manager::NodeId,
@@ -113,7 +113,20 @@ impl ConnectionManagerMock {
         use ConnectionManagerRequest::*;
         self.state.inc_call_count();
         match req {
-            DialPeer(_node_id, _reply_tx) => {},
+            DialPeer(node_id, reply_tx) => {
+                // Send Ok(conn) if we have an active connection, otherwise Err(DialConnectFailedAllAddresses)
+                reply_tx
+                    .send(
+                        self.state
+                            .active_conns
+                            .lock()
+                            .await
+                            .get(&node_id)
+                            .map(Clone::clone)
+                            .ok_or(ConnectionManagerError::DialConnectFailedAllAddresses),
+                    )
+                    .unwrap();
+            },
             NotifyListening(_reply_tx) => {},
             GetActiveConnection(node_id, reply_tx) => {
                 reply_tx
