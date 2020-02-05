@@ -285,10 +285,10 @@ struct TariWallet *wallet_create(struct TariWalletConfig *config,
                                     int* error_out);
 
 // Signs a message
-char* wallet_sign_message(struct TariWallet *wallet, char* msg, int* error_out);
+char* wallet_sign_message(struct TariWallet *wallet, const char* msg, int* error_out);
 
 // Verifies signature for a signed message
-bool wallet_verify_message_signature(struct TariPublicKey *public_key, char* hex_sig_nonce, char* msg, int* error_out);
+bool wallet_verify_message_signature(struct TariPublicKey *public_key, const char* hex_sig_nonce, const char* msg, int* error_out);
 
 /// Generates test data
 bool wallet_test_generate_data(struct TariWallet *wallet, char *datastore_path,int* error_out);

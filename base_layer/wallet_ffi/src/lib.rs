@@ -1799,27 +1799,23 @@ pub unsafe extern "C" fn wallet_create(
 #[no_mangle]
 pub unsafe extern "C" fn wallet_sign_message(
     wallet: *mut TariWallet,
-    msg: *mut c_char,
+    msg: *const c_char,
     error_out: *mut c_int,
 ) -> *mut c_char
 {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
-
     let mut result = CString::new("").unwrap();
-    let nonce;
-    let message;
-    let secret;
     if msg.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return result.into_raw();
     }
-    nonce = TariPrivateKey::random(&mut OsRng);
-    secret = (*wallet).comms.node_identity().secret_key().clone();
-    message = CString::from_raw(msg).to_str().unwrap().to_owned();
-    let challenge = Blake256::digest(message.as_bytes());
-    let signature = RistrettoSchnorr::sign(secret, nonce, challenge.as_slice());
+    let nonce = TariPrivateKey::random(&mut OsRng);
+    let secret = (*wallet).comms.node_identity().secret_key().clone();
+    let message = CStr::from_ptr(msg).to_str().unwrap().to_owned();
+    let challenge = Blake256::digest(message.clone().as_bytes());
+    let signature = RistrettoSchnorr::sign(secret, nonce, challenge.clone().as_slice());
     match signature {
         Ok(s) => {
             let hex_sig = s.get_signature().to_hex();
@@ -1849,8 +1845,8 @@ pub unsafe extern "C" fn wallet_sign_message(
 #[no_mangle]
 pub unsafe extern "C" fn wallet_verify_message_signature(
     public_key: *mut TariPublicKey,
-    hex_sig_nonce: *mut c_char,
-    msg: *mut c_char,
+    hex_sig_nonce: *const c_char,
+    msg: *const c_char,
     error_out: *mut c_int,
 ) -> bool
 {
@@ -1873,8 +1869,8 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
         ptr::swap(error_out, &mut error as *mut c_int);
         return result;
     }
-    let message = CString::from_raw(msg).to_str().unwrap().to_owned();
-    let hex = CString::from_raw(hex_sig_nonce).to_str().unwrap().to_owned();
+    let message = CStr::from_ptr(msg).to_str().unwrap().to_owned();
+    let hex = CStr::from_ptr(hex_sig_nonce).to_str().unwrap().to_owned();
     let hex_keys: Vec<&str> = hex.split('|').collect();
     if hex_keys.len() != 2 {
         error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
@@ -1888,8 +1884,8 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
             match public_nonce {
                 Ok(pn) => {
                     let signature = RistrettoSchnorr::new(pn, p);
-                    let challenge = Blake256::digest(message.as_bytes());
-                    result = signature.verify_challenge(&(*public_key), challenge.as_slice());
+                    let challenge = Blake256::digest(message.clone().as_bytes());
+                    result = signature.verify_challenge(&(*public_key), challenge.clone().as_slice());
                 },
                 Err(e) => {
                     error = LibWalletError::from(e).code;
@@ -3274,11 +3270,10 @@ mod test {
             );
 
             let sig_msg = CString::new("Test Contact").unwrap();
-            let sig_msg_str: *mut c_char = CString::into_raw(sig_msg) as *mut c_char;
+            let sig_msg_str: *const c_char = CString::into_raw(sig_msg) as *const c_char;
             let sig_msg_compare = CString::new("Test Contact").unwrap();
-            let sig_msg_compare_str: *mut c_char = CString::into_raw(sig_msg_compare) as *mut c_char;
-            let sig_nonce_str: *mut c_char =
-                wallet_sign_message(alice_wallet, sig_msg_str, error_ptr) as *mut c_char as *mut c_char;
+            let sig_msg_compare_str: *const c_char = CString::into_raw(sig_msg_compare) as *const c_char;
+            let sig_nonce_str: *mut c_char = wallet_sign_message(alice_wallet, sig_msg_str, error_ptr) as *mut c_char;
             let alice_wallet_key = wallet_get_public_key(alice_wallet, error_ptr);
             let verify_msg =
                 wallet_verify_message_signature(alice_wallet_key, sig_nonce_str, sig_msg_compare_str, error_ptr);
