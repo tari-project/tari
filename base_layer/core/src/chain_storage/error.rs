@@ -68,4 +68,6 @@ pub enum ChainStorageError {
     InvalidBlock,
     #[error(msg_embedded, non_std, no_from)]
     BlockingTaskSpawnError(String),
+    // A request was out of range
+    OutOfRange,
 }

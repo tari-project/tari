@@ -247,6 +247,13 @@ where
     pub fn deleted(&self) -> &Bitmap {
         &self.deleted
     }
+
+    pub fn clear(&mut self) -> Result<(), MerkleMountainRangeError> {
+        self.mmr.clear()?;
+        self.deleted = Bitmap::create();
+        self.size = 0;
+        Ok(())
+    }
 }
 
 impl<D, B, B2> PartialEq<MutableMmr<D, B2>> for MutableMmr<D, B>

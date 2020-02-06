@@ -128,7 +128,6 @@ pub fn create_new_blockchain() -> (
         MockValidator::new(true),
         MockValidator::new(true),
         MockValidator::new(true),
-        MockValidator::new(true),
     );
     let db = MemoryDatabase::<HashDigest>::default();
     let mut db = BlockchainDatabase::new(db).unwrap();

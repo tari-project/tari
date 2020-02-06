@@ -31,7 +31,6 @@ use helpers::{
         create_genesis_block,
         create_genesis_block_with_utxos,
         generate_block,
-        generate_new_block,
     },
     nodes::{
         create_network_with_2_base_nodes_with_config,
@@ -48,7 +47,7 @@ use tari_core::{
         service::BaseNodeServiceConfig,
     },
     blocks::BlockHeader,
-    chain_storage::{BlockAddResult, DbTransaction, MmrTree},
+    chain_storage::{BlockAddResult, DbTransaction},
     consensus::ConsensusConstants,
     mempool::MempoolServiceConfig,
     proof_of_work::{Difficulty, PowAlgorithm},
@@ -59,7 +58,7 @@ use tari_core::{
     },
     txn_schema,
 };
-use tari_mmr::MerkleChangeTrackerConfig;
+use tari_mmr::MmrCacheConfig;
 use tari_test_utils::random::string;
 use tari_utilities::hash::Hashable;
 use tempdir::TempDir;
@@ -251,94 +250,6 @@ fn request_and_response_fetch_blocks() {
     carol_node.comms.shutdown().unwrap();
 }
 
-#[test]
-fn request_and_response_fetch_mmr_state() {
-    let mut runtime = Runtime::new().unwrap();
-    let factories = CryptoFactories::default();
-    let mct_config = MerkleChangeTrackerConfig {
-        min_history_len: 1,
-        max_history_len: 3,
-    };
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut alice, mut bob) = create_network_with_2_base_nodes_with_config(
-        &mut runtime,
-        BaseNodeServiceConfig::default(),
-        mct_config,
-        MempoolServiceConfig::default(),
-        temp_dir.path().to_str().unwrap(),
-    );
-
-    let db = &mut bob.blockchain_db;
-    let (block0, utxos) = create_genesis_block_with_utxos(db, &factories, &[2 * T, 1 * T]);
-    let mut blocks = vec![block0];
-    let mut utxos = vec![utxos];
-    assert_eq!(db.add_block(blocks[0].clone()), Ok(BlockAddResult::Ok));
-    let schema = vec![
-        txn_schema!(from: vec![utxos[0][1].clone()], to: vec![50_000 * uT, 500_000 * uT]),
-        txn_schema!(from: vec![utxos[0][2].clone()], to: vec![30_000 * uT, 300_000 * uT]),
-    ];
-    assert_eq!(
-        generate_new_block(db, &mut blocks, &mut utxos, schema),
-        Ok(BlockAddResult::Ok)
-    );
-    assert_eq!(
-        generate_new_block(db, &mut blocks, &mut utxos, vec![]),
-        Ok(BlockAddResult::Ok)
-    );
-    let schema = vec![txn_schema!(from: vec![utxos[1][1].clone()], to: vec![20_000 * uT])];
-    assert_eq!(
-        generate_new_block(db, &mut blocks, &mut utxos, schema),
-        Ok(BlockAddResult::Ok)
-    );
-    // Blockchain state summary as of now:
-    // 4 blocks
-    // 3 transactions / kernels (0-2-0-1)
-    // 11 TXOs (3(2 spent)-6(1)-0-2)
-    // tracking horizon ---------^
-    runtime.block_on(async {
-        // Partial queries
-        let received_mmr_state = alice.outbound_nci.fetch_mmr_state(MmrTree::Kernel, 2, 3).await.unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 3);
-        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 1); // request out of range
-
-        let received_mmr_state = alice.outbound_nci.fetch_mmr_state(MmrTree::Utxo, 1, 2).await.unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 9); // Base leaf count returned
-        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 2);
-
-        let received_mmr_state = alice
-            .outbound_nci
-            .fetch_mmr_state(MmrTree::RangeProof, 1, 2)
-            .await
-            .unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 9);
-        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 2);
-
-        // Comprehensive queries
-        let received_mmr_state = alice.outbound_nci.fetch_mmr_state(MmrTree::Utxo, 0, 100).await.unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 9);
-        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 9);
-
-        let received_mmr_state = alice
-            .outbound_nci
-            .fetch_mmr_state(MmrTree::Kernel, 0, 100)
-            .await
-            .unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 3);
-        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 3);
-
-        let received_mmr_state = alice
-            .outbound_nci
-            .fetch_mmr_state(MmrTree::RangeProof, 0, 100)
-            .await
-            .unwrap();
-        assert_eq!(received_mmr_state.total_leaf_count, 9);
-        assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 9);
-    });
-
-    alice.comms.shutdown().unwrap();
-    bob.comms.shutdown().unwrap();
-}
-
 pub async fn event_stream_next<TStream>(mut stream: TStream, timeout: Duration) -> Option<TStream::Item>
 where TStream: Stream + FusedStream + Unpin {
     let either = future::select(stream.select_next_some(), tokio::time::delay_for(timeout).fuse()).await;
@@ -523,15 +434,11 @@ fn service_request_timeout() {
         request_timeout: Duration::from_millis(1),
         desired_response_fraction: BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
     };
-    let mct_config = MerkleChangeTrackerConfig {
-        min_history_len: 10,
-        max_history_len: 30,
-    };
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let (mut alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
         base_node_service_config,
-        mct_config,
+        MmrCacheConfig::default(),
         MempoolServiceConfig::default(),
         temp_dir.path().to_str().unwrap(),
     );

@@ -23,7 +23,7 @@
 use crate::{
     base_node::{
         base_node::BaseNodeStateMachine,
-        states::{fetching_horizon_state::HorizonInfo, InitialSync, ListeningInfo, StateEvent},
+        states::{InitialSync, ListeningInfo, StateEvent},
     },
     chain_storage::{BlockchainBackend, ChainMetadata},
 };
@@ -60,14 +60,6 @@ impl BlockSyncInfo {
 
         info!(target: LOG_TARGET, "Block sync state has synchronised");
         StateEvent::BlocksSynchronized
-    }
-}
-
-/// State management for FetchingHorizonState -> BlockSync. This is a typical transition for new nodes joining the
-/// network.
-impl From<HorizonInfo> for BlockSyncInfo {
-    fn from(_old: HorizonInfo) -> Self {
-        BlockSyncInfo {}
     }
 }
 

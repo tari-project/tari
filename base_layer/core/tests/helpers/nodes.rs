@@ -50,7 +50,7 @@ use tari_core::{
     transactions::types::HashDigest,
     validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator, Validation},
 };
-use tari_mmr::MerkleChangeTrackerConfig;
+use tari_mmr::MmrCacheConfig;
 use tari_p2p::{
     comms_connector::{pubsub_connector, InboundDomainConnector, PeerMessage},
     initialization::{initialize_comms, CommsConfig},
@@ -78,7 +78,7 @@ pub struct BaseNodeBuilder {
     node_identity: Option<Arc<NodeIdentity>>,
     peers: Option<Vec<Arc<NodeIdentity>>>,
     base_node_service_config: Option<BaseNodeServiceConfig>,
-    mct_config: Option<MerkleChangeTrackerConfig>,
+    mmr_cache_config: Option<MmrCacheConfig>,
     mempool_config: Option<MempoolConfig>,
     mempool_service_config: Option<MempoolServiceConfig>,
     validators: Option<Validators<MemoryDatabase<HashDigest>>>,
@@ -91,7 +91,7 @@ impl BaseNodeBuilder {
             node_identity: None,
             peers: None,
             base_node_service_config: None,
-            mct_config: None,
+            mmr_cache_config: None,
             mempool_config: None,
             mempool_service_config: None,
             validators: None,
@@ -117,8 +117,8 @@ impl BaseNodeBuilder {
     }
 
     /// Set the configuration of the MerkleChangeTracker of the Base Node Backend
-    pub fn with_merkle_change_tracker_config(mut self, config: MerkleChangeTrackerConfig) -> Self {
-        self.mct_config = Some(config);
+    pub fn with_mmr_cache_config(mut self, config: MmrCacheConfig) -> Self {
+        self.mmr_cache_config = Some(config);
         self
     }
 
@@ -138,30 +138,25 @@ impl BaseNodeBuilder {
         mut self,
         block: impl Validation<Block, MemoryDatabase<HashDigest>> + 'static,
         orphan: impl Validation<Block, MemoryDatabase<HashDigest>> + 'static,
-        horizon_state_header: impl Validation<BlockHeader, MemoryDatabase<HashDigest>> + 'static,
         chain_gb: impl Validation<BlockHeader, MemoryDatabase<HashDigest>> + 'static,
         chain_tip: impl Validation<BlockHeader, MemoryDatabase<HashDigest>> + 'static,
     ) -> Self
     {
-        let validators = Validators::new(block, orphan, horizon_state_header, chain_gb, chain_tip);
+        let validators = Validators::new(block, orphan, chain_gb, chain_tip);
         self.validators = Some(validators);
         self
     }
 
     /// Build the test base node and start its services.
     pub fn start(self, runtime: &mut Runtime, data_path: &str) -> NodeInterfaces {
-        let mct_config = self.mct_config.unwrap_or(MerkleChangeTrackerConfig {
-            min_history_len: 10,
-            max_history_len: 20,
-        });
+        let mmr_cache_config = self.mmr_cache_config.unwrap_or(MmrCacheConfig { rewind_hist_len: 10 });
         let validators = self.validators.unwrap_or(Validators::new(
             MockValidator::new(true),
             MockValidator::new(true),
             MockValidator::new(true),
             MockValidator::new(true),
-            MockValidator::new(true),
         ));
-        let db = MemoryDatabase::<HashDigest>::new(mct_config);
+        let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
         let mut blockchain_db = BlockchainDatabase::new(db).unwrap();
         blockchain_db.set_validators(validators);
         let mempool_validator = MempoolValidators::new(
@@ -225,7 +220,7 @@ pub fn create_network_with_2_base_nodes(runtime: &mut Runtime, data_path: &str) 
 pub fn create_network_with_2_base_nodes_with_config(
     runtime: &mut Runtime,
     base_node_service_config: BaseNodeServiceConfig,
-    mct_config: MerkleChangeTrackerConfig,
+    mmr_cache_config: MmrCacheConfig,
     mempool_service_config: MempoolServiceConfig,
     data_path: &str,
 ) -> (NodeInterfaces, NodeInterfaces)
@@ -237,14 +232,14 @@ pub fn create_network_with_2_base_nodes_with_config(
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
-        .with_merkle_change_tracker_config(mct_config)
+        .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
         .start(runtime, data_path);
     let bob_node = BaseNodeBuilder::new()
         .with_node_identity(bob_node_identity)
         .with_peers(vec![alice_node_identity])
         .with_base_node_service_config(base_node_service_config)
-        .with_merkle_change_tracker_config(mct_config)
+        .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
         .start(runtime, data_path);
 
@@ -257,14 +252,11 @@ pub fn create_network_with_3_base_nodes(
     data_path: &str,
 ) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces)
 {
-    let mct_config = MerkleChangeTrackerConfig {
-        min_history_len: 10,
-        max_history_len: 20,
-    };
+    let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 10 };
     create_network_with_3_base_nodes_with_config(
         runtime,
         BaseNodeServiceConfig::default(),
-        mct_config,
+        mmr_cache_config,
         MempoolServiceConfig::default(),
         data_path,
     )
@@ -274,7 +266,7 @@ pub fn create_network_with_3_base_nodes(
 pub fn create_network_with_3_base_nodes_with_config(
     runtime: &mut Runtime,
     base_node_service_config: BaseNodeServiceConfig,
-    mct_config: MerkleChangeTrackerConfig,
+    mmr_cache_config: MmrCacheConfig,
     mempool_service_config: MempoolServiceConfig,
     data_path: &str,
 ) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces)
@@ -287,21 +279,21 @@ pub fn create_network_with_3_base_nodes_with_config(
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone(), carol_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
-        .with_merkle_change_tracker_config(mct_config)
+        .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
         .start(runtime, data_path);
     let bob_node = BaseNodeBuilder::new()
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![alice_node_identity.clone(), carol_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
-        .with_merkle_change_tracker_config(mct_config)
+        .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
         .start(runtime, data_path);
     let carol_node = BaseNodeBuilder::new()
         .with_node_identity(carol_node_identity.clone())
         .with_peers(vec![alice_node_identity, bob_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
-        .with_merkle_change_tracker_config(mct_config)
+        .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
         .start(runtime, data_path);
 

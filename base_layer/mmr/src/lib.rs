@@ -136,9 +136,11 @@ pub type Hash = Vec<u8>;
 pub type HashSlice = [u8];
 
 mod backend;
-mod change_tracker;
+mod mem_backend_vec;
+mod merkle_checkpoint;
 mod merkle_mountain_range;
 mod merkle_proof;
+mod mmr_cache;
 mod mutable_mmr;
 mod mutable_mmr_leaf_nodes;
 mod serde_support;
@@ -153,12 +155,17 @@ pub mod pruned_hashset;
 // Commonly used exports
 /// A vector-based backend for [MerkleMountainRange]
 pub use backend::{ArrayLike, ArrayLikeExt};
-/// A data structure that maintains a list of diffs on an MMR, enabling you to rewind to a previous state
-pub use change_tracker::{MerkleChangeTracker, MerkleChangeTrackerConfig, MerkleCheckPoint};
+/// MemBackendVec is a shareable, memory only, vector that can be be used with MmrCache to store checkpoints.
+pub use mem_backend_vec::MemBackendVec;
+/// A Merkle checkpoint contains the set of hash additions and deletion indices.
+pub use merkle_checkpoint::MerkleCheckPoint;
 /// An immutable, append-only Merkle Mountain range (MMR) data structure
 pub use merkle_mountain_range::MerkleMountainRange;
 /// A data structure for proving a hash inclusion in an MMR
 pub use merkle_proof::{MerkleProof, MerkleProofError};
+/// The MMR cache is used to calculate Merkle and Merklish roots based on the state of the set of shared
+/// checkpoints.
+pub use mmr_cache::{MmrCache, MmrCacheConfig};
 /// An append-only Merkle Mountain range (MMR) data structure that allows deletion of existing leaf nodes.
 pub use mutable_mmr::MutableMmr;
 /// A data structure for storing all the data required to restore the state of an MMR.

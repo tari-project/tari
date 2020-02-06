@@ -43,7 +43,6 @@ fn test_genesis_block() {
         StatelessValidator::new(),
         MockValidator::new(true),
         MockValidator::new(true),
-        MockValidator::new(true),
     );
     db.set_validators(validators);
     let diff_adj_manager = DiffAdjManager::new(db.clone()).unwrap();

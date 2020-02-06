@@ -54,7 +54,6 @@ pub enum NodeCommsRequest {
     FetchHeaders(Vec<u64>),
     FetchUtxos(Vec<HashOutput>),
     FetchBlocks(Vec<u64>),
-    FetchMmrState(MmrStateRequest),
     GetNewBlockTemplate,
     GetNewBlock(NewBlockTemplate),
     GetTargetDifficulty(PowAlgorithm),

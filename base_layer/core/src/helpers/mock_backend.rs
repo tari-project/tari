@@ -23,13 +23,13 @@
 
 use crate::{
     blocks::{Block, BlockHeader},
-    chain_storage::{BlockchainBackend, ChainStorageError, DbKey, DbTransaction, DbValue, MmrTree, MutableMmrState},
+    chain_storage::{BlockchainBackend, ChainStorageError, DbKey, DbTransaction, DbValue, MmrTree},
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
         types::HashOutput,
     },
 };
-use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof, MutableMmrLeafNodes};
+use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof};
 
 // This is a test backend. This is used so that the ConsensusManager can be called without actually having a backend.
 // Calling this backend will result in a panic.
@@ -56,10 +56,6 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
-    fn fetch_horizon_block_height(&self) -> Result<u64, ChainStorageError> {
-        unimplemented!()
-    }
-
     fn calculate_mmr_root(
         &self,
         _tree: MmrTree,
@@ -74,29 +70,11 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
-    fn fetch_mmr_checkpoint(&self, _tree: MmrTree, _index: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
+    fn fetch_checkpoint(&self, _tree: MmrTree, _index: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
         unimplemented!()
     }
 
     fn fetch_mmr_node(&self, _tree: MmrTree, _pos: u32) -> Result<(Hash, bool), ChainStorageError> {
-        unimplemented!()
-    }
-
-    fn fetch_mmr_base_leaf_nodes(
-        &self,
-        _tree: MmrTree,
-        _index: usize,
-        _count: usize,
-    ) -> Result<MutableMmrState, ChainStorageError>
-    {
-        unimplemented!()
-    }
-
-    fn fetch_mmr_base_leaf_node_count(&self, _tree: MmrTree) -> Result<usize, ChainStorageError> {
-        unimplemented!()
-    }
-
-    fn assign_mmr(&self, _tree: MmrTree, _base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError> {
         unimplemented!()
     }
 

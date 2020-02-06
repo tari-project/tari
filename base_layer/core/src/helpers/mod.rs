@@ -51,7 +51,6 @@ pub fn create_mem_db() -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
         MockValidator::new(true),
         MockValidator::new(true),
         MockValidator::new(true),
-        MockValidator::new(true),
     );
     let db = MemoryDatabase::<HashDigest>::default();
     let mut db = BlockchainDatabase::new(db).unwrap();

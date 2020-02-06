@@ -56,7 +56,7 @@ use tari_core::{
     txn_schema,
     validation::mocks::MockValidator,
 };
-use tari_mmr::{MerkleChangeTrackerConfig, MutableMmr};
+use tari_mmr::{MmrCacheConfig, MutableMmr};
 use tari_utilities::{hex::Hex, Hashable};
 
 fn init_log() {
@@ -659,20 +659,16 @@ fn handle_reorg() {
 }
 
 #[test]
-fn store_and_retrieve_block_with_mmr_pruning_horizon() {
+fn store_and_retrieve_blocks() {
     let factories = CryptoFactories::default();
-    let mct_config = MerkleChangeTrackerConfig {
-        min_history_len: 2,
-        max_history_len: 3,
-    };
+    let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 2 };
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),
         MockValidator::new(true),
         MockValidator::new(true),
-        MockValidator::new(true),
     );
-    let db = MemoryDatabase::<HashDigest>::new(mct_config);
+    let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
     let mut store = BlockchainDatabase::new(db).unwrap();
     store.set_validators(validators);
 
@@ -680,17 +676,13 @@ fn store_and_retrieve_block_with_mmr_pruning_horizon() {
     store.add_block(block0.clone()).unwrap();
     let block1 = append_block(&store, &block0, vec![]).unwrap();
     let block2 = append_block(&store, &block1, vec![]).unwrap();
-
     assert_eq!(*store.fetch_block(0).unwrap().block(), block0);
     assert_eq!(*store.fetch_block(1).unwrap().block(), block1);
     assert_eq!(*store.fetch_block(2).unwrap().block(), block2);
 
-    // When block3 is added then maximum history length would have been reached and block0 and block  will be committed
-    // to the base MMR.
     let block3 = append_block(&store, &block2, vec![]).unwrap();
-
-    assert!(store.fetch_block(0).is_err());
-    assert!(store.fetch_block(1).is_err());
+    assert_eq!(*store.fetch_block(0).unwrap().block(), block0);
+    assert_eq!(*store.fetch_block(1).unwrap().block(), block1);
     assert_eq!(*store.fetch_block(2).unwrap().block(), block2);
     assert_eq!(*store.fetch_block(3).unwrap().block(), block3);
 }

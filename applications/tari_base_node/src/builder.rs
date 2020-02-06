@@ -63,11 +63,10 @@ use tari_core::{
     validation::{
         block_validators::{FullConsensusValidator, StatelessValidator},
         chain_validators::{ChainTipValidator, GenesisBlockValidator},
-        horizon_state_validators::HorizonStateHeaderValidator,
         transaction_validators::{FullTxValidator, TxInputAndMaturityValidator},
     },
 };
-use tari_mmr::MerkleChangeTrackerConfig;
+use tari_mmr::MmrCacheConfig;
 use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization::{initialize_comms, CommsConfig},
@@ -229,7 +228,6 @@ pub fn configure_and_initialize_node(
             let validators = Validators::new(
                 FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
                 StatelessValidator::new(),
-                HorizonStateHeaderValidator::new(rules.clone(), db.clone()),
                 GenesisBlockValidator::new(),
                 ChainTipValidator::new(rules.clone(), factories.clone(), db.clone()),
             );
@@ -277,16 +275,11 @@ pub fn configure_and_initialize_node(
         },
         DatabaseType::LMDB(p) => {
             let rules = ConsensusManager::default();
-            let mct_config = MerkleChangeTrackerConfig {
-                min_history_len: 900,
-                max_history_len: 1000,
-            };
-            let backend = create_lmdb_database(&p, mct_config).map_err(|e| e.to_string())?;
+            let backend = create_lmdb_database(&p, MmrCacheConfig::default()).map_err(|e| e.to_string())?;
             let mut db = BlockchainDatabase::new(backend).map_err(|e| e.to_string())?;
             let validators = Validators::new(
                 FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
                 StatelessValidator::new(),
-                HorizonStateHeaderValidator::new(rules.clone(), db.clone()),
                 GenesisBlockValidator::new(),
                 ChainTipValidator::new(rules.clone(), factories.clone(), db.clone()),
             );

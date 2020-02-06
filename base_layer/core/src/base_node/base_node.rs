@@ -24,7 +24,7 @@ use crate::{
     base_node::{
         comms_interface::OutboundNodeCommsInterface,
         states,
-        states::{BaseNodeState, BlockSyncConfig, HorizonInfo, HorizonSyncConfig, ListeningInfo, StateEvent},
+        states::{BaseNodeState, BlockSyncConfig, ListeningInfo, StateEvent},
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
 };
@@ -37,14 +37,12 @@ const LOG_TARGET: &str = "core::base_node";
 /// Configuration for the BaseNodeStateMachine.
 #[derive(Clone, Copy)]
 pub struct BaseNodeStateMachineConfig {
-    pub horizon_sync_config: HorizonSyncConfig,
     pub block_sync_config: BlockSyncConfig,
 }
 
 impl Default for BaseNodeStateMachineConfig {
     fn default() -> Self {
         Self {
-            horizon_sync_config: HorizonSyncConfig::default(),
             block_sync_config: BlockSyncConfig::default(),
         }
     }
@@ -86,12 +84,9 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
         use crate::base_node::states::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
         match (state, event) {
             (Starting(s), Initialized) => InitialSync(s.into()),
-            (InitialSync(_), MetadataSynced(BehindHorizon(h))) => FetchingHorizonState(HorizonInfo::new(h)),
             (InitialSync(s), MetadataSynced(Lagging(_))) => BlockSync(s.into()),
             (InitialSync(_s), MetadataSynced(UpToDate)) => Listening(ListeningInfo),
-            (FetchingHorizonState(s), HorizonStateFetched) => BlockSync(s.into()),
             (BlockSync(_s), BlocksSynchronized) => Listening(ListeningInfo),
-            (Listening(_), FallenBehind(BehindHorizon(h))) => FetchingHorizonState(HorizonInfo::new(h)),
             (Listening(s), FallenBehind(Lagging(_))) => BlockSync(s.into()),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
             (_, UserQuit) => Shutdown(states::Shutdown::with_reason("Shutdown initiated by user".to_string())),
@@ -120,7 +115,6 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
             let next_event = match &mut state {
                 Starting(s) => s.next_event(&mut shared_state).await,
                 InitialSync(s) => s.next_event(&mut shared_state).await,
-                FetchingHorizonState(s) => s.next_event(&mut shared_state).await,
                 BlockSync(s) => s.next_event(&mut shared_state).await,
                 Listening(s) => s.next_event(&mut shared_state).await,
                 Shutdown(_) => break,

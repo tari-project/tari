@@ -1,6 +1,5 @@
 syntax = "proto3";
 
-import "mmr_state_request.proto";
 import "block.proto";
 
 package tari.base_node;
@@ -19,14 +18,12 @@ message BaseNodeServiceRequest {
         HashOutputs fetch_utxos = 5;
         // Indicates a FetchBlocks request.
         BlockHeights fetch_blocks = 6;
-        // Indicates a FetchMmrState request.
-        MmrStateRequest fetch_mmr_state = 7;
         // Indicates a GetNewBlockTemplate request.
-        bool get_new_block_template = 8;
+        bool get_new_block_template = 7;
         // Indicates a GetNewBlock request.
-        tari.core.NewBlockTemplate get_new_block = 9;
+        tari.core.NewBlockTemplate get_new_block = 8;
         // Indicates a GetTargetDifficulty request.
-        uint64 get_target_difficulty = 10;
+        uint64 get_target_difficulty = 9;
     }
 }
 

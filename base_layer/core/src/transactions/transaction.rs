@@ -922,7 +922,7 @@ mod test {
         assert!(tx.validate_internal_consistency(&factories, None).is_ok());
 
         let schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T, 2 * T]);
-        let (tx2, outputs, _) = spend_utxos(schema);
+        let (tx2, _outputs, _) = spend_utxos(schema);
 
         assert_eq!(tx2.body.inputs().len(), 1);
         assert_eq!(tx2.body.outputs().len(), 3);
