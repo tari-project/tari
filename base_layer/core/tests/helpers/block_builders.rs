@@ -31,6 +31,7 @@ use tari_core::{
             create_random_signature_from_s_key,
             create_utxo,
             spend_utxos,
+            TestParams,
             TransactionSchema,
         },
         tari_amount::MicroTari,
@@ -58,7 +59,7 @@ fn create_coinbase(
     let (mut utxo, key) = create_utxo(value, &factories);
     utxo.features = features.clone();
     let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&key));
-    let (_pk, sig) = create_random_signature(0.into(), 0);
+    let (_pk, sig) = create_random_signature_from_s_key(key.clone(), 0.into(), 0);
     let kernel = KernelBuilder::new()
         .with_signature(&sig)
         .with_excess(&excess)
@@ -336,4 +337,32 @@ pub fn generate_block_with_coinbase(
         blocks.push(new_block);
     }
     result
+}
+
+// This will return a new block for use in testing, it will not add the block to the database or vec of blocks
+pub fn calculate_new_block(
+    db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
+    factories: &CryptoFactories,
+    blocks: &mut Vec<Block>,
+    outputs: &mut Vec<Vec<UnblindedOutput>>,
+    schemas: Vec<TransactionSchema>,
+    coinbase_value: MicroTari,
+) -> Result<Block, ChainStorageError>
+{
+    let mut txns = Vec::new();
+    let mut block_utxos = Vec::new();
+    let mut keys = Vec::new();
+    for schema in schemas {
+        let (tx, mut utxos, param) = spend_utxos(schema);
+        txns.push(tx);
+        block_utxos.append(&mut utxos);
+        keys.push(param);
+    }
+    let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(factories, coinbase_value);
+    block_utxos.push(coinbase_output);
+
+    outputs.push(block_utxos);
+    let template = chain_block_with_coinbase(&blocks.last().unwrap(), txns, coinbase_utxo, coinbase_kernel);
+    let new_block = db.calculate_mmr_roots(template)?;
+    Ok(new_block)
 }
