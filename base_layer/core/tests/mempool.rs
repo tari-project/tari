@@ -285,7 +285,7 @@ fn test_retrieve() {
     let weight = tx[3].calculate_weight() + tx2[1].calculate_weight();
     let retrieved_txs = mempool.retrieve(weight).unwrap();
     let stats = mempool.stats().unwrap();
-    println!("{:?}", stats);
+
     assert_eq!(stats.unconfirmed_txs, 4);
     assert_eq!(stats.timelocked_txs, 1);
     assert_eq!(stats.published_txs, 5);

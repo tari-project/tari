@@ -65,6 +65,13 @@ use tari_comms_dht::{
 #[cfg(feature = "test_harness")]
 use tari_core::transactions::{tari_amount::T, types::BlindingFactor};
 use tari_core::{
+    base_node::proto::{
+        base_node as BaseNodeProto,
+        base_node::{
+            base_node_service_request::Request as BaseNodeRequestProto,
+            base_node_service_response::Response as BaseNodeResponseProto,
+        },
+    },
     mempool::{
         proto::mempool as MempoolProto,
         service::{MempoolResponse, MempoolServiceResponse},
@@ -73,7 +80,7 @@ use tari_core::{
     transactions::{
         proto as TransactionProto,
         tari_amount::MicroTari,
-        transaction::{KernelFeatures, OutputFeatures, OutputFlags, Transaction},
+        transaction::{KernelFeatures, OutputFeatures, OutputFlags, Transaction, TransactionOutput},
         transaction_protocol::{
             proto,
             recipient::{RecipientSignedMessage, RecipientState},
@@ -86,7 +93,7 @@ use tari_core::{
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
-
+use tari_utilities::hash::Hashable;
 const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service::service";
 
 /// Contains the generated TxId and SpendingKey for a Pending Coinbase transaction
@@ -112,7 +119,7 @@ pub struct PendingCoinbaseSpendingKey {
 /// `pending_inbound_transactions` - List of transaction protocols that have been received and responded to.
 /// `completed_transaction` - List of sent transactions that have been responded to and are completed.
 
-pub struct TransactionService<TTxStream, TTxReplyStream, TTxFinalizedStream, MReplyStream, TBackend>
+pub struct TransactionService<TTxStream, TTxReplyStream, TTxFinalizedStream, MReplyStream, BNResponseStream, TBackend>
 where TBackend: TransactionBackend + Clone + 'static
 {
     config: TransactionServiceConfig,
@@ -123,6 +130,7 @@ where TBackend: TransactionBackend + Clone + 'static
     transaction_reply_stream: Option<TTxReplyStream>,
     transaction_finalized_stream: Option<TTxFinalizedStream>,
     mempool_response_stream: Option<MReplyStream>,
+    base_node_response_stream: Option<BNResponseStream>,
     request_stream: Option<
         reply_channel::Receiver<TransactionServiceRequest, Result<TransactionServiceResponse, TransactionServiceError>>,
     >,
@@ -132,13 +140,14 @@ where TBackend: TransactionBackend + Clone + 'static
     base_node_public_key: Option<CommsPublicKey>,
 }
 
-impl<TTxStream, TTxReplyStream, TTxFinalizedStream, MReplyStream, TBackend>
-    TransactionService<TTxStream, TTxReplyStream, TTxFinalizedStream, MReplyStream, TBackend>
+impl<TTxStream, TTxReplyStream, TTxFinalizedStream, MReplyStream, BNResponseStream, TBackend>
+    TransactionService<TTxStream, TTxReplyStream, TTxFinalizedStream, MReplyStream, BNResponseStream, TBackend>
 where
     TTxStream: Stream<Item = DomainMessage<proto::TransactionSenderMessage>>,
     TTxReplyStream: Stream<Item = DomainMessage<proto::RecipientSignedMessage>>,
     TTxFinalizedStream: Stream<Item = DomainMessage<proto::TransactionFinalizedMessage>>,
     MReplyStream: Stream<Item = DomainMessage<MempoolProto::MempoolServiceResponse>>,
+    BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>,
     TBackend: TransactionBackend + Clone + 'static,
 {
     pub fn new(
@@ -152,6 +161,7 @@ where
         transaction_reply_stream: TTxReplyStream,
         transaction_finalized_stream: TTxFinalizedStream,
         mempool_response_stream: MReplyStream,
+        base_node_response_stream: BNResponseStream,
         output_manager_service: OutputManagerHandle,
         outbound_message_service: OutboundMessageRequester,
         event_publisher: Publisher<TransactionEvent>,
@@ -168,6 +178,7 @@ where
             transaction_reply_stream: Some(transaction_reply_stream),
             transaction_finalized_stream: Some(transaction_finalized_stream),
             mempool_response_stream: Some(mempool_response_stream),
+            base_node_response_stream: Some(base_node_response_stream),
             request_stream: Some(request_stream),
             event_publisher,
             node_identity,
@@ -208,18 +219,25 @@ where
             .expect("Transaction Service initialized without mempool_response_stream")
             .fuse();
         pin_mut!(mempool_response_stream);
+        let base_node_response_stream = self
+            .base_node_response_stream
+            .take()
+            .expect("Transaction Service initialized without base_node_response_stream")
+            .fuse();
+        pin_mut!(base_node_response_stream);
 
         let mut discovery_process_futures: FuturesUnordered<BoxFuture<'static, Result<TxId, TransactionServiceError>>> =
             FuturesUnordered::new();
 
         let mut broadcast_timeout_futures: FuturesUnordered<BoxFuture<'static, TxId>> = FuturesUnordered::new();
+        let mut mined_request_timeout_futures: FuturesUnordered<BoxFuture<'static, TxId>> = FuturesUnordered::new();
 
         loop {
             futures::select! {
                 //Incoming request
                 request_context = request_stream.select_next_some() => {
                     let (request, reply_tx) = request_context.split();
-                    let _ = reply_tx.send(self.handle_request(request, &mut discovery_process_futures, &mut  broadcast_timeout_futures).await.or_else(|resp| {
+                    let _ = reply_tx.send(self.handle_request(request, &mut discovery_process_futures, &mut  broadcast_timeout_futures, &mut  mined_request_timeout_futures).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling request: {:?}", resp);
                         Err(resp)
                     })).or_else(|resp| {
@@ -278,8 +296,16 @@ where
                 // Incoming messages from the Comms layer
                 msg = mempool_response_stream.select_next_some() => {
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
-                    let _ = self.handle_mempool_response(inner_msg).await.or_else(|resp| {
+                    let _ = self.handle_mempool_response(inner_msg, &mut mined_request_timeout_futures).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling mempool service response : {:?}", resp);
+                        Err(resp)
+                    });
+                }
+                // Incoming messages from the Comms layer
+                msg = base_node_response_stream.select_next_some() => {
+                    let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
+                    let _ = self.handle_base_node_response(inner_msg).await.or_else(|resp| {
+                        error!(target: LOG_TARGET, "Error handling base node service response : {:?}", resp);
                         Err(resp)
                     });
                 }
@@ -308,6 +334,12 @@ where
                         Err(resp)
                     });
                 }
+                tx_id = mined_request_timeout_futures.select_next_some() => {
+                    let _ = self.handle_transaction_mined_request_timeout(tx_id, &mut  mined_request_timeout_futures).await.or_else(|resp| {
+                        error!(target: LOG_TARGET, "Error handling transaction mined? request timeout : {:?}", resp);
+                        Err(resp)
+                    });
+                }
                 complete => {
                     info!(target: LOG_TARGET, "Transaction service shutting down");
                     break;
@@ -323,6 +355,7 @@ where
         request: TransactionServiceRequest,
         discovery_process_futures: &mut FuturesUnordered<BoxFuture<'static, Result<TxId, TransactionServiceError>>>,
         broadcast_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
+        mined_request_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
     ) -> Result<TransactionServiceResponse, TransactionServiceError>
     {
         match request {
@@ -354,7 +387,7 @@ where
                 Ok(TransactionServiceResponse::CoinbaseTransactionCancelled)
             },
             TransactionServiceRequest::SetBaseNodePublicKey(public_key) => self
-                .set_base_node_public_key(public_key, broadcast_timeout_futures)
+                .set_base_node_public_key(public_key, broadcast_timeout_futures, mined_request_timeout_futures)
                 .await
                 .map(|_| TransactionServiceResponse::BaseNodePublicKeySet),
             #[cfg(feature = "test_harness")]
@@ -853,6 +886,7 @@ where
         &mut self,
         base_node_public_key: CommsPublicKey,
         broadcast_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
+        mined_request_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
     ) -> Result<(), TransactionServiceError>
     {
         let startup_broadcast = self.base_node_public_key.is_none();
@@ -870,10 +904,24 @@ where
                     );
                     Err(resp)
                 });
+
+            let _ = self
+                .monitor_all_completed_transactions_for_mining(mined_request_timeout_futures)
+                .await
+                .or_else(|resp| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Error querying base_node for all completed transactions: {:?}", resp
+                    );
+                    Err(resp)
+                });
         }
         Ok(())
     }
 
+    /// Broadcast the specified Completed Transaction to the Base Node. After sending the transaction send a Mempool
+    /// request to check that the transaction has been received. The final step is to set a timeout future to check on
+    /// the status of the transaction in the future.
     pub async fn broadcast_completed_transaction_to_mempool(
         &mut self,
         tx_id: TxId,
@@ -947,6 +995,9 @@ where
         Ok(())
     }
 
+    /// Handle the timeout of a pending transaction broadcast request. This will check if the transaction's status has
+    /// been updated by received MempoolRepsonse during the course of this timeout. If it has not been updated the
+    /// transaction is broadcast again
     pub async fn handle_mempool_broadcast_timeout(
         &mut self,
         tx_id: TxId,
@@ -974,6 +1025,7 @@ where
     pub async fn handle_mempool_response(
         &mut self,
         response: MempoolProto::MempoolServiceResponse,
+        mined_request_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
     ) -> Result<(), TransactionServiceError>
     {
         let response = MempoolServiceResponse::try_from(response).unwrap();
@@ -983,14 +1035,24 @@ where
                 "Mempool Response of invalid type".to_string(),
             )),
             MempoolResponse::TxStorage(ts) => match ts {
-                TxStorageResponse::NotStored => Ok(()),
+                TxStorageResponse::NotStored => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Mempool response received for TxId: {:?} but requested transaction was not found in mempool",
+                        tx_id
+                    );
+                    Ok(())
+                },
                 // Any other variant of this enum means the transaction has been received by the base_node and is in one
                 // of the various mempools
                 _ => {
                     let completed_tx = self.db.get_completed_transaction(response.request_key.clone()).await?;
                     // If this transaction is still in the Completed State it should be upgraded to the Broadcast state
                     if completed_tx.status == TransactionStatus::Completed {
-                        self.db.broadcast_completed_transaction(tx_id).await?;
+                        self.db.broadcast_completed_transaction(tx_id.clone()).await?;
+                        // Start monitoring the base node to see if this Tx has been mined
+                        self.send_transaction_mined_request(tx_id.clone(), mined_request_timeout_futures)
+                            .await?;
 
                         self.event_publisher
                             .send(TransactionEvent::TransactionBroadcast(tx_id))
@@ -1007,6 +1069,169 @@ where
                 },
             },
         }
+    }
+
+    /// Send a request to the Base Node to see if the specified transaction has been mined yet. This function will send
+    /// the request and store a timeout future to check in on the status of the transaction in the future.
+    async fn send_transaction_mined_request(
+        &mut self,
+        tx_id: TxId,
+        mined_request_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
+    ) -> Result<(), TransactionServiceError>
+    {
+        let completed_tx = self.db.get_completed_transaction(tx_id.clone()).await?;
+
+        if completed_tx.status != TransactionStatus::Broadcast || completed_tx.transaction.body.kernels().len() == 0 {
+            return Err(TransactionServiceError::InvalidCompletedTransaction);
+        }
+
+        match self.base_node_public_key.clone() {
+            None => return Err(TransactionServiceError::NoBaseNodeKeysProvided),
+            Some(pk) => {
+                let mut hashes = Vec::new();
+                for o in completed_tx.transaction.body.outputs() {
+                    hashes.push(o.hash());
+                }
+
+                let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
+                let service_request = BaseNodeProto::BaseNodeServiceRequest {
+                    request_key: tx_id.clone(),
+                    request: Some(request),
+                };
+                self.outbound_message_service
+                    .send_direct(
+                        pk.clone(),
+                        OutboundEncryption::EncryptForPeer,
+                        OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request),
+                    )
+                    .await?;
+                // Start Timeout
+                let state_timeout = StateDelay::new(
+                    Duration::from_secs(self.config.base_node_mined_timeout_in_secs),
+                    completed_tx.tx_id.clone(),
+                );
+
+                mined_request_timeout_futures.push(state_timeout.delay().boxed());
+            },
+        }
+        Ok(())
+    }
+
+    /// Handle the timeout of a pending transaction mined? request. This will check if the transaction's status has
+    /// been updated by received BaseNodeRepsonse during the course of this timeout. If it has not been updated the
+    /// transaction is broadcast again
+    pub async fn handle_transaction_mined_request_timeout(
+        &mut self,
+        tx_id: TxId,
+        mined_request_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
+    ) -> Result<(), TransactionServiceError>
+    {
+        let completed_tx = self.db.get_completed_transaction(tx_id.clone()).await?;
+
+        if completed_tx.status == TransactionStatus::Broadcast {
+            info!(
+                target: LOG_TARGET,
+                "Transaction Mined? request timed out for TX_ID: {}", tx_id
+            );
+
+            self.send_transaction_mined_request(tx_id, mined_request_timeout_futures)
+                .await?;
+
+            self.event_publisher
+                .send(TransactionEvent::TransactionMinedRequestTimedOut(tx_id))
+                .await
+                .map_err(|_| TransactionServiceError::EventStreamError)?;
+        }
+
+        Ok(())
+    }
+
+    /// Handle an incoming basenode response message
+    pub async fn handle_base_node_response(
+        &mut self,
+        response: BaseNodeProto::BaseNodeServiceResponse,
+    ) -> Result<(), TransactionServiceError>
+    {
+        let tx_id = response.request_key.clone();
+        let response = match response.response {
+            Some(BaseNodeResponseProto::TransactionOutputs(outputs)) => Ok(outputs.outputs),
+            _ => Err(TransactionServiceError::InvalidStateError),
+        }?;
+
+        let completed_tx = self.db.get_completed_transaction(tx_id.clone()).await?;
+        // If this transaction is still in the Broadcast State it should be upgraded to the Mined state
+        if completed_tx.status == TransactionStatus::Broadcast {
+            // Confirm that all outputs were reported as mined for the transaction
+            if response.len() != completed_tx.transaction.body.outputs().len() {
+                error!(
+                    target: LOG_TARGET,
+                    "Base node response received for TxId: {:?} but the response contains a different number of \
+                     outputs than stored transaction",
+                    tx_id
+                );
+            } else {
+                let mut check = true;
+
+                for output in response.iter() {
+                    let transaction_output = TransactionOutput::try_from(output.clone())
+                        .map_err(|e| TransactionServiceError::ConversionError(e))?;
+
+                    check = check &&
+                        completed_tx
+                            .transaction
+                            .body
+                            .outputs()
+                            .iter()
+                            .find(|item| *item == &transaction_output)
+                            .is_some();
+                }
+                // If all outputs are present then mark this transaction as mined.
+                if check {
+                    self.output_manager_service
+                        .confirm_transaction(
+                            tx_id.clone(),
+                            completed_tx.transaction.body.inputs().clone(),
+                            completed_tx.transaction.body.outputs().clone(),
+                        )
+                        .await?;
+
+                    self.db.mine_completed_transaction(tx_id).await?;
+
+                    self.event_publisher
+                        .send(TransactionEvent::TransactionMined(tx_id))
+                        .await
+                        .map_err(|_| TransactionServiceError::EventStreamError)?;
+
+                    info!("Transaction (TxId: {:?}) detected as mined on the Base Layer", tx_id);
+                }
+            }
+        } else {
+            trace!(
+                target: LOG_TARGET,
+                "Base node response received for TxId: {:?} but this transaction is not in the Broadcast state",
+                tx_id
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Go through all completed transactions that have  been broadcast and start querying the base_node to see if they
+    /// have been mined
+    async fn monitor_all_completed_transactions_for_mining(
+        &mut self,
+        mined_request_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
+    ) -> Result<(), TransactionServiceError>
+    {
+        let completed_txs = self.db.get_completed_transactions().await?;
+        for completed_tx in completed_txs.values() {
+            if completed_tx.status == TransactionStatus::Broadcast {
+                self.send_transaction_mined_request(completed_tx.tx_id.clone(), mined_request_timeout_futures)
+                    .await?;
+            }
+        }
+
+        Ok(())
     }
 
     /// This function is only available for testing by the client of LibWallet. It simulates a receiver accepting and
@@ -1052,38 +1277,26 @@ where
     /// the outputs
     #[cfg(feature = "test_harness")]
     pub async fn mine_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
-        use tari_core::transactions::transaction::TransactionOutput;
-
         let completed_txs = self.db.get_completed_transactions().await?;
-        let _found_tx = completed_txs
+        let found_tx = completed_txs
             .get(&tx_id.clone())
             .ok_or(TransactionServiceError::TestHarnessError(
                 "Could not find Completed TX to mine.".to_string(),
             ))?;
 
         let pending_tx_outputs = self.output_manager_service.get_pending_transactions().await?;
-        let pending_tx = pending_tx_outputs
+        let _pending_tx = pending_tx_outputs
             .get(&tx_id.clone())
             .ok_or(TransactionServiceError::TestHarnessError(
                 "Could not find Pending TX to complete.".to_string(),
             ))?;
 
-        let outputs_to_be_spent = pending_tx
-            .outputs_to_be_spent
-            .clone()
-            .iter()
-            .map(|o| o.as_transaction_input(&self.factories.commitment, OutputFeatures::default()))
-            .collect();
-
-        let mut outputs_to_be_received = Vec::new();
-
-        for o in pending_tx.outputs_to_be_received.clone() {
-            outputs_to_be_received.push(o.as_transaction_output(&self.factories)?)
-        }
-        outputs_to_be_received.push(TransactionOutput::default());
-
         self.output_manager_service
-            .confirm_sent_transaction(tx_id.clone(), outputs_to_be_spent, outputs_to_be_received)
+            .confirm_transaction(
+                tx_id.clone(),
+                found_tx.transaction.body.inputs().clone(),
+                found_tx.transaction.body.outputs().clone(),
+            )
             .await?;
 
         self.db.mine_completed_transaction(tx_id).await?;

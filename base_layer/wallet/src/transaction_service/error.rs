@@ -82,6 +82,8 @@ pub enum TransactionServiceError {
     #[error(msg_embedded, no_from, non_std)]
     TestHarnessError(String),
     TransactionError(TransactionError),
+    #[error(msg_embedded, no_from, non_std)]
+    ConversionError(String),
 }
 
 #[derive(Debug, Error)]

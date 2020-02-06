@@ -32,17 +32,25 @@
 //! More details about the implementation are presented in
 //! [RFC-0111](https://rfc.tari.com/RFC-0111_BaseNodeArchitecture.html).
 
-mod backoff;
-mod base_node;
-mod chain_metadata_service;
-mod proto;
+cfg_if! {
+    if #[cfg(feature = "base_node")] {
+        mod backoff;
+        mod base_node;
+        mod chain_metadata_service;
 
-pub mod comms_interface;
-pub mod consts;
-pub mod service;
-pub mod states;
+        pub mod comms_interface;
+        pub mod consts;
+        pub mod service;
+        pub mod states;
+        // Public re-exports
+        pub use backoff::BackOff;
+        pub use base_node::{BaseNodeStateMachine, BaseNodeStateMachineConfig};
+        pub use comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface};
+    }
+}
 
-// Public re-exports
-pub use backoff::BackOff;
-pub use base_node::{BaseNodeStateMachine, BaseNodeStateMachineConfig};
-pub use comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface};
+cfg_if! {
+    if #[cfg(any(feature = "base_node", feature = "base_node_proto"))] {
+        pub mod proto;
+    }
+}

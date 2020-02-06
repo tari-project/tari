@@ -42,8 +42,7 @@ pub enum OutputManagerRequest {
     AddOutput(UnblindedOutput),
     GetRecipientKey((u64, MicroTari)),
     GetCoinbaseKey((u64, MicroTari, u64)),
-    ConfirmReceivedOutput((u64, TransactionOutput)),
-    ConfirmSentTransaction((u64, Vec<TransactionInput>, Vec<TransactionOutput>)),
+    ConfirmTransaction((u64, Vec<TransactionInput>, Vec<TransactionOutput>)),
     PrepareToSendTransaction((MicroTari, MicroTari, Option<u64>, String)),
     CancelTransaction(u64),
     TimeoutTransactions(Duration),
@@ -149,23 +148,7 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn confirm_received_output(
-        &mut self,
-        tx_id: u64,
-        output: TransactionOutput,
-    ) -> Result<(), OutputManagerError>
-    {
-        match self
-            .handle
-            .call(OutputManagerRequest::ConfirmReceivedOutput((tx_id, output)))
-            .await??
-        {
-            OutputManagerResponse::OutputConfirmed => Ok(()),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn confirm_sent_transaction(
+    pub async fn confirm_transaction(
         &mut self,
         tx_id: u64,
         spent_outputs: Vec<TransactionInput>,
@@ -174,7 +157,7 @@ impl OutputManagerHandle {
     {
         match self
             .handle
-            .call(OutputManagerRequest::ConfirmSentTransaction((
+            .call(OutputManagerRequest::ConfirmTransaction((
                 tx_id,
                 spent_outputs,
                 received_outputs,

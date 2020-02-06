@@ -151,12 +151,8 @@ where T: OutputManagerBackend
                 .prepare_transaction_to_send(amount, fee_per_gram, lock_height, message)
                 .await
                 .map(|stp| OutputManagerResponse::TransactionToSend(stp)),
-            OutputManagerRequest::ConfirmReceivedOutput((tx_id, output)) => self
-                .confirm_received_transaction_output(tx_id, &output)
-                .await
-                .map(|_| OutputManagerResponse::OutputConfirmed),
-            OutputManagerRequest::ConfirmSentTransaction((tx_id, spent_outputs, received_outputs)) => self
-                .confirm_sent_transaction(tx_id, &spent_outputs, &received_outputs)
+            OutputManagerRequest::ConfirmTransaction((tx_id, spent_outputs, received_outputs)) => self
+                .confirm_transaction(tx_id, &spent_outputs, &received_outputs)
                 .await
                 .map(|_| OutputManagerResponse::TransactionConfirmed),
             OutputManagerRequest::CancelTransaction(tx_id) => self
@@ -348,37 +344,45 @@ where T: OutputManagerBackend
         Ok(stp)
     }
 
-    /// Confirm that a received or sent transaction and its outputs have been detected on the base chain. This will
-    /// usually be called by the Transaction Service which monitors the base chain.
-    pub async fn confirm_sent_transaction(
+    /// Confirm that a received or sent transaction and its outputs have been detected on the base chain. The inputs and
+    /// outputs are checked to see that they match what the stored PendingTransaction contians. This will
+    /// be called by the Transaction Service which monitors the base chain.
+    pub async fn confirm_transaction(
         &mut self,
         tx_id: u64,
-        spent_outputs: &Vec<TransactionInput>,
-        received_outputs: &Vec<TransactionOutput>,
+        inputs: &Vec<TransactionInput>,
+        outputs: &Vec<TransactionOutput>,
     ) -> Result<(), OutputManagerError>
     {
         let pending_transaction = self.db.fetch_pending_transaction_outputs(tx_id.clone()).await?;
 
-        // Check that the set of TransactionInputs and TransactionOutputs provided contain all the spent and received
-        // outputs in the PendingTransaction
-        // Assumption: There will only be ONE extra output which belongs to the receiver
-        if spent_outputs.len() != pending_transaction.outputs_to_be_spent.len() ||
-            !pending_transaction.outputs_to_be_spent.iter().fold(true, |acc, i| {
-                acc && spent_outputs.iter().any(|o| {
-                    o.commitment ==
-                        i.as_transaction_input(&self.factories.commitment, OutputFeatures::default())
-                            .commitment
-                })
-            }) ||
-            received_outputs.len() - 1 != pending_transaction.outputs_to_be_received.len() ||
-            !pending_transaction.outputs_to_be_received.iter().fold(true, |acc, i| {
-                acc && received_outputs.iter().any(|o| {
-                    o.commitment ==
-                        i.as_transaction_input(&self.factories.commitment, OutputFeatures::default())
-                            .commitment
-                })
-            })
-        {
+        // Check that outputs to be spent can all be found in the provided transaction inputs
+        let mut inputs_confirmed = true;
+        for output_to_spend in pending_transaction.outputs_to_be_spent.iter() {
+            let input_to_check = output_to_spend
+                .clone()
+                .as_transaction_input(&self.factories.commitment, OutputFeatures::default());
+            inputs_confirmed = inputs_confirmed &&
+                inputs
+                    .iter()
+                    .find(|input| input.commitment == input_to_check.commitment)
+                    .is_some();
+        }
+
+        // Check that outputs to be received can all be found in the provided transaction outputs
+        let mut outputs_confirmed = true;
+        for output_to_receive in pending_transaction.outputs_to_be_received.iter() {
+            let output_to_check = output_to_receive
+                .clone()
+                .as_transaction_input(&self.factories.commitment, OutputFeatures::default());
+            outputs_confirmed = outputs_confirmed &&
+                outputs
+                    .iter()
+                    .find(|output| output.commitment == output_to_check.commitment)
+                    .is_some();
+        }
+
+        if !inputs_confirmed || !outputs_confirmed {
             return Err(OutputManagerError::IncompleteTransaction);
         }
 

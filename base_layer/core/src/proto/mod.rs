@@ -27,5 +27,9 @@ pub mod core {
     tari_utilities::include_proto_package!("tari.core");
 }
 
-mod block;
-pub mod utils;
+cfg_if! {
+    if #[cfg(feature = "base_node")] {
+        mod block;
+        pub mod utils;
+    }
+}

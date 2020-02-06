@@ -127,7 +127,7 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
     let tx = stp.get_transaction().unwrap();
 
     runtime
-        .block_on(oms.confirm_sent_transaction(sender_tx_id, tx.body.inputs().clone(), tx.body.outputs().clone()))
+        .block_on(oms.confirm_transaction(sender_tx_id, tx.body.inputs().clone(), tx.body.outputs().clone()))
         .unwrap();
 
     assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 0);
@@ -251,7 +251,7 @@ fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
     let tx = stp.get_transaction().unwrap();
 
     runtime
-        .block_on(oms.confirm_sent_transaction(sender_tx_id, tx.body.inputs().clone(), tx.body.outputs().clone()))
+        .block_on(oms.confirm_transaction(sender_tx_id, tx.body.inputs().clone(), tx.body.outputs().clone()))
         .unwrap();
 
     assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 0);
@@ -339,7 +339,9 @@ fn receiving_and_confirmation<T: OutputManagerBackend + 'static>(backend: T) {
         RangeProof::from_bytes(&rr).unwrap(),
     );
 
-    runtime.block_on(oms.confirm_received_output(1, output)).unwrap();
+    runtime
+        .block_on(oms.confirm_transaction(1, vec![], vec![output]))
+        .unwrap();
 
     assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 0);
     assert_eq!(runtime.block_on(oms.get_unspent_outputs()).unwrap().len(), 1);
@@ -528,7 +530,9 @@ fn test_confirming_received_output<T: OutputManagerBackend + 'static>(backend: T
         commitment,
         RangeProof::from_bytes(&rr).unwrap(),
     );
-    runtime.block_on(oms.confirm_received_output(1, output)).unwrap();
+    runtime
+        .block_on(oms.confirm_transaction(1, vec![], vec![output]))
+        .unwrap();
     assert_eq!(runtime.block_on(oms.get_balance()).unwrap().available_balance, value);
 }
 

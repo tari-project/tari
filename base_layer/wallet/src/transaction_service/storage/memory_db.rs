@@ -296,7 +296,6 @@ impl TransactionBackend for TransactionMemoryDatabase {
         Ok(())
     }
 
-    #[cfg(feature = "test_harness")]
     fn mine_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let mut db = acquire_write_lock!(self.db);
 
