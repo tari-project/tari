@@ -55,7 +55,7 @@ use tari_core::{
     txn_schema,
     validation::transaction_validators::TxInputAndMaturityValidator,
 };
-use tari_mmr::MerkleChangeTrackerConfig;
+use tari_mmr::MmrCacheConfig;
 use tari_p2p::tari_message::TariMessageType;
 use tari_test_utils::{async_assert_eventually, random::string};
 use tempdir::TempDir;
@@ -589,15 +589,11 @@ fn service_request_timeout() {
     let mempool_service_config = MempoolServiceConfig {
         request_timeout: Duration::from_millis(1),
     };
-    let mct_config = MerkleChangeTrackerConfig {
-        min_history_len: 10,
-        max_history_len: 30,
-    };
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let (mut alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
         BaseNodeServiceConfig::default(),
-        mct_config,
+        MmrCacheConfig::default(),
         mempool_service_config,
         temp_dir.path().to_str().unwrap(),
     );

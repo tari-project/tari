@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
 
 use crate::{
     base_node::{
@@ -132,9 +131,6 @@ impl InitialSync {
     /// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
     fn determine_sync_mode(local: ChainMetadata, network: ChainMetadata) -> SyncStatus {
         use crate::base_node::states::SyncStatus::*;
-        // The number of blocks back from the tip to sync to when starting out
-        // TODO - make this configurable
-        const HORIZON_WHEN_SYNCING: u64 = 60;
         match network.height_of_longest_chain {
             None => {
                 info!(
@@ -145,23 +141,7 @@ impl InitialSync {
                 UpToDate
             },
             Some(network_tip) => {
-                let horizon_block = match network_tip.checked_sub(HORIZON_WHEN_SYNCING) {
-                    None => 0,
-                    Some(h) => h,
-                };
-                // If the user-configured pruning horizon < HORIZON_WHEN_SYNCING, then use that
-                let horizon_block = std::cmp::max(horizon_block, local.horizon_block(network_tip));
                 let local_tip = local.height_of_longest_chain.unwrap_or(0);
-                if local_tip < horizon_block {
-                    info!(
-                        target: LOG_TARGET,
-                        "We're far behind the network chain tip (block #{}), so we're going to re-sync the entire \
-                         state at block #{} first, and then catch up.",
-                        network_tip,
-                        horizon_block
-                    );
-                    return BehindHorizon(horizon_block);
-                }
                 if local_tip < network_tip {
                     info!(
                         target: LOG_TARGET,

@@ -34,35 +34,12 @@ use std::fmt::{Display, Error, Formatter};
 /// ii. The height of the chain tip from the network.
 ///
 /// Once these two values are obtained, we can move to the next state:
-/// If we're behind the pruning horizon, i.e. our chain tip is not at the pruning horizon yet, then switch to
-/// `LoadingHorizonState`.
-/// If we're between the pruning horizon and the network chain tip, switch to `BlockSync`.
+/// If we're between the genesis block and the network chain tip, switch to `BlockSync`.
 /// Otherwise switch to `Listening`
-///
-/// ## LoadingHorizonState
-///
-/// A. For each `n` from my chain tip height + 1 to the pruning horizon block (`h`):
-///   1. Request block header `n`. Validate the header by:
-///      - Checking that the header forms part of the chain.
-///      - Confirming that the Proof of Work is correct (The nonce corresponds to the difficulty and the total
-///        accumulated work has increased).
-///     We could request batches of headers that are compressed; this would be more efficient, but an optimisation
-///     for the future.
-///   2. Request all the kernels for block `n`. Validate the kernel by
-///     - Checking each kernel signature
-///     - Summing the public excess and comparing it to the excess in the corresponding block header
-///     - Calculating and comparing the MMR commitment in the corresponding block header
-/// B. Request the MMR leaf node set and roaring bitmap for the UTXO set at block `h`.
-///
-/// When this information has been obtained and the horizon block has been validated (PoW, MMR roots, public excess
-/// all match), then switch to `BlockSync`.
-///
-/// If errors occur, re-request the problematic header, kernel or Hash set. TODO: Give up after x failures
-/// Full blocks received while in this state can be stored in the orphan pool until they are needed.
 ///
 /// ## BlockSync
 ///
-/// For each `n` from horizon block + 1 to the network chain tip, submit a request for block `n`. In this state, an
+/// For each `n` from genesis block + 1 to the network chain tip, submit a request for block `n`. In this state, an
 /// entire block is received, and the normal block validation and storage process is followed. The only difference
 /// between `BlockSync` and `Listening` is that the former state is actively asking for blocks, while the latter is a
 /// passive process.
@@ -90,7 +67,6 @@ use std::fmt::{Display, Error, Formatter};
 pub enum BaseNodeState {
     Starting(Starting),
     InitialSync(InitialSync),
-    FetchingHorizonState(HorizonInfo),
     BlockSync(BlockSyncInfo),
     Listening(ListeningInfo),
     Shutdown(Shutdown),
@@ -100,7 +76,6 @@ pub enum BaseNodeState {
 pub enum StateEvent {
     Initialized,
     MetadataSynced(SyncStatus),
-    HorizonStateFetched,
     BlocksSynchronized,
     FallenBehind(SyncStatus),
     FatalError(String),
@@ -113,8 +88,6 @@ pub enum StateEvent {
 /// blocks to catch up, or we are `UpToDate`.
 #[derive(Debug, PartialEq)]
 pub enum SyncStatus {
-    // We are behind the pruning horizon. The u64 parameter indicates the block height at the horizon.
-    BehindHorizon(u64),
     // We are behind the chain tip. The usize parameter gives the network's chain height.
     Lagging(u64),
     UpToDate,
@@ -125,7 +98,6 @@ impl Display for BaseNodeState {
         let s = match self {
             Self::Starting(_) => "Initializing",
             Self::InitialSync(_) => "Synchronizing blockchain metadata",
-            Self::FetchingHorizonState(_) => "Fetching horizon state",
             Self::BlockSync(_) => "Synchronizing blocks",
             Self::Listening(_) => "Listening",
             Self::Shutdown(_) => "Shutting down",
@@ -136,14 +108,12 @@ impl Display for BaseNodeState {
 
 mod block_sync;
 mod error;
-mod fetching_horizon_state;
 mod initial_sync;
 mod listening;
 mod shutdown_state;
 mod starting_state;
 
 pub use block_sync::{BlockSyncConfig, BlockSyncInfo};
-pub use fetching_horizon_state::{HorizonInfo, HorizonSyncConfig};
 pub use initial_sync::InitialSync;
 pub use listening::ListeningInfo;
 pub use shutdown_state::Shutdown;

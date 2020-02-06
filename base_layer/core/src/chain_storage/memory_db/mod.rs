@@ -24,4 +24,5 @@ mod mem_db_vec;
 mod memory_db;
 
 // Public API exports
+pub use mem_db_vec::MemDbVec;
 pub use memory_db::MemoryDatabase;

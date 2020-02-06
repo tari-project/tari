@@ -238,6 +238,12 @@ where
             MerkleMountainRangeError::BackendError(e.to_string())
         })
     }
+
+    pub fn clear(&mut self) -> Result<(), MerkleMountainRangeError> {
+        self.hashes
+            .clear()
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))
+    }
 }
 
 impl<D, B, B2> PartialEq<MerkleMountainRange<D, B2>> for MerkleMountainRange<D, B>

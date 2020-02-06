@@ -22,7 +22,7 @@
 
 use crate::{
     blocks::{blockheader::BlockHeader, Block, NewBlockTemplate},
-    chain_storage::{ChainMetadata, HistoricalBlock, MutableMmrState},
+    chain_storage::{ChainMetadata, HistoricalBlock},
     proof_of_work::Difficulty,
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
@@ -36,7 +36,6 @@ pub enum NodeCommsResponse {
     BlockHeaders(Vec<BlockHeader>),
     TransactionOutputs(Vec<TransactionOutput>),
     HistoricalBlocks(Vec<HistoricalBlock>),
-    MmrState(MutableMmrState),
     NewBlockTemplate(NewBlockTemplate),
     NewBlock(Block),
     TargetDifficulty(Difficulty),

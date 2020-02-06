@@ -3,7 +3,6 @@ syntax = "proto3";
 import "transaction.proto";
 import "block.proto";
 import "chain_metadata.proto";
-import "mutable_mmr_state.proto";
 
 package tari.base_node;
 
@@ -21,14 +20,12 @@ message BaseNodeServiceResponse {
         TransactionOutputs transaction_outputs = 5;
         // Indicates a HistoricalBlocks response.
         HistoricalBlocks historical_blocks = 6;
-        // Indicates a MmrState response.
-        MutableMmrState mmr_state = 7;
         // Indicates a NewBlockTemplate response.
-        tari.core.NewBlockTemplate new_block_template = 8;
+        tari.core.NewBlockTemplate new_block_template = 7;
         // Indicates a NewBlock response.
-        tari.core.Block new_block = 9;
+        tari.core.Block new_block = 8;
         // Indicates a TargetDifficulty response.
-        uint64 target_difficulty = 10;
+        uint64 target_difficulty = 9;
     }
 }
 

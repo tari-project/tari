@@ -23,24 +23,6 @@
 #[allow(dead_code)]
 mod helpers;
 
-use tari_core::{
-    blocks::BlockHeader,
-    chain_storage::{
-        BlockchainDatabase,
-        ChainMetadata,
-        DbTransaction,
-        HistoricalBlock,
-        MemoryDatabase,
-        MmrTree,
-        MutableMmrState,
-    },
-    consensus::ConsensusManager,
-    mempool::{Mempool, MempoolConfig, MempoolValidators},
-    proof_of_work::DiffAdjManager,
-    validation::transaction_validators::TxInputAndMaturityValidator,
-};
-
-use croaring::Bitmap;
 use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, executor::block_on, StreamExt};
 use tari_broadcast_channel::bounded;
 use tari_core::{
@@ -48,22 +30,25 @@ use tari_core::{
         comms_interface::{
             CommsInterfaceError,
             InboundNodeCommsHandlers,
-            MmrStateRequest,
             NodeCommsRequest,
             NodeCommsRequestType,
             NodeCommsResponse,
         },
         OutboundNodeCommsInterface,
     },
-    blocks::BlockBuilder,
+    blocks::{BlockBuilder, BlockHeader},
+    chain_storage::{BlockchainDatabase, ChainMetadata, DbTransaction, HistoricalBlock, MemoryDatabase},
+    consensus::ConsensusManager,
     helpers::create_mem_db,
+    mempool::{Mempool, MempoolConfig, MempoolValidators},
+    proof_of_work::DiffAdjManager,
     transactions::{
         helpers::{create_test_kernel, create_utxo},
         tari_amount::MicroTari,
         types::{CryptoFactories, HashDigest},
     },
+    validation::transaction_validators::TxInputAndMaturityValidator,
 };
-use tari_mmr::MutableMmrLeafNodes;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_test_utils::runtime::test_async;
 use tari_utilities::hash::Hashable;
@@ -371,59 +356,6 @@ fn inbound_fetch_blocks() {
             {
                 assert_eq!(received_blocks.len(), 1);
                 assert_eq!(*received_blocks[0].block(), block);
-            } else {
-                assert!(false);
-            }
-        });
-    });
-}
-
-#[test]
-fn outbound_fetch_mmr_state() {
-    let (request_sender, mut request_receiver) = reply_channel::unbounded();
-    let (block_sender, _) = futures_mpsc_channel_unbounded();
-    let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
-
-    block_on(async {
-        let mmr_state = MutableMmrState {
-            total_leaf_count: 2,
-            leaf_nodes: MutableMmrLeafNodes::new(Vec::new(), Bitmap::create()),
-        };
-        let mmr_state_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::MmrState(mmr_state.clone())];
-        let (received_state, _) = futures::join!(
-            outbound_nci.fetch_mmr_state(MmrTree::Kernel, 1, 100),
-            test_request_responder(&mut request_receiver, mmr_state_response)
-        );
-        let received_state = received_state.unwrap();
-        assert_eq!(received_state, mmr_state);
-    });
-}
-
-#[test]
-fn inbound_fetch_mmr_state() {
-    let (mempool, store) = new_mempool();
-    let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
-    let (block_event_publisher, _block_event_subscriber) = bounded(100);
-    let consensus_manager = ConsensusManager::default();
-    let _ = consensus_manager.set_diff_manager(diff_adj_manager);
-    let (request_sender, _) = reply_channel::unbounded();
-    let (block_sender, _) = futures_mpsc_channel_unbounded();
-    let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
-    let inbound_nch =
-        InboundNodeCommsHandlers::new(block_event_publisher, store, mempool, consensus_manager, outbound_nci);
-
-    test_async(move |rt| {
-        rt.spawn(async move {
-            if let Ok(NodeCommsResponse::MmrState(received_mmr_state)) = inbound_nch
-                .handle_request(&NodeCommsRequest::FetchMmrState(MmrStateRequest {
-                    tree: MmrTree::Kernel,
-                    index: 0,
-                    count: 1,
-                }))
-                .await
-            {
-                assert_eq!(received_mmr_state.total_leaf_count, 0);
-                assert_eq!(received_mmr_state.leaf_nodes.leaf_hashes.len(), 0);
             } else {
                 assert!(false);
             }

@@ -133,15 +133,6 @@ where T: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
-            NodeCommsRequest::FetchMmrState(mmr_state_request) => Ok(NodeCommsResponse::MmrState(
-                async_db::fetch_mmr_base_leaf_nodes(
-                    self.blockchain_db.clone(),
-                    mmr_state_request.tree.clone(),
-                    mmr_state_request.index as usize,
-                    mmr_state_request.count as usize,
-                )
-                .await?,
-            )),
             NodeCommsRequest::GetNewBlockTemplate => {
                 let metadata = async_db::get_metadata(self.blockchain_db.clone()).await?;
                 let best_block_hash = metadata.best_block.ok_or(CommsInterfaceError::UnexpectedApiResponse)?;

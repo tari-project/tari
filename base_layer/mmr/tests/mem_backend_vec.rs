@@ -20,32 +20,34 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node::{
-    comms_interface::MmrStateRequest,
-    proto::base_node::{MmrStateRequest as ProtoMmrStateRequest, MmrTree as ProtoMmrTree},
-};
-use std::convert::{TryFrom, TryInto};
+use tari_mmr::{ArrayLike, ArrayLikeExt, MemBackendVec};
 
-impl TryFrom<ProtoMmrStateRequest> for MmrStateRequest {
-    type Error = String;
+#[test]
+fn len_push_get_truncate_for_each_shift_clear() {
+    let mut db_vec = MemBackendVec::<i32>::new();
+    let mut mem_vec = vec![100, 200, 300, 400, 500, 600];
+    assert_eq!(db_vec.len().unwrap(), 0);
 
-    fn try_from(request: ProtoMmrStateRequest) -> Result<Self, Self::Error> {
-        let tree = ProtoMmrTree::from_i32(request.tree).ok_or("Invalid or unrecognised `MmrTree` enum".to_string())?;
-        Ok(Self {
-            tree: tree.try_into()?,
-            index: request.index,
-            count: request.count,
-        })
-    }
-}
+    mem_vec.iter().for_each(|val| assert!(db_vec.push(val.clone()).is_ok()));
+    assert_eq!(db_vec.len().unwrap(), mem_vec.len());
 
-impl From<MmrStateRequest> for ProtoMmrStateRequest {
-    fn from(request: MmrStateRequest) -> Self {
-        let tree: ProtoMmrTree = request.tree.into();
-        Self {
-            tree: tree as i32,
-            index: request.index,
-            count: request.count,
-        }
-    }
+    mem_vec
+        .iter()
+        .enumerate()
+        .for_each(|(i, val)| assert_eq!(db_vec.get(i).unwrap(), Some(val.clone())));
+    assert_eq!(db_vec.get(mem_vec.len()).unwrap(), None);
+
+    mem_vec.truncate(4);
+    assert!(db_vec.truncate(4).is_ok());
+    assert_eq!(db_vec.len().unwrap(), mem_vec.len());
+    db_vec.for_each(|val| assert!(mem_vec.contains(&val.unwrap()))).unwrap();
+
+    assert!(mem_vec.shift(2).is_ok());
+    assert!(db_vec.shift(2).is_ok());
+    assert_eq!(db_vec.len().unwrap(), 2);
+    assert_eq!(db_vec.get(0).unwrap(), Some(300));
+    assert_eq!(db_vec.get(1).unwrap(), Some(400));
+
+    assert!(db_vec.clear().is_ok());
+    assert_eq!(db_vec.len().unwrap(), 0);
 }

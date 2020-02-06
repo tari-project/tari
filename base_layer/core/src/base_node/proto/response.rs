@@ -61,7 +61,6 @@ impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
                 let blocks = try_convert_all(blocks.blocks)?;
                 ci::NodeCommsResponse::HistoricalBlocks(blocks)
             },
-            MmrState(state) => ci::NodeCommsResponse::MmrState(state.try_into()?),
             NewBlockTemplate(block_template) => ci::NodeCommsResponse::NewBlockTemplate(block_template.try_into()?),
             NewBlock(block) => ci::NodeCommsResponse::NewBlock(block.try_into()?),
             TargetDifficulty(difficulty) => ci::NodeCommsResponse::TargetDifficulty(Difficulty::from(difficulty)),
@@ -92,7 +91,6 @@ impl From<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
                 let historical_blocks = historical_blocks.into_iter().map(Into::into).collect();
                 ProtoNodeCommsResponse::HistoricalBlocks(historical_blocks)
             },
-            MmrState(state) => ProtoNodeCommsResponse::MmrState(state.into()),
             NewBlockTemplate(block_template) => ProtoNodeCommsResponse::NewBlockTemplate(block_template.into()),
             NewBlock(block) => ProtoNodeCommsResponse::NewBlock(block.into()),
             TargetDifficulty(difficulty) => ProtoNodeCommsResponse::TargetDifficulty(difficulty.as_u64()),

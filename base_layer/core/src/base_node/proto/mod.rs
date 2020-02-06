@@ -30,10 +30,7 @@ use crate::transactions::proto::types;
 cfg_if! {
     if #[cfg(feature = "base_node")] {
         pub mod chain_metadata;
-        pub mod mmr_state_request;
         pub mod mmr_tree;
-        pub mod mutable_mmr_leaf_nodes;
-        pub mod mutable_mmr_state;
         pub mod request;
         pub mod response;
         pub use base_node::{BaseNodeServiceRequest, BaseNodeServiceResponse, ChainMetadata};

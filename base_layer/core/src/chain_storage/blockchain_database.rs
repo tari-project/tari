@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
 
 use crate::{
     blocks::{blockheader::BlockHash, Block, BlockBuilder, BlockHeader, NewBlockTemplate},
@@ -67,13 +66,12 @@ pub struct MutableMmrState {
 /// A placeholder struct that contains the two validators that the database uses to decide whether or not a block is
 /// eligible to be added to the database. The `block` validator should perform a full consensus check. The `orphan`
 /// validator needs to check that the block is internally consistent, but can't know whether the PoW is sufficient,
-/// for example. The `horizon_state_header` validator is used to check the synced headers of the Horizon state.
+/// for example.
 /// The `GenesisBlockValidator` is used to check that the chain builds on the correct genesis block.
 /// The `ChainTipValidator` is used to check that the accounting balance and MMR states of the chain state is valid.
 pub struct Validators<B: BlockchainBackend> {
     block: Arc<Validator<Block, B>>,
     orphan: Arc<Validator<Block, B>>,
-    horizon_state_header: Arc<Validator<BlockHeader, B>>,
     genesis_block: Arc<Validator<BlockHeader, B>>,
     chain_tip: Arc<Validator<BlockHeader, B>>,
 }
@@ -82,7 +80,6 @@ impl<B: BlockchainBackend> Validators<B> {
     pub fn new(
         block: impl Validation<Block, B> + 'static,
         orphan: impl Validation<Block, B> + 'static,
-        horizon_state_header: impl Validation<BlockHeader, B> + 'static,
         genesis_block: impl Validation<BlockHeader, B> + 'static,
         chain_tip: impl Validation<BlockHeader, B> + 'static,
     ) -> Self
@@ -90,7 +87,6 @@ impl<B: BlockchainBackend> Validators<B> {
         Self {
             block: Arc::new(Box::new(block)),
             orphan: Arc::new(Box::new(orphan)),
-            horizon_state_header: Arc::new(Box::new(horizon_state_header)),
             genesis_block: Arc::new(Box::new(genesis_block)),
             chain_tip: Arc::new(Box::new(chain_tip)),
         }
@@ -102,7 +98,6 @@ impl<B: BlockchainBackend> Clone for Validators<B> {
         Validators {
             block: Arc::clone(&self.block),
             orphan: Arc::clone(&self.orphan),
-            horizon_state_header: Arc::clone(&self.horizon_state_header),
             genesis_block: Arc::clone(&self.genesis_block),
             chain_tip: Arc::clone(&self.chain_tip),
         }
@@ -143,25 +138,11 @@ pub trait BlockchainBackend: Send + Sync {
     ) -> Result<HashOutput, ChainStorageError>;
     /// Constructs a merkle proof for the specified merkle mountain range and the given leaf position.
     fn fetch_mmr_proof(&self, tree: MmrTree, pos: usize) -> Result<MerkleProof, ChainStorageError>;
-    /// Fetches the MMR checkpoint corresponding to the provided height, the checkpoint consist of the list of nodes
-    /// added & deleted for the given Merkle tree. When a height is provided that is less than the pruning horizon, then
-    /// a BeyondPruningHorizon error will be produced.
-    fn fetch_mmr_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError>;
+    /// Fetches the checkpoint corresponding to the provided height, the checkpoint consist of the list of nodes
+    /// added & deleted for the given Merkle tree.
+    fn fetch_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError>;
     /// Fetches the leaf node hash and its deletion status for the nth leaf node in the given MMR tree.
     fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Hash, bool), ChainStorageError>;
-    /// Fetches the MMR base state of the specified tree. The MMR base state consists of the state from the genesis
-    /// block to the horizon block. The index is the n-th leaf node in the MMR. The count specifies the maximum number
-    /// of leaf nodes that can be returned, starting with the node at the provided index.
-    fn fetch_mmr_base_leaf_nodes(
-        &self,
-        tree: MmrTree,
-        index: usize,
-        count: usize,
-    ) -> Result<MutableMmrState, ChainStorageError>;
-    /// Returns the number of leaf nodes in the base MMR of the specified tree.
-    fn fetch_mmr_base_leaf_node_count(&self, tree: MmrTree) -> Result<usize, ChainStorageError>;
-    /// Resets and restores the state of the specified MMR tree using a set of leaf nodes.
-    fn assign_mmr(&self, tree: MmrTree, base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError>;
     /// Performs the function F for each orphan block in the orphan pool.
     fn for_each_orphan<F>(&self, f: F) -> Result<(), ChainStorageError>
     where
@@ -182,8 +163,6 @@ pub trait BlockchainBackend: Send + Sync {
     where
         Self: Sized,
         F: FnMut(Result<(HashOutput, TransactionOutput), ChainStorageError>);
-    /// Returns the height of earliest block that the backend can provide full data for.
-    fn fetch_horizon_block_height(&self) -> Result<u64, ChainStorageError>;
     /// Returns the stored header with the highest corresponding height.
     fn fetch_last_header(&self) -> Result<Option<BlockHeader>, ChainStorageError>;
 }
@@ -234,7 +213,6 @@ macro_rules! fetch {
 /// };
 /// let db_backend = MemoryDatabase::<HashDigest>::default();
 /// let validators = Validators::new(
-///     MockValidator::new(true),
 ///     MockValidator::new(true),
 ///     MockValidator::new(true),
 ///     MockValidator::new(true),
@@ -350,11 +328,6 @@ where T: BlockchainBackend
         Ok(metadata.height_of_longest_chain)
     }
 
-    /// Returns the height of earliest block that the backend can provide full data for.
-    pub fn fetch_horizon_block_height(&self) -> Result<u64, ChainStorageError> {
-        self.db.fetch_horizon_block_height()
-    }
-
     /// Returns a copy of the current blockchain database metadata
     pub fn get_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
         let db = self.access_metadata()?;
@@ -456,29 +429,6 @@ where T: BlockchainBackend
     /// Fetch a Merklish proof for the given hash, tree and position in the MMR
     pub fn fetch_mmr_proof(&self, tree: MmrTree, pos: usize) -> Result<MerkleProof, ChainStorageError> {
         self.db.fetch_mmr_proof(tree, pos)
-    }
-
-    /// Fetches the MMR base state of the specified tree. The MMR base state consists of the state from the genesis
-    /// block to the horizon block. The index is the n-th leaf node in the MMR. The count specifies the maximum number
-    /// of leaf nodes that can be returned, starting with the node at the provided index.
-    pub fn fetch_mmr_base_leaf_nodes(
-        &self,
-        tree: MmrTree,
-        index: usize,
-        count: usize,
-    ) -> Result<MutableMmrState, ChainStorageError>
-    {
-        self.db.fetch_mmr_base_leaf_nodes(tree, index, count)
-    }
-
-    /// Returns the number of leaf nodes in the base MMR of the specified tree.
-    pub fn fetch_mmr_base_leaf_node_count(&self, tree: MmrTree) -> Result<usize, ChainStorageError> {
-        self.db.fetch_mmr_base_leaf_node_count(tree)
-    }
-
-    /// Resets the specified MMR and restores it with the provided state.
-    pub fn assign_mmr(&self, tree: MmrTree, base_state: MutableMmrLeafNodes) -> Result<(), ChainStorageError> {
-        self.db.assign_mmr(tree, base_state)
     }
 
     /// Tries to add a block to the longest chain.
@@ -583,10 +533,10 @@ where T: BlockchainBackend
     pub fn fetch_block(&self, height: u64) -> Result<HistoricalBlock, ChainStorageError> {
         let metadata = self.check_for_valid_height(height)?;
         let header = self.fetch_header(height)?;
-        let kernel_cp = self.fetch_mmr_checkpoint(MmrTree::Kernel, height)?;
+        let kernel_cp = self.fetch_checkpoint(MmrTree::Kernel, height)?;
         let (kernel_hashes, _) = kernel_cp.into_parts();
         let kernels = self.fetch_kernels(kernel_hashes)?;
-        let utxo_cp = self.fetch_mmr_checkpoint(MmrTree::Utxo, height)?;
+        let utxo_cp = self.fetch_checkpoint(MmrTree::Utxo, height)?;
         let (utxo_hashes, deleted_nodes) = utxo_cp.into_parts();
         let inputs = self.fetch_inputs(deleted_nodes)?;
         let (outputs, spent) = self.fetch_outputs(utxo_hashes)?;
@@ -664,9 +614,9 @@ where T: BlockchainBackend
         Ok((outputs, spent))
     }
 
-    fn fetch_mmr_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
+    fn fetch_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
         let _ = self.check_for_valid_height(height)?;
-        self.db.fetch_mmr_checkpoint(tree, height)
+        self.db.fetch_checkpoint(tree, height)
     }
 
     /// Atomically commit the provided transaction to the database backend. This function does not update the metadata.
@@ -681,7 +631,6 @@ where T: BlockchainBackend
     /// * The block height is before pruning horizon
     pub fn rewind_to_height(&self, height: u64) -> Result<(), ChainStorageError> {
         self.check_for_valid_height(height)?;
-
         let chain_height = self
             .get_height()?
             .ok_or(ChainStorageError::InvalidQuery("Blockchain database is empty".into()))?;
@@ -697,12 +646,10 @@ where T: BlockchainBackend
             txn.insert_orphan(orphaned_block);
 
             // Remove Header and block hash
-            let rewind_header = self.fetch_header(rewind_height)?;
-            txn.delete(DbKey::BlockHeader(rewind_height));
-            txn.delete(DbKey::BlockHash(rewind_header.hash()));
+            txn.delete(DbKey::BlockHeader(rewind_height)); // Will also delete the blockhash
 
             // Remove Kernels
-            self.fetch_mmr_checkpoint(MmrTree::Kernel, rewind_height)?
+            self.fetch_checkpoint(MmrTree::Kernel, rewind_height)?
                 .nodes_added()
                 .iter()
                 .for_each(|hash_output| {
@@ -710,7 +657,7 @@ where T: BlockchainBackend
                 });
 
             // Remove UTXOs and move STXOs back to UTXO set
-            let (nodes_added, nodes_deleted) = self.fetch_mmr_checkpoint(MmrTree::Utxo, rewind_height)?.into_parts();
+            let (nodes_added, nodes_deleted) = self.fetch_checkpoint(MmrTree::Utxo, rewind_height)?.into_parts();
             nodes_added.iter().for_each(|hash_output| {
                 txn.delete(DbKey::UnspentOutput(hash_output.clone()));
             });
@@ -913,39 +860,6 @@ where T: BlockchainBackend
         let mut txn = DbTransaction::new();
         txn.delete(DbKey::OrphanBlock(hash));
         self.commit(txn)
-    }
-
-    /// Perform validation on the horizon state of the synced blockchain and updates the metadata.
-    pub fn validate_horizon_state(&self) -> Result<(), ChainStorageError> {
-        let genesis_block_header = self.fetch_header(0)?;
-        self.validators
-            .as_ref()
-            .expect("No validators added")
-            .genesis_block
-            .validate(&genesis_block_header)?;
-
-        for height in 0..self.db.fetch_horizon_block_height()? {
-            let header = self.fetch_header(height)?;
-            self.validators
-                .as_ref()
-                .expect("No validators added")
-                .horizon_state_header
-                .validate(&header)?;
-        }
-
-        let last_header = self
-            .db
-            .fetch_last_header()?
-            .ok_or(ChainStorageError::InvalidQuery("Blockchain database is empty".into()))?;
-        self.validators
-            .as_ref()
-            .expect("No validators added")
-            .chain_tip
-            .validate(&last_header)?;
-
-        self.update_metadata(last_header.height, last_header.hash())?;
-
-        Ok(())
     }
 
     /// Calculate the total kernel excess for all kernels in the chain.

@@ -22,14 +22,13 @@
 
 use crate::{
     base_node::comms_interface::{
-        comms_request::MmrStateRequest,
         error::CommsInterfaceError,
         NodeCommsRequest,
         NodeCommsRequestType,
         NodeCommsResponse,
     },
     blocks::{blockheader::BlockHeader, Block},
-    chain_storage::{ChainMetadata, HistoricalBlock, MmrTree, MutableMmrState},
+    chain_storage::{ChainMetadata, HistoricalBlock},
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
         types::HashOutput,
@@ -138,33 +137,6 @@ impl OutboundNodeCommsInterface {
             .first()
         {
             Ok(blocks.clone())
-        } else {
-            Err(CommsInterfaceError::UnexpectedApiResponse)
-        }
-    }
-
-    /// Fetch the base MMR state of the specified merkle mountain range.
-    /// # Parameters
-    /// * `tree`: The Merkle tree to fetch data from (kernel, utxo or range proof)
-    /// * `index`: leaf nodes will be returned from the `index`-th node
-    /// * `count`: up to count leaf nodes will be returned
-    pub async fn fetch_mmr_state(
-        &mut self,
-        tree: MmrTree,
-        index: u64,
-        count: u64,
-    ) -> Result<MutableMmrState, CommsInterfaceError>
-    {
-        if let Some(NodeCommsResponse::MmrState(mmr_state)) = self
-            .request_sender
-            .call((
-                NodeCommsRequest::FetchMmrState(MmrStateRequest { tree, index, count }),
-                NodeCommsRequestType::Single,
-            ))
-            .await??
-            .first()
-        {
-            Ok(mmr_state.clone())
         } else {
             Err(CommsInterfaceError::UnexpectedApiResponse)
         }
