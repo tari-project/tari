@@ -9,7 +9,7 @@ edition = "2018"
 
 [dependencies]
 tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
-tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0" }
+tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.1" }
 rand = "0.7.2"
 digest = "0.8.0"
 sha2 = "0.8.0"
