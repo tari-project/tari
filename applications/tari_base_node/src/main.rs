@@ -32,20 +32,21 @@ mod miner;
 /// Parser module used to control user commands
 mod parser;
 
-use crate::builder::{create_and_save_id, load_identity};
+use crate::builder::{create_and_save_id, load_identity, BaseNodeContext};
 use futures::stream::StreamExt;
 use log::*;
 use parser::Parser;
-use rustyline::{error::ReadlineError, Editor};
+use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+
 use tari_common::{load_configuration, GlobalConfig};
 use tari_utilities::hex::Hex;
 use tokio::{runtime, runtime::Runtime};
 
-const LOG_TARGET: &str = "base_node::app";
+pub const LOG_TARGET: &str = "base_node::app";
 
 fn main() {
     cli::print_banner();
@@ -126,7 +127,7 @@ fn main() {
     };
 
     // Build, node, build!
-    let (comms, node, mut miner, mut wallet) =
+    let (comms, node, mut miner, mut base_node_context) =
         match builder::configure_and_initialize_node(&node_config, node_id, &mut rt) {
             Ok(n) => n,
             Err(e) => {
@@ -139,9 +140,10 @@ fn main() {
     // lets run the miner
     let miner_handle = if node_config.enable_mining {
         let mut rx = miner.get_utxo_receiver_channel();
+        let mut wallet_output_handle = base_node_context.wallet_output_service.clone();
         rt.spawn(async move {
             while let Some(utxo) = rx.next().await {
-                wallet.output_service.add_output(utxo).await;
+                wallet_output_handle.add_output(utxo).await;
             }
         });
         Some(rt.spawn(async move {
@@ -171,7 +173,7 @@ fn main() {
     };
     let base_node_handle = rt.spawn(main);
 
-    cli_loop(flag, rt.handle().clone());
+    cli_loop(flag, rt.handle().clone(), base_node_context);
     if let Some(miner) = miner_handle {
         rt.block_on(miner);
     }
@@ -198,15 +200,22 @@ fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
         .map_err(|e| format!("There was an error while building the node runtime. {}", e.to_string()))
 }
 
-fn cli_loop(shutdown_flag: Arc<AtomicBool>, executor: runtime::Handle) {
-    let mut rl = Editor::<()>::new();
-    let parser = Parser::new(executor);
+fn cli_loop(shutdown_flag: Arc<AtomicBool>, executor: runtime::Handle, base_node_context: BaseNodeContext) {
+    let parser = Parser::new(executor, base_node_context, shutdown_flag.clone());
+    let cli_config = Config::builder()
+        .history_ignore_space(true)
+        .completion_type(CompletionType::List)
+        .edit_mode(EditMode::Emacs)
+        .output_stream(OutputStreamType::Stdout)
+        .build();
+    let mut rustyline = Editor::with_config(cli_config);
+    rustyline.set_helper(Some(parser));
     loop {
-        let readline = rl.readline(">> ");
+        let readline = rustyline.readline(">> ");
         match readline {
             Ok(line) => {
-                rl.add_history_entry(line.as_str());
-                parser.handle_command(&line);
+                rustyline.add_history_entry(line.as_str());
+                rustyline.helper_mut().as_deref_mut().map(|p| p.handle_command(&line));
             },
             Err(ReadlineError::Interrupted) => {
                 // shutdown section. Will shutdown all interfaces when ctrl-c was pressed
@@ -224,5 +233,8 @@ fn cli_loop(shutdown_flag: Arc<AtomicBool>, executor: runtime::Handle) {
                 break;
             },
         }
+        if shutdown_flag.load(Ordering::Relaxed) {
+            break;
+        };
     }
 }

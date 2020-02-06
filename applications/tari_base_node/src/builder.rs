@@ -93,9 +93,10 @@ use tari_wallet::{
 
 const LOG_TARGET: &str = "base_node::initialization";
 
-pub struct Wallet {
-    pub transaction_service: TransactionServiceHandle,
-    pub output_service: OutputManagerHandle,
+pub struct BaseNodeContext {
+    pub wallet_transaction_service: TransactionServiceHandle,
+    pub wallet_output_service: OutputManagerHandle,
+    pub node_service: OutboundNodeCommsInterface,
 }
 
 pub enum NodeType {
@@ -214,7 +215,7 @@ pub fn configure_and_initialize_node(
     config: &GlobalConfig,
     id: NodeIdentity,
     rt: &mut Runtime,
-) -> Result<(CommsNode, NodeType, MinerType, Wallet), String>
+) -> Result<(CommsNode, NodeType, MinerType, BaseNodeContext), String>
 {
     let id = Arc::new(id);
     let factories = CryptoFactories::default();
@@ -266,12 +267,13 @@ pub fn configure_and_initialize_node(
                 BaseNodeStateMachineConfig::default(),
             ));
 
-            let wallet = Wallet {
-                output_service: wallet_output_manager_service,
-                transaction_service: wallet_transaction_service,
+            let base_node_context = BaseNodeContext {
+                wallet_output_service: wallet_output_manager_service,
+                wallet_transaction_service,
+                node_service: outbound_interface.clone(),
             };
             let miner = MinerType::Memory(miner::build_miner(handles, node.get_flag(), rules.clone(), executor));
-            (comms, node, miner, wallet)
+            (comms, node, miner, base_node_context)
         },
         DatabaseType::LMDB(p) => {
             let rules = ConsensusManager::default();
@@ -321,12 +323,13 @@ pub fn configure_and_initialize_node(
             let wallet_transaction_service = handles
                 .get_handle::<TransactionServiceHandle>()
                 .expect("Problem getting wallet interface handle");
-            let wallet = Wallet {
-                output_service: wallet_output_manager_service,
-                transaction_service: wallet_transaction_service,
+            let base_node_context = BaseNodeContext {
+                wallet_output_service: wallet_output_manager_service,
+                wallet_transaction_service,
+                node_service: outbound_interface.clone(),
             };
             let miner = MinerType::LMDB(miner::build_miner(handles, node.get_flag(), rules.clone(), executor));
-            (comms, node, miner, wallet)
+            (comms, node, miner, base_node_context)
         },
     };
     Ok(result)
