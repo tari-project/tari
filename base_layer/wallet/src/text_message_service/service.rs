@@ -181,6 +181,7 @@ where
         let pool = diesel::r2d2::Pool::builder()
             .connection_timeout(Duration::from_millis(2000))
             .idle_timeout(Some(Duration::from_millis(2000)))
+            .max_size(1)
             .build(manager)
             .map_err(|_| TextMessageError::R2d2Error)?;
         Ok(pool)

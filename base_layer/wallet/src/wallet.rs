@@ -27,6 +27,7 @@ use crate::{
         handle::OutputManagerHandle,
         storage::database::OutputManagerBackend,
         OutputManagerServiceInitializer,
+        TxId,
     },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
@@ -36,7 +37,7 @@ use crate::{
         TransactionServiceInitializer,
     },
 };
-use log::LevelFilter;
+use log::{LevelFilter, *};
 use log4rs::{
     append::file::FileAppender,
     config::{Appender, Config, Root},
@@ -51,7 +52,11 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::Dht;
-use tari_core::transactions::types::CryptoFactories;
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction::UnblindedOutput,
+    types::{CryptoFactories, PrivateKey},
+};
 use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization::{initialize_comms, CommsConfig},
@@ -62,6 +67,8 @@ use tari_p2p::{
 };
 use tari_service_framework::StackBuilder;
 use tokio::runtime::Runtime;
+
+const LOG_TARGET: &'static str = "base_layer::wallet";
 
 #[derive(Clone)]
 pub struct WalletConfig {
@@ -129,6 +136,9 @@ where
             log_handle = Some(log4rs::init_config(config)?);
         }
 
+        let db = WalletDatabase::new(wallet_backend);
+        let base_node_peers = runtime.block_on(db.get_peers())?;
+
         #[cfg(feature = "test_harness")]
         let transaction_backend_handle = transaction_backend.clone();
 
@@ -179,9 +189,6 @@ where
         let contacts_handle = handles
             .get_handle::<ContactsServiceHandle>()
             .expect("Could not get Contacts Service Handle");
-
-        let db = WalletDatabase::new(wallet_backend);
-        let base_node_peers = runtime.block_on(db.get_peers())?;
 
         for p in base_node_peers {
             runtime.block_on(transaction_service_handle.set_base_node_public_key(p.public_key.clone()))?;
@@ -239,5 +246,30 @@ where
         )?;
 
         Ok(())
+    }
+
+    /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made
+    /// spendable. A faux incoming transaction will be created to provide a record of the event. The TxId of the
+    /// generated transaction is returned.
+    pub fn import_utxo(
+        &mut self,
+        amount: &MicroTari,
+        spending_key: &PrivateKey,
+        source_public_key: &CommsPublicKey,
+    ) -> Result<TxId, WalletError>
+    {
+        let unblinded_output = UnblindedOutput::new(amount.clone(), spending_key.clone(), None);
+
+        self.runtime
+            .block_on(self.output_manager_service.add_output(unblinded_output))?;
+
+        let tx_id = self.runtime.block_on(
+            self.transaction_service
+                .import_utxo(amount.clone(), source_public_key.clone()),
+        )?;
+
+        info!(target: LOG_TARGET, "UTXO imported into wallet");
+
+        Ok(tx_id)
     }
 }
