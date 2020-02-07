@@ -347,7 +347,7 @@ bool wallet_is_completed_transaction_outbound(struct TariWallet *wallet, struct 
 
 // Import a UTXO into the wallet. This will add a spendable UTXO and create a faux completed transaction to record the
 // event.
-unsigned long long wallet_import_utxo(struct TariWallet *wallet, unsigned long long amount, struct TariPrivateKey *spending_key, struct TariPublicKey *source_public_key, int* error_out);
+unsigned long long wallet_import_utxo(struct TariWallet *wallet, unsigned long long amount, struct TariPrivateKey *spending_key, struct TariPublicKey *source_public_key, const char *message, int* error_out);
 
 // Simulates the completion of a broadcasted TariPendingInboundTransaction
 bool wallet_test_broadcast_transaction(struct TariWallet *wallet, struct TariCompletedTransaction *tx, int* error_out);

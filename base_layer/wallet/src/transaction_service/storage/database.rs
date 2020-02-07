@@ -516,6 +516,7 @@ where T: TransactionBackend + 'static
         amount: MicroTari,
         source_public_key: CommsPublicKey,
         comms_public_key: CommsPublicKey,
+        message: String,
     ) -> Result<(), TransactionStorageError>
     {
         let transaction = CompletedTransaction {
@@ -526,7 +527,7 @@ where T: TransactionBackend + 'static
             fee: 0 * uT,
             transaction: Transaction::new(Vec::new(), Vec::new(), Vec::new(), BlindingFactor::default()),
             status: TransactionStatus::Imported,
-            message: "Imported UTXO".to_string(),
+            message,
             timestamp: Utc::now().naive_utc(),
         };
 

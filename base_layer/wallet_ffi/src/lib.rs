@@ -2832,6 +2832,7 @@ pub unsafe extern "C" fn wallet_get_public_key(wallet: *mut TariWallet, error_ou
 /// `amount` - The value of the UTXO in MicroTari
 /// `spending_key` - The private spending key  
 /// `source_public_key` - The public key of the source of the transaction
+/// `message` - The message that the transaction will have
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -2844,6 +2845,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
     amount: c_ulonglong,
     spending_key: *mut TariPrivateKey,
     source_public_key: *mut TariPublicKey,
+    message: *const c_char,
     error_out: *mut c_int,
 ) -> c_ulonglong
 {
@@ -2867,10 +2869,19 @@ pub unsafe extern "C" fn wallet_import_utxo(
         return 0;
     }
 
+    let mut message_string = CString::new("Imported UTXO").unwrap().to_str().unwrap().to_owned();
+    if !message.is_null() {
+        message_string = CStr::from_ptr(message).to_str().unwrap().to_owned();
+    } else {
+        error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
     match (*wallet).import_utxo(
         &MicroTari::from(amount),
         &(*spending_key).clone(),
         &(*source_public_key).clone(),
+        message_string,
     ) {
         Ok(tx_id) => tx_id,
         Err(e) => {
@@ -3453,12 +3464,15 @@ mod test {
 
             let secret_key_base_node = private_key_generate();
             let public_key_base_node = public_key_from_private_key(secret_key_base_node.clone(), error_ptr);
+            let utxo_message_str = CString::new("UTXO Import").unwrap();
+            let utxo_message: *const c_char = CString::into_raw(utxo_message_str) as *const c_char;
 
             let utxo_tx_id = wallet_import_utxo(
                 alice_wallet,
                 utxo_value,
                 utxo_spending_key,
                 public_key_base_node,
+                utxo_message,
                 error_ptr,
             );
 

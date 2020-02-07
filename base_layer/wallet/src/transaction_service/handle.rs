@@ -47,7 +47,7 @@ pub enum TransactionServiceRequest {
     RequestCoinbaseSpendingKey((MicroTari, u64)),
     CompleteCoinbaseTransaction((TxId, Transaction)),
     CancelPendingCoinbaseTransaction(TxId),
-    ImportUtxo(MicroTari, CommsPublicKey),
+    ImportUtxo(MicroTari, CommsPublicKey, String),
     #[cfg(feature = "test_harness")]
     CompletePendingOutboundTransaction(CompletedTransaction),
     #[cfg(feature = "test_harness")]
@@ -251,11 +251,16 @@ impl TransactionServiceHandle {
         &mut self,
         amount: MicroTari,
         source_public_key: CommsPublicKey,
+        message: String,
     ) -> Result<TxId, TransactionServiceError>
     {
         match self
             .handle
-            .call(TransactionServiceRequest::ImportUtxo(amount, source_public_key))
+            .call(TransactionServiceRequest::ImportUtxo(
+                amount,
+                source_public_key,
+                message,
+            ))
             .await??
         {
             TransactionServiceResponse::UtxoImported(tx_id) => Ok(tx_id),

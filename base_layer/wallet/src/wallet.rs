@@ -256,6 +256,7 @@ where
         amount: &MicroTari,
         spending_key: &PrivateKey,
         source_public_key: &CommsPublicKey,
+        message: String,
     ) -> Result<TxId, WalletError>
     {
         let unblinded_output = UnblindedOutput::new(amount.clone(), spending_key.clone(), None);
@@ -263,10 +264,11 @@ where
         self.runtime
             .block_on(self.output_manager_service.add_output(unblinded_output))?;
 
-        let tx_id = self.runtime.block_on(
-            self.transaction_service
-                .import_utxo(amount.clone(), source_public_key.clone()),
-        )?;
+        let tx_id = self.runtime.block_on(self.transaction_service.import_utxo(
+            amount.clone(),
+            source_public_key.clone(),
+            message,
+        ))?;
 
         info!(target: LOG_TARGET, "UTXO imported into wallet");
 

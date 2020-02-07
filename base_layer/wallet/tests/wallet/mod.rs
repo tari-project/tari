@@ -279,7 +279,12 @@ fn test_import_utxo() {
     let utxo = UnblindedOutput::new(20000 * uT, PrivateKey::default(), None);
 
     let tx_id = alice_wallet
-        .import_utxo(&utxo.value, &utxo.spending_key, base_node_identity.public_key())
+        .import_utxo(
+            &utxo.value,
+            &utxo.spending_key,
+            base_node_identity.public_key(),
+            "Testing".to_string(),
+        )
         .unwrap();
 
     let balance = alice_wallet
