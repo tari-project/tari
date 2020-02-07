@@ -116,29 +116,32 @@ extern crate tari_wallet;
 mod callback_handler;
 mod error;
 
+use crate::{callback_handler::CallbackHandler, error::InterfaceError};
+use blake2::Digest;
+use core::ptr;
 use error::LibWalletError;
 use libc::{c_char, c_int, c_longlong, c_uchar, c_uint, c_ulonglong};
+use rand::rngs::OsRng;
 use std::{
     boxed::Box,
     ffi::{CStr, CString},
     slice,
+    sync::Arc,
+    time::Duration,
 };
-use tari_comms::peer_manager::NodeIdentity;
-use tari_core::transactions::tari_amount::MicroTari;
-use tari_crypto::keys::SecretKey;
-use tari_utilities::ByteArray;
-use tari_wallet::wallet::WalletConfig;
-
-use crate::{callback_handler::CallbackHandler, error::InterfaceError};
-use blake2::Digest;
-use core::ptr;
-use rand::rngs::OsRng;
-use std::{sync::Arc, time::Duration};
-use tari_comms::{control_service::ControlServiceConfig, multiaddr::Multiaddr, peer_manager::PeerFeatures};
+use tari_comms::{
+    control_service::ControlServiceConfig,
+    multiaddr::Multiaddr,
+    peer_manager::{NodeIdentity, PeerFeatures},
+};
 use tari_comms_dht::DhtConfig;
-use tari_core::transactions::types::CryptoFactories;
-use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoSchnorr};
-use tari_utilities::hex::Hex;
+use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
+use tari_crypto::{
+    common::Blake256,
+    keys::{PublicKey, SecretKey},
+    ristretto::RistrettoSchnorr,
+};
+use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
     error::WalletError,
@@ -153,6 +156,7 @@ use tari_wallet::{
         receive_test_transaction,
     },
     transaction_service::storage::{database::TransactionDatabase, sqlite_db::TransactionServiceSqliteDatabase},
+    wallet::WalletConfig,
 };
 use tokio::runtime::Runtime;
 
@@ -2820,6 +2824,63 @@ pub unsafe extern "C" fn wallet_get_public_key(wallet: *mut TariWallet, error_ou
     Box::into_raw(Box::new(pk))
 }
 
+/// Import a UTXO into the wallet. This will add a spendable UTXO and create a faux completed transaction to record the
+/// event.
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `amount` - The value of the UTXO in MicroTari
+/// `spending_key` - The private spending key  
+/// `source_public_key` - The public key of the source of the transaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` -  Returns the TransactionID of the generated transaction, note that it will be zero if transaction is
+/// null
+#[no_mangle]
+pub unsafe extern "C" fn wallet_import_utxo(
+    wallet: *mut TariWallet,
+    amount: c_ulonglong,
+    spending_key: *mut TariPrivateKey,
+    source_public_key: *mut TariPublicKey,
+    error_out: *mut c_int,
+) -> c_ulonglong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    if spending_key.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("spending_key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    if source_public_key.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("source_public_key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    match (*wallet).import_utxo(
+        &MicroTari::from(amount),
+        &(*spending_key).clone(),
+        &(*source_public_key).clone(),
+    ) {
+        Ok(tx_id) => tx_id,
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        },
+    }
+}
+
 /// Frees memory for a TariWallet
 ///
 /// ## Arguments
@@ -2845,6 +2906,7 @@ mod test {
     use crate::*;
     use libc::{c_char, c_uchar, c_uint};
     use std::{ffi::CString, sync::Mutex};
+    use tari_core::transactions::tari_amount::uT;
     use tari_wallet::{testnet_utils::random_string, transaction_service::storage::database::TransactionStatus};
     use tempdir::TempDir;
 
@@ -3380,6 +3442,44 @@ mod test {
 
             let contacts = wallet_get_contacts(alice_wallet, error_ptr);
             assert_eq!(contacts_get_length(contacts, error_ptr), 4);
+
+            let utxo_spending_key = private_key_generate();
+            let utxo_value = 20000;
+
+            let pre_balance = (*alice_wallet)
+                .runtime
+                .block_on((*alice_wallet).output_manager_service.get_balance())
+                .unwrap();
+
+            let secret_key_base_node = private_key_generate();
+            let public_key_base_node = public_key_from_private_key(secret_key_base_node.clone(), error_ptr);
+
+            let utxo_tx_id = wallet_import_utxo(
+                alice_wallet,
+                utxo_value,
+                utxo_spending_key,
+                public_key_base_node,
+                error_ptr,
+            );
+
+            let post_balance = (*alice_wallet)
+                .runtime
+                .block_on((*alice_wallet).output_manager_service.get_balance())
+                .unwrap();
+
+            assert_eq!(
+                pre_balance.available_balance + utxo_value * uT,
+                post_balance.available_balance
+            );
+
+            let import_transaction = (*alice_wallet)
+                .runtime
+                .block_on((*alice_wallet).transaction_service.get_completed_transactions())
+                .unwrap()
+                .remove(&utxo_tx_id)
+                .expect("Tx should be in collection");
+
+            assert_eq!(import_transaction.amount, utxo_value * uT);
 
             let lock = CALLBACK_STATE_FFI.lock().unwrap();
             assert!(lock.received_tx_callback_called);

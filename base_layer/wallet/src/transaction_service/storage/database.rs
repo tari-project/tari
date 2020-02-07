@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{output_manager_service::TxId, transaction_service::error::TransactionStorageError};
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, Utc};
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -32,9 +32,9 @@ use std::{
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
-    tari_amount::MicroTari,
+    tari_amount::{uT, MicroTari},
     transaction::Transaction,
-    types::Commitment,
+    types::{BlindingFactor, Commitment},
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
@@ -97,6 +97,8 @@ pub enum TransactionStatus {
     Broadcast,
     /// This transaction has been mined and included in a block.
     Mined,
+    /// This transaction was generated as part of importing a spendable UTXO
+    Imported,
 }
 
 impl TryFrom<i32> for TransactionStatus {
@@ -107,6 +109,7 @@ impl TryFrom<i32> for TransactionStatus {
             0 => Ok(TransactionStatus::Completed),
             1 => Ok(TransactionStatus::Broadcast),
             2 => Ok(TransactionStatus::Mined),
+            3 => Ok(TransactionStatus::Imported),
             _ => Err(TransactionStorageError::ConversionError),
         }
     }
@@ -505,6 +508,39 @@ where T: TransactionBackend + 'static
             .await
             .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
             .and_then(|inner_result| inner_result)
+    }
+
+    pub async fn add_utxo_import_transaction(
+        &mut self,
+        tx_id: TxId,
+        amount: MicroTari,
+        source_public_key: CommsPublicKey,
+        comms_public_key: CommsPublicKey,
+    ) -> Result<(), TransactionStorageError>
+    {
+        let transaction = CompletedTransaction {
+            tx_id: tx_id.clone(),
+            source_public_key: source_public_key.clone(),
+            destination_public_key: comms_public_key.clone(),
+            amount,
+            fee: 0 * uT,
+            transaction: Transaction::new(Vec::new(), Vec::new(), Vec::new(), BlindingFactor::default()),
+            status: TransactionStatus::Imported,
+            message: "Imported UTXO".to_string(),
+            timestamp: Utc::now().naive_utc(),
+        };
+
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || {
+            db_clone.write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
+                tx_id,
+                Box::new(transaction),
+            )))
+        })
+        .await
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+        .and_then(|inner_result| inner_result)?;
+        Ok(())
     }
 }
 

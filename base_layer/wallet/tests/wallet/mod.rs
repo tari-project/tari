@@ -36,6 +36,7 @@ use tari_crypto::keys::PublicKey;
 use tari_p2p::initialization::CommsConfig;
 use tari_test_utils::{collect_stream, paths::with_temp_dir};
 
+use tari_core::transactions::{tari_amount::uT, transaction::UnblindedOutput, types::PrivateKey};
 use tari_wallet::{
     contacts_service::storage::{database::Contact, memory_db::ContactsServiceMemoryDatabase},
     output_manager_service::storage::memory_db::OutputManagerMemoryDatabase,
@@ -44,7 +45,6 @@ use tari_wallet::{
     wallet::WalletConfig,
     Wallet,
 };
-#[cfg(feature = "test_harness")]
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
@@ -225,6 +225,78 @@ fn test_wallet() {
         let got_contacts = runtime.block_on(alice_wallet.contacts_service.get_contacts()).unwrap();
         assert_eq!(contacts, got_contacts);
     });
+}
+
+#[test]
+fn test_import_utxo() {
+    let factories = CryptoFactories::default();
+    let alice_identity = NodeIdentity::random(
+        &mut OsRng,
+        "/ip4/127.0.0.1/tcp/24521".parse().unwrap(),
+        PeerFeatures::COMMUNICATION_NODE,
+    )
+    .unwrap();
+    let base_node_identity = NodeIdentity::random(
+        &mut OsRng,
+        "/ip4/127.0.0.1/tcp/24522".parse().unwrap(),
+        PeerFeatures::COMMUNICATION_NODE,
+    )
+    .unwrap();
+    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let comms_config = CommsConfig {
+        node_identity: Arc::new(alice_identity.clone()),
+        peer_connection_listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
+        socks_proxy_address: None,
+        control_service: ControlServiceConfig {
+            listening_address: alice_identity.public_address(),
+            socks_proxy_address: None,
+            public_peer_address: None,
+            requested_connection_timeout: Duration::from_millis(2000),
+        },
+        datastore_path: temp_dir.path().to_str().unwrap().to_string(),
+        establish_connection_timeout: Duration::from_secs(10),
+        peer_database_name: random_string(8),
+        inbound_buffer_size: 100,
+        outbound_buffer_size: 100,
+        dht: Default::default(),
+    };
+    let config = WalletConfig {
+        comms_config,
+        logging_path: None,
+        factories: factories.clone(),
+    };
+    let runtime_node = Runtime::new().unwrap();
+    let mut alice_wallet = Wallet::new(
+        config,
+        runtime_node,
+        WalletMemoryDatabase::new(),
+        TransactionMemoryDatabase::new(),
+        OutputManagerMemoryDatabase::new(),
+        ContactsServiceMemoryDatabase::new(),
+    )
+    .unwrap();
+
+    let utxo = UnblindedOutput::new(20000 * uT, PrivateKey::default(), None);
+
+    let tx_id = alice_wallet
+        .import_utxo(&utxo.value, &utxo.spending_key, base_node_identity.public_key())
+        .unwrap();
+
+    let balance = alice_wallet
+        .runtime
+        .block_on(alice_wallet.output_manager_service.get_balance())
+        .unwrap();
+
+    assert_eq!(balance.available_balance, 20000 * uT);
+
+    let completed_tx = alice_wallet
+        .runtime
+        .block_on(alice_wallet.transaction_service.get_completed_transactions())
+        .unwrap()
+        .remove(&tx_id)
+        .expect("Tx should be in collection");
+
+    assert_eq!(completed_tx.amount, 20000 * uT);
 }
 
 #[cfg(feature = "test_harness")]

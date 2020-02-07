@@ -28,7 +28,7 @@ use std::{
 };
 use tari_comms::{peer_manager::Peer, types::CommsPublicKey};
 
-const LOG_TARGET: &'static str = "wallet::contacts_service::database";
+const LOG_TARGET: &'static str = "wallet::database";
 
 /// This trait defines the functionality that a database backend need to provide for the Contacts Service
 pub trait WalletBackend: Send + Sync {

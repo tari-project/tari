@@ -62,6 +62,7 @@ impl ContactsServiceSqliteDatabase {
         let pool = diesel::r2d2::Pool::builder()
             .connection_timeout(Duration::from_millis(DATABASE_CONNECTION_TIMEOUT_MS))
             .idle_timeout(Some(Duration::from_millis(DATABASE_CONNECTION_TIMEOUT_MS)))
+            .max_size(1)
             .build(manager)
             .map_err(|_| ContactsServiceStorageError::R2d2Error)?;
 

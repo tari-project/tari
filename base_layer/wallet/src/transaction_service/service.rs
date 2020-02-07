@@ -390,6 +390,10 @@ where
                 .set_base_node_public_key(public_key, broadcast_timeout_futures, mined_request_timeout_futures)
                 .await
                 .map(|_| TransactionServiceResponse::BaseNodePublicKeySet),
+            TransactionServiceRequest::ImportUtxo(value, source_public_key) => self
+                .add_utxo_import_transaction(value, source_public_key)
+                .await
+                .map(|tx_id| TransactionServiceResponse::UtxoImported(tx_id)),
             #[cfg(feature = "test_harness")]
             TransactionServiceRequest::CompletePendingOutboundTransaction(completed_transaction) => {
                 self.complete_pending_outbound_transaction(completed_transaction)
@@ -1232,6 +1236,25 @@ where
         }
 
         Ok(())
+    }
+
+    /// Add a completed transaction to the Transaction Manager to record directly importing a spendable UTXO.
+    pub async fn add_utxo_import_transaction(
+        &mut self,
+        value: MicroTari,
+        source_public_key: CommsPublicKey,
+    ) -> Result<TxId, TransactionServiceError>
+    {
+        let tx_id = OsRng.next_u64();
+        self.db
+            .add_utxo_import_transaction(
+                tx_id.clone(),
+                value,
+                source_public_key,
+                self.node_identity.public_key().clone(),
+            )
+            .await?;
+        Ok(tx_id)
     }
 
     /// This function is only available for testing by the client of LibWallet. It simulates a receiver accepting and

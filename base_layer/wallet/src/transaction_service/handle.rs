@@ -47,6 +47,7 @@ pub enum TransactionServiceRequest {
     RequestCoinbaseSpendingKey((MicroTari, u64)),
     CompleteCoinbaseTransaction((TxId, Transaction)),
     CancelPendingCoinbaseTransaction(TxId),
+    ImportUtxo(MicroTari, CommsPublicKey),
     #[cfg(feature = "test_harness")]
     CompletePendingOutboundTransaction(CompletedTransaction),
     #[cfg(feature = "test_harness")]
@@ -70,6 +71,7 @@ pub enum TransactionServiceResponse {
     CompletedCoinbaseTransactionReceived,
     CoinbaseTransactionCancelled,
     BaseNodePublicKeySet,
+    UtxoImported(TxId),
     #[cfg(feature = "test_harness")]
     CompletedPendingTransaction,
     #[cfg(feature = "test_harness")]
@@ -241,6 +243,22 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::BaseNodePublicKeySet => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn import_utxo(
+        &mut self,
+        amount: MicroTari,
+        source_public_key: CommsPublicKey,
+    ) -> Result<TxId, TransactionServiceError>
+    {
+        match self
+            .handle
+            .call(TransactionServiceRequest::ImportUtxo(amount, source_public_key))
+            .await??
+        {
+            TransactionServiceResponse::UtxoImported(tx_id) => Ok(tx_id),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

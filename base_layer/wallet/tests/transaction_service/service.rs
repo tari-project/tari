@@ -385,30 +385,28 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
 
 #[test]
 fn manage_single_transaction_memory_db() {
-    with_temp_dir(|dir_path| {
-        manage_single_transaction(
-            TransactionMemoryDatabase::new(),
-            TransactionMemoryDatabase::new(),
-            2,
-            dir_path.to_str().unwrap().to_string(),
-        );
-    });
+    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    manage_single_transaction(
+        TransactionMemoryDatabase::new(),
+        TransactionMemoryDatabase::new(),
+        2,
+        temp_dir.path().to_str().unwrap().to_string(),
+    );
 }
 
 #[test]
 fn manage_single_transaction_sqlite_db() {
-    with_temp_dir(|dir_path| {
-        let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
-        let alice_db_path = format!("{}/{}", dir_path.to_str().unwrap(), alice_db_name);
-        let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
-        let bob_db_path = format!("{}/{}", dir_path.to_str().unwrap(), bob_db_name);
-        manage_single_transaction(
-            TransactionServiceSqliteDatabase::new(alice_db_path).unwrap(),
-            TransactionServiceSqliteDatabase::new(bob_db_path).unwrap(),
-            1,
-            dir_path.to_str().unwrap().to_string(),
-        );
-    });
+    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let alice_db_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), alice_db_name);
+    let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let bob_db_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), bob_db_name);
+    manage_single_transaction(
+        TransactionServiceSqliteDatabase::new(alice_db_path).unwrap(),
+        TransactionServiceSqliteDatabase::new(bob_db_path).unwrap(),
+        1,
+        temp_dir.path().to_str().unwrap().to_string(),
+    );
 }
 
 fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
@@ -593,35 +591,35 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
 
 #[test]
 fn manage_multiple_transactions_memory_db() {
-    with_temp_dir(|dir_path| {
-        manage_multiple_transactions(
-            TransactionMemoryDatabase::new(),
-            TransactionMemoryDatabase::new(),
-            TransactionMemoryDatabase::new(),
-            0,
-            dir_path.to_str().unwrap().to_string(),
-        );
-    });
+    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+
+    manage_multiple_transactions(
+        TransactionMemoryDatabase::new(),
+        TransactionMemoryDatabase::new(),
+        TransactionMemoryDatabase::new(),
+        0,
+        temp_dir.path().to_str().unwrap().to_string(),
+    );
 }
 
 #[test]
 fn manage_multiple_transactions_sqlite_db() {
-    with_temp_dir(|dir_path| {
-        let path_string = dir_path.to_str().unwrap().to_string();
-        let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
-        let alice_db_path = format!("{}/{}", path_string, alice_db_name);
-        let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
-        let bob_db_path = format!("{}/{}", path_string, bob_db_name);
-        let carol_db_name = format!("{}.sqlite3", random_string(8).as_str());
-        let carol_db_path = format!("{}/{}", path_string, carol_db_name);
-        manage_multiple_transactions(
-            TransactionServiceSqliteDatabase::new(alice_db_path).unwrap(),
-            TransactionServiceSqliteDatabase::new(bob_db_path).unwrap(),
-            TransactionServiceSqliteDatabase::new(carol_db_path).unwrap(),
-            1,
-            path_string,
-        );
-    });
+    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+
+    let path_string = temp_dir.path().to_str().unwrap().to_string();
+    let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let alice_db_path = format!("{}/{}", path_string, alice_db_name);
+    let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let bob_db_path = format!("{}/{}", path_string, bob_db_name);
+    let carol_db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let carol_db_path = format!("{}/{}", path_string, carol_db_name);
+    manage_multiple_transactions(
+        TransactionServiceSqliteDatabase::new(alice_db_path).unwrap(),
+        TransactionServiceSqliteDatabase::new(bob_db_path).unwrap(),
+        TransactionServiceSqliteDatabase::new(carol_db_path).unwrap(),
+        1,
+        path_string,
+    );
 }
 
 fn test_sending_repeated_tx_ids<T: TransactionBackend + Clone + 'static>(alice_backend: T, bob_backend: T) {
