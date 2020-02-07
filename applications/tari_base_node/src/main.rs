@@ -127,7 +127,7 @@ fn main() {
     };
 
     // Build, node, build!
-    let (comms, node, mut miner, mut base_node_context) =
+    let (comms, node, mut miner, base_node_context) =
         match builder::configure_and_initialize_node(&node_config, node_id, &mut rt) {
             Ok(n) => n,
             Err(e) => {

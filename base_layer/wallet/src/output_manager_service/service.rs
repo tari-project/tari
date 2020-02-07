@@ -32,7 +32,7 @@ use crate::{
 use futures::{pin_mut, StreamExt};
 use log::*;
 use rand::rngs::OsRng;
-use std::{collections::HashMap, sync::Mutex, time::Duration};
+use std::{collections::HashMap, fmt, sync::Mutex, time::Duration};
 use tari_core::transactions::{
     fee::Fee,
     tari_amount::MicroTari,
@@ -482,4 +482,14 @@ pub struct Balance {
     pub pending_incoming_balance: MicroTari,
     /// The current balance of funds encumbered in pending outbound transactions that have not been confirmed
     pub pending_outgoing_balance: MicroTari,
+}
+
+impl fmt::Display for Balance {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "You current balance is:")?;
+        write!(f, "Available balance: {}", self.available_balance)?;
+        write!(f, "Pending incoming balance: {}", self.pending_incoming_balance)?;
+        write!(f, "Pending outgoing balance: {}", self.pending_outgoing_balance)?;
+        Ok(())
+    }
 }
