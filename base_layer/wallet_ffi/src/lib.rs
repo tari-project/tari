@@ -146,7 +146,7 @@ use tari_wallet::{
     contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
     error::WalletError,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
-    storage::sqlite_db::WalletSqliteDatabase,
+    storage::{connection_manager::run_migration_and_create_connection_pool, sqlite_db::WalletSqliteDatabase},
     testnet_utils::{
         broadcast_transaction,
         complete_sent_transaction,
@@ -1738,10 +1738,12 @@ pub unsafe extern "C" fn wallet_create(
                 (*config).peer_database_name.clone()
             )
             .to_string();
-            let wallet_backend = WalletSqliteDatabase::new(sql_database_path.clone()).unwrap();
-            let transaction_backend = TransactionServiceSqliteDatabase::new(sql_database_path.clone()).unwrap();
-            let output_manager_backend = OutputManagerSqliteDatabase::new(sql_database_path.clone()).unwrap();
-            let contacts_backend = ContactsServiceSqliteDatabase::new(sql_database_path.clone()).unwrap();
+            let connection_pool = run_migration_and_create_connection_pool(sql_database_path.clone())
+                .expect("Could not create Sqlite Connection Pool");
+            let wallet_backend = WalletSqliteDatabase::new(connection_pool.clone());
+            let transaction_backend = TransactionServiceSqliteDatabase::new(connection_pool.clone());
+            let output_manager_backend = OutputManagerSqliteDatabase::new(connection_pool.clone());
+            let contacts_backend = ContactsServiceSqliteDatabase::new(connection_pool.clone());
 
             w = TariWallet::new(
                 WalletConfig {

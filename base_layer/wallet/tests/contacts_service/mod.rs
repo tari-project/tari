@@ -26,15 +26,18 @@ use tari_core::transactions::types::PublicKey;
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_service_framework::StackBuilder;
 use tari_shutdown::Shutdown;
-use tari_wallet::contacts_service::{
-    error::{ContactsServiceError, ContactsServiceStorageError},
-    handle::ContactsServiceHandle,
-    storage::{
-        database::{Contact, ContactsBackend, ContactsDatabase, DbKey},
-        memory_db::ContactsServiceMemoryDatabase,
-        sqlite_db::ContactsServiceSqliteDatabase,
+use tari_wallet::{
+    contacts_service::{
+        error::{ContactsServiceError, ContactsServiceStorageError},
+        handle::ContactsServiceHandle,
+        storage::{
+            database::{Contact, ContactsBackend, ContactsDatabase, DbKey},
+            memory_db::ContactsServiceMemoryDatabase,
+            sqlite_db::ContactsServiceSqliteDatabase,
+        },
+        ContactsServiceInitializer,
     },
-    ContactsServiceInitializer,
+    storage::connection_manager::run_migration_and_create_connection_pool,
 };
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
@@ -179,7 +182,7 @@ fn contacts_service_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
     let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    test_contacts_service(
-        ContactsServiceSqliteDatabase::new(format!("{}/{}", db_folder, db_name).to_string()).unwrap(),
-    );
+    let connection_pool =
+        run_migration_and_create_connection_pool(format!("{}/{}", db_folder, db_name).to_string()).unwrap();
+    test_contacts_service(ContactsServiceSqliteDatabase::new(connection_pool));
 }

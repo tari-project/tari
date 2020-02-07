@@ -82,6 +82,7 @@ use tari_wallet::{
         storage::sqlite_db::OutputManagerSqliteDatabase,
         OutputManagerServiceInitializer,
     },
+    storage::connection_manager::run_migration_and_create_connection_pool,
     transaction_service::{
         config::TransactionServiceConfig,
         handle::TransactionServiceHandle,
@@ -436,6 +437,10 @@ where
             .add_peer(p)
             .expect("Could not add peer to comms layer");
     }
+    let connection_pool = run_migration_and_create_connection_pool(
+        wallet_db_folder.to_str().expect("could not create db path").to_string(),
+    )
+    .expect("Could not create Sqlite database or Connection Manager");
 
     let fut = StackBuilder::new(rt.handle().clone(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
@@ -447,17 +452,13 @@ where
             node_config,
         ))
         .add_initializer(OutputManagerServiceInitializer::new(
-            OutputManagerSqliteDatabase::new(wallet_db_folder.to_str().expect("could not create db path").to_string())
-                .expect("could not create sql db"),
+            OutputManagerSqliteDatabase::new(connection_pool.clone()),
             factories.clone(),
         ))
         .add_initializer(TransactionServiceInitializer::new(
             TransactionServiceConfig::default(),
             subscription_factory,
-            TransactionServiceSqliteDatabase::new(
-                wallet_db_folder.to_str().expect("could not create db path").to_string(),
-            )
-            .expect("Problem initializing wallet transaction service"),
+            TransactionServiceSqliteDatabase::new(connection_pool.clone()),
             id.clone(),
             factories.clone(),
         ))

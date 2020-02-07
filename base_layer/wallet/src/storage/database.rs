@@ -185,6 +185,7 @@ mod test {
     use crate::{
         error::WalletStorageError,
         storage::{
+            connection_manager::run_migration_and_create_connection_pool,
             database::{DbKey, WalletBackend, WalletDatabase},
             memory_db::WalletMemoryDatabase,
             sqlite_db::WalletSqliteDatabase,
@@ -267,7 +268,9 @@ mod test {
             .to_str()
             .unwrap()
             .to_string();
+        let connection_pool =
+            run_migration_and_create_connection_pool(format!("{}{}", db_folder, db_name).to_string()).unwrap();
 
-        test_database_crud(WalletSqliteDatabase::new(format!("{}{}", db_folder, db_name).to_string()).unwrap());
+        test_database_crud(WalletSqliteDatabase::new(connection_pool));
     }
 }
