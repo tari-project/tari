@@ -184,8 +184,8 @@ fn request_and_response_fetch_utxos() {
     let (mut alice_node, bob_node, carol_node) =
         create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
 
-    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories);
-    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories);
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
     let hash1 = utxo1.hash();
     let hash2 = utxo2.hash();
 

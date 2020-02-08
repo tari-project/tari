@@ -114,7 +114,7 @@ fn insert_and_fetch_header() {
 fn insert_and_fetch_utxo() {
     let factories = CryptoFactories::default();
     let store = create_mem_db();
-    let (utxo, _) = create_utxo(MicroTari(10_000), &factories);
+    let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
     let hash = utxo.hash();
     assert_eq!(store.is_utxo(hash.clone()).unwrap(), false);
     let mut txn = DbTransaction::new();
@@ -181,8 +181,8 @@ fn utxo_and_rp_merkle_root() {
         &root.to_hex(),
         "26146a5435ef15e8cf7dc3354cb7268137e8be211794e93d04551576c6561565"
     );
-    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories);
-    let (utxo2, _) = create_utxo(MicroTari(10_000), &factories);
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (utxo2, _) = create_utxo(MicroTari(10_000), &factories, None);
     let hash1 = utxo1.hash();
     let hash2 = utxo2.hash();
     // Calculate the Range proof MMR root as a check
@@ -236,8 +236,8 @@ fn utxo_and_rp_future_merkle_root() {
     let store = create_mem_db();
     let factories = CryptoFactories::default();
 
-    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories);
-    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories);
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
     let utxo_hash2 = utxo2.hash();
     let rp_hash2 = utxo2.proof.hash();
 
@@ -300,9 +300,9 @@ fn utxo_and_rp_mmr_proof() {
     let store = create_mem_db();
     let factories = CryptoFactories::default();
 
-    let (utxo1, _) = create_utxo(MicroTari(5_000), &factories);
-    let (utxo2, _) = create_utxo(MicroTari(10_000), &factories);
-    let (utxo3, _) = create_utxo(MicroTari(15_000), &factories);
+    let (utxo1, _) = create_utxo(MicroTari(5_000), &factories, None);
+    let (utxo2, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (utxo3, _) = create_utxo(MicroTari(15_000), &factories, None);
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo1.clone(), true);
     txn.insert_utxo(utxo2.clone(), true);
@@ -731,9 +731,9 @@ fn total_kernel_offset() {
 fn total_utxo_commitment() {
     let factories = CryptoFactories::default();
     let store = create_mem_db();
-    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories);
-    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories);
-    let (utxo3, _) = create_utxo(MicroTari(20_000), &factories);
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
+    let (utxo3, _) = create_utxo(MicroTari(20_000), &factories, None);
 
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo1.clone(), true);

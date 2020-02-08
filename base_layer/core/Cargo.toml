@@ -15,6 +15,7 @@ transactions = []
 mempool_proto = []
 base_node = []
 base_node_proto = []
+avx2 = ["tari_crypto/avx2"]
 
 [dependencies]
 tari_comms = { version = "^0.0", path = "../../comms"}

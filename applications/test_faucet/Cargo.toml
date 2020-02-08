@@ -1,0 +1,24 @@
+[package]
+name = "test_faucet"
+version = "0.0.1"
+authors = ["The Tari Development Community"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tari_utilities = "0.1.0"
+serde = { version = "1.0.97", features = ["derive"] }
+serde_json = "1.0"
+rand = "0.7.2"
+
+[dependencies.tari_core]
+version = "0.0.5"
+path = "../../base_layer/core/"
+default-features = false
+features = ["transactions", "avx2"]
+
+[dependencies.tokio]
+version = "^0.2.10"
+default-features = false
+features = ["fs", "blocking", "stream", "rt-threaded", "macros", "io-util", "sync"]
