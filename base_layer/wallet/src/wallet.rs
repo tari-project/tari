@@ -37,6 +37,7 @@ use crate::{
         TransactionServiceInitializer,
     },
 };
+use blake2::Digest;
 use log::{LevelFilter, *};
 use log4rs::{
     append::file::FileAppender,
@@ -56,6 +57,11 @@ use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::UnblindedOutput,
     types::{CryptoFactories, PrivateKey},
+};
+use tari_crypto::{
+    common::Blake256,
+    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+    signatures::{SchnorrSignature, SchnorrSignatureError},
 };
 use tari_p2p::{
     comms_connector::pubsub_connector,
@@ -273,5 +279,30 @@ where
         info!(target: LOG_TARGET, "UTXO imported into wallet");
 
         Ok(tx_id)
+    }
+
+    pub fn sign_message(
+        &mut self,
+        secret: RistrettoSecretKey,
+        nonce: RistrettoSecretKey,
+        message: &str,
+    ) -> Result<SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>, SchnorrSignatureError>
+    {
+        let challenge = Blake256::digest(message.clone().as_bytes());
+        let signature = RistrettoSchnorr::sign(secret, nonce, challenge.clone().as_slice());
+        signature
+    }
+
+    pub fn verify_message_signature(
+        &mut self,
+        public_key: RistrettoPublicKey,
+        public_nonce: RistrettoPublicKey,
+        signature: RistrettoSecretKey,
+        message: String,
+    ) -> bool
+    {
+        let signature = RistrettoSchnorr::new(public_nonce, signature);
+        let challenge = Blake256::digest(message.clone().as_bytes());
+        signature.verify_challenge(&public_key, challenge.clone().as_slice())
     }
 }

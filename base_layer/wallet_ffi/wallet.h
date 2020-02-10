@@ -106,6 +106,12 @@ struct TariPublicKey *public_key_from_hex(const char *hex,int* error_out);
 // Frees memory for a TariPublicKey pointer
 void public_key_destroy(struct TariPublicKey *pk);
 
+//Converts a TariPublicKey to char array in emoji format
+char *public_key_to_emoji(struct TariPublicKey *pk, int* error_out);
+
+//Converts a char array in emoji format to a TariPublicKey
+struct TariPublicKey *public_key_from_emoji(const char* emoji, int* error_out);
+
 /// -------------------------------- TariPrivateKey ----------------------------------------------- ///
 
 // Creates a TariPrivateKey from a ByteVector
@@ -117,7 +123,7 @@ struct TariPrivateKey *private_key_generate(void);
 // Creates a ByteVector from a TariPrivateKey
 struct ByteVector *private_key_get_bytes(struct TariPrivateKey *private_key,int* error_out);
 
-// Creates a TariPrivateKey from a const char* filled with hexadecimal charaters
+// Creates a TariPrivateKey from a const char* filled with hexadecimal characters
 struct TariPrivateKey *private_key_from_hex(const char *hex,int* error_out);
 
 // Frees memory for a TariPrivateKey
@@ -288,7 +294,7 @@ struct TariWallet *wallet_create(struct TariWalletConfig *config,
 char* wallet_sign_message(struct TariWallet *wallet, const char* msg, int* error_out);
 
 // Verifies signature for a signed message
-bool wallet_verify_message_signature(struct TariPublicKey *public_key, const char* hex_sig_nonce, const char* msg, int* error_out);
+bool wallet_verify_message_signature(struct TariWallet *wallet, struct TariPublicKey *public_key, const char* hex_sig_nonce, const char* msg, int* error_out);
 
 /// Generates test data
 bool wallet_test_generate_data(struct TariWallet *wallet, char *datastore_path,int* error_out);
