@@ -63,7 +63,7 @@ use tokio::runtime::Runtime;
 
 #[test]
 fn test_insert_and_process_published_block() {
-    let (mut store, mut blocks, mut outputs) = create_new_blockchain();
+    let (mut store, mut blocks, mut outputs, _) = create_new_blockchain();
     let mempool_validator = MempoolValidators::new(
         TxInputAndMaturityValidator::new(store.clone()),
         TxInputAndMaturityValidator::new(store.clone()),
@@ -207,7 +207,7 @@ fn test_insert_and_process_published_block() {
 
 #[test]
 fn test_retrieve() {
-    let (mut store, mut blocks, mut outputs) = create_new_blockchain();
+    let (mut store, mut blocks, mut outputs, _) = create_new_blockchain();
     let mempool_validator = MempoolValidators::new(
         TxInputAndMaturityValidator::new(store.clone()),
         TxInputAndMaturityValidator::new(store.clone()),
@@ -296,7 +296,7 @@ fn test_retrieve() {
 
 #[test]
 fn test_reorg() {
-    let (mut db, mut blocks, mut outputs) = create_new_blockchain();
+    let (mut db, mut blocks, mut outputs, _) = create_new_blockchain();
     let mempool_validator = MempoolValidators::new(
         TxInputAndMaturityValidator::new(db.clone()),
         TxInputAndMaturityValidator::new(db.clone()),
@@ -356,7 +356,7 @@ fn test_reorg() {
 
 #[test]
 fn test_orphaned_mempool_transactions() {
-    let (store, mut blocks, mut outputs) = create_new_blockchain();
+    let (store, mut blocks, mut outputs, _) = create_new_blockchain();
     // A parallel store that will "mine" the orphan chain
     let mut miner = create_mem_db();
     miner.add_block(blocks[0].clone()).unwrap();

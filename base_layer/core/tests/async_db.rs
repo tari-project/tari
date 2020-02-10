@@ -173,7 +173,7 @@ fn fetch_async_block() {
 
 #[test]
 fn async_add_new_block() {
-    let (db, blocks, outputs) = create_new_blockchain();
+    let (db, blocks, outputs, _) = create_new_blockchain();
     let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![20 * T, 20 * T])];
     let txns = schema_to_transaction(&schema)
         .0

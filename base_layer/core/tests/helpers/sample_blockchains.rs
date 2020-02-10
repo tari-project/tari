@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use crate::helpers::block_builders::{create_genesis_block, generate_new_block};
+use crate::helpers::block_builders::{create_genesis_block, create_genesis_block_with_utxos, generate_new_block};
 
 use tari_core::{
     blocks::Block,
@@ -34,6 +34,7 @@ use tari_core::{
     txn_schema,
     validation::mocks::MockValidator,
 };
+use tari_utilities::epoch_time::EpochTime;
 
 /// Create a simple 6 block memory-backed database.
 /// Genesis block:
@@ -77,7 +78,7 @@ pub fn create_blockchain_db_no_cut_through() -> (
     Vec<Block>,
     Vec<Vec<UnblindedOutput>>,
 ) {
-    let (mut db, mut blocks, mut outputs) = create_new_blockchain();
+    let (mut db, mut blocks, mut outputs, _) = create_new_blockchain();
     // Block 1
     let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![60*T], fee: 100*uT)];
     assert!(generate_new_block(&mut db, &mut blocks, &mut outputs, txs).is_ok());
@@ -120,6 +121,7 @@ pub fn create_new_blockchain() -> (
     BlockchainDatabase<MemoryDatabase<HashDigest>>,
     Vec<Block>,
     Vec<Vec<UnblindedOutput>>,
+    CryptoFactories,
 ) {
     let factories = CryptoFactories::default();
     // We may need move this to the parameters to provide more fine-grained validator control
@@ -135,9 +137,9 @@ pub fn create_new_blockchain() -> (
     let mut outputs = Vec::new();
     let mut blocks = Vec::new();
     // Genesis Block
-    let (block0, utxo) = create_genesis_block(&db, &factories);
+    let (mut block0, utxo) = create_genesis_block_with_utxos(&db, &factories, &[10 * T]);
     db.add_block(block0.clone()).unwrap();
     blocks.push(block0);
-    outputs.push(vec![utxo]);
-    (db, blocks, outputs)
+    outputs.push(utxo);
+    (db, blocks, outputs, factories)
 }

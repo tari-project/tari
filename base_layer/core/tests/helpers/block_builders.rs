@@ -137,7 +137,7 @@ where
     let mut block = db
         .calculate_mmr_roots(block)
         .expect("Could not generate genesis block MMRs");
-    find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
+    mine_header_at_achieved_difficulty(&mut block.header, Difficulty::from(1));
     (block, output)
 }
 
@@ -161,7 +161,7 @@ where
     let mut block = db
         .calculate_mmr_roots(template)
         .expect("Could not generate genesis block MMRs");
-    find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
+    mine_header_at_achieved_difficulty(&mut block.header, Difficulty::from(1));
     (block, outputs)
 }
 
@@ -262,23 +262,15 @@ pub fn generate_new_block_with_coinbase(
     coinbase_value: MicroTari,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
-    let mut txns = Vec::new();
-    let mut block_utxos = Vec::new();
-    let mut keys = Vec::new();
-    for schema in schemas {
-        let (tx, mut utxos, param) = spend_utxos(schema);
-        txns.push(tx);
-        block_utxos.append(&mut utxos);
-        keys.push(param);
+    let block = calculate_new_block(db, factories, blocks, outputs, schemas, coinbase_value)?;
+    let result = db.add_block(block.clone());
+    if let Ok(BlockAddResult::Ok) = result {
+        blocks.push(block);
     }
-    let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(factories, coinbase_value);
-    block_utxos.push(coinbase_output);
-
-    outputs.push(block_utxos);
-    generate_block_with_coinbase(db, blocks, txns, coinbase_utxo, coinbase_kernel)
+    result
 }
 
-pub fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_difficulty: Difficulty) {
+pub fn mine_header_at_achieved_difficulty(header: &mut BlockHeader, achieved_difficulty: Difficulty) {
     while header.achieved_difficulty() != achieved_difficulty {
         header.nonce += 1;
     }
@@ -312,7 +304,7 @@ pub fn generate_block_with_achieved_difficulty(
 {
     let template = chain_block(&blocks.last().unwrap(), transactions);
     let mut new_block = db.calculate_mmr_roots(template)?;
-    find_header_with_achieved_difficulty(&mut new_block.header, achieved_difficulty);
+    mine_header_at_achieved_difficulty(&mut new_block.header, achieved_difficulty);
     let result = db.add_block(new_block.clone());
     if let Ok(BlockAddResult::Ok) = result {
         blocks.push(new_block);

@@ -346,7 +346,7 @@ fn kernel_mmr_proof() {
 #[test]
 fn store_and_retrieve_block() {
     // Create new database
-    let (store, blocks, _) = create_new_blockchain();
+    let (store, blocks, _, _) = create_new_blockchain();
     let hash = blocks[0].hash();
     // Check the metadata
     let metadata = store.get_metadata().unwrap();
@@ -463,7 +463,7 @@ fn handle_tip_reorg() {
     // reorged to GB->A1->B2
 
     // Create Main Chain
-    let (mut store, mut blocks, mut outputs) = create_new_blockchain();
+    let (mut store, mut blocks, mut outputs, _) = create_new_blockchain();
     // Block A1
     let txs = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
@@ -526,7 +526,7 @@ fn handle_reorg() {
     // added to the blockchain then a reorg is triggered and the main chain is reorganized to GB->A1->B2->B3->C4.
 
     // Create Main Chain
-    let (mut store, mut blocks, mut outputs) = create_new_blockchain();
+    let (mut store, mut blocks, mut outputs, _) = create_new_blockchain();
     // Block A1
     let txs = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
