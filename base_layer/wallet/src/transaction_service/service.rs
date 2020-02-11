@@ -390,8 +390,8 @@ where
                 .set_base_node_public_key(public_key, broadcast_timeout_futures, mined_request_timeout_futures)
                 .await
                 .map(|_| TransactionServiceResponse::BaseNodePublicKeySet),
-            TransactionServiceRequest::ImportUtxo(value, source_public_key) => self
-                .add_utxo_import_transaction(value, source_public_key)
+            TransactionServiceRequest::ImportUtxo(value, source_public_key, message) => self
+                .add_utxo_import_transaction(value, source_public_key, message)
                 .await
                 .map(|tx_id| TransactionServiceResponse::UtxoImported(tx_id)),
             #[cfg(feature = "test_harness")]
@@ -1243,6 +1243,7 @@ where
         &mut self,
         value: MicroTari,
         source_public_key: CommsPublicKey,
+        message: String,
     ) -> Result<TxId, TransactionServiceError>
     {
         let tx_id = OsRng.next_u64();
@@ -1252,6 +1253,7 @@ where
                 value,
                 source_public_key,
                 self.node_identity.public_key().clone(),
+                message,
             )
             .await?;
         Ok(tx_id)
