@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,7 +20,36 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod connection_manager;
-pub mod database;
-pub mod memory_db;
-pub mod sqlite_db;
+use crate::error::WalletStorageError;
+use diesel::{
+    r2d2::{ConnectionManager, Pool},
+    Connection,
+    SqliteConnection,
+};
+use std::{io, path::Path, time::Duration};
+
+const DATABASE_CONNECTION_TIMEOUT_MS: u64 = 2000;
+
+pub fn run_migration_and_create_connection_pool(
+    database_path: String,
+) -> Result<Pool<ConnectionManager<SqliteConnection>>, WalletStorageError> {
+    let db_exists = Path::new(&database_path).exists();
+
+    let connection = SqliteConnection::establish(&database_path)?;
+
+    connection.execute("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 60000;")?;
+    if !db_exists {
+        embed_migrations!("./migrations");
+        embedded_migrations::run_with_output(&connection, &mut io::stdout())
+            .map_err(|err| WalletStorageError::DatabaseMigrationError(format!("Database migration failed {}", err)))?;
+    }
+    drop(connection);
+
+    let manager = ConnectionManager::<SqliteConnection>::new(database_path);
+    Ok(diesel::r2d2::Pool::builder()
+        .connection_timeout(Duration::from_millis(DATABASE_CONNECTION_TIMEOUT_MS))
+        .idle_timeout(Some(Duration::from_millis(DATABASE_CONNECTION_TIMEOUT_MS)))
+        .max_size(1)
+        .build(manager)
+        .map_err(|_| WalletStorageError::R2d2Error)?)
+}

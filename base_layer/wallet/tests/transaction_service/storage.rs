@@ -35,18 +35,21 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
 };
-use tari_wallet::transaction_service::storage::{
-    database::{
-        CompletedTransaction,
-        InboundTransaction,
-        OutboundTransaction,
-        PendingCoinbaseTransaction,
-        TransactionBackend,
-        TransactionDatabase,
-        TransactionStatus,
+use tari_wallet::{
+    storage::connection_manager::run_migration_and_create_connection_pool,
+    transaction_service::storage::{
+        database::{
+            CompletedTransaction,
+            InboundTransaction,
+            OutboundTransaction,
+            PendingCoinbaseTransaction,
+            TransactionBackend,
+            TransactionDatabase,
+            TransactionStatus,
+        },
+        memory_db::TransactionMemoryDatabase,
+        sqlite_db::TransactionServiceSqliteDatabase,
     },
-    memory_db::TransactionMemoryDatabase,
-    sqlite_db::TransactionServiceSqliteDatabase,
 };
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
@@ -300,5 +303,6 @@ pub fn test_transaction_service_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    test_db_backend(TransactionServiceSqliteDatabase::new(db_path).unwrap());
+    let connection_pool = run_migration_and_create_connection_pool(db_path).unwrap();
+    test_db_backend(TransactionServiceSqliteDatabase::new(connection_pool));
 }

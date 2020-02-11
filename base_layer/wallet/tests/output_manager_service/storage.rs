@@ -30,13 +30,16 @@ use tari_core::transactions::{
     types::{CryptoFactories, PrivateKey},
 };
 use tari_crypto::keys::SecretKey;
-use tari_wallet::output_manager_service::{
-    service::Balance,
-    storage::{
-        database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
-        memory_db::OutputManagerMemoryDatabase,
-        sqlite_db::OutputManagerSqliteDatabase,
+use tari_wallet::{
+    output_manager_service::{
+        service::Balance,
+        storage::{
+            database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
+            memory_db::OutputManagerMemoryDatabase,
+            sqlite_db::OutputManagerSqliteDatabase,
+        },
     },
+    storage::connection_manager::run_migration_and_create_connection_pool,
 };
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
@@ -279,7 +282,9 @@ pub fn test_output_manager_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
     let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    test_db_backend(OutputManagerSqliteDatabase::new(format!("{}/{}", db_folder, db_name).to_string()).unwrap());
+    let connection_pool =
+        run_migration_and_create_connection_pool(format!("{}/{}", db_folder, db_name).to_string()).unwrap();
+    test_db_backend(OutputManagerSqliteDatabase::new(connection_pool));
 }
 
 pub fn test_key_manager_crud<T: OutputManagerBackend + 'static>(backend: T) {
@@ -328,5 +333,7 @@ pub fn test_key_manager_crud_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
     let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    test_key_manager_crud(OutputManagerSqliteDatabase::new(format!("{}/{}", db_folder, db_name).to_string()).unwrap());
+    let connection_pool =
+        run_migration_and_create_connection_pool(format!("{}/{}", db_folder, db_name).to_string()).unwrap();
+    test_key_manager_crud(OutputManagerSqliteDatabase::new(connection_pool));
 }

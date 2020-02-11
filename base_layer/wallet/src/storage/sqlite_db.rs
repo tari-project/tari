@@ -31,42 +31,19 @@ use diesel::{
     result::Error as DieselError,
     SqliteConnection,
 };
-use std::{convert::TryFrom, io, path::Path, time::Duration};
+use std::convert::TryFrom;
 use tari_comms::peer_manager::Peer;
 use tari_utilities::ByteArray;
-
-const DATABASE_CONNECTION_TIMEOUT_MS: u64 = 2000;
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 pub struct WalletSqliteDatabase {
     database_connection_pool: Pool<ConnectionManager<SqliteConnection>>,
 }
 impl WalletSqliteDatabase {
-    pub fn new(database_path: String) -> Result<Self, WalletStorageError> {
-        let db_exists = Path::new(&database_path).exists();
-
-        let connection = SqliteConnection::establish(&database_path)?;
-
-        connection.execute("PRAGMA foreign_keys = ON")?;
-        if !db_exists {
-            embed_migrations!("./migrations");
-            embedded_migrations::run_with_output(&connection, &mut io::stdout()).map_err(|err| {
-                WalletStorageError::DatabaseMigrationError(format!("Database migration failed {}", err))
-            })?;
+    pub fn new(database_connection_pool: Pool<ConnectionManager<SqliteConnection>>) -> Self {
+        Self {
+            database_connection_pool,
         }
-        drop(connection);
-
-        let manager = ConnectionManager::<SqliteConnection>::new(database_path);
-        let pool = diesel::r2d2::Pool::builder()
-            .connection_timeout(Duration::from_millis(DATABASE_CONNECTION_TIMEOUT_MS))
-            .idle_timeout(Some(Duration::from_millis(DATABASE_CONNECTION_TIMEOUT_MS)))
-            .max_size(1)
-            .build(manager)
-            .map_err(|_| WalletStorageError::R2d2Error)?;
-
-        Ok(Self {
-            database_connection_pool: pool,
-        })
     }
 }
 
