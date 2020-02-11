@@ -11,7 +11,7 @@ version = "0.0.5"
 edition = "2018"
 
 [dependencies]
-tari_utilities = { path = "../tari_util", version = "^0.0" }
+tari_utilities = { path = "../tari_util", version = "^0.1" }
 base64 = "0.10.1"
 digest = "0.8.0"
 rand = "0.7.2"

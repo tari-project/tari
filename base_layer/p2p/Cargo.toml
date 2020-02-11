@@ -20,7 +20,7 @@ tari_pubsub = { version = "^0.0", path = "../../infrastructure/pubsub"}
 tari_service_framework = { version = "^0.0", path = "../service_framework"}
 tari_shutdown = { version = "^0.0", path="../../infrastructure/shutdown" }
 tari_storage = {version = "^0.0", path = "../../infrastructure/storage"}
-tari_utilities = { version = "^0.0", path = "../../infrastructure/tari_util"}
+tari_utilities = {version = "^0.1", path = "../../infrastructure/tari_util"}
 
 bytes = "0.4.12"
 chrono = { version = "0.4.6", features = ["serde"]}

@@ -18,7 +18,7 @@ base_node_proto = []
 
 [dependencies]
 tari_comms = { version = "^0.0", path = "../../comms"}
-tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0"}
+tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.1"}
 tari_infra_derive = { path = "../../infrastructure/derive", version = "^0.0" }
 tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
 tari_storage = { path = "../../infrastructure/storage", version = "^0.0" }

@@ -8,7 +8,7 @@ tari_comms = { path = "../../comms", version = "^0.0"}
 tari_comms_dht = { path = "../../comms/dht", version = "^0.0"}
 tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
 tari_p2p = {path = "../p2p", version = "^0.0"}
-tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.0"}
+tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.1"}
 tari_wallet = { path = "../wallet", version = "^0.0", features = ["test_harness", "c_integration"]}
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0"}
 
