@@ -26,21 +26,20 @@ use crate::{
     types::{CommsPublicKey, CommsSecretKey},
     utils::signature,
 };
+use bytes::Bytes;
 use rand::rngs::OsRng;
-use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use tari_utilities::{message_format::MessageFormat, ByteArray};
 
 // Re-export protos
 pub use crate::proto::envelope::*;
-use bytes::Bytes;
 
 /// Represents data that every message contains.
 /// As described in [RFC-0172](https://rfc.tari.com/RFC-0172_PeerToPeerMessagingProtocol.html#messaging-structure)
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct MessageEnvelopeHeader {
     pub public_key: CommsPublicKey,
-    pub signature: Vec<u8>,
+    pub signature: Bytes,
     pub flags: MessageFlags,
 }
 
@@ -110,7 +109,7 @@ impl TryInto<MessageEnvelopeHeader> for EnvelopeHeader {
             public_key: self
                 .get_comms_public_key()
                 .ok_or(MessageError::InvalidHeaderPublicKey)?,
-            signature: self.signature,
+            signature: self.signature.into(),
             flags: MessageFlags::from_bits_truncate(self.flags),
         })
     }

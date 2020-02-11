@@ -34,43 +34,58 @@ use crate::{
     },
     types::CommsSubstream,
 };
+use bitflags::_core::fmt::{Error, Formatter};
 use bytes::Bytes;
-use futures::{
-    channel::{mpsc, oneshot},
-    stream::Fuse,
-    AsyncRead,
-    AsyncWrite,
-    SinkExt,
-    StreamExt,
-};
+use futures::{channel::mpsc, stream::Fuse, AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
 use std::{
     collections::{hash_map::Entry, HashMap},
+    fmt,
     sync::Arc,
     time::Duration,
 };
-use tokio::{runtime, time::delay_for};
+use tokio::{runtime, sync::broadcast, time::delay_for};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 const LOG_TARGET: &str = "comms::protocol::messaging";
-pub const PROTOCOL_MESSAGING: Bytes = Bytes::from_static(b"/tari/messaging/0.1.0");
+pub const MESSAGING_PROTOCOL: Bytes = Bytes::from_static(b"/tari/messaging/0.1.0");
 const MAX_SEND_MSG_ATTEMPTS: usize = 4;
 /// The size of the buffered channel used for _each_ peer's message queue
 const MESSAGE_QUEUE_BUF_SIZE: usize = 20;
 
+pub type MessagingEventSender = broadcast::Sender<Arc<MessagingEvent>>;
+pub type MessagingEventReceiver = broadcast::Receiver<Arc<MessagingEvent>>;
+
 /// Request types for MessagingProtocol
 pub enum MessagingRequest {
-    SendMessage(OutboundMessage, oneshot::Sender<Result<(), MessagingProtocolError>>),
+    SendMessage(OutboundMessage),
 }
 
+#[derive(Debug)]
 pub enum MessagingEvent {
-    MessageReceived(Box<NodeId>, InboundMessage),
+    MessageReceived(Box<NodeId>, MessageTag),
     InvalidMessageReceived(Box<NodeId>),
     SendMessageFailed(OutboundMessage),
-    SendMessageSucceeded(MessageTag),
+    MessageSent(MessageTag),
 }
 
-pub struct Messaging {
+impl fmt::Display for MessagingEvent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        use MessagingEvent::*;
+        match self {
+            MessageReceived(node_id, tag) => {
+                write!(f, "MessagingEvent::MessageReceived({}, {})", node_id.short_str(), tag)
+            },
+            InvalidMessageReceived(node_id) => {
+                write!(f, "MessagingEvent::InvalidMessageReceived({})", node_id.short_str())
+            },
+            SendMessageFailed(out_msg) => write!(f, "MessagingEvent::SendMessageFailed({})", out_msg),
+            MessageSent(tag) => write!(f, "MessagingEvent::SendMessageSucceeded({})", tag),
+        }
+    }
+}
+
+pub struct MessagingProtocol {
     executor: runtime::Handle,
     connection_manager_requester: ConnectionManagerRequester,
     node_identity: Arc<NodeIdentity>,
@@ -78,10 +93,11 @@ pub struct Messaging {
     proto_notification: Fuse<mpsc::Receiver<ProtocolNotification<CommsSubstream>>>,
     active_queues: HashMap<Box<NodeId>, mpsc::Sender<OutboundMessage>>,
     request_rx: Fuse<mpsc::Receiver<MessagingRequest>>,
-    messaging_events_tx: mpsc::Sender<MessagingEvent>,
+    messaging_events_tx: MessagingEventSender,
+    inbound_message_tx: mpsc::Sender<InboundMessage>,
 }
 
-impl Messaging {
+impl MessagingProtocol {
     pub fn new(
         executor: runtime::Handle,
         connection_manager_requester: ConnectionManagerRequester,
@@ -89,7 +105,8 @@ impl Messaging {
         node_identity: Arc<NodeIdentity>,
         proto_notification: mpsc::Receiver<ProtocolNotification<CommsSubstream>>,
         request_rx: mpsc::Receiver<MessagingRequest>,
-        messaging_events_tx: mpsc::Sender<MessagingEvent>,
+        messaging_events_tx: MessagingEventSender,
+        inbound_message_tx: mpsc::Sender<InboundMessage>,
     ) -> Self
     {
         Self {
@@ -101,6 +118,7 @@ impl Messaging {
             request_rx: request_rx.fuse(),
             active_queues: HashMap::new(),
             messaging_events_tx,
+            inbound_message_tx,
         }
     }
 
@@ -133,8 +151,13 @@ impl Messaging {
     async fn handle_request(&mut self, req: MessagingRequest) -> Result<(), MessagingProtocolError> {
         use MessagingRequest::*;
         match req {
-            SendMessage(msg, reply_tx) => {
-                let _ = reply_tx.send(self.send_message(msg).await);
+            SendMessage(msg) => {
+                if let Err(err) = self.send_message(msg).await {
+                    debug!(
+                        target: LOG_TARGET,
+                        "MessagingProtocol encountered an error when sending a message: {}", err
+                    );
+                }
             },
         }
 
@@ -188,7 +211,7 @@ impl Messaging {
         executor: runtime::Handle,
         our_node_identity: Arc<NodeIdentity>,
         conn_man_requester: ConnectionManagerRequester,
-        events_tx: mpsc::Sender<MessagingEvent>,
+        events_tx: MessagingEventSender,
         peer_node_id: NodeId,
     ) -> Result<mpsc::Sender<OutboundMessage>, MessagingProtocolError>
     {
@@ -200,7 +223,8 @@ impl Messaging {
     }
 
     async fn spawn_inbound_handler(&mut self, node_id: Box<NodeId>, substream: CommsSubstream) {
-        let mut incoming_events_tx = self.messaging_events_tx.clone();
+        let messaging_events_tx = self.messaging_events_tx.clone();
+        let mut inbound_message_tx = self.inbound_message_tx.clone();
         let mut framed_substream = Self::framed(substream);
         let mut inbound = InboundMessaging::new(self.peer_manager.clone());
 
@@ -209,8 +233,14 @@ impl Messaging {
                 match result {
                     Ok(raw_msg) => {
                         let mut raw_msg = raw_msg.freeze();
-                        let event = match inbound.process_message(&node_id, &mut raw_msg).await {
-                            Ok(inbound_msg) => MessagingEvent::MessageReceived(node_id.clone(), inbound_msg),
+                        let (event, in_msg) = match inbound.process_message(&node_id, &mut raw_msg).await {
+                            Ok(inbound_msg) => (
+                                MessagingEvent::MessageReceived(
+                                    Box::new(inbound_msg.source_peer.node_id.clone()),
+                                    inbound_msg.tag,
+                                ),
+                                Some(inbound_msg),
+                            ),
                             Err(err) => {
                                 // TODO: #banheuristic
                                 warn!(
@@ -219,20 +249,34 @@ impl Messaging {
                                     node_id.short_str(),
                                     err
                                 );
-                                MessagingEvent::InvalidMessageReceived(node_id.clone())
+                                (MessagingEvent::InvalidMessageReceived(node_id.clone()), None)
                             },
                         };
 
-                        if let Err(err) = incoming_events_tx.send(event).await {
-                            warn!(
-                                target: LOG_TARGET,
-                                "Failed to forward incoming message for peer '{}' because '{}'",
-                                node_id.short_str(),
-                                err
-                            );
-                            if err.is_disconnected() {
-                                break;
+                        if let Some(in_msg) = in_msg {
+                            if let Err(err) = inbound_message_tx.send(in_msg).await {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Failed to send InboundMessage for peer '{}' because '{}'",
+                                    node_id.short_str(),
+                                    err
+                                );
+
+                                if err.is_disconnected() {
+                                    break;
+                                }
                             }
+                        }
+
+                        if let Err(err) = messaging_events_tx.send(Arc::new(event)) {
+                            // This is a trace log because if this send fails, then there are no subscribers which is
+                            // fine
+                            trace!(
+                                target: LOG_TARGET,
+                                "Failed to send messaging event '{}' for peer '{}'. MessagingEvent will be dropped",
+                                err.0,
+                                node_id.short_str(),
+                            );
                         }
                     },
                     Err(err) => debug!(
@@ -244,7 +288,7 @@ impl Messaging {
                 }
             }
 
-            debug!(
+            trace!(
                 target: LOG_TARGET,
                 "Inbound messaging handler for peer '{}' has stopped",
                 node_id.short_str()
@@ -253,7 +297,7 @@ impl Messaging {
     }
 
     async fn handle_notification(&mut self, notification: ProtocolNotification<CommsSubstream>) {
-        debug_assert_eq!(notification.protocol, PROTOCOL_MESSAGING);
+        debug_assert_eq!(notification.protocol, MESSAGING_PROTOCOL);
         match notification.event {
             // Peer negotiated to speak the messaging protocol with us
             ProtocolEvent::NewInboundSubstream(node_id, substream) => {

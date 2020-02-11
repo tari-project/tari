@@ -79,5 +79,14 @@
 mod builder;
 mod null_sink;
 
+cfg_next! {
+    mod consts;
+    mod placeholder;
+    mod builder_next;
+
+    #[cfg(test)]
+    mod tests;
+}
+
 pub use self::builder::{CommsBuilder, CommsBuilderError, CommsError, CommsNode};
 pub use null_sink::NullSink;

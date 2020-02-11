@@ -42,7 +42,7 @@ use futures::{
     StreamExt,
 };
 use multiaddr::Protocol;
-use std::{error::Error, sync::Arc, time::Duration};
+use std::{error::Error, time::Duration};
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
 use tokio::{runtime::Handle, time::timeout};
@@ -126,7 +126,7 @@ async fn smoke() {
         peer_manager2.clone().into(),
         MemoryTransport,
         noise_config2,
-        Arc::new(ConstantBackoff::new(Duration::from_millis(100))),
+        ConstantBackoff::new(Duration::from_millis(100)),
         request_rx,
         event_tx,
         supported_protocols,

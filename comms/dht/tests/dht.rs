@@ -27,9 +27,9 @@ use tari_comms::{
     builder::CommsNode,
     connection_manager::PeerConnectionConfig,
     control_service::ControlServiceConfig,
-    middleware::{ServicePipeline, SinkMiddleware},
     multiaddr::Multiaddr,
     peer_manager::{peer_storage::PeerStorage, NodeIdentity, Peer, PeerFeatures},
+    pipeline::{ServicePipeline, SinkService},
     types::CommsDatabase,
     CommsBuilder,
 };
@@ -106,7 +106,7 @@ fn setup_comms_dht(
         // Messages going OUT from DHT to connector (pubsub)
         ServiceBuilder::new()
             .layer(dht.inbound_middleware_layer())
-            .service(SinkMiddleware::new(inbound_sink)),
+            .service(SinkService::new(inbound_sink)),
     );
     inbound_pipeline.spawn_with(executor.clone());
 
@@ -119,7 +119,7 @@ fn setup_comms_dht(
         // Messages going OUT from DHT to comms
         ServiceBuilder::new()
             .layer(dht.outbound_middleware_layer())
-            .service(SinkMiddleware::new(outbound_tx)),
+            .service(SinkService::new(outbound_tx)),
     );
     outbound_pipeline.spawn_with(executor);
 
@@ -129,7 +129,6 @@ fn setup_comms_dht(
 #[test]
 #[allow(non_snake_case)]
 fn dht_join_propagation() {
-    env_logger::init();
     runtime::test_async(|rt| {
         // Create 3 nodes where only Node B knows A and C, but A and C want to talk to each other
         let node_A_identity = new_node_identity("/ip4/127.0.0.1/tcp/11113".parse::<Multiaddr>().unwrap());

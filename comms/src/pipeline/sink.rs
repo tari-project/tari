@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,36 +20,42 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// TODO: Remove this when https://github.com/tower-rs/tower/pull/318 is resolved and published
-use futures::{task::Context, Future};
-use std::task::Poll;
-use tower_service::Service;
+use futures::{task::Context, Future, Sink, SinkExt};
+use log::*;
+use std::{error::Error, pin::Pin, task::Poll};
+use tower::Service;
 
-/// Returns a new `ServiceFn` with the given closure.
-pub fn service_fn<T>(f: T) -> ServiceFn<T> {
-    ServiceFn { f }
+const LOG_TARGET: &'static str = "comms::pipeline::sink";
+
+/// A service which forwards and messages it gets to the given Sink
+#[derive(Clone)]
+pub struct SinkService<TSink>(TSink);
+
+impl<TSink> SinkService<TSink> {
+    pub fn new(sink: TSink) -> Self {
+        SinkService(sink)
+    }
 }
 
-/// A `Service` implemented by a closure.
-#[derive(Copy, Clone, Debug)]
-pub struct ServiceFn<T> {
-    f: T,
-}
-
-impl<T, F, Request, R, E> Service<Request> for ServiceFn<T>
+impl<T, TSink> Service<T> for SinkService<TSink>
 where
-    T: FnMut(Request) -> F,
-    F: Future<Output = Result<R, E>>,
+    TSink: Sink<T> + Unpin + Clone + 'static,
+    TSink::Error: Error + Send + Sync + 'static,
 {
-    type Error = E;
-    type Future = F;
-    type Response = R;
+    // A boxed error gives the most flexibility when building a pipeline. Using TSink::Error, in practise, requires a
+    // conversion between the error being used for other services and TSink::Error.
+    type Error = Box<dyn std::error::Error + Send + Sync>;
+    type Response = ();
 
-    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), E>> {
-        Ok(()).into()
+    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Pin::new(&mut self.0).poll_ready(cx).map_err(Into::into)
     }
 
-    fn call(&mut self, req: Request) -> Self::Future {
-        (self.f)(req)
+    fn call(&mut self, item: T) -> Self::Future {
+        let mut sink = self.0.clone();
+        trace!(target: LOG_TARGET, "Sending item to sink");
+        async move { sink.send(item).await.map_err(Into::into) }
     }
 }

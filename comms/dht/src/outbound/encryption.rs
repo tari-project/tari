@@ -20,11 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::outbound::message::{DhtOutboundMessage, OutboundEncryption};
+use crate::{
+    outbound::message::{DhtOutboundMessage, OutboundEncryption},
+    PipelineError,
+};
 use futures::{task::Context, Future};
 use log::*;
 use std::{sync::Arc, task::Poll};
-use tari_comms::{middleware::MiddlewareError, peer_manager::NodeIdentity, utils::crypt};
+use tari_comms::{peer_manager::NodeIdentity, utils::crypt};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::middleware::encryption";
@@ -67,9 +70,9 @@ impl<S> EncryptionService<S> {
 impl<S> Service<DhtOutboundMessage> for EncryptionService<S>
 where
     S: Service<DhtOutboundMessage, Response = ()> + Clone,
-    S::Error: Into<MiddlewareError>,
+    S::Error: Into<PipelineError>,
 {
-    type Error = MiddlewareError;
+    type Error = PipelineError;
     type Response = ();
 
     type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
@@ -86,13 +89,13 @@ where
 impl<S> EncryptionService<S>
 where
     S: Service<DhtOutboundMessage, Response = ()>,
-    S::Error: Into<MiddlewareError>,
+    S::Error: Into<PipelineError>,
 {
     async fn handle_message(
         mut next_service: S,
         node_identity: Arc<NodeIdentity>,
         mut message: DhtOutboundMessage,
-    ) -> Result<(), MiddlewareError>
+    ) -> Result<(), PipelineError>
     {
         trace!(target: LOG_TARGET, "DHT Message flags: {:?}", message.dht_header.flags);
         match &message.encryption {
@@ -140,8 +143,7 @@ mod test {
     fn no_encryption() {
         let spy = service_spy();
         let node_identity = make_node_identity();
-        let mut encryption =
-            EncryptionLayer::new(Arc::clone(&node_identity)).layer(spy.to_service::<MiddlewareError>());
+        let mut encryption = EncryptionLayer::new(Arc::clone(&node_identity)).layer(spy.to_service::<PipelineError>());
 
         panic_context!(cx);
         assert!(encryption.poll_ready(&mut cx).is_ready());
@@ -171,8 +173,7 @@ mod test {
     fn encryption() {
         let spy = service_spy();
         let node_identity = make_node_identity();
-        let mut encryption =
-            EncryptionLayer::new(Arc::clone(&node_identity)).layer(spy.to_service::<MiddlewareError>());
+        let mut encryption = EncryptionLayer::new(Arc::clone(&node_identity)).layer(spy.to_service::<PipelineError>());
 
         panic_context!(cx);
         assert!(encryption.poll_ready(&mut cx).is_ready());

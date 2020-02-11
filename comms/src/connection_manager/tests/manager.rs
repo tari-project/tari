@@ -60,7 +60,7 @@ async fn connect_to_nonexistent_peer() {
         rt_handle.clone(),
         MemoryTransport,
         noise_config,
-        Arc::new(ConstantBackoff::new(Duration::from_secs(1))),
+        ConstantBackoff::new(Duration::from_secs(1)),
         request_rx,
         node_identity,
         peer_manager.into(),

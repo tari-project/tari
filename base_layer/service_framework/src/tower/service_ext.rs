@@ -88,13 +88,13 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::tower::service_fn;
     use futures::{future, FutureExt};
     use futures_test::task::panic_context;
     use std::sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     };
+    use tower::service_fn;
 
     #[test]
     fn service_ready() {

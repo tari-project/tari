@@ -26,13 +26,13 @@ use crate::{
     proto::store_forward::StoredMessage,
     store_forward::{error::StoreAndForwardError, state::SafStorage},
     DhtConfig,
+    PipelineError,
 };
 use futures::{task::Context, Future};
 use log::*;
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
     message::MessageExt,
-    middleware::MiddlewareError,
     peer_manager::{NodeIdentity, PeerManager},
 };
 use tower::{layer::Layer, Service, ServiceExt};
@@ -110,9 +110,9 @@ impl<S> StoreMiddleware<S> {
 impl<S> Service<DecryptedDhtMessage> for StoreMiddleware<S>
 where
     S: Service<DecryptedDhtMessage, Response = ()> + Clone + 'static,
-    S::Error: Into<MiddlewareError>,
+    S::Error: Into<PipelineError>,
 {
-    type Error = MiddlewareError;
+    type Error = PipelineError;
     type Response = ();
 
     type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
@@ -164,9 +164,9 @@ impl<S> StoreTask<S> {
 impl<S> StoreTask<S>
 where
     S: Service<DecryptedDhtMessage, Response = ()>,
-    S::Error: Into<MiddlewareError>,
+    S::Error: Into<PipelineError>,
 {
-    async fn handle(mut self, message: DecryptedDhtMessage) -> Result<(), MiddlewareError> {
+    async fn handle(mut self, message: DecryptedDhtMessage) -> Result<(), PipelineError> {
         match message.success() {
             Some(_) => {
                 // If message was not originally encrypted and has an origin we want to store a copy for others
@@ -292,7 +292,7 @@ mod test {
         let peer_manager = make_peer_manager();
         let node_identity = make_node_identity();
         let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, storage.clone())
-            .layer(spy.to_service::<MiddlewareError>());
+            .layer(spy.to_service::<PipelineError>());
 
         let mut inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
         inbound_msg.dht_header.origin = None;
@@ -312,7 +312,7 @@ mod test {
         let peer_manager = make_peer_manager();
         let node_identity = make_node_identity();
         let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, storage.clone())
-            .layer(spy.to_service::<MiddlewareError>());
+            .layer(spy.to_service::<PipelineError>());
 
         let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
         let msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(Vec::new()).unwrap(), inbound_msg);
@@ -331,7 +331,7 @@ mod test {
         let peer_manager = make_peer_manager();
         let node_identity = make_node_identity();
         let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, storage.clone())
-            .layer(spy.to_service::<MiddlewareError>());
+            .layer(spy.to_service::<PipelineError>());
 
         let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::ENCRYPTED);
         let msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(b"secret".to_vec()).unwrap(), inbound_msg);
@@ -349,7 +349,7 @@ mod test {
         let peer_manager = make_peer_manager();
         let node_identity = make_node_identity();
         let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, Arc::clone(&storage))
-            .layer(spy.to_service::<MiddlewareError>());
+            .layer(spy.to_service::<PipelineError>());
 
         let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
         let msg = DecryptedDhtMessage::failed(inbound_msg.clone());

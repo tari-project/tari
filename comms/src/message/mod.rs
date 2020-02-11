@@ -92,7 +92,7 @@ pub type FrameSet = Vec<Frame>;
 bitflags! {
     /// Used to indicate characteristics of the incoming or outgoing message, such
     /// as whether the message is encrypted.
-    #[derive(Deserialize, Serialize)]
+    #[derive(Default, Deserialize, Serialize)]
     pub struct MessageFlags: u32 {
         const NONE = 0b0000_0000;
         const ENCRYPTED = 0b0000_0001;

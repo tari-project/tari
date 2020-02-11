@@ -21,12 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    multiaddr::{Multiaddr, Protocol},
     socks,
     socks::Socks5Client,
     transports::{tcp::TcpTransport, TcpSocket, Transport},
 };
 use futures::{Future, FutureExt};
-use multiaddr::{multiaddr, Multiaddr, Protocol};
+use multiaddr::multiaddr;
 use std::io;
 
 #[derive(Clone, Debug)]
@@ -93,7 +94,7 @@ impl SocksTransport {
             (Some(Protocol::Ip6(ip)), Some(Protocol::Tcp(port)), None) => Ok(multiaddr!(Ip6(ip), Tcp(port))),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("TorTransport does not support the address '{}'.", addr),
+                format!("SocksTransport does not support the address '{}'.", addr),
             )),
         }
     }
@@ -140,6 +141,7 @@ impl Transport for SocksTransport {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::socks::Authentication;
 
     #[test]
     fn extract_proxied_address() {
@@ -149,5 +151,17 @@ mod test {
         assert_eq!(addr_iter.next(), Some(Protocol::Ip4("127.0.0.1".parse().unwrap())));
         assert_eq!(addr_iter.next(), Some(Protocol::Tcp(9080)));
         assert_eq!(addr_iter.next(), None);
+    }
+
+    #[test]
+    fn new() {
+        let proxy_address = "/ip4/127.0.0.1/tcp/1234".parse::<Multiaddr>().unwrap();
+        let transport = SocksTransport::new(SocksConfig {
+            proxy_address: proxy_address.clone(),
+            authentication: Default::default(),
+        });
+
+        assert_eq!(transport.socks_config.proxy_address, proxy_address);
+        assert_eq!(transport.socks_config.authentication, Authentication::None);
     }
 }

@@ -73,7 +73,6 @@ pub fn build_connection_manager(
     shutdown: ShutdownSignal,
 ) -> ConnectionManagerRequester
 {
-    // TODO: Once we have `comms::Builder@next` we can construct a whole "comms node" here for testing
     let noise_config = NoiseConfig::new(config.node_identity.clone());
     let (request_tx, request_rx) = mpsc::channel(10);
     let (event_tx, _) = broadcast::channel(100);
@@ -85,7 +84,7 @@ pub fn build_connection_manager(
         executor.clone(),
         config.transport,
         noise_config,
-        Arc::new(ConstantBackoff::new(config.dial_backoff_duration)),
+        ConstantBackoff::new(config.dial_backoff_duration),
         request_rx,
         config.node_identity,
         peer_manager.into(),

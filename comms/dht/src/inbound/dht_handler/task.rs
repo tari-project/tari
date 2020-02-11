@@ -30,12 +30,12 @@ use crate::{
         dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage},
         envelope::DhtMessageType,
     },
+    PipelineError,
 };
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
     message::MessageExt,
-    middleware::MiddlewareError,
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     types::CommsPublicKey,
@@ -58,7 +58,7 @@ pub struct ProcessDhtMessage<S> {
 impl<S> ProcessDhtMessage<S>
 where
     S: Service<DecryptedDhtMessage, Response = ()>,
-    S::Error: Into<MiddlewareError>,
+    S::Error: Into<PipelineError>,
 {
     pub fn new(
         config: DhtConfig,
@@ -81,7 +81,7 @@ where
         }
     }
 
-    pub async fn run(mut self) -> Result<(), MiddlewareError> {
+    pub async fn run(mut self) -> Result<(), PipelineError> {
         let message = self
             .message
             .take()

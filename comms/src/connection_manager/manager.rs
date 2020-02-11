@@ -106,7 +106,7 @@ pub struct ConnectionManager<TTransport, TBackoff> {
     node_identity: Arc<NodeIdentity>,
     active_connections: HashMap<NodeId, PeerConnection>,
     shutdown_signal: Option<ShutdownSignal>,
-    protocol_notifier: Protocols<yamux::Stream>,
+    protocols: Protocols<yamux::Stream>,
     listener_address: Option<Multiaddr>,
     listening_notifiers: Vec<oneshot::Sender<Multiaddr>>,
     connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
@@ -123,11 +123,11 @@ where
         executor: runtime::Handle,
         transport: TTransport,
         noise_config: NoiseConfig,
-        backoff: Arc<TBackoff>,
+        backoff: TBackoff,
         request_rx: mpsc::Receiver<ConnectionManagerRequest>,
         node_identity: Arc<NodeIdentity>,
         peer_manager: AsyncPeerManager,
-        protocol_notifier: Protocols<yamux::Stream>,
+        protocols: Protocols<yamux::Stream>,
         connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
         shutdown_signal: ShutdownSignal,
     ) -> Self
@@ -136,7 +136,7 @@ where
 
         let (establisher_tx, establisher_rx) = mpsc::channel(ESTABLISHER_CHANNEL_SIZE);
 
-        let supported_protocols = protocol_notifier.get_supported_protocols();
+        let supported_protocols = protocols.get_supported_protocols();
 
         let listener = PeerListener::new(
             executor.clone(),
@@ -170,7 +170,7 @@ where
             request_rx: request_rx.fuse(),
             node_identity,
             peer_manager,
-            protocol_notifier,
+            protocols,
             internal_event_rx: internal_event_rx.fuse(),
             dialer_tx: establisher_tx,
             dialer: Some(dialer),
@@ -295,7 +295,7 @@ where
                 );
                 log_if_error!(
                     target: LOG_TARGET,
-                    self.protocol_notifier
+                    self.protocols
                         .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id, stream))
                         .await,
                     "Error sending NewSubstream notification because '{error}'",
@@ -371,9 +371,10 @@ where
 
     fn publish_event(&self, event: ConnectionManagerEvent) {
         log_if_error_fmt!(
+            level: trace,
             target: LOG_TARGET,
             self.connection_manager_events_tx.send(Arc::new(event)),
-            "Failed to send ConnectionManagerEvent",
+            "Didn't send ConnectionManagerEvent because there are no subscribers",
         );
     }
 

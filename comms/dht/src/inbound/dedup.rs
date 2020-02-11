@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{actor::DhtRequester, inbound::DhtInboundMessage};
+use crate::{actor::DhtRequester, inbound::DhtInboundMessage, PipelineError};
 use digest::Input;
 use futures::{task::Context, Future};
 use log::*;
 use std::task::Poll;
-use tari_comms::{middleware::MiddlewareError, types::Challenge};
+use tari_comms::types::Challenge;
 use tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -53,9 +53,9 @@ impl<S> DedupMiddleware<S> {
 impl<S> Service<DhtInboundMessage> for DedupMiddleware<S>
 where
     S: Service<DhtInboundMessage, Response = ()> + Clone + 'static,
-    S::Error: Into<MiddlewareError>,
+    S::Error: Into<PipelineError>,
 {
-    type Error = MiddlewareError;
+    type Error = PipelineError;
     type Response = ();
 
     type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
@@ -72,13 +72,13 @@ where
 impl<S> DedupMiddleware<S>
 where
     S: Service<DhtInboundMessage, Response = ()>,
-    S::Error: Into<MiddlewareError>,
+    S::Error: Into<PipelineError>,
 {
     pub async fn process_message(
         next_service: S,
         mut dht_requester: DhtRequester,
         message: DhtInboundMessage,
-    ) -> Result<(), MiddlewareError>
+    ) -> Result<(), PipelineError>
     {
         trace!(target: LOG_TARGET, "Checking inbound message cache for duplicates");
         let hash = Self::hash_message(&message);
@@ -142,7 +142,7 @@ mod test {
         mock.set_shared_state(mock_state.clone());
         rt.spawn(mock.run());
 
-        let mut dedup = DedupLayer::new(dht_requester).layer(spy.to_service::<MiddlewareError>());
+        let mut dedup = DedupLayer::new(dht_requester).layer(spy.to_service::<PipelineError>());
 
         panic_context!(cx);
 

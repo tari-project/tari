@@ -21,8 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{message::MessageFlags, peer_manager::node_id::NodeId};
+use bitflags::_core::fmt::{Error, Formatter};
 use bytes::Bytes;
 use rand::{rngs::OsRng, RngCore};
+use std::fmt;
 
 /// Represents a tag for a message
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
@@ -31,6 +33,12 @@ pub struct MessageTag(u64);
 impl MessageTag {
     pub fn new() -> Self {
         Self(OsRng.next_u64())
+    }
+}
+
+impl fmt::Display for MessageTag {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(f, "MessageTag({})", self.0)
     }
 }
 
@@ -58,6 +66,17 @@ impl OutboundMessage {
             flags,
             body,
         }
+    }
+}
+
+impl fmt::Display for OutboundMessage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(
+            f,
+            "OutboundMessage ({} bytes) for peer '{}'",
+            self.body.len(),
+            self.peer_node_id.short_str()
+        )
     }
 }
 

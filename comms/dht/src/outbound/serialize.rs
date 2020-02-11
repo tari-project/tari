@@ -20,14 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{outbound::message::DhtOutboundMessage, proto::envelope::DhtEnvelope};
+use crate::{outbound::message::DhtOutboundMessage, proto::envelope::DhtEnvelope, PipelineError};
 use futures::{task::Context, Future};
 use log::*;
 use rand::rngs::OsRng;
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
     message::MessageExt,
-    middleware::MiddlewareError,
     outbound_message_service::OutboundMessage,
     peer_manager::NodeIdentity,
     utils::signature,
@@ -56,9 +55,9 @@ impl<S> SerializeMiddleware<S> {
 impl<S> Service<DhtOutboundMessage> for SerializeMiddleware<S>
 where
     S: Service<OutboundMessage, Response = ()> + Clone + 'static,
-    S::Error: Into<MiddlewareError>,
+    S::Error: Into<PipelineError>,
 {
-    type Error = MiddlewareError;
+    type Error = PipelineError;
     type Response = ();
 
     type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
@@ -75,13 +74,13 @@ where
 impl<S> SerializeMiddleware<S>
 where
     S: Service<OutboundMessage, Response = ()>,
-    S::Error: Into<MiddlewareError>,
+    S::Error: Into<PipelineError>,
 {
     pub async fn serialize(
         next_service: S,
         node_identity: Arc<NodeIdentity>,
         message: DhtOutboundMessage,
-    ) -> Result<(), MiddlewareError>
+    ) -> Result<(), PipelineError>
     {
         debug!(target: LOG_TARGET, "Serializing outbound message");
 
@@ -163,7 +162,7 @@ mod test {
     fn serialize() {
         let spy = service_spy();
         let node_identity = make_node_identity();
-        let mut serialize = SerializeLayer::new(Arc::clone(&node_identity)).layer(spy.to_service::<MiddlewareError>());
+        let mut serialize = SerializeLayer::new(Arc::clone(&node_identity)).layer(spy.to_service::<PipelineError>());
 
         panic_context!(cx);
 
