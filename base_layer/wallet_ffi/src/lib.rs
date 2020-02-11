@@ -117,7 +117,6 @@ mod callback_handler;
 mod error;
 
 use crate::{callback_handler::CallbackHandler, error::InterfaceError};
-use blake2::Digest;
 use core::ptr;
 use error::LibWalletError;
 use libc::{c_char, c_int, c_longlong, c_uchar, c_uint, c_ulonglong};
@@ -136,11 +135,7 @@ use tari_comms::{
 };
 use tari_comms_dht::DhtConfig;
 use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
-use tari_crypto::{
-    common::Blake256,
-    keys::{PublicKey, SecretKey},
-    ristretto::RistrettoSchnorr,
-};
+use tari_crypto::keys::{PublicKey, SecretKey};
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
@@ -156,6 +151,7 @@ use tari_wallet::{
         receive_test_transaction,
     },
     transaction_service::storage::{database::TransactionDatabase, sqlite_db::TransactionServiceSqliteDatabase},
+    util::emoji::EmojiId,
     wallet::WalletConfig,
 };
 use tokio::runtime::Runtime;
@@ -178,6 +174,7 @@ pub type TariPendingInboundTransaction = tari_wallet::transaction_service::stora
 pub struct TariPendingInboundTransactions(Vec<TariPendingInboundTransaction>);
 pub type TariPendingOutboundTransaction = tari_wallet::transaction_service::storage::database::OutboundTransaction;
 pub struct TariPendingOutboundTransactions(Vec<TariPendingOutboundTransaction>);
+#[derive(Debug, PartialEq)]
 pub struct ByteVector(Vec<c_uchar>); // declared like this so that it can be exposed to external header
 
 /// -------------------------------- Strings ------------------------------------------------ ///
@@ -436,6 +433,65 @@ pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut
             ptr::null_mut()
         },
     }
+}
+
+/// Creates a TariPublicKey from an EmojiID string
+///
+/// ## Arguments
+/// `emoji` - The pointer to a char array which is emoji encoded
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns ptr::null_mut()
+/// if emoji is null or if there was an error creating the TariPublicKey from key
+#[no_mangle]
+pub unsafe extern "C" fn public_key_from_emoji(emoji: *const c_char, error_out: *mut c_int) -> *mut TariPublicKey {
+    let mut error = 0;
+    let emoji_str;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if emoji.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
+        emoji_str = CStr::from_ptr(emoji).to_str().unwrap().to_owned();
+    }
+    let public_key = EmojiId::try_convert_to_pubkey(&emoji_str);
+    match public_key {
+        Ok(public_key) => Box::into_raw(Box::new(public_key)),
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Creates a char array from a TariPublicKey in emoji format
+///
+/// ## Arguments
+/// `pk` - The pointer to a TariPublicKey
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
+/// if emoji is null or if there was an error creating the emoji string from TariPublicKey
+#[no_mangle]
+pub unsafe extern "C" fn public_key_to_emoji(pk: *mut TariPublicKey, error_out: *mut c_int) -> *mut c_char {
+    let mut error = 0;
+    let mut result = CString::new("").unwrap();
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if pk.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return CString::into_raw(result);
+    }
+
+    let emoji = EmojiId::from_pubkey(&(*pk));
+    result = CString::new(emoji.as_str()).unwrap();
+    CString::into_raw(result)
 }
 /// -------------------------------------------------------------------------------------------- ///
 
@@ -1810,18 +1866,26 @@ pub unsafe extern "C" fn wallet_sign_message(
 ) -> *mut c_char
 {
     let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
     let mut result = CString::new("").unwrap();
+
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return result.into_raw();
+    }
+
     if msg.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return result.into_raw();
     }
+
     let nonce = TariPrivateKey::random(&mut OsRng);
     let secret = (*wallet).comms.node_identity().secret_key().clone();
     let message = CStr::from_ptr(msg).to_str().unwrap().to_owned();
-    let challenge = Blake256::digest(message.clone().as_bytes());
-    let signature = RistrettoSchnorr::sign(secret, nonce, challenge.clone().as_slice());
+    let signature = (*wallet).sign_message(secret, nonce, &message);
+
     match signature {
         Ok(s) => {
             let hex_sig = s.get_signature().to_hex();
@@ -1834,6 +1898,7 @@ pub unsafe extern "C" fn wallet_sign_message(
             ptr::swap(error_out, &mut error as *mut c_int);
         },
     }
+
     result.into_raw()
 }
 
@@ -1841,15 +1906,17 @@ pub unsafe extern "C" fn wallet_sign_message(
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer.
+/// `public_key` - The pointer to the TariPublicKey of the wallet which originally signed the message
 /// `hex_sig_nonce` - The pointer to the sting containing the hexadecimal representation of the
 /// signature and public nonce seperated by a pipe character.
-/// `hex_sig_nonce` - The pointer to the msg the signature will be checked against.
+/// `msg` - The pointer to the msg the signature will be checked against.
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 /// ## Returns
 /// `bool` - Returns if the signature is valid or not, will be false if an error occurs.
 #[no_mangle]
 pub unsafe extern "C" fn wallet_verify_message_signature(
+    wallet: *mut TariWallet,
     public_key: *mut TariPublicKey,
     hex_sig_nonce: *const c_char,
     msg: *const c_char,
@@ -1857,9 +1924,13 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
 ) -> bool
 {
     let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-
     let mut result = false;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return result;
+    }
     if public_key.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("public key".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
@@ -1875,6 +1946,7 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
         ptr::swap(error_out, &mut error as *mut c_int);
         return result;
     }
+
     let message = CStr::from_ptr(msg).to_str().unwrap().to_owned();
     let hex = CStr::from_ptr(hex_sig_nonce).to_str().unwrap().to_owned();
     let hex_keys: Vec<&str> = hex.split('|').collect();
@@ -1888,11 +1960,7 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
         Ok(p) => {
             let public_nonce = TariPublicKey::from_hex(hex_keys.get(1).unwrap());
             match public_nonce {
-                Ok(pn) => {
-                    let signature = RistrettoSchnorr::new(pn, p);
-                    let challenge = Blake256::digest(message.clone().as_bytes());
-                    result = signature.verify_challenge(&(*public_key), challenge.clone().as_slice());
-                },
+                Ok(pn) => result = (*wallet).verify_message_signature((*public_key).clone(), pn, p, message),
                 Err(e) => {
                     error = LibWalletError::from(e).code;
                     ptr::swap(error_out, &mut error as *mut c_int);
@@ -3145,11 +3213,19 @@ mod test {
             assert_eq!(error, 0);
             assert_eq!(private_key_length, 32);
             assert_eq!(public_key_length, 32);
-            assert_ne!(private_bytes, public_bytes);
+            assert_ne!((*private_bytes), (*public_bytes));
+            let emoji = public_key_to_emoji(public_key, error_ptr) as *mut c_char;
+            let emoji_str = CStr::from_ptr(emoji).to_str().unwrap().to_owned();
+            assert_eq!(EmojiId::is_valid(&emoji_str), true);
+            let emoji_key = public_key_from_emoji(emoji, error_ptr);
+            let emoji_bytes = public_key_get_bytes(public_key, error_ptr);
+            assert_eq!((*emoji_bytes), (*public_bytes));
             private_key_destroy(private_key);
             public_key_destroy(public_key);
+            public_key_destroy(emoji_key);
             byte_vector_destroy(public_bytes);
             byte_vector_destroy(private_bytes);
+            byte_vector_destroy(emoji_bytes);
         }
     }
 
@@ -3350,8 +3426,13 @@ mod test {
             let sig_msg_compare_str: *const c_char = CString::into_raw(sig_msg_compare) as *const c_char;
             let sig_nonce_str: *mut c_char = wallet_sign_message(alice_wallet, sig_msg_str, error_ptr) as *mut c_char;
             let alice_wallet_key = wallet_get_public_key(alice_wallet, error_ptr);
-            let verify_msg =
-                wallet_verify_message_signature(alice_wallet_key, sig_nonce_str, sig_msg_compare_str, error_ptr);
+            let verify_msg = wallet_verify_message_signature(
+                alice_wallet,
+                alice_wallet_key,
+                sig_nonce_str,
+                sig_msg_compare_str,
+                error_ptr,
+            );
             assert_eq!(verify_msg, true);
 
             let mut peer_added =

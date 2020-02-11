@@ -61,7 +61,6 @@ impl EmojiId {
             .filter_map(|c| EMOJI.iter().position(|e| *e == c))
             .map(|v| v as u8)
             .collect();
-        println!("{:?}", bytes);
         PublicKey::from_bytes(&bytes)
     }
 }
@@ -103,6 +102,8 @@ mod test {
             eid.as_str(),
             "🖖🥴😍🙃💦🤘🤜👁🙃🙌😱🖐🙀🤳🖖👍✊🐈☂💀👚😶🤟😳👢😘😺🙌🎩🤬🐼😎"
         );
+        let h_eid = EmojiId::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
+        assert_eq!(eid, h_eid);
     }
 
     #[test]
