@@ -32,7 +32,6 @@ use rustyline::{
 };
 use rustyline_derive::{Helper, Highlighter, Validator};
 use std::{
-    fmt,
     str::FromStr,
     string::ToString,
     sync::{
@@ -42,6 +41,9 @@ use std::{
 };
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
+use tari_comms::types::CommsPublicKey;
+use tari_core::transactions::tari_amount::{uT, MicroTari};
+use tari_utilities::hex::Hex;
 use tokio::runtime;
 
 /// Enum representing commands used by the basenode
@@ -118,7 +120,7 @@ impl Parser {
             return;
         }
         let command = command.unwrap();
-        let help_command = if commands.len() > 1 {
+        let help_command = if commands.len() == 2 {
             Some(BaseNodeCommand::from_str(commands[1]).unwrap_or(BaseNodeCommand::Help))
         } else {
             None
@@ -148,6 +150,7 @@ impl Parser {
         }
     }
 
+    // Function to process commands
     fn process_command(&mut self, command: BaseNodeCommand, command_arg: Vec<&str>) {
         match command {
             BaseNodeCommand::Help => {
@@ -156,13 +159,13 @@ impl Parser {
                 println!("{}", joined);
             },
             BaseNodeCommand::GetBalance => {
-                println!("Your balance is 0 Tari");
+                self.process_get_balance();
             },
             BaseNodeCommand::SendTari => {
-                println!("sending Tari");
+                self.process_send_tari(command_arg);
             },
             BaseNodeCommand::GetChainMetadata => {
-                println!("Base Node meta is: ");
+                self.process_get_chain_meta();
             },
             BaseNodeCommand::Exit | BaseNodeCommand::Quit => {
                 println!("quit received");
@@ -174,5 +177,81 @@ impl Parser {
                 self.shutdown_flag.store(true, Ordering::SeqCst);
             },
         }
+    }
+
+    // Function to process  the get balance command
+    fn process_get_balance(&mut self) {
+        let mut handler = self.base_node_context.wallet_output_service.clone();
+        self.executor.spawn(async move {
+            match handler.get_balance().await {
+                Err(e) => {
+                    println!("Something went wrong");
+                    warn!(target: LOG_TARGET, "Error communicating with wallet: {}", e.to_string(),);
+                    return;
+                },
+                Ok(data) => println!("Current balance is: {}", data),
+            };
+        });
+    }
+
+    // Function to process  the get chain meta data
+    fn process_get_chain_meta(&mut self) {
+        let mut handler = self.base_node_context.node_service.clone();
+        self.executor.spawn(async move {
+            match handler.get_metadata().await {
+                Err(e) => {
+                    println!("Something went wrong");
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error communicating with base node: {}",
+                        e.to_string(),
+                    );
+                    return;
+                },
+                Ok(data) => println!("Current meta data is is: {}", data),
+            };
+        });
+    }
+
+    // Function to process  the send transaction function
+    fn process_send_tari(&mut self, command_arg: Vec<&str>) {
+        if command_arg.len() != 3 {
+            println!("Command entered wrong, please enter in the following format: ");
+            println!("send_tari [amount of tari to send] [public key to send to]");
+            return;
+        }
+        let amount = command_arg[1].parse::<u64>();
+        if amount.is_err() {
+            println!("please enter a valid amount of tari");
+            return;
+        }
+        let amount: MicroTari = amount.unwrap().into();
+        let dest_pubkey = CommsPublicKey::from_hex(command_arg[2]);
+        if dest_pubkey.is_err() {
+            println!("please enter a valid destination pub_key");
+            return;
+        }
+        let dest_pubkey = dest_pubkey.unwrap();
+        let fee_per_gram = 25 * uT;
+        let mut handler = self.base_node_context.wallet_transaction_service.clone();
+        self.executor.spawn(async move {
+            match handler
+                .send_transaction(
+                    dest_pubkey.clone(),
+                    amount,
+                    fee_per_gram,
+                    "coinbase reward from mining".into(),
+                )
+                .await
+            {
+                Err(e) => {
+                    println!("Something went wrong sending funds");
+                    println!("{:?}", e);
+                    warn!(target: LOG_TARGET, "Error communicating with wallet: {}", e.to_string(),);
+                    return;
+                },
+                Ok(_) => println!("Send {} Tari to {} ", amount, dest_pubkey),
+            };
+        });
     }
 }

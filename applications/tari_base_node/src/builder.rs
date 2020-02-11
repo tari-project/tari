@@ -41,6 +41,7 @@ use tari_core::{
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
         BaseNodeStateMachine,
         BaseNodeStateMachineConfig,
+        LocalNodeCommsInterface,
         OutboundNodeCommsInterface,
     },
     chain_storage::{
@@ -96,7 +97,7 @@ const LOG_TARGET: &str = "base_node::initialization";
 pub struct BaseNodeContext {
     pub wallet_transaction_service: TransactionServiceHandle,
     pub wallet_output_service: OutputManagerHandle,
-    pub node_service: OutboundNodeCommsInterface,
+    pub node_service: LocalNodeCommsInterface,
 }
 
 pub enum NodeType {
@@ -260,6 +261,9 @@ pub fn configure_and_initialize_node(
             let wallet_transaction_service = handles
                 .get_handle::<TransactionServiceHandle>()
                 .expect("Problem getting wallet interface handle");
+            let node_interface = handles
+                .get_handle::<LocalNodeCommsInterface>()
+                .expect("Problem getting node interface handle");
             let node = NodeType::Memory(BaseNodeStateMachine::new(
                 &db,
                 &outbound_interface,
@@ -269,7 +273,7 @@ pub fn configure_and_initialize_node(
             let base_node_context = BaseNodeContext {
                 wallet_output_service: wallet_output_manager_service,
                 wallet_transaction_service,
-                node_service: outbound_interface.clone(),
+                node_service: node_interface,
             };
             let miner = MinerType::Memory(miner::build_miner(handles, node.get_flag(), rules.clone(), executor));
             (comms, node, miner, base_node_context)
@@ -317,10 +321,13 @@ pub fn configure_and_initialize_node(
             let wallet_transaction_service = handles
                 .get_handle::<TransactionServiceHandle>()
                 .expect("Problem getting wallet interface handle");
+            let node_interface = handles
+                .get_handle::<LocalNodeCommsInterface>()
+                .expect("Problem getting node interface handle");
             let base_node_context = BaseNodeContext {
                 wallet_output_service: wallet_output_manager_service,
                 wallet_transaction_service,
-                node_service: outbound_interface.clone(),
+                node_service: node_interface,
             };
             let miner = MinerType::LMDB(miner::build_miner(handles, node.get_flag(), rules.clone(), executor));
             (comms, node, miner, base_node_context)
