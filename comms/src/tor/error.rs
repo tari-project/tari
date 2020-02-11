@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,21 +19,37 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use super::parsers::ParseError;
+use derive_error::Error;
+use std::io;
+use tokio_util::codec::LinesCodecError;
 
-use crate::peer_manager::{NodeIdentity, PeerFeatures};
-use rand::rngs::OsRng;
-use std::sync::Arc;
-use tari_test_utils::address::get_next_local_address;
-
-pub fn build_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
-    let public_addr = get_next_local_address().parse().unwrap();
-    Arc::new(NodeIdentity::random(&mut OsRng, public_addr, features).unwrap())
+#[derive(Debug, Error)]
+pub enum TorClientError {
+    /// Failed to read/write line to socket. The maximum line length was exceeded.
+    MaxLineLengthExceeded,
+    Io(io::Error),
+    /// Command failed
+    #[error(no_from, non_std)]
+    TorCommandFailed(String),
+    /// Tor control port connection unexpectedly closed
+    UnexpectedEof,
+    /// Failed to parse tor response
+    #[error(no_from, non_std)]
+    ParseFailedResponse(String),
+    ParseError(ParseError),
+    /// The server returned no response
+    ServerNoResponse,
+    /// Server did not return a ServiceID for ADD_ONION command
+    AddOnionNoServiceId,
 }
 
-pub fn ordered_node_identities(n: usize) -> Vec<Arc<NodeIdentity>> {
-    let mut ids = (0..n)
-        .map(|_| build_node_identity(PeerFeatures::default()))
-        .collect::<Vec<_>>();
-    ids.sort_unstable_by(|a, b| a.node_id().cmp(b.node_id()));
-    ids
+impl From<LinesCodecError> for TorClientError {
+    fn from(err: LinesCodecError) -> Self {
+        use LinesCodecError::*;
+        match err {
+            MaxLineLengthExceeded => TorClientError::MaxLineLengthExceeded,
+            Io(err) => TorClientError::Io(err),
+        }
+    }
 }

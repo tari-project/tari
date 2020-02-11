@@ -20,33 +20,53 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connection::ConnectionDirection,
-    memsocket::MemorySocket,
-    multiaddr::Multiaddr,
-    multiplexing::Yamux,
-    transports::{MemoryTransport, Transport},
-};
-use futures::{future, StreamExt};
-use tokio::runtime::Handle;
+use std::borrow::Cow;
 
-pub async fn build_connected_sockets() -> (Multiaddr, MemorySocket, MemorySocket) {
-    let (mut listener, addr) = MemoryTransport.listen("/memory/0".parse().unwrap()).await.unwrap();
-    let (dial_sock, listen_sock) = future::join(MemoryTransport.dial(addr.clone()), listener.next()).await;
-    (addr, dial_sock.unwrap(), listen_sock.unwrap().unwrap().0.await.unwrap())
+pub enum KeyType {
+    /// The server should generate a key of algorithm KeyBlob
+    New,
+    /// The server should use the 1024-bit RSA key provided in as KeyBlob (v2).
+    Rsa1024,
+    /// The server should use the ED25519-V3 key provided in as KeyBlob (v3).
+    Ed25519V3,
 }
 
-pub async fn build_multiplexed_connections() -> (Multiaddr, Yamux, Yamux) {
-    let rt_handle = Handle::current();
-    let (addr, socket_out, socket_in) = build_connected_sockets().await;
+impl KeyType {
+    pub fn as_tor_repr(&self) -> &'static str {
+        match self {
+            KeyType::New => "NEW",
+            KeyType::Rsa1024 => "RSA1024",
+            KeyType::Ed25519V3 => "ED25519-V3",
+        }
+    }
+}
 
-    let muxer_out = Yamux::upgrade_connection(rt_handle.clone(), socket_out, ConnectionDirection::Outbound)
-        .await
-        .unwrap();
+pub enum KeyBlob {
+    /// The server should generate a key using the "best" supported algorithm (KeyType == "NEW").
+    Best,
+    /// The server should generate a 1024 bit RSA key (KeyType == "NEW") (v2).
+    Rsa1024,
+    /// The server should generate an ed25519 private key (KeyType == "NEW") (v3).
+    Ed25519V3,
+    /// A serialized private key (without whitespace)
+    String(String),
+}
 
-    let muxer_in = Yamux::upgrade_connection(rt_handle, socket_in, ConnectionDirection::Inbound)
-        .await
-        .unwrap();
+impl KeyBlob {
+    pub fn as_tor_repr(&self) -> &str {
+        match self {
+            KeyBlob::Best => "BEST",
+            KeyBlob::Rsa1024 => "RSA1024",
+            KeyBlob::Ed25519V3 => "ED25519-V3",
+            KeyBlob::String(priv_key) => priv_key,
+        }
+    }
+}
 
-    (addr, muxer_out, muxer_in)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PrivateKey<'a> {
+    /// The server should use the 1024 bit RSA key provided in as KeyBlob (v2).
+    Rsa1024(Cow<'a, str>),
+    /// The server should use the ed25519 v3 key provided in as KeyBlob (v3).
+    Ed25519V3(Cow<'a, str>),
 }

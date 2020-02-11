@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,20 +20,44 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::peer_manager::{NodeIdentity, PeerFeatures};
-use rand::rngs::OsRng;
-use std::sync::Arc;
-use tari_test_utils::address::get_next_local_address;
+use std::borrow::Cow;
 
-pub fn build_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
-    let public_addr = get_next_local_address().parse().unwrap();
-    Arc::new(NodeIdentity::random(&mut OsRng, public_addr, features).unwrap())
+const OK_CODE: u16 = 250;
+pub const EVENT_CODE: u16 = 650;
+
+/// Represents a single response line from the server.
+pub struct ResponseLine<'a> {
+    pub value: Cow<'a, str>,
+    pub code: u16,
+    pub has_more: bool,
 }
 
-pub fn ordered_node_identities(n: usize) -> Vec<Arc<NodeIdentity>> {
-    let mut ids = (0..n)
-        .map(|_| build_node_identity(PeerFeatures::default()))
-        .collect::<Vec<_>>();
-    ids.sort_unstable_by(|a, b| a.node_id().cmp(b.node_id()));
-    ids
+impl<'a> ResponseLine<'a> {
+    pub fn is_ok(&self) -> bool {
+        self.code == OK_CODE
+    }
+
+    pub fn has_more(&self) -> bool {
+        self.has_more
+    }
+
+    pub fn into_owned<'b>(self) -> ResponseLine<'b> {
+        ResponseLine {
+            value: Cow::Owned(self.value.into_owned()),
+            code: self.code,
+            has_more: self.has_more,
+        }
+    }
+
+    pub fn is_err(&self) -> bool {
+        !self.is_ok()
+    }
+
+    pub fn err(&self) -> Option<Cow<'a, str>> {
+        if self.is_err() {
+            Some(self.value.clone())
+        } else {
+            None
+        }
+    }
 }
