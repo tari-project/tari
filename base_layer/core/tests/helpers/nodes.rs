@@ -31,6 +31,7 @@ use tari_comms::{
 use tari_comms_dht::{outbound::OutboundMessageRequester, Dht};
 use tari_core::{
     base_node::{
+        chain_metadata_service::{ChainMetadataHandle, ChainMetadataServiceInitializer},
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
         LocalNodeCommsInterface,
         OutboundNodeCommsInterface,
@@ -54,7 +55,10 @@ use tari_mmr::MmrCacheConfig;
 use tari_p2p::{
     comms_connector::{pubsub_connector, InboundDomainConnector, PeerMessage},
     initialization::{initialize_comms, CommsConfig},
-    services::comms_outbound::CommsOutboundServiceInitializer,
+    services::{
+        comms_outbound::CommsOutboundServiceInitializer,
+        liveness::{LivenessConfig, LivenessInitializer},
+    },
 };
 use tari_service_framework::StackBuilder;
 use tari_test_utils::address::get_next_local_address;
@@ -69,6 +73,7 @@ pub struct NodeInterfaces {
     pub outbound_message_service: OutboundMessageRequester,
     pub blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
     pub mempool: Mempool<MemoryDatabase<HashDigest>>,
+    pub chain_metadata_handle: ChainMetadataHandle,
     pub comms: CommsNode,
 }
 
@@ -81,6 +86,7 @@ pub struct BaseNodeBuilder {
     mmr_cache_config: Option<MmrCacheConfig>,
     mempool_config: Option<MempoolConfig>,
     mempool_service_config: Option<MempoolServiceConfig>,
+    liveness_service_config: Option<LivenessConfig>,
     validators: Option<Validators<MemoryDatabase<HashDigest>>>,
 }
 
@@ -94,6 +100,7 @@ impl BaseNodeBuilder {
             mmr_cache_config: None,
             mempool_config: None,
             mempool_service_config: None,
+            liveness_service_config: None,
             validators: None,
         }
     }
@@ -131,6 +138,12 @@ impl BaseNodeBuilder {
     /// Set the configuration of the Mempool Service
     pub fn with_mempool_service_config(mut self, config: MempoolServiceConfig) -> Self {
         self.mempool_service_config = Some(config);
+        self
+    }
+
+    /// Set the configuration of the Liveness Service
+    pub fn with_liveness_service_config(mut self, config: LivenessConfig) -> Self {
+        self.liveness_service_config = Some(config);
         self
     }
 
@@ -172,7 +185,7 @@ impl BaseNodeBuilder {
         let consensus_manager = ConsensusManager::default();
         consensus_manager.set_diff_manager(diff_adj_manager).unwrap();
         let node_identity = self.node_identity.unwrap_or(random_node_identity());
-        let (outbound_nci, local_nci, outbound_mp_interface, outbound_message_service, comms) =
+        let (outbound_nci, local_nci, outbound_mp_interface, outbound_message_service, chain_metadata_handle, comms) =
             setup_base_node_services(
                 runtime,
                 node_identity.clone(),
@@ -183,6 +196,7 @@ impl BaseNodeBuilder {
                 self.base_node_service_config
                     .unwrap_or(BaseNodeServiceConfig::default()),
                 self.mempool_service_config.unwrap_or(MempoolServiceConfig::default()),
+                self.liveness_service_config.unwrap_or(LivenessConfig::default()),
                 data_path,
             );
 
@@ -194,6 +208,7 @@ impl BaseNodeBuilder {
             outbound_message_service,
             blockchain_db,
             mempool,
+            chain_metadata_handle,
             comms,
         }
     }
@@ -222,6 +237,7 @@ pub fn create_network_with_2_base_nodes_with_config(
     base_node_service_config: BaseNodeServiceConfig,
     mmr_cache_config: MmrCacheConfig,
     mempool_service_config: MempoolServiceConfig,
+    liveness_service_config: LivenessConfig,
     data_path: &str,
 ) -> (NodeInterfaces, NodeInterfaces)
 {
@@ -234,6 +250,7 @@ pub fn create_network_with_2_base_nodes_with_config(
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
+        .with_liveness_service_config(liveness_service_config)
         .start(runtime, data_path);
     let bob_node = BaseNodeBuilder::new()
         .with_node_identity(bob_node_identity)
@@ -241,6 +258,7 @@ pub fn create_network_with_2_base_nodes_with_config(
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
+        .with_liveness_service_config(liveness_service_config)
         .start(runtime, data_path);
 
     (alice_node, bob_node)
@@ -258,6 +276,7 @@ pub fn create_network_with_3_base_nodes(
         BaseNodeServiceConfig::default(),
         mmr_cache_config,
         MempoolServiceConfig::default(),
+        LivenessConfig::default(),
         data_path,
     )
 }
@@ -268,6 +287,7 @@ pub fn create_network_with_3_base_nodes_with_config(
     base_node_service_config: BaseNodeServiceConfig,
     mmr_cache_config: MmrCacheConfig,
     mempool_service_config: MempoolServiceConfig,
+    liveness_service_config: LivenessConfig,
     data_path: &str,
 ) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces)
 {
@@ -281,6 +301,7 @@ pub fn create_network_with_3_base_nodes_with_config(
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
+        .with_liveness_service_config(liveness_service_config)
         .start(runtime, data_path);
     let bob_node = BaseNodeBuilder::new()
         .with_node_identity(bob_node_identity.clone())
@@ -288,6 +309,7 @@ pub fn create_network_with_3_base_nodes_with_config(
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
+        .with_liveness_service_config(liveness_service_config)
         .start(runtime, data_path);
     let carol_node = BaseNodeBuilder::new()
         .with_node_identity(carol_node_identity.clone())
@@ -295,6 +317,7 @@ pub fn create_network_with_3_base_nodes_with_config(
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
+        .with_liveness_service_config(liveness_service_config)
         .start(runtime, data_path);
 
     (alice_node, bob_node, carol_node)
@@ -375,12 +398,14 @@ fn setup_base_node_services(
     consensus_manager: ConsensusManager<MemoryDatabase<HashDigest>>,
     base_node_service_config: BaseNodeServiceConfig,
     mempool_service_config: MempoolServiceConfig,
+    liveness_service_config: LivenessConfig,
     data_path: &str,
 ) -> (
     OutboundNodeCommsInterface,
     LocalNodeCommsInterface,
     OutboundMempoolServiceInterface,
     OutboundMessageRequester,
+    ChainMetadataHandle,
     CommsNode,
 )
 {
@@ -390,6 +415,11 @@ fn setup_base_node_services(
 
     let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
+        .add_initializer(LivenessInitializer::new(
+            liveness_service_config,
+            Arc::clone(&subscription_factory),
+            dht.dht_requester(),
+        ))
         .add_initializer(BaseNodeServiceInitializer::new(
             subscription_factory.clone(),
             blockchain_db,
@@ -402,6 +432,7 @@ fn setup_base_node_services(
             mempool,
             mempool_service_config,
         ))
+        .add_initializer(ChainMetadataServiceInitializer)
         .finish();
 
     let handles = runtime.block_on(fut).expect("Service initialization failed");
@@ -410,6 +441,7 @@ fn setup_base_node_services(
         handles.get_handle::<LocalNodeCommsInterface>().unwrap(),
         handles.get_handle::<OutboundMempoolServiceInterface>().unwrap(),
         handles.get_handle::<OutboundMessageRequester>().unwrap(),
+        handles.get_handle::<ChainMetadataHandle>().unwrap(),
         comms,
     )
 }

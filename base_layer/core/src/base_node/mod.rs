@@ -36,11 +36,11 @@ cfg_if! {
     if #[cfg(feature = "base_node")] {
         mod backoff;
         mod base_node;
-        mod chain_metadata_service;
 
         pub mod comms_interface;
         pub mod consts;
         pub mod service;
+        pub mod chain_metadata_service;
         pub mod states;
         // Public re-exports
         pub use backoff::BackOff;

@@ -38,6 +38,7 @@ use tari_comms::{
 };
 use tari_core::{
     base_node::{
+        chain_metadata_service::ChainMetadataHandle,
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
         BaseNodeStateMachine,
         BaseNodeStateMachineConfig,
@@ -255,6 +256,9 @@ pub fn configure_and_initialize_node(
             let outbound_interface = handles
                 .get_handle::<OutboundNodeCommsInterface>()
                 .expect("Problem getting node interface handle");
+            let chain_metadata_service = handles
+                .get_handle::<ChainMetadataHandle>()
+                .expect("Problem getting chain metadata interface handle");
             let wallet_output_manager_service = handles
                 .get_handle::<OutputManagerHandle>()
                 .expect("Problem getting wallet interface handle");
@@ -267,6 +271,8 @@ pub fn configure_and_initialize_node(
             let node = NodeType::Memory(BaseNodeStateMachine::new(
                 &db,
                 &outbound_interface,
+                rt.handle().clone(),
+                chain_metadata_service.get_event_stream(),
                 BaseNodeStateMachineConfig::default(),
             ));
 
@@ -310,9 +316,14 @@ pub fn configure_and_initialize_node(
             let outbound_interface = handles
                 .get_handle::<OutboundNodeCommsInterface>()
                 .expect("Problem getting node interface handle");
+            let chain_metadata_service = handles
+                .get_handle::<ChainMetadataHandle>()
+                .expect("Problem getting chain metadata interface handle");
             let node = NodeType::LMDB(BaseNodeStateMachine::new(
                 &db,
                 &outbound_interface,
+                rt.handle().clone(),
+                chain_metadata_service.get_event_stream(),
                 BaseNodeStateMachineConfig::default(),
             ));
             let wallet_output_manager_service = handles
