@@ -24,10 +24,12 @@ use crate::chain_storage::ChainMetadata;
 use futures::{stream::Fuse, StreamExt};
 use tari_broadcast_channel::Subscriber;
 
+#[derive(Debug)]
 pub enum ChainMetadataEvent {
     PeerChainMetadataReceived(Vec<ChainMetadata>),
 }
 
+#[derive(Clone)]
 pub struct ChainMetadataHandle {
     event_stream: Subscriber<ChainMetadataEvent>,
 }
@@ -37,7 +39,11 @@ impl ChainMetadataHandle {
         Self { event_stream }
     }
 
-    pub fn get_event_stream(&self) -> Fuse<Subscriber<ChainMetadataEvent>> {
-        self.event_stream.clone().fuse()
+    pub fn get_event_stream(&self) -> Subscriber<ChainMetadataEvent> {
+        self.event_stream.clone()
+    }
+
+    pub fn get_event_stream_fused(&self) -> Fuse<Subscriber<ChainMetadataEvent>> {
+        self.get_event_stream().fuse()
     }
 }

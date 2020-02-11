@@ -26,3 +26,7 @@ mod error;
 mod handle;
 mod initializer;
 mod service;
+
+// Public re-exports
+pub use handle::{ChainMetadataEvent, ChainMetadataHandle};
+pub use initializer::ChainMetadataServiceInitializer;

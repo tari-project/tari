@@ -35,6 +35,7 @@ use crate::{
     chain_storage::{BlockchainBackend, ChainMetadata},
 };
 
+use crate::base_node::states::{helpers::determine_sync_mode, listening::ListeningInfo};
 use log::*;
 use std::time::Duration;
 
@@ -113,7 +114,7 @@ impl InitialSync {
             return StateEvent::MetadataSynced(SyncStatus::UpToDate);
         }
         let network = self.summarize_network_data(theirs);
-        MetadataSynced(InitialSync::determine_sync_mode(ours, network))
+        MetadataSynced(determine_sync_mode(ours, network, LOG_TARGET))
     }
 
     fn summarize_network_data(&self, data: Vec<ChainMetadata>) -> ChainMetadata {
@@ -126,36 +127,6 @@ impl InitialSync {
                 best
             }
         })
-    }
-
-    /// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
-    fn determine_sync_mode(local: ChainMetadata, network: ChainMetadata) -> SyncStatus {
-        use crate::base_node::states::SyncStatus::*;
-        match network.height_of_longest_chain {
-            None => {
-                info!(
-                    target: LOG_TARGET,
-                    "The rest of the network doesn't appear to have any up-to-date chain data, so we're going to \
-                     assume we're at the tip"
-                );
-                UpToDate
-            },
-            Some(network_tip) => {
-                let local_tip = local.height_of_longest_chain.unwrap_or(0);
-                if local_tip < network_tip {
-                    info!(
-                        target: LOG_TARGET,
-                        "Our local blockchain history is a little behind that of the network. We're at block #{}, and \
-                         the chain tip is at #{}",
-                        local_tip,
-                        network_tip
-                    );
-                    Lagging(network_tip)
-                } else {
-                    UpToDate
-                }
-            },
-        }
     }
 
     fn log_error(&mut self, e: CommsInterfaceError) {
@@ -259,6 +230,15 @@ impl InitialSync {
 /// State management for Starting -> InitialSync. This state change occurs every time a node is restarted.
 impl From<Starting> for InitialSync {
     fn from(_old_state: Starting) -> Self {
+        InitialSync::new()
+    }
+}
+
+/// State management for Listening -> InitialSync. This state change happens when a node has not received any chain
+/// metadata messages from any other nodes. This could have been the result of the current node being temporarily
+/// disconnected from the network.
+impl From<ListeningInfo> for InitialSync {
+    fn from(_old: ListeningInfo) -> Self {
         InitialSync::new()
     }
 }

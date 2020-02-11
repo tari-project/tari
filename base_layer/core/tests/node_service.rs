@@ -59,6 +59,7 @@ use tari_core::{
     txn_schema,
 };
 use tari_mmr::MmrCacheConfig;
+use tari_p2p::services::liveness::LivenessConfig;
 use tari_test_utils::random::string;
 use tari_utilities::hash::Hashable;
 use tempdir::TempDir;
@@ -440,6 +441,7 @@ fn service_request_timeout() {
         base_node_service_config,
         MmrCacheConfig::default(),
         MempoolServiceConfig::default(),
+        LivenessConfig::default(),
         temp_dir.path().to_str().unwrap(),
     );
 

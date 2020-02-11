@@ -55,8 +55,12 @@ impl LocalNodeCommsInterface {
         }
     }
 
+    pub fn get_block_event_stream(&self) -> Subscriber<BlockEvent> {
+        self.block_event_stream.clone()
+    }
+
     pub fn get_block_event_stream_fused(&self) -> Fuse<Subscriber<BlockEvent>> {
-        self.block_event_stream.clone().fuse()
+        self.get_block_event_stream().fuse()
     }
 
     /// Request metadata from the current local node.

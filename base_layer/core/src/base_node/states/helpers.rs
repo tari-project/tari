@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,28 +20,36 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use crate::{base_node::states::SyncStatus, chain_storage::ChainMetadata};
 
-/// Configuration for liveness service
-#[derive(Debug, Clone, Copy)]
-pub struct LivenessConfig {
-    /// The interval to send Ping messages, or None to disable periodic pinging (default: None (disabled))
-    pub auto_ping_interval: Option<Duration>,
-    /// Set to true to enable automatically joining the network on node startup (default: true)
-    pub enable_auto_join: bool,
-    /// Set to true to enable a request for stored messages on node startup (default: true)
-    pub enable_auto_stored_message_request: bool,
-    /// The length of time between querying peer manager for closest neighbours. (default: 5mins)
-    pub refresh_neighbours_interval: Duration,
-}
+use log::*;
 
-impl Default for LivenessConfig {
-    fn default() -> Self {
-        Self {
-            auto_ping_interval: None,
-            enable_auto_join: true,
-            enable_auto_stored_message_request: true,
-            refresh_neighbours_interval: Duration::from_secs(3 * 60),
-        }
+/// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
+pub fn determine_sync_mode(local: ChainMetadata, network: ChainMetadata, log_target: &str) -> SyncStatus {
+    use crate::base_node::states::SyncStatus::*;
+    match network.height_of_longest_chain {
+        None => {
+            info!(
+                target: log_target,
+                "The rest of the network doesn't appear to have any up-to-date chain data, so we're going to assume \
+                 we're at the tip"
+            );
+            UpToDate
+        },
+        Some(network_tip) => {
+            let local_tip = local.height_of_longest_chain.unwrap_or(0);
+            if local_tip < network_tip {
+                info!(
+                    target: log_target,
+                    "Our local blockchain history is a little behind that of the network. We're at block #{}, and the \
+                     chain tip is at #{}",
+                    local_tip,
+                    network_tip
+                );
+                Lagging(network_tip)
+            } else {
+                UpToDate
+            }
+        },
     }
 }

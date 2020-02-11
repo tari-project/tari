@@ -78,6 +78,7 @@ pub enum StateEvent {
     MetadataSynced(SyncStatus),
     BlocksSynchronized,
     FallenBehind(SyncStatus),
+    NetworkSilence,
     FatalError(String),
     UserQuit,
 }
@@ -108,6 +109,7 @@ impl Display for BaseNodeState {
 
 mod block_sync;
 mod error;
+mod helpers;
 mod initial_sync;
 mod listening;
 mod shutdown_state;
@@ -115,6 +117,6 @@ mod starting_state;
 
 pub use block_sync::{BlockSyncConfig, BlockSyncInfo};
 pub use initial_sync::InitialSync;
-pub use listening::ListeningInfo;
+pub use listening::{ListeningConfig, ListeningInfo};
 pub use shutdown_state::Shutdown;
 pub use starting_state::Starting;

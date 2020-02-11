@@ -56,7 +56,7 @@ use tari_core::{
     validation::transaction_validators::TxInputAndMaturityValidator,
 };
 use tari_mmr::MmrCacheConfig;
-use tari_p2p::tari_message::TariMessageType;
+use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
 use tari_test_utils::{async_assert_eventually, random::string};
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
@@ -595,6 +595,7 @@ fn service_request_timeout() {
         BaseNodeServiceConfig::default(),
         MmrCacheConfig::default(),
         mempool_service_config,
+        LivenessConfig::default(),
         temp_dir.path().to_str().unwrap(),
     );
 
