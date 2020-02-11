@@ -55,7 +55,7 @@ fn create_coinbase(
 ) -> (TransactionOutput, TransactionKernel, UnblindedOutput)
 {
     let features = OutputFeatures::create_coinbase(100);
-    let (mut utxo, key) = create_utxo(value, &factories);
+    let (mut utxo, key) = create_utxo(value, &factories, None);
     utxo.features = features.clone();
     let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&key));
     let (_pk, sig) = create_random_signature(0.into(), 0);
@@ -87,7 +87,7 @@ pub fn create_act_gen_block() {
     let mut header = BlockHeader::new(0);
     let emission_schedule = EmissionSchedule::new(10_000_000.into(), 0.999, 100.into());
     let value = emission_schedule.supply_at_block(0);
-    let (mut utxo, key) = create_utxo(value, &factories);
+    let (mut utxo, key) = create_utxo(value, &factories, None);
     utxo.features = OutputFeatures::create_coinbase(1);
     let (pk, sig) = create_random_signature_from_s_key(key.clone(), 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);
@@ -152,7 +152,7 @@ where
 {
     let (mut template, coinbase) = genesis_template(&factories, 100_000_000.into());
     let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
-        let (t, k) = create_utxo(*v, factories);
+        let (t, k) = create_utxo(*v, factories, None);
         template.body.add_output(t);
         secrets.push(UnblindedOutput::new(v.clone(), k, None));
         secrets

@@ -256,7 +256,7 @@ fn outbound_fetch_utxos() {
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
-        let (utxo, _) = create_utxo(MicroTari(10_000), &factories);
+        let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
         let hash = utxo.hash();
         let utxo_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::TransactionOutputs(vec![utxo.clone()])];
         let (received_utxos, _) = futures::join!(
@@ -288,7 +288,7 @@ fn inbound_fetch_utxos() {
         outbound_nci,
     );
 
-    let (utxo, _) = create_utxo(MicroTari(10_000), &factories);
+    let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
     let hash = utxo.hash();
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo.clone(), true);

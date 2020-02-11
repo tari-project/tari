@@ -347,11 +347,17 @@ pub fn create_test_kernel(fee: MicroTari, lock_height: u64) -> TransactionKernel
 }
 
 /// Create a new UTXO for the specified value and return the output and spending key
-pub fn create_utxo(value: MicroTari, factories: &CryptoFactories) -> (TransactionOutput, PrivateKey) {
+pub fn create_utxo(
+    value: MicroTari,
+    factories: &CryptoFactories,
+    features: Option<OutputFeatures>,
+) -> (TransactionOutput, PrivateKey)
+{
     let keys = generate_keys();
+    let features = features.unwrap_or_default();
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
     let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
-    let utxo = TransactionOutput::new(OutputFeatures::default(), commitment, proof.into());
+    let utxo = TransactionOutput::new(features, commitment, proof.into());
     (utxo, keys.k)
 }
 

@@ -37,3 +37,5 @@ Cargo.lock
 base_layer/wallet_ffi/build.config
 /base_layer/wallet_ffi/logs/
 base_layer/wallet_ffi/.cargo/config
+
+keys.json

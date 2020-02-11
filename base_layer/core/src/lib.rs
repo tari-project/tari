@@ -60,3 +60,4 @@ pub mod transactions;
 
 // Re-export the crypto crate to make exposing traits etc easier for clients of this crate
 pub use tari_crypto as crypto;
+pub use tari_utilities;
