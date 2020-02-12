@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,20 +20,46 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::peer_manager::{NodeIdentity, PeerFeatures};
-use rand::rngs::OsRng;
-use std::sync::Arc;
-use tari_test_utils::address::get_next_local_address;
+use crate::tor::{commands::TorCommand, error::TorClientError, response::ResponseLine};
 
-pub fn build_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
-    let public_addr = get_next_local_address().parse().unwrap();
-    Arc::new(NodeIdentity::random(&mut OsRng, public_addr, features).unwrap())
+/// The DEL_ONION command.
+///
+/// This instructs Tor to delete a hidden service.
+pub struct DelOnion<'a> {
+    service_id: &'a str,
 }
 
-pub fn ordered_node_identities(n: usize) -> Vec<Arc<NodeIdentity>> {
-    let mut ids = (0..n)
-        .map(|_| build_node_identity(PeerFeatures::default()))
-        .collect::<Vec<_>>();
-    ids.sort_unstable_by(|a, b| a.node_id().cmp(b.node_id()));
-    ids
+impl<'a> DelOnion<'a> {
+    pub fn new(service_id: &'a str) -> Self {
+        Self { service_id }
+    }
+}
+
+impl<'a> TorCommand for DelOnion<'a> {
+    type Error = TorClientError;
+    type Output = ();
+
+    fn to_command_string(&self) -> Result<String, Self::Error> {
+        Ok(format!("DEL_ONION {}", self.service_id))
+    }
+
+    fn parse_responses(&self, mut responses: Vec<ResponseLine<'_>>) -> Result<Self::Output, Self::Error> {
+        let last_response = responses.pop().ok_or(TorClientError::UnexpectedEof)?;
+        if let Some(err) = last_response.err() {
+            return Err(TorClientError::TorCommandFailed(err.into_owned()));
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn to_command_string() {
+        let command = DelOnion::new("some-random-key");
+        assert_eq!(command.to_command_string().unwrap(), "DEL_ONION some-random-key");
+    }
 }

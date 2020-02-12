@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,20 +20,57 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::peer_manager::{NodeIdentity, PeerFeatures};
-use rand::rngs::OsRng;
-use std::sync::Arc;
-use tari_test_utils::address::get_next_local_address;
+use super::response::ResponseLine;
+use nom::{
+    bytes::complete::take_while1,
+    character::{
+        complete::{anychar, char as nom_char, digit1},
+        is_alphanumeric,
+    },
+    combinator::map_res,
+    error::ErrorKind,
+};
+use std::{borrow::Cow, fmt};
 
-pub fn build_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
-    let public_addr = get_next_local_address().parse().unwrap();
-    Arc::new(NodeIdentity::random(&mut OsRng, public_addr, features).unwrap())
+type NomErr<'a> = nom::Err<(&'a str, ErrorKind)>;
+
+#[derive(Debug, Clone)]
+pub struct ParseError(pub String);
+
+impl From<NomErr<'_>> for ParseError {
+    fn from(err: NomErr<'_>) -> Self {
+        ParseError(err.to_string())
+    }
 }
 
-pub fn ordered_node_identities(n: usize) -> Vec<Arc<NodeIdentity>> {
-    let mut ids = (0..n)
-        .map(|_| build_node_identity(PeerFeatures::default()))
-        .collect::<Vec<_>>();
-    ids.sort_unstable_by(|a, b| a.node_id().cmp(b.node_id()));
-    ids
+impl std::error::Error for ParseError {}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "ParseError({})", self.0)
+    }
+}
+
+pub fn response_line(line: &str) -> Result<ResponseLine<'_>, ParseError> {
+    let parser = map_res(digit1, |code: &str| code.parse::<u16>());
+    let (rest, code) = parser(line)?;
+    let (rest, ch) = anychar(rest)?;
+    if ch != ' ' && ch != '-' {
+        return Err(ParseError(format!(
+            "Unexpected end-of-response character '{}'. Expected ' ' or '-'.",
+            ch
+        )));
+    }
+
+    Ok(ResponseLine {
+        has_more: ch == '-',
+        code,
+        value: rest.into(),
+    })
+}
+
+pub fn key_value(line: &str) -> Result<(Cow<'_, str>, Cow<'_, str>), ParseError> {
+    let (rest, identifier) = take_while1(|ch| is_alphanumeric(ch as u8))(line)?;
+    let (rest, _) = nom_char('=')(rest)?;
+    Ok((identifier.into(), rest.into()))
 }

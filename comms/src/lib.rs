@@ -43,6 +43,7 @@ cfg_next! {
     mod noise;
     mod protocol;
     mod socks;
+    mod tor;
 
     pub mod bounded_executor;
     pub mod compat;
