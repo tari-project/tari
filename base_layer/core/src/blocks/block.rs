@@ -42,7 +42,7 @@ use crate::{
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
-use tari_utilities::Hashable;
+use tari_crypto::tari_utilities::Hashable;
 
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum BlockValidationError {

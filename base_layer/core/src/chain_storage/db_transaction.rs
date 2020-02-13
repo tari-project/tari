@@ -29,7 +29,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
-use tari_utilities::{hex::to_hex, Hashable};
+use tari_crypto::tari_utilities::{hex::to_hex, Hashable};
 
 #[derive(Debug)]
 pub struct DbTransaction {

@@ -38,7 +38,7 @@ use futures::future;
 use log::*;
 use std::{convert::From, sync::Arc};
 use tari_comms::{connection::NetAddress, peer_manager::Peer, types::CommsPublicKey};
-use tari_utilities::hex::Hex;
+use tari_crypto::tari_utilities::hex::Hex;
 use tari_wallet::{
     text_message_service::{Contact, ReceivedTextMessage, SentTextMessage, UpdateContact},
     Wallet,

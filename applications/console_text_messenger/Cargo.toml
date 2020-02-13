@@ -9,9 +9,8 @@ edition = "2018"
 [dependencies]
 tari_common = {path = "../../common", version= "^0.0"}
 tari_comms = { path = "../../comms", version = "^0.0"}
-tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0"}
+tari_crypto = { version = "^0.3" }
 tari_p2p = {path = "../../base_layer/p2p", version = "^0.0"}
-tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.1"}
 tari_wallet = {path = "../../base_layer/wallet", version="^0.0"}
 
 chrono = { version = "0.4.6", features = ["serde"]}

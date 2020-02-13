@@ -26,7 +26,7 @@ use super::mempool::{
 };
 use crate::mempool::service::{MempoolRequest, MempoolServiceRequest};
 use std::convert::{TryFrom, TryInto};
-use tari_utilities::ByteArrayError;
+use tari_crypto::tari_utilities::ByteArrayError;
 
 impl TryInto<MempoolRequest> for ProtoMempoolRequest {
     type Error = String;

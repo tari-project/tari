@@ -23,7 +23,7 @@
 use super::types as proto;
 use crate::transactions::types::{BlindingFactor, Commitment, HashOutput, PrivateKey, PublicKey, Signature};
 use std::convert::TryFrom;
-use tari_utilities::{ByteArray, ByteArrayError};
+use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 
 //---------------------------------- Commitment --------------------------------------------//
 

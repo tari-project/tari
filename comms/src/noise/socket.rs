@@ -38,7 +38,7 @@ use std::{
 // use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use crate::types::CommsPublicKey;
 use futures::{io::Error, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::ByteArray;
 
 const LOG_TARGET: &str = "comms::noise::socket";
 

@@ -95,7 +95,7 @@ where T: AsRef<[NodeFeature]>
 #[cfg(test)]
 mod test {
     use super::*;
-    use tari_utilities::message_format::MessageFormat;
+    use tari_crypto::tari_utilities::message_format::MessageFormat;
 
     #[test]
     fn serialize_u8() {

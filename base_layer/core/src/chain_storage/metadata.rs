@@ -23,7 +23,7 @@
 use crate::blocks::blockheader::BlockHash;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
-use tari_utilities::hex::Hex;
+use tari_crypto::tari_utilities::hex::Hex;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChainMetadata {

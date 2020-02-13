@@ -43,11 +43,3 @@ macro_rules! acquire_write_lock {
         acquire_lock!($e, write)
     };
 }
-
-/// A small wrapper macro which includes rust files generated from protos
-#[macro_export]
-macro_rules! include_proto_package {
-    ($path:expr) => {
-        include!(concat!(env!("OUT_DIR"), "/", $path, ".rs"));
-    };
-}

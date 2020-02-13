@@ -42,8 +42,7 @@ use std::{
     collections::HashMap,
     fmt::{Debug, Error, Formatter},
 };
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
-use tari_utilities::fixed_set::FixedSet;
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, tari_utilities::fixed_set::FixedSet};
 
 /// The SenderTransactionInitializer is a Builder that helps set up the initial state for the Sender party of a new
 /// transaction Typically you don't instantiate this object directly. Rather use

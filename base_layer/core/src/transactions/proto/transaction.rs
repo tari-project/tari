@@ -40,7 +40,7 @@ use crate::transactions::{
     types::{BlindingFactor, Commitment},
 };
 use std::convert::{TryFrom, TryInto};
-use tari_utilities::{ByteArray, ByteArrayError};
+use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 
 //---------------------------------- TransactionKernel --------------------------------------------//
 

@@ -45,7 +45,7 @@ use std::{
     thread,
     time::Duration,
 };
-use tari_utilities::hex::{to_hex, Hex};
+use tari_crypto::tari_utilities::hex::{to_hex, Hex};
 
 const LOG_TARGET: &str = "comms::connection::peer_connection::worker";
 

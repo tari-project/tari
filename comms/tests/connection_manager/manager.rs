@@ -31,8 +31,8 @@ use tari_comms::{
     control_service::{ControlService, ControlServiceConfig},
     message::FrameSet,
 };
+use tari_crypto::tari_utilities::thread_join::ThreadJoinWithTimeout;
 use tari_storage::LMDBWrapper;
-use tari_utilities::thread_join::ThreadJoinWithTimeout;
 
 fn pause() {
     thread::sleep(Duration::from_millis(100));

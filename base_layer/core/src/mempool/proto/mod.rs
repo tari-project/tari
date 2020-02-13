@@ -24,7 +24,7 @@
 use crate::transactions::proto::types;
 
 pub mod mempool {
-    tari_utilities::include_proto_package!("tari.mempool");
+    include!(concat!(env!("OUT_DIR"), "/", "tari.mempool.rs"));
 }
 
 pub mod mempool_request;

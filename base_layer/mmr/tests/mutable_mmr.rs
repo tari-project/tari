@@ -25,8 +25,8 @@ mod support;
 use croaring::Bitmap;
 use digest::Digest;
 use support::{create_mmr, int_to_hash, Hasher};
+use tari_crypto::tari_utilities::hex::Hex;
 use tari_mmr::{Hash, HashSlice, MutableMmr};
-use tari_utilities::hex::Hex;
 
 fn hash_with_bitmap(hash: &HashSlice, bitmap: &mut Bitmap) -> Hash {
     bitmap.run_optimize();

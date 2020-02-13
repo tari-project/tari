@@ -32,7 +32,7 @@ use tari_comms::{
     utils::signature,
     Bytes,
 };
-use tari_utilities::{hex::Hex, message_format::MessageFormat};
+use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::dht::serialize";

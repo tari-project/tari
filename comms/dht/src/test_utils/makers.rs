@@ -34,9 +34,9 @@ use tari_comms::{
     utils::signature,
     Bytes,
 };
+use tari_crypto::tari_utilities::message_format::MessageFormat;
 use tari_storage::lmdb_store::LMDBBuilder;
 use tari_test_utils::{paths::create_temporary_data_path, random};
-use tari_utilities::message_format::MessageFormat;
 
 pub fn make_node_identity() -> Arc<NodeIdentity> {
     Arc::new(

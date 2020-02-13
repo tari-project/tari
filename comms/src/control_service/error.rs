@@ -26,7 +26,7 @@ use crate::{
     peer_manager::PeerManagerError,
 };
 use derive_error::Error;
-use tari_utilities::{ciphers::cipher::CipherError, thread_join::ThreadError};
+use tari_crypto::tari_utilities::{ciphers::cipher::CipherError, thread_join::ThreadError};
 
 #[derive(Debug, Error)]
 pub enum ControlServiceError {

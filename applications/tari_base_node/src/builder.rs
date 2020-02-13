@@ -75,9 +75,9 @@ use tari_p2p::{
     services::comms_outbound::CommsOutboundServiceInitializer,
 };
 use tari_service_framework::{handles::ServiceHandles, StackBuilder};
-use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tokio::runtime::Runtime;
 
+use tari_core::tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tari_wallet::{
     output_manager_service::{
         handle::OutputManagerHandle,

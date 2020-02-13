@@ -44,8 +44,7 @@ use crate::transactions::{
 };
 use digest::Digest;
 use serde::{Deserialize, Serialize};
-use tari_crypto::ristretto::pedersen::PedersenCommitment;
-use tari_utilities::ByteArray;
+use tari_crypto::{ristretto::pedersen::PedersenCommitment, tari_utilities::ByteArray};
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
 
@@ -512,8 +511,7 @@ mod test {
         types::CryptoFactories,
     };
     use rand::rngs::OsRng;
-    use tari_crypto::common::Blake256;
-    use tari_utilities::hex::Hex;
+    use tari_crypto::{common::Blake256, tari_utilities::hex::Hex};
 
     #[test]
     fn zero_recipients() {

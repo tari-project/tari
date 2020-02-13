@@ -35,7 +35,7 @@ use std::{
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Duration,
 };
-use tari_utilities::{thread_join::ThreadJoinWithTimeout, ByteArray};
+use tari_crypto::tari_utilities::{thread_join::ThreadJoinWithTimeout, ByteArray};
 
 const LOG_TARGET: &str = "comms::connection_manager::connections";
 

@@ -26,7 +26,7 @@ use futures::{future::Future, stream::Stream};
 use hyper::server::conn::Http;
 use log::*;
 use std::{net::AddrParseError, sync::Arc};
-use tari_utilities::message_format::MessageFormatError;
+use tari_crypto::tari_utilities::message_format::MessageFormatError;
 use tari_wallet::Wallet;
 use tokio::net::TcpListener;
 use tower_hyper::Server;

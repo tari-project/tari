@@ -100,7 +100,7 @@ impl Drop for ThreadControlMessenger {
 mod test {
     use super::*;
     use std::{sync::mpsc::sync_channel, thread, time::Duration};
-    use tari_utilities::thread_join::ThreadJoinWithTimeout;
+    use tari_crypto::tari_utilities::thread_join::ThreadJoinWithTimeout;
 
     #[test]
     fn send_control_message() {

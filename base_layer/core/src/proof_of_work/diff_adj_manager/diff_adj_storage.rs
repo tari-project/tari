@@ -34,7 +34,7 @@ use crate::{
     },
 };
 use std::collections::VecDeque;
-use tari_utilities::{epoch_time::EpochTime, hash::Hashable};
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable};
 
 /// The UpdateState enum is used to specify what update operation should be performed to keep the difficulty adjustment
 /// system upto date with the blockchain db.

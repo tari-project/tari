@@ -22,7 +22,7 @@
 
 use chrono::{DateTime, Duration, Utc};
 use std::ops::Add;
-use tari_utilities::epoch_time::EpochTime;
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 /// This is the inner struct used to control all consensus values.
 pub struct ConsensusConstants {

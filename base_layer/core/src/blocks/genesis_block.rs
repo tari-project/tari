@@ -33,7 +33,7 @@ use crate::transactions::{
     transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionKernel, TransactionOutput},
     types::{Commitment, PrivateKey, PublicKey, Signature},
 };
-use tari_utilities::{hash::Hashable, hex::*};
+use tari_crypto::tari_utilities::{hash::Hashable, hex::*};
 
 // TODO: see issue #1145
 // The values contain in this block is temporary. They should be replaced by the actual values before test net.

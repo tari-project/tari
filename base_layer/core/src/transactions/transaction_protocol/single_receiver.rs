@@ -34,8 +34,8 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PK,
     range_proof::{RangeProofError, RangeProofService as RPS},
+    tari_utilities::byte_array::ByteArray,
 };
-use tari_utilities::byte_array::ByteArray;
 
 /// SingleReceiverTransactionProtocol represents the actions taken by the single receiver in the one-round Tari
 /// transaction protocol. The procedure is straightforward. Upon receiving the sender's information, the receiver:

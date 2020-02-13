@@ -37,7 +37,7 @@ use tari_comms::{
 use tari_crypto::keys::PublicKey;
 use tari_grpc_wallet::wallet_server::WalletServer;
 use tari_p2p::initialization::CommsConfig;
-use tari_utilities::{hex::Hex, message_format::MessageFormat};
+use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tari_wallet::{
     text_message_service::model::Contact,
     text_message_service_sync::Contact,

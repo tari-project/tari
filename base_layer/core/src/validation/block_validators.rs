@@ -36,7 +36,7 @@ use crate::{
         ValidationError,
     },
 };
-use tari_utilities::hash::Hashable;
+use tari_crypto::tari_utilities::hash::Hashable;
 
 /// This validator tests whether a candidate block is internally consistent
 pub struct StatelessValidator {}

@@ -63,8 +63,11 @@ use crate::transactions::{
 use derive_error::Error;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
-use tari_crypto::{range_proof::RangeProofError, signatures::SchnorrSignatureError};
-use tari_utilities::byte_array::ByteArray;
+use tari_crypto::{
+    range_proof::RangeProofError,
+    signatures::SchnorrSignatureError,
+    tari_utilities::byte_array::ByteArray,
+};
 
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
 pub enum TransactionProtocolError {

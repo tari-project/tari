@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod types {
-    tari_utilities::include_proto_package!("tari.types");
+    include!(concat!(env!("OUT_DIR"), "/", "tari.types.rs"));
 }
 
 mod transaction;

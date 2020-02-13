@@ -30,7 +30,7 @@ use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
 };
-use tari_utilities::{
+use tari_crypto::tari_utilities::{
     hex::{to_hex, Hex},
     ByteArray,
     ByteArrayError,
@@ -261,8 +261,10 @@ where D: Deserializer<'de> {
 mod test {
     use super::*;
     use crate::types::{CommsPublicKey, CommsSecretKey};
-    use tari_crypto::keys::{PublicKey, SecretKey};
-    use tari_utilities::byte_array::ByteArray;
+    use tari_crypto::{
+        keys::{PublicKey, SecretKey},
+        tari_utilities::byte_array::ByteArray,
+    };
 
     #[test]
     fn display() {

@@ -36,7 +36,7 @@ use log::*;
 use multiaddr::Multiaddr;
 use prost::Message;
 use std::{sync::Arc, time::Duration};
-use tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::ByteArray;
 
 const LOG_TARGET: &str = "comms::control_service::client";
 

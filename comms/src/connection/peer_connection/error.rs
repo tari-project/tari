@@ -22,7 +22,7 @@
 
 use crate::connection::ConnectionError;
 use derive_error::Error;
-use tari_utilities::thread_join::ThreadError;
+use tari_crypto::tari_utilities::thread_join::ThreadError;
 
 /// Represents errors which can occur in a PeerConnection.
 #[derive(Debug, Error, Clone, PartialEq)]

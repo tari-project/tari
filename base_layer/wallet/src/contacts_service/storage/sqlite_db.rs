@@ -35,7 +35,7 @@ use diesel::{
 };
 use std::convert::TryFrom;
 use tari_core::transactions::types::PublicKey;
-use tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::ByteArray;
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 pub struct ContactsServiceSqliteDatabase {
@@ -221,9 +221,11 @@ mod test {
     use rand::rngs::OsRng;
     use std::convert::TryFrom;
     use tari_core::transactions::types::{PrivateKey, PublicKey};
-    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
+    use tari_crypto::{
+        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+        tari_utilities::ByteArray,
+    };
     use tari_test_utils::{paths::with_temp_dir, random::string};
-    use tari_utilities::ByteArray;
 
     #[test]
     fn test_crud() {

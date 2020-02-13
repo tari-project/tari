@@ -30,12 +30,12 @@ use tari_comms::{
     message::FrameSet,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
 };
+use tari_crypto::tari_utilities::{thread_join::ThreadJoinWithTimeout, ByteArray};
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBDatabase, LMDBError, LMDBStore},
     LMDBWrapper,
 };
 use tari_test_utils::paths::create_temporary_data_path;
-use tari_utilities::{thread_join::ThreadJoinWithTimeout, ByteArray};
 
 fn make_peer_manager(peers: Vec<Peer>, database: LMDBDatabase) -> Arc<PeerManager> {
     Arc::new(

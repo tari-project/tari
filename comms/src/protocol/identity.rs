@@ -31,7 +31,7 @@ use derive_error::Error;
 use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use prost::Message;
 use std::{io, sync::Arc};
-use tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::ByteArray;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 const IDENTITY_PROTOCOL: &[u8] = b"/tari/identity/1.0.0";
@@ -127,7 +127,7 @@ mod test {
         transports::{MemoryTransport, Transport},
     };
     use futures::{future, StreamExt};
-    use tari_utilities::ByteArray;
+    use tari_crypto::tari_utilities::ByteArray;
 
     #[tokio_macros::test_basic]
     async fn identity_exchange() {

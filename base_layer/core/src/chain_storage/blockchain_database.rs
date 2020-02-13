@@ -42,9 +42,11 @@ use std::{
     collections::VecDeque,
     sync::{Arc, RwLock, RwLockReadGuard},
 };
-use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    tari_utilities::{hex::Hex, Hashable},
+};
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof, MutableMmrLeafNodes};
-use tari_utilities::{hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "core::chain_storage::database";
 

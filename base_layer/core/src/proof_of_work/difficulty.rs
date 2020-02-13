@@ -25,7 +25,7 @@ use bitflags::_core::ops::Div;
 use newtype_ops::newtype_ops;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use tari_utilities::epoch_time::EpochTime;
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 /// Minimum difficulty, enforced in diff retargetting
 /// avoids getting stuck when trying to increase difficulty subject to dampening

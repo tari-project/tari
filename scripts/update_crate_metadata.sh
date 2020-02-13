@@ -9,7 +9,6 @@ fi
 function update_versions {
     packages=${@:-'
    infrastructure/broadcast_channel
-   infrastructure/crypto
    infrastructure/derive
    infrastructure/protobuf_build
    infrastructure/pubsub

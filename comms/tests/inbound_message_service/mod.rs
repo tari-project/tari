@@ -33,9 +33,9 @@ use tari_comms::{
     message::{Envelope, FrameSet, MessageExt, MessageFlags},
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
 };
+use tari_crypto::tari_utilities::ByteArray;
 use tari_shutdown::Shutdown;
 use tari_storage::LMDBWrapper;
-use tari_utilities::ByteArray;
 use tokio::{runtime::Runtime, time::timeout};
 
 /// A utility function that will construct a Comms layer message that would typically arrive from a PeerConnection as a

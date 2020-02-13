@@ -25,7 +25,7 @@ use crate::{
     transactions::transaction::Transaction,
 };
 use std::{convert::TryFrom, sync::Arc};
-use tari_utilities::message_format::MessageFormat;
+use tari_crypto::tari_utilities::message_format::MessageFormat;
 
 /// Create a unique transaction priority based on the maximum time-lock (lock_height or input UTXO maturity) and the
 /// excess_sig, allowing transactions to be sorted according to their time-lock expiry. The excess_sig is included to

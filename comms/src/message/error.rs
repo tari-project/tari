@@ -23,8 +23,10 @@
 use crate::peer_manager::node_id::NodeIdError;
 use derive_error::Error;
 use prost::{DecodeError, EncodeError};
-use tari_crypto::signatures::SchnorrSignatureError;
-use tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError};
+use tari_crypto::{
+    signatures::SchnorrSignatureError,
+    tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError},
+};
 
 // TODO: only used by control service, so belongs in that module
 #[derive(Error, Debug)]

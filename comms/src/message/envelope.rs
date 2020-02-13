@@ -29,7 +29,7 @@ use crate::{
 use bytes::Bytes;
 use rand::rngs::OsRng;
 use std::convert::TryInto;
-use tari_utilities::{message_format::MessageFormat, ByteArray};
+use tari_crypto::tari_utilities::{message_format::MessageFormat, ByteArray};
 
 // Re-export protos
 pub use crate::proto::envelope::*;

@@ -25,8 +25,10 @@ use tari_comms::{
     multiaddr,
     peer_manager::{node_id::NodeIdError, node_identity::NodeIdentityError},
 };
-use tari_crypto::signatures::SchnorrSignatureError;
-use tari_utilities::{hex::HexError, ByteArrayError};
+use tari_crypto::{
+    signatures::SchnorrSignatureError,
+    tari_utilities::{hex::HexError, ByteArrayError},
+};
 use tari_wallet::{
     contacts_service::error::{ContactsServiceError, ContactsServiceStorageError},
     error::WalletError,

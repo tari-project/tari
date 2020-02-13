@@ -23,7 +23,7 @@
 use crate::transactions::proto::types;
 
 pub mod protocol {
-    tari_utilities::include_proto_package!("tari.transaction_protocol");
+    include!(concat!(env!("OUT_DIR"), "/", "tari.transaction_protocol.rs"));
 }
 
 pub mod recipient_signed_message;

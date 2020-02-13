@@ -43,7 +43,6 @@ use std::sync::{
 };
 
 use tari_common::{load_configuration, GlobalConfig};
-use tari_utilities::hex::Hex;
 use tokio::{runtime, runtime::Runtime};
 
 pub const LOG_TARGET: &str = "base_node::app";
@@ -104,8 +103,8 @@ fn main() {
                     info!(
                         target: LOG_TARGET,
                         "New node identity [{}] with public key {} has been created.",
-                        id.node_id().to_hex(),
-                        id.public_key().to_hex()
+                        id.node_id(),
+                        id.public_key()
                     );
                     id
                 },

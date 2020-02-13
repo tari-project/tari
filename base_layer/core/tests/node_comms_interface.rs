@@ -49,9 +49,9 @@ use tari_core::{
     },
     validation::transaction_validators::TxInputAndMaturityValidator,
 };
+use tari_crypto::tari_utilities::hash::Hashable;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_test_utils::runtime::test_async;
-use tari_utilities::hash::Hashable;
 
 async fn test_request_responder(
     receiver: &mut Receiver<

@@ -7,10 +7,9 @@ edition = "2018"
 [dependencies]
 tari_wallet = {path = "../../base_layer/wallet", version="^0.0"}
 tari_common = {path = "../../common", version= "^0.0"}
-tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.1"}
 tari_comms = { path = "../../comms", version = "^0.0"}
 tari_p2p = {path = "../../base_layer/p2p", version = "^0.0"}
-tari_crypto = { path = "../../infrastructure/crypto"}
+tari_crypto = { version = "^0.3" }
 chrono = { version = "0.4.6", features = ["serde"]}
 config = { version = "0.9.3" }
 crossbeam-channel = "0.3.8"
@@ -35,7 +34,7 @@ pnet = "0.22.0"
 
 
 [dev-dependencies]
-tari_crypto = { path = "../../infrastructure/crypto"}
+tari_crypto = { version = "^0.3" }
 tower-util = "0.1"
 tempdir = "0.3.7"
 rand = "0.5"

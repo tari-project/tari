@@ -27,9 +27,9 @@ use crate::chain_storage::{
 use derive_error::Error;
 use lmdb_zero::{Database, Environment, WriteTransaction};
 use std::{cmp::min, marker::PhantomData, sync::Arc};
+use tari_crypto::tari_utilities::message_format::MessageFormatError;
 use tari_mmr::{error::MerkleMountainRangeError, ArrayLike, ArrayLikeExt};
 use tari_storage::lmdb_store::LMDBError;
-use tari_utilities::message_format::MessageFormatError;
 
 #[derive(Debug, Error)]
 pub enum LMDBVecError {

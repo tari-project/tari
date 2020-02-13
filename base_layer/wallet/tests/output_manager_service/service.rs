@@ -30,10 +30,14 @@ use tari_core::transactions::{
     transaction_protocol::single_receiver::SingleReceiverTransactionProtocol,
     types::{CryptoFactories, PrivateKey, RangeProof},
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey, range_proof::RangeProofService};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::SecretKey,
+    range_proof::RangeProofService,
+    tari_utilities::ByteArray,
+};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::Shutdown;
-use tari_utilities::ByteArray;
 use tari_wallet::{
     output_manager_service::{
         error::{OutputManagerError, OutputManagerStorageError},

@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod base_node {
-    tari_utilities::include_proto_package!("tari.base_node");
+    include!(concat!(env!("OUT_DIR"), "/", "tari.base_node.rs"));
 }
 use crate::proto::core;
 // Required for `super::types` used in generated files

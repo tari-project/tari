@@ -45,7 +45,7 @@ use tari_comms::{
     types::Challenge,
     utils::{crypt, signature},
 };
-use tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::ByteArray;
 use tokio::{runtime, task};
 use tower::{Service, ServiceExt};
 

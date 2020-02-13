@@ -41,9 +41,11 @@ use tari_core::{
     },
     txn_schema,
 };
-use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    tari_utilities::{hex::Hex, Hashable},
+};
 use tari_test_utils::runtime::test_async;
-use tari_utilities::{hex::Hex, Hashable};
 
 /// Finds the UTXO in a block corresponding to the unblinded output. We have to search for outputs because UTXOs get
 /// sorted in blocks, and so the order they were inserted in can change.

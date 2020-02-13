@@ -40,7 +40,7 @@ use tari_comms::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     types::CommsPublicKey,
 };
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::dht::dht_handler";

@@ -23,7 +23,7 @@
 use serde::export::{fmt::Error, Formatter};
 use std::fmt::Display;
 use tari_core::transactions::types::PublicKey;
-use tari_utilities::{
+use tari_crypto::tari_utilities::{
     hex::{Hex, HexError},
     ByteArray,
     ByteArrayError,
@@ -92,7 +92,7 @@ const EMOJI: [char; 256] = [
 mod test {
     use crate::util::emoji::EmojiId;
     use tari_core::transactions::types::PublicKey;
-    use tari_utilities::hex::Hex;
+    use tari_crypto::tari_utilities::hex::Hex;
 
     #[test]
     fn convert_key() {

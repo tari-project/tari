@@ -29,7 +29,7 @@ use crate::{
 use log::*;
 use multiaddr::Multiaddr;
 use std::sync::Arc;
-use tari_utilities::{byte_array::ByteArray, hex::Hex};
+use tari_crypto::tari_utilities::{byte_array::ByteArray, hex::Hex};
 
 const LOG_TARGET: &str = "comms::connection_manager::protocol";
 

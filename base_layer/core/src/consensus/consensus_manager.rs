@@ -29,7 +29,7 @@ use crate::{
 };
 use derive_error::Error;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
-use tari_utilities::epoch_time::EpochTime;
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 #[derive(Debug, Error, Clone, PartialEq)]
 pub enum ConsensusManagerError {

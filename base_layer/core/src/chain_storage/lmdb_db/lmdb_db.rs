@@ -55,6 +55,7 @@ use std::{
     path::Path,
     sync::{Arc, RwLock},
 };
+use tari_crypto::tari_utilities::hash::Hashable;
 use tari_mmr::{
     functions::{prune_mutable_mmr, PrunedMutableMmr},
     ArrayLike,
@@ -66,7 +67,6 @@ use tari_mmr::{
     MmrCacheConfig,
 };
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBStore};
-use tari_utilities::hash::Hashable;
 
 type DatabaseRef = Arc<Database<'static>>;
 

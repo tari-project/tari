@@ -41,7 +41,7 @@ use digest::Digest;
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, convert::TryFrom};
 use tari_comms::connection::NetAddress;
-use tari_utilities::{
+use tari_crypto::tari_utilities::{
     byte_array::ByteArray,
     hex::{from_hex, Hex},
 };

@@ -23,7 +23,7 @@
 use crate::connection::ConnectionError;
 use clear_on_drop::clear::Clear;
 use serde::{Deserialize, Serialize};
-use tari_utilities::{ByteArray, ByteArrayError};
+use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 use zmq;
 
 //---------------------------------- Curve Encryption --------------------------------------------//

@@ -56,8 +56,8 @@ use tari_core::{
     txn_schema,
     validation::mocks::MockValidator,
 };
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_mmr::{MmrCacheConfig, MutableMmr};
-use tari_utilities::{hex::Hex, Hashable};
 
 fn init_log() {
     let _ = env_logger::builder().is_test(true).try_init();
