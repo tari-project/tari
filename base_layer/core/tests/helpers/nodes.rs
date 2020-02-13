@@ -196,7 +196,12 @@ impl BaseNodeBuilder {
                 self.base_node_service_config
                     .unwrap_or(BaseNodeServiceConfig::default()),
                 self.mempool_service_config.unwrap_or(MempoolServiceConfig::default()),
-                self.liveness_service_config.unwrap_or(LivenessConfig::default()),
+                self.liveness_service_config.unwrap_or(LivenessConfig {
+                    auto_ping_interval: None,
+                    enable_auto_join: false,
+                    enable_auto_stored_message_request: true,
+                    refresh_neighbours_interval: Duration::from_secs(3 * 60),
+                }),
                 data_path,
             );
 
