@@ -48,24 +48,20 @@ impl Transport for MemoryTransport {
     type DialFuture = impl Future<Output = io::Result<Self::Output>>;
     type ListenFuture = impl Future<Output = io::Result<(Self::Listener, Multiaddr)>>;
 
-    fn listen(&self, addr: Multiaddr) -> Self::ListenFuture {
-        Box::pin(async move {
-            let port = parse_addr(&addr)?;
-            let listener = MemoryListener::bind(port)?;
-            let actual_port = listener.local_addr();
-            let mut actual_addr = Multiaddr::empty();
-            actual_addr.push(Protocol::Memory(u64::from(actual_port)));
-
-            Ok((Listener { inner: listener }, actual_addr))
-        })
+    fn listen(&self, addr: Multiaddr) -> Result<Self::ListenFuture, Self::Error> {
+        // parse_addr is not used in the async block because of a rust ICE (internal compiler error)
+        let port = parse_addr(&addr)?;
+        let listener = MemoryListener::bind(port)?;
+        let actual_port = listener.local_addr();
+        let mut actual_addr = Multiaddr::empty();
+        actual_addr.push(Protocol::Memory(u64::from(actual_port)));
+        Ok(future::ready(Ok((Listener { inner: listener }, actual_addr))))
     }
 
-    fn dial(&self, addr: Multiaddr) -> Self::DialFuture {
-        Box::pin(async move {
-            let port = parse_addr(&addr)?;
-            let socket = MemorySocket::connect(port)?;
-            Ok(socket)
-        })
+    fn dial(&self, addr: Multiaddr) -> Result<Self::DialFuture, Self::Error> {
+        // parse_addr is not used in the async block because of a rust ICE (internal compiler error)
+        let port = parse_addr(&addr)?;
+        Ok(future::ready(Ok(MemorySocket::connect(port)?)))
     }
 }
 
@@ -129,7 +125,7 @@ mod test {
     async fn simple_listen_and_dial() -> Result<(), ::std::io::Error> {
         let t = MemoryTransport::default();
 
-        let (listener, addr) = t.listen("/memory/0".parse().unwrap()).await?;
+        let (listener, addr) = t.listen("/memory/0".parse().unwrap())?.await?;
 
         let listener = async move {
             let (item, _listener) = listener.into_future().await;
@@ -141,7 +137,7 @@ mod test {
             assert_eq!(buf, b"hello world");
         };
 
-        let mut outbound = t.dial(addr).await?;
+        let mut outbound = t.dial(addr)?.await?;
 
         let dialer = async move {
             outbound.write_all(b"hello world").await.unwrap();
@@ -152,14 +148,14 @@ mod test {
         Ok(())
     }
 
-    #[tokio_macros::test]
-    async fn unsupported_multiaddrs() {
+    #[test]
+    fn unsupported_multiaddrs() {
         let t = MemoryTransport::default();
 
-        let result = t.listen("/ip4/127.0.0.1/tcp/0".parse().unwrap()).await;
+        let result = t.listen("/ip4/127.0.0.1/tcp/0".parse().unwrap());
         assert!(result.is_err());
 
-        let result = t.dial("/ip4/127.0.0.1/tcp/22".parse().unwrap()).await;
+        let result = t.dial("/ip4/127.0.0.1/tcp/22".parse().unwrap());
         assert!(result.is_err());
     }
 }

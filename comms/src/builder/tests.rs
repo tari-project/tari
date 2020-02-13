@@ -26,7 +26,7 @@ use crate::{
     connection_manager::next::ConnectionManagerEvent,
     memsocket,
     message::InboundMessage,
-    multiaddr::Multiaddr,
+    multiaddr::{Multiaddr, Protocol},
     outbound_message_service::OutboundMessage,
     peer_manager::{Peer, PeerFeatures},
     pipeline,
@@ -79,6 +79,8 @@ async fn spawn_node(
         .spawn()
         .await
         .unwrap();
+
+    unpack_enum!(Protocol::Memory(_port) = comms_node.listening_address().iter().next().unwrap());
 
     // This call is to get rid of unused function warnings
     comms_node.peer_manager();

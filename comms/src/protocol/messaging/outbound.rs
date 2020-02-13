@@ -82,7 +82,7 @@ impl OutboundMessaging {
             Err(err) => {
                 error!(
                     target: LOG_TARGET,
-                    "MessagingProtocol failed to dial peer '{}' because '{}'",
+                    "MessagingProtocol failed to dial peer '{}' because '{:?}'",
                     self.peer_node_id.short_str(),
                     err
                 );
@@ -102,7 +102,7 @@ impl OutboundMessaging {
             Err(err) => {
                 error!(
                     target: LOG_TARGET,
-                    "MessagingProtocol failed to dial peer '{}' because '{}'",
+                    "MessagingProtocol failed to open a substream to peer '{}' because '{:?}'",
                     self.peer_node_id.short_str(),
                     err
                 );
@@ -139,7 +139,7 @@ impl OutboundMessaging {
                 Err(err) => {
                     debug!(
                         target: LOG_TARGET,
-                        "Failed to send message to peer '{}' because '{}'",
+                        "Failed to send message to peer '{}' because '{:?}'",
                         out_msg.peer_node_id.short_str(),
                         err
                     );

@@ -57,9 +57,9 @@ impl InboundMessaging {
 
         trace!(
             target: LOG_TARGET,
-            "Received message envelope version {} from NodeId={}",
+            "Received message envelope version {} from peer '{}'",
             envelope.version,
-            source_node_id
+            source_node_id.short_str()
         );
 
         if !envelope.verify_signature()? {

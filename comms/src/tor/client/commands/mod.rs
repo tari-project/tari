@@ -19,37 +19,22 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use super::parsers::ParseError;
-use derive_error::Error;
-use std::io;
-use tokio_util::codec::LinesCodecError;
 
-#[derive(Debug, Error)]
-pub enum TorClientError {
-    /// Failed to read/write line to socket. The maximum line length was exceeded.
-    MaxLineLengthExceeded,
-    Io(io::Error),
-    /// Command failed
-    #[error(no_from, non_std)]
-    TorCommandFailed(String),
-    /// Tor control port connection unexpectedly closed
-    UnexpectedEof,
-    /// Failed to parse tor response
-    #[error(no_from, non_std)]
-    ParseFailedResponse(String),
-    ParseError(ParseError),
-    /// The server returned no response
-    ServerNoResponse,
-    /// Server did not return a ServiceID for ADD_ONION command
-    AddOnionNoServiceId,
-}
+use crate::tor::client::response::ResponseLine;
 
-impl From<LinesCodecError> for TorClientError {
-    fn from(err: LinesCodecError) -> Self {
-        use LinesCodecError::*;
-        match err {
-            MaxLineLengthExceeded => TorClientError::MaxLineLengthExceeded,
-            Io(err) => TorClientError::Io(err),
-        }
-    }
+mod add_onion;
+mod del_onion;
+mod key_value;
+
+pub use add_onion::{AddOnion, AddOnionFlag, AddOnionResponse};
+pub use del_onion::DelOnion;
+pub use key_value::{get_conf, get_info, KeyValueCommand};
+
+pub trait TorCommand {
+    type Output;
+    type Error;
+
+    fn to_command_string(&self) -> Result<String, Self::Error>;
+
+    fn parse_responses(&self, responses: Vec<ResponseLine<'_>>) -> Result<Self::Output, Self::Error>;
 }

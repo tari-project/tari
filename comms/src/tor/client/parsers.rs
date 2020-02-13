@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,39 +20,55 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Much of this module is inspired or (more or less) verbatim from the Libra codebase.
-// Copyright (c) The Libra Core Contributors
-// SPDX-License-Identifier: Apache-2.0
+use super::response::ResponseLine;
+use nom::{
+    bytes::complete::take_while1,
+    character::complete::{anychar, char as chr, digit1},
+    combinator::map_res,
+    error::ErrorKind,
+};
+use std::{borrow::Cow, fmt};
 
-use futures::{Future, Stream};
-use multiaddr::Multiaddr;
+type NomErr<'a> = nom::Err<(&'a str, ErrorKind)>;
 
-mod memory;
-mod socks;
-mod tcp;
+#[derive(Debug, Clone)]
+pub struct ParseError(pub String);
 
-pub use memory::MemoryTransport;
-pub use socks::SocksTransport;
-pub use tcp::{TcpSocket, TcpTransport};
+impl From<NomErr<'_>> for ParseError {
+    fn from(err: NomErr<'_>) -> Self {
+        ParseError(err.to_string())
+    }
+}
 
-pub trait Transport {
-    /// The output of the transport after a connection is established
-    type Output;
-    /// Transport error type
-    type Error: std::error::Error + Send + Sync;
-    /// A future which resolves to `Self::Output`
-    type Inbound: Future<Output = Result<Self::Output, Self::Error>> + Send;
-    /// A stream which emits `Self::InboundFuture` whenever a successful inbound connection is made
-    type Listener: Stream<Item = Result<(Self::Inbound, Multiaddr), Self::Error>> + Send + Unpin;
+impl std::error::Error for ParseError {}
 
-    /// The future returned from the `listen` method.
-    type ListenFuture: Future<Output = Result<(Self::Listener, Multiaddr), Self::Error>> + Send + Unpin;
-    /// The future returned from the `dial` method.
-    type DialFuture: Future<Output = Result<Self::Output, Self::Error>> + Send + Unpin;
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "ParseError({})", self.0)
+    }
+}
 
-    /// Listen for connections on the given multiaddr
-    fn listen(&self, addr: Multiaddr) -> Result<Self::ListenFuture, Self::Error>;
+pub fn response_line(line: &str) -> Result<ResponseLine<'_>, ParseError> {
+    let parser = map_res(digit1, |code: &str| code.parse::<u16>());
+    let (rest, code) = parser(line)?;
+    let (rest, ch) = anychar(rest)?;
+    if ch != ' ' && ch != '-' {
+        return Err(ParseError(format!(
+            "Unexpected end-of-response character '{}'. Expected ' ' or '-'.",
+            ch
+        )));
+    }
 
-    /// Connect (dial) to the given multiaddr
-    fn dial(&self, addr: Multiaddr) -> Result<Self::DialFuture, Self::Error>;
+    Ok(ResponseLine {
+        has_more: ch == '-',
+        code,
+        value: rest.into(),
+    })
+}
+
+pub fn key_value(line: &str) -> Result<(Cow<'_, str>, Cow<'_, str>), ParseError> {
+    let (rest, identifier) = take_while1(|ch| ch != '=')(line)?;
+    let (rest, _) = chr('=')(rest)?;
+    let rest = rest.trim_matches('\"');
+    Ok((identifier.into(), rest.into()))
 }

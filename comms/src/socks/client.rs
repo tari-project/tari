@@ -280,7 +280,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             0x03 => {
                 let domain_bytes = (&self.buf[5..(self.len - 2)]).to_vec();
                 let domain = String::from_utf8(domain_bytes)
-                    .map_err(|_| SocksError::InvalidTargetAddress("not a valid UTF-8 string"))?;
+                    .map_err(|_| SocksError::InvalidTargetAddress("domain bytes are not a valid UTF-8 string"))?;
                 let port = u16::from_be_bytes([self.buf[self.len - 2], self.buf[self.len - 1]]);
                 let mut addr: Multiaddr = Protocol::Dns4(Cow::Owned(domain)).into();
                 addr.push(Protocol::Tcp(port));
@@ -340,28 +340,26 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         self.ptr = 0;
         self.buf[..3].copy_from_slice(&[0x05, command as u8, 0x00]);
         let mut addr_iter = address.iter();
-        let protocol = addr_iter
+        let part1 = addr_iter
             .next()
             .ok_or(SocksError::InvalidTargetAddress("Address contained no components"))?;
 
-        let port = addr_iter
-            .next()
-            .ok_or(SocksError::InvalidTargetAddress("Address missing tcp port component"))?;
+        let part2 = addr_iter.next();
 
-        match (protocol, port) {
-            (Protocol::Ip4(ip), Protocol::Tcp(port)) => {
+        match (part1, part2) {
+            (Protocol::Ip4(ip), Some(Protocol::Tcp(port))) => {
                 self.buf[3] = 0x01;
                 self.buf[4..8].copy_from_slice(&ip.octets());
                 self.buf[8..10].copy_from_slice(&port.to_be_bytes());
                 self.len = 10;
             },
-            (Protocol::Ip6(ip), Protocol::Tcp(port)) => {
+            (Protocol::Ip6(ip), Some(Protocol::Tcp(port))) => {
                 self.buf[3] = 0x04;
                 self.buf[4..20].copy_from_slice(&ip.octets());
                 self.buf[20..22].copy_from_slice(&port.to_be_bytes());
                 self.len = 22;
             },
-            (Protocol::Dns4(domain), Protocol::Tcp(port)) => {
+            (Protocol::Dns4(domain), Some(Protocol::Tcp(port))) => {
                 self.buf[3] = 0x03;
                 let domain = domain.as_bytes();
                 let len = domain.len();
@@ -370,9 +368,35 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 self.buf[(5 + len)..(7 + len)].copy_from_slice(&port.to_be_bytes());
                 self.len = 7 + len;
             },
+            (p @ Protocol::Onion(_, _), None) => {
+                self.buf[3] = 0x03;
+                let (domain, port) = Self::extract_onion_address(p)?;
+                let len = domain.len();
+                self.buf[4] = len as u8;
+                self.buf[5..5 + len].copy_from_slice(domain.as_bytes());
+                self.buf[(5 + len)..(7 + len)].copy_from_slice(&port.to_be_bytes());
+                self.len = 7 + len;
+            },
             _ => return Err(SocksError::AddressTypeNotSupported),
         }
         Ok(())
+    }
+
+    fn extract_onion_address(p: Protocol<'_>) -> Result<(String, u16)> {
+        let onion_addr = p.to_string();
+        let mut parts = onion_addr
+            .split('/')
+            .skip(2)
+            .next()
+            .expect("already checked")
+            .split(':');
+        let domain = format!("{}.onion", parts.next().expect("already checked"),);
+        let port = parts
+            .next()
+            .expect("already checked")
+            .parse::<u16>()
+            .map_err(|_| SocksError::InvalidTargetAddress("Invalid onion address port"))?;
+        Ok((domain, port))
     }
 
     fn prepare_recv_reply(&mut self) {

@@ -20,21 +20,46 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tor::response::ResponseLine;
+use crate::tor::client::{commands::TorCommand, error::TorClientError, response::ResponseLine};
 
-mod add_onion;
-mod del_onion;
-mod get_conf;
+/// The DEL_ONION command.
+///
+/// This instructs Tor to delete a hidden service.
+pub struct DelOnion<'a> {
+    service_id: &'a str,
+}
 
-pub use add_onion::{AddOnion, AddOnionFlag, AddOnionResponse};
-pub use del_onion::DelOnion;
-pub use get_conf::GetConf;
+impl<'a> DelOnion<'a> {
+    pub fn new(service_id: &'a str) -> Self {
+        Self { service_id }
+    }
+}
 
-pub trait TorCommand {
-    type Output;
-    type Error;
+impl<'a> TorCommand for DelOnion<'a> {
+    type Error = TorClientError;
+    type Output = ();
 
-    fn to_command_string(&self) -> Result<String, Self::Error>;
+    fn to_command_string(&self) -> Result<String, Self::Error> {
+        Ok(format!("DEL_ONION {}", self.service_id))
+    }
 
-    fn parse_responses(&self, responses: Vec<ResponseLine<'_>>) -> Result<Self::Output, Self::Error>;
+    fn parse_responses(&self, mut responses: Vec<ResponseLine<'_>>) -> Result<Self::Output, Self::Error> {
+        let last_response = responses.pop().ok_or(TorClientError::UnexpectedEof)?;
+        if let Some(err) = last_response.err() {
+            return Err(TorClientError::TorCommandFailed(err.into_owned()));
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn to_command_string() {
+        let command = DelOnion::new("some-random-key");
+        assert_eq!(command.to_command_string().unwrap(), "DEL_ONION some-random-key");
+    }
 }

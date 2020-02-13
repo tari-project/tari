@@ -82,7 +82,7 @@ mod null_sink;
 cfg_next! {
     mod consts;
     mod placeholder;
-    mod builder_next;
+    pub mod builder_next;
 
     #[cfg(test)]
     mod tests;

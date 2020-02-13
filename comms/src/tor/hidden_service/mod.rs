@@ -20,46 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tor::{commands::TorCommand, error::TorClientError, response::ResponseLine};
+mod builder;
+mod hidden_service;
 
-/// The DEL_ONION command.
-///
-/// This instructs Tor to delete a hidden service.
-pub struct DelOnion<'a> {
-    service_id: &'a str,
-}
-
-impl<'a> DelOnion<'a> {
-    pub fn new(service_id: &'a str) -> Self {
-        Self { service_id }
-    }
-}
-
-impl<'a> TorCommand for DelOnion<'a> {
-    type Error = TorClientError;
-    type Output = ();
-
-    fn to_command_string(&self) -> Result<String, Self::Error> {
-        Ok(format!("DEL_ONION {}", self.service_id))
-    }
-
-    fn parse_responses(&self, mut responses: Vec<ResponseLine<'_>>) -> Result<Self::Output, Self::Error> {
-        let last_response = responses.pop().ok_or(TorClientError::UnexpectedEof)?;
-        if let Some(err) = last_response.err() {
-            return Err(TorClientError::TorCommandFailed(err.into_owned()));
-        }
-
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn to_command_string() {
-        let command = DelOnion::new("some-random-key");
-        assert_eq!(command.to_command_string().unwrap(), "DEL_ONION some-random-key");
-    }
-}
+pub use builder::{HiddenServiceBuilder, HiddenServiceBuilderError};
+pub use hidden_service::HiddenService;

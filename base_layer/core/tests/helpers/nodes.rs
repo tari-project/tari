@@ -281,7 +281,12 @@ pub fn create_network_with_3_base_nodes(
         BaseNodeServiceConfig::default(),
         mmr_cache_config,
         MempoolServiceConfig::default(),
-        LivenessConfig::default(),
+        LivenessConfig {
+            auto_ping_interval: None,
+            enable_auto_join: false,
+            enable_auto_stored_message_request: false,
+            ..Default::default()
+        },
         data_path,
     )
 }

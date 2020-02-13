@@ -20,15 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tor::{
-    commands::TorCommand,
-    error::TorClientError,
-    parsers,
-    parsers::ParseError,
-    response::ResponseLine,
-    types::{KeyBlob, KeyType, PrivateKey},
+use crate::{
+    multiaddr::Multiaddr,
+    tor::client::{
+        commands::TorCommand,
+        error::TorClientError,
+        parsers,
+        parsers::ParseError,
+        response::ResponseLine,
+        types::{KeyBlob, KeyType, PortMapping, PrivateKey},
+    },
 };
-use std::{borrow::Cow, marker::PhantomData, net::SocketAddr, num::NonZeroU16};
+use std::{borrow::Cow, marker::PhantomData, num::NonZeroU16};
 
 pub enum AddOnionFlag {
     /// The server should not include the newly generated private key as part of the response.
@@ -64,7 +67,7 @@ pub struct AddOnion<'a> {
     key_type: KeyType,
     key_blob: KeyBlob,
     flags: Vec<AddOnionFlag>,
-    port: (u16, Option<SocketAddr>),
+    port_mapping: PortMapping,
     num_streams: Option<NonZeroU16>,
     _lifetime: PhantomData<&'a ()>,
 }
@@ -74,7 +77,7 @@ impl AddOnion<'_> {
         key_type: KeyType,
         key_blob: KeyBlob,
         flags: Vec<AddOnionFlag>,
-        port: (u16, Option<SocketAddr>),
+        port_mapping: PortMapping,
         num_streams: Option<NonZeroU16>,
     ) -> Self
     {
@@ -82,7 +85,7 @@ impl AddOnion<'_> {
             key_type,
             key_blob,
             flags,
-            port,
+            port_mapping,
             num_streams,
             _lifetime: PhantomData,
         }
@@ -110,9 +113,9 @@ impl<'a> TorCommand for AddOnion<'a> {
         }
 
         s.push_str(&format!(
-            " Port={}{}",
-            self.port.0,
-            self.port.1.map(|addr| format!(",{}", addr)).unwrap_or(String::new())
+            " Port={},{}",
+            self.port_mapping.onion_port(),
+            self.port_mapping.proxied_address()
         ));
 
         Ok(s)
@@ -165,14 +168,38 @@ impl<'a> TorCommand for AddOnion<'a> {
         Ok(AddOnionResponse {
             service_id,
             private_key,
+            onion_port: self.port_mapping.onion_port(),
         })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct AddOnionResponse<'a> {
-    pub service_id: Cow<'a, str>,
-    pub private_key: Option<PrivateKey<'a>>,
+    pub(crate) service_id: Cow<'a, str>,
+    pub(crate) private_key: Option<PrivateKey<'a>>,
+    pub(crate) onion_port: u16,
+}
+
+impl<'a> AddOnionResponse<'a> {
+    /// Return the .onion address relating to this `AddOnionResponse`.
+    pub fn onion_address(&self) -> Multiaddr {
+        const ONION_V2_LEN: usize = 16;
+        const ONION_V3_LEN: usize = 56;
+        // service_id should always come from the tor control server, so the length can be relied on
+        const EXPECT_MSG: &str = "failed to parse onion address from AddOnionResponse";
+        match self.service_id.len() {
+            ONION_V2_LEN => format!("/onion/{}:{}", self.service_id, self.onion_port)
+                .parse()
+                .expect(EXPECT_MSG),
+            ONION_V3_LEN => {
+                // This will fail until this PR is released (https://github.com/libp2p/rust-libp2p/pull/1354)
+                format!("/onion3/{}:{}", self.service_id, self.onion_port)
+                    .parse()
+                    .expect(EXPECT_MSG)
+            },
+            _ => panic!(EXPECT_MSG),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -185,12 +212,12 @@ mod test {
             KeyType::New,
             KeyBlob::String("this-is-a-key".to_string()),
             vec![],
-            (9090, None),
+            PortMapping::from_port(9090),
             None,
         );
         assert_eq!(
             command.to_command_string().unwrap(),
-            "ADD_ONION NEW:this-is-a-key Port=9090"
+            "ADD_ONION NEW:this-is-a-key Port=9090,127.0.0.1:9090"
         );
     }
 }

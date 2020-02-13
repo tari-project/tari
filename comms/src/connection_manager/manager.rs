@@ -253,6 +253,11 @@ where
         match request {
             DialPeer(node_id, reply_tx) => match self.get_active_connection(&node_id) {
                 Some(conn) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Found existing active connection for peer '{}'",
+                        node_id.short_str()
+                    );
                     log_if_error_fmt!(
                         target: LOG_TARGET,
                         reply_tx.send(Ok(conn.clone())),
@@ -260,7 +265,14 @@ where
                         node_id.short_str()
                     );
                 },
-                None => self.dial_peer(node_id, reply_tx).await,
+                None => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Active peer connection not found. Attempting to establish a new connection to peer '{}'.",
+                        node_id.short_str()
+                    );
+                    self.dial_peer(node_id, reply_tx).await
+                },
             },
             NotifyListening(reply_tx) => match self.listener_address.as_ref() {
                 Some(addr) => {
@@ -278,6 +290,13 @@ where
 
     async fn handle_event(&mut self, event: ConnectionManagerEvent) {
         use ConnectionManagerEvent::*;
+
+        trace!(
+            target: LOG_TARGET,
+            "[ThisNode = {}] Received internal event '{:?}'",
+            self.node_identity.node_id().short_str(),
+            event
+        );
 
         match event {
             Listening(addr) => {
@@ -316,8 +335,8 @@ where
                                 existing_conn.peer_node_id()
                             );
 
-                            self.publish_event(ConnectionManagerEvent::PeerConnected(new_conn.clone()));
-                            self.active_connections.insert(node_id, new_conn);
+                            self.active_connections.insert(node_id, new_conn.clone());
+                            self.publish_event(ConnectionManagerEvent::PeerConnected(new_conn));
                         } else {
                             log_if_error!(
                                 target: LOG_TARGET,
@@ -332,8 +351,8 @@ where
                         }
                     },
                     None => {
-                        self.publish_event(ConnectionManagerEvent::PeerConnected(new_conn.clone()));
-                        self.active_connections.insert(node_id, new_conn);
+                        self.active_connections.insert(node_id, new_conn.clone());
+                        self.publish_event(ConnectionManagerEvent::PeerConnected(new_conn));
                     },
                 }
             },

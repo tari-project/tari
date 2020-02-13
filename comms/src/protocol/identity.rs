@@ -29,12 +29,14 @@ use crate::{
 };
 use derive_error::Error;
 use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};
+use log::*;
 use prost::Message;
 use std::{io, sync::Arc};
 use tari_crypto::tari_utilities::ByteArray;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 const IDENTITY_PROTOCOL: &[u8] = b"/tari/identity/1.0.0";
+const LOG_TARGET: &str = "comms::protocol::identity";
 
 pub async fn identity_exchange<TSocket>(
     node_identity: Arc<NodeIdentity>,
@@ -48,11 +50,21 @@ where
     let mut negotiation = ProtocolNegotiation::new(&mut socket);
     let proto = match direction {
         ConnectionDirection::Outbound => {
+            debug!(
+                target: LOG_TARGET,
+                "[ThisNode={}] Starting Outbound identity exchange with peer.",
+                node_identity.node_id().short_str()
+            );
             negotiation
                 .negotiate_protocol_outbound(&[ProtocolId::from_static(IDENTITY_PROTOCOL)])
                 .await?
         },
         ConnectionDirection::Inbound => {
+            debug!(
+                target: LOG_TARGET,
+                "[ThisNode={}] Starting Inbound identity exchange with peer.",
+                node_identity.node_id().short_str()
+            );
             negotiation
                 .negotiate_protocol_inbound(&[ProtocolId::from_static(IDENTITY_PROTOCOL)])
                 .await?
@@ -133,9 +145,9 @@ mod test {
     async fn identity_exchange() {
         let transport = MemoryTransport;
         let addr = "/memory/0".parse().unwrap();
-        let (mut listener, addr) = transport.listen(addr).await.unwrap();
+        let (mut listener, addr) = transport.listen(addr).unwrap().await.unwrap();
 
-        let (out_sock, in_sock) = future::join(transport.dial(addr), listener.next()).await;
+        let (out_sock, in_sock) = future::join(transport.dial(addr).unwrap(), listener.next()).await;
 
         let out_sock = out_sock.unwrap();
         let in_sock = in_sock.unwrap().map(|(f, _)| f).unwrap().await.unwrap();

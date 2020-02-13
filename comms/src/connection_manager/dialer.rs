@@ -52,6 +52,7 @@ use futures::{
 };
 use log::*;
 use std::{collections::HashMap, sync::Arc};
+use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{runtime, time};
 
@@ -200,10 +201,15 @@ where
         let peer_id_short_str = peer.node_id.short_str();
         match &dial_result {
             Ok(conn) => {
+                debug!(target: LOG_TARGET, "Successfully dialed peer '{}'", peer_id_short_str);
                 self.notify_connection_manager(ConnectionManagerEvent::PeerConnected(conn.clone()))
                     .await
             },
             Err(err) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Failed to dialed peer '{}' because '{:?}'", peer_id_short_str, err
+                );
                 self.notify_connection_manager(ConnectionManagerEvent::PeerConnectFailed(
                     Box::new(peer.node_id),
                     err.clone(),
@@ -359,11 +365,22 @@ where
         );
         let peer_identity = common::perform_identity_exchange(&mut muxer, node_identity, CONNECTION_DIRECTION).await?;
 
-        debug!(target: LOG_TARGET, "Peer sent node ID '{:x?}'", peer_identity.node_id);
+        debug!(
+            target: LOG_TARGET,
+            "Peer identity exchange succeeded on Outbound connection for peer '{}'",
+            peer_identity.node_id.to_hex()
+        );
+        trace!(target: LOG_TARGET, "{:?}", peer_identity);
 
         let peer_node_id =
             common::validate_and_add_peer_from_peer_identity(&peer_manager, authenticated_public_key, peer_identity)
                 .await?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Peer '{}' added to peer list.",
+            peer_node_id.short_str()
+        );
 
         peer_connection::create(
             executor,
@@ -449,9 +466,17 @@ where
         loop {
             let result = match addr_iter.next() {
                 Some(address) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Attempting address '{}' for peer '{}'",
+                        address,
+                        dial_state.peer.node_id.short_str()
+                    );
+
                     let dial_fut = async move {
                         let socket = transport
                             .dial(address.clone())
+                            .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))?
                             .await
                             .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))?;
                         debug!(

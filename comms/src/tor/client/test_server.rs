@@ -103,6 +103,7 @@ pub mod canned_responses {
         "250-HiddenServicePort=8081 127.0.0.1:9000",
         "250 HiddenServicePort=8082 127.0.0.1:9001",
     ];
+    pub const GET_INFO_OK: &[&str] = &["250-net/listeners/socks=\"127.0.0.1:9050\"", "250 OK"];
 
     pub const ADD_ONION_OK: &[&str] = &[
         "250-ServiceID=qigbgbs4ue3ghbupsotgh73cmmkjrin2aprlyxsrnrvpmcmzy3g4wbid",
@@ -110,6 +111,7 @@ pub mod canned_responses {
          Pg3GEyssauPRW3jP6mHwKOxvl_fMsF0QsZC3DvQ8jZ9AxmfRvSP35m9l0vOYyOxkOqWM6ufjdYuM8Ae6cR2UdreG6",
         "250 OK",
     ];
+    pub const ADD_ONION_RSA1024_OK: &[&str] = &["250-ServiceID=62q4tswkxp74dtn7", "250 OK"];
     pub const ADD_ONION_DISCARDPK_OK: &[&str] = &[
         "250-ServiceID=qigbgbs4ue3ghbupsotgh73cmmkjrin2aprlyxsrnrvpmcmzy3g4wbid",
         "250 OK",
