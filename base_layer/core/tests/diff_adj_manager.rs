@@ -38,7 +38,7 @@ use tari_core::{
     },
     transactions::types::{CryptoFactories, HashDigest},
 };
-use tari_utilities::epoch_time::EpochTime;
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 fn create_test_pow_blockchain(db: &BlockchainDatabase<MemoryDatabase<HashDigest>>, mut pow_algos: Vec<PowAlgorithm>) {
     let factories = CryptoFactories::default();

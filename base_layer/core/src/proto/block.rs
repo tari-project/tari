@@ -30,7 +30,7 @@ use crate::{
 };
 use prost_types::Timestamp;
 use std::convert::{TryFrom, TryInto};
-use tari_utilities::{epoch_time::EpochTime, ByteArray, ByteArrayError};
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray, ByteArrayError};
 
 /// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime`
 pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> EpochTime {

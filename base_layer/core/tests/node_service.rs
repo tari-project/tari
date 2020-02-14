@@ -58,10 +58,10 @@ use tari_core::{
     },
     txn_schema,
 };
+use tari_crypto::tari_utilities::hash::Hashable;
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::services::liveness::LivenessConfig;
 use tari_test_utils::random::string;
-use tari_utilities::hash::Hashable;
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
 

@@ -26,7 +26,7 @@ use tari_comms::{builder::CommsError, connection::NetAddressError, message::Mess
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
-use tari_utilities::{hex::HexError, message_format::MessageFormatError};
+use tari_crypto::tari_utilities::{hex::HexError, message_format::MessageFormatError};
 use tokio_executor::threadpool::BlockingError;
 
 #[derive(Debug, Error)]

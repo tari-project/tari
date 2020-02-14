@@ -39,8 +39,8 @@ use futures::{
 };
 use log::*;
 use std::{collections::HashMap, sync::Arc};
+use tari_crypto::tari_utilities::ByteArray;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::ByteArray;
 use tokio::{sync::broadcast, task, time};
 
 const LOG_TARGET: &str = "comms::outbound_message_service::worker";

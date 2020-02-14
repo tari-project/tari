@@ -25,7 +25,7 @@ use crate::transactions::transaction_protocol::sender::{SingleRoundSenderData, T
 
 use super::protocol::transaction_sender_message::Message as ProtoTransactionSenderMessage;
 use std::convert::{TryFrom, TryInto};
-use tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::ByteArray;
 
 // The generated _oneof_ enum
 use crate::transactions::types::PublicKey;

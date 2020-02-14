@@ -22,7 +22,7 @@
 
 use derive_error::Error;
 use std::io;
-use tari_utilities::ByteArrayError;
+use tari_crypto::tari_utilities::ByteArrayError;
 
 #[derive(Debug, Error)]
 pub enum NoiseError {

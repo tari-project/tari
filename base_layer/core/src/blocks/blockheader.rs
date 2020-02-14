@@ -56,7 +56,7 @@ use std::{
     fmt,
     fmt::{Display, Error, Formatter},
 };
-use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 
 pub type BlockHash = Vec<u8>;
 
@@ -234,7 +234,7 @@ impl Display for BlockHeader {
 
 pub(crate) mod hash_serializer {
     use super::*;
-    use tari_utilities::hex::Hex;
+    use tari_crypto::tari_utilities::hex::Hex;
 
     pub fn serialize<S>(bytes: &BlockHash, serializer: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
@@ -274,7 +274,7 @@ pub(crate) mod hash_serializer {
 #[cfg(test)]
 mod test {
     use crate::blocks::BlockHeader;
-    use tari_utilities::Hashable;
+    use tari_crypto::tari_utilities::Hashable;
 
     #[test]
     fn from_previous() {

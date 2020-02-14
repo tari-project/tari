@@ -41,6 +41,7 @@ use std::{
     collections::HashMap,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
+use tari_crypto::tari_utilities::hash::Hashable;
 use tari_mmr::{
     functions::{prune_mutable_mmr, PrunedMutableMmr},
     ArrayLike,
@@ -51,7 +52,6 @@ use tari_mmr::{
     MmrCache,
     MmrCacheConfig,
 };
-use tari_utilities::hash::Hashable;
 
 /// A generic struct for storing node objects in the BlockchainDB that also form part of an MMR. The index field makes
 /// reverse lookups (find by hash) possible.

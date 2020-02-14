@@ -39,7 +39,7 @@ use tari_comms::{
     utils::{crypt, multiaddr::socketaddr_to_multiaddr},
     wrap_in_envelope_body,
 };
-use tari_utilities::{thread_join::ThreadJoinWithTimeout, ByteArray};
+use tari_crypto::tari_utilities::{thread_join::ThreadJoinWithTimeout, ByteArray};
 
 fn make_peer_connection_config() -> PeerConnectionConfig {
     PeerConnectionConfig {

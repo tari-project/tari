@@ -19,9 +19,8 @@ avx2 = ["tari_crypto/avx2"]
 
 [dependencies]
 tari_comms = { version = "^0.0", path = "../../comms"}
-tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.1"}
 tari_infra_derive = { path = "../../infrastructure/derive", version = "^0.0" }
-tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
+tari_crypto = { version = "^0.3" }
 tari_storage = { path = "../../infrastructure/storage", version = "^0.0" }
 tari_common = {path = "../../common", version= "^0.0"}
 tari_service_framework = { version = "^0.0", path = "../service_framework"}

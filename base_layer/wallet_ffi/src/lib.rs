@@ -135,8 +135,10 @@ use tari_comms::{
 };
 use tari_comms_dht::DhtConfig;
 use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
-use tari_crypto::keys::{PublicKey, SecretKey};
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_crypto::{
+    keys::{PublicKey, SecretKey},
+    tari_utilities::{hex::Hex, ByteArray},
+};
 use tari_wallet::{
     contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
     error::WalletError,

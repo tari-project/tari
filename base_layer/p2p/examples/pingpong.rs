@@ -55,6 +55,7 @@ use tari_comms::{
     multiaddr::{Multiaddr, Protocol},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags},
 };
+use tari_crypto::tari_utilities::message_format::MessageFormat;
 use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization::{initialize_comms, CommsConfig},
@@ -65,7 +66,6 @@ use tari_p2p::{
 };
 use tari_service_framework::StackBuilder;
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_utilities::message_format::MessageFormat;
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
 

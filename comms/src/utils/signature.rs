@@ -29,8 +29,8 @@ use rand::{CryptoRng, Rng};
 use tari_crypto::{
     keys::{PublicKey, SecretKey},
     signatures::{SchnorrSignature, SchnorrSignatureError},
+    tari_utilities::message_format::MessageFormat,
 };
-use tari_utilities::message_format::MessageFormat;
 
 pub fn sign<R, B>(
     rng: &mut R,

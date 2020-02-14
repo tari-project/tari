@@ -14,7 +14,7 @@ use crate::{
     },
 };
 use std::{cmp, collections::VecDeque};
-use tari_utilities::epoch_time::EpochTime;
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 const INITIAL_DIFFICULTY: Difficulty = Difficulty::min();
 

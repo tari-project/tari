@@ -30,7 +30,7 @@ use serde::{
     Serializer,
 };
 use std::fmt;
-use tari_utilities::{byte_array::*, hash::*, hex::*};
+use tari_crypto::tari_utilities::{byte_array::*, hash::*, hex::*};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BulletRangeProof(pub Vec<u8>);

@@ -63,7 +63,7 @@ use std::{
     thread,
     time::Duration,
 };
-use tari_utilities::byte_array::ByteArray;
+use tari_crypto::tari_utilities::byte_array::ByteArray;
 
 const LOG_TARGET: &str = "comms::control_service::worker";
 /// The maximum message size allowed for the control service.
@@ -226,7 +226,7 @@ impl ControlServiceWorker {
             return Ok(());
         }
 
-        use tari_utilities::hex::Hex;
+        use tari_crypto::tari_utilities::hex::Hex;
         trace!(
             target: LOG_TARGET,
             "{:?}",

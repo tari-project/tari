@@ -24,7 +24,7 @@
 use crate::transactions::proto::types;
 
 pub mod core {
-    tari_utilities::include_proto_package!("tari.core");
+    include!(concat!(env!("OUT_DIR"), "/", "tari.core.rs"));
 }
 
 cfg_if! {

@@ -24,12 +24,12 @@
 mod support;
 
 use support::{create_mmr, int_to_hash, Hasher};
+use tari_crypto::tari_utilities::hex::{self, Hex};
 use tari_mmr::{
     common::{is_leaf, node_index},
     MerkleProof,
     MerkleProofError,
 };
-use tari_utilities::hex::{self, Hex};
 
 #[test]
 fn zero_size_mmr() {

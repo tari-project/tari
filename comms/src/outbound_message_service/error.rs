@@ -28,8 +28,7 @@ use crate::{
 };
 use derive_error::Error;
 use futures::channel::mpsc::SendError;
-use tari_crypto::signatures::SchnorrSignatureError;
-use tari_utilities::message_format::MessageFormatError;
+use tari_crypto::{signatures::SchnorrSignatureError, tari_utilities::message_format::MessageFormatError};
 
 #[derive(Debug, Error)]
 pub enum OutboundServiceError {

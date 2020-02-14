@@ -36,7 +36,7 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     utils::multiaddr::socketaddr_to_multiaddr,
 };
-use tari_utilities::message_format::MessageFormat;
+use tari_crypto::tari_utilities::message_format::MessageFormat;
 
 fn random_address() -> Multiaddr {
     let port = OsRng.gen_range(9000, std::u16::MAX);

@@ -21,10 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::types::{CommsCipher, CommsPublicKey};
-use tari_crypto::keys::{DiffieHellmanSharedSecret, PublicKey};
-use tari_utilities::{
-    ciphers::cipher::{Cipher, CipherError},
-    ByteArray,
+use tari_crypto::{
+    keys::{DiffieHellmanSharedSecret, PublicKey},
+    tari_utilities::{
+        ciphers::cipher::{Cipher, CipherError},
+        ByteArray,
+    },
 };
 
 pub fn generate_ecdh_secret<PK>(secret_key: &PK::K, public_key: &PK) -> PK
@@ -43,7 +45,7 @@ pub fn encrypt(cipher_key: &CommsPublicKey, plain_text: &Vec<u8>) -> Result<Vec<
 #[cfg(test)]
 mod test {
     use super::*;
-    use tari_utilities::hex::from_hex;
+    use tari_crypto::tari_utilities::hex::from_hex;
 
     #[test]
     fn encrypt_decrypt() {

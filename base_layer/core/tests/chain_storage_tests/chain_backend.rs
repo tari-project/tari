@@ -43,9 +43,9 @@ use tari_core::{
     },
     tx,
 };
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_mmr::{MmrCacheConfig, MutableMmr};
 use tari_test_utils::paths::create_temporary_data_path;
-use tari_utilities::{hex::Hex, Hashable};
 
 fn insert_contains_delete_and_fetch_header<T: BlockchainBackend>(db: T) {
     let mut header = BlockHeader::new(0);

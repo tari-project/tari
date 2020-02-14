@@ -42,8 +42,10 @@ use std::{
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::tari_amount::{uT, MicroTari};
-use tari_utilities::hex::Hex;
+use tari_core::{
+    tari_utilities::hex::Hex,
+    transactions::tari_amount::{uT, MicroTari},
+};
 use tokio::runtime;
 
 /// Enum representing commands used by the basenode

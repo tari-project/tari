@@ -24,8 +24,7 @@ use crate::{blocks::BlockHeader, proof_of_work::Difficulty};
 use bigint::uint::U256;
 use blake2::Blake2b;
 use digest::Digest;
-use tari_crypto::common::Blake256;
-use tari_utilities::Hashable;
+use tari_crypto::{common::Blake256, tari_utilities::Hashable};
 
 const MAX_TARGET: U256 = U256::MAX;
 
@@ -58,7 +57,7 @@ pub mod test {
         },
     };
     use chrono::{DateTime, NaiveDate, Utc};
-    use tari_utilities::hex::Hex;
+    use tari_crypto::tari_utilities::hex::Hex;
 
     /// A simple example miner. It starts at nonce = 0 and iterates until it finds a header hash that meets the desired
     /// target block

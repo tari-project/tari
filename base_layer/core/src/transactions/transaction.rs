@@ -52,8 +52,8 @@ use std::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     range_proof::{RangeProofError, RangeProofService as RangeProofServiceTrait},
+    tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
-use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
 
 // These are set fairly arbitrarily at the moment. We'll need to do some modelling / testing to tune these values.
 pub const MAX_TRANSACTION_INPUTS: usize = 500;

@@ -13,7 +13,6 @@ members = [
     "comms/dht",
     "digital_assets_layer/core",
     "infrastructure/broadcast_channel",
-    "infrastructure/crypto",
     "infrastructure/protobuf_build",
     "infrastructure/pubsub",
     "infrastructure/shutdown",

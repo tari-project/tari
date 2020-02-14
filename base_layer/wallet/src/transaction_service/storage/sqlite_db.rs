@@ -51,7 +51,7 @@ use tari_core::transactions::{
     tari_amount::MicroTari,
     types::{Commitment, PublicKey},
 };
-use tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::ByteArray;
 
 /// A Sqlite backend for the Transaction Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]

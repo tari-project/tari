@@ -35,8 +35,10 @@ use multiaddr::Multiaddr;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use std::sync::RwLock;
-use tari_crypto::keys::{PublicKey, SecretKey};
-use tari_utilities::hex::serialize_to_hex;
+use tari_crypto::{
+    keys::{PublicKey, SecretKey},
+    tari_utilities::hex::serialize_to_hex,
+};
 
 #[derive(Debug, Error)]
 pub enum NodeIdentityError {

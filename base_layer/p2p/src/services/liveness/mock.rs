@@ -37,8 +37,8 @@ use std::sync::{
 };
 use tari_broadcast_channel as broadcast_channel;
 use tari_broadcast_channel::{Publisher, SendError};
+use tari_crypto::tari_utilities::acquire_write_lock;
 use tari_service_framework::{reply_channel, RequestContext};
-use tari_utilities::acquire_write_lock;
 
 const LOG_TARGET: &str = "base_layer::p2p::liveness_mock";
 

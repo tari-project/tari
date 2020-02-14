@@ -44,8 +44,8 @@ use tari_comms::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     types::CommsPublicKey,
 };
+use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::{hex::Hex, ByteArray};
 
 const LOG_TARGET: &str = "comms::dht::discovery_service";
 

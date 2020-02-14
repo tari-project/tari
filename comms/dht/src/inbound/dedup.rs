@@ -26,7 +26,7 @@ use futures::{task::Context, Future};
 use log::*;
 use std::task::Poll;
 use tari_comms::types::Challenge;
-use tari_utilities::hex::Hex;
+use tari_crypto::tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::dht::dedup";

@@ -55,10 +55,10 @@ use tari_core::transactions::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    tari_utilities::hex::Hex,
 };
 use tari_p2p::initialization::CommsConfig;
 use tari_test_utils::collect_stream;
-use tari_utilities::hex::Hex;
 use tokio::runtime::Runtime;
 
 // Used to generate test wallet data

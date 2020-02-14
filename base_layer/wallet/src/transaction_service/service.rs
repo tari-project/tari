@@ -90,10 +90,9 @@ use tari_core::{
         ReceiverTransactionProtocol,
     },
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey, tari_utilities::hash::Hashable};
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
-use tari_utilities::hash::Hashable;
 const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service::service";
 
 /// Contains the generated TxId and SpendingKey for a Pending Coinbase transaction

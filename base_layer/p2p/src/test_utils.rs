@@ -31,7 +31,7 @@ use tari_comms_dht::{
     envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageOrigin, DhtMessageType, Network, NodeDestination},
     inbound::DhtInboundMessage,
 };
-use tari_utilities::message_format::MessageFormat;
+use tari_crypto::tari_utilities::message_format::MessageFormat;
 
 macro_rules! unwrap_oms_send_msg {
     ($var:expr, reply_value=$reply_value:expr) => {

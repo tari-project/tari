@@ -30,7 +30,7 @@ use bitflags::bitflags;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
-use tari_utilities::hex::serialize_to_hex;
+use tari_crypto::tari_utilities::hex::serialize_to_hex;
 
 bitflags! {
     #[derive(Default, Deserialize, Serialize)]
@@ -160,8 +160,11 @@ mod test {
     use super::*;
     use crate::{connection::net_address::NetAddressesWithStats, peer_manager::node_id::NodeId, types::CommsPublicKey};
     use serde_json::Value;
-    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_utilities::{hex::Hex, message_format::MessageFormat};
+    use tari_crypto::{
+        keys::PublicKey,
+        ristretto::RistrettoPublicKey,
+        tari_utilities::{hex::Hex, message_format::MessageFormat},
+    };
 
     #[test]
     fn test_is_and_set_banned() {

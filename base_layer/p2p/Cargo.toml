@@ -15,7 +15,7 @@ test-mocks = []
 tari_broadcast_channel = { version="^0.0",  path = "../../infrastructure/broadcast_channel" }
 tari_comms = { version = "^0.0", path = "../../comms"}
 tari_comms_dht = { version = "^0.0", path = "../../comms/dht"}
-tari_crypto = { version = "^0.0", path = "../../infrastructure/crypto"}
+tari_crypto = { version = "^0.3" }
 tari_pubsub = { version = "^0.0", path = "../../infrastructure/pubsub"}
 tari_service_framework = { version = "^0.0", path = "../service_framework"}
 tari_shutdown = { version = "^0.0", path="../../infrastructure/shutdown" }

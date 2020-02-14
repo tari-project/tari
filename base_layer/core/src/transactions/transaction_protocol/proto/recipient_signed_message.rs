@@ -24,7 +24,7 @@ use super::protocol as proto;
 
 use crate::transactions::{transaction_protocol::recipient::RecipientSignedMessage, types::PublicKey};
 use std::convert::{TryFrom, TryInto};
-use tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::ByteArray;
 
 impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
     type Error = String;

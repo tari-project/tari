@@ -41,7 +41,7 @@ use tari_p2p::{
     tari_message::TariMessageType,
 };
 use tari_storage::{LMDBWrapper, lmdb_store::LMDBBuilder};
-use tari_utilities::message_format::MessageFormat;
+use tari_crypto::tari_utilities::message_format::MessageFormat;
 use tempdir::TempDir;
 use rand::rngs::OsRng;
 

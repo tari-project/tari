@@ -29,7 +29,7 @@ use crate::{
     },
 };
 use std::sync::{Arc, RwLock};
-use tari_utilities::epoch_time::EpochTime;
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 /// The DiffAdjManager is used to calculate the current target difficulty based on PoW recorded in the latest blocks of
 /// the current best chain.

@@ -30,8 +30,7 @@ use crate::{
     transactions::types::CryptoFactories,
     validation::{error::ValidationError, traits::Validation},
 };
-use tari_crypto::commitment::HomomorphicCommitmentFactory;
-use tari_utilities::hash::Hashable;
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::hash::Hashable};
 
 /// This validator checks that the synced state satisfies *all* consensus rules and should only be performed on
 /// the chain tip header.

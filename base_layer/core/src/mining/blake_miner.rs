@@ -30,7 +30,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use tari_utilities::epoch_time::EpochTime;
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 /// A simple Blake2b-based proof of work. This is currently intended to be used for testing and perhaps Testnet until
 /// Monero merge-mining is active.

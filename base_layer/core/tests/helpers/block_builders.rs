@@ -46,8 +46,10 @@ use tari_core::{
         types::{Commitment, CryptoFactories, HashDigest, PublicKey},
     },
 };
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
-use tari_utilities::{hash::Hashable, hex::Hex};
+use tari_crypto::{
+    keys::PublicKey as PublicKeyTrait,
+    tari_utilities::{hash::Hashable, hex::Hex},
+};
 
 fn create_coinbase(
     factories: &CryptoFactories,

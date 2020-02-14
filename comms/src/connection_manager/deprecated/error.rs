@@ -27,7 +27,7 @@ use crate::{
     peer_manager::PeerManagerError,
 };
 use derive_error::Error;
-use tari_utilities::{
+use tari_crypto::tari_utilities::{
     ciphers::cipher::CipherError,
     message_format::MessageFormatError,
     thread_join::ThreadError,

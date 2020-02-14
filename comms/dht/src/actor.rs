@@ -61,8 +61,8 @@ use tari_comms::{
     },
     types::CommsPublicKey,
 };
+use tari_crypto::tari_utilities::ByteArray;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::ByteArray;
 use tokio::task;
 use ttl_cache::TtlCache;
 

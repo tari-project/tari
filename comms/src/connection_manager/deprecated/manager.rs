@@ -54,7 +54,7 @@ use std::{
     sync::{Arc, Mutex, RwLock},
     time::Duration,
 };
-use tari_utilities::{thread_join::thread_join::ThreadJoinWithTimeout, ByteArray};
+use tari_crypto::tari_utilities::{thread_join::thread_join::ThreadJoinWithTimeout, ByteArray};
 use tokio::task;
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";

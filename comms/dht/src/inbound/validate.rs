@@ -33,7 +33,7 @@ use futures::{task::Context, Future};
 use log::*;
 use std::task::Poll;
 use tari_comms::message::MessageExt;
-use tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::ByteArray;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &'static str = "comms::dht::validate";

@@ -29,7 +29,7 @@ use snow::{
     types::{Cipher, Dh, Hash, Random},
 };
 use tari_crypto::keys::{DiffieHellmanSharedSecret, PublicKey, SecretKey};
-use tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::ByteArray;
 use rand::rngs::OsRng;
 
 macro_rules! copy_slice {

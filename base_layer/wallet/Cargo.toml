@@ -11,14 +11,13 @@ c_integration = []
 tari_broadcast_channel = { version="^0.0",  path = "../../infrastructure/broadcast_channel" }
 tari_comms = { path = "../../comms", version = "^0.0"}
 tari_comms_dht = { path = "../../comms/dht", version = "^0.0"}
-tari_crypto = { path = "../../infrastructure/crypto", version = "^0.0" }
+tari_crypto = { version = "^0.3" }
 tari_key_manager = {path = "../key_manager", version = "^0.0"}
 tari_p2p = {path = "../p2p", version = "^0.0"}
 tari_pubsub = {path = "../../infrastructure/pubsub", version = "^0.0"}
 tari_service_framework = { version = "^0.0", path = "../service_framework"}
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0"}
 tari_storage = { version = "^0.0", path = "../../infrastructure/storage"}
-tari_utilities = { path = "../../infrastructure/tari_util", version = "^0.1"}
 
 chrono = { version = "0.4.6", features = ["serde"]}
 time = {version = "0.1.39"}

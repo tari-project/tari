@@ -32,7 +32,7 @@ use crate::{
 use futures::StreamExt;
 use log::*;
 use std::sync::Arc;
-use tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::ByteArray;
 
 const LOG_TARGET: &str = "comms::connection_manager::common";
 

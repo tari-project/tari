@@ -25,7 +25,7 @@ use derive_error::Error;
 use prost::DecodeError;
 use std::io;
 use tari_comms::{message::MessageError, peer_manager::PeerManagerError};
-use tari_utilities::ciphers::cipher::CipherError;
+use tari_crypto::tari_utilities::ciphers::cipher::CipherError;
 
 #[derive(Debug, Error)]
 pub enum StoreAndForwardError {

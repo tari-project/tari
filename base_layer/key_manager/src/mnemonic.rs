@@ -23,8 +23,10 @@
 use crate::{diacritics::*, mnemonic_wordlists::*};
 use derive_error::Error;
 use std::slice::Iter;
-use tari_crypto::keys::SecretKey;
-use tari_utilities::{bit::*, byte_array::ByteArrayError};
+use tari_crypto::{
+    keys::SecretKey,
+    tari_utilities::{bit::*, byte_array::ByteArrayError},
+};
 
 /// The Mnemonic system simplifies the encoding and decoding of a secret key into and from a Mnemonic word sequence
 /// It can autodetect the language of the Mnemonic word sequence
@@ -255,8 +257,7 @@ mod test {
     use super::*;
     use crate::mnemonic;
     use rand::{self, rngs::OsRng};
-    use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey};
-    use tari_utilities::byte_array::ByteArray;
+    use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey, tari_utilities::byte_array::ByteArray};
 
     #[test]
     fn test_check_wordlists_sorted() {

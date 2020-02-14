@@ -30,7 +30,7 @@ use crate::{
     proof_of_work::PowError,
     validation::ValidationError,
 };
-use tari_utilities::hash::Hashable;
+use tari_crypto::tari_utilities::hash::Hashable;
 
 /// This function tests that the block timestamp is greater than the median timestamp at the chain tip.
 pub fn check_median_timestamp_at_chain_tip<B: BlockchainBackend>(
