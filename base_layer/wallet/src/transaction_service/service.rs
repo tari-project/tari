@@ -93,6 +93,7 @@ use tari_core::{
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey, tari_utilities::hash::Hashable};
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
+
 const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service::service";
 
 /// Contains the generated TxId and SpendingKey for a Pending Coinbase transaction
@@ -1344,15 +1345,24 @@ where
     ) -> Result<(), TransactionServiceError>
     {
         use crate::output_manager_service::{
+            config::OutputManagerServiceConfig,
             service::OutputManagerService,
             storage::{database::OutputManagerDatabase, memory_db::OutputManagerMemoryDatabase},
         };
+        use futures::{channel::mpsc, stream};
+        use tari_broadcast_channel::bounded;
 
         let (_sender, receiver) = reply_channel::unbounded();
+        let (tx, _rx) = mpsc::channel(20);
+        let (oms_event_publisher, _oms_event_subscriber) = bounded(100);
 
         let mut fake_oms = OutputManagerService::new(
+            OutputManagerServiceConfig::default(),
+            OutboundMessageRequester::new(tx),
             receiver,
+            stream::empty(),
             OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
+            oms_event_publisher,
             self.factories.clone(),
         )
         .await?;

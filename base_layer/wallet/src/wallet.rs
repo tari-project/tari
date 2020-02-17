@@ -24,6 +24,7 @@ use crate::{
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::WalletError,
     output_manager_service::{
+        config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
         storage::database::OutputManagerBackend,
         OutputManagerServiceInitializer,
@@ -168,6 +169,8 @@ where
                 dht.dht_requester(),
             ))
             .add_initializer(OutputManagerServiceInitializer::new(
+                OutputManagerServiceConfig::default(),
+                subscription_factory.clone(),
                 output_manager_backend,
                 factories.clone(),
             ))
@@ -183,7 +186,7 @@ where
 
         let handles = runtime.block_on(fut).expect("Service initialization failed");
 
-        let output_manager_handle = handles
+        let mut output_manager_handle = handles
             .get_handle::<OutputManagerHandle>()
             .expect("Could not get Output Manager Service Handle");
         let mut transaction_service_handle = handles
@@ -198,6 +201,7 @@ where
 
         for p in base_node_peers {
             runtime.block_on(transaction_service_handle.set_base_node_public_key(p.public_key.clone()))?;
+            runtime.block_on(output_manager_handle.set_base_node_public_key(p.public_key.clone()))?;
         }
 
         Ok(Wallet {
@@ -248,6 +252,10 @@ where
         self.comms.peer_manager().add_peer(peer.clone())?;
         self.runtime.block_on(
             self.transaction_service
+                .set_base_node_public_key(peer.public_key.clone()),
+        )?;
+        self.runtime.block_on(
+            self.output_manager_service
                 .set_base_node_public_key(peer.public_key.clone()),
         )?;
 
@@ -304,5 +312,13 @@ where
         let signature = RistrettoSchnorr::new(public_nonce, signature);
         let challenge = Blake256::digest(message.clone().as_bytes());
         signature.verify_challenge(&public_key, challenge.clone().as_slice())
+    }
+
+    /// Have all the wallet components that need to start a sync process with the set base node to confirm the wallets
+    /// state is accurately reflected on the blockchain
+    pub fn sync_with_base_node(&mut self) -> Result<(), WalletError> {
+        self.runtime
+            .block_on(self.output_manager_service.sync_with_base_node())?;
+        Ok(())
     }
 }

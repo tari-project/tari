@@ -46,6 +46,7 @@ use tari_core::transactions::transaction::UnblindedOutput;
 pub struct InnerDatabase {
     unspent_outputs: Vec<UnblindedOutput>,
     spent_outputs: Vec<UnblindedOutput>,
+    invalid_outputs: Vec<UnblindedOutput>,
     pending_transactions: HashMap<TxId, PendingTransactionOutputs>,
     key_manager_state: Option<KeyManagerState>,
 }
@@ -55,6 +56,7 @@ impl InnerDatabase {
         Self {
             unspent_outputs: Vec::new(),
             spent_outputs: Vec::new(),
+            invalid_outputs: Vec::new(),
             pending_transactions: HashMap::new(),
             key_manager_state: None,
         }
@@ -101,6 +103,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                 .key_manager_state
                 .as_ref()
                 .map(|km| DbValue::KeyManagerState(km.clone())),
+            DbKey::InvalidOutputs => Some(DbValue::InvalidOutputs(db.invalid_outputs.clone())),
         };
 
         Ok(result)
@@ -157,6 +160,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                 DbKey::SpentOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::AllPendingTransactionOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::KeyManagerState => return Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::InvalidOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
             },
         }
         Ok(None)
@@ -245,6 +249,22 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             self.cancel_pending_transaction(t.clone())?;
         }
 
+        Ok(())
+    }
+
+    fn invalidate_unspent_output(&self, output: &UnblindedOutput) -> Result<(), OutputManagerStorageError> {
+        let mut db = acquire_write_lock!(self.db);
+        match db
+            .unspent_outputs
+            .iter()
+            .position(|v| v.spending_key == output.spending_key)
+        {
+            Some(pos) => {
+                let output = db.unspent_outputs.remove(pos);
+                db.invalid_outputs.push(output);
+            },
+            None => return Err(OutputManagerStorageError::ValuesNotFound),
+        }
         Ok(())
     }
 

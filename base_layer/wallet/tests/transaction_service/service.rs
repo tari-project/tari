@@ -27,6 +27,7 @@ use crate::support::{
 use chrono::Utc;
 use futures::{
     channel::{mpsc, mpsc::Sender},
+    stream,
     SinkExt,
 };
 use prost::Message;
@@ -79,6 +80,7 @@ use tari_service_framework::{reply_channel, StackBuilder};
 use tari_test_utils::{collect_stream, paths::with_temp_dir};
 use tari_wallet::{
     output_manager_service::{
+        config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
         service::OutputManagerService,
         storage::{database::OutputManagerDatabase, memory_db::OutputManagerMemoryDatabase},
@@ -141,6 +143,8 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
     let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(OutputManagerServiceInitializer::new(
+            OutputManagerServiceConfig::default(),
+            subscription_factory.clone(),
             OutputManagerMemoryDatabase::new(),
             factories.clone(),
         ))
@@ -182,14 +186,23 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
 )
 {
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
+
+    let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock(20);
+    let (oms_event_publisher, oms_event_subscriber) = bounded(100);
+
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(
+            OutputManagerServiceConfig::default(),
+            outbound_message_requester.clone(),
             oms_request_receiver,
+            stream::empty(),
             OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
+            oms_event_publisher,
             factories.clone(),
         ))
         .unwrap();
-    let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender);
+
+    let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_subscriber);
 
     let (ts_request_sender, ts_request_receiver) = reply_channel::unbounded();
     let (event_publisher, event_subscriber) = bounded(100);
@@ -200,7 +213,6 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
     let (mempool_response_sender, mempool_response_receiver) = mpsc::channel(20);
     let (base_node_response_sender, base_node_response_receiver) = mpsc::channel(20);
 
-    let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock(20);
     let outbound_mock_state = mock_outbound_service.get_state();
     runtime.spawn(mock_outbound_service.run());
 
