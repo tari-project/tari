@@ -25,8 +25,10 @@ use crate::{
     mempool::reorg_pool::reorg_pool::ReorgPoolConfig,
     transactions::{transaction::Transaction, types::Signature},
 };
+use log::*;
 use std::sync::Arc;
 use ttl_cache::TtlCache;
+pub const LOG_TARGET: &str = "c::mp::reorg_pool::reorg_pool_storage";
 
 /// Reorg makes use of ReorgPoolStorage to provide thread save access to its TtlCache.
 /// The ReorgPoolStorage consists of all transactions that have recently been added to blocks.
@@ -52,6 +54,7 @@ impl ReorgPoolStorage {
     /// the ReorgPoolStorage and will be discarded once the Time-to-live threshold has been reached.
     pub fn insert(&mut self, tx: Arc<Transaction>) {
         let tx_key = tx.body.kernels()[0].excess_sig.clone();
+        trace!(target: LOG_TARGET, "Inserting tx into reorg pool: {:?}", tx_key,);
         let _ = self.txs_by_signature.insert(tx_key, tx, self.config.tx_ttl);
     }
 
@@ -74,6 +77,7 @@ impl ReorgPoolStorage {
         for block in &removed_blocks {
             for kernel in block.body.kernels() {
                 if let Some(removed_tx) = self.txs_by_signature.remove(&kernel.excess_sig) {
+                    trace!(target: LOG_TARGET, "Removing tx from reorg pool: {:?}", removed_tx);
                     removed_txs.push(removed_tx);
                 }
             }

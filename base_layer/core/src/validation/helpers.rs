@@ -30,7 +30,9 @@ use crate::{
     proof_of_work::PowError,
     validation::ValidationError,
 };
+use log::*;
 use tari_crypto::tari_utilities::hash::Hashable;
+pub const LOG_TARGET: &str = "c::val::helpers";
 
 /// This function tests that the block timestamp is greater than the median timestamp at the chain tip.
 pub fn check_median_timestamp_at_chain_tip<B: BlockchainBackend>(
@@ -41,6 +43,10 @@ pub fn check_median_timestamp_at_chain_tip<B: BlockchainBackend>(
 {
     let tip_height = db
         .get_metadata()
+        .or_else(|e| {
+            error!(target: LOG_TARGET, "validation failed to get metadata {:?}.", e);
+            Err(e)
+        })
         .map_err(|e| ValidationError::CustomError(e.to_string()))?
         .height_of_longest_chain
         .unwrap_or(0);
@@ -59,6 +65,11 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
     }
     let median_timestamp = rules
         .get_median_timestamp_at_height(height)
+        .or_else(|e| {
+            error!(target: LOG_TARGET, "Validation could not get median timestamp");
+
+            Err(e)
+        })
         .map_err(|_| ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestamp))?;
     if block_header.timestamp < median_timestamp {
         return Err(ValidationError::BlockHeaderError(
@@ -77,6 +88,10 @@ pub fn check_achieved_difficulty_at_chain_tip<B: BlockchainBackend>(
 {
     let tip_height = db
         .get_metadata()
+        .or_else(|e| {
+            error!(target: LOG_TARGET, "Validation could not get achieved difficultly");
+            Err(e)
+        })
         .map_err(|e| ValidationError::CustomError(e.to_string()))?
         .height_of_longest_chain
         .unwrap_or(0);
@@ -95,6 +110,10 @@ pub fn check_achieved_difficulty<B: BlockchainBackend>(
     if block_header.height > 0 || get_gen_block_hash() != block_header.hash() {
         target = rules
             .get_target_difficulty_with_height(&block_header.pow.pow_algo, height)
+            .or_else(|e| {
+                error!(target: LOG_TARGET, "Validation could not get achieved difficulty");
+                Err(e)
+            })
             .map_err(|_| {
                 ValidationError::BlockHeaderError(BlockHeaderValidationError::ProofOfWorkError(
                     PowError::InvalidProofOfWork,

@@ -36,7 +36,9 @@ use crate::{
         ValidationError,
     },
 };
+use log::*;
 use tari_crypto::tari_utilities::hash::Hashable;
+pub const LOG_TARGET: &str = "c::val::block_validators";
 
 /// This validator tests whether a candidate block is internally consistent
 pub struct StatelessValidator {}
@@ -131,6 +133,10 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(
         if !(utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT)) &&
             !(db.is_utxo(utxo.hash())).map_err(|e| ValidationError::CustomError(e.to_string()))?
         {
+            warn!(
+                target: LOG_TARGET,
+                "Block validation failed because the block has invalid input: {}", utxo
+            );
             return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
         }
     }

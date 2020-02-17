@@ -24,6 +24,7 @@ use crate::{
     blocks::BlockHeader,
     proof_of_work::{Difficulty, ProofOfWork},
 };
+use log::*;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::sync::{
@@ -31,6 +32,7 @@ use std::sync::{
     Arc,
 };
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
+pub const LOG_TARGET: &str = "c::m::blake_miner";
 
 /// A simple Blake2b-based proof of work. This is currently intended to be used for testing and perhaps Testnet until
 /// Monero merge-mining is active.
@@ -54,8 +56,11 @@ impl CpuBlakePow {
         let start_nonce = nonce;
         // We're mining over here!
         let difficulty = ProofOfWork::achieved_difficulty(&header);
+        debug!(target: LOG_TARGET, "Mining started for nonce");
+        trace!(target: LOG_TARGET, "Mining for difficulty: {:?}", target_difficulty);
         while difficulty < target_difficulty {
             if stop_flag.load(Ordering::Relaxed) || kill_flag.load(Ordering::Relaxed) {
+                debug!(target: LOG_TARGET, "Mining stopped via flag");
                 return None;
             }
             if nonce == std::u64::MAX {
@@ -68,6 +73,8 @@ impl CpuBlakePow {
             }
             header.nonce = nonce;
         }
+
+        debug!(target: LOG_TARGET, "Miner found nonce: {}", nonce);
         Some(header)
     }
 }

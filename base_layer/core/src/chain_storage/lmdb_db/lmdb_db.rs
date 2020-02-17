@@ -51,7 +51,9 @@ use crate::{
 use croaring::Bitmap;
 use digest::Digest;
 use lmdb_zero::{Database, Environment, WriteTransaction};
+use log::*;
 use std::{
+    fmt::Debug,
     path::Path,
     sync::{Arc, RwLock},
 };
@@ -69,6 +71,8 @@ use tari_mmr::{
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBStore};
 
 type DatabaseRef = Arc<Database<'static>>;
+
+pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_db";
 
 /// This is a lmdb-based blockchain database for persistent storage of the chain state.
 pub struct LMDBDatabase<D>
@@ -192,6 +196,7 @@ where D: Digest + Send + Sync
     // range_proof_mmr and kernel_mmr. CreateMmrCheckpoint and RewindMmr txns will be performed after the the storage
     // txns have been successfully applied.
     fn apply_mmr_txs(&self, tx: &DbTransaction) -> Result<(), ChainStorageError> {
+        trace!(target: LOG_TARGET, "DB apply mmr instruction received: {:?}", tx);
         for op in tx.operations.iter() {
             match op {
                 WriteOperation::Insert(insert) => match insert {
@@ -242,6 +247,7 @@ where D: Digest + Send + Sync
 
     // Perform the RewindMmr and CreateMmrCheckpoint operations after MMR txns and storage txns have been applied.
     fn commit_mmrs(&self, tx: DbTransaction) -> Result<(), ChainStorageError> {
+        trace!(target: LOG_TARGET, "DB commit instruction received: {:?}", tx);
         for op in tx.operations.into_iter() {
             match op {
                 WriteOperation::RewindMmr(tree, steps_back) => match tree {
@@ -388,6 +394,7 @@ where D: Digest + Send + Sync
 
     // Reset any mmr txns that have been applied.
     fn reset_mmrs(&self) -> Result<(), ChainStorageError> {
+        debug!(target: LOG_TARGET, "Reset mmrs called");
         self.kernel_mmr
             .write()
             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
@@ -406,6 +413,7 @@ where D: Digest + Send + Sync
     // Perform all the storage txns, excluding any MMR operations. Only when all the txns can successfully be applied is
     // the changes committed to the backend databases.
     fn apply_storage_txs(&self, tx: &DbTransaction) -> Result<(), ChainStorageError> {
+        debug!(target: LOG_TARGET, "DB apply storage instruction received: {:?}", tx);
         let txn = WriteTransaction::new(self.env.clone()).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
         {
             for op in tx.operations.iter() {
@@ -650,7 +658,7 @@ where D: Digest + Send + Sync
     }
 
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
-        let result = match key {
+        Ok(match key {
             DbKey::Metadata(k) => {
                 let val: Option<MetadataValue> = lmdb_get(&self.env, &self.metadata_db, &(k.clone() as u32))?;
                 val.map(|val| DbValue::Metadata(val))
@@ -685,12 +693,11 @@ where D: Digest + Send + Sync
                 let val: Option<Block> = lmdb_get(&self.env, &self.orphans_db, k)?;
                 val.map(|val| DbValue::OrphanBlock(Box::new(val)))
             },
-        };
-        Ok(result)
+        })
     }
 
     fn contains(&self, key: &DbKey) -> Result<bool, ChainStorageError> {
-        let result = match key {
+        Ok(match key {
             DbKey::Metadata(k) => lmdb_exists(&self.env, &self.metadata_db, &(k.clone() as u32))?,
             DbKey::BlockHeader(k) => lmdb_exists(&self.env, &self.headers_db, k)?,
             DbKey::BlockHash(h) => lmdb_exists(&self.env, &self.block_hashes_db, h)?,
@@ -698,8 +705,7 @@ where D: Digest + Send + Sync
             DbKey::SpentOutput(k) => lmdb_exists(&self.env, &self.stxos_db, k)?,
             DbKey::TransactionKernel(k) => lmdb_exists(&self.env, &self.kernels_db, k)?,
             DbKey::OrphanBlock(k) => lmdb_exists(&self.env, &self.orphans_db, k)?,
-        };
-        Ok(result)
+        })
     }
 
     fn fetch_mmr_root(&self, tree: MmrTree) -> Result<Vec<u8>, ChainStorageError> {
@@ -738,12 +744,11 @@ where D: Digest + Send + Sync
     /// bitmap
     fn fetch_mmr_proof(&self, tree: MmrTree, leaf_pos: usize) -> Result<MerkleProof, ChainStorageError> {
         let pruned_mmr = self.get_pruned_mmr(&tree)?;
-        let proof = match tree {
+        Ok(match tree {
             MmrTree::Utxo => MerkleProof::for_leaf_node(&pruned_mmr.mmr(), leaf_pos)?,
             MmrTree::Kernel => MerkleProof::for_leaf_node(&pruned_mmr.mmr(), leaf_pos)?,
             MmrTree::RangeProof => MerkleProof::for_leaf_node(&pruned_mmr.mmr(), leaf_pos)?,
-        };
-        Ok(proof)
+        })
     }
 
     fn fetch_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {

@@ -34,7 +34,9 @@ use lmdb_zero::{
     ReadTransaction,
     WriteTransaction,
 };
+use log::*;
 use serde::{de::DeserializeOwned, Serialize};
+pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb";
 
 // TODO: Calling `access` for every lmdb operation has some overhead (an atomic read and set). Check if is possible to
 // pass an Accessor instead of the WriteTransaction?
@@ -42,13 +44,23 @@ use serde::{de::DeserializeOwned, Serialize};
 pub fn serialize<T>(data: &T) -> Result<Vec<u8>, ChainStorageError>
 where T: Serialize {
     let mut buf = Vec::with_capacity(512);
-    bincode::serialize_into(&mut buf, data).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+    bincode::serialize_into(&mut buf, data)
+        .or_else(|e| {
+            error!(target: LOG_TARGET, "Could not serialize lmdb: {:?}", e);
+            return Err(e);
+        })
+        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
     Ok(buf)
 }
 
 pub fn deserialize<T>(buf_bytes: &[u8]) -> Result<T, error::Error>
 where T: DeserializeOwned {
-    bincode::deserialize(buf_bytes).map_err(|e| error::Error::ValRejected(e.to_string()))
+    bincode::deserialize(buf_bytes)
+        .or_else(|e| {
+            error!(target: LOG_TARGET, "Could not deserialize lmdb: {:?}", e);
+            return Err(e);
+        })
+        .map_err(|e| error::Error::ValRejected(e.to_string()))
 }
 
 pub fn lmdb_insert<K, V>(txn: &WriteTransaction, db: &Database, key: &K, val: &V) -> Result<(), ChainStorageError>

@@ -48,7 +48,7 @@ use tari_crypto::{
 };
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof, MutableMmrLeafNodes};
 
-const LOG_TARGET: &str = "core::chain_storage::database";
+const LOG_TARGET: &str = "c::cs::database";
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BlockAddResult {
@@ -289,9 +289,9 @@ where T: BlockchainBackend
             Err(e) => {
                 error!(
                     target: LOG_TARGET,
-                    "Could not read metadata from database. {}. We're going to panic here. Perhaps restarting will \
+                    "Could not read metadata from database. {:?}. We're going to panic here. Perhaps restarting will \
                      fix things",
-                    e.to_string()
+                    e
                 );
                 Err(ChainStorageError::CriticalError)
             },
@@ -302,15 +302,18 @@ where T: BlockchainBackend
         self.metadata.read().map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "An attempt to get a read lock on the blockchain metadata failed. {}",
-                e.to_string()
+                "An attempt to get a read lock on the blockchain metadata failed. {:?}", e
             );
             ChainStorageError::AccessError("Read lock on blockchain metadata failed".into())
         })
     }
 
     fn update_metadata(&self, new_height: u64, new_hash: Vec<u8>) -> Result<(), ChainStorageError> {
-        let mut db = self.metadata.write().map_err(|_| {
+        let mut db = self.metadata.write().map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Could not obtain write access to blockchain metadata after storing block. {:?}", e
+            );
             ChainStorageError::AccessError(
                 "Could not obtain write access to blockchain metadata after storing block".into(),
             )
@@ -361,9 +364,15 @@ where T: BlockchainBackend
     }
 
     pub fn fetch_tip_header(&self) -> Result<BlockHeader, ChainStorageError> {
-        self.db.fetch_last_header()?.ok_or(ChainStorageError::InvalidQuery(
-            "Cannot retrieve header. Blockchain DB is empty".into(),
-        ))
+        self.db
+            .fetch_last_header()
+            .or_else(|e| {
+                error!(target: LOG_TARGET, "Could not fetch the tip header of the db. {:?}", e);
+                Err(e)
+            })?
+            .ok_or(ChainStorageError::InvalidQuery(
+                "Cannot retrieve header. Blockchain DB is empty".into(),
+            ))
     }
 
     /// Returns the UTXO with the given hash.
@@ -516,8 +525,7 @@ where T: BlockchainBackend
             )
         };
         let best_block = self.fetch_header(height)?;
-        let result = block.header.prev_hash == parent_hash && block.header.height == best_block.height + 1;
-        Ok(result)
+        Ok(block.header.prev_hash == parent_hash && block.header.height == best_block.height + 1)
     }
 
     /// Fetch a block from the blockchain database.
@@ -687,9 +695,18 @@ where T: BlockchainBackend
     /// is reorganised if necessary.
     fn handle_possible_reorg(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
         let metadata = self.get_metadata()?;
-        let db_height = metadata.height_of_longest_chain.ok_or(ChainStorageError::InvalidQuery(
-            "Cannot retrieve block. Blockchain DB is empty".into(),
-        ))?;
+        let db_height = metadata
+            .height_of_longest_chain
+            .ok_or(ChainStorageError::InvalidQuery(
+                "Cannot retrieve block. Blockchain DB is empty".into(),
+            ))
+            .or_else(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not retrieve block, block chain is empty {:?}", e
+                );
+                Err(e)
+            })?;
         let horizon_block_height = metadata.horizon_block(db_height);
         if block.header.height <= horizon_block_height {
             return Err(ChainStorageError::BeyondPruningHorizon);
@@ -736,10 +753,19 @@ where T: BlockchainBackend
         let tip_header = self.db.fetch_last_header()?.ok_or(ChainStorageError::InvalidQuery(
             "Cannot retrieve header. Blockchain DB is empty".into(),
         ))?;
+        trace!(
+            target: LOG_TARGET,
+            "Comparing fork diff: ({}) with hash ({}) to main chain diff: ({}) with hash ({}) for possible reorg",
+            fork_accum_difficulty,
+            fork_tip_hash.to_hex(),
+            tip_header.total_accumulated_difficulty_inclusive(),
+            tip_header.hash().to_hex()
+        );
         if fork_accum_difficulty > tip_header.total_accumulated_difficulty_inclusive() {
             // We've built the strongest orphan chain we can by going backwards and forwards from the new orphan block
             // that is linked with the main chain.
             let fork_tip_block = self.fetch_orphan(fork_tip_hash.clone())?;
+            let fork_header = fork_tip_block.header.clone();
             let reorg_chain = self.try_construct_fork(fork_tip_block)?;
             let fork_height = reorg_chain
                 .front()
@@ -748,8 +774,14 @@ where T: BlockchainBackend
                 .height -
                 1;
             self.reorganize_chain(fork_height, reorg_chain)?;
+            warn!(
+                target: LOG_TARGET,
+                "Chain reorg happened from difficulty: ({}) to difficulty: ({})", tip_header.pow, fork_header.pow
+            );
+            trace!(target: LOG_TARGET, "Reorg from ({}) to ({})", tip_header, fork_header,);
             return Ok(BlockAddResult::ChainReorg);
         }
+        debug!(target: LOG_TARGET, "Orphan block received: {}", new_block);
         Ok(BlockAddResult::OrphanBlock)
     }
 

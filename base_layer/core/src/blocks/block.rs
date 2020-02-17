@@ -40,9 +40,12 @@ use crate::{
     },
 };
 use derive_error::Error;
+use log::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use tari_crypto::tari_utilities::Hashable;
+
+pub const LOG_TARGET: &str = "c::bl::block";
 
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum BlockValidationError {
@@ -79,6 +82,7 @@ impl Block {
     pub fn check_kernel_rules(&self) -> Result<(), BlockValidationError> {
         for kernel in self.body.kernels() {
             if kernel.lock_height > self.header.height {
+                debug!(target: LOG_TARGET, "Kernel lock height was not reached: {}", kernel);
                 return Err(BlockValidationError::InvalidKernel);
             }
         }
@@ -96,11 +100,13 @@ impl Block {
                 coinbase_counter += 1;
                 if utxo.features.maturity < (self.header.height + ConsensusConstants::current().coinbase_lock_height())
                 {
+                    debug!(target: LOG_TARGET, "Coinbase found with maturity set to low");
                     return Err(BlockValidationError::InvalidCoinbase);
                 }
             }
         }
         if coinbase_counter != 1 {
+            debug!(target: LOG_TARGET, "More then one coinbase found in block");
             return Err(BlockValidationError::InvalidCoinbase);
         }
         Ok(())
@@ -110,6 +116,10 @@ impl Block {
     pub fn check_stxo_rules(&self) -> Result<(), BlockValidationError> {
         for input in self.body.inputs() {
             if input.features.maturity > self.header.height {
+                debug!(
+                    target: LOG_TARGET,
+                    "Input found that has not yet matured to spending height: {}", input
+                );
                 return Err(BlockValidationError::InputMaturity);
             }
         }

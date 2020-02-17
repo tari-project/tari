@@ -25,7 +25,9 @@ use crate::{
     transactions::{transaction::Transaction, types::CryptoFactories},
     validation::{Validation, ValidationError},
 };
+use log::*;
 use tari_crypto::tari_utilities::hash::Hashable;
+pub const LOG_TARGET: &str = "c::val::transaction_validators";
 
 /// This validator will only check that a transaction is internally consistent. It requires no state information.
 pub struct StatelessTxValidator {
@@ -95,6 +97,13 @@ impl<B: BlockchainBackend> Validation<Transaction, B> for TxInputAndMaturityVali
         let height = self
             .db
             .get_height()
+            .or_else(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction validation could not get height {:?}.", e
+                );
+                Err(e)
+            })
             .map_err(|e| ValidationError::CustomError(e.to_string()))?
             .unwrap_or(0);
         verify_timelocks(tx, height)?;
@@ -140,6 +149,13 @@ impl<B: BlockchainBackend> Validation<Transaction, B> for TimeLockTxValidator<B>
         let height = self
             .db
             .get_height()
+            .or_else(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction validation could not get height {:?}.", e
+                );
+                Err(e)
+            })
             .map_err(|e| ValidationError::CustomError(e.to_string()))?
             .unwrap_or(0);
         verify_timelocks(tx, height)?;
@@ -167,6 +183,10 @@ fn verify_timelocks(tx: &Transaction, current_height: u64) -> Result<(), Validat
 fn verify_inputs<B: BlockchainBackend>(tx: &Transaction, db: BlockchainDatabase<B>) -> Result<(), ValidationError> {
     for input in tx.body.inputs() {
         if !(db.is_utxo(input.hash())).map_err(|e| ValidationError::CustomError(e.to_string()))? {
+            warn!(
+                target: LOG_TARGET,
+                "Transaction validation failed due to unknown input: {}", input
+            );
             return Err(ValidationError::UnknownInputs);
         }
     }

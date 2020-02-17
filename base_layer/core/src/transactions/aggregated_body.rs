@@ -25,9 +25,11 @@ use crate::transactions::{
     transaction::*,
     types::{BlindingFactor, Commitment, CommitmentFactory, CryptoFactories, PrivateKey, RangeProofService},
 };
+use log::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::pedersen::PedersenCommitment};
+pub const LOG_TARGET: &str = "c::tx::aggregated_body";
 
 /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
 /// cut-through means that blocks and transactions have the same structure.
@@ -139,6 +141,11 @@ impl AggregateBody {
             .collect();
 
         for input in double_inputs {
+            trace!(
+                target: LOG_TARGET,
+                "removing following utxo for cut-through: {:?}",
+                input
+            );
             self.outputs.retain(|x| !input.is_equal_to(x));
             self.inputs.retain(|x| *x != input);
         }
@@ -168,7 +175,10 @@ impl AggregateBody {
     /// will be added to the public key used in the signature verification.
     pub fn verify_kernel_signatures(&self) -> Result<(), TransactionError> {
         for kernel in self.kernels.iter() {
-            kernel.verify_signature()?;
+            kernel.verify_signature().or_else(|e| {
+                warn!(target: LOG_TARGET, "Kernel ({}) signature failed {:?}.", kernel, e);
+                Err(e)
+            })?;
         }
         Ok(())
     }

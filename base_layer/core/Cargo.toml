@@ -61,6 +61,8 @@ prost-types = "0.6.1"
 cfg-if = "0.1.10"
 croaring = { version = "=0.3.9", optional = true }
 config = { version = "0.9.3" }
+strum = "0.17.1"
+strum_macros = "0.17.1"
 
 [dev-dependencies]
 tari_p2p = {path = "../../base_layer/p2p", version = "^0.0", features=["test-mocks"]}
