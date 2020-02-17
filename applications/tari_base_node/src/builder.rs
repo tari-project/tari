@@ -38,7 +38,7 @@ use tari_comms::{
 };
 use tari_core::{
     base_node::{
-        chain_metadata_service::ChainMetadataHandle,
+        chain_metadata_service::{ChainMetadataHandle, ChainMetadataServiceInitializer},
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
         BaseNodeStateMachine,
         BaseNodeStateMachineConfig,
@@ -72,7 +72,10 @@ use tari_mmr::MmrCacheConfig;
 use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization::{initialize_comms, CommsConfig},
-    services::comms_outbound::CommsOutboundServiceInitializer,
+    services::{
+        comms_outbound::CommsOutboundServiceInitializer,
+        liveness::{LivenessConfig, LivenessInitializer},
+    },
 };
 use tari_service_framework::{handles::ServiceHandles, StackBuilder};
 use tokio::runtime::Runtime;
@@ -475,11 +478,17 @@ where
         ))
         .add_initializer(TransactionServiceInitializer::new(
             TransactionServiceConfig::default(),
-            subscription_factory,
+            subscription_factory.clone(),
             TransactionServiceSqliteDatabase::new(connection_pool.clone()),
             id.clone(),
             factories.clone(),
         ))
+        .add_initializer(LivenessInitializer::new(
+            LivenessConfig::default(),
+            subscription_factory,
+            dht.dht_requester(),
+        ))
+        .add_initializer(ChainMetadataServiceInitializer)
         .finish();
 
     info!(target: LOG_TARGET, "Initializing communications stack...");
