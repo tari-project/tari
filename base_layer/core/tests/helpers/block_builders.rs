@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use croaring::Bitmap;
 use tari_core::{
     blocks::{Block, BlockBuilder, BlockHeader, NewBlockTemplate},
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, MemoryDatabase},
@@ -43,13 +44,14 @@ use tari_core::{
             TransactionOutput,
             UnblindedOutput,
         },
-        types::{Commitment, CryptoFactories, HashDigest, PublicKey},
+        types::{Commitment, CryptoFactories, HashDigest, HashOutput, PublicKey},
     },
 };
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
     tari_utilities::{hash::Hashable, hex::Hex},
 };
+use tari_mmr::MutableMmr;
 
 fn create_coinbase(
     factories: &CryptoFactories,
@@ -120,37 +122,44 @@ pub fn create_act_gen_block() {
 ///
 /// Right now this function does not use consensus rules to generate the block. The coinbase output has an arbitrary
 /// value, and the maturity is zero.
-pub fn create_genesis_block<B>(db: &BlockchainDatabase<B>, factories: &CryptoFactories) -> (Block, UnblindedOutput)
-where B: BlockchainBackend {
-    create_genesis_block_with_coinbase_value(db, factories, 100_000_000.into())
+pub fn create_genesis_block(factories: &CryptoFactories) -> (Block, UnblindedOutput) {
+    create_genesis_block_with_coinbase_value(factories, 100_000_000.into())
+}
+
+// Calculate the MMR Merkle roots for the genesis block template and update the header.
+fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
+    let NewBlockTemplate { header, mut body } = template;
+    // Make sure the body components are sorted. If they already are, this is a very cheap call.
+    body.sort();
+    let kernel_hashes: Vec<HashOutput> = body.kernels().iter().map(|k| k.hash()).collect();
+    let out_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.hash()).collect();
+    let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.proof().hash()).collect();
+
+    let mut header = BlockHeader::from(header);
+    header.kernel_mr = MutableMmr::<HashDigest, _>::new(kernel_hashes, Bitmap::create()).get_merkle_root()?;
+    header.output_mr = MutableMmr::<HashDigest, _>::new(out_hashes, Bitmap::create()).get_merkle_root()?;
+    header.range_proof_mr = MutableMmr::<HashDigest, _>::new(rp_hashes, Bitmap::create()).get_merkle_root()?;
+    Ok(Block { header, body })
 }
 
 /// Create a genesis block with the specified coinbase value, returning it with the spending key for the coinbase utxo.
-pub fn create_genesis_block_with_coinbase_value<B>(
-    db: &BlockchainDatabase<B>,
+pub fn create_genesis_block_with_coinbase_value(
     factories: &CryptoFactories,
     coinbase_value: MicroTari,
 ) -> (Block, UnblindedOutput)
-where
-    B: BlockchainBackend,
 {
-    let (block, output) = genesis_template(&factories, coinbase_value);
-    let mut block = db
-        .calculate_mmr_roots(block)
-        .expect("Could not generate genesis block MMRs");
+    let (template, output) = genesis_template(&factories, coinbase_value);
+    let mut block = update_genesis_block_mmr_roots(template).unwrap();
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
     (block, output)
 }
 
 /// Create a Genesis block with additional utxos that are immediately available for spending. This is useful for
 /// writing tests without having to add blocks just so the coinbase output can mature.
-pub fn create_genesis_block_with_utxos<B>(
-    db: &BlockchainDatabase<B>,
+pub fn create_genesis_block_with_utxos(
     factories: &CryptoFactories,
     values: &[MicroTari],
 ) -> (Block, Vec<UnblindedOutput>)
-where
-    B: BlockchainBackend,
 {
     let (mut template, coinbase) = genesis_template(&factories, 100_000_000.into());
     let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
@@ -159,9 +168,7 @@ where
         secrets.push(UnblindedOutput::new(v.clone(), k, None));
         secrets
     });
-    let mut block = db
-        .calculate_mmr_roots(template)
-        .expect("Could not generate genesis block MMRs");
+    let mut block = update_genesis_block_mmr_roots(template).unwrap();
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
     (block, outputs)
 }

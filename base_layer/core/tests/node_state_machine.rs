@@ -35,6 +35,7 @@ use tari_core::{
         BaseNodeStateMachine,
         BaseNodeStateMachineConfig,
     },
+    consensus::{ConsensusConstants, ConsensusManager, Network},
     mempool::MempoolServiceConfig,
     transactions::types::CryptoFactories,
 };
@@ -49,6 +50,8 @@ fn test_listening_lagging() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut prev_block, _) = create_genesis_block(&factories);
+    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(prev_block.clone())));
     let (alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
         BaseNodeServiceConfig::default(),
@@ -60,6 +63,7 @@ fn test_listening_lagging() {
             auto_ping_interval: Some(Duration::from_millis(100)),
             refresh_neighbours_interval: Duration::from_secs(60),
         },
+        ConsensusManager::new(None, consensus_constants),
         temp_dir.path().to_str().unwrap(),
     );
     let mut alice_state_machine = BaseNodeStateMachine::new(
@@ -70,12 +74,8 @@ fn test_listening_lagging() {
         BaseNodeStateMachineConfig::default(),
     );
 
-    let alice_db = &alice_node.blockchain_db;
     let bob_db = bob_node.blockchain_db;
     let mut bob_local_nci = bob_node.local_nci;
-    let (mut prev_block, _) = create_genesis_block(alice_db, &factories);
-    alice_db.add_block(prev_block.clone()).unwrap();
-    bob_db.add_block(prev_block.clone()).unwrap();
 
     runtime.block_on(async {
         // Bob Block 1 - no block event
@@ -126,14 +126,15 @@ fn test_block_sync() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    // let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 2 };
+    let (mut prev_block, _) = create_genesis_block(&factories);
+    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(prev_block.clone())));
     let (alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
         BaseNodeServiceConfig::default(),
-        // mmr_cache_config,
         MmrCacheConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
+        ConsensusManager::new(None, consensus_constants),
         temp_dir.path().to_str().unwrap(),
     );
     let state_machine_config = BaseNodeStateMachineConfig::default();
@@ -146,11 +147,7 @@ fn test_block_sync() {
     );
 
     let adb = &alice_node.blockchain_db;
-    let (mut prev_block, _) = create_genesis_block(&adb, &factories);
-    adb.add_block(prev_block.clone()).unwrap();
-
     let db = &bob_node.blockchain_db;
-    db.add_block(prev_block.clone()).unwrap();
     for _ in 1..6 {
         prev_block = append_block(db, &prev_block, vec![]).unwrap();
     }
@@ -176,12 +173,15 @@ fn test_lagging_block_sync() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut prev_block, _) = create_genesis_block(&factories);
+    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(prev_block.clone())));
     let (alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
         BaseNodeServiceConfig::default(),
         MmrCacheConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
+        ConsensusManager::new(None, consensus_constants),
         temp_dir.path().to_str().unwrap(),
     );
     let state_machine_config = BaseNodeStateMachineConfig::default();
@@ -194,10 +194,6 @@ fn test_lagging_block_sync() {
     );
 
     let db = &bob_node.blockchain_db;
-    let (mut prev_block, _) = create_genesis_block(db, &factories);
-    db.add_block(prev_block.clone()).unwrap();
-
-    alice_node.blockchain_db.add_block(prev_block.clone()).unwrap();
     for _ in 0..4 {
         prev_block = append_block(db, &prev_block, vec![]).unwrap();
         alice_node.blockchain_db.add_block(prev_block.clone()).unwrap();

@@ -23,7 +23,7 @@
 use crate::{
     blocks::Block,
     chain_storage::{BlockchainBackend, ChainStorageError},
-    consensus::emission::EmissionSchedule,
+    consensus::{emission::EmissionSchedule, ConsensusConstants},
     proof_of_work::{DiffAdjManager, DiffAdjManagerError, Difficulty, DifficultyAdjustmentError, PowAlgorithm},
     transactions::tari_amount::MicroTari,
 };
@@ -44,7 +44,7 @@ pub enum ConsensusManagerError {
     /// RwLock access broken.
     #[error(non_std, no_from)]
     PoisonedAccess(String),
-    /// No Diffuclty adjustment manager present
+    /// No Difficulty adjustment manager present
     MissingDifficultyAdjustmentManager,
 }
 
@@ -60,9 +60,15 @@ where B: BlockchainBackend
 impl<B> ConsensusManager<B>
 where B: BlockchainBackend
 {
+    pub fn new(diff_adj_manager: Option<DiffAdjManager<B>>, consensus_constants: ConsensusConstants) -> Self {
+        Self {
+            inner: Arc::new(ConsensusManagerInner::new(diff_adj_manager, consensus_constants)),
+        }
+    }
+
     /// Get a pointer to the emission schedule
     pub fn emission_schedule(&self) -> &EmissionSchedule {
-        &self.inner.emission_schedule
+        &self.inner.consensus_constants.emission_schedule()
     }
 
     /// This moves over a difficulty adjustment manager to the ConsensusManager to control.
@@ -143,6 +149,16 @@ where B: BlockchainBackend
             .read()
             .map_err(|e| ConsensusManagerError::PoisonedAccess(e.to_string()))
     }
+
+    /// Returns the genesis block for the configured network.
+    pub fn get_genesis_block(&self) -> Block {
+        self.inner.consensus_constants.network().get_genesis_block()
+    }
+
+    /// Returns the genesis block hash for the configured network.
+    pub fn get_genesis_block_hash(&self) -> Vec<u8> {
+        self.inner.consensus_constants.network().get_genesis_block_hash()
+    }
 }
 
 impl<B> Default for ConsensusManager<B>
@@ -169,19 +185,27 @@ where B: BlockchainBackend
 struct ConsensusManagerInner<B>
 where B: BlockchainBackend
 {
-    /// The emission schedule to use for coinbase rewards
-    pub emission_schedule: EmissionSchedule,
     /// Difficulty adjustment manager for the blockchain
     pub diff_adj_manager: RwLock<Option<DiffAdjManager<B>>>,
+    /// This is the inner struct used to control all consensus values.
+    pub consensus_constants: ConsensusConstants,
+}
+
+impl<B> ConsensusManagerInner<B>
+where B: BlockchainBackend
+{
+    pub fn new(diff_adj_manager: Option<DiffAdjManager<B>>, consensus_constants: ConsensusConstants) -> Self {
+        Self {
+            diff_adj_manager: RwLock::new(diff_adj_manager),
+            consensus_constants,
+        }
+    }
 }
 
 impl<B> Default for ConsensusManagerInner<B>
 where B: BlockchainBackend
 {
     fn default() -> Self {
-        ConsensusManagerInner {
-            emission_schedule: EmissionSchedule::new(10_000_000.into(), 0.999, 100.into()),
-            diff_adj_manager: RwLock::new(None),
-        }
+        Self::new(None, ConsensusConstants::default())
     }
 }

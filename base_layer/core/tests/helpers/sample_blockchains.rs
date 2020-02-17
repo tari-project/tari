@@ -25,14 +25,15 @@ use crate::helpers::block_builders::{create_genesis_block, generate_new_block};
 
 use tari_core::{
     blocks::Block,
-    chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
+    chain_storage::{BlockchainDatabase, MemoryDatabase},
+    consensus::Network,
+    helpers::create_mem_db,
     transactions::{
         tari_amount::{uT, T},
         transaction::UnblindedOutput,
         types::{CryptoFactories, HashDigest},
     },
     txn_schema,
-    validation::mocks::MockValidator,
 };
 
 /// Create a simple 6 block memory-backed database.
@@ -122,22 +123,7 @@ pub fn create_new_blockchain() -> (
     Vec<Vec<UnblindedOutput>>,
 ) {
     let factories = CryptoFactories::default();
-    // We may need move this to the parameters to provide more fine-grained validator control
-    let validators = Validators::new(
-        MockValidator::new(true),
-        MockValidator::new(true),
-        MockValidator::new(true),
-        MockValidator::new(true),
-    );
-    let db = MemoryDatabase::<HashDigest>::default();
-    let mut db = BlockchainDatabase::new(db).unwrap();
-    db.set_validators(validators);
-    let mut outputs = Vec::new();
-    let mut blocks = Vec::new();
-    // Genesis Block
-    let (block0, utxo) = create_genesis_block(&db, &factories);
-    db.add_block(block0.clone()).unwrap();
-    blocks.push(block0);
-    outputs.push(vec![utxo]);
-    (db, blocks, outputs)
+    let (block0, output) = create_genesis_block(&factories);
+    let db = create_mem_db(Network::LocalNet(Box::new(block0.clone())));
+    (db, vec![block0], vec![vec![output]])
 }

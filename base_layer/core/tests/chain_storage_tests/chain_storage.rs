@@ -21,13 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::helpers::{
-    block_builders::{
-        append_block,
-        create_genesis_block,
-        create_genesis_block_with_utxos,
-        generate_new_block,
-        generate_new_block_with_achieved_difficulty,
-    },
+    block_builders::{append_block, generate_new_block, generate_new_block_with_achieved_difficulty},
     sample_blockchains::create_new_blockchain,
 };
 use croaring::Bitmap;
@@ -45,6 +39,7 @@ use tari_core::{
         MmrTree,
         Validators,
     },
+    consensus::{ConsensusManager, Network},
     helpers::{create_mem_db, create_orphan_block},
     proof_of_work::Difficulty,
     transactions::{
@@ -65,7 +60,7 @@ fn init_log() {
 
 #[test]
 fn fetch_nonexistent_kernel() {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
     let h = vec![0u8; 32];
     assert_eq!(
         store.fetch_kernel(h.clone()),
@@ -75,7 +70,7 @@ fn fetch_nonexistent_kernel() {
 
 #[test]
 fn insert_and_fetch_kernel() {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
     let kernel = create_test_kernel(5.into(), 0);
     let hash = kernel.hash();
 
@@ -87,25 +82,26 @@ fn insert_and_fetch_kernel() {
 
 #[test]
 fn fetch_nonexistent_header() {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
     assert_eq!(
-        store.fetch_header(0),
-        Err(ChainStorageError::ValueNotFound(DbKey::BlockHeader(0)))
+        store.fetch_header(1),
+        Err(ChainStorageError::ValueNotFound(DbKey::BlockHeader(1)))
     );
 }
 
 #[test]
 fn insert_and_fetch_header() {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
     let mut header = BlockHeader::new(0);
     header.height = 42;
 
     let mut txn = DbTransaction::new();
     txn.insert_header(header.clone());
     assert!(store.commit(txn).is_ok());
+    assert!(store.fetch_header(0).is_ok());
     assert_eq!(
-        store.fetch_header(0),
-        Err(ChainStorageError::ValueNotFound(DbKey::BlockHeader(0)))
+        store.fetch_header(1),
+        Err(ChainStorageError::ValueNotFound(DbKey::BlockHeader(1)))
     );
     assert_eq!(store.fetch_header(42), Ok(header));
 }
@@ -113,7 +109,7 @@ fn insert_and_fetch_header() {
 #[test]
 fn insert_and_fetch_utxo() {
     let factories = CryptoFactories::default();
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
     let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
     let hash = utxo.hash();
     assert_eq!(store.is_utxo(hash.clone()).unwrap(), false);
@@ -126,7 +122,7 @@ fn insert_and_fetch_utxo() {
 
 #[test]
 fn insert_and_fetch_orphan() {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
     let txs = vec![
         (tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0,
         (tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0,
@@ -141,7 +137,7 @@ fn insert_and_fetch_orphan() {
 
 #[test]
 fn multiple_threads() {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
     // Save a kernel in thread A
     let store_a = store.clone();
     let a = thread::spawn(move || {
@@ -173,22 +169,21 @@ fn multiple_threads() {
 
 #[test]
 fn utxo_and_rp_merkle_root() {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
     let factories = CryptoFactories::default();
-    let root = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
-    // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
-    assert_eq!(
-        &root.to_hex(),
-        "26146a5435ef15e8cf7dc3354cb7268137e8be211794e93d04551576c6561565"
-    );
+    let block0 = store.fetch_block(0).unwrap().block().clone();
+
+    let utxo0 = block0.body.outputs()[0].clone();
     let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
     let (utxo2, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let hash0 = utxo0.hash();
     let hash1 = utxo1.hash();
     let hash2 = utxo2.hash();
     // Calculate the Range proof MMR root as a check
     let mut rp_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
-    assert_eq!(rp_mmr_check.push(&utxo1.proof.hash()).unwrap(), 1);
-    assert_eq!(rp_mmr_check.push(&utxo2.proof.hash()).unwrap(), 2);
+    assert_eq!(rp_mmr_check.push(&utxo0.proof.hash()).unwrap(), 1);
+    assert_eq!(rp_mmr_check.push(&utxo1.proof.hash()).unwrap(), 2);
+    assert_eq!(rp_mmr_check.push(&utxo2.proof.hash()).unwrap(), 3);
     // Store the UTXOs
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo1, true);
@@ -197,6 +192,7 @@ fn utxo_and_rp_merkle_root() {
     let root = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
     let rp_root = store.fetch_mmr_root(MmrTree::RangeProof).unwrap();
     let mut mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
+    assert!(mmr_check.push(&hash0).is_ok());
     assert!(mmr_check.push(&hash1).is_ok());
     assert!(mmr_check.push(&hash2).is_ok());
     assert_eq!(root.to_hex(), mmr_check.get_merkle_root().unwrap().to_hex());
@@ -205,16 +201,13 @@ fn utxo_and_rp_merkle_root() {
 
 #[test]
 fn kernel_merkle_root() {
-    let store = create_mem_db();
-    let root = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
-    // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
-    assert_eq!(
-        &root.to_hex(),
-        "26146a5435ef15e8cf7dc3354cb7268137e8be211794e93d04551576c6561565"
-    );
+    let store = create_mem_db(Network::Rincewind);
+    let block0 = store.fetch_block(0).unwrap().block().clone();
+
     let kernel1 = create_test_kernel(100.into(), 0);
     let kernel2 = create_test_kernel(200.into(), 0);
     let kernel3 = create_test_kernel(300.into(), 0);
+    let hash0 = block0.body.kernels()[0].hash();
     let hash1 = kernel1.hash();
     let hash2 = kernel2.hash();
     let hash3 = kernel3.hash();
@@ -225,6 +218,7 @@ fn kernel_merkle_root() {
     assert!(store.commit(txn).is_ok());
     let root = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
     let mut mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
+    assert!(mmr_check.push(&hash0).is_ok());
     assert!(mmr_check.push(&hash1).is_ok());
     assert!(mmr_check.push(&hash2).is_ok());
     assert!(mmr_check.push(&hash3).is_ok());
@@ -233,7 +227,7 @@ fn kernel_merkle_root() {
 
 #[test]
 fn utxo_and_rp_future_merkle_root() {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
     let factories = CryptoFactories::default();
 
     let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
@@ -272,7 +266,7 @@ fn utxo_and_rp_future_merkle_root() {
 
 #[test]
 fn kernel_future_merkle_root() {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
 
     let kernel1 = create_test_kernel(100.into(), 0);
     let kernel2 = create_test_kernel(200.into(), 0);
@@ -297,7 +291,7 @@ fn kernel_future_merkle_root() {
 
 #[test]
 fn utxo_and_rp_mmr_proof() {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
     let factories = CryptoFactories::default();
 
     let (utxo1, _) = create_utxo(MicroTari(5_000), &factories, None);
@@ -310,20 +304,20 @@ fn utxo_and_rp_mmr_proof() {
     assert!(store.commit(txn).is_ok());
 
     let root = store.fetch_mmr_only_root(MmrTree::Utxo).unwrap();
-    let proof1 = store.fetch_mmr_proof(MmrTree::Utxo, 0).unwrap();
-    let proof2 = store.fetch_mmr_proof(MmrTree::Utxo, 1).unwrap();
-    let proof3 = store.fetch_mmr_proof(MmrTree::Utxo, 2).unwrap();
-    store.fetch_mmr_proof(MmrTree::RangeProof, 0).unwrap();
+    let proof1 = store.fetch_mmr_proof(MmrTree::Utxo, 1).unwrap();
+    let proof2 = store.fetch_mmr_proof(MmrTree::Utxo, 2).unwrap();
+    let proof3 = store.fetch_mmr_proof(MmrTree::Utxo, 3).unwrap();
     store.fetch_mmr_proof(MmrTree::RangeProof, 1).unwrap();
     store.fetch_mmr_proof(MmrTree::RangeProof, 2).unwrap();
-    assert!(proof1.verify_leaf::<HashDigest>(&root, &utxo1.hash(), 0).is_ok());
-    assert!(proof2.verify_leaf::<HashDigest>(&root, &utxo2.hash(), 1).is_ok());
-    assert!(proof3.verify_leaf::<HashDigest>(&root, &utxo3.hash(), 2).is_ok());
+    store.fetch_mmr_proof(MmrTree::RangeProof, 3).unwrap();
+    assert!(proof1.verify_leaf::<HashDigest>(&root, &utxo1.hash(), 1).is_ok());
+    assert!(proof2.verify_leaf::<HashDigest>(&root, &utxo2.hash(), 2).is_ok());
+    assert!(proof3.verify_leaf::<HashDigest>(&root, &utxo3.hash(), 3).is_ok());
 }
 
 #[test]
 fn kernel_mmr_proof() {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
 
     let kernel1 = create_test_kernel(100.into(), 0);
     let kernel2 = create_test_kernel(200.into(), 1);
@@ -335,44 +329,40 @@ fn kernel_mmr_proof() {
     assert!(store.commit(txn).is_ok());
 
     let root = store.fetch_mmr_only_root(MmrTree::Kernel).unwrap();
-    let proof1 = store.fetch_mmr_proof(MmrTree::Kernel, 0).unwrap();
-    let proof2 = store.fetch_mmr_proof(MmrTree::Kernel, 1).unwrap();
-    let proof3 = store.fetch_mmr_proof(MmrTree::Kernel, 2).unwrap();
-    assert!(proof1.verify_leaf::<HashDigest>(&root, &kernel1.hash(), 0).is_ok());
-    assert!(proof2.verify_leaf::<HashDigest>(&root, &kernel2.hash(), 1).is_ok());
-    assert!(proof3.verify_leaf::<HashDigest>(&root, &kernel3.hash(), 2).is_ok());
+    let proof1 = store.fetch_mmr_proof(MmrTree::Kernel, 1).unwrap();
+    let proof2 = store.fetch_mmr_proof(MmrTree::Kernel, 2).unwrap();
+    let proof3 = store.fetch_mmr_proof(MmrTree::Kernel, 3).unwrap();
+    assert!(proof1.verify_leaf::<HashDigest>(&root, &kernel1.hash(), 1).is_ok());
+    assert!(proof2.verify_leaf::<HashDigest>(&root, &kernel2.hash(), 2).is_ok());
+    assert!(proof3.verify_leaf::<HashDigest>(&root, &kernel3.hash(), 3).is_ok());
 }
 
 #[test]
 fn store_and_retrieve_block() {
-    // Create new database
-    let (store, blocks, _) = create_new_blockchain();
+    let (db, blocks, _) = create_new_blockchain();
     let hash = blocks[0].hash();
     // Check the metadata
-    let metadata = store.get_metadata().unwrap();
+    let metadata = db.get_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(0));
     assert_eq!(metadata.best_block, Some(hash));
     assert_eq!(metadata.horizon_block(metadata.height_of_longest_chain.unwrap()), 0);
     // Fetch the block back
-    let block2 = store.fetch_block(0).unwrap();
-    assert_eq!(block2.confirmations(), 1);
+    let block0 = db.fetch_block(0).unwrap();
+    assert_eq!(block0.confirmations(), 1);
     // Compare the blocks
-    let block2 = Block::from(block2);
-    assert_eq!(blocks[0], block2);
+    let block0 = Block::from(block0);
+    assert_eq!(blocks[0], block0);
 }
 
 #[test]
 fn add_multiple_blocks() {
     init_log();
-    // Create new database
-    let store = create_mem_db();
+    // Create new database with genesis block
+    let store = create_mem_db(Network::Rincewind);
     let metadata = store.get_metadata().unwrap();
-    let factories = CryptoFactories::default();
-    assert_eq!(metadata.height_of_longest_chain, None);
-    assert_eq!(metadata.best_block, None);
-    // Add the Genesis block
-    let (block0, _) = create_genesis_block(&store, &factories);
-    store.add_block(block0.clone()).unwrap();
+    assert_eq!(metadata.height_of_longest_chain, Some(0));
+    let block0 = store.fetch_block(0).unwrap().block().clone();
+    assert_eq!(metadata.best_block, Some(block0.hash()));
     // Add another block
     let block1 = append_block(&store, &block0, vec![]).unwrap();
     let metadata = store.get_metadata().unwrap();
@@ -389,19 +379,19 @@ fn add_multiple_blocks() {
 
 #[test]
 fn test_checkpoints() {
-    let factories = CryptoFactories::default();
-    let store = create_mem_db();
-    // Add the Genesis block
-    let (block0, output) = create_genesis_block(&store, &factories);
-    store.add_block(block0.clone()).unwrap();
-    let txn = txn_schema!(from: vec![output], to: vec![MicroTari(5_000), MicroTari(6_000)]);
+    let (db, blocks, outputs) = create_new_blockchain();
+
+    let txn = txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![MicroTari(5_000), MicroTari(6_000)]
+    );
     let (txn, _, _) = spend_utxos(txn);
-    let block1 = append_block(&store, &block0, vec![txn]).unwrap();
+    let block1 = append_block(&db, &blocks[0], vec![txn]).unwrap();
     // Get the checkpoint
-    let block_a = store.fetch_block(0).unwrap();
+    let block_a = db.fetch_block(0).unwrap();
     assert_eq!(block_a.confirmations(), 2);
-    assert_eq!(block0, Block::from(block_a));
-    let block_b = store.fetch_block(1).unwrap();
+    assert_eq!(blocks[0], Block::from(block_a));
+    let block_b = db.fetch_block(1).unwrap();
     assert_eq!(block_b.confirmations(), 1);
     let block1 = serde_json::to_string(&block1).unwrap();
     let block_b = serde_json::to_string(&Block::from(block_b)).unwrap();
@@ -410,14 +400,10 @@ fn test_checkpoints() {
 
 #[test]
 fn rewind_to_height() {
-    let factories = CryptoFactories::default();
-    let mut db = create_mem_db();
-    let (block0, output) = create_genesis_block_with_utxos(&db, &factories, &[10 * T]);
-    db.add_block(block0.clone()).unwrap();
-    let mut blocks = vec![block0];
-    let mut outputs = vec![output];
+    let (mut db, mut blocks, mut outputs) = create_new_blockchain();
+
     // Block 1
-    let schema = vec![txn_schema!(from: vec![outputs[0][1].clone()], to: vec![6 * T, 3 * T])];
+    let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![6 * T, 3 * T])];
     generate_new_block(&mut db, &mut blocks, &mut outputs, schema).unwrap();
     // Block 2
     let schema = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![3 * T, 1 * T])];
@@ -489,8 +475,7 @@ fn handle_tip_reorg() {
     .is_ok());
 
     // Create Forked Chain
-    let mut orphan_store = create_mem_db();
-    orphan_store.add_block(blocks[0].clone()).unwrap();
+    let mut orphan_store = create_mem_db(Network::LocalNet(Box::new(blocks[0].clone())));
     orphan_store.add_block(blocks[1].clone()).unwrap();
     let mut orphan_blocks = vec![blocks[0].clone(), blocks[1].clone()];
     let mut orphan_outputs = vec![outputs[0].clone(), outputs[1].clone()];
@@ -572,8 +557,7 @@ fn handle_reorg() {
     .is_ok());
 
     // Create Forked Chain 1
-    let mut orphan1_store = create_mem_db();
-    orphan1_store.add_block(blocks[0].clone()).unwrap(); // GB
+    let mut orphan1_store = create_mem_db(Network::LocalNet(Box::new(blocks[0].clone()))); // GB
     orphan1_store.add_block(blocks[1].clone()).unwrap(); // A1
     let mut orphan1_blocks = vec![blocks[0].clone(), blocks[1].clone()];
     let mut orphan1_outputs = vec![outputs[0].clone(), outputs[1].clone()];
@@ -612,8 +596,7 @@ fn handle_reorg() {
     .is_ok());
 
     // Create Forked Chain 2
-    let mut orphan2_store = create_mem_db();
-    orphan2_store.add_block(blocks[0].clone()).unwrap(); // GB
+    let mut orphan2_store = create_mem_db(Network::LocalNet(Box::new(blocks[0].clone()))); // GB
     orphan2_store.add_block(blocks[1].clone()).unwrap(); // A1
     orphan2_store.add_block(orphan1_blocks[2].clone()).unwrap(); // B2
     orphan2_store.add_block(orphan1_blocks[3].clone()).unwrap(); // B3
@@ -660,7 +643,6 @@ fn handle_reorg() {
 
 #[test]
 fn store_and_retrieve_blocks() {
-    let factories = CryptoFactories::default();
     let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 2 };
     let validators = Validators::new(
         MockValidator::new(true),
@@ -668,12 +650,12 @@ fn store_and_retrieve_blocks() {
         MockValidator::new(true),
         MockValidator::new(true),
     );
+    let rules = ConsensusManager::default();
     let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
-    let mut store = BlockchainDatabase::new(db).unwrap();
+    let mut store = BlockchainDatabase::new(db, &rules).unwrap();
     store.set_validators(validators);
 
-    let (block0, _) = create_genesis_block(&store, &factories);
-    store.add_block(block0.clone()).unwrap();
+    let block0 = store.fetch_block(0).unwrap().block().clone();
     let block1 = append_block(&store, &block0, vec![]).unwrap();
     let block2 = append_block(&store, &block1, vec![]).unwrap();
     assert_eq!(*store.fetch_block(0).unwrap().block(), block0);
@@ -689,7 +671,9 @@ fn store_and_retrieve_blocks() {
 
 #[test]
 fn total_kernel_excess() {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
+    let block0 = store.fetch_block(0).unwrap().block().clone();
+
     let kernel1 = create_test_kernel(100.into(), 0);
     let kernel2 = create_test_kernel(200.into(), 0);
     let kernel3 = create_test_kernel(300.into(), 0);
@@ -703,19 +687,18 @@ fn total_kernel_excess() {
     let total_kernel_excess = store.total_kernel_excess().unwrap();
     assert_eq!(
         total_kernel_excess,
-        &(&kernel1.excess + &kernel2.excess) + &kernel3.excess
+        &(&(block0.body.kernels()[0].excess) + &kernel1.excess) + &(&kernel2.excess + &kernel3.excess)
     );
 }
 
 #[test]
 fn total_kernel_offset() {
-    let store = create_mem_db();
-    let header1 = BlockHeader::new(0);
-    let header2 = BlockHeader::from_previous(&header1);
-    let header3 = BlockHeader::from_previous(&header2);
+    let store = create_mem_db(Network::Rincewind);
+    let block0 = store.fetch_block(0).unwrap().block().clone();
 
+    let header2 = BlockHeader::from_previous(&block0.header);
+    let header3 = BlockHeader::from_previous(&header2);
     let mut txn = DbTransaction::new();
-    txn.insert_header(header1.clone());
     txn.insert_header(header2.clone());
     txn.insert_header(header3.clone());
     assert!(store.commit(txn).is_ok());
@@ -723,14 +706,16 @@ fn total_kernel_offset() {
     let total_kernel_offset = store.total_kernel_offset().unwrap();
     assert_eq!(
         total_kernel_offset,
-        &(&header1.total_kernel_offset + &header2.total_kernel_offset) + &header3.total_kernel_offset
+        &(&block0.header.total_kernel_offset + &header2.total_kernel_offset) + &header3.total_kernel_offset
     );
 }
 
 #[test]
 fn total_utxo_commitment() {
     let factories = CryptoFactories::default();
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
+    let block0 = store.fetch_block(0).unwrap().block().clone();
+
     let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
     let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
     let (utxo3, _) = create_utxo(MicroTari(20_000), &factories, None);
@@ -744,6 +729,6 @@ fn total_utxo_commitment() {
     let total_utxo_commitment = store.total_utxo_commitment().unwrap();
     assert_eq!(
         total_utxo_commitment,
-        &(&utxo1.commitment + &utxo2.commitment) + &utxo3.commitment
+        &(&(block0.body.outputs()[0].commitment) + &utxo1.commitment) + &(&utxo2.commitment + &utxo3.commitment)
     );
 }

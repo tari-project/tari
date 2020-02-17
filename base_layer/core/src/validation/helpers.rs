@@ -21,10 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{
-        blockheader::{BlockHeader, BlockHeaderValidationError},
-        genesis_block::get_gen_block_hash,
-    },
+    blocks::blockheader::{BlockHeader, BlockHeaderValidationError},
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
     proof_of_work::PowError,
@@ -60,7 +57,7 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
     rules: ConsensusManager<B>,
 ) -> Result<(), ValidationError>
 {
-    if block_header.height == 0 || get_gen_block_hash() == block_header.hash() {
+    if block_header.height == 0 || rules.get_genesis_block_hash() == block_header.hash() {
         return Ok(()); // Its the genesis block, so we dont have to check median
     }
     let median_timestamp = rules
@@ -107,7 +104,7 @@ pub fn check_achieved_difficulty<B: BlockchainBackend>(
 {
     let achieved = block_header.achieved_difficulty();
     let mut target = 1.into();
-    if block_header.height > 0 || get_gen_block_hash() != block_header.hash() {
+    if block_header.height > 0 || rules.get_genesis_block_hash() != block_header.hash() {
         target = rules
             .get_target_difficulty_with_height(&block_header.pow.pow_algo, height)
             .or_else(|e| {

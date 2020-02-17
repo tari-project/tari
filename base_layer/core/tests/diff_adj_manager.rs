@@ -23,11 +23,11 @@
 #[allow(dead_code)]
 mod helpers;
 
-use helpers::block_builders::{chain_block, create_genesis_block};
+use helpers::block_builders::chain_block;
 use tari_core::{
     blocks::Block,
     chain_storage::{BlockchainDatabase, MemoryDatabase},
-    consensus::ConsensusConstants,
+    consensus::{ConsensusConstants, Network},
     helpers::create_mem_db,
     proof_of_work::{
         lwma_diff::LinearWeightedMovingAverage,
@@ -36,16 +36,13 @@ use tari_core::{
         DifficultyAdjustment,
         PowAlgorithm,
     },
-    transactions::types::{CryptoFactories, HashDigest},
+    transactions::types::HashDigest,
 };
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 fn create_test_pow_blockchain(db: &BlockchainDatabase<MemoryDatabase<HashDigest>>, mut pow_algos: Vec<PowAlgorithm>) {
-    let factories = CryptoFactories::default();
-    let (mut block0, _) = create_genesis_block(&db, &factories);
-    block0.header.pow.pow_algo = pow_algos.remove(0);
-    block0.header.timestamp = EpochTime::from(1575018842);
-    db.add_block(block0.clone()).unwrap();
+    pow_algos.remove(0);
+    let block0 = db.fetch_block(0).unwrap().block().clone();
     append_to_pow_blockchain(db, block0, pow_algos);
 }
 
@@ -91,10 +88,7 @@ fn calculate_accumulated_difficulty(
 
 #[test]
 fn test_initial_sync() {
-    let store = create_mem_db();
-    let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
-    assert!(diff_adj_manager.get_target_difficulty(&PowAlgorithm::Monero).is_err());
-    assert!(diff_adj_manager.get_target_difficulty(&PowAlgorithm::Blake).is_err());
+    let store = create_mem_db(Network::Rincewind);
 
     let pow_algos = vec![
         PowAlgorithm::Blake, // GB default
@@ -106,7 +100,6 @@ fn test_initial_sync() {
         PowAlgorithm::Monero,
         PowAlgorithm::Blake,
     ];
-
     create_test_pow_blockchain(&store, pow_algos.clone());
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
 
@@ -122,7 +115,7 @@ fn test_initial_sync() {
 
 #[test]
 fn test_sync_to_chain_tip() {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
 
     let pow_algos = vec![
@@ -165,7 +158,7 @@ fn test_sync_to_chain_tip() {
 
 #[test]
 fn test_target_difficulty_with_height() {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     assert!(diff_adj_manager
         .get_target_difficulty_at_height(&PowAlgorithm::Monero, 5)
@@ -216,7 +209,7 @@ fn test_target_difficulty_with_height() {
 #[test]
 #[ignore] // TODO Wait for reorg logic to be refactored
 fn test_full_sync_on_reorg() {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
 
     let pow_algos = vec![
@@ -262,22 +255,22 @@ fn test_full_sync_on_reorg() {
 
 #[test]
 fn test_median_timestamp() {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let consensus = ConsensusConstants::current();
     let pow_algos = vec![PowAlgorithm::Blake]; // GB default
     create_test_pow_blockchain(&store, pow_algos);
+    let start_timestamp = store.fetch_block(0).unwrap().block().header.timestamp.clone();
     let mut timestamp = diff_adj_manager
         .get_median_timestamp()
         .expect("median returned an error");
-    assert_eq!(timestamp, 1575018842.into());
+    assert_eq!(timestamp, start_timestamp);
 
     let pow_algos = vec![PowAlgorithm::Blake];
     // lets add 1
     let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
     append_to_pow_blockchain(&store, tip, pow_algos.clone());
-    let mut prev_timestamp: EpochTime = 1575018842.into();
-    prev_timestamp = prev_timestamp.increase(consensus.get_target_block_interval());
+    let mut prev_timestamp: EpochTime = start_timestamp.increase(consensus.get_target_block_interval());
     timestamp = diff_adj_manager
         .get_median_timestamp()
         .expect("median returned an error");
@@ -285,8 +278,7 @@ fn test_median_timestamp() {
     // lets add 1
     let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
     append_to_pow_blockchain(&store, tip, pow_algos.clone());
-    prev_timestamp = 1575018842.into();
-    prev_timestamp = prev_timestamp.increase(consensus.get_target_block_interval());
+    prev_timestamp = start_timestamp.increase(consensus.get_target_block_interval());
     timestamp = diff_adj_manager
         .get_median_timestamp()
         .expect("median returned an error");
@@ -296,8 +288,7 @@ fn test_median_timestamp() {
     for i in 4..12 {
         let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
         append_to_pow_blockchain(&store, tip, pow_algos.clone());
-        prev_timestamp = 1575018842.into();
-        prev_timestamp = prev_timestamp.increase(consensus.get_target_block_interval() * (i / 2));
+        prev_timestamp = start_timestamp.increase(consensus.get_target_block_interval() * (i / 2));
         timestamp = diff_adj_manager
             .get_median_timestamp()
             .expect("median returned an error");
@@ -318,7 +309,7 @@ fn test_median_timestamp() {
 
 #[test]
 fn test_median_timestamp_with_height() {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let pow_algos = vec![
         PowAlgorithm::Blake, // GB default
@@ -356,21 +347,21 @@ fn test_median_timestamp_with_height() {
 
 #[test]
 fn test_median_timestamp_odd_order() {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     let consensus = ConsensusConstants::current();
     let pow_algos = vec![PowAlgorithm::Blake]; // GB default
     create_test_pow_blockchain(&store, pow_algos);
+    let start_timestamp = store.fetch_block(0).unwrap().block().header.timestamp.clone();
     let mut timestamp = diff_adj_manager
         .get_median_timestamp()
         .expect("median returned an error");
-    assert_eq!(timestamp, 1575018842.into());
+    assert_eq!(timestamp, start_timestamp);
     let pow_algos = vec![PowAlgorithm::Blake];
     // lets add 1
     let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
     append_to_pow_blockchain(&store, tip, pow_algos.clone());
-    let mut prev_timestamp: EpochTime = 1575018842.into();
-    prev_timestamp = prev_timestamp.increase(consensus.get_target_block_interval());
+    let mut prev_timestamp: EpochTime = start_timestamp.increase(consensus.get_target_block_interval());
     timestamp = diff_adj_manager
         .get_median_timestamp()
         .expect("median returned an error");
@@ -381,12 +372,11 @@ fn test_median_timestamp_odd_order() {
     let prev_block = store.fetch_block(append_height).unwrap().block().clone();
     let new_block = chain_block(&prev_block, Vec::new());
     let mut new_block = store.calculate_mmr_roots(new_block).unwrap();
-    new_block.header.timestamp = EpochTime::from(1575018842).increase(consensus.get_target_block_interval() / 2);
+    new_block.header.timestamp = start_timestamp.increase(consensus.get_target_block_interval() / 2);
     new_block.header.pow.pow_algo = PowAlgorithm::Blake;
     store.add_block(new_block).unwrap();
 
-    prev_timestamp = 1575018842.into();
-    prev_timestamp = prev_timestamp.increase(consensus.get_target_block_interval() / 2);
+    prev_timestamp = start_timestamp.increase(consensus.get_target_block_interval() / 2);
     timestamp = diff_adj_manager
         .get_median_timestamp()
         .expect("median returned an error");

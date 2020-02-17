@@ -38,7 +38,7 @@ use tari_core::{
     },
     blocks::{BlockBuilder, BlockHeader},
     chain_storage::{BlockchainDatabase, ChainMetadata, DbTransaction, HistoricalBlock, MemoryDatabase},
-    consensus::ConsensusManager,
+    consensus::{ConsensusManager, Network},
     helpers::create_mem_db,
     mempool::{Mempool, MempoolConfig, MempoolValidators},
     proof_of_work::DiffAdjManager,
@@ -69,7 +69,7 @@ fn new_mempool() -> (
     Mempool<MemoryDatabase<HashDigest>>,
     BlockchainDatabase<MemoryDatabase<HashDigest>>,
 ) {
-    let store = create_mem_db();
+    let store = create_mem_db(Network::Rincewind);
     let mempool_validator = MempoolValidators::new(
         TxInputAndMaturityValidator::new(store.clone()),
         TxInputAndMaturityValidator::new(store.clone()),
@@ -112,16 +112,22 @@ fn inbound_get_metadata() {
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender.clone());
-    let inbound_nch =
-        InboundNodeCommsHandlers::new(block_event_publisher, store, mempool, consensus_manager, outbound_nci);
+    let inbound_nch = InboundNodeCommsHandlers::new(
+        block_event_publisher,
+        store.clone(),
+        mempool,
+        consensus_manager,
+        outbound_nci,
+    );
+    let block = store.fetch_block(0).unwrap().block().clone();
 
     test_async(move |rt| {
         rt.spawn(async move {
             if let Ok(NodeCommsResponse::ChainMetadata(received_metadata)) =
                 inbound_nch.handle_request(&NodeCommsRequest::GetChainMetadata).await
             {
-                assert_eq!(received_metadata.height_of_longest_chain, None);
-                assert_eq!(received_metadata.best_block, None);
+                assert_eq!(received_metadata.height_of_longest_chain, Some(0));
+                assert_eq!(received_metadata.best_block, Some(block.hash()));
                 assert_eq!(received_metadata.pruning_horizon, 2880);
             } else {
                 assert!(false);
@@ -226,12 +232,7 @@ fn inbound_fetch_headers() {
         consensus_manager,
         outbound_nci,
     );
-
-    let mut header = BlockHeader::new(0);
-    header.height = 0;
-    let mut txn = DbTransaction::new();
-    txn.insert_header(header.clone());
-    assert!(store.commit(txn).is_ok());
+    let header = store.fetch_block(0).unwrap().block().header.clone();
 
     test_async(move |rt| {
         rt.spawn(async move {
@@ -346,8 +347,8 @@ fn inbound_fetch_blocks() {
         consensus_manager,
         outbound_nci,
     );
-    let block = BlockBuilder::new().build();
-    store.add_block(block.clone()).expect("Could not add Genesis block");
+    let block = store.fetch_block(0).unwrap().block().clone();
+
     test_async(move |rt| {
         rt.spawn(async move {
             if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch

@@ -22,15 +22,11 @@
 
 pub use crate::consensus::ConsensusManager;
 use crate::{
-    blocks::{
-        blockheader::{BlockHeader, BlockHeaderValidationError},
-        genesis_block::get_gen_block_hash,
-    },
+    blocks::blockheader::{BlockHeader, BlockHeaderValidationError},
     chain_storage::{BlockchainBackend, BlockchainDatabase, MmrTree},
     transactions::types::CryptoFactories,
     validation::{error::ValidationError, traits::Validation},
 };
-use log::*;
 pub const LOG_TARGET: &str = "c::val::chain_validators";
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::hash::Hashable};
 
@@ -68,19 +64,21 @@ impl<B: BlockchainBackend> Validation<BlockHeader, B> for ChainTipValidator<B> {
 
 /// This validator checks that the synced chain builds on the correct genesis block and should only be performed on the
 /// genesis block header.
-pub struct GenesisBlockValidator {}
+pub struct GenesisBlockValidator<B: BlockchainBackend> {
+    rules: ConsensusManager<B>,
+}
 
-impl GenesisBlockValidator {
-    pub fn new() -> Self {
-        Self {}
+impl<B: BlockchainBackend> GenesisBlockValidator<B> {
+    pub fn new(rules: ConsensusManager<B>) -> Self {
+        Self { rules }
     }
 }
 
-impl<B: BlockchainBackend> Validation<BlockHeader, B> for GenesisBlockValidator {
+impl<B: BlockchainBackend> Validation<BlockHeader, B> for GenesisBlockValidator<B> {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// Does the genesis block hash match the provided block hash?
     fn validate(&self, block_header: &BlockHeader) -> Result<(), ValidationError> {
-        check_genesis_block_hash(block_header)?;
+        check_genesis_block_hash(block_header, self.rules.clone())?;
 
         Ok(())
     }
@@ -139,8 +137,12 @@ fn check_mmr_roots<B: BlockchainBackend>(
 }
 
 /// This function checks that the synced genesis block header is the correct block header.
-fn check_genesis_block_hash(block_header: &BlockHeader) -> Result<(), ValidationError> {
-    if block_header.hash() != get_gen_block_hash() {
+fn check_genesis_block_hash<B: BlockchainBackend>(
+    block_header: &BlockHeader,
+    rules: ConsensusManager<B>,
+) -> Result<(), ValidationError>
+{
+    if block_header.hash() != rules.get_genesis_block_hash() {
         return Err(ValidationError::BlockHeaderError(
             BlockHeaderValidationError::IncorrectGenesisBlockHeader,
         ));

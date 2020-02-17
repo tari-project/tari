@@ -24,17 +24,14 @@ mod helpers;
 
 use helpers::{
     block_builders::{create_genesis_block, generate_block, generate_new_block},
-    nodes::{
-        create_network_with_2_base_nodes,
-        create_network_with_2_base_nodes_with_config,
-        create_network_with_3_base_nodes,
-    },
+    nodes::{create_network_with_2_base_nodes_with_config, create_network_with_3_base_nodes_with_config},
     sample_blockchains::create_new_blockchain,
 };
 use std::{ops::Deref, sync::Arc, time::Duration};
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundEncryption};
 use tari_core::{
     base_node::service::BaseNodeServiceConfig,
+    consensus::{ConsensusConstants, ConsensusManager, Network},
     helpers::create_mem_db,
     mempool::{
         Mempool,
@@ -358,8 +355,7 @@ fn test_reorg() {
 fn test_orphaned_mempool_transactions() {
     let (store, mut blocks, mut outputs) = create_new_blockchain();
     // A parallel store that will "mine" the orphan chain
-    let mut miner = create_mem_db();
-    miner.add_block(blocks[0].clone()).unwrap();
+    let mut miner = create_mem_db(Network::LocalNet(Box::new(blocks[0].clone())));
     let schemas = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
         to: vec![2 * T, 2 * T, 2 * T, 2 * T, 2 * T]
@@ -411,11 +407,19 @@ fn request_response_get_stats() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut alice, bob) = create_network_with_2_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
+    let (block0, utxo) = create_genesis_block(&factories);
+    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(block0.clone())));
+    let (mut alice, bob) = create_network_with_2_base_nodes_with_config(
+        &mut runtime,
+        BaseNodeServiceConfig::default(),
+        MmrCacheConfig { rewind_hist_len: 10 },
+        MempoolServiceConfig::default(),
+        LivenessConfig::default(),
+        ConsensusManager::new(None, consensus_constants),
+        temp_dir.path().to_str().unwrap(),
+    );
 
-    // Create a Genesis block, and a tx spending the genesis output. Then create 2 orphan txs
-    let (block0, utxo) = create_genesis_block(&bob.blockchain_db, &factories);
-
+    // Create a tx spending the genesis output. Then create 2 orphan txs
     let (tx1, _, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![2 * T, 2 * T, 2 * T]));
     let tx1 = Arc::new(tx1);
     let (orphan1, _, _) = tx!(1*T, fee: 100*uT);
@@ -423,7 +427,6 @@ fn request_response_get_stats() {
     let (orphan2, _, _) = tx!(2*T, fee: 200*uT);
     let orphan2 = Arc::new(orphan2);
 
-    bob.blockchain_db.add_block(block0.clone()).unwrap();
     bob.mempool.insert(tx1.clone()).unwrap();
     bob.mempool.insert(orphan1.clone()).unwrap();
     bob.mempool.insert(orphan2.clone()).unwrap();
@@ -458,12 +461,18 @@ fn request_response_get_tx_state_with_excess_sig() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut alice_node, bob_node, carol_node) =
-        create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
+    let (block0, utxo) = create_genesis_block(&factories);
+    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(block0.clone())));
+    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes_with_config(
+        &mut runtime,
+        BaseNodeServiceConfig::default(),
+        MmrCacheConfig { rewind_hist_len: 10 },
+        MempoolServiceConfig::default(),
+        LivenessConfig::default(),
+        ConsensusManager::new(None, consensus_constants),
+        temp_dir.path().to_str().unwrap(),
+    );
 
-    let (block0, utxo) = create_genesis_block(&bob_node.blockchain_db, &factories);
-    bob_node.blockchain_db.add_block(block0.clone()).unwrap();
-    carol_node.blockchain_db.add_block(block0.clone()).unwrap();
     let (tx, _, _) = spend_utxos(txn_schema!(from: vec![utxo.clone()], to: vec![2 * T, 2 * T, 2 * T]));
     let (unpublished_tx, _, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![3 * T]));
     let (orphan_tx, _, _) = tx!(1*T, fee: 100*uT);
@@ -517,13 +526,18 @@ fn receive_and_propagate_transaction() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut alice_node, bob_node, carol_node) =
-        create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
+    let (block0, utxo) = create_genesis_block(&factories);
+    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(block0.clone())));
+    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes_with_config(
+        &mut runtime,
+        BaseNodeServiceConfig::default(),
+        MmrCacheConfig { rewind_hist_len: 10 },
+        MempoolServiceConfig::default(),
+        LivenessConfig::default(),
+        ConsensusManager::new(None, consensus_constants),
+        temp_dir.path().to_str().unwrap(),
+    );
 
-    let (block0, utxo) = create_genesis_block(&alice_node.blockchain_db, &factories);
-    alice_node.blockchain_db.add_block(block0.clone()).unwrap();
-    bob_node.blockchain_db.add_block(block0.clone()).unwrap();
-    carol_node.blockchain_db.add_block(block0.clone()).unwrap();
     let (tx, _, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![2 * T, 2 * T, 2 * T]));
     let (orphan, _, _) = tx!(1*T, fee: 100*uT);
     let tx_excess_sig = tx.body.kernels()[0].excess_sig.clone();
@@ -596,6 +610,7 @@ fn service_request_timeout() {
         MmrCacheConfig::default(),
         mempool_service_config,
         LivenessConfig::default(),
+        ConsensusManager::default(),
         temp_dir.path().to_str().unwrap(),
     );
 
