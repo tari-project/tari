@@ -78,6 +78,10 @@ where
                 },
                 // Pipeline IN channel closed
                 Either::Left((None, _)) => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Outbound pipeline is shutting down because the in channel closed"
+                    );
                     break;
                 },
                 // Pipeline OUT received a message
@@ -90,6 +94,10 @@ where
                 },
                 // Pipeline OUT channel closed
                 Either::Right((None, _)) => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Outbound pipeline is shutting down because the out channel closed"
+                    );
                     break;
                 },
             }

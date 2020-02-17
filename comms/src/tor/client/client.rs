@@ -21,23 +21,21 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{
-    commands::AddOnionFlag,
+    commands,
+    commands::{AddOnionFlag, AddOnionResponse, TorCommand},
     error::TorClientError,
-    types::{KeyBlob, KeyType},
+    parsers,
+    response::{ResponseLine, EVENT_CODE},
+    types::{KeyBlob, KeyType, PortMapping},
+    PrivateKey,
 };
 use crate::{
     compat::IoCompat,
     multiaddr::Multiaddr,
-    tor::{
-        commands,
-        commands::{AddOnionResponse, TorCommand},
-        parsers,
-        response::{ResponseLine, EVENT_CODE},
-    },
     transports::{TcpTransport, Transport},
 };
 use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};
-use std::{borrow::Cow, io, net::SocketAddr, num::NonZeroU16};
+use std::{borrow::Cow, num::NonZeroU16};
 use tokio_util::codec::{Framed, LinesCodec};
 
 /// Client for the Tor control port.
@@ -49,10 +47,10 @@ pub struct TorControlPortClient<TSocket> {
 
 impl TorControlPortClient<<TcpTransport as Transport>::Output> {
     /// Connect using TCP to the given address.
-    pub async fn connect(addr: Multiaddr) -> Result<Self, io::Error> {
+    pub async fn connect(addr: Multiaddr) -> Result<Self, TorClientError> {
         let mut tcp = TcpTransport::new();
         tcp.set_nodelay(true);
-        let socket = tcp.dial(addr).await?;
+        let socket = tcp.dial(addr)?.await?;
         Ok(Self::new(socket))
     }
 }
@@ -63,6 +61,11 @@ pub enum Authentication {
     None,
     /// A hashed password will be sent to authenticate
     HashedPassword(String),
+}
+impl Default for Authentication {
+    fn default() -> Self {
+        Authentication::None
+    }
 }
 
 impl<TSocket> TorControlPortClient<TSocket>
@@ -92,26 +95,77 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         Ok(())
     }
 
-    /// The GET_CONF command. Returns configuration keys matching the `conf_name`.
-    pub async fn get_conf(&mut self, conf_name: &str) -> Result<Vec<Cow<'_, str>>, TorClientError> {
-        let command = commands::GetConf::new(conf_name);
+    /// The GETCONF command. Returns configuration keys matching the `conf_name`.
+    pub async fn get_conf<'a>(&mut self, conf_name: &'a str) -> Result<Vec<Cow<'a, str>>, TorClientError> {
+        let command = commands::get_conf(conf_name);
         self.request_response(command).await
     }
 
-    /// The ADD_ONION command. Used to create onion hidden services.
-    pub async fn add_onion(
+    /// The GETINFO command. Returns configuration keys matching the `conf_name`.
+    pub async fn get_info<'a>(&mut self, key_name: &'a str) -> Result<Cow<'a, str>, TorClientError> {
+        let command = commands::get_info(key_name);
+        let mut response = self.request_response(command).await?;
+        if response.len() == 0 {
+            return Err(TorClientError::ServerNoResponse);
+        }
+        Ok(response.remove(0))
+    }
+
+    /// The ADD_ONION command, used to create onion hidden services.
+    pub async fn add_onion<P: Into<PortMapping>>(
         &mut self,
         key_type: KeyType,
         key_blob: KeyBlob,
         flags: Vec<AddOnionFlag>,
-        port: (u16, Option<SocketAddr>),
+        port: P,
         num_streams: Option<NonZeroU16>,
     ) -> Result<AddOnionResponse<'_>, TorClientError>
     {
-        let command = commands::AddOnion::new(key_type, key_blob, flags, port, num_streams);
+        let command = commands::AddOnion::new(key_type, key_blob, flags, port.into(), num_streams);
         self.request_response(command).await
     }
 
+    /// The ADD_ONION command using a v2 key
+    pub async fn add_onion_v2<P: Into<PortMapping>>(
+        &mut self,
+        flags: Vec<AddOnionFlag>,
+        port: P,
+        num_streams: Option<NonZeroU16>,
+    ) -> Result<AddOnionResponse<'_>, TorClientError>
+    {
+        self.add_onion(KeyType::New, KeyBlob::Rsa1024, flags, port, num_streams)
+            .await
+    }
+
+    /// The ADD_ONION command using a v3 key
+    pub async fn add_onion_v3<P: Into<PortMapping>>(
+        &mut self,
+        flags: Vec<AddOnionFlag>,
+        port: P,
+        num_streams: Option<NonZeroU16>,
+    ) -> Result<AddOnionResponse<'_>, TorClientError>
+    {
+        self.add_onion(KeyType::New, KeyBlob::Ed25519V3, flags, port, num_streams)
+            .await
+    }
+
+    /// The ADD_ONION command using the given `PrivateKey`.
+    pub async fn add_onion_from_private_key<P: Into<PortMapping>>(
+        &mut self,
+        private_key: PrivateKey<'_>,
+        flags: Vec<AddOnionFlag>,
+        port: P,
+        num_streams: Option<NonZeroU16>,
+    ) -> Result<AddOnionResponse<'_>, TorClientError>
+    {
+        let (key_type, key_blob) = match private_key {
+            PrivateKey::Rsa1024(key) => (KeyType::Rsa1024, KeyBlob::String(key.into_owned())),
+            PrivateKey::Ed25519V3(key) => (KeyType::Ed25519V3, KeyBlob::String(key.into_owned())),
+        };
+        self.add_onion(key_type, key_blob, flags, port, num_streams).await
+    }
+
+    /// The DEL_ONION command.
     pub async fn del_onion(&mut self, service_id: &str) -> Result<(), TorClientError> {
         let command = commands::DelOnion::new(service_id);
         self.request_response(command).await
@@ -161,8 +215,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
     async fn receive_line(&mut self) -> Result<ResponseLine<'_>, TorClientError> {
         let raw = self.framed.next().await.ok_or(TorClientError::UnexpectedEof)??;
-        let parsed =
-            parsers::response_line(&raw).map_err(|err| TorClientError::ParseFailedResponse(err.to_string()))?;
+        let parsed = parsers::response_line(&raw)?;
         Ok(parsed.into_owned())
     }
 }
@@ -172,10 +225,10 @@ mod test {
     use super::*;
     use crate::{
         memsocket::MemorySocket,
-        tor::{test_server, test_server::canned_responses, types::PrivateKey},
+        tor::client::{test_server, test_server::canned_responses, types::PrivateKey},
     };
     use futures::future;
-    use std::borrow::Cow;
+    use std::{borrow::Cow, net::SocketAddr};
     use tari_test_utils::unpack_enum;
 
     async fn setup_test() -> (TorControlPortClient<MemorySocket>, test_server::State) {
@@ -188,6 +241,7 @@ mod test {
     async fn connect() {
         let (mut listener, addr) = TcpTransport::default()
             .listen("/ip4/127.0.0.1/tcp/0".parse().unwrap())
+            .unwrap()
             .await
             .unwrap();
         let (result_out, result_in) = future::join(TorControlPortClient::connect(addr), listener.next()).await;
@@ -221,6 +275,7 @@ mod test {
         mock_state.set_canned_response(canned_responses::GET_CONF_OK).await;
 
         let results = tor.get_conf("HiddenServicePort").await.unwrap();
+        assert_eq!(results.len(), 3);
         assert_eq!(results[0], "8080");
         assert_eq!(results[1], "8081 127.0.0.1:9000");
         assert_eq!(results[2], "8082 127.0.0.1:9001");
@@ -237,6 +292,47 @@ mod test {
     }
 
     #[tokio_macros::test]
+    async fn get_info_ok() {
+        let (mut tor, mock_state) = setup_test().await;
+
+        mock_state.set_canned_response(canned_responses::GET_INFO_OK).await;
+
+        let value = tor.get_info("/net/listeners/socks").await.unwrap();
+        assert_eq!(value, "127.0.0.1:9050");
+    }
+
+    #[tokio_macros::test]
+    async fn get_info_err() {
+        let (mut tor, mock_state) = setup_test().await;
+
+        mock_state.set_canned_response(canned_responses::ERR_552).await;
+
+        let err = tor.get_info("/net/listeners/socks").await.unwrap_err();
+        unpack_enum!(TorClientError::TorCommandFailed(_s) = err);
+    }
+
+    #[tokio_macros::test]
+    async fn add_onion_from_private_key_ok() {
+        let (mut tor, mock_state) = setup_test().await;
+
+        mock_state
+            .set_canned_response(canned_responses::ADD_ONION_RSA1024_OK)
+            .await;
+
+        let private_key = PrivateKey::Rsa1024("dummy-key".into());
+        let response = tor
+            .add_onion_from_private_key(private_key, vec![], 8080, None)
+            .await
+            .unwrap();
+
+        assert_eq!(response.service_id, "62q4tswkxp74dtn7");
+        assert!(response.private_key.is_none());
+
+        let request = mock_state.take_requests().await.pop().unwrap();
+        assert_eq!(request, "ADD_ONION RSA1024:dummy-key Port=8080,127.0.0.1:8080");
+    }
+
+    #[tokio_macros::test]
     async fn add_onion_ok() {
         let (mut tor, mock_state) = setup_test().await;
 
@@ -247,7 +343,7 @@ mod test {
                 KeyType::New,
                 KeyBlob::Best,
                 vec![],
-                (8080, None),
+                8080,
                 Some(NonZeroU16::new(10u16).unwrap()),
             )
             .await
@@ -265,7 +361,7 @@ mod test {
         );
 
         let request = mock_state.take_requests().await.pop().unwrap();
-        assert_eq!(request, "ADD_ONION NEW:BEST NumStreams=10 Port=8080");
+        assert_eq!(request, "ADD_ONION NEW:BEST NumStreams=10 Port=8080,127.0.0.1:8080");
     }
 
     #[tokio_macros::test]
@@ -287,7 +383,7 @@ mod test {
                     AddOnionFlag::MaxStreamsCloseCircuit,
                     AddOnionFlag::NonAnonymous,
                 ],
-                (8080, Some(([127u8, 0, 0, 1], 8081u16).into())),
+                PortMapping::new(8080, SocketAddr::from(([127u8, 0, 0, 1], 8081u16))),
                 None,
             )
             .await
@@ -297,7 +393,7 @@ mod test {
             response.service_id,
             "qigbgbs4ue3ghbupsotgh73cmmkjrin2aprlyxsrnrvpmcmzy3g4wbid"
         );
-        assert_eq!(response.private_key, None,);
+        assert_eq!(response.private_key, None);
 
         let request = mock_state.take_requests().await.pop().unwrap();
         assert_eq!(
@@ -314,7 +410,7 @@ mod test {
         mock_state.set_canned_response(canned_responses::ERR_552).await;
 
         let err = tor
-            .add_onion(KeyType::Ed25519V3, KeyBlob::Ed25519V3, vec![], (8080, None), None)
+            .add_onion(KeyType::Ed25519V3, KeyBlob::Ed25519V3, vec![], 8080, None)
             .await
             .unwrap_err();
 

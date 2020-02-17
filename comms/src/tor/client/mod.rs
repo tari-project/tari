@@ -20,57 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::response::ResponseLine;
-use nom::{
-    bytes::complete::take_while1,
-    character::{
-        complete::{anychar, char as nom_char, digit1},
-        is_alphanumeric,
-    },
-    combinator::map_res,
-    error::ErrorKind,
-};
-use std::{borrow::Cow, fmt};
+mod client;
+mod commands;
+mod error;
+mod parsers;
+mod response;
+mod types;
 
-type NomErr<'a> = nom::Err<(&'a str, ErrorKind)>;
+#[cfg(test)]
+mod test_server;
 
-#[derive(Debug, Clone)]
-pub struct ParseError(pub String);
-
-impl From<NomErr<'_>> for ParseError {
-    fn from(err: NomErr<'_>) -> Self {
-        ParseError(err.to_string())
-    }
-}
-
-impl std::error::Error for ParseError {}
-
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "ParseError({})", self.0)
-    }
-}
-
-pub fn response_line(line: &str) -> Result<ResponseLine<'_>, ParseError> {
-    let parser = map_res(digit1, |code: &str| code.parse::<u16>());
-    let (rest, code) = parser(line)?;
-    let (rest, ch) = anychar(rest)?;
-    if ch != ' ' && ch != '-' {
-        return Err(ParseError(format!(
-            "Unexpected end-of-response character '{}'. Expected ' ' or '-'.",
-            ch
-        )));
-    }
-
-    Ok(ResponseLine {
-        has_more: ch == '-',
-        code,
-        value: rest.into(),
-    })
-}
-
-pub fn key_value(line: &str) -> Result<(Cow<'_, str>, Cow<'_, str>), ParseError> {
-    let (rest, identifier) = take_while1(|ch| is_alphanumeric(ch as u8))(line)?;
-    let (rest, _) = nom_char('=')(rest)?;
-    Ok((identifier.into(), rest.into()))
-}
+pub use client::{Authentication, TorControlPortClient};
+pub use error::TorClientError;
+pub use types::{KeyBlob, KeyType, PortMapping, PrivateKey};

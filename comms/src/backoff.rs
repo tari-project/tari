@@ -53,7 +53,7 @@ impl Default for ExponentialBackoff {
 
 impl Backoff for ExponentialBackoff {
     fn calculate_backoff(&self, attempts: usize) -> Duration {
-        if attempts == 0 {
+        if attempts <= 1 {
             return Duration::from_secs(0);
         }
         let secs = (self.factor as f64) * (f64::powf(2.0, attempts as f64) - 1.0);
@@ -87,7 +87,7 @@ mod test {
     fn default_backoff() {
         let backoff = ExponentialBackoff::default();
         assert_eq!(backoff.calculate_backoff(0).as_secs(), 0);
-        assert_eq!(backoff.calculate_backoff(1).as_secs(), 2);
+        assert_eq!(backoff.calculate_backoff(1).as_secs(), 0);
         assert_eq!(backoff.calculate_backoff(2).as_secs(), 5);
         assert_eq!(backoff.calculate_backoff(3).as_secs(), 11);
         assert_eq!(backoff.calculate_backoff(4).as_secs(), 23);

@@ -37,15 +37,16 @@ use crate::{
     peer_manager::{AsyncPeerManager, NodeIdentity, PeerManager, PeerManagerError},
     pipeline,
     protocol::{messaging, messaging::MessagingProtocol, ProtocolNotification, Protocols},
-    transports::{TcpTransport, Transport},
+    tor,
+    transports::{SocksTransport, TcpTransport, Transport},
     types::{CommsDatabase, CommsSubstream},
 };
 use derive_error::Error;
-use futures::{channel::mpsc, AsyncRead, AsyncWrite};
+use futures::{channel::mpsc, AsyncRead, AsyncWrite, StreamExt};
 use log::*;
-use std::{fmt, fmt::Debug, sync::Arc};
+use std::{fmt, fmt::Debug, sync::Arc, time::Duration};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{runtime, sync::broadcast};
+use tokio::{runtime, sync::broadcast, time};
 use tower::Service;
 
 const LOG_TARGET: &str = "comms::builder";
@@ -60,6 +61,12 @@ pub enum CommsBuilderError {
     /// The messaging pipeline was not provided to the CommsBuilder. Use `with_messaging_pipeline` to set it.
     /// pipeline.
     MessagingPiplineNotProvided,
+    /// Unable to receive a ConnectionManagerEvent within timeout
+    ConnectionManagerEventStreamTimeout,
+    /// ConnectionManagerEvent stream unexpectedly closed
+    ConnectionManagerEventStreamClosed,
+    /// Receiving on ConnectionManagerEvent stream lagged unexpectedly
+    ConnectionManagerEventStreamLagged,
 }
 
 /// The `CommsBuilder` provides a simple builder API for getting Tari comms p2p messaging up and running.
@@ -83,12 +90,18 @@ impl CommsBuilder<TcpTransport, PlaceholderService<InboundMessage, (), ()>, Plac
             listener_address: None,
             messaging_pipeline: None,
             node_identity: None,
-            transport: Some(TcpTransport::new()),
+            transport: Some(Self::default_tcp_transport()),
             dial_backoff: Some(Box::new(ExponentialBackoff::default())),
             executor: None,
             protocols: None,
             shutdown: Shutdown::new(),
         }
+    }
+
+    fn default_tcp_transport() -> TcpTransport {
+        let mut tcp = TcpTransport::new();
+        tcp.set_nodelay(true);
+        tcp
     }
 }
 
@@ -128,6 +141,27 @@ where
     pub fn with_peer_storage(mut self, peer_storage: CommsDatabase) -> Self {
         self.peer_storage = Some(peer_storage);
         self
+    }
+
+    /// Configure the `CommsBuilder` to build a node which communicates using the given `tor::HiddenService`.
+    pub fn configure_from_hidden_service(
+        self,
+        hidden_service: &tor::HiddenService,
+    ) -> CommsBuilder<SocksTransport, TInPipe, TOutPipe, TOutReq>
+    {
+        CommsBuilder {
+            // Set the listener address to be the address (usually local) to which tor will forward all traffic
+            listener_address: Some(hidden_service.proxied_address().clone()),
+            // Set the socks transport configured for this hidden service
+            transport: Some(hidden_service.get_transport()),
+            peer_storage: self.peer_storage,
+            messaging_pipeline: None,
+            node_identity: self.node_identity,
+            executor: self.executor,
+            protocols: self.protocols,
+            dial_backoff: self.dial_backoff,
+            shutdown: self.shutdown,
+        }
     }
 
     /// Set the backoff that [ConnectionManager] uses when dialing peers. This is optional. If omitted the default
@@ -330,6 +364,24 @@ where
         })
     }
 
+    /// Wait until the ConnectionManager emits a Listening event. This is the signal that comms is ready.
+    async fn wait_listening(
+        mut events: broadcast::Receiver<Arc<ConnectionManagerEvent>>,
+    ) -> Result<Multiaddr, CommsBuilderError> {
+        loop {
+            let event = time::timeout(Duration::from_secs(10), events.next())
+                .await
+                .map_err(|_| CommsBuilderError::ConnectionManagerEventStreamTimeout)?
+                .ok_or(CommsBuilderError::ConnectionManagerEventStreamClosed)?
+                .map_err(|_| CommsBuilderError::ConnectionManagerEventStreamLagged)?;
+
+            match &*event {
+                ConnectionManagerEvent::Listening(addr) => return Ok(addr.clone()),
+                _ => {},
+            }
+        }
+    }
+
     pub async fn spawn(self) -> Result<CommsNode, CommsBuilderError> {
         let BuiltCommsNode {
             connection_manager,
@@ -346,7 +398,11 @@ where
             messaging_event_tx,
         } = self.build()?;
 
+        let events_stream = connection_manager_event_tx.subscribe();
+
         executor.spawn(connection_manager.run());
+
+        let listening_addr = Self::wait_listening(events_stream).await?;
 
         // Spawn messaging protocol
         executor.spawn(messaging.run());
@@ -364,6 +420,7 @@ where
             shutdown,
             connection_manager_event_tx,
             connection_manager_requester,
+            listening_addr,
             node_identity,
             peer_manager,
             messaging_event_tx,
@@ -407,6 +464,8 @@ pub struct CommsNode {
     /// Tari messaging broadcast event channel. A `broadcast::Sender` is kept because it can create subscriptions as
     /// needed.
     messaging_event_tx: messaging::MessagingEventSender,
+    /// The resolved Ip-Tcp listening address.
+    listening_addr: Multiaddr,
 }
 impl CommsNode {
     pub fn subscribe_connection_manager_events(&self) -> broadcast::Receiver<Arc<ConnectionManagerEvent>> {
@@ -426,6 +485,11 @@ impl CommsNode {
     /// Return a cloned atomic reference of the NodeIdentity
     pub fn node_identity(&self) -> Arc<NodeIdentity> {
         Arc::clone(&self.node_identity)
+    }
+
+    /// Return the Ip/Tcp address that this node is listening on
+    pub fn listening_address(&self) -> &Multiaddr {
+        &self.listening_addr
     }
 
     /// Return a subscription to OMS events. This will emit events sent _after_ this subscription was created.

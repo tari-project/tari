@@ -55,20 +55,20 @@ macro_rules! unpack_enum {
     ($($enum_key:ident)::+ { $($idents:tt),* } = $enum:expr) => {
         let ($(mut $idents),+) =  match $enum {
             $($enum_key)::+{$($idents),+} => ($($idents),+),
-            _ => panic!("Unexpected enum variant given to unpack_enum"),
+            v => panic!("Unexpected enum variant '{:?}' given to unpack_enum", v),
         };
     };
     ($($enum_key:ident)::+ ( $($idents:tt),* ) = $enum:expr) => {
         let ($(mut $idents),+) =  match $enum {
             $($enum_key)::+($($idents),+) => ($($idents),+),
-            _ => panic!("Unexpected enum variant given to unpack_enum"),
+            v => panic!("Unexpected enum variant '{:?}' given to unpack_enum", v),
         };
     };
     // This matches `MyEnum::First = some_var` and will panic if the enum does not match
     ($($enum_key:ident)::+ = $enum:expr) => {
         match $enum {
             $($enum_key)::+ => {},
-            _ => panic!("Unexpected enum variant given to unpack_enum"),
+            v => panic!("Unexpected enum variant '{:?}' given to unpack_enum", v),
         };
     };
 }

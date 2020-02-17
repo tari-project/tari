@@ -19,54 +19,34 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use super::parsers::ParseError;
+use derive_error::Error;
+use std::io;
+use tokio_util::codec::LinesCodecError;
 
-use std::borrow::Cow;
-
-pub enum KeyType {
-    /// The server should generate a key of algorithm KeyBlob
-    New,
-    /// The server should use the 1024-bit RSA key provided in as KeyBlob (v2).
-    Rsa1024,
-    /// The server should use the ED25519-V3 key provided in as KeyBlob (v3).
-    Ed25519V3,
+#[derive(Debug, Error)]
+pub enum TorClientError {
+    /// Failed to read/write line to socket. The maximum line length was exceeded.
+    MaxLineLengthExceeded,
+    Io(io::Error),
+    /// Command failed
+    #[error(no_from, non_std)]
+    TorCommandFailed(String),
+    /// Tor control port connection unexpectedly closed
+    UnexpectedEof,
+    ParseError(ParseError),
+    /// The server returned no response
+    ServerNoResponse,
+    /// Server did not return a ServiceID for ADD_ONION command
+    AddOnionNoServiceId,
 }
 
-impl KeyType {
-    pub fn as_tor_repr(&self) -> &'static str {
-        match self {
-            KeyType::New => "NEW",
-            KeyType::Rsa1024 => "RSA1024",
-            KeyType::Ed25519V3 => "ED25519-V3",
+impl From<LinesCodecError> for TorClientError {
+    fn from(err: LinesCodecError) -> Self {
+        use LinesCodecError::*;
+        match err {
+            MaxLineLengthExceeded => TorClientError::MaxLineLengthExceeded,
+            Io(err) => TorClientError::Io(err),
         }
     }
-}
-
-pub enum KeyBlob {
-    /// The server should generate a key using the "best" supported algorithm (KeyType == "NEW").
-    Best,
-    /// The server should generate a 1024 bit RSA key (KeyType == "NEW") (v2).
-    Rsa1024,
-    /// The server should generate an ed25519 private key (KeyType == "NEW") (v3).
-    Ed25519V3,
-    /// A serialized private key (without whitespace)
-    String(String),
-}
-
-impl KeyBlob {
-    pub fn as_tor_repr(&self) -> &str {
-        match self {
-            KeyBlob::Best => "BEST",
-            KeyBlob::Rsa1024 => "RSA1024",
-            KeyBlob::Ed25519V3 => "ED25519-V3",
-            KeyBlob::String(priv_key) => priv_key,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PrivateKey<'a> {
-    /// The server should use the 1024 bit RSA key provided in as KeyBlob (v2).
-    Rsa1024(Cow<'a, str>),
-    /// The server should use the ed25519 v3 key provided in as KeyBlob (v3).
-    Ed25519V3(Cow<'a, str>),
 }

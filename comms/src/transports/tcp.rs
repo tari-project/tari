@@ -101,24 +101,47 @@ impl Transport for TcpTransport {
     type DialFuture = impl Future<Output = io::Result<Self::Output>>;
     type ListenFuture = impl Future<Output = io::Result<(Self::Listener, Multiaddr)>>;
 
-    fn listen(&self, addr: Multiaddr) -> Self::ListenFuture {
+    fn listen(&self, addr: Multiaddr) -> Result<Self::ListenFuture, Self::Error> {
         let config = self.clone();
-        Box::pin(async move {
-            let socket_addr = multiaddr_to_socketaddr(&addr)?;
+        // multiaddr_to_socketaddr is not used in the async block because of a rust ICE (internal compiler error)
+        let socket_addr = multiaddr_to_socketaddr(&addr)?;
+
+        Ok(Box::pin(async move {
             let listener = TcpListener::bind(&socket_addr).await?;
             let local_addr = socketaddr_to_multiaddr(&listener.local_addr()?);
             Ok((TcpInbound::new(config, listener), local_addr))
-        })
+        }))
     }
 
-    fn dial(&self, addr: Multiaddr) -> Self::DialFuture {
-        let config = self.clone();
-        Box::pin(async move {
-            let socket_addr = multiaddr_to_socketaddr(&addr)?;
-            let stream = TcpStream::connect(&socket_addr).await?;
-            config.configure(&stream)?;
-            Ok(TcpSocket::new(stream))
-        })
+    fn dial(&self, addr: Multiaddr) -> Result<Self::DialFuture, Self::Error> {
+        let socket_addr = multiaddr_to_socketaddr(&addr)?;
+        Ok(TcpOutbound::new(
+            Box::pin(TcpStream::connect(socket_addr)),
+            self.clone(),
+        ))
+    }
+}
+
+pub struct TcpOutbound<F> {
+    future: F,
+    config: TcpTransport,
+}
+
+impl<F> TcpOutbound<F> {
+    pub fn new(future: F, config: TcpTransport) -> Self {
+        Self { config, future }
+    }
+}
+
+impl<F> Future for TcpOutbound<F>
+where F: Future<Output = io::Result<TcpStream>> + Unpin
+{
+    type Output = io::Result<TcpSocket>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let socket = ready!(Pin::new(&mut self.future).poll(cx))?;
+        self.config.configure(&socket)?;
+        Poll::Ready(Ok(TcpSocket::new(socket)))
     }
 }
 

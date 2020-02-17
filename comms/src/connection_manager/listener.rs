@@ -39,6 +39,7 @@ use crate::{
 use futures::{channel::mpsc, AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
 use std::sync::Arc;
+use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::ShutdownSignal;
 use tokio::runtime;
 
@@ -101,7 +102,7 @@ where
                 let inbound = inbound.fuse();
                 futures::pin_mut!(inbound);
 
-                info!(target: LOG_TARGET, "Listening for peer connection on '{}'", address);
+                info!(target: LOG_TARGET, "Listening for peer connections on '{}'", address);
                 self.listening_address = Some(address.clone());
 
                 self.send_event(ConnectionManagerEvent::Listening(address)).await;
@@ -222,9 +223,22 @@ where
         );
         let peer_identity = common::perform_identity_exchange(&mut muxer, node_identity, CONNECTION_DIRECTION).await?;
 
+        debug!(
+            target: LOG_TARGET,
+            "Peer identity exchange succeeded on Inbound connection for peer '{}'",
+            peer_identity.node_id.to_hex()
+        );
+        trace!(target: LOG_TARGET, "{:?}", peer_identity);
+
         let peer_node_id =
             common::validate_and_add_peer_from_peer_identity(&peer_manager, authenticated_public_key, peer_identity)
                 .await?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Peer '{}' added to peer list.",
+            peer_node_id.short_str()
+        );
 
         peer_connection::create(
             executor,
@@ -240,6 +254,7 @@ where
     async fn listen(&self) -> Result<(TTransport::Listener, Multiaddr), ConnectionManagerError> {
         self.transport
             .listen(self.listen_address.clone())
+            .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))?
             .await
             .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))
     }

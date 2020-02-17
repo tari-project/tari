@@ -57,6 +57,7 @@ pub type MessagingEventSender = broadcast::Sender<Arc<MessagingEvent>>;
 pub type MessagingEventReceiver = broadcast::Receiver<Arc<MessagingEvent>>;
 
 /// Request types for MessagingProtocol
+#[derive(Debug)]
 pub enum MessagingRequest {
     SendMessage(OutboundMessage),
 }
@@ -269,11 +270,10 @@ impl MessagingProtocol {
                         }
 
                         if let Err(err) = messaging_events_tx.send(Arc::new(event)) {
-                            // This is a trace log because if this send fails, then there are no subscribers which is
-                            // fine
-                            trace!(
+                            debug!(
                                 target: LOG_TARGET,
-                                "Failed to send messaging event '{}' for peer '{}'. MessagingEvent will be dropped",
+                                "Messaging event '{}' not sent for peer '{}' because there are no subscribers. \
+                                 MessagingEvent dropped",
                                 err.0,
                                 node_id.short_str(),
                             );

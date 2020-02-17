@@ -20,37 +20,57 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tor::{commands::TorCommand, error::TorClientError, parsers, response::ResponseLine};
+use crate::tor::client::{commands::TorCommand, error::TorClientError, parsers, response::ResponseLine};
 use std::{borrow::Cow, marker::PhantomData};
 
-/// The GET_CONF command.
+/// The GETCONF command.
 ///
-/// This command is used to query the Tor proxy configuration.
-pub struct GetConf<'a, 'b> {
-    query_key: &'a str,
+/// This command is used to query the Tor proxy configuration file.
+pub fn get_conf(query: &str) -> KeyValueCommand<'_, '_> {
+    KeyValueCommand::new("GETCONF", &[query])
+}
+
+/// The GETINFO command.
+///
+/// This command is used to retrieve Tor proxy configuration keys.
+pub fn get_info(key_name: &str) -> KeyValueCommand<'_, '_> {
+    KeyValueCommand::new("GETINFO", &[key_name])
+}
+
+pub struct KeyValueCommand<'a, 'b> {
+    command: &'a str,
+    args: Vec<&'b str>,
     _lifetime: PhantomData<&'b ()>,
 }
 
-impl<'a> GetConf<'a, '_> {
-    pub fn new(query_key: &'a str) -> Self {
+impl<'a, 'b> KeyValueCommand<'a, 'b> {
+    pub fn new(command: &'a str, args: &[&'b str]) -> Self {
         Self {
-            query_key,
+            command,
+            args: args.to_vec(),
             _lifetime: PhantomData,
         }
     }
 }
 
-impl<'a, 'b> TorCommand for GetConf<'a, 'b> {
+impl<'a, 'b> TorCommand for KeyValueCommand<'a, 'b> {
     type Error = TorClientError;
     type Output = Vec<Cow<'b, str>>;
 
     fn to_command_string(&self) -> Result<String, Self::Error> {
-        Ok(format!("GET_CONF {}", self.query_key))
+        Ok(format!("{} {}", self.command, self.args.join(" ")))
     }
 
-    fn parse_responses(&self, responses: Vec<ResponseLine<'_>>) -> Result<Self::Output, Self::Error> {
+    fn parse_responses(&self, mut responses: Vec<ResponseLine<'_>>) -> Result<Self::Output, Self::Error> {
         if let Some(resp) = responses.iter().find(|v| v.is_err()) {
             return Err(TorClientError::TorCommandFailed(resp.value.to_string()));
+        }
+
+        if let Some(last_line) = responses.last() {
+            // Drop the last line if it's '250 OK' - some commands return it (GETINFO), some don't (GETCONF)
+            if last_line.value == "OK" {
+                let _ = responses.pop();
+            }
         }
 
         let responses = responses
@@ -77,7 +97,10 @@ mod test {
 
     #[test]
     fn to_command_string() {
-        let command = GetConf::new("HiddenServicePort");
-        assert_eq!(command.to_command_string().unwrap(), "GET_CONF HiddenServicePort");
+        let command = KeyValueCommand::new("GETCONF", &["HiddenServicePort"]);
+        assert_eq!(command.to_command_string().unwrap(), "GETCONF HiddenServicePort");
+
+        let command = KeyValueCommand::new("GETINFO", &["net/listeners/socks"]);
+        assert_eq!(command.to_command_string().unwrap(), "GETINFO net/listeners/socks");
     }
 }

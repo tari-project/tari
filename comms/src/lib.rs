@@ -42,13 +42,17 @@ cfg_next! {
     mod multiplexing;
     mod noise;
     mod protocol;
-    mod socks;
-    mod tor;
 
+    pub mod socks;
     pub mod bounded_executor;
     pub mod compat;
     pub mod memsocket;
     pub mod transports;
+    pub mod tor;
+
+    pub mod next {
+        pub use crate::builder::builder_next::CommsBuilder;
+    }
 }
 
 #[cfg(test)]

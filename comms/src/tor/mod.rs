@@ -20,12 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod client;
-mod commands;
-mod error;
-mod parsers;
-mod response;
-mod types;
+//! # Tor Hidden Services and Control Port Client
+//!
+//! These modules interact with the Tor Control Port to create hidden services on-the-fly.
+//!
+//! The [client](crate::tor::client) module contains the client library for the Tor Control Port. You can find the spec
+//! [here](https://gitweb.torproject.org/torspec.git/tree/control-spec.txt).
+//!
+//! The [hidden_service](crate::tor::hidden_service) module contains code which sets up hidden services required for
+//! `tari_comms` to function over Tor.
 
-#[cfg(test)]
-mod test_server;
+mod client;
+mod hidden_service;
+
+pub use client::{Authentication, KeyBlob, KeyType, PortMapping, PrivateKey, TorClientError, TorControlPortClient};
+pub use hidden_service::{HiddenService, HiddenServiceBuilder, HiddenServiceBuilderError};
