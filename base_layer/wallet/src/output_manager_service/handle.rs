@@ -25,7 +25,10 @@ use crate::output_manager_service::{
     service::Balance,
     storage::database::PendingTransactionOutputs,
 };
+use futures::{stream::Fuse, StreamExt};
 use std::{collections::HashMap, time::Duration};
+use tari_broadcast_channel::Subscriber;
+use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{TransactionInput, TransactionOutput, UnblindedOutput},
@@ -49,7 +52,10 @@ pub enum OutputManagerRequest {
     GetPendingTransactions,
     GetSpentOutputs,
     GetUnspentOutputs,
+    GetInvalidOutputs,
     GetSeedWords,
+    SetBaseNodePublicKey(CommsPublicKey),
+    SyncWithBaseNode,
 }
 
 /// API Reply enum
@@ -65,17 +71,37 @@ pub enum OutputManagerResponse {
     PendingTransactions(HashMap<u64, PendingTransactionOutputs>),
     SpentOutputs(Vec<UnblindedOutput>),
     UnspentOutputs(Vec<UnblindedOutput>),
+    InvalidOutputs(Vec<UnblindedOutput>),
     SeedWords(Vec<String>),
+    BaseNodePublicKeySet,
+    StartedBaseNodeSync,
+}
+
+/// Events that can be published on the Text Message Service Event Stream
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum OutputManagerEvent {
+    BaseNodeSyncRequestTimedOut(u64),
+    ReceiveBaseNodeResponse(u64),
+    Error(String),
 }
 
 #[derive(Clone)]
 pub struct OutputManagerHandle {
     handle: SenderService<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>,
+    event_stream: Subscriber<OutputManagerEvent>,
 }
 
 impl OutputManagerHandle {
-    pub fn new(handle: SenderService<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>) -> Self {
-        OutputManagerHandle { handle }
+    pub fn new(
+        handle: SenderService<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>,
+        event_stream: Subscriber<OutputManagerEvent>,
+    ) -> Self
+    {
+        OutputManagerHandle { handle, event_stream }
+    }
+
+    pub fn get_event_stream_fused(&self) -> Fuse<Subscriber<OutputManagerEvent>> {
+        self.event_stream.clone().fuse()
     }
 
     pub async fn add_output(&mut self, output: UnblindedOutput) -> Result<(), OutputManagerError> {
@@ -214,9 +240,34 @@ impl OutputManagerHandle {
         }
     }
 
+    pub async fn get_invalid_outputs(&mut self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::GetInvalidOutputs).await?? {
+            OutputManagerResponse::InvalidOutputs(s) => Ok(s),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
     pub async fn get_seed_words(&mut self) -> Result<Vec<String>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetSeedWords).await?? {
             OutputManagerResponse::SeedWords(s) => Ok(s),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn set_base_node_public_key(&mut self, public_key: CommsPublicKey) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::SetBaseNodePublicKey(public_key))
+            .await??
+        {
+            OutputManagerResponse::BaseNodePublicKeySet => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn sync_with_base_node(&mut self) -> Result<(), OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::SyncWithBaseNode).await?? {
+            OutputManagerResponse::StartedBaseNodeSync => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

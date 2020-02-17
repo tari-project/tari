@@ -2964,6 +2964,36 @@ pub unsafe extern "C" fn wallet_import_utxo(
     }
 }
 
+/// This function will tell the wallet to query the set base node to confirm the status of wallet data. For example this
+/// will check that Unspent Outputs stored in the wallet are still available as UTXO's on the blockchain
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` -  Returns where the sync command was executed successfully
+#[no_mangle]
+pub unsafe extern "C" fn wallet_sync_with_base_node(wallet: *mut TariWallet, error_out: *mut c_int) -> bool {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
+    match (*wallet).sync_with_base_node() {
+        Ok(()) => true,
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
+    }
+}
+
 /// Frees memory for a TariWallet
 ///
 /// ## Arguments
@@ -3437,11 +3467,15 @@ mod test {
             );
             assert_eq!(verify_msg, true);
 
+            assert_eq!(wallet_sync_with_base_node(alice_wallet, error_ptr), false);
+
             let mut peer_added =
                 wallet_add_base_node_peer(alice_wallet, public_key_bob.clone(), address_bob_str, error_ptr);
             assert_eq!(peer_added, true);
             peer_added = wallet_add_base_node_peer(bob_wallet, public_key_alice.clone(), address_alice_str, error_ptr);
             assert_eq!(peer_added, true);
+
+            assert_eq!(wallet_sync_with_base_node(alice_wallet, error_ptr), true);
 
             let test_contact_private_key = private_key_generate();
             let test_contact_public_key = public_key_from_private_key(test_contact_private_key, error_ptr);

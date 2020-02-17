@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::miner;
-use futures::channel::mpsc::Receiver;
+use futures::{channel::mpsc::Receiver, stream};
 use log::*;
 use rand::rngs::OsRng;
 use std::{
@@ -80,6 +80,7 @@ use tokio::runtime::Runtime;
 use tari_core::tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tari_wallet::{
     output_manager_service::{
+        config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
         storage::sqlite_db::OutputManagerSqliteDatabase,
         OutputManagerServiceInitializer,
@@ -470,6 +471,8 @@ where
             node_config,
         ))
         .add_initializer(OutputManagerServiceInitializer::new(
+            OutputManagerServiceConfig::default(),
+            subscription_factory.clone(),
             OutputManagerSqliteDatabase::new(connection_pool.clone()),
             factories.clone(),
         ))

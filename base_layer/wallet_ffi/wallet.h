@@ -355,6 +355,9 @@ bool wallet_is_completed_transaction_outbound(struct TariWallet *wallet, struct 
 // event.
 unsigned long long wallet_import_utxo(struct TariWallet *wallet, unsigned long long amount, struct TariPrivateKey *spending_key, struct TariPublicKey *source_public_key, const char *message, int* error_out);
 
+// This function will tell the wallet to query the set base node to confirm the status of wallet data.
+bool wallet_sync_with_base_node(struct TariWallet *wallet, int* error_out);
+
 // Simulates the completion of a broadcasted TariPendingInboundTransaction
 bool wallet_test_broadcast_transaction(struct TariWallet *wallet, struct TariCompletedTransaction *tx, int* error_out);
 

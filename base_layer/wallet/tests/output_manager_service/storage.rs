@@ -270,6 +270,17 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         .block_on(db.fetch_all_pending_transaction_outputs())
         .unwrap()
         .contains_key(&pending_txs[2].tx_id));
+
+    // Test invalidating an output
+    let invalid_outputs = runtime.block_on(db.get_invalid_outputs()).unwrap();
+    assert_eq!(invalid_outputs.len(), 0);
+    let unspent_outputs = runtime.block_on(db.get_unspent_outputs()).unwrap();
+    runtime
+        .block_on(db.invalidate_output(unspent_outputs[0].clone()))
+        .unwrap();
+    let invalid_outputs = runtime.block_on(db.get_invalid_outputs()).unwrap();
+    assert_eq!(invalid_outputs.len(), 1);
+    assert_eq!(invalid_outputs[0], unspent_outputs[0]);
 }
 
 #[test]

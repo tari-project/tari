@@ -67,6 +67,9 @@ pub trait OutputManagerBackend: Send + Sync {
     /// This method will increment the currently stored key index for the key manager config. Increment this after eac
     /// key is generated
     fn increment_key_index(&self) -> Result<(), OutputManagerStorageError>;
+    /// If an unspent output is detected as invalid (i.e. not available on the blockchain) then it should be moved to
+    /// the invalid outputs collection
+    fn invalidate_unspent_output(&self, output: &UnblindedOutput) -> Result<(), OutputManagerStorageError>;
 }
 
 /// Holds the outputs that have been selected for a given pending transaction waiting for confirmation
@@ -95,6 +98,7 @@ pub enum DbKey {
     SpentOutputs,
     AllPendingTransactionOutputs,
     KeyManagerState,
+    InvalidOutputs,
 }
 
 #[derive(Debug)]
@@ -104,6 +108,7 @@ pub enum DbValue {
     PendingTransactionOutputs(Box<PendingTransactionOutputs>),
     UnspentOutputs(Vec<UnblindedOutput>),
     SpentOutputs(Vec<UnblindedOutput>),
+    InvalidOutputs(Vec<UnblindedOutput>),
     AllPendingTransactionOutputs(HashMap<TxId, PendingTransactionOutputs>),
     KeyManagerState(KeyManagerState),
 }
@@ -422,6 +427,50 @@ where T: OutputManagerBackend + 'static
         .and_then(|inner_result| inner_result)?;
         Ok(uo)
     }
+
+    pub async fn get_unspent_outputs(&self) -> Result<Vec<UnblindedOutput>, OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+
+        let uo = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::UnspentOutputs) {
+            Ok(None) => log_error(
+                DbKey::UnspentOutputs,
+                OutputManagerStorageError::UnexpectedResult("Could not retrieve unspent outputs".to_string()),
+            ),
+            Ok(Some(DbValue::UnspentOutputs(uo))) => Ok(uo),
+            Ok(Some(other)) => unexpected_result(DbKey::UnspentOutputs, other),
+            Err(e) => log_error(DbKey::UnspentOutputs, e),
+        })
+        .await
+        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
+        .and_then(|inner_result| inner_result)?;
+        Ok(uo)
+    }
+
+    pub async fn get_invalid_outputs(&self) -> Result<Vec<UnblindedOutput>, OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+
+        let uo = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::InvalidOutputs) {
+            Ok(None) => log_error(
+                DbKey::InvalidOutputs,
+                OutputManagerStorageError::UnexpectedResult("Could not retrieve invalid outputs".to_string()),
+            ),
+            Ok(Some(DbValue::InvalidOutputs(uo))) => Ok(uo),
+            Ok(Some(other)) => unexpected_result(DbKey::InvalidOutputs, other),
+            Err(e) => log_error(DbKey::InvalidOutputs, e),
+        })
+        .await
+        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
+        .and_then(|inner_result| inner_result)?;
+        Ok(uo)
+    }
+
+    pub async fn invalidate_output(&self, output: UnblindedOutput) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.invalidate_unspent_output(&output))
+            .await
+            .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
+            .and_then(|inner_result| inner_result)
+    }
 }
 
 fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, OutputManagerStorageError> {
@@ -442,6 +491,7 @@ impl Display for DbKey {
             DbKey::SpentOutputs => f.write_str(&format!("Spent Outputs Key")),
             DbKey::AllPendingTransactionOutputs => f.write_str(&format!("All Pending Transaction Outputs")),
             DbKey::KeyManagerState => f.write_str(&format!("Key Manager State")),
+            DbKey::InvalidOutputs => f.write_str(&format!("Invalid Outputs Key")),
         }
     }
 }
@@ -456,6 +506,7 @@ impl Display for DbValue {
             DbValue::SpentOutputs(_) => f.write_str("Spent Outputs"),
             DbValue::AllPendingTransactionOutputs(_) => f.write_str("All Pending Transaction Outputs"),
             DbValue::KeyManagerState(_) => f.write_str(&format!("Key Manager State")),
+            DbValue::InvalidOutputs(_) => f.write_str("Invalid Outputs"),
         }
     }
 }

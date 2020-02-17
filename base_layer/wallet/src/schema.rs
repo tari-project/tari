@@ -67,9 +67,7 @@ table! {
         value -> BigInt,
         flags -> Integer,
         maturity -> BigInt,
-        spent -> Integer,
-        to_be_received -> Integer,
-        encumbered -> Integer,
+        status -> Integer,
         tx_id -> Nullable<BigInt>,
     }
 }
