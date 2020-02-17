@@ -90,9 +90,7 @@ impl ByteArray for [u8; 32] {
 }
 
 impl<T: ByteArray> Hex for T {
-    type T = T;
-
-    fn from_hex(hex: &str) -> Result<Self::T, HexError> {
+    fn from_hex(hex: &str) -> Result<Self, HexError> {
         let v = from_hex(hex)?;
         Self::from_vec(&v).map_err(|_| HexError::HexConversionError)
     }

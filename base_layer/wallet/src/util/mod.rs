@@ -22,3 +22,4 @@
 
 pub mod emoji;
 pub mod futures;
+pub mod luhn;

@@ -7,10 +7,9 @@ use std::{
 
 /// Any object implementing this trait has the ability to represent itself as a hexadecimal string and convert from it.
 pub trait Hex {
-    type T;
     /// Try and convert the given hexadecimal string to the type. Any failures (incorrect  string length, non hex
     /// characters, etc) return a [KeyError](enum.KeyError.html) with an explanatory note.
-    fn from_hex(hex: &str) -> Result<Self::T, HexError>;
+    fn from_hex(hex: &str) -> Result<Self, HexError> where Self: std::marker::Sized;
 
     /// Return the hexadecimal string representation of the type
     fn to_hex(&self) -> String;
