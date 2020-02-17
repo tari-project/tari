@@ -16,6 +16,7 @@ tari_crypto = { version = "^0.3" }
 tari_storage = { version="^0.0", path = "../infrastructure/storage" }
 tari_shutdown = { version="^0.0",  path = "../infrastructure/shutdown" }
 
+blake2 = "0.8.1"
 bitflags = "1.0.4"
 bytes = "0.5.x"
 chrono = { version = "0.4.6", features = ["serde"] }
