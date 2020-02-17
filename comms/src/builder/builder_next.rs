@@ -253,6 +253,7 @@ where
             messaging_request_rx,
             event_tx.clone(),
             inbound_message_tx,
+            self.shutdown.to_signal(),
         );
 
         (messaging, proto_tx, messaging_request_tx, inbound_message_rx, event_tx)

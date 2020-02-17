@@ -110,12 +110,12 @@ async fn run() -> Result<(), Error> {
     let executor = runtime::Handle::current();
 
     println!("Starting ping pong between nodes over tor. This may take a few moments to begin.");
-    let _handle1 = executor.spawn(start_ping_ponger(
+    let handle1 = executor.spawn(start_ping_ponger(
         comms_node2.node_identity().node_id().clone(),
         inbound_rx1,
         outbound_tx1,
     ));
-    let _handle2 = executor.spawn(start_ping_ponger(
+    let handle2 = executor.spawn(start_ping_ponger(
         comms_node1.node_identity().node_id().clone(),
         inbound_rx2,
         outbound_tx2,
@@ -127,9 +127,8 @@ async fn run() -> Result<(), Error> {
     comms_node1.shutdown();
     comms_node2.shutdown();
 
-    // TODO: These handles never exit because the messaging pipelines don't shut down correctly. Fix me.
-    // handle1.await??;
-    // handle2.await??;
+    handle1.await??;
+    handle2.await??;
 
     Ok(())
 }
