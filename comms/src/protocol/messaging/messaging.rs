@@ -44,6 +44,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use tari_shutdown::ShutdownSignal;
 use tokio::{runtime, sync::broadcast, time::delay_for};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
@@ -96,6 +97,7 @@ pub struct MessagingProtocol {
     request_rx: Fuse<mpsc::Receiver<MessagingRequest>>,
     messaging_events_tx: MessagingEventSender,
     inbound_message_tx: mpsc::Sender<InboundMessage>,
+    shutdown_signal: Option<ShutdownSignal>,
 }
 
 impl MessagingProtocol {
@@ -108,6 +110,7 @@ impl MessagingProtocol {
         request_rx: mpsc::Receiver<MessagingRequest>,
         messaging_events_tx: MessagingEventSender,
         inbound_message_tx: mpsc::Sender<InboundMessage>,
+        shutdown_signal: ShutdownSignal,
     ) -> Self
     {
         Self {
@@ -120,10 +123,16 @@ impl MessagingProtocol {
             active_queues: HashMap::new(),
             messaging_events_tx,
             inbound_message_tx,
+            shutdown_signal: Some(shutdown_signal),
         }
     }
 
     pub async fn run(mut self) {
+        let mut shutdown_signal = self
+            .shutdown_signal
+            .take()
+            .expect("Messaging initialized without shutdown_signal");
+
         loop {
             futures::select! {
                 req = self.request_rx.select_next_some() => {
@@ -136,6 +145,10 @@ impl MessagingProtocol {
                 notification = self.proto_notification.select_next_some() => {
                     self.handle_notification(notification).await;
                 },
+                _ = shutdown_signal => {
+                    info!(target: LOG_TARGET, "MessagingProtocol is shutting down because the shutdown signal was triggered");
+                    break;
+                }
                 complete => {
                     info!(target: LOG_TARGET, "MessagingProtocol is shutting down because all streams have completed");
                     break;

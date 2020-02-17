@@ -51,6 +51,7 @@ use prost::Message;
 use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_crypto::keys::PublicKey;
+use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_stream, unpack_enum};
 use tokio::{runtime::Handle, sync::broadcast};
 use tokio_macros as runtime;
@@ -65,7 +66,9 @@ async fn spawn_messaging_protocol() -> (
     mpsc::Sender<MessagingRequest>,
     mpsc::Receiver<InboundMessage>,
     MessagingEventReceiver,
+    Shutdown,
 ) {
+    let shutdown = Shutdown::new();
     let rt_handle = Handle::current();
 
     let (requester, mock) = create_connection_manager_mock(10);
@@ -88,6 +91,7 @@ async fn spawn_messaging_protocol() -> (
         request_rx,
         events_tx,
         inbound_msg_tx,
+        shutdown.to_signal(),
     );
     rt_handle.spawn(msg_proto.run());
 
@@ -99,12 +103,14 @@ async fn spawn_messaging_protocol() -> (
         request_tx,
         inbound_msg_rx,
         events_rx,
+        shutdown,
     )
 }
 
 #[runtime::test_basic]
 async fn new_inbound_substream_handling() {
-    let (peer_manager, _, _, mut proto_tx, _, mut inbound_msg_rx, mut events_rx) = spawn_messaging_protocol().await;
+    let (peer_manager, _, _, mut proto_tx, _, mut inbound_msg_rx, mut events_rx, _shutdown) =
+        spawn_messaging_protocol().await;
 
     let expected_node_id = node_id::random();
     // Create connected memory sockets - we use each end of the connection as if they exist on different nodes
@@ -154,7 +160,7 @@ async fn new_inbound_substream_handling() {
 
 #[runtime::test_basic]
 async fn send_message_request() {
-    let (_, node_identity, conn_man_mock, _, mut request_tx, _, _) = spawn_messaging_protocol().await;
+    let (_, node_identity, conn_man_mock, _, mut request_tx, _, _, _shutdown) = spawn_messaging_protocol().await;
 
     let peer_node_id = node_id::random();
 
@@ -181,7 +187,7 @@ async fn send_message_request() {
 
 #[runtime::test_basic]
 async fn send_message_dial_failed() {
-    let (_, _, conn_manager_mock, _, mut request_tx, _, mut event_tx) = spawn_messaging_protocol().await;
+    let (_, _, conn_manager_mock, _, mut request_tx, _, mut event_tx, _shutdown) = spawn_messaging_protocol().await;
 
     let node_id = node_id::random();
     let out_msg = OutboundMessage::new(node_id, MessageFlags::NONE, TEST_MSG1);
@@ -199,7 +205,7 @@ async fn send_message_dial_failed() {
 #[runtime::test_basic]
 async fn many_concurrent_send_message_requests() {
     const NUM_MSGS: usize = 100;
-    let (_, _, conn_man_mock, _, mut request_tx, _, events_rx) = spawn_messaging_protocol().await;
+    let (_, _, conn_man_mock, _, mut request_tx, _, events_rx, _shutdown) = spawn_messaging_protocol().await;
 
     let node_id1 = node_id::random();
     let node_id2 = node_id::random();
