@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use log::*;
 
-const LOG_TARGET: &str = "base_node::shutdown_state";
+const LOG_TARGET: &str = "c::bn::states::shutdown_state";
 
 pub struct Shutdown {
     reason: String,

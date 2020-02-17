@@ -58,7 +58,7 @@ use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::RequestContext;
 use tokio::runtime;
 
-const LOG_TARGET: &'static str = "tari_core::base_node::mempool::service";
+const LOG_TARGET: &'static str = "c::mempool::service::service";
 
 /// A convenience struct to hold all the Mempool service streams
 pub struct MempoolStreams<SOutReq, SInReq, SInRes, STxIn> {
@@ -302,6 +302,10 @@ where B: BlockchainBackend
                 OutboundDomainMessage::new(TariMessageType::MempoolRequest, service_request),
             )
             .await
+            .or_else(|e| {
+                error!(target: LOG_TARGET, "mempool outbound request failure. {:?}", e);
+                Err(e)
+            })
             .map_err(|e| MempoolServiceError::OutboundMessageService(e.to_string()))?;
 
         match send_result.resolve_ok().await {
@@ -381,6 +385,10 @@ where B: BlockchainBackend
                 OutboundDomainMessage::new(TariMessageType::NewTransaction, ProtoTransaction::from(tx)),
             )
             .await
+            .or_else(|e| {
+                error!(target: LOG_TARGET, "Handle outbound tx failure. {:?}", e);
+                Err(e)
+            })
             .map_err(|e| MempoolServiceError::OutboundMessageService(e.to_string()))
             .map(|_| ())
     }

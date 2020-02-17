@@ -28,8 +28,10 @@ use crate::{
     },
     transactions::transaction::Transaction,
 };
+use log::*;
 use std::sync::Arc;
 use tari_comms::types::CommsPublicKey;
+pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
 
 /// The MempoolInboundHandlers is used to handle all received inbound mempool requests and transactions from remote
 /// nodes.
@@ -51,6 +53,7 @@ where T: BlockchainBackend
     /// Handle inbound Mempool service requests from remote nodes and local services.
     pub async fn handle_request(&self, request: &MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
         // TODO: make mempool calls async
+        debug!(target: LOG_TARGET, "request received for mempool: {:?}", request);
         match request {
             MempoolRequest::GetStats => Ok(MempoolResponse::Stats(self.mempool.stats()?)),
             MempoolRequest::GetTxStateWithExcessSig(excess_sig) => Ok(MempoolResponse::TxStorage(

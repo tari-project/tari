@@ -35,7 +35,7 @@ use std::sync::{atomic::Ordering, Arc};
 use tari_broadcast_channel::Subscriber;
 use tokio::runtime;
 
-const LOG_TARGET: &str = "core::base_node";
+const LOG_TARGET: &str = "c::bn::base_node";
 
 /// Configuration for the BaseNodeStateMachine.
 #[derive(Clone, Copy)]

@@ -29,7 +29,7 @@ use crate::{
 };
 use log::*;
 
-const LOG_TARGET: &str = "base_node::block_sync";
+const LOG_TARGET: &str = "c::bn::states::block_sync";
 
 // The number of Blocks that can be requested in a single query from remote nodes.
 const BLOCK_SYNC_CHUNK_SIZE: usize = 2;
@@ -55,6 +55,10 @@ impl BlockSyncInfo {
         info!(target: LOG_TARGET, "Synchronizing missing blocks");
 
         if let Err(e) = synchronize_blocks(shared).await {
+            error!(
+                target: LOG_TARGET,
+                "Block sync state has failed with the following error {:?}.", e
+            );
             return StateEvent::FatalError(format!("Synchronizing blocks failed. {}", e));
         }
 

@@ -28,7 +28,10 @@ use crate::{
     proof_of_work::ProofOfWork,
     transactions::types::BlindingFactor,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Error, Formatter};
+use tari_crypto::tari_utilities::hex::Hex;
 
 /// The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for
 /// the block that the Base Node is able to complete on behalf of a Miner.
@@ -57,5 +60,22 @@ impl From<BlockHeader> for NewBlockHeaderTemplate {
             total_kernel_offset: header.total_kernel_offset,
             pow: header.pow,
         }
+    }
+}
+
+impl Display for NewBlockHeaderTemplate {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        let msg = format!(
+            "Version: {}\nBlock height: {}\nPrevious block hash: {}\n",
+            self.version,
+            self.height,
+            self.prev_hash.to_hex(),
+        );
+        fmt.write_str(&msg)?;
+        fmt.write_str(&format!(
+            "Total offset: {}\nProof of work: {}",
+            self.total_kernel_offset.to_hex(),
+            self.pow
+        ))
     }
 }

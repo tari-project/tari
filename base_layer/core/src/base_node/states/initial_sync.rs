@@ -39,7 +39,7 @@ use crate::base_node::states::{helpers::determine_sync_mode, listening::Listenin
 use log::*;
 use std::time::Duration;
 
-const LOG_TARGET: &str = "base_node::initial_sync";
+const LOG_TARGET: &str = "c::bn::states::initial_sync";
 // The number of times we'll request the chain metadata before giving up
 const MAX_SYNC_ATTEMPTS: usize = 8;
 
@@ -74,6 +74,7 @@ impl InitialSync {
             Ok(m) => m,
             Err(e) => {
                 let msg = format!("Could not get local blockchain metadata. {}", e.to_string());
+                error!(target: LOG_TARGET, "Could not get local blockchain metadata. {:?}", e);
                 return FatalError(msg);
             },
         };
@@ -120,13 +121,15 @@ impl InitialSync {
     fn summarize_network_data(&self, data: Vec<ChainMetadata>) -> ChainMetadata {
         // TODO: Use heuristics to weed out outliers / dishonest nodes.
         // Right now, we a simple strategy of returning the max height
-        data.into_iter().fold(ChainMetadata::default(), |best, current| {
+        let result = data.into_iter().fold(ChainMetadata::default(), |best, current| {
             if current.height_of_longest_chain.unwrap_or(0) >= best.height_of_longest_chain.unwrap_or(0) {
                 current
             } else {
                 best
             }
-        })
+        });
+        debug!("Current summarized network data is: {}", result);
+        result
     }
 
     fn log_error(&mut self, e: CommsInterfaceError) {

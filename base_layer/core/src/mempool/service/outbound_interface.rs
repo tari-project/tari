@@ -29,9 +29,11 @@ use crate::{
     transactions::{transaction::Transaction, types::Signature},
 };
 use futures::channel::mpsc::UnboundedSender;
+use log::*;
 use tari_comms::types::CommsPublicKey;
 use tari_service_framework::reply_channel::SenderService;
 use tower_service::Service;
+pub const LOG_TARGET: &str = "c::mp::service::outbound_interface";
 
 /// The OutboundMempoolServiceInterface provides an interface to request information from the Mempools of remote Base
 /// nodes.
@@ -57,6 +59,7 @@ impl OutboundMempoolServiceInterface {
     /// Request the stats from the mempool of a remote base node.
     pub async fn get_stats(&mut self) -> Result<StatsResponse, MempoolServiceError> {
         if let MempoolResponse::Stats(stats) = self.request_sender.call(MempoolRequest::GetStats).await?? {
+            trace!(target: LOG_TARGET, "Mempool stats requested: {:?}", stats,);
             Ok(stats)
         } else {
             Err(MempoolServiceError::UnexpectedApiResponse)
@@ -72,7 +75,13 @@ impl OutboundMempoolServiceInterface {
     {
         self.tx_sender
             .unbounded_send((transaction, exclude_peers))
-            .map_err(|_| MempoolServiceError::BroadcastFailed)
+            .or_else(|e| {
+                {
+                    error!(target: LOG_TARGET, "Could not broadcast transaction. {:?}", e);
+                    Err(e)
+                }
+                .map_err(|_| MempoolServiceError::BroadcastFailed)
+            })
     }
 
     /// Check if the specified transaction is stored in the mempool of a remote base node.

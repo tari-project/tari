@@ -30,7 +30,7 @@ use crate::{
 use log::*;
 use std::ops::Deref;
 
-const LOG_TARGET: &str = "base_node::starting_state";
+const LOG_TARGET: &str = "c::bn::states::starting_state";
 
 // The data structure handling Base Node Startup
 pub struct Starting;

@@ -35,9 +35,12 @@ use crate::{
     },
 };
 use futures::channel::mpsc::UnboundedSender;
+use log::*;
 use tari_comms::types::CommsPublicKey;
 use tari_service_framework::reply_channel::SenderService;
 use tower_service::Service;
+
+pub const LOG_TARGET: &str = "c::bn::comms_interface::outbound_interface";
 
 /// The OutboundNodeCommsInterface provides an interface to request information from remove nodes.
 #[derive(Clone)]
@@ -75,6 +78,7 @@ impl OutboundNodeCommsInterface {
                     responses.push(metadata);
                 }
             });
+        trace!(target: LOG_TARGET, "Remote metadata requested: {:?}", responses,);
         Ok(responses)
     }
 

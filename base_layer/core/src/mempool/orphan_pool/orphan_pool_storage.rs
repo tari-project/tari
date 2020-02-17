@@ -26,8 +26,11 @@ use crate::{
     transactions::{transaction::Transaction, types::Signature},
     validation::{ValidationError, Validator},
 };
+use log::*;
 use std::sync::Arc;
 use ttl_cache::TtlCache;
+
+pub const LOG_TARGET: &str = "c::mp::orphan_pool::orphan_pool_storage";
 
 /// OrphanPool makes use of OrphanPoolStorage to provide thread save access to its TtlCache.
 /// The Orphan Pool contains all the received transactions that attempt to spend UTXOs that don't exist. These UTXOs
@@ -56,6 +59,7 @@ where T: BlockchainBackend
     /// Insert a new transaction into the OrphanPoolStorage. Orphaned transactions will have a limited Time-to-live and
     /// will be discarded if the UTXOs they require are not created before the Time-to-live threshold is reached.
     pub fn insert(&mut self, tx: Arc<Transaction>) {
+        trace!(target: LOG_TARGET, "Adding tx to orphan pool: {:?}", tx.clone());
         let tx_key = tx.body.kernels()[0].excess_sig.clone();
         let _ = self.txs_by_signature.insert(tx_key, tx, self.config.tx_ttl);
     }
@@ -86,8 +90,22 @@ where T: BlockchainBackend
         // them selves.
         for (tx_key, tx) in self.txs_by_signature.iter() {
             match self.validator.validate(&tx) {
-                Ok(()) => removed_tx_keys.push(tx_key.clone()),
-                Err(ValidationError::MaturityError) => removed_timelocked_tx_keys.push(tx_key.clone()),
+                Ok(()) => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Removing key from orphan pool: {:?}",
+                        tx_key.clone()
+                    );
+                    removed_tx_keys.push(tx_key.clone());
+                },
+                Err(ValidationError::MaturityError) => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Removing timelocked key from orphan pool: {:?}",
+                        tx_key.clone()
+                    );
+                    removed_timelocked_tx_keys.push(tx_key.clone());
+                },
                 _ => {},
             };
         }

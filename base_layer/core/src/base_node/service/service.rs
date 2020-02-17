@@ -63,7 +63,7 @@ use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::RequestContext;
 use tokio::runtime;
 
-const LOG_TARGET: &'static str = "tari_core::base_node::base_node_service::service";
+const LOG_TARGET: &'static str = "c::bn::base_node_service::service";
 
 /// Configuration for the BaseNodeService.
 #[derive(Clone, Copy)]
@@ -444,7 +444,10 @@ where B: BlockchainBackend + 'static
                 OutboundDomainMessage::new(TariMessageType::NewBlock, ProtoBlock::from(block)),
             )
             .await
-            .map_err(|e| CommsInterfaceError::OutboundMessageService(e.to_string()))
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "Handle outbound block failed: {:?}", e);
+                CommsInterfaceError::OutboundMessageService(e.to_string())
+            })
             .map(|_| ())
     }
 
@@ -481,9 +484,15 @@ where B: BlockchainBackend + 'static
         let DomainMessage::<_> { source_peer, inner, .. } = domain_block_msg;
 
         info!("New candidate block received for height {}", inner.header.height);
-
+        let block: Block = inner.clone().into();
+        trace!(
+            target: LOG_TARGET,
+            "New block:  {}, from: {}",
+            block,
+            source_peer.public_key
+        );
         self.inbound_nch
-            .handle_block(&inner.clone().into(), Some(source_peer.public_key))
+            .handle_block(&block, Some(source_peer.public_key))
             .await?;
 
         // TODO - retain peer info for stats and potential banning for sending invalid blocks

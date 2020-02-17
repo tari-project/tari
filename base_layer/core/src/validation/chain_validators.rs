@@ -30,6 +30,8 @@ use crate::{
     transactions::types::CryptoFactories,
     validation::{error::ValidationError, traits::Validation},
 };
+use log::*;
+pub const LOG_TARGET: &str = "c::val::chain_validators";
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::hash::Hashable};
 
 /// This validator checks that the synced state satisfies *all* consensus rules and should only be performed on

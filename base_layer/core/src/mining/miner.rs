@@ -43,6 +43,7 @@ use futures::{
     pin_mut,
     StreamExt,
 };
+use log::*;
 use rand::rngs::OsRng;
 use std::{
     sync::{atomic::Ordering, Arc},
@@ -51,6 +52,8 @@ use std::{
 };
 use tari_crypto::keys::SecretKey;
 use tokio::task::spawn_blocking;
+
+pub const LOG_TARGET: &str = "c::m::miner";
 
 pub struct Miner<B: BlockchainBackend> {
     kill_flag: Arc<AtomicBool>,
@@ -111,10 +114,17 @@ impl<B: BlockchainBackend> Miner<B> {
             let result = mining_handle.await.unwrap_or(None);
             if result.is_some() {
                 block.header = result.unwrap();
-                let _ = self.send_block(block).await?;
+                let _ = self.send_block(block).await.or_else(|e| {
+                    error!(target: LOG_TARGET, "Could not send block to base node. {:?}.", e);
+                    Err(e)
+                })?;
                 let _ = self
                     .utxo_sender
                     .try_send(output)
+                    .or_else(|e| {
+                        error!(target: LOG_TARGET, "Could not send utxo to wallet. {:?}.", e);
+                        Err(e)
+                    })
                     .map_err(|e| MinerError::CommunicationError(e.to_string()))?;
             }
         }
@@ -151,6 +161,13 @@ impl<B: BlockchainBackend> Miner<B> {
             .node_interface
             .get_new_block_template()
             .await
+            .or_else(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not get a new block template from the base node. {:?}.", e
+                );
+                Err(e)
+            })
             .map_err(|e| MinerError::CommunicationError(e.to_string()))?)
     }
 
@@ -160,6 +177,13 @@ impl<B: BlockchainBackend> Miner<B> {
             .node_interface
             .get_new_block(block)
             .await
+            .or_else(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not get a new block from the base node. {:?}.", e
+                );
+                Err(e)
+            })
             .map_err(|e| MinerError::CommunicationError(e.to_string()))?)
     }
 
@@ -169,6 +193,14 @@ impl<B: BlockchainBackend> Miner<B> {
             .node_interface
             .get_target_difficulty(PowAlgorithm::Blake)
             .await
+            .or_else(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not get the required difficulty from the base node. {:?}.", e
+                );
+
+                Err(e)
+            })
             .map_err(|e| MinerError::CommunicationError(e.to_string()))?)
     }
 
@@ -200,9 +232,14 @@ impl<B: BlockchainBackend> Miner<B> {
 
     ///  function to send a block
     async fn send_block(&mut self, block: Block) -> Result<(), MinerError> {
+        trace!(target: LOG_TARGET, "Mined a block: {:?}", block);
         self.node_interface
             .submit_block(block)
             .await
+            .or_else(|e| {
+                error!(target: LOG_TARGET, "Could not send block to base node. {:?}.", e);
+                Err(e)
+            })
             .map_err(|e| MinerError::CommunicationError(e.to_string()))?;
         Ok(())
     }

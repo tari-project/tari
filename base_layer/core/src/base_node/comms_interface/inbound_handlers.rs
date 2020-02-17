@@ -40,13 +40,14 @@ use crate::{
 };
 use futures::SinkExt;
 use log::*;
+use strum_macros::Display;
 use tari_broadcast_channel::Publisher;
 use tari_comms::types::CommsPublicKey;
 
-const LOG_TARGET: &str = "base_node::comms_interface::inbound_handler";
+const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
 
 /// Events that can be published on the Validated Block Event Stream
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Display)]
 pub enum BlockEvent {
     Verified((Block, BlockAddResult)),
     Invalid((Block, ChainStorageError)),
@@ -86,6 +87,10 @@ where T: BlockchainBackend + 'static
 
     /// Handle inbound node comms requests from remote nodes and local services.
     pub async fn handle_request(&self, request: &NodeCommsRequest) -> Result<NodeCommsResponse, CommsInterfaceError> {
+        debug!(
+            target: LOG_TARGET,
+            "Node comms {:?} request received from remote peer", request
+        );
         match request {
             NodeCommsRequest::GetChainMetadata => Ok(NodeCommsResponse::ChainMetadata(
                 async_db::get_metadata(self.blockchain_db.clone()).await?,
@@ -154,6 +159,7 @@ where T: BlockchainBackend + 'static
                         .with_transactions(transactions)
                         .build(),
                 );
+                trace!(target: LOG_TARGET, "New block template requested {}", block_template);
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {
@@ -173,11 +179,22 @@ where T: BlockchainBackend + 'static
         source_peer: Option<CommsPublicKey>,
     ) -> Result<(), CommsInterfaceError>
     {
+        debug!(
+            target: LOG_TARGET,
+            "Block received from remote peer or local services: {:?}", source_peer
+        );
+        trace!(target: LOG_TARGET, "Block: {}", block);
         let add_block_result = self.blockchain_db.add_block(block.clone());
         // Create block event on block event stream
         let block_event = match add_block_result.clone() {
-            Ok(block_add_result) => BlockEvent::Verified((block.clone(), block_add_result)),
-            Err(e) => BlockEvent::Invalid((block.clone(), e)),
+            Ok(block_add_result) => {
+                debug!(target: LOG_TARGET, "Block event created: {:?}", block_add_result);
+                BlockEvent::Verified((block.clone(), block_add_result))
+            },
+            Err(e) => {
+                error!(target: LOG_TARGET, "Block validation failed: {:?}", e);
+                BlockEvent::Invalid((block.clone(), e))
+            },
         };
         self.event_publisher
             .send(block_event)

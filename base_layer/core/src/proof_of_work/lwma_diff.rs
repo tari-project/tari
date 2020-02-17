@@ -13,8 +13,10 @@ use crate::{
         error::DifficultyAdjustmentError,
     },
 };
+use log::*;
 use std::{cmp, collections::VecDeque};
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
+pub const LOG_TARGET: &str = "c::pow::lwma_diff";
 
 const INITIAL_DIFFICULTY: Difficulty = Difficulty::min();
 
@@ -85,9 +87,14 @@ impl LinearWeightedMovingAverage {
         let k = n * (n + 1) * self.target_time / 2;
         let target = ave_difficulty * k as f64 / weighted_times as f64;
         if target > std::u64::MAX as f64 {
+            error!(
+                target: LOG_TARGET,
+                "Difficulty has overflowed, current is: {:?}", target
+            );
             panic!("Difficulty target has overflowed");
         }
         let target = target.ceil() as u64; // difficulty difference of 1 should not matter much, but difficulty should never be below 1, ceil(0.9) = 1
+        trace!(target: LOG_TARGET, "New difficultly requested: {:?}", target);
         target.into()
     }
 }
@@ -99,6 +106,12 @@ impl DifficultyAdjustment for LinearWeightedMovingAverage {
         accumulated_difficulty: Difficulty,
     ) -> Result<(), DifficultyAdjustmentError>
     {
+        trace!(
+            target: LOG_TARGET,
+            "Adding new timestamp and difficulty requested: {:?}, {:?}",
+            timestamp,
+            accumulated_difficulty
+        );
         match self.accumulated_difficulties.back() {
             None => {},
             Some(v) => {

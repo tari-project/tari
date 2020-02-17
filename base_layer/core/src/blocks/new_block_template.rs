@@ -25,6 +25,7 @@ use crate::{
     transactions::aggregated_body::AggregateBody,
 };
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 
 /// The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as
 /// a final step the Base node to add the MMR roots to the header.
@@ -41,5 +42,15 @@ impl From<Block> for NewBlockTemplate {
             header: header.into(),
             body,
         }
+    }
+}
+
+impl Display for NewBlockTemplate {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        fmt.write_str("----------------- Block template-----------------\n")?;
+        fmt.write_str("--- Header ---\n")?;
+        fmt.write_str(&format!("{}\n", self.header))?;
+        fmt.write_str("---  Body  ---\n")?;
+        fmt.write_str(&format!("{}\n", self.body))
     }
 }

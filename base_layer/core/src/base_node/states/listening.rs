@@ -37,7 +37,7 @@ use log::*;
 use std::time::{Duration, Instant};
 use tokio::runtime;
 
-const LOG_TARGET: &str = "base_node::listening";
+const LOG_TARGET: &str = "c::bn::states::listening";
 
 // The max duration that the listening state will wait between metadata events before it will start asking for metadata
 // from remote nodes.

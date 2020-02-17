@@ -33,8 +33,10 @@ use crate::{
         ProofOfWork,
     },
 };
+use log::*;
 use std::collections::VecDeque;
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable};
+pub const LOG_TARGET: &str = "c::pow::diff_adj_manager::diff_adj_storage";
 
 /// The UpdateState enum is used to specify what update operation should be performed to keep the difficulty adjustment
 /// system upto date with the blockchain db.
@@ -148,6 +150,7 @@ where T: BlockchainBackend
         }
         let mut sorted_timestamps: Vec<EpochTime> = self.timestamps.clone().into();
         sorted_timestamps.sort();
+        trace!(target: LOG_TARGET, "sorted median timestamps: {:?}", sorted_timestamps);
         length = length / 2; // we want the median, should be index  (MEDIAN_TIMESTAMP_COUNT/2)
         Ok(sorted_timestamps[length])
     }

@@ -36,7 +36,10 @@ use crate::{
     transactions::{transaction::Transaction, types::Signature},
     validation::{Validation, ValidationError, Validator},
 };
+use log::*;
 use std::sync::Arc;
+
+pub const LOG_TARGET: &str = "c::mp::mempool";
 
 /// Struct containing the validators the mempool needs to run, It forces the correct amount of validators are given
 pub struct MempoolValidators<B: BlockchainBackend> {
@@ -114,6 +117,7 @@ where T: BlockchainBackend
 
     /// Update the Mempool based on the received published block.
     pub fn process_published_block(&self, published_block: &Block) -> Result<(), MempoolError> {
+        trace!(target: LOG_TARGET, "Mempool processing new block: {}", published_block);
         // Move published txs to ReOrgPool and discard double spends
         self.reorg_pool.insert_txs(
             self.unconfirmed_pool
@@ -147,6 +151,17 @@ where T: BlockchainBackend
     /// In the event of a ReOrg, resubmit all ReOrged transactions into the Mempool and process each newly introduced
     /// block from the latest longest chain.
     pub fn process_reorg(&self, removed_blocks: Vec<Block>, new_blocks: Vec<Block>) -> Result<(), MempoolError> {
+        debug!(target: LOG_TARGET, "Mempool processing reorg");
+        for block in &removed_blocks {
+            trace!(target: LOG_TARGET, "Mempool processing reorg removed block: {}", block);
+        }
+        for block in &new_blocks {
+            trace!(
+                target: LOG_TARGET,
+                "Mempool processing reorg added new block: {}",
+                block
+            );
+        }
         self.insert_txs(self.reorg_pool.scan_for_and_remove_reorged_txs(removed_blocks)?)?;
         self.process_published_blocks(&new_blocks)?;
         Ok(())
