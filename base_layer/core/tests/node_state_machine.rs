@@ -25,7 +25,11 @@ mod helpers;
 
 use helpers::{
     block_builders::{append_block, chain_block, create_genesis_block},
-    nodes::{create_network_with_2_base_nodes, create_network_with_2_base_nodes_with_config},
+    nodes::{
+        create_network_with_2_base_nodes,
+        create_network_with_2_base_nodes_with_config,
+        create_network_with_3_base_nodes_with_config,
+    },
 };
 use std::time::Duration;
 use tari_core::{
@@ -225,4 +229,62 @@ fn test_lagging_block_sync() {
 
     alice_node.comms.shutdown().unwrap();
     bob_node.comms.shutdown().unwrap();
+}
+
+#[test]
+fn test_block_sync_recovery() {
+    let mut runtime = Runtime::new().unwrap();
+    let factories = CryptoFactories::default();
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut prev_block, _) = create_genesis_block(&factories);
+    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(prev_block.clone())));
+    let (alice_node, bob_node, carol_node) = create_network_with_3_base_nodes_with_config(
+        &mut runtime,
+        BaseNodeServiceConfig::default(),
+        MmrCacheConfig::default(),
+        MempoolServiceConfig::default(),
+        LivenessConfig::default(),
+        ConsensusManager::new(None, consensus_constants),
+        temp_dir.path().to_str().unwrap(),
+    );
+    let state_machine_config = BaseNodeStateMachineConfig::default();
+    let mut alice_state_machine = BaseNodeStateMachine::new(
+        &alice_node.blockchain_db,
+        &alice_node.outbound_nci,
+        runtime.handle().clone(),
+        alice_node.chain_metadata_handle.get_event_stream(),
+        state_machine_config,
+    );
+
+    let alice_db = &alice_node.blockchain_db;
+    let bob_db = &bob_node.blockchain_db;
+    let carol_db = &carol_node.blockchain_db;
+    // Bob and Carol is ahead of Alice and Bob is ahead of Carol
+    prev_block = append_block(bob_db, &prev_block, vec![]).unwrap();
+    carol_db.add_block(prev_block.clone()).unwrap();
+    for _ in 0..2 {
+        prev_block = append_block(bob_db, &prev_block, vec![]).unwrap();
+    }
+
+    runtime.block_on(async {
+        // Sync Blocks from genesis block to tip. Alice will notice that the chain tip is equivalent to Bobs tip and
+        // start to request blocks from her random peers. When Alice requests these blocks from Carol, Carol
+        // won't always have these blocks and Alice will have to request these blocks again until her maximum attempts
+        // have been reached.
+        let state_event = BlockSyncInfo {}.next_event(&mut alice_state_machine).await;
+        assert_eq!(state_event, StateEvent::BlocksSynchronized);
+        println!("state_event={:?}", state_event);
+
+        let bob_tip_height = bob_db.get_height().unwrap().unwrap();
+        for height in 1..=bob_tip_height {
+            assert_eq!(
+                alice_db.fetch_block(height).unwrap().block(),
+                bob_db.fetch_block(height).unwrap().block()
+            );
+        }
+    });
+
+    alice_node.comms.shutdown().unwrap();
+    bob_node.comms.shutdown().unwrap();
+    carol_node.comms.shutdown().unwrap();
 }

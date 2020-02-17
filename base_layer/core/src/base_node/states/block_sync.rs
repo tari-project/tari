@@ -25,25 +25,26 @@ use crate::{
         base_node::BaseNodeStateMachine,
         states::{InitialSync, ListeningInfo, StateEvent},
     },
-    chain_storage::{BlockchainBackend, ChainMetadata},
+    chain_storage::{BlockchainBackend, ChainMetadata, ChainStorageError},
 };
 use log::*;
+use std::collections::VecDeque;
 
 const LOG_TARGET: &str = "c::bn::states::block_sync";
 
-// The number of Blocks that can be requested in a single query from remote nodes.
-const BLOCK_SYNC_CHUNK_SIZE: usize = 2;
+// The maximum number of retry attempts a node can perform to request a particular block from remote nodes.
+const MAX_BLOCK_REQUEST_RETRY_ATTEMPTS: usize = 5;
 
 /// Configuration for the Block Synchronization.
 #[derive(Clone, Copy)]
 pub struct BlockSyncConfig {
-    pub block_sync_chunk_size: usize,
+    pub max_block_request_retry_attempts: usize,
 }
 
 impl Default for BlockSyncConfig {
     fn default() -> Self {
         Self {
-            block_sync_chunk_size: BLOCK_SYNC_CHUNK_SIZE,
+            max_block_request_retry_attempts: MAX_BLOCK_REQUEST_RETRY_ATTEMPTS,
         }
     }
 }
@@ -54,16 +55,21 @@ impl BlockSyncInfo {
     pub async fn next_event<B: BlockchainBackend>(&mut self, shared: &mut BaseNodeStateMachine<B>) -> StateEvent {
         info!(target: LOG_TARGET, "Synchronizing missing blocks");
 
-        if let Err(e) = synchronize_blocks(shared).await {
-            error!(
-                target: LOG_TARGET,
-                "Block sync state has failed with the following error {:?}.", e
-            );
-            return StateEvent::FatalError(format!("Synchronizing blocks failed. {}", e));
+        match synchronize_blocks(shared).await {
+            Ok(StateEvent::BlocksSynchronized) => {
+                info!(target: LOG_TARGET, "Block sync state has synchronised");
+                StateEvent::BlocksSynchronized
+            },
+            Ok(StateEvent::MaxRequestAttemptsReached) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Maximum unsuccessful block request attempts reached"
+                );
+                StateEvent::MaxRequestAttemptsReached
+            },
+            Ok(state_event) => state_event,
+            Err(e) => StateEvent::FatalError(format!("Synchronizing blocks failed. {}", e)),
         }
-
-        info!(target: LOG_TARGET, "Block sync state has synchronised");
-        StateEvent::BlocksSynchronized
     }
 }
 
@@ -99,31 +105,42 @@ async fn network_chain_tip<B: BlockchainBackend>(shared: &mut BaseNodeStateMachi
         .unwrap_or(0))
 }
 
-async fn synchronize_blocks<B: BlockchainBackend>(shared: &mut BaseNodeStateMachine<B>) -> Result<(), String> {
+async fn synchronize_blocks<B: BlockchainBackend>(shared: &mut BaseNodeStateMachine<B>) -> Result<StateEvent, String> {
     let start_height = match shared.db.get_height().map_err(|e| e.to_string())? {
         Some(height) => height + 1,
         None => 0u64,
     };
     let network_tip_height = network_chain_tip(shared).await?;
 
-    let height_indices = (start_height..=network_tip_height).collect::<Vec<u64>>();
-    for block_nums in height_indices.chunks(shared.config.block_sync_config.block_sync_chunk_size) {
-        debug!(
-            target: LOG_TARGET,
-            "Requesting blocks {}..{} from peers",
-            block_nums[0],
-            block_nums[block_nums.len() - 1]
-        );
-        let hist_blocks = shared
-            .comms
-            .fetch_blocks(block_nums.to_vec())
-            .await
-            .map_err(|e| e.to_string())?;
-        debug!(target: LOG_TARGET, "Received {} blocks from peer", hist_blocks.len());
-        for hist_block in hist_blocks {
-            shared.db.add_block(hist_block.block).map_err(|e| e.to_string())?;
+    let mut attempts = 0;
+    let mut height_indices = (start_height..=network_tip_height).collect::<VecDeque<u64>>();
+    while !height_indices.is_empty() {
+        if let Some(block_num) = height_indices.pop_front() {
+            debug!(target: LOG_TARGET, "Requesting block {} from peers", block_num,);
+
+            // Request the block from a random peer node and add to chain.
+            if let Ok(hist_block) = shared.comms.fetch_blocks(vec![block_num]).await {
+                debug!(target: LOG_TARGET, "Received {} blocks from peer", hist_block.len());
+                if let Some(hist_block) = hist_block.first() {
+                    match shared.db.add_block(hist_block.block.clone()) {
+                        Ok(_) => {
+                            attempts = 0;
+                            continue;
+                        },
+                        Err(ChainStorageError::InvalidBlock) => {}, // Retry
+                        Err(ChainStorageError::ValidationError(_)) => {}, // Retry
+                        Err(e) => return Err(e.to_string()),
+                    }
+                }
+            }
+            // Attempt again to retrieve the correct block
+            attempts += 1;
+            if attempts >= shared.config.block_sync_config.max_block_request_retry_attempts {
+                return Ok(StateEvent::MaxRequestAttemptsReached);
+            }
+            height_indices.push_front(block_num);
         }
     }
 
-    Ok(())
+    Ok(StateEvent::BlocksSynchronized)
 }
