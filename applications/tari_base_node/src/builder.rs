@@ -231,11 +231,11 @@ pub fn configure_and_initialize_node(
         DatabaseType::Memory => {
             let rules = ConsensusManager::default();
             let backend = MemoryDatabase::<HashDigest>::default();
-            let mut db = BlockchainDatabase::new(backend).map_err(|e| e.to_string())?;
+            let mut db = BlockchainDatabase::new(backend, &rules).map_err(|e| e.to_string())?;
             let validators = Validators::new(
                 FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
                 StatelessValidator::new(),
-                GenesisBlockValidator::new(),
+                GenesisBlockValidator::new(rules.clone()),
                 ChainTipValidator::new(rules.clone(), factories.clone(), db.clone()),
             );
             db.set_validators(validators);
@@ -291,11 +291,11 @@ pub fn configure_and_initialize_node(
         DatabaseType::LMDB(p) => {
             let rules = ConsensusManager::default();
             let backend = create_lmdb_database(&p, MmrCacheConfig::default()).map_err(|e| e.to_string())?;
-            let mut db = BlockchainDatabase::new(backend).map_err(|e| e.to_string())?;
+            let mut db = BlockchainDatabase::new(backend, &rules).map_err(|e| e.to_string())?;
             let validators = Validators::new(
                 FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
                 StatelessValidator::new(),
-                GenesisBlockValidator::new(),
+                GenesisBlockValidator::new(rules.clone()),
                 ChainTipValidator::new(rules.clone(), factories.clone(), db.clone()),
             );
             db.set_validators(validators);

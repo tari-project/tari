@@ -36,8 +36,21 @@ use crate::transactions::{
 use tari_crypto::tari_utilities::{hash::Hashable, hex::*};
 
 // TODO: see issue #1145
-// The values contain in this block is temporary. They should be replaced by the actual values before test net.
-pub fn get_genesis_block() -> Block {
+// The values contain in these blocks are temporary. They should be replaced by the actual values before test net.
+
+pub fn get_mainnet_genesis_block() -> Block {
+    unimplemented!()
+}
+
+pub fn get_mainnet_block_hash() -> Vec<u8> {
+    get_mainnet_genesis_block().hash()
+}
+
+pub fn get_mainnet_gen_header() -> BlockHeader {
+    get_mainnet_genesis_block().header
+}
+
+pub fn get_rincewind_genesis_block() -> Block {
     let sig = Signature::new(
         PublicKey::from_hex("82f5e603783cfe8b7d50ec1fefb7841398bffcadcb6102dae1f83b533f0aec41").unwrap(),
         PrivateKey::from_hex("05af349cb5618e636021ca66a3fd21067b6f9b159b75b7783985a534726fe509").unwrap(),
@@ -96,10 +109,10 @@ pub fn get_genesis_block() -> Block {
     }
 }
 
-pub fn get_gen_block_hash() -> Vec<u8> {
-    get_genesis_block().hash()
+pub fn get_rincewind_block_hash() -> Vec<u8> {
+    get_rincewind_genesis_block().hash()
 }
 
-pub fn get_gen_header() -> BlockHeader {
-    get_genesis_block().header
+pub fn get_rincewind_gen_header() -> BlockHeader {
+    get_rincewind_genesis_block().header
 }

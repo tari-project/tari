@@ -28,7 +28,6 @@ use crate::{
     proof_of_work::ProofOfWork,
     transactions::types::BlindingFactor,
 };
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use tari_crypto::tari_utilities::hex::Hex;

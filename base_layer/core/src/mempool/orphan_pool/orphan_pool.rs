@@ -152,6 +152,7 @@ where T: BlockchainBackend
 #[cfg(test)]
 mod test {
     use crate::{
+        consensus::Network,
         helpers::create_mem_db,
         mempool::orphan_pool::{OrphanPool, OrphanPoolConfig},
         transactions::tari_amount::MicroTari,
@@ -169,7 +170,7 @@ mod test {
         let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(500), lock: 2000, inputs: 2, outputs: 1).0);
         let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(600), lock: 5500, inputs: 2, outputs: 1).0);
 
-        let store = create_mem_db();
+        let store = create_mem_db(Network::Rincewind);
         let mempool_validator = Box::new(TxInputAndMaturityValidator::new(store.clone()));
         let orphan_pool = OrphanPool::new(
             OrphanPoolConfig {

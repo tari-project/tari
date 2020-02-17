@@ -53,7 +53,6 @@ use digest::Digest;
 use lmdb_zero::{Database, Environment, WriteTransaction};
 use log::*;
 use std::{
-    fmt::Debug,
     path::Path,
     sync::{Arc, RwLock},
 };

@@ -28,6 +28,7 @@ use crate::{
         ChainMetadata,
         HistoricalBlock,
     },
+    consensus::ConsensusManager,
     proof_of_work::Difficulty,
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
@@ -210,6 +211,7 @@ macro_rules! fetch {
 /// ```
 /// use tari_core::{
 ///     chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
+///     consensus::ConsensusManager,
 ///     transactions::types::HashDigest,
 ///     validation::{mocks::MockValidator, Validation},
 /// };
@@ -221,7 +223,8 @@ macro_rules! fetch {
 ///     MockValidator::new(true),
 /// );
 /// let db = MemoryDatabase::<HashDigest>::default();
-/// let mut db = BlockchainDatabase::new(db_backend).unwrap();
+/// let rules = ConsensusManager::default();
+/// let mut db = BlockchainDatabase::new(db_backend, &rules).unwrap();
 /// db.set_validators(validators);
 /// // Do stuff with db
 /// ```
@@ -237,13 +240,20 @@ impl<T> BlockchainDatabase<T>
 where T: BlockchainBackend
 {
     /// Creates a new `BlockchainDatabase` using the provided backend.
-    pub fn new(db: T) -> Result<Self, ChainStorageError> {
+    pub fn new(db: T, consensus_manager: &ConsensusManager<T>) -> Result<Self, ChainStorageError> {
         let metadata = Self::read_metadata(&db)?;
-        Ok(BlockchainDatabase {
+        let blockchain_db = BlockchainDatabase {
             metadata: Arc::new(RwLock::new(metadata)),
             db: Arc::new(db),
             validators: None,
-        })
+        };
+        if let None = blockchain_db.get_height()? {
+            let genesis_block = consensus_manager.get_genesis_block();
+            let genesis_block_hash = genesis_block.hash();
+            blockchain_db.store_new_block(genesis_block)?;
+            blockchain_db.update_metadata(0, genesis_block_hash)?;
+        }
+        Ok(blockchain_db)
     }
 
     pub fn set_validators(&mut self, validators: Validators<T>) {

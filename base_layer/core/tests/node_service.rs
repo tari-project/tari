@@ -35,6 +35,7 @@ use helpers::{
     nodes::{
         create_network_with_2_base_nodes_with_config,
         create_network_with_3_base_nodes,
+        create_network_with_3_base_nodes_with_config,
         random_node_identity,
         BaseNodeBuilder,
     },
@@ -48,7 +49,7 @@ use tari_core::{
     },
     blocks::BlockHeader,
     chain_storage::{BlockAddResult, DbTransaction},
-    consensus::ConsensusConstants,
+    consensus::{ConsensusConstants, ConsensusManager, Network},
     mempool::MempoolServiceConfig,
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
@@ -70,21 +71,23 @@ fn request_response_get_metadata() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut alice_node, bob_node, carol_node) =
-        create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
-    let (block0, _) = create_genesis_block(&bob_node.blockchain_db, &factories);
-    bob_node.blockchain_db.add_block(block0).unwrap();
+    let (block0, _) = create_genesis_block(&factories);
+    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(block0.clone())));
+    let (mut alice_node, bob_node, carol_node) = create_network_with_3_base_nodes_with_config(
+        &mut runtime,
+        BaseNodeServiceConfig::default(),
+        MmrCacheConfig { rewind_hist_len: 10 },
+        MempoolServiceConfig::default(),
+        LivenessConfig::default(),
+        ConsensusManager::new(None, consensus_constants),
+        temp_dir.path().to_str().unwrap(),
+    );
+
     runtime.block_on(async {
         let received_metadata = alice_node.outbound_nci.get_metadata().await.unwrap();
         assert_eq!(received_metadata.len(), 2);
-        assert!(
-            (received_metadata[0].height_of_longest_chain == None) ||
-                (received_metadata[1].height_of_longest_chain == None)
-        );
-        assert!(
-            (received_metadata[0].height_of_longest_chain == Some(0)) ||
-                (received_metadata[1].height_of_longest_chain == Some(0))
-        );
+        assert_eq!(received_metadata[0].height_of_longest_chain, Some(0));
+        assert_eq!(received_metadata[1].height_of_longest_chain, Some(0));
     });
 
     alice_node.comms.shutdown().unwrap();
@@ -218,19 +221,26 @@ fn request_and_response_fetch_utxos() {
 #[test]
 fn request_and_response_fetch_blocks() {
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut alice_node, mut bob_node, carol_node) =
-        create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
     let factories = CryptoFactories::default();
-    let db = &mut bob_node.blockchain_db;
-    let (block0, _) = create_genesis_block(db, &factories);
-    db.add_block(block0.clone()).expect("Could not add Genesis block");
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (block0, _) = create_genesis_block(&factories);
+    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(block0.clone())));
+    let (mut alice_node, mut bob_node, carol_node) = create_network_with_3_base_nodes_with_config(
+        &mut runtime,
+        BaseNodeServiceConfig::default(),
+        MmrCacheConfig { rewind_hist_len: 10 },
+        MempoolServiceConfig::default(),
+        LivenessConfig::default(),
+        ConsensusManager::new(None, consensus_constants),
+        temp_dir.path().to_str().unwrap(),
+    );
+
     let mut blocks = vec![block0];
+    let db = &mut bob_node.blockchain_db;
     generate_block(db, &mut blocks, vec![]).unwrap();
     generate_block(db, &mut blocks, vec![]).unwrap();
     generate_block(db, &mut blocks, vec![]).unwrap();
 
-    carol_node.blockchain_db.add_block(blocks[0].clone()).unwrap();
     carol_node.blockchain_db.add_block(blocks[1].clone()).unwrap();
     carol_node.blockchain_db.add_block(blocks[2].clone()).unwrap();
 
@@ -278,9 +288,13 @@ fn propagate_and_forward_valid_block() {
     let bob_node_identity = random_node_identity();
     let carol_node_identity = random_node_identity();
     let dan_node_identity = random_node_identity();
+    let (block0, _) = create_genesis_block(&factories);
+    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(block0.clone())));
+    let rules = ConsensusManager::new(None, consensus_constants);
     let mut alice_node = BaseNodeBuilder::new()
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone()])
+        .with_consensus_manager(rules.clone())
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
     let bob_node = BaseNodeBuilder::new()
         .with_node_identity(bob_node_identity.clone())
@@ -289,25 +303,21 @@ fn propagate_and_forward_valid_block() {
             carol_node_identity.clone(),
             dan_node_identity.clone(),
         ])
+        .with_consensus_manager(rules.clone())
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
     let carol_node = BaseNodeBuilder::new()
         .with_node_identity(carol_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone(), dan_node_identity.clone()])
+        .with_consensus_manager(rules.clone())
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
     let dan_node = BaseNodeBuilder::new()
         .with_node_identity(dan_node_identity)
         .with_peers(vec![bob_node_identity, carol_node_identity])
+        .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
 
-    let db = &alice_node.blockchain_db;
-    let (block0, _) = create_genesis_block(db, &factories);
-    db.add_block(block0.clone()).unwrap();
-    let block1 = append_block(db, &block0, vec![]).unwrap();
+    let block1 = append_block(&alice_node.blockchain_db, &block0, vec![]).unwrap();
     let block1_hash = block1.hash();
-
-    bob_node.blockchain_db.add_block(block0.clone()).unwrap();
-    carol_node.blockchain_db.add_block(block0.clone()).unwrap();
-    dan_node.blockchain_db.add_block(block0.clone()).unwrap();
 
     runtime.block_on(async {
         // Alice will start the propagation. Bob, Carol and Dan will propagate based on the logic in their inbound
@@ -366,32 +376,32 @@ fn propagate_and_forward_invalid_block() {
     let bob_node_identity = random_node_identity();
     let carol_node_identity = random_node_identity();
     let dan_node_identity = random_node_identity();
+    let (block0, _) = create_genesis_block(&factories);
+    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(block0.clone())));
+    let rules = ConsensusManager::new(None, consensus_constants);
     let mut alice_node = BaseNodeBuilder::new()
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone(), carol_node_identity.clone()])
+        .with_consensus_manager(rules.clone())
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
     let bob_node = BaseNodeBuilder::new()
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![alice_node_identity.clone(), dan_node_identity.clone()])
+        .with_consensus_manager(rules.clone())
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
     let carol_node = BaseNodeBuilder::new()
         .with_node_identity(carol_node_identity.clone())
         .with_peers(vec![alice_node_identity, dan_node_identity.clone()])
+        .with_consensus_manager(rules.clone())
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
     let dan_node = BaseNodeBuilder::new()
         .with_node_identity(dan_node_identity)
         .with_peers(vec![bob_node_identity, carol_node_identity])
+        .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
 
-    let db = &alice_node.blockchain_db;
-    let (block0, _) = create_genesis_block(db, &factories);
-    db.add_block(block0.clone()).unwrap();
-    let mut block1 = append_block(db, &block0, vec![]).unwrap();
-
-    bob_node.blockchain_db.add_block(block0.clone()).unwrap();
-    carol_node.blockchain_db.add_block(block0.clone()).unwrap();
-
     // Make block 1 invalid
+    let mut block1 = append_block(&alice_node.blockchain_db, &block0, vec![]).unwrap();
     block1.header.height = 0;
     let block1_hash = block1.hash();
     runtime.block_on(async {
@@ -442,6 +452,7 @@ fn service_request_timeout() {
         MmrCacheConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
+        ConsensusManager::default(),
         temp_dir.path().to_str().unwrap(),
     );
 
@@ -460,11 +471,9 @@ fn service_request_timeout() {
 fn local_get_metadata() {
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let factories = CryptoFactories::default();
     let mut node = BaseNodeBuilder::new().start(&mut runtime, temp_dir.path().to_str().unwrap());
     let db = &node.blockchain_db;
-    let (block0, _) = create_genesis_block(db, &factories);
-    db.add_block(block0.clone()).unwrap();
+    let block0 = db.fetch_block(0).unwrap().block().clone();
     let block1 = append_block(db, &block0, vec![]).unwrap();
     let block2 = append_block(db, &block1, vec![]).unwrap();
 
@@ -482,12 +491,13 @@ fn local_get_new_block_template_and_get_new_block() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let mut node = BaseNodeBuilder::new().start(&mut runtime, temp_dir.path().to_str().unwrap());
+    let (block0, outputs) = create_genesis_block_with_utxos(&factories, &[T, T]);
+    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(block0)));
+    let rules = ConsensusManager::new(None, consensus_constants);
+    let mut node = BaseNodeBuilder::new()
+        .with_consensus_manager(rules)
+        .start(&mut runtime, temp_dir.path().to_str().unwrap());
 
-    let db = &node.blockchain_db;
-    let (block0, outputs) = create_genesis_block_with_utxos(db, &factories, &[T, T]);
-    // Override coinbase maturity. This only works here because we're using mock validators
-    db.add_block(block0.clone()).unwrap();
     let schema = [
         txn_schema!(from: vec![outputs[1].clone()], to: vec![10_000 * uT, 20_000 * uT]),
         txn_schema!(from: vec![outputs[2].clone()], to: vec![30_000 * uT, 40_000 * uT]),
@@ -516,12 +526,10 @@ fn local_get_new_block_template_and_get_new_block() {
 fn local_get_target_difficulty() {
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let factories = CryptoFactories::default();
     let mut node = BaseNodeBuilder::new().start(&mut runtime, temp_dir.path().to_str().unwrap());
 
     let db = &node.blockchain_db;
-    let (block0, _) = create_genesis_block(db, &factories);
-    db.add_block(block0.clone()).unwrap();
+    let block0 = db.fetch_block(0).unwrap().block().clone();
     assert_eq!(node.blockchain_db.get_height(), Ok(Some(0)));
 
     runtime.block_on(async {
@@ -561,12 +569,10 @@ fn local_get_target_difficulty() {
 fn local_submit_block() {
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let factories = CryptoFactories::default();
     let mut node = BaseNodeBuilder::new().start(&mut runtime, temp_dir.path().to_str().unwrap());
 
     let db = &node.blockchain_db;
-    let (block0, _) = create_genesis_block(db, &factories);
-    db.add_block(block0.clone()).unwrap();
+    let block0 = db.fetch_block(0).unwrap().block().clone();
     let block1 = db.calculate_mmr_roots(chain_block(&block0, vec![])).unwrap();
     runtime.block_on(async {
         assert!(node.local_nci.submit_block(block1.clone()).await.is_ok());

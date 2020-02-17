@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::consensus::{emission::EmissionSchedule, network::Network};
 use chrono::{DateTime, Duration, Utc};
 use std::ops::Add;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
@@ -33,16 +34,20 @@ pub struct ConsensusConstants {
     /// The Future Time Limit (FTL) of the blockchain in seconds. This is the max allowable timestamp that is excepted.
     /// We use TxN/20 where T = target time = 60 seconds, and N = block_window = 150
     future_time_limit: u64,
-    // This is the our target time in seconds between blocks
+    /// This is the our target time in seconds between blocks
     target_block_interval: u64,
-    // When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at
+    /// When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at
     difficulty_block_window: u64,
-    // Maximum transaction weight used for the construction of new blocks.
+    /// Maximum transaction weight used for the construction of new blocks.
     max_block_transaction_weight: u64,
-    // The amount of PoW algorithms used by the Tari chain.
+    /// The amount of PoW algorithms used by the Tari chain.
     pow_algo_count: u64,
-    // This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward
+    /// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward
     median_timestamp_count: usize,
+    /// The configured chain network.
+    network: Network,
+    /// The configuration for the emission schedule.
+    emission: EmissionSchedule,
 }
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
 // algorithm count
@@ -52,12 +57,19 @@ impl ConsensusConstants {
         ConsensusConstants::default()
     }
 
-    /// The min height maturity a coinbase utxo must have
+    /// Use the the current consensus constants with a configurable chain network.
+    pub fn current_with_network(network: Network) -> Self {
+        let mut consensus_constants = ConsensusConstants::current();
+        consensus_constants.network = network;
+        consensus_constants
+    }
+
+    /// The min height maturity a coinbase utxo must have.
     pub fn coinbase_lock_height(&self) -> u64 {
         self.coinbase_lock_height
     }
 
-    /// Current version of the blockchain
+    /// Current version of the blockchain.
     pub fn blockchain_version(&self) -> u16 {
         self.blockchain_version
     }
@@ -78,12 +90,12 @@ impl ConsensusConstants {
         Utc::now().add(Duration::seconds(self.future_time_limit as i64))
     }
 
-    /// This is the our target time in seconds between blocks
+    /// This is the our target time in seconds between blocks.
     pub fn get_target_block_interval(&self) -> u64 {
         self.target_block_interval
     }
 
-    /// When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at
+    /// When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at.
     pub fn get_difficulty_block_window(&self) -> u64 {
         self.difficulty_block_window
     }
@@ -99,14 +111,24 @@ impl ConsensusConstants {
     }
 
     /// The target time used by the difficulty adjustment algorithms, their target time is the target block interval *
-    /// PoW algorithm count
+    /// PoW algorithm count.
     pub fn get_diff_target_block_interval(&self) -> u64 {
         self.pow_algo_count * self.target_block_interval
     }
 
-    /// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward
+    /// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward.
     pub fn get_median_timestamp_count(&self) -> usize {
         self.median_timestamp_count
+    }
+
+    /// This is the currently configured chain network.
+    pub fn network(&self) -> &Network {
+        &self.network
+    }
+
+    /// This is the currently configured emission schedule used for coinbase rewards.
+    pub fn emission_schedule(&self) -> &EmissionSchedule {
+        &self.emission
     }
 }
 
@@ -123,6 +145,8 @@ impl Default for ConsensusConstants {
             max_block_transaction_weight: 10000, // TODO: a better weight estimate should be selected
             pow_algo_count: 2,
             median_timestamp_count: 11,
+            network: Network::Rincewind,
+            emission: EmissionSchedule::new(10_000_000.into(), 0.999, 100.into()),
         }
     }
 }
