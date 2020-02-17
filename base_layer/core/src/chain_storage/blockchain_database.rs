@@ -75,23 +75,13 @@ pub struct MutableMmrState {
 pub struct Validators<B: BlockchainBackend> {
     block: Arc<Validator<Block, B>>,
     orphan: Arc<Validator<Block, B>>,
-    genesis_block: Arc<Validator<BlockHeader, B>>,
-    chain_tip: Arc<Validator<BlockHeader, B>>,
 }
 
 impl<B: BlockchainBackend> Validators<B> {
-    pub fn new(
-        block: impl Validation<Block, B> + 'static,
-        orphan: impl Validation<Block, B> + 'static,
-        genesis_block: impl Validation<BlockHeader, B> + 'static,
-        chain_tip: impl Validation<BlockHeader, B> + 'static,
-    ) -> Self
-    {
+    pub fn new(block: impl Validation<Block, B> + 'static, orphan: impl Validation<Block, B> + 'static) -> Self {
         Self {
             block: Arc::new(Box::new(block)),
             orphan: Arc::new(Box::new(orphan)),
-            genesis_block: Arc::new(Box::new(genesis_block)),
-            chain_tip: Arc::new(Box::new(chain_tip)),
         }
     }
 }
@@ -101,8 +91,6 @@ impl<B: BlockchainBackend> Clone for Validators<B> {
         Validators {
             block: Arc::clone(&self.block),
             orphan: Arc::clone(&self.orphan),
-            genesis_block: Arc::clone(&self.genesis_block),
-            chain_tip: Arc::clone(&self.chain_tip),
         }
     }
 }
@@ -216,12 +204,7 @@ macro_rules! fetch {
 ///     validation::{mocks::MockValidator, Validation},
 /// };
 /// let db_backend = MemoryDatabase::<HashDigest>::default();
-/// let validators = Validators::new(
-///     MockValidator::new(true),
-///     MockValidator::new(true),
-///     MockValidator::new(true),
-///     MockValidator::new(true),
-/// );
+/// let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
 /// let db = MemoryDatabase::<HashDigest>::default();
 /// let rules = ConsensusManager::default();
 /// let mut db = BlockchainDatabase::new(db_backend, &rules).unwrap();

@@ -64,7 +64,6 @@ use tari_core::{
     },
     validation::{
         block_validators::{FullConsensusValidator, StatelessValidator},
-        chain_validators::{ChainTipValidator, GenesisBlockValidator},
         transaction_validators::{FullTxValidator, TxInputAndMaturityValidator},
     },
 };
@@ -235,8 +234,6 @@ pub fn configure_and_initialize_node(
             let validators = Validators::new(
                 FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
                 StatelessValidator::new(),
-                GenesisBlockValidator::new(rules.clone()),
-                ChainTipValidator::new(rules.clone(), factories.clone(), db.clone()),
             );
             db.set_validators(validators);
             let mempool_validator = MempoolValidators::new(
@@ -295,8 +292,6 @@ pub fn configure_and_initialize_node(
             let validators = Validators::new(
                 FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
                 StatelessValidator::new(),
-                GenesisBlockValidator::new(rules.clone()),
-                ChainTipValidator::new(rules.clone(), factories.clone(), db.clone()),
             );
             db.set_validators(validators);
             let mempool_validator = MempoolValidators::new(

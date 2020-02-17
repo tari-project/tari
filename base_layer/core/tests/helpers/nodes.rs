@@ -36,7 +36,7 @@ use tari_core::{
         LocalNodeCommsInterface,
         OutboundNodeCommsInterface,
     },
-    blocks::{Block, BlockHeader},
+    blocks::Block,
     chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
     consensus::ConsensusManager,
     mempool::{
@@ -153,11 +153,9 @@ impl BaseNodeBuilder {
         mut self,
         block: impl Validation<Block, MemoryDatabase<HashDigest>> + 'static,
         orphan: impl Validation<Block, MemoryDatabase<HashDigest>> + 'static,
-        chain_gb: impl Validation<BlockHeader, MemoryDatabase<HashDigest>> + 'static,
-        chain_tip: impl Validation<BlockHeader, MemoryDatabase<HashDigest>> + 'static,
     ) -> Self
     {
-        let validators = Validators::new(block, orphan, chain_gb, chain_tip);
+        let validators = Validators::new(block, orphan);
         self.validators = Some(validators);
         self
     }
@@ -171,13 +169,9 @@ impl BaseNodeBuilder {
     /// Build the test base node and start its services.
     pub fn start(self, runtime: &mut Runtime, data_path: &str) -> NodeInterfaces {
         let mmr_cache_config = self.mmr_cache_config.unwrap_or(MmrCacheConfig { rewind_hist_len: 10 });
-        let validators = self.validators.unwrap_or(Validators::new(
-            MockValidator::new(true),
-            MockValidator::new(true),
-            MockValidator::new(true),
-            MockValidator::new(true),
-        ));
-
+        let validators = self
+            .validators
+            .unwrap_or(Validators::new(MockValidator::new(true), MockValidator::new(true)));
         let consensus_manager = self.consensus_manager.unwrap_or(ConsensusManager::default());
         let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
         let mut blockchain_db = BlockchainDatabase::new(db, &consensus_manager).unwrap();
