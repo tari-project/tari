@@ -28,7 +28,7 @@ use std::{
 };
 use tari_comms::{peer_manager::Peer, types::CommsPublicKey};
 
-const LOG_TARGET: &'static str = "wallet::database";
+const LOG_TARGET: &str = "wallet::database";
 
 /// This trait defines the functionality that a database backend need to provide for the Contacts Service
 pub trait WalletBackend: Send + Sync {
@@ -132,7 +132,7 @@ where T: WalletBackend + 'static
         tokio::task::spawn_blocking(move || {
             match db_clone
                 .write(WriteOperation::Remove(DbKey::Peer(pub_key.clone())))?
-                .ok_or(WalletStorageError::ValueNotFound(DbKey::Peer(pub_key.clone())))?
+                .ok_or_else(|| WalletStorageError::ValueNotFound(DbKey::Peer(pub_key.clone())))?
             {
                 DbValue::Peer(c) => Ok(*c),
                 DbValue::Peers(_) => Err(WalletStorageError::UnexpectedResult(
@@ -156,7 +156,7 @@ impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
             DbKey::Peer(c) => f.write_str(&format!("Peer: {:?}", c)),
-            DbKey::Peers => f.write_str(&format!("Peers")),
+            DbKey::Peers => f.write_str(&"Peers".to_string()),
         }
     }
 }
@@ -164,8 +164,8 @@ impl Display for DbKey {
 impl Display for DbValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbValue::Peer(_) => f.write_str(&format!("Peer")),
-            DbValue::Peers(_) => f.write_str(&format!("Peers")),
+            DbValue::Peer(_) => f.write_str(&"Peer".to_string()),
+            DbValue::Peers(_) => f.write_str(&"Peers".to_string()),
         }
     }
 }

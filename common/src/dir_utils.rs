@@ -24,7 +24,7 @@ use std::{io::ErrorKind, path::PathBuf};
 
 /// Create the default data directory (`~/.tari` on OSx and Linux, for example) if it doesn't already exist
 pub fn create_data_directory() -> Result<(), std::io::Error> {
-    let mut home = dirs::home_dir().ok_or(std::io::Error::from(ErrorKind::NotFound))?;
+    let mut home = dirs::home_dir().ok_or_else(|| std::io::Error::from(ErrorKind::NotFound))?;
     home.push(".tari");
     if !home.exists() {
         std::fs::create_dir(home)
@@ -46,7 +46,7 @@ pub fn default_subdir(path: &str) -> String {
 }
 
 pub fn default_path(filename: &str) -> PathBuf {
-    let mut home = dirs::home_dir().unwrap_or(PathBuf::from("."));
+    let mut home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
     home.push(".tari");
     home.push(filename);
     home

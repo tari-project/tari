@@ -277,7 +277,7 @@ pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_ui
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0 as c_uchar;
     }
-    (*ptr).0[position as usize].clone()
+    (*ptr).0[position as usize]
 }
 
 /// Gets the number of elements in a ByteVector
@@ -299,7 +299,7 @@ pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector, error_ou
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (&*vec).0.len() as c_uint
+    (*vec).0.len() as c_uint
 }
 
 /// -------------------------------------------------------------------------------------------- ///
@@ -659,7 +659,7 @@ pub unsafe extern "C" fn contact_create(
     }
 
     let contact = Contact {
-        alias: alias_string.to_string(),
+        alias: alias_string,
         public_key: (*public_key).clone(),
     };
     Box::into_raw(Box::new(contact))
@@ -1713,13 +1713,13 @@ pub unsafe extern "C" fn comms_config_create(
             Err(e) => {
                 error = LibWalletError::from(e).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
+                ptr::null_mut()
             },
         },
         Err(e) => {
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            return ptr::null_mut();
+            ptr::null_mut()
         },
     }
 }
@@ -1794,14 +1794,13 @@ pub unsafe extern "C" fn wallet_create(
                 "{}/{}.sqlite3",
                 (*config).datastore_path.clone(),
                 (*config).peer_database_name.clone()
-            )
-            .to_string();
-            let connection_pool = run_migration_and_create_connection_pool(sql_database_path.clone())
+            );
+            let connection_pool = run_migration_and_create_connection_pool(sql_database_path)
                 .expect("Could not create Sqlite Connection Pool");
             let wallet_backend = WalletSqliteDatabase::new(connection_pool.clone());
             let transaction_backend = TransactionServiceSqliteDatabase::new(connection_pool.clone());
             let output_manager_backend = OutputManagerSqliteDatabase::new(connection_pool.clone());
-            let contacts_backend = ContactsServiceSqliteDatabase::new(connection_pool.clone());
+            let contacts_backend = ContactsServiceSqliteDatabase::new(connection_pool);
 
             w = TariWallet::new(
                 WalletConfig {
@@ -1820,7 +1819,7 @@ pub unsafe extern "C" fn wallet_create(
                 Ok(w) => {
                     // Start Callback Handler
                     let callback_handler = CallbackHandler::new(
-                        TransactionDatabase::new(transaction_backend.clone()),
+                        TransactionDatabase::new(transaction_backend),
                         w.transaction_service.get_event_stream_fused(),
                         w.comms.shutdown_signal(),
                         callback_received_transaction,
@@ -2092,7 +2091,7 @@ pub unsafe extern "C" fn wallet_test_complete_sent_transaction(
         ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
-    match complete_sent_transaction(&mut *wallet, (*tx).tx_id.clone()) {
+    match complete_sent_transaction(&mut *wallet, (*tx).tx_id) {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -2136,7 +2135,7 @@ pub unsafe extern "C" fn wallet_is_completed_transaction_outbound(
         return true;
     }
 
-    return false;
+    false
 }
 
 /// This function will simulate the process when a completed transaction is broadcast to
@@ -2165,7 +2164,7 @@ pub unsafe extern "C" fn wallet_test_finalize_received_transaction(
         return false;
     }
 
-    match finalize_received_transaction(&mut *wallet, (*tx).tx_id.clone()) {
+    match finalize_received_transaction(&mut *wallet, (*tx).tx_id) {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -2207,7 +2206,7 @@ pub unsafe extern "C" fn wallet_test_broadcast_transaction(
         return false;
     }
 
-    match broadcast_transaction(&mut *wallet, (*tx).tx_id.clone()) {
+    match broadcast_transaction(&mut *wallet, (*tx).tx_id) {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -2248,7 +2247,7 @@ pub unsafe extern "C" fn wallet_test_mine_transaction(
         ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
-    match mine_transaction(&mut *wallet, (*tx).tx_id.clone()) {
+    match mine_transaction(&mut *wallet, (*tx).tx_id) {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -2588,8 +2587,8 @@ pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TariWallet, error_out:
 
     let retrieved_contacts = (*wallet).runtime.block_on((*wallet).contacts_service.get_contacts());
     match retrieved_contacts {
-        Ok(retrieved_contacts) => {
-            contacts.append(&mut retrieved_contacts.clone());
+        Ok(mut retrieved_contacts) => {
+            contacts.append(&mut retrieved_contacts);
             Box::into_raw(Box::new(TariContacts(contacts)))
         },
         Err(e) => {
@@ -2815,7 +2814,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
                     return Box::into_raw(Box::new(pending));
                 }
             }
-            return ptr::null_mut();
+            ptr::null_mut()
         },
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
@@ -2863,7 +2862,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
                     return Box::into_raw(Box::new(pending));
                 }
             }
-            return ptr::null_mut();
+            ptr::null_mut()
         },
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
@@ -2950,7 +2949,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
     }
 
     match (*wallet).import_utxo(
-        &MicroTari::from(amount),
+        MicroTari::from(amount),
         &(*spending_key).clone(),
         &(*source_public_key).clone(),
         message_string,
@@ -3005,11 +3004,7 @@ pub unsafe extern "C" fn wallet_sync_with_base_node(wallet: *mut TariWallet, err
 pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
     if !wallet.is_null() {
         let m = Box::from_raw(wallet);
-        let l = m.shutdown();
-        match l {
-            Ok(_l) => {},
-            Err(_) => {},
-        }
+        let _ = m.shutdown();
     }
 }
 

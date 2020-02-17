@@ -49,6 +49,12 @@ impl WalletMemoryDatabase {
     }
 }
 
+impl Default for WalletMemoryDatabase {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WalletBackend for WalletMemoryDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, WalletStorageError> {
         let db = acquire_read_lock!(self.db);

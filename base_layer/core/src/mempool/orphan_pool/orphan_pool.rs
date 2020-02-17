@@ -74,21 +74,21 @@ where T: BlockchainBackend
     /// Insert a new transaction into the OrphanPool. Orphaned transactions will have a limited Time-to-live and will be
     /// discarded if the UTXOs they require are not created before the Time-to-live threshold is reached.
     pub fn insert(&self, transaction: Arc<Transaction>) -> Result<(), OrphanPoolError> {
-        Ok(self
-            .pool_storage
+        self.pool_storage
             .write()
             .map_err(|_| OrphanPoolError::PoisonedAccess)?
-            .insert(transaction))
+            .insert(transaction);
+        Ok(())
     }
 
     #[cfg(test)]
     /// Insert a set of new transactions into the OrphanPool
     pub fn insert_txs(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), OrphanPoolError> {
-        Ok(self
-            .pool_storage
+        self.pool_storage
             .write()
             .map_err(|_| OrphanPoolError::PoisonedAccess)?
-            .insert_txs(transactions))
+            .insert_txs(transactions);
+        Ok(())
     }
 
     /// Check if a transaction is stored in the OrphanPool

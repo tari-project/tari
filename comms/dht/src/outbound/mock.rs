@@ -41,7 +41,7 @@ pub fn create_outbound_service_mock(size: usize) -> (OutboundMessageRequester, O
     (OutboundMessageRequester::new(tx), OutboundServiceMock::new(rx.fuse()))
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct OutboundServiceMockState {
     calls: Arc<Mutex<Vec<(FinalSendMessageParams, Vec<u8>)>>>,
     next_response: Arc<RwLock<Option<SendMessageResponse>>>,
@@ -144,7 +144,7 @@ impl OutboundServiceMock {
                     let response = self
                         .mock_state
                         .take_next_response()
-                        .or(Some(SendMessageResponse::Queued(vec![])))
+                        .or_else(|| Some(SendMessageResponse::Queued(vec![])))
                         .expect("never none");
 
                     reply_tx.send(response).expect("Reply channel cancelled");

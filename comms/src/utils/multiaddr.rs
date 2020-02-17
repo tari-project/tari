@@ -39,14 +39,12 @@ pub fn socketaddr_to_multiaddr(socket_addr: &SocketAddr) -> Multiaddr {
 /// Convert a multiaddr to a socket address required for `TcpStream`
 pub fn multiaddr_to_socketaddr(addr: &Multiaddr) -> io::Result<SocketAddr> {
     let mut addr_iter = addr.iter();
-    let network_proto = addr_iter.next().ok_or(io::Error::new(
-        io::ErrorKind::InvalidInput,
-        format!("Invalid address '{}'", addr),
-    ))?;
-    let transport_proto = addr_iter.next().ok_or(io::Error::new(
-        io::ErrorKind::InvalidInput,
-        format!("Invalid address '{}'", addr),
-    ))?;
+    let network_proto = addr_iter
+        .next()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("Invalid address '{}'", addr)))?;
+    let transport_proto = addr_iter
+        .next()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("Invalid address '{}'", addr)))?;
 
     if addr_iter.next().is_some() {
         return Err(io::Error::new(

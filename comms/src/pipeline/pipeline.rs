@@ -27,7 +27,7 @@ use tari_shutdown::ShutdownSignal;
 use tokio::runtime;
 use tower::{Service, ServiceExt};
 
-const LOG_TARGET: &'static str = "comms::middleware::pipeline";
+const LOG_TARGET: &str = "comms::middleware::pipeline";
 
 /// Calls a Service with every item received from a Stream.
 /// The difference between this can ServiceExt::call_all is
@@ -63,7 +63,6 @@ where
     pub fn spawn_with(self, executor: runtime::Handle) {
         executor.spawn(self.run(executor.clone()).unwrap_or_else(|err| {
             error!(target: LOG_TARGET, "ServicePipeline error: {:?}", err);
-            ()
         }));
     }
 
@@ -77,7 +76,7 @@ where
             .map(Either::Left)
             // By default, ready(false) is used to indicate that the pipeline
             // shouldn't shutdown. This is to make the shutdown signal optional.
-            .unwrap_or(Either::Right(future::ready(false)));
+            .unwrap_or_else(|| Either::Right(future::ready(false)));
 
         loop {
             futures::select! {

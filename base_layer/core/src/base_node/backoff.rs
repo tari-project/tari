@@ -101,7 +101,7 @@ impl BackOff {
         self.stopped = true
     }
 
-    pub async fn wait(&mut self) -> () {
+    pub async fn wait(&mut self) {
         if self.is_finished() {
             return;
         }

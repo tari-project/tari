@@ -58,7 +58,7 @@ where
         let peak_hashes = peak_indices
             .iter()
             .map(|i| match base_mmr.get_node_hash(*i)? {
-                Some(h) => Ok(h.clone()),
+                Some(h) => Ok(h),
                 None => Err(MerkleMountainRangeError::HashNotFound(*i)),
             })
             .collect::<Result<_, _>>()?;
@@ -78,6 +78,10 @@ impl ArrayLike for PrunedHashSet {
     #[inline(always)]
     fn len(&self) -> Result<usize, Self::Error> {
         Ok(self.base_offset + self.hashes.len())
+    }
+
+    fn is_empty(&self) -> Result<bool, Self::Error> {
+        Ok(self.len()? == 0)
     }
 
     fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error> {
@@ -100,7 +104,6 @@ impl ArrayLike for PrunedHashSet {
         self.get(index)
             .unwrap()
             .expect("PrunedHashSet only tracks peaks before the offset")
-            .clone()
     }
 
     fn clear(&mut self) -> Result<(), Self::Error> {

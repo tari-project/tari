@@ -108,7 +108,7 @@ impl TryInto<MessageEnvelopeHeader> for EnvelopeHeader {
         Ok(MessageEnvelopeHeader {
             public_key: self
                 .get_comms_public_key()
-                .ok_or(MessageError::InvalidHeaderPublicKey)?,
+                .ok_or_else(|| MessageError::InvalidHeaderPublicKey)?,
             signature: self.signature.into(),
             flags: MessageFlags::from_bits_truncate(self.flags),
         })
@@ -151,13 +151,16 @@ impl EnvelopeBody {
         self.parts.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.parts.is_empty()
+    }
+
     /// Removes and returns the part at the given index. None
     /// is returned if the index is out of bounds
     pub fn take_part(&mut self, index: usize) -> Option<Vec<u8>> {
         Some(index)
             .filter(|i| self.parts.len() > *i)
-            // remove panics if out of bounds
-            .and_then(|i| Some(self.parts.remove(i)))
+            .map(|i| self.parts.remove(i))
     }
 
     pub fn push_part(&mut self, part: Vec<u8>) {

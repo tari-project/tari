@@ -91,9 +91,13 @@ impl<'a> TryFrom<PeerConnectionContextBuilder<'a>> for PeerConnectionContext {
                 Some(
                     builder
                         .connection_identity
-                        .ok_or(PeerConnectionError::ConnectionIdentityNotSet)?,
+                        .ok_or_else(|| PeerConnectionError::ConnectionIdentityNotSet)?,
                 ),
-                Some(builder.peer_identity.ok_or(PeerConnectionError::PeerIdentityNotSet)?),
+                Some(
+                    builder
+                        .peer_identity
+                        .ok_or_else(|| PeerConnectionError::PeerIdentityNotSet)?,
+                ),
             ),
         };
         let shutdown_on_send_failure = builder.shutdown_on_send_failure;
@@ -250,22 +254,20 @@ impl<'c> PeerConnectionContextBuilder<'c> {
                     CurveEncryption::Client { .. } => Ok(()),
                     CurveEncryption::Server { .. } => Err(PeerConnectionError::InitializationError(
                         "'Client' curve encryption required for outbound connection".to_string(),
-                    )
-                    .into()),
+                    )),
                 },
                 ConnectionDirection::Inbound => match self.curve_encryption {
                     CurveEncryption::None { .. } => Ok(()),
                     CurveEncryption::Client { .. } => Err(PeerConnectionError::InitializationError(
                         "'Server' curve encryption required for inbound connection".to_string(),
-                    )
-                    .into()),
+                    )),
                     CurveEncryption::Server { .. } => Ok(()),
                 },
             },
 
-            None => Err(
-                PeerConnectionError::InitializationError("Direction not set for peer connection".to_string()).into(),
-            ),
+            None => Err(PeerConnectionError::InitializationError(
+                "Direction not set for peer connection".to_string(),
+            )),
         }
     }
 }

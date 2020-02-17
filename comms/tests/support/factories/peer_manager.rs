@@ -50,9 +50,9 @@ impl TestFactory for PeerManagerFactory {
     type Object = PeerManager;
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
-        let database = self.database.ok_or(TestFactoryError::BuildFailed(
-            "Failed to build peer manager: database undefined".into(),
-        ))?;
+        let database = self
+            .database
+            .ok_or_else(|| TestFactoryError::BuildFailed("Failed to build peer manager: database undefined".into()))?;
 
         let pm = PeerManager::new(database)
             .map_err(|err| TestFactoryError::BuildFailed(format!("Failed to build peer manager: {:?}", err)))?;
@@ -60,7 +60,7 @@ impl TestFactory for PeerManagerFactory {
         let peers = self
             .peers
             .or(self.peers_factory.build().ok())
-            .ok_or(TestFactoryError::BuildFailed("Failed to build peers".into()))?;
+            .ok_or_else(|| TestFactoryError::BuildFailed("Failed to build peers".into()))?;
         for peer in peers {
             pm.add_peer(peer)
                 .map_err(|err| TestFactoryError::BuildFailed(format!("Failed to build peer manager: {:?}", err)))?;

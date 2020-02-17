@@ -39,7 +39,7 @@ use tari_core::transactions::{
     SenderTransactionProtocol,
 };
 
-const LOG_TARGET: &'static str = "wallet::transaction_service::database";
+const LOG_TARGET: &str = "wallet::transaction_service::database";
 
 /// This trait defines the required behaviour that a storage backend must provide for the Transactionservice.
 /// Data is passed to and from the backend via the [DbKey], [DbValue], and [DbValueKey] enums. If new data types are
@@ -53,7 +53,7 @@ pub trait TransactionBackend: Send + Sync {
     /// Modify the state the of the backend with a write operation
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, TransactionStorageError>;
     /// Check if a transaction exists in any of the collections
-    fn transaction_exists(&self, tx_id: &TxId) -> Result<bool, TransactionStorageError>;
+    fn transaction_exists(&self, tx_id: TxId) -> Result<bool, TransactionStorageError>;
     /// Complete outbound transaction, this operation must delete the `OutboundTransaction` with the provided
     /// `TxId` and insert the provided `CompletedTransaction` into `CompletedTransactions`.
     fn complete_outbound_transaction(
@@ -281,10 +281,10 @@ where T: TransactionBackend + 'static
     }
 
     /// Check if a transaction with the specified TxId exists in any of the collections
-    pub async fn transaction_exists(&self, tx_id: &TxId) -> Result<bool, TransactionStorageError> {
+    pub async fn transaction_exists(&self, tx_id: TxId) -> Result<bool, TransactionStorageError> {
         let db_clone = self.db.clone();
-        let tx_id_clone = (*tx_id).clone();
-        tokio::task::spawn_blocking(move || db_clone.transaction_exists(&tx_id_clone))
+        let tx_id_clone = tx_id;
+        tokio::task::spawn_blocking(move || db_clone.transaction_exists(tx_id_clone))
             .await
             .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
             .and_then(|inner_result| inner_result)
@@ -510,6 +510,7 @@ where T: TransactionBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
+    #[allow(clippy::erasing_op)] // this is for 0 * uT
     pub async fn add_utxo_import_transaction(
         &mut self,
         tx_id: TxId,
@@ -520,7 +521,7 @@ where T: TransactionBackend + 'static
     ) -> Result<(), TransactionStorageError>
     {
         let transaction = CompletedTransaction {
-            tx_id: tx_id.clone(),
+            tx_id,
             source_public_key: source_public_key.clone(),
             destination_public_key: comms_public_key.clone(),
             amount,
@@ -548,14 +549,14 @@ where T: TransactionBackend + 'static
 impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbKey::PendingOutboundTransaction(_) => f.write_str(&format!("Pending Outbound Transaction")),
-            DbKey::PendingInboundTransaction(_) => f.write_str(&format!("Pending Inbound Transaction")),
-            DbKey::PendingCoinbaseTransaction(_) => f.write_str(&format!("Pending Pending Coinbase Transaction")),
-            DbKey::CompletedTransaction(_) => f.write_str(&format!("Completed Transaction")),
-            DbKey::PendingOutboundTransactions => f.write_str(&format!("All Pending Outbound Transactions")),
-            DbKey::PendingInboundTransactions => f.write_str(&format!("All Pending Inbound Transactions")),
-            DbKey::CompletedTransactions => f.write_str(&format!("All Complete Transactions")),
-            DbKey::PendingCoinbaseTransactions => f.write_str(&format!("All Pending Coinbase Transactions")),
+            DbKey::PendingOutboundTransaction(_) => f.write_str(&"Pending Outbound Transaction".to_string()),
+            DbKey::PendingInboundTransaction(_) => f.write_str(&"Pending Inbound Transaction".to_string()),
+            DbKey::PendingCoinbaseTransaction(_) => f.write_str(&"Pending Pending Coinbase Transaction".to_string()),
+            DbKey::CompletedTransaction(_) => f.write_str(&"Completed Transaction".to_string()),
+            DbKey::PendingOutboundTransactions => f.write_str(&"All Pending Outbound Transactions".to_string()),
+            DbKey::PendingInboundTransactions => f.write_str(&"All Pending Inbound Transactions".to_string()),
+            DbKey::CompletedTransactions => f.write_str(&"All Complete Transactions".to_string()),
+            DbKey::PendingCoinbaseTransactions => f.write_str(&"All Pending Coinbase Transactions".to_string()),
         }
     }
 }
@@ -563,14 +564,14 @@ impl Display for DbKey {
 impl Display for DbValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbValue::PendingOutboundTransaction(_) => f.write_str(&format!("Pending Outbound Transaction")),
-            DbValue::PendingInboundTransaction(_) => f.write_str(&format!("Pending Inbound Transaction")),
-            DbValue::PendingCoinbaseTransaction(_) => f.write_str(&format!("Pending Coinbase Transaction")),
-            DbValue::CompletedTransaction(_) => f.write_str(&format!("Completed Transaction")),
-            DbValue::PendingOutboundTransactions(_) => f.write_str(&format!("All Pending Outbound Transactions")),
-            DbValue::PendingInboundTransactions(_) => f.write_str(&format!("All Pending Inbound Transactions")),
-            DbValue::CompletedTransactions(_) => f.write_str(&format!("All Complete Transactions")),
-            DbValue::PendingCoinbaseTransactions(_) => f.write_str(&format!("All Pending Coinbase Transactions")),
+            DbValue::PendingOutboundTransaction(_) => f.write_str(&"Pending Outbound Transaction".to_string()),
+            DbValue::PendingInboundTransaction(_) => f.write_str(&"Pending Inbound Transaction".to_string()),
+            DbValue::PendingCoinbaseTransaction(_) => f.write_str(&"Pending Coinbase Transaction".to_string()),
+            DbValue::CompletedTransaction(_) => f.write_str(&"Completed Transaction".to_string()),
+            DbValue::PendingOutboundTransactions(_) => f.write_str(&"All Pending Outbound Transactions".to_string()),
+            DbValue::PendingInboundTransactions(_) => f.write_str(&"All Pending Inbound Transactions".to_string()),
+            DbValue::CompletedTransactions(_) => f.write_str(&"All Complete Transactions".to_string()),
+            DbValue::PendingCoinbaseTransactions(_) => f.write_str(&"All Pending Coinbase Transactions".to_string()),
         }
     }
 }

@@ -122,7 +122,7 @@ impl<'a> TorCommand for AddOnion<'a> {
     }
 
     fn parse_responses(&self, mut responses: Vec<ResponseLine<'_>>) -> Result<Self::Output, Self::Error> {
-        let last_response = responses.pop().ok_or(TorClientError::UnexpectedEof)?;
+        let last_response = responses.pop().ok_or_else(|| TorClientError::UnexpectedEof)?;
         if let Some(err) = last_response.err() {
             return Err(TorClientError::TorCommandFailed(err.into_owned()));
         }
@@ -140,12 +140,12 @@ impl<'a> TorCommand for AddOnion<'a> {
                     let mut split = value.split(':');
                     let key = split
                         .next()
-                        .ok_or(ParseError("PrivateKey field was empty".to_string()))?;
+                        .ok_or_else(|| ParseError("PrivateKey field was empty".to_string()))?;
 
                     let value = split
                         .next()
                         .map(|v| Cow::from(v.to_owned()))
-                        .ok_or(ParseError("Failed to parse private key".to_string()))?;
+                        .ok_or_else(|| ParseError("Failed to parse private key".to_string()))?;
 
                     private_key = match key {
                         "ED25519-V3" => Some(PrivateKey::Ed25519V3(value)),
@@ -163,7 +163,7 @@ impl<'a> TorCommand for AddOnion<'a> {
             }
         }
 
-        let service_id = service_id.ok_or(TorClientError::AddOnionNoServiceId)?;
+        let service_id = service_id.ok_or_else(|| TorClientError::AddOnionNoServiceId)?;
 
         Ok(AddOnionResponse {
             service_id,

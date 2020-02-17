@@ -35,11 +35,12 @@ impl MockValidator {
 
 impl<T, B: BlockchainBackend> Validation<T, B> for MockValidator {
     fn validate(&self, _item: &T) -> Result<(), ValidationError> {
-        match self.result {
-            true => Ok(()),
-            false => Err(ValidationError::CustomError(
+        if self.result {
+            Ok(())
+        } else {
+            Err(ValidationError::CustomError(
                 "This mock validator always returns an error".into(),
-            )),
+            ))
         }
     }
 }

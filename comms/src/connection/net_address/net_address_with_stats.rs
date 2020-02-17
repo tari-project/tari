@@ -124,18 +124,24 @@ impl Ord for NetAddressWithStats {
     fn cmp(&self, other: &NetAddressWithStats) -> Ordering {
         if self.last_seen.is_some() && other.last_seen.is_none() {
             return Ordering::Less;
-        } else if self.last_seen.is_none() && other.last_seen.is_some() {
+        }
+
+        if self.last_seen.is_none() && other.last_seen.is_some() {
             return Ordering::Greater;
         }
         if self.connection_attempts < other.connection_attempts {
             return Ordering::Less;
-        } else if self.connection_attempts > other.connection_attempts {
+        }
+
+        if self.connection_attempts > other.connection_attempts {
             return Ordering::Greater;
         }
         if self.latency_sample_count > 0 && other.latency_sample_count > 0 {
             if self.avg_latency < other.avg_latency {
                 return Ordering::Less;
-            } else if self.avg_latency > other.avg_latency {
+            }
+
+            if self.avg_latency > other.avg_latency {
                 return Ordering::Greater;
             }
         }
@@ -144,7 +150,9 @@ impl Ord for NetAddressWithStats {
             let other_last_seen = other.last_seen.unwrap();
             if self_last_seen > other_last_seen {
                 return Ordering::Less;
-            } else if self_last_seen < other_last_seen {
+            }
+
+            if self_last_seen < other_last_seen {
                 return Ordering::Greater;
             }
         }

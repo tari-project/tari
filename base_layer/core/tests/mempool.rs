@@ -414,7 +414,12 @@ fn request_response_get_stats() {
         BaseNodeServiceConfig::default(),
         MmrCacheConfig { rewind_hist_len: 10 },
         MempoolServiceConfig::default(),
-        LivenessConfig::default(),
+        LivenessConfig {
+            auto_ping_interval: None,
+            enable_auto_join: false,
+            enable_auto_stored_message_request: true,
+            refresh_neighbours_interval: Duration::from_secs(3 * 60),
+        },
         ConsensusManager::new(None, consensus_constants),
         temp_dir.path().to_str().unwrap(),
     );
@@ -609,7 +614,12 @@ fn service_request_timeout() {
         BaseNodeServiceConfig::default(),
         MmrCacheConfig::default(),
         mempool_service_config,
-        LivenessConfig::default(),
+        LivenessConfig {
+            auto_ping_interval: None,
+            enable_auto_join: false,
+            enable_auto_stored_message_request: true,
+            refresh_neighbours_interval: Duration::from_secs(3 * 60),
+        },
         ConsensusManager::default(),
         temp_dir.path().to_str().unwrap(),
     );

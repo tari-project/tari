@@ -28,7 +28,7 @@ use std::{convert::TryInto, task::Poll};
 use tari_comms::message::InboundMessage;
 use tower::{layer::Layer, Service, ServiceExt};
 
-const LOG_TARGET: &'static str = "comms::dht::deserialize";
+const LOG_TARGET: &str = "comms::dht::deserialize";
 
 /// # DHT Deserialization middleware
 ///
@@ -107,6 +107,7 @@ where
     }
 }
 
+#[derive(Default)]
 pub struct DeserializeLayer;
 
 impl DeserializeLayer {

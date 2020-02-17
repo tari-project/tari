@@ -92,7 +92,7 @@ pub fn bootstrap_config_from_cli(matches: &ArgMatches) -> ConfigBootstrap {
     let config = matches
         .value_of("config")
         .map(PathBuf::from)
-        .unwrap_or(dir_utils::default_path(DEFAULT_CONFIG));
+        .unwrap_or_else(|| dir_utils::default_path(DEFAULT_CONFIG));
     let log_config = matches.value_of("log_config").map(PathBuf::from);
     let log_config = logging::get_log_configuration_path(log_config);
 

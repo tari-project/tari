@@ -62,7 +62,7 @@ impl TryFrom<ProtoMempoolServiceRequest> for MempoolServiceRequest {
             request_key: request.request_key,
             request: request
                 .request
-                .ok_or("Response field not present".to_string())?
+                .ok_or_else(|| "Response field not present".to_string())?
                 .try_into()?,
         })
     }

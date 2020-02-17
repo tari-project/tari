@@ -115,7 +115,7 @@ impl UnconfirmedPoolStorage {
             let ptx = self
                 .txs_by_signature
                 .get(tx_key)
-                .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
+                .ok_or_else(|| UnconfirmedPoolError::StorageOutofSync)?;
 
             if curr_weight + ptx.weight <= total_weight {
                 curr_weight += ptx.weight;

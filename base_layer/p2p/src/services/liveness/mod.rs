@@ -76,7 +76,7 @@ pub use self::{
 };
 pub use crate::proto::liveness::MetadataKey;
 
-const LOG_TARGET: &'static str = "p2p::services::liveness";
+const LOG_TARGET: &str = "p2p::services::liveness";
 
 /// Initializer for the Liveness service handle and service future.
 pub struct LivenessInitializer {

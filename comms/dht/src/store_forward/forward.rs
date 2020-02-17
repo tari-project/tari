@@ -33,7 +33,7 @@ use std::{sync::Arc, task::Poll};
 use tari_comms::{peer_manager::PeerManager, types::CommsPublicKey};
 use tower::{layer::Layer, Service, ServiceExt};
 
-const LOG_TARGET: &'static str = "comms::store_forward::forward";
+const LOG_TARGET: &str = "comms::store_forward::forward";
 
 /// This layer is responsible for forwarding messages which have failed to decrypt
 pub struct ForwardLayer {

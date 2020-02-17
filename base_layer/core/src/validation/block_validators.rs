@@ -41,6 +41,7 @@ use tari_crypto::tari_utilities::hash::Hashable;
 pub const LOG_TARGET: &str = "c::val::block_validators";
 
 /// This validator tests whether a candidate block is internally consistent
+#[derive(Default)]
 pub struct StatelessValidator {}
 
 impl StatelessValidator {
@@ -116,7 +117,7 @@ fn check_accounting_balance<B: BlockchainBackend>(
     block
         .body
         .validate_internal_consistency(&offset, total_coinbase, factories)
-        .map_err(|e| ValidationError::TransactionError(e))
+        .map_err(ValidationError::TransactionError)
 }
 
 fn check_coinbase_output(block: &Block) -> Result<(), ValidationError> {
@@ -174,5 +175,5 @@ fn check_cut_through(block: &Block) -> Result<(), ValidationError> {
     if !block.body.cut_through_check() {
         return Err(ValidationError::BlockError(BlockValidationError::NoCutThrough));
     }
-    return Ok(());
+    Ok(())
 }

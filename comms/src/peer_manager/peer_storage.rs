@@ -84,7 +84,7 @@ where DS: KeyValueStore<PeerId, Peer>
     /// exists, the stored version will be replaced with the newly provided peer.
     pub fn add_peer(&mut self, mut peer: Peer) -> Result<PeerId, PeerManagerError> {
         let (public_key, node_id) = (peer.public_key.clone(), peer.node_id.clone());
-        match self.public_key_index.get(&peer.public_key).map(|k| *k) {
+        match self.public_key_index.get(&peer.public_key).copied() {
             Some(peer_key) => {
                 trace!(target: LOG_TARGET, "Replacing peer that has NodeId '{}'", peer.node_id,);
                 // Replace existing entry
@@ -122,13 +122,13 @@ where DS: KeyValueStore<PeerId, Peer>
         connection_stats: Option<PeerConnectionStats>,
     ) -> Result<(), PeerManagerError>
     {
-        match self.public_key_index.get(public_key).map(|k| *k) {
+        match self.public_key_index.get(public_key).copied() {
             Some(peer_key) => {
                 let mut stored_peer = self
                     .peer_db
                     .get(&peer_key)
                     .map_err(PeerManagerError::DatabaseError)?
-                    .ok_or(PeerManagerError::PeerNotFoundError)?;
+                    .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
 
                 stored_peer.update(node_id, net_addresses, flags, peer_features, connection_stats);
                 let (public_key, node_id) = (stored_peer.public_key.clone(), stored_peer.node_id.clone());
@@ -150,7 +150,7 @@ where DS: KeyValueStore<PeerId, Peer>
         let peer_key = *self
             .node_id_index
             .get(&node_id)
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
         self.peer_db
             .delete(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?;
@@ -180,11 +180,11 @@ where DS: KeyValueStore<PeerId, Peer>
         let peer_key = self
             .node_id_index
             .get(node_id)
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
         self.peer_db
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
-            .ok_or(PeerManagerError::PeerNotFoundError)
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)
     }
 
     /// Find the peer with the provided PublicKey
@@ -192,11 +192,11 @@ where DS: KeyValueStore<PeerId, Peer>
         let peer_key = self
             .public_key_index
             .get(public_key)
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
         self.peer_db
             .get(peer_key)
             .map_err(PeerManagerError::DatabaseError)?
-            .ok_or(PeerManagerError::PeerNotFoundError)
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)
     }
 
     /// Check if a peer exist using the specified public_key
@@ -216,7 +216,7 @@ where DS: KeyValueStore<PeerId, Peer>
         if peer.is_banned() {
             Err(PeerManagerError::BannedPeer)
         } else {
-            Ok(peer.into())
+            Ok(peer)
         }
     }
 
@@ -241,7 +241,7 @@ where DS: KeyValueStore<PeerId, Peer>
             .filter_take(PEER_MANAGER_MAX_FLOOD_PEERS, |(_, peer)| {
                 !peer.is_banned() && peer.has_features(PeerFeatures::MESSAGE_PROPAGATION)
             })
-            .map(|pairs| pairs.into_iter().map(|(_, peer)| peer.into()).collect())
+            .map(|pairs| pairs.into_iter().map(|(_, peer)| peer).collect())
             .map_err(PeerManagerError::DatabaseError)
     }
 
@@ -250,7 +250,7 @@ where DS: KeyValueStore<PeerId, Peer>
         &self,
         node_id: &NodeId,
         n: usize,
-        excluded_peers: &Vec<CommsPublicKey>,
+        excluded_peers: &[CommsPublicKey],
     ) -> Result<Vec<Peer>, PeerManagerError>
     {
         let mut peer_keys = Vec::new();
@@ -283,8 +283,8 @@ where DS: KeyValueStore<PeerId, Peer>
                 .peer_db
                 .get(&peer_keys[i])
                 .map_err(PeerManagerError::DatabaseError)?
-                .ok_or(PeerManagerError::PeerNotFoundError)?;
-            nearest_identities.push(peer.into());
+                .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            nearest_identities.push(peer);
         }
 
         Ok(nearest_identities)
@@ -312,13 +312,14 @@ where DS: KeyValueStore<PeerId, Peer>
         }
         // Compile list of first n shuffled elements
         let mut random_identities = Vec::with_capacity(max_available);
-        for i in 0..max_available {
+        // for i in 0..max_available {
+        for peer_key in peer_keys.iter().take(max_available) {
             let peer = self
                 .peer_db
-                .get(&peer_keys[i])
+                .get(peer_key)
                 .map_err(PeerManagerError::DatabaseError)?
-                .ok_or(PeerManagerError::PeerNotFoundError)?;
-            random_identities.push(peer.into());
+                .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            random_identities.push(peer);
         }
         Ok(random_identities)
     }
@@ -364,12 +365,12 @@ where DS: KeyValueStore<PeerId, Peer>
         let peer_key = *self
             .node_id_index
             .get(&node_id)
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peer_db
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
         peer.set_banned(ban_flag);
         self.peer_db
             .insert(peer_key, peer)
@@ -381,12 +382,12 @@ where DS: KeyValueStore<PeerId, Peer>
         let peer_key = *self
             .node_id_index
             .get(&node_id)
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peer_db
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
         peer.addresses.add_net_address(net_address);
         self.peer_db
             .insert(peer_key, peer)

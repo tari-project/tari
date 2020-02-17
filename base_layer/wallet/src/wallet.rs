@@ -75,7 +75,7 @@ use tari_p2p::{
 use tari_service_framework::StackBuilder;
 use tokio::runtime::Runtime;
 
-const LOG_TARGET: &'static str = "base_layer::wallet";
+const LOG_TARGET: &str = "base_layer::wallet";
 
 #[derive(Clone)]
 pub struct WalletConfig {
@@ -178,8 +178,8 @@ where
                 TransactionServiceConfig::default(),
                 subscription_factory.clone(),
                 transaction_backend,
-                comms.node_identity().clone(),
-                factories.clone(),
+                comms.node_identity(),
+                factories,
             ))
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
             .finish();
@@ -267,13 +267,13 @@ where
     /// generated transaction is returned.
     pub fn import_utxo(
         &mut self,
-        amount: &MicroTari,
+        amount: MicroTari,
         spending_key: &PrivateKey,
         source_public_key: &CommsPublicKey,
         message: String,
     ) -> Result<TxId, WalletError>
     {
-        let unblinded_output = UnblindedOutput::new(amount.clone(), spending_key.clone(), None);
+        let unblinded_output = UnblindedOutput::new(amount, spending_key.clone(), None);
 
         self.runtime
             .block_on(self.output_manager_service.add_output(unblinded_output))?;
@@ -296,9 +296,8 @@ where
         message: &str,
     ) -> Result<SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>, SchnorrSignatureError>
     {
-        let challenge = Blake256::digest(message.clone().as_bytes());
-        let signature = RistrettoSchnorr::sign(secret, nonce, challenge.clone().as_slice());
-        signature
+        let challenge = Blake256::digest(message.as_bytes());
+        RistrettoSchnorr::sign(secret, nonce, challenge.clone().as_slice())
     }
 
     pub fn verify_message_signature(
@@ -310,7 +309,7 @@ where
     ) -> bool
     {
         let signature = RistrettoSchnorr::new(public_nonce, signature);
-        let challenge = Blake256::digest(message.clone().as_bytes());
+        let challenge = Blake256::digest(message.as_bytes());
         signature.verify_challenge(&public_key, challenge.clone().as_slice())
     }
 

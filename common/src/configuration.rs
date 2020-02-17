@@ -47,7 +47,7 @@ pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, String>
     let filename = bootstrap
         .config
         .to_str()
-        .ok_or("Invalid config file path".to_string())?;
+        .ok_or_else(|| "Invalid config file path".to_string())?;
     let config_file = config::File::with_name(filename);
     match cfg.merge(config_file) {
         Ok(_) => {
@@ -187,7 +187,7 @@ pub fn sub_dir(data_dir: &Path, sub_dir: &str) -> Result<String, ConfigurationEr
     dir.push(sub_dir);
     dir.to_str()
         .map(String::from)
-        .ok_or(ConfigurationError::new("data_dir", "Not a valid UTF-8 string"))
+        .ok_or_else(|| ConfigurationError::new("data_dir", "Not a valid UTF-8 string"))
 }
 
 fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, ConfigurationError> {

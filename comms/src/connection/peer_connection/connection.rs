@@ -348,9 +348,11 @@ impl PeerConnection {
         reply_rx
             .recv_timeout(CONTROL_MESSAGE_REPLY_TIMEOUT)
             .map_err(|_| PeerConnectionError::ControlMessageReplyFailed)?
-            .ok_or(PeerConnectionError::OperationTimeout(
-                "Peer connection failed to send reply to send message request".to_string(),
-            ))?
+            .ok_or_else(|| {
+                PeerConnectionError::OperationTimeout(
+                    "Peer connection failed to send reply to send message request".to_string(),
+                )
+            })?
     }
 
     /// Return a PeerSender that is used to send multiple messages to a particular peer
@@ -393,9 +395,11 @@ impl PeerConnection {
                     "Peer connection dropped the reply sender before responding.".to_string(),
                 )
             })?
-            .ok_or(PeerConnectionError::OperationTimeout(
-                "Peer connection worker failed to response within 10s.".to_string(),
-            ))?
+            .ok_or_else(|| {
+                PeerConnectionError::OperationTimeout(
+                    "Peer connection worker failed to response within 10s.".to_string(),
+                )
+            })?
     }
 
     /// Return the actual address this connection is bound to. If the connection state is not Connected,
@@ -407,7 +411,7 @@ impl PeerConnection {
                 .connected_address
                 .as_ref()
                 .map_or(Some(multiaddr_to_socketaddr(&self.peer_address).ok()?), |addr| {
-                    Some(addr.clone())
+                    Some(*addr)
                 }),
             _ => None,
         }
@@ -439,8 +443,7 @@ impl PeerConnection {
             state => Err(PeerConnectionError::StateError(format!(
                 "Attempt to retrieve thread messenger on peer connection with state '{}'",
                 PeerConnectionSimpleState::from(state)
-            ))
-            .into()),
+            ))),
         }
     }
 
@@ -454,8 +457,7 @@ impl PeerConnection {
             state => Err(PeerConnectionError::StateError(format!(
                 "Attempt to retrieve thread messenger on peer connection with state '{}'",
                 PeerConnectionSimpleState::from(state)
-            ))
-            .into()),
+            ))),
         }
     }
 
@@ -592,9 +594,11 @@ impl PeerSender {
         reply_rx
             .recv_timeout(CONTROL_MESSAGE_REPLY_TIMEOUT)
             .map_err(|_| PeerConnectionError::ControlMessageReplyFailed)?
-            .ok_or(PeerConnectionError::OperationTimeout(
-                "Peer connection failed to send reply to send message request".to_string(),
-            ))?
+            .ok_or_else(|| {
+                PeerConnectionError::OperationTimeout(
+                    "Peer connection failed to send reply to send message request".to_string(),
+                )
+            })?
     }
 }
 
@@ -623,12 +627,8 @@ impl From<&PeerConnectionState> for PeerConnectionSimpleState {
         match state {
             PeerConnectionState::Initial => PeerConnectionSimpleState::Initial,
             PeerConnectionState::Connecting(_) => PeerConnectionSimpleState::Connecting,
-            PeerConnectionState::Listening(info) => {
-                PeerConnectionSimpleState::Listening(info.connected_address.clone())
-            },
-            PeerConnectionState::Connected(info) => {
-                PeerConnectionSimpleState::Connected(info.connected_address.clone())
-            },
+            PeerConnectionState::Listening(info) => PeerConnectionSimpleState::Listening(info.connected_address),
+            PeerConnectionState::Connected(info) => PeerConnectionSimpleState::Connected(info.connected_address),
             PeerConnectionState::Shutdown => PeerConnectionSimpleState::Shutdown,
             PeerConnectionState::Disconnected => PeerConnectionSimpleState::Disconnected,
             PeerConnectionState::Failed(e) => PeerConnectionSimpleState::Failed(format!("{}", e)),

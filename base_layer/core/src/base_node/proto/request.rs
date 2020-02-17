@@ -58,7 +58,7 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchBlocks(block_heights) => ProtoNodeCommsRequest::FetchBlocks(block_heights.into()),
             GetNewBlockTemplate => ProtoNodeCommsRequest::GetNewBlockTemplate(true),
             GetNewBlock(block_template) => ProtoNodeCommsRequest::GetNewBlock(block_template.into()),
-            GetTargetDifficulty(pow_algo) => ProtoNodeCommsRequest::GetTargetDifficulty(*&pow_algo as u64),
+            GetTargetDifficulty(pow_algo) => ProtoNodeCommsRequest::GetTargetDifficulty(pow_algo as u64),
         }
     }
 }

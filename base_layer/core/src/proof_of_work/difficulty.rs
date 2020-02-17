@@ -42,11 +42,11 @@ impl Difficulty {
     }
 
     /// Return the difficulty as a u64
-    pub fn as_u64(&self) -> u64 {
+    pub fn as_u64(self) -> u64 {
         self.0
     }
 
-    pub fn checked_sub(&self, other: Difficulty) -> Option<Difficulty> {
+    pub fn checked_sub(self, other: Difficulty) -> Option<Difficulty> {
         match self.0.checked_sub(other.0) {
             None => None,
             Some(v) => Some(Difficulty(v)),

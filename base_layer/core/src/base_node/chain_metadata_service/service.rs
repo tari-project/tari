@@ -155,7 +155,7 @@ impl ChainMetadataService {
                 //       before publishing the chain metadata event.
                 //       The following will send the chain metadata at the start of a new round if at
                 //       least one node has responded.
-                if self.peer_chain_metadata.len() > 0 {
+                if !self.peer_chain_metadata.is_empty() {
                     self.flush_chain_metadata_to_event_publisher().await?;
                 }
                 // Ensure that we're waiting for the correct amount of peers to respond
@@ -205,8 +205,8 @@ impl ChainMetadataService {
     ) -> Result<(), ChainMetadataSyncError>
     {
         let chain_metadata_bytes = metadata
-            .get(&MetadataKey::ChainMetadata)
-            .ok_or(ChainMetadataSyncError::NoChainMetadata)?;
+            .get(MetadataKey::ChainMetadata)
+            .ok_or_else(|| ChainMetadataSyncError::NoChainMetadata)?;
 
         debug!(target: LOG_TARGET, "Received chain metadata from NodeId '{}'", node_id);
         let chain_metadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?.into();

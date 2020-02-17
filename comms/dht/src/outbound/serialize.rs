@@ -35,7 +35,7 @@ use tari_comms::{
 use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tower::{layer::Layer, Service, ServiceExt};
 
-const LOG_TARGET: &'static str = "comms::dht::serialize";
+const LOG_TARGET: &str = "comms::dht::serialize";
 
 #[derive(Clone)]
 pub struct SerializeMiddleware<S> {

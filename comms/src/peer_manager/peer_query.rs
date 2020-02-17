@@ -136,7 +136,7 @@ where DS: KeyValueStore<PeerId, Peer>
             .query
             .limit
             .map(|limit| min(peer_keys.len(), limit))
-            .unwrap_or(peer_keys.len());
+            .unwrap_or_else(|| peer_keys.len());
         if max_available == 0 {
             return Ok(Vec::new());
         }

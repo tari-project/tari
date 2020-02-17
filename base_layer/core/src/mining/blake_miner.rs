@@ -55,7 +55,7 @@ impl CpuBlakePow {
         let mut nonce: u64 = OsRng.next_u64();
         let start_nonce = nonce;
         // We're mining over here!
-        let difficulty = ProofOfWork::achieved_difficulty(&header);
+        let mut difficulty = ProofOfWork::achieved_difficulty(&header);
         debug!(target: LOG_TARGET, "Mining started for nonce");
         trace!(target: LOG_TARGET, "Mining for difficulty: {:?}", target_difficulty);
         while difficulty < target_difficulty {
@@ -72,6 +72,7 @@ impl CpuBlakePow {
                 header.timestamp = EpochTime::now();
             }
             header.nonce = nonce;
+            difficulty = ProofOfWork::achieved_difficulty(&header);
         }
 
         debug!(target: LOG_TARGET, "Miner found nonce: {}", nonce);

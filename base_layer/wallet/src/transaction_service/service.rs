@@ -94,7 +94,7 @@ use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey, tar
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 
-const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service::service";
+const LOG_TARGET: &str = "base_layer::wallet::transaction_service::service";
 
 /// Contains the generated TxId and SpendingKey for a Pending Coinbase transaction
 #[derive(Debug)]
@@ -393,7 +393,7 @@ where
             TransactionServiceRequest::ImportUtxo(value, source_public_key, message) => self
                 .add_utxo_import_transaction(value, source_public_key, message)
                 .await
-                .map(|tx_id| TransactionServiceResponse::UtxoImported(tx_id)),
+                .map(TransactionServiceResponse::UtxoImported),
             #[cfg(feature = "test_harness")]
             TransactionServiceRequest::CompletePendingOutboundTransaction(completed_transaction) => {
                 self.complete_pending_outbound_transaction(completed_transaction)
@@ -466,7 +466,7 @@ where
                 // layer. This can take minutes so we will spawn a task to wait for the result and then act
                 // appropriately on it
                 let db_clone = self.db.clone();
-                let tx_id_clone = tx_id.clone();
+                let tx_id_clone = tx_id;
                 let outbound_tx_clone = OutboundTransaction {
                     tx_id,
                     destination_public_key: dest_pubkey.clone(),
@@ -480,7 +480,7 @@ where
                     transaction_send_discovery_process_completion(r, db_clone, tx_id_clone, outbound_tx_clone).await
                 };
                 discovery_process_futures.push(discovery_future.boxed());
-                return Err(TransactionServiceError::OutboundSendDiscoveryInProgress(tx_id.clone()));
+                return Err(TransactionServiceError::OutboundSendDiscoveryInProgress(tx_id));
             },
         }
 
@@ -518,12 +518,9 @@ where
             .try_into()
             .map_err(TransactionServiceError::InvalidMessageError)?;
 
-        let mut outbound_tx = self
-            .db
-            .get_pending_outbound_transaction(recipient_reply.tx_id.clone())
-            .await?;
+        let mut outbound_tx = self.db.get_pending_outbound_transaction(recipient_reply.tx_id).await?;
 
-        let tx_id = recipient_reply.tx_id.clone();
+        let tx_id = recipient_reply.tx_id;
         if !outbound_tx.sender_protocol.check_tx_id(tx_id.clone()) ||
             !outbound_tx.sender_protocol.is_collecting_single_signature()
         {
@@ -539,7 +536,7 @@ where
         let tx = outbound_tx.sender_protocol.get_transaction()?;
 
         let completed_transaction = CompletedTransaction {
-            tx_id: tx_id.clone(),
+            tx_id,
             source_public_key: self.node_identity.public_key().clone(),
             destination_public_key: outbound_tx.destination_public_key,
             amount: outbound_tx.amount,
@@ -597,7 +594,7 @@ where
 
         // Currently we will only reply to a Single sender transaction protocol
         if let TransactionSenderMessage::Single(data) = sender_message.clone() {
-            let amount = data.amount.clone();
+            let amount = data.amount;
 
             let spending_key = self
                 .output_manager_service
@@ -616,7 +613,7 @@ where
 
             // Check this is not a repeat message i.e. tx_id doesn't already exist in our pending or completed
             // transactions
-            if self.db.transaction_exists(&recipient_reply.tx_id).await? {
+            if self.db.transaction_exists(recipient_reply.tx_id).await? {
                 return Err(TransactionServiceError::RepeatedMessageError);
             }
 
@@ -667,12 +664,14 @@ where
         broadcast_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
     ) -> Result<(), TransactionServiceError>
     {
-        let tx_id = finalized_transaction.tx_id.clone();
+        let tx_id = finalized_transaction.tx_id;
         let transaction: Transaction = finalized_transaction
             .transaction
-            .ok_or(TransactionServiceError::InvalidMessageError(
-                "Finalized Transaction missing Transaction field".to_string(),
-            ))?
+            .ok_or_else(|| {
+                TransactionServiceError::InvalidMessageError(
+                    "Finalized Transaction missing Transaction field".to_string(),
+                )
+            })?
             .try_into()
             .map_err(|_| {
                 TransactionServiceError::InvalidMessageError(
@@ -722,7 +721,7 @@ where
         }
 
         let completed_transaction = CompletedTransaction {
-            tx_id: tx_id.clone(),
+            tx_id,
             source_public_key: source_pubkey.clone(),
             destination_public_key: self.node_identity.public_key().clone(),
             amount: inbound_tx.amount,
@@ -730,7 +729,7 @@ where
             transaction: transaction.clone(),
             status: TransactionStatus::Completed,
             message: inbound_tx.message.clone(),
-            timestamp: inbound_tx.timestamp.clone(),
+            timestamp: inbound_tx.timestamp,
         };
 
         self.db
@@ -773,10 +772,7 @@ where
             .add_pending_coinbase_transaction(tx_id.clone(), PendingCoinbaseTransaction {
                 tx_id,
                 amount,
-                commitment: self
-                    .factories
-                    .commitment
-                    .commit_value(&spending_key, u64::from(amount.clone())),
+                commitment: self.factories.commitment.commit_value(&spending_key, u64::from(amount)),
                 timestamp: Utc::now().naive_utc(),
             })
             .await?;
@@ -804,7 +800,7 @@ where
                 e
             })?;
 
-        if completed_transaction.body.inputs().len() != 0 ||
+        if !completed_transaction.body.inputs().is_empty() ||
             completed_transaction.body.outputs().len() != 1 ||
             completed_transaction.body.kernels().len() != 1
         {
@@ -934,7 +930,7 @@ where
     {
         let completed_tx = self.db.get_completed_transaction(tx_id.clone()).await?;
 
-        if completed_tx.status != TransactionStatus::Completed || completed_tx.transaction.body.kernels().len() == 0 {
+        if completed_tx.status != TransactionStatus::Completed || completed_tx.transaction.body.kernels().is_empty() {
             return Err(TransactionServiceError::InvalidCompletedTransaction);
         }
 
@@ -956,7 +952,7 @@ where
                 // Send  Mempool Request
                 let tx_excess_sig = completed_tx.transaction.body.kernels()[0].excess_sig.clone();
                 let mempool_request = MempoolProto::MempoolServiceRequest {
-                    request_key: completed_tx.tx_id.clone(),
+                    request_key: completed_tx.tx_id,
                     request: Some(MempoolProto::mempool_service_request::Request::GetTxStateWithExcessSig(
                         tx_excess_sig.into(),
                     )),
@@ -971,7 +967,7 @@ where
                 // Start Timeout
                 let state_timeout = StateDelay::new(
                     Duration::from_secs(self.config.mempool_broadcast_timeout_in_secs),
-                    completed_tx.tx_id.clone(),
+                    completed_tx.tx_id,
                 );
 
                 broadcast_timeout_futures.push(state_timeout.delay().boxed());
@@ -1033,7 +1029,7 @@ where
     ) -> Result<(), TransactionServiceError>
     {
         let response = MempoolServiceResponse::try_from(response).unwrap();
-        let tx_id = response.request_key.clone();
+        let tx_id = response.request_key;
         match response.response {
             MempoolResponse::Stats(_) => Err(TransactionServiceError::InvalidMessageError(
                 "Mempool Response of invalid type".to_string(),
@@ -1085,7 +1081,7 @@ where
     {
         let completed_tx = self.db.get_completed_transaction(tx_id.clone()).await?;
 
-        if completed_tx.status != TransactionStatus::Broadcast || completed_tx.transaction.body.kernels().len() == 0 {
+        if completed_tx.status != TransactionStatus::Broadcast || completed_tx.transaction.body.kernels().is_empty() {
             return Err(TransactionServiceError::InvalidCompletedTransaction);
         }
 
@@ -1099,7 +1095,7 @@ where
 
                 let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
                 let service_request = BaseNodeProto::BaseNodeServiceRequest {
-                    request_key: tx_id.clone(),
+                    request_key: tx_id,
                     request: Some(request),
                 };
                 self.outbound_message_service
@@ -1112,7 +1108,7 @@ where
                 // Start Timeout
                 let state_timeout = StateDelay::new(
                     Duration::from_secs(self.config.base_node_mined_timeout_in_secs),
-                    completed_tx.tx_id.clone(),
+                    completed_tx.tx_id,
                 );
 
                 mined_request_timeout_futures.push(state_timeout.delay().boxed());
@@ -1156,7 +1152,7 @@ where
         response: BaseNodeProto::BaseNodeServiceResponse,
     ) -> Result<(), TransactionServiceError>
     {
-        let tx_id = response.request_key.clone();
+        let tx_id = response.request_key;
         let response = match response.response {
             Some(BaseNodeResponseProto::TransactionOutputs(outputs)) => Ok(outputs.outputs),
             _ => Err(TransactionServiceError::InvalidStateError),
@@ -1178,7 +1174,7 @@ where
 
                 for output in response.iter() {
                     let transaction_output = TransactionOutput::try_from(output.clone())
-                        .map_err(|e| TransactionServiceError::ConversionError(e))?;
+                        .map_err(TransactionServiceError::ConversionError)?;
 
                     check = check &&
                         completed_tx
@@ -1186,8 +1182,7 @@ where
                             .body
                             .outputs()
                             .iter()
-                            .find(|item| *item == &transaction_output)
-                            .is_some();
+                            .any(|item| item == &transaction_output);
                 }
                 // If all outputs are present then mark this transaction as mined.
                 if check {
@@ -1280,11 +1275,9 @@ where
     #[cfg(feature = "test_harness")]
     pub async fn broadcast_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         let completed_txs = self.db.get_completed_transactions().await?;
-        let _found_tx = completed_txs
-            .get(&tx_id.clone())
-            .ok_or(TransactionServiceError::TestHarnessError(
-                "Could not find Completed TX to broadcast.".to_string(),
-            ))?;
+        completed_txs.get(&tx_id.clone()).ok_or_else(|| {
+            TransactionServiceError::TestHarnessError("Could not find Completed TX to broadcast.".to_string())
+        })?;
 
         self.db.broadcast_completed_transaction(tx_id).await?;
 
@@ -1303,18 +1296,14 @@ where
     #[cfg(feature = "test_harness")]
     pub async fn mine_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         let completed_txs = self.db.get_completed_transactions().await?;
-        let found_tx = completed_txs
-            .get(&tx_id.clone())
-            .ok_or(TransactionServiceError::TestHarnessError(
-                "Could not find Completed TX to mine.".to_string(),
-            ))?;
+        let found_tx = completed_txs.get(&tx_id.clone()).ok_or_else(|| {
+            TransactionServiceError::TestHarnessError("Could not find Completed TX to mine.".to_string())
+        })?;
 
         let pending_tx_outputs = self.output_manager_service.get_pending_transactions().await?;
-        let _pending_tx = pending_tx_outputs
-            .get(&tx_id.clone())
-            .ok_or(TransactionServiceError::TestHarnessError(
-                "Could not find Pending TX to complete.".to_string(),
-            ))?;
+        let _pending_tx = pending_tx_outputs.get(&tx_id.clone()).ok_or_else(|| {
+            TransactionServiceError::TestHarnessError("Could not find Pending TX to complete.".to_string())
+        })?;
 
         self.output_manager_service
             .confirm_transaction(
@@ -1422,14 +1411,12 @@ where
     pub async fn finalize_received_test_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         let inbound_txs = self.db.get_pending_inbound_transactions().await?;
 
-        let found_tx = inbound_txs
-            .get(&tx_id.clone())
-            .ok_or(TransactionServiceError::TestHarnessError(
-                "Could not find Pending Inbound TX to finalize.".to_string(),
-            ))?;
+        let found_tx = inbound_txs.get(&tx_id.clone()).ok_or_else(|| {
+            TransactionServiceError::TestHarnessError("Could not find Pending Inbound TX to finalize.".to_string())
+        })?;
 
         let completed_transaction = CompletedTransaction {
-            tx_id: tx_id.clone(),
+            tx_id,
             source_public_key: found_tx.source_public_key.clone(),
             destination_public_key: self.node_identity.public_key().clone(),
             amount: found_tx.amount,
@@ -1437,7 +1424,7 @@ where
             transaction: Transaction::new(Vec::new(), Vec::new(), Vec::new(), BlindingFactor::default()),
             status: TransactionStatus::Completed,
             message: found_tx.message.clone(),
-            timestamp: found_tx.timestamp.clone(),
+            timestamp: found_tx.timestamp,
         };
 
         self.db
@@ -1464,7 +1451,7 @@ async fn transaction_send_discovery_process_completion<TBackend: TransactionBack
     match response_channel.await {
         Ok(response) => match response {
             SendMessageResponse::Queued(tags) => {
-                if tags.len() == 0 {
+                if tags.is_empty() {
                     error!(
                         target: LOG_TARGET,
                         "Send Discovery process for TX_ID: {} was unsuccessful and no message was sent", tx_id

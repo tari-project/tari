@@ -27,7 +27,7 @@ use std::{error::Error, pin::Pin, sync::Arc, task::Poll};
 use tari_comms_dht::{domain_message::MessageHeader, inbound::DecryptedDhtMessage, PipelineError};
 use tower::Service;
 
-const LOG_TARGET: &'static str = "comms::middleware::inbound_domain_connector";
+const LOG_TARGET: &str = "comms::middleware::inbound_domain_connector";
 
 /// This service receives DecryptedInboundMessages, deserializes the MessageHeader and
 /// sends a `PeerMessage` on the given sink.
@@ -67,14 +67,16 @@ where
     TSink::Error: Error + Send + Sync + 'static,
 {
     async fn handle_message(mut sink: TSink, mut inbound_message: DecryptedDhtMessage) -> Result<(), PipelineError> {
-        let envelope_body = inbound_message.success_mut().ok_or("Message failed to decrypt")?;
+        let envelope_body = inbound_message
+            .success_mut()
+            .ok_or_else(|| "Message failed to decrypt")?;
         let header = envelope_body
             .decode_part::<MessageHeader>(0)?
-            .ok_or("envelope body did not contain a header")?;
+            .ok_or_else(|| "envelope body did not contain a header")?;
 
         let msg_bytes = envelope_body
             .take_part(1)
-            .ok_or("envelope body did not contain a message body")?;
+            .ok_or_else(|| "envelope body did not contain a message body")?;
 
         let DecryptedDhtMessage {
             source_peer,
@@ -93,7 +95,7 @@ where
 
         // If this fails there is something wrong with the sink and the pubsub middleware should not
         // continue
-        sink.send(Arc::new(peer_message)).await.map_err(|err| Box::new(err))?;
+        sink.send(Arc::new(peer_message)).await.map_err(Box::new)?;
 
         Ok(())
     }

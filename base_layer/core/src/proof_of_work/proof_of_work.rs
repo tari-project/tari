@@ -173,7 +173,7 @@ impl ProofOfWork {
     /// Serialises the ProofOfWork instance into a byte string. Useful for feeding the PoW into a hash function.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf: Vec<u8> = Vec::with_capacity(256);
-        buf.put_u8(*&self.pow_algo as u8);
+        buf.put_u8(self.pow_algo as u8);
         buf.put_u64_le(self.accumulated_monero_difficulty.as_u64());
         buf.put_u64_le(self.accumulated_blake_difficulty.as_u64());
         buf.put_slice(&self.pow_data);
@@ -187,7 +187,7 @@ impl Display for PowAlgorithm {
             PowAlgorithm::Monero => "Monero",
             PowAlgorithm::Blake => "Blake",
         };
-        fmt.write_str(&format!("{}", algo))
+        fmt.write_str(&algo.to_string())
     }
 }
 

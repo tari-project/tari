@@ -245,14 +245,14 @@ pub fn configure_and_initialize_node(
             rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
             let (comms, handles) = setup_comms_services(
                 rt,
-                id.clone(),
+                id,
                 peers,
                 &config.peer_db_path,
                 &config.wallet_file,
                 db.clone(),
                 mempool,
                 rules.clone(),
-                factories.clone(),
+                factories,
             );
             let outbound_interface = handles
                 .get_handle::<OutboundNodeCommsInterface>()
@@ -282,7 +282,7 @@ pub fn configure_and_initialize_node(
                 wallet_transaction_service,
                 node_service: node_interface,
             };
-            let miner = MinerType::Memory(miner::build_miner(handles, node.get_flag(), rules.clone(), executor));
+            let miner = MinerType::Memory(miner::build_miner(handles, node.get_flag(), rules, executor));
             (comms, node, miner, base_node_context)
         },
         DatabaseType::LMDB(p) => {
@@ -303,14 +303,14 @@ pub fn configure_and_initialize_node(
             rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
             let (comms, handles) = setup_comms_services(
                 rt,
-                id.clone(),
+                id,
                 peers,
                 &config.peer_db_path,
                 &config.wallet_file,
                 db.clone(),
                 mempool,
                 rules.clone(),
-                factories.clone(),
+                factories,
             );
             let outbound_interface = handles
                 .get_handle::<OutboundNodeCommsInterface>()
@@ -339,7 +339,7 @@ pub fn configure_and_initialize_node(
                 wallet_transaction_service,
                 node_service: node_interface,
             };
-            let miner = MinerType::LMDB(miner::build_miner(handles, node.get_flag(), rules.clone(), executor));
+            let miner = MinerType::LMDB(miner::build_miner(handles, node.get_flag(), rules, executor));
             (comms, node, miner, base_node_context)
         },
     };
@@ -420,7 +420,7 @@ where
     let mut wallet_db_folder = PathBuf::from(wallet_file);
     wallet_db_folder.set_extension("dat");
     let wallet_path = PathBuf::from(wallet_db_folder.file_stem().expect("unable to get wallet db path"));
-    let _ = std::fs::create_dir_all(&wallet_path).unwrap_or_default();
+    std::fs::create_dir_all(&wallet_path).unwrap_or_default();
 
     let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
     let (publisher, subscription_factory) = pubsub_connector(rt.handle().clone(), 100);
@@ -477,9 +477,9 @@ where
         .add_initializer(TransactionServiceInitializer::new(
             TransactionServiceConfig::default(),
             subscription_factory.clone(),
-            TransactionServiceSqliteDatabase::new(connection_pool.clone()),
+            TransactionServiceSqliteDatabase::new(connection_pool),
             id.clone(),
-            factories.clone(),
+            factories,
         ))
         .add_initializer(LivenessInitializer::new(
             LivenessConfig::default(),

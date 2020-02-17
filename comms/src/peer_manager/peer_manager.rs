@@ -155,7 +155,7 @@ impl PeerManager {
         &self,
         node_id: &NodeId,
         n: usize,
-        excluded_peers: &Vec<CommsPublicKey>,
+        excluded_peers: &[CommsPublicKey],
     ) -> Result<Vec<Peer>, PeerManagerError>
     {
         acquire_read_lock!(self.peer_storage).closest_peers(node_id, n, excluded_peers)

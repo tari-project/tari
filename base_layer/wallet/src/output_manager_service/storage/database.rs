@@ -35,7 +35,7 @@ use tari_core::transactions::{
     types::{BlindingFactor, PrivateKey},
 };
 
-const LOG_TARGET: &'static str = "wallet::output_manager_service::database";
+const LOG_TARGET: &str = "wallet::output_manager_service::database";
 
 /// This trait defines the required behaviour that a storage backend must provide for the Output Manager service.
 /// Data is passed to and from the backend via the [DbKey], [DbValue], and [DbValueKey] enums. If new data types are
@@ -55,7 +55,7 @@ pub trait OutputManagerBackend: Send + Sync {
     fn encumber_outputs(
         &self,
         tx_id: TxId,
-        outputs_to_send: &Vec<UnblindedOutput>,
+        outputs_to_send: &[UnblindedOutput],
         change_output: Option<UnblindedOutput>,
     ) -> Result<(), OutputManagerStorageError>;
     /// This method must take all the `outputs_to_be_spent` from the specified transaction and move them back into the
@@ -207,22 +207,20 @@ where T: OutputManagerBackend + 'static
         let db_clone2 = self.db.clone();
 
         let pending_txs = tokio::task::spawn_blocking(move || {
-            db_clone
-                .fetch(&DbKey::AllPendingTransactionOutputs)?
-                .ok_or(OutputManagerStorageError::UnexpectedResult(
+            db_clone.fetch(&DbKey::AllPendingTransactionOutputs)?.ok_or_else(|| {
+                OutputManagerStorageError::UnexpectedResult(
                     "Pending Transaction Outputs cannot be retrieved".to_string(),
-                ))
+                )
+            })
         })
         .await
         .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
         .and_then(|inner_result| inner_result)?;
 
         let unspent_outputs = tokio::task::spawn_blocking(move || {
-            db_clone2
-                .fetch(&DbKey::UnspentOutputs)?
-                .ok_or(OutputManagerStorageError::UnexpectedResult(
-                    "Unspent Outputs cannot be retrieved".to_string(),
-                ))
+            db_clone2.fetch(&DbKey::UnspentOutputs)?.ok_or_else(|| {
+                OutputManagerStorageError::UnexpectedResult("Unspent Outputs cannot be retrieved".to_string())
+            })
         })
         .await
         .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
@@ -266,7 +264,7 @@ where T: OutputManagerBackend + 'static
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::PendingTransactionOutputs(
-                pending_transaction_outputs.tx_id.clone(),
+                pending_transaction_outputs.tx_id,
                 Box::new(pending_transaction_outputs),
             )))
         })
@@ -313,12 +311,12 @@ where T: OutputManagerBackend + 'static
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::PendingTransactionOutputs(
-                tx_id.clone(),
+                tx_id,
                 Box::new(PendingTransactionOutputs {
-                    tx_id: tx_id.clone(),
+                    tx_id,
                     outputs_to_be_spent: Vec::new(),
                     outputs_to_be_received: vec![UnblindedOutput {
-                        value: amount.clone(),
+                        value: amount,
                         spending_key: spending_key.clone(),
                         features: output_features,
                     }],
@@ -482,16 +480,16 @@ fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, OutputManagerStor
 impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbKey::SpentOutput(_) => f.write_str(&format!("Spent Output Key")),
-            DbKey::UnspentOutput(_) => f.write_str(&format!("Unspent Output Key")),
+            DbKey::SpentOutput(_) => f.write_str(&"Spent Output Key".to_string()),
+            DbKey::UnspentOutput(_) => f.write_str(&"Unspent Output Key".to_string()),
             DbKey::PendingTransactionOutputs(tx_id) => {
                 f.write_str(&format!("Pending Transaction Outputs TX_ID: {}", tx_id))
             },
-            DbKey::UnspentOutputs => f.write_str(&format!("Unspent Outputs Key")),
-            DbKey::SpentOutputs => f.write_str(&format!("Spent Outputs Key")),
-            DbKey::AllPendingTransactionOutputs => f.write_str(&format!("All Pending Transaction Outputs")),
-            DbKey::KeyManagerState => f.write_str(&format!("Key Manager State")),
-            DbKey::InvalidOutputs => f.write_str(&format!("Invalid Outputs Key")),
+            DbKey::UnspentOutputs => f.write_str(&"Unspent Outputs Key".to_string()),
+            DbKey::SpentOutputs => f.write_str(&"Spent Outputs Key".to_string()),
+            DbKey::AllPendingTransactionOutputs => f.write_str(&"All Pending Transaction Outputs".to_string()),
+            DbKey::KeyManagerState => f.write_str(&"Key Manager State".to_string()),
+            DbKey::InvalidOutputs => f.write_str(&"Invalid Outputs Key"),
         }
     }
 }
@@ -505,7 +503,7 @@ impl Display for DbValue {
             DbValue::UnspentOutputs(_) => f.write_str("Unspent Outputs"),
             DbValue::SpentOutputs(_) => f.write_str("Spent Outputs"),
             DbValue::AllPendingTransactionOutputs(_) => f.write_str("All Pending Transaction Outputs"),
-            DbValue::KeyManagerState(_) => f.write_str(&format!("Key Manager State")),
+            DbValue::KeyManagerState(_) => f.write_str("Key Manager State"),
             DbValue::InvalidOutputs(_) => f.write_str("Invalid Outputs"),
         }
     }

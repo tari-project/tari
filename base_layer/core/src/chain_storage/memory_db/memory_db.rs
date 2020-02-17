@@ -390,7 +390,7 @@ where D: Digest + Send + Sync
             MmrTree::Utxo => db.utxo_checkpoints.get(height as usize),
             MmrTree::RangeProof => db.range_proof_checkpoints.get(height as usize),
         }?
-        .ok_or(ChainStorageError::OutOfRange)
+        .ok_or_else(|| ChainStorageError::OutOfRange)
     }
 
     fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Vec<u8>, bool), ChainStorageError> {
@@ -400,12 +400,9 @@ where D: Digest + Send + Sync
             MmrTree::Utxo => db.utxo_mmr.fetch_mmr_node(pos)?,
             MmrTree::RangeProof => db.range_proof_mmr.fetch_mmr_node(pos)?,
         };
-        let hash = hash
-            .ok_or(ChainStorageError::UnexpectedResult(format!(
-                "A leaf node hash in the {} MMR tree was not found",
-                tree
-            )))?
-            .clone();
+        let hash = hash.ok_or_else(|| {
+            ChainStorageError::UnexpectedResult(format!("A leaf node hash in the {} MMR tree was not found", tree))
+        })?;
         Ok((hash, deleted))
     }
 
@@ -434,7 +431,7 @@ where D: Digest + Send + Sync
     where F: FnMut(Result<(u64, BlockHeader), ChainStorageError>) {
         let db = self.db_access()?;
         for (key, val) in db.headers.iter() {
-            f(Ok((key.clone(), val.clone())));
+            f(Ok((*key, val.clone())));
         }
         Ok(())
     }
@@ -455,7 +452,7 @@ where D: Digest + Send + Sync
         let header_count = db.headers.len() as u64;
         if header_count >= 1 {
             let k = header_count - 1;
-            Ok(db.headers.get(&k).map(|h| h.clone()))
+            Ok(db.headers.get(&k).cloned())
         } else {
             Ok(None)
         }

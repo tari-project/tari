@@ -214,7 +214,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn receive_line(&mut self) -> Result<ResponseLine<'_>, TorClientError> {
-        let raw = self.framed.next().await.ok_or(TorClientError::UnexpectedEof)??;
+        let raw = self.framed.next().await.ok_or_else(|| TorClientError::UnexpectedEof)??;
         let parsed = parsers::response_line(&raw)?;
         Ok(parsed.into_owned())
     }

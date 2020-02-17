@@ -104,11 +104,11 @@ fn test_initial_sync() {
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
 
     assert_eq!(
-        diff_adj_manager.get_target_difficulty(&PowAlgorithm::Monero),
+        diff_adj_manager.get_target_difficulty(PowAlgorithm::Monero),
         Ok(calculate_accumulated_difficulty(&store, vec![2, 5, 6]))
     );
     assert_eq!(
-        diff_adj_manager.get_target_difficulty(&PowAlgorithm::Blake),
+        diff_adj_manager.get_target_difficulty(PowAlgorithm::Blake),
         Ok(calculate_accumulated_difficulty(&store, vec![0, 1, 3, 4, 7]))
     );
 }
@@ -129,11 +129,11 @@ fn test_sync_to_chain_tip() {
     create_test_pow_blockchain(&store, pow_algos);
     assert_eq!(store.get_height(), Ok(Some(5)));
     assert_eq!(
-        diff_adj_manager.get_target_difficulty(&PowAlgorithm::Monero),
+        diff_adj_manager.get_target_difficulty(PowAlgorithm::Monero),
         Ok(calculate_accumulated_difficulty(&store, vec![1, 4]))
     );
     assert_eq!(
-        diff_adj_manager.get_target_difficulty(&PowAlgorithm::Blake),
+        diff_adj_manager.get_target_difficulty(PowAlgorithm::Blake),
         Ok(calculate_accumulated_difficulty(&store, vec![0, 2, 3, 5]))
     );
 
@@ -147,11 +147,11 @@ fn test_sync_to_chain_tip() {
     append_to_pow_blockchain(&store, tip, pow_algos);
     assert_eq!(store.get_height(), Ok(Some(9)));
     assert_eq!(
-        diff_adj_manager.get_target_difficulty(&PowAlgorithm::Monero),
+        diff_adj_manager.get_target_difficulty(PowAlgorithm::Monero),
         Ok(calculate_accumulated_difficulty(&store, vec![1, 4, 7, 9]))
     );
     assert_eq!(
-        diff_adj_manager.get_target_difficulty(&PowAlgorithm::Blake),
+        diff_adj_manager.get_target_difficulty(PowAlgorithm::Blake),
         Ok(calculate_accumulated_difficulty(&store, vec![0, 2, 3, 5, 6, 8]))
     );
 }
@@ -161,10 +161,10 @@ fn test_target_difficulty_with_height() {
     let store = create_mem_db(Network::Rincewind);
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
     assert!(diff_adj_manager
-        .get_target_difficulty_at_height(&PowAlgorithm::Monero, 5)
+        .get_target_difficulty_at_height(PowAlgorithm::Monero, 5)
         .is_err());
     assert!(diff_adj_manager
-        .get_target_difficulty_at_height(&PowAlgorithm::Blake, 5)
+        .get_target_difficulty_at_height(PowAlgorithm::Blake, 5)
         .is_err());
 
     let pow_algos = vec![
@@ -179,29 +179,29 @@ fn test_target_difficulty_with_height() {
     let diff_adj_manager = DiffAdjManager::new(store.clone()).unwrap();
 
     assert_eq!(
-        diff_adj_manager.get_target_difficulty_at_height(&PowAlgorithm::Monero, 5),
+        diff_adj_manager.get_target_difficulty_at_height(PowAlgorithm::Monero, 5),
         Ok(calculate_accumulated_difficulty(&store, vec![1, 4]))
     );
     assert_eq!(
-        diff_adj_manager.get_target_difficulty_at_height(&PowAlgorithm::Blake, 5),
+        diff_adj_manager.get_target_difficulty_at_height(PowAlgorithm::Blake, 5),
         Ok(calculate_accumulated_difficulty(&store, vec![0, 2, 3, 5]))
     );
 
     assert_eq!(
-        diff_adj_manager.get_target_difficulty_at_height(&PowAlgorithm::Monero, 2),
+        diff_adj_manager.get_target_difficulty_at_height(PowAlgorithm::Monero, 2),
         Ok(calculate_accumulated_difficulty(&store, vec![1]))
     );
     assert_eq!(
-        diff_adj_manager.get_target_difficulty_at_height(&PowAlgorithm::Blake, 2),
+        diff_adj_manager.get_target_difficulty_at_height(PowAlgorithm::Blake, 2),
         Ok(calculate_accumulated_difficulty(&store, vec![0, 2]))
     );
 
     assert_eq!(
-        diff_adj_manager.get_target_difficulty_at_height(&PowAlgorithm::Monero, 3),
+        diff_adj_manager.get_target_difficulty_at_height(PowAlgorithm::Monero, 3),
         Ok(calculate_accumulated_difficulty(&store, vec![1]))
     );
     assert_eq!(
-        diff_adj_manager.get_target_difficulty_at_height(&PowAlgorithm::Blake, 3),
+        diff_adj_manager.get_target_difficulty_at_height(PowAlgorithm::Blake, 3),
         Ok(calculate_accumulated_difficulty(&store, vec![0, 2, 3]))
     );
 }
@@ -222,11 +222,11 @@ fn test_full_sync_on_reorg() {
     create_test_pow_blockchain(&store, pow_algos);
     assert_eq!(store.get_height(), Ok(Some(4)));
     assert_eq!(
-        diff_adj_manager.get_target_difficulty(&PowAlgorithm::Monero),
+        diff_adj_manager.get_target_difficulty(PowAlgorithm::Monero),
         Ok(Difficulty::from(1))
     );
     assert_eq!(
-        diff_adj_manager.get_target_difficulty(&PowAlgorithm::Blake),
+        diff_adj_manager.get_target_difficulty(PowAlgorithm::Blake),
         Ok(Difficulty::from(18))
     );
 
@@ -244,11 +244,11 @@ fn test_full_sync_on_reorg() {
     let tip = store.fetch_block(8).unwrap().block;
     append_to_pow_blockchain(&store, tip, pow_algos);
     assert_eq!(
-        diff_adj_manager.get_target_difficulty(&PowAlgorithm::Monero),
+        diff_adj_manager.get_target_difficulty(PowAlgorithm::Monero),
         Ok(Difficulty::from(2))
     );
     assert_eq!(
-        diff_adj_manager.get_target_difficulty(&PowAlgorithm::Blake),
+        diff_adj_manager.get_target_difficulty(PowAlgorithm::Blake),
         Ok(Difficulty::from(9))
     );
 }

@@ -193,7 +193,7 @@ pub fn generate_wallet_test_data<
         "🥡",
     ]
     .iter()
-    .map(|i| i.to_string())
+    .map(|i| (*i).to_string())
     .collect();
     let mut message_index = 0;
 
@@ -238,7 +238,7 @@ pub fn generate_wallet_test_data<
         target: LOG_TARGET,
         "Spinning up Alice wallet to generate test transactions"
     );
-    let alice_temp_dir = format!("{}/{}", data_path.clone(), random_string(8));
+    let alice_temp_dir = format!("{}/{}", data_path, random_string(8));
     let _ = std::fs::create_dir(&alice_temp_dir);
 
     let mut wallet_alice = create_wallet(
@@ -258,7 +258,7 @@ pub fn generate_wallet_test_data<
         target: LOG_TARGET,
         "Spinning up Bob wallet to generate test transactions"
     );
-    let bob_temp_dir = format!("{}/{}", data_path.clone(), random_string(8));
+    let bob_temp_dir = format!("{}/{}", data_path, random_string(8));
     let _ = std::fs::create_dir(&bob_temp_dir);
 
     let mut wallet_bob = create_wallet(
@@ -610,11 +610,11 @@ pub fn complete_sent_transaction<
     match pending_outbound_tx.get(&tx_id) {
         Some(p) => {
             let completed_tx: CompletedTransaction = CompletedTransaction {
-                tx_id: p.tx_id.clone(),
+                tx_id: p.tx_id,
                 source_public_key: wallet.comms.node_identity().public_key().clone(),
                 destination_public_key: p.destination_public_key.clone(),
-                amount: p.amount.clone(),
-                fee: p.fee.clone(),
+                amount: p.amount,
+                fee: p.fee,
                 transaction: Transaction::new(Vec::new(), Vec::new(), Vec::new(), BlindingFactor::default()),
                 message: p.message.clone(),
                 status: TransactionStatus::Completed,
@@ -649,7 +649,7 @@ pub fn receive_test_transaction<
     let contacts = wallet.runtime.block_on(wallet.contacts_service.get_contacts()).unwrap();
     let (_secret_key, mut public_key): (CommsSecretKey, CommsPublicKey) = PublicKey::random_keypair(&mut OsRng);
 
-    if contacts.len() > 0 {
+    if !contacts.is_empty() {
         public_key = contacts[0].public_key.clone();
     }
 

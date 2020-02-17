@@ -278,12 +278,13 @@ where
     }
 
     fn make_peer_connection_config(&mut self) -> PeerConnectionConfig {
-        let config = self.peer_conn_config.take().unwrap_or_default();
-        config
+        self.peer_conn_config.take().unwrap_or_default()
     }
 
     fn make_node_identity(&mut self) -> Result<Arc<NodeIdentity>, CommsBuilderError> {
-        self.node_identity.take().ok_or(CommsBuilderError::NodeIdentityNotSet)
+        self.node_identity
+            .take()
+            .ok_or_else(|| CommsBuilderError::NodeIdentityNotSet)
     }
 
     fn make_outbound_message_service(
@@ -333,7 +334,7 @@ where
         let connection_manager = self.make_connection_manager(
             node_identity.clone(),
             peer_manager.clone(),
-            peer_conn_config.clone(),
+            peer_conn_config,
             peer_connection_message_sender,
         );
 
@@ -348,7 +349,7 @@ where
 
         let (outbound_message_service, outbound_event_publisher) = self.make_outbound_message_service(
             Arc::clone(&node_identity),
-            connection_manager_requester.clone(),
+            connection_manager_requester,
             shutdown.to_signal(),
         );
 

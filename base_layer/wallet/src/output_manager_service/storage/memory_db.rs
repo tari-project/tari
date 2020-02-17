@@ -43,6 +43,7 @@ use tari_core::transactions::transaction::UnblindedOutput;
 
 /// This structure is an In-Memory database backend that implements the `OutputManagerBackend` trait and provides all
 /// the functionality required by the trait.
+#[derive(Default)]
 pub struct InnerDatabase {
     unspent_outputs: Vec<UnblindedOutput>,
     spent_outputs: Vec<UnblindedOutput>,
@@ -171,9 +172,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         let mut pending_tx = db
             .pending_transactions
             .remove(&tx_id)
-            .ok_or(OutputManagerStorageError::ValueNotFound(
-                DbKey::PendingTransactionOutputs(tx_id.clone()),
-            ))?;
+            .ok_or_else(|| OutputManagerStorageError::ValueNotFound(DbKey::PendingTransactionOutputs(tx_id)))?;
 
         // Add Spent outputs
         for o in pending_tx.outputs_to_be_spent.drain(..) {
@@ -191,7 +190,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
     fn encumber_outputs(
         &self,
         tx_id: TxId,
-        outputs_to_send: &Vec<UnblindedOutput>,
+        outputs_to_send: &[UnblindedOutput],
         change_output: Option<UnblindedOutput>,
     ) -> Result<(), OutputManagerStorageError>
     {
@@ -206,7 +205,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         }
 
         let mut pending_transaction = PendingTransactionOutputs {
-            tx_id: tx_id.clone(),
+            tx_id,
             outputs_to_be_spent,
             outputs_to_be_received: Vec::new(),
             timestamp: Utc::now().naive_utc(),
@@ -226,9 +225,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         let mut pending_tx = db
             .pending_transactions
             .remove(&tx_id)
-            .ok_or(OutputManagerStorageError::ValueNotFound(
-                DbKey::PendingTransactionOutputs(tx_id.clone()),
-            ))?;
+            .ok_or_else(|| OutputManagerStorageError::ValueNotFound(DbKey::PendingTransactionOutputs(tx_id)))?;
         for o in pending_tx.outputs_to_be_spent.drain(..) {
             db.unspent_outputs.push(o);
         }

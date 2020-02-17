@@ -54,7 +54,7 @@ use tari_service_framework::{
 use tari_shutdown::ShutdownSignal;
 use tokio::runtime;
 
-const LOG_TARGET: &'static str = "base_node::mempool_service::initializer";
+const LOG_TARGET: &str = "base_node::mempool_service::initializer";
 
 /// Initializer for the Mempool service and service future.
 pub struct MempoolServiceInitializer<T>
@@ -159,7 +159,7 @@ where T: BlockchainBackend + 'static
         let outbound_mp_interface =
             OutboundMempoolServiceInterface::new(outbound_request_sender_service, outbound_tx_sender_service);
         let executer_clone = executor.clone(); // Give MempoolService access to the executor
-        let config = self.config.clone();
+        let config = self.config;
         let mempool = self.mempool.clone();
         let inbound_handlers = MempoolInboundHandlers::new(mempool, outbound_mp_interface.clone());
         // Register handle to OutboundMempoolServiceInterface before waiting for handles to be ready

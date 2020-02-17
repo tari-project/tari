@@ -112,11 +112,11 @@ where T: BlockchainBackend
         self.blockchain_db
             .get_metadata()?
             .height_of_longest_chain
-            .ok_or(DiffAdjManagerError::EmptyBlockchain)
+            .ok_or_else(|| DiffAdjManagerError::EmptyBlockchain)
     }
 
     /// Returns the estimated target difficulty for the specified PoW algorithm at the chain tip.
-    pub fn get_target_difficulty(&mut self, pow_algo: &PowAlgorithm) -> Result<Difficulty, DiffAdjManagerError> {
+    pub fn get_target_difficulty(&mut self, pow_algo: PowAlgorithm) -> Result<Difficulty, DiffAdjManagerError> {
         let height = self.get_height_of_longest_chain()?;
         self.get_target_difficulty_at_height(pow_algo, height)
     }
@@ -124,7 +124,7 @@ where T: BlockchainBackend
     /// Returns the estimated target difficulty for the specified PoW algorithm and provided height.
     pub fn get_target_difficulty_at_height(
         &mut self,
-        pow_algo: &PowAlgorithm,
+        pow_algo: PowAlgorithm,
         height: u64,
     ) -> Result<Difficulty, DiffAdjManagerError>
     {
@@ -151,7 +151,7 @@ where T: BlockchainBackend
         let mut sorted_timestamps: Vec<EpochTime> = self.timestamps.clone().into();
         sorted_timestamps.sort();
         trace!(target: LOG_TARGET, "sorted median timestamps: {:?}", sorted_timestamps);
-        length = length / 2; // we want the median, should be index  (MEDIAN_TIMESTAMP_COUNT/2)
+        length /= 2; // we want the median, should be index  (MEDIAN_TIMESTAMP_COUNT/2)
         Ok(sorted_timestamps[length])
     }
 

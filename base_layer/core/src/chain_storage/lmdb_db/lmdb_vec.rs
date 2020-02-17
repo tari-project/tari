@@ -66,6 +66,10 @@ where
         Ok(lmdb_len(&self.env, &self.db)?)
     }
 
+    fn is_empty(&self) -> Result<bool, Self::Error> {
+        Ok(lmdb_len(&self.env, &self.db)? == 0)
+    }
+
     fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error> {
         let index = self.len()?;
         let txn = WriteTransaction::new(self.env.clone()).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
@@ -147,7 +151,7 @@ where
             for index in drain_n..n_elements {
                 let item = lmdb_get::<usize, T>(&self.env, &self.db, &index)
                     .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
-                    .ok_or(MerkleMountainRangeError::BackendError("Unexpected error".into()))?;
+                    .ok_or_else(|| MerkleMountainRangeError::BackendError("Unexpected error".into()))?;
                 lmdb_delete(&txn, &self.db, &index)
                     .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
                 lmdb_insert(&txn, &self.db, &shift_index, &item)
@@ -167,7 +171,7 @@ where
         for index in 0..n_elements {
             let val = lmdb_get::<usize, T>(&self.env, &self.db, &index)
                 .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
-                .ok_or(MerkleMountainRangeError::BackendError("Unexpected error".into()))?;
+                .ok_or_else(|| MerkleMountainRangeError::BackendError("Unexpected error".into()))?;
             f(Ok(val))
         }
         Ok(())

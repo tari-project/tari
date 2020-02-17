@@ -36,13 +36,13 @@ impl EpochTime {
     }
 
     /// Return the EpochTime as a u64
-    pub fn as_u64(&self) -> u64 {
+    pub fn as_u64(self) -> u64 {
         self.0
     }
 
     /// This will return a new EpochTime increased by the amount of seconds given
     /// This will panic if combined EpochTime and seconds are larger than U64::MAX
-    pub fn increase(&self, seconds: u64) -> EpochTime {
+    pub fn increase(self, seconds: u64) -> EpochTime {
         let num = seconds.checked_add(self.0);
         let value = match num {
             Some(v) => v,
@@ -51,7 +51,7 @@ impl EpochTime {
         EpochTime(value)
     }
 
-    pub fn checked_sub(&self, other: EpochTime) -> Option<EpochTime> {
+    pub fn checked_sub(self, other: EpochTime) -> Option<EpochTime> {
         match self.0.checked_sub(other.0) {
             None => None,
             Some(v) => Some(EpochTime(v)),

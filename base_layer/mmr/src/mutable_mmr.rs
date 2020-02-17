@@ -140,7 +140,7 @@ where
     /// Push a new element into the MMR. Computes new related peaks at the same time if applicable.
     /// Returns the new number of leaf nodes (regardless of deleted state) in the mutable MMR
     pub fn push(&mut self, hash: &Hash) -> Result<usize, MerkleMountainRangeError> {
-        if self.size >= std::u32::MAX {
+        if self.size == std::u32::MAX {
             return Err(MerkleMountainRangeError::MaximumSizeReached);
         }
         let result = self.mmr.push(hash);

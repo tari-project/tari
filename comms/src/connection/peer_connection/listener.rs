@@ -306,7 +306,7 @@ impl PeerConnectionListener {
     {
         let conn_identity = self
             .get_whitelisted_connection_identity(&peer_identity)
-            .ok_or(PeerConnectionError::AccessDenied)?;
+            .ok_or_else(|| PeerConnectionError::AccessDenied)?;
         let payload = self.create_inbound_payload(message_type, conn_identity, frames);
         conn.send(payload).map_err(PeerConnectionError::SendFailure)
     }
@@ -352,8 +352,7 @@ impl PeerConnectionListener {
                         return Err(PeerConnectionError::StateError(format!(
                             "Unable to transition to connected state from state '{}'",
                             PeerConnectionSimpleState::from(s)
-                        ))
-                        .into());
+                        )));
                     },
                 }
             },
@@ -411,8 +410,7 @@ impl PeerConnectionListener {
                 return Err(PeerConnectionError::StateError(format!(
                     "Unable to transition to connected state from state '{}'",
                     PeerConnectionSimpleState::from(s)
-                ))
-                .into());
+                )));
             },
         }
 
@@ -520,7 +518,7 @@ impl PeerConnectionListener {
         }
         let identity = frames.remove(0);
         let mut msg_type_frame = frames.remove(0);
-        if msg_type_frame.len() == 0 {
+        if msg_type_frame.is_empty() {
             return None;
         }
         let message_type_u8 = msg_type_frame.remove(0);
@@ -588,7 +586,7 @@ impl PeerConnectionListener {
         match self.receiver.recv_timeout(Duration::from_millis(5)) {
             Ok(msg) => Ok(Some(msg)),
             Err(e) => match e {
-                RecvTimeoutError::Disconnected => Err(PeerConnectionError::ControlChannelDisconnected.into()),
+                RecvTimeoutError::Disconnected => Err(PeerConnectionError::ControlChannelDisconnected),
                 RecvTimeoutError::Timeout => Ok(None),
             },
         }

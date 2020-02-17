@@ -106,7 +106,7 @@ pub fn check_achieved_difficulty<B: BlockchainBackend>(
     let mut target = 1.into();
     if block_header.height > 0 || rules.get_genesis_block_hash() != block_header.hash() {
         target = rules
-            .get_target_difficulty_with_height(&block_header.pow.pow_algo, height)
+            .get_target_difficulty_with_height(block_header.pow.pow_algo, height)
             .or_else(|e| {
                 error!(target: LOG_TARGET, "Validation could not get achieved difficulty");
                 Err(e)

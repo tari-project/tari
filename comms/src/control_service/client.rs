@@ -92,10 +92,12 @@ impl ControlServiceClient {
                 let body = EnvelopeBody::decode(decrypted_body.as_slice())?;
                 let header = body
                     .decode_part::<MessageHeader>(0)?
-                    .ok_or(ControlServiceError::InvalidEnvelopeBody)?;
+                    .ok_or_else(|| ControlServiceError::InvalidEnvelopeBody)?;
                 match MessageType::from_i32(header.message_type) {
                     Some(MessageType::Pong) => {
-                        let msg = body.decode_part(1)?.ok_or(ControlServiceError::InvalidEnvelopeBody)?;
+                        let msg = body
+                            .decode_part(1)?
+                            .ok_or_else(|| ControlServiceError::InvalidEnvelopeBody)?;
 
                         trace!(target: LOG_TARGET, "Received PONG",);
                         Ok(Some(msg))
@@ -133,7 +135,7 @@ impl ControlServiceClient {
                 if self.connection.direction() == &ConnectionDirection::Inbound {
                     frames.remove(0);
                 }
-                let envelope_frame = frames.get(0).ok_or(ControlServiceError::InvalidEnvelope)?;
+                let envelope_frame = frames.get(0).ok_or_else(|| ControlServiceError::InvalidEnvelope)?;
                 let envelope = Envelope::decode(envelope_frame.as_slice())?;
                 if envelope.verify_signature()? {
                     Ok(Some(envelope))

@@ -37,7 +37,7 @@ use tari_comms::{
 };
 use tower::{layer::Layer, Service, ServiceExt};
 
-const LOG_TARGET: &'static str = "comms::middleware::forward";
+const LOG_TARGET: &str = "comms::middleware::forward";
 
 /// This layer is responsible for storing messages which have failed to decrypt
 pub struct StoreLayer {

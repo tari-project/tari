@@ -167,8 +167,8 @@ impl SenderTransactionInitializer {
         let total_being_spent = self.unblinded_inputs.iter().map(|i| i.value).sum::<MicroTari>();
         let total_to_self = self.outputs.iter().map(|o| o.value).sum::<MicroTari>();
 
-        let total_amount = self.amounts.sum().ok_or("Not all amounts have been provided")?;
-        let fee_per_gram = self.fee_per_gram.ok_or("Fee per gram was not provided")?;
+        let total_amount = self.amounts.sum().ok_or_else(|| "Not all amounts have been provided")?;
+        let fee_per_gram = self.fee_per_gram.ok_or_else(|| "Fee per gram was not provided")?;
         let fee_without_change = Fee::calculate(fee_per_gram, num_inputs, num_outputs);
         let fee_with_change = Fee::calculate(fee_per_gram, num_inputs, num_outputs + 1);
         let extra_fee = fee_with_change - fee_without_change;
@@ -188,7 +188,7 @@ impl SenderTransactionInitializer {
                         let change_key = self
                             .change_secret
                             .as_ref()
-                            .ok_or("Change spending key was not provided")?;
+                            .ok_or_else(|| "Change spending key was not provided")?;
                         let change_key = change_key.clone();
                         self.with_output(UnblindedOutput::new(v, change_key, None));
                         Ok((fee_with_change, v))
@@ -298,7 +298,7 @@ impl SenderTransactionInitializer {
             public_nonce_sum: public_nonce,
             recipient_info,
             signatures: Vec::new(),
-            message: self.message.unwrap_or("".to_string()),
+            message: self.message.unwrap_or_else(|| "".to_string()),
         };
         let state = SenderState::Initializing(Box::new(sender_info));
         let state = state

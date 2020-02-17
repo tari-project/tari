@@ -176,7 +176,7 @@ impl Clone for NodeIdentity {
         Self {
             node_id: self.node_id.clone(),
             public_key: self.public_key.clone(),
-            features: self.features.clone(),
+            features: self.features,
             secret_key: self.secret_key.clone(),
             public_address: RwLock::new(self.public_address()),
         }

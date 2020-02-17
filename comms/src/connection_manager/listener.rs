@@ -210,7 +210,7 @@ where
 
         let authenticated_public_key = noise_socket
             .get_remote_public_key()
-            .ok_or(ConnectionManagerError::InvalidStaticPublicKey)?;
+            .ok_or_else(|| ConnectionManagerError::InvalidStaticPublicKey)?;
 
         let mut muxer = Yamux::upgrade_connection(executor.clone(), noise_socket, CONNECTION_DIRECTION)
             .await

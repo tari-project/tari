@@ -25,7 +25,7 @@ use log::*;
 use std::{error::Error, pin::Pin, task::Poll};
 use tower::Service;
 
-const LOG_TARGET: &'static str = "comms::pipeline::sink";
+const LOG_TARGET: &str = "comms::pipeline::sink";
 
 /// A service which forwards and messages it gets to the given Sink
 #[derive(Clone)]

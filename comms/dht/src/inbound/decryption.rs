@@ -32,7 +32,7 @@ use std::{sync::Arc, task::Poll};
 use tari_comms::{message::EnvelopeBody, peer_manager::NodeIdentity, utils::crypt};
 use tower::{layer::Layer, Service, ServiceExt};
 
-const LOG_TARGET: &'static str = "comms::middleware::encryption";
+const LOG_TARGET: &str = "comms::middleware::encryption";
 
 /// This layer is responsible for attempting to decrypt inbound messages.
 pub struct DecryptionLayer {
@@ -108,7 +108,7 @@ where
             .origin
             .as_ref()
             // TODO: #banheuristics - this should not have been sent/propagated
-            .ok_or("Message origin field is required for encrypted messages")?;
+            .ok_or_else(|| "Message origin field is required for encrypted messages")?;
 
         debug!(target: LOG_TARGET, "Attempting to decrypt message");
         let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), &origin.public_key);
@@ -145,7 +145,7 @@ where
             // 4. the rest of the bytes would have to be valid protobuf encoding
             //
             // The chance of this happening is extremely negligible.
-            if body.len() == 0 {
+            if body.is_empty() {
                 return Err(prost::DecodeError::new("EnvelopeBody has no parts"));
             }
             Ok(body)

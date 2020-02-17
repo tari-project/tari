@@ -92,7 +92,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             timestamp: Utc::now().naive_utc(),
         });
         assert!(
-            !runtime.block_on(db.transaction_exists(&((i + 10) as u64))).unwrap(),
+            !runtime.block_on(db.transaction_exists((i + 10) as u64)).unwrap(),
             "TxId should not exist"
         );
 
@@ -100,7 +100,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             .block_on(db.add_pending_outbound_transaction(outbound_txs[i].tx_id, outbound_txs[i].clone()))
             .unwrap();
         assert!(
-            runtime.block_on(db.transaction_exists(&((i + 10) as u64))).unwrap(),
+            runtime.block_on(db.transaction_exists((i + 10) as u64)).unwrap(),
             "TxId should exist"
         );
     }
@@ -139,14 +139,14 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             timestamp: Utc::now().naive_utc(),
         });
         assert!(
-            !runtime.block_on(db.transaction_exists(&(i as u64))).unwrap(),
+            !runtime.block_on(db.transaction_exists(i as u64)).unwrap(),
             "TxId should not exist"
         );
         runtime
             .block_on(db.add_pending_inbound_transaction(i as u64, inbound_txs[i].clone()))
             .unwrap();
         assert!(
-            runtime.block_on(db.transaction_exists(&(i as u64))).unwrap(),
+            runtime.block_on(db.transaction_exists(i as u64)).unwrap(),
             "TxId should exist"
         );
     }
@@ -169,11 +169,11 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             timestamp: Utc::now().naive_utc(),
         });
 
-        assert!(!runtime.block_on(db.transaction_exists(&((i + 100) as u64))).unwrap());
+        assert!(!runtime.block_on(db.transaction_exists((i + 100) as u64)).unwrap());
         runtime
             .block_on(db.add_pending_coinbase_transaction((i + 100) as u64, coinbases[i].clone()))
             .unwrap();
-        assert!(runtime.block_on(db.transaction_exists(&&((i + 100) as u64))).unwrap());
+        assert!(runtime.block_on(db.transaction_exists((i + 100) as u64)).unwrap());
     }
 
     runtime

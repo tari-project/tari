@@ -63,6 +63,7 @@ pub fn make_input<R: Rng + CryptoRng>(
     (input, UnblindedOutput::new(val, key, None))
 }
 
+#[derive(Default)]
 pub struct TestParams {
     pub spend_key: PrivateKey,
     pub change_key: PrivateKey,
@@ -222,7 +223,7 @@ pub fn create_test_input(
 ) -> (TransactionInput, UnblindedOutput)
 {
     let spending_key = PrivateKey::random(&mut OsRng);
-    let commitment = factory.commit(&spending_key, &PrivateKey::from(amount.clone()));
+    let commitment = factory.commit(&spending_key, &PrivateKey::from(amount));
     let features = OutputFeatures::with_maturity(maturity);
     let input = TransactionInput::new(features.clone(), commitment);
     let unblinded_output = UnblindedOutput::new(amount, spending_key, Some(features));
@@ -272,7 +273,7 @@ pub fn create_tx(
         } else {
             amount_for_last_output
         };
-        let utxo = UnblindedOutput::new(output_amount.into(), test_params.spend_key.clone(), None);
+        let utxo = UnblindedOutput::new(output_amount, test_params.spend_key.clone(), None);
         unblinded_outputs.push(utxo.clone());
         stx_builder.with_output(utxo);
     }
@@ -312,7 +313,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
     let mut outputs = Vec::with_capacity(schema.to.len());
     for val in schema.to {
         let k = PrivateKey::random(&mut OsRng);
-        let utxo = UnblindedOutput::new(val.clone(), k, Some(schema.features.clone()));
+        let utxo = UnblindedOutput::new(val, k, Some(schema.features.clone()));
         outputs.push(utxo.clone());
         stx_builder.with_output(utxo);
     }

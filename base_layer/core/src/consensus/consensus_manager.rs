@@ -92,11 +92,11 @@ where B: BlockchainBackend
     }
 
     /// Returns the estimated target difficulty for the specified PoW algorithm at the chain tip.
-    pub fn get_target_difficulty(&self, pow_algo: &PowAlgorithm) -> Result<Difficulty, ConsensusManagerError> {
+    pub fn get_target_difficulty(&self, pow_algo: PowAlgorithm) -> Result<Difficulty, ConsensusManagerError> {
         match self.access_diff_adj()?.as_ref() {
             Some(v) => v
                 .get_target_difficulty(pow_algo)
-                .map_err(|e| ConsensusManagerError::DifficultyAdjustmentManagerError(e)),
+                .map_err(ConsensusManagerError::DifficultyAdjustmentManagerError),
             None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
         }
     }
@@ -104,14 +104,14 @@ where B: BlockchainBackend
     /// Returns the estimated target difficulty for the specified PoW algorithm and provided height.
     pub fn get_target_difficulty_with_height(
         &self,
-        pow_algo: &PowAlgorithm,
+        pow_algo: PowAlgorithm,
         height: u64,
     ) -> Result<Difficulty, ConsensusManagerError>
     {
         match self.access_diff_adj()?.as_ref() {
             Some(v) => v
                 .get_target_difficulty_at_height(pow_algo, height)
-                .map_err(|e| ConsensusManagerError::DifficultyAdjustmentManagerError(e)),
+                .map_err(ConsensusManagerError::DifficultyAdjustmentManagerError),
             None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
         }
     }
@@ -121,7 +121,7 @@ where B: BlockchainBackend
         match self.access_diff_adj()?.as_ref() {
             Some(v) => v
                 .get_median_timestamp()
-                .map_err(|e| ConsensusManagerError::DifficultyAdjustmentManagerError(e)),
+                .map_err(ConsensusManagerError::DifficultyAdjustmentManagerError),
             None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
         }
     }
@@ -131,7 +131,7 @@ where B: BlockchainBackend
         match self.access_diff_adj()?.as_ref() {
             Some(v) => v
                 .get_median_timestamp_at_height(height)
-                .map_err(|e| ConsensusManagerError::DifficultyAdjustmentManagerError(e)),
+                .map_err(ConsensusManagerError::DifficultyAdjustmentManagerError),
             None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
         }
     }

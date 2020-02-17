@@ -30,7 +30,7 @@ use std::{
 };
 
 /// MemBackendVec is a shareable, memory only, vector that can be be used with MmrCache to store checkpoints.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MemBackendVec<T> {
     db: Arc<RwLock<Vec<T>>>,
 }
@@ -53,6 +53,14 @@ impl<T: Clone> ArrayLike for MemBackendVec<T> {
             .read()
             .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
             .len())
+    }
+
+    fn is_empty(&self) -> Result<bool, Self::Error> {
+        Ok(self
+            .db
+            .read()
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
+            .is_empty())
     }
 
     fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error> {

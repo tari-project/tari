@@ -48,18 +48,23 @@ impl TryFrom<proto::TransactionKernel> for TransactionKernel {
     type Error = String;
 
     fn try_from(kernel: proto::TransactionKernel) -> Result<Self, Self::Error> {
-        let excess = Commitment::from_bytes(&kernel.excess.ok_or("Excess not provided in kernel".to_string())?.data)
-            .map_err(|err| err.to_string())?;
+        let excess = Commitment::from_bytes(
+            &kernel
+                .excess
+                .ok_or_else(|| "Excess not provided in kernel".to_string())?
+                .data,
+        )
+        .map_err(|err| err.to_string())?;
 
         let excess_sig = kernel
             .excess_sig
-            .ok_or("excess_sig not provided".to_string())?
+            .ok_or_else(|| "excess_sig not provided".to_string())?
             .try_into()
             .map_err(|err: ByteArrayError| err.to_string())?;
 
         Ok(Self {
             features: KernelFeatures::from_bits(kernel.features as u8)
-                .ok_or("Invalid or unrecognised kernel feature flag".to_string())?,
+                .ok_or_else(|| "Invalid or unrecognised kernel feature flag".to_string())?,
             excess,
             excess_sig,
             fee: MicroTari::from(kernel.fee),
@@ -93,12 +98,12 @@ impl TryFrom<proto::TransactionInput> for TransactionInput {
         let features = input
             .features
             .map(TryInto::try_into)
-            .ok_or("transaction output features not provided".to_string())??;
+            .ok_or_else(|| "transaction output features not provided".to_string())??;
 
         let commitment = input
             .commitment
             .map(|commit| Commitment::from_bytes(&commit.data))
-            .ok_or("Transaction output commitment not provided".to_string())?
+            .ok_or_else(|| "Transaction output commitment not provided".to_string())?
             .map_err(|err| err.to_string())?;
 
         Ok(Self { features, commitment })
@@ -123,12 +128,12 @@ impl TryFrom<proto::TransactionOutput> for TransactionOutput {
         let features = output
             .features
             .map(TryInto::try_into)
-            .ok_or("transaction output features not provided".to_string())??;
+            .ok_or_else(|| "transaction output features not provided".to_string())??;
 
         let commitment = output
             .commitment
             .map(|commit| Commitment::from_bytes(&commit.data))
-            .ok_or("Transaction output commitment not provided".to_string())?
+            .ok_or_else(|| "Transaction output commitment not provided".to_string())?
             .map_err(|err| err.to_string())?;
 
         Ok(Self {
@@ -157,7 +162,7 @@ impl TryFrom<proto::OutputFeatures> for OutputFeatures {
     fn try_from(features: proto::OutputFeatures) -> Result<Self, Self::Error> {
         Ok(Self {
             flags: OutputFlags::from_bits(features.flags as u8)
-                .ok_or("Invalid or unrecognised output flags".to_string())?,
+                .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             maturity: features.maturity,
         })
     }
@@ -207,12 +212,12 @@ impl TryFrom<proto::Transaction> for Transaction {
         let offset = tx
             .offset
             .map(|offset| BlindingFactor::from_bytes(&offset.data))
-            .ok_or("Blinding factor offset not provided".to_string())?
+            .ok_or_else(|| "Blinding factor offset not provided".to_string())?
             .map_err(|err| err.to_string())?;
         let body = tx
             .body
             .map(TryInto::try_into)
-            .ok_or("Body not provided".to_string())??;
+            .ok_or_else(|| "Body not provided".to_string())??;
 
         Ok(Self { offset, body })
     }

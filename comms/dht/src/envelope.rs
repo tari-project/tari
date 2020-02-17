@@ -62,7 +62,7 @@ bitflags! {
 }
 
 impl DhtMessageType {
-    pub fn is_dht_message(&self) -> bool {
+    pub fn is_dht_message(self) -> bool {
         match self {
             DhtMessageType::None => false,
             _ => true,
@@ -130,7 +130,7 @@ impl DhtMessageHeader {
     {
         Self {
             version: DHT_ENVELOPE_HEADER_VERSION,
-            destination: destination.into(),
+            destination,
             origin,
             message_type,
             network,
@@ -148,7 +148,7 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
             .map(|destination| destination.try_into().ok())
             .filter(Option::is_some)
             .map(Option::unwrap)
-            .ok_or(DhtMessageError::InvalidDestination)?;
+            .ok_or_else(|| DhtMessageError::InvalidDestination)?;
 
         let origin = match header.origin {
             Some(origin) => Some(origin.try_into()?),
@@ -159,9 +159,10 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
             version: header.version,
             destination,
             origin,
-            message_type: DhtMessageType::from_i32(header.message_type).ok_or(DhtMessageError::InvalidMessageType)?,
-            network: Network::from_i32(header.network).ok_or(DhtMessageError::InvalidNetwork)?,
-            flags: DhtMessageFlags::from_bits(header.flags).ok_or(DhtMessageError::InvalidMessageFlags)?,
+            message_type: DhtMessageType::from_i32(header.message_type)
+                .ok_or_else(|| DhtMessageError::InvalidMessageType)?,
+            network: Network::from_i32(header.network).ok_or_else(|| DhtMessageError::InvalidNetwork)?,
+            flags: DhtMessageFlags::from_bits(header.flags).ok_or_else(|| DhtMessageError::InvalidMessageFlags)?,
         })
     }
 }

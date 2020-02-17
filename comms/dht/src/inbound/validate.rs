@@ -36,7 +36,7 @@ use tari_comms::message::MessageExt;
 use tari_crypto::tari_utilities::ByteArray;
 use tower::{layer::Layer, Service, ServiceExt};
 
-const LOG_TARGET: &'static str = "comms::dht::validate";
+const LOG_TARGET: &str = "comms::dht::validate";
 
 /// # DHT validation middleware
 ///
@@ -76,7 +76,7 @@ where
     fn call(&mut self, msg: DhtInboundMessage) -> Self::Future {
         Self::process_message(
             self.next_service.clone(),
-            self.target_network.clone(),
+            self.target_network,
             self.outbound_requester.clone(),
             msg,
         )
@@ -150,7 +150,7 @@ impl<S> Layer<S> for ValidateLayer {
     type Service = ValidateMiddleware<S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        ValidateMiddleware::new(service, self.target_network.clone(), self.outbound_requester.clone())
+        ValidateMiddleware::new(service, self.target_network, self.outbound_requester.clone())
     }
 }
 

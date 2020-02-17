@@ -181,15 +181,15 @@ where
             if height > 0 {
                 let hash = self
                     .get_node_hash(n)?
-                    .ok_or(MerkleMountainRangeError::CorruptDataStructure)?;
+                    .ok_or_else(|| MerkleMountainRangeError::CorruptDataStructure)?;
                 let left_pos = n - (1 << height);
                 let right_pos = n - 1;
                 let left_child_hash = self
                     .get_node_hash(left_pos)?
-                    .ok_or(MerkleMountainRangeError::CorruptDataStructure)?;
+                    .ok_or_else(|| MerkleMountainRangeError::CorruptDataStructure)?;
                 let right_child_hash = self
                     .get_node_hash(right_pos)?
-                    .ok_or(MerkleMountainRangeError::CorruptDataStructure)?;
+                    .ok_or_else(|| MerkleMountainRangeError::CorruptDataStructure)?;
                 // hash the two child nodes together with parent_pos and compare
                 let hash_check = hash_together::<D>(&left_child_hash, &right_child_hash);
                 if hash_check != hash {

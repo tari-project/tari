@@ -167,7 +167,7 @@ impl<B: BlockchainBackend> Validation<Transaction, B> for TimeLockTxValidator<B>
 // transaction.
 fn verify_tx(tx: &Transaction, factories: &CryptoFactories) -> Result<(), ValidationError> {
     tx.validate_internal_consistency(factories, None)
-        .map_err(|e| ValidationError::TransactionError(e))
+        .map_err(ValidationError::TransactionError)
 }
 
 // This function checks that all the timelocks in the provided transaction pass. It checks kernel lock heights and

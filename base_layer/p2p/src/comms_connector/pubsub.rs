@@ -28,7 +28,7 @@ use std::sync::Arc;
 use tari_pubsub::{pubsub_channel, TopicPayload, TopicSubscriptionFactory};
 use tokio::runtime;
 
-const LOG_TARGET: &'static str = "comms::middleware::pubsub";
+const LOG_TARGET: &str = "comms::middleware::pubsub";
 
 /// Alias for a pubsub-type domain connector
 pub type PubsubDomainConnector = InboundDomainConnector<mpsc::Sender<Arc<PeerMessage>>>;
@@ -51,7 +51,7 @@ pub fn pubsub_connector(
         .map(|msg: Arc<PeerMessage>| {
             TariMessageType::from_i32(msg.message_header.message_type)
                 .map(|msg_type| TopicPayload::new(msg_type, msg))
-                .ok_or("Invalid or unrecognised Tari message type".to_string())
+                .ok_or_else(|| "Invalid or unrecognised Tari message type".to_string())
         })
         // Forward TopicPayloads to the publisher
         .forward(publisher.sink_map_err(|err| err.to_string()))
@@ -63,7 +63,6 @@ pub fn pubsub_connector(
                     "Error forwarding pubsub messages to publisher: {}", err
                 );
             }
-            ()
         });
     executor.spawn(forwarder);
 

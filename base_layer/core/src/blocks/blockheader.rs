@@ -80,7 +80,7 @@ pub enum BlockHeaderValidationError {
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 /// and the transaction kernels.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct BlockHeader {
     /// Version of the block
     pub version: u16,

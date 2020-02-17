@@ -51,7 +51,7 @@ use tari_service_framework::{
 };
 use tokio::runtime::runtime::Handle;
 
-const LOG_TARGET: &'static str = "wallet::text_message_service::initializer";
+const LOG_TARGET: &str = "wallet::text_message_service::initializer";
 
 pub struct TextMessageServiceInitializer {
     pub_key: Option<CommsPublicKey>,

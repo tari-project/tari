@@ -30,7 +30,7 @@ use std::{sync::Arc, task::Poll};
 use tari_comms::{peer_manager::NodeIdentity, utils::crypt};
 use tower::{layer::Layer, Service, ServiceExt};
 
-const LOG_TARGET: &'static str = "comms::middleware::encryption";
+const LOG_TARGET: &str = "comms::middleware::encryption";
 
 /// This layer is responsible for attempting to decrypt inbound messages.
 pub struct EncryptionLayer {
