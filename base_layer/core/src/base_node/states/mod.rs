@@ -77,6 +77,7 @@ pub enum StateEvent {
     Initialized,
     MetadataSynced(SyncStatus),
     BlocksSynchronized,
+    MaxRequestAttemptsReached,
     FallenBehind(SyncStatus),
     NetworkSilence,
     FatalError(String),

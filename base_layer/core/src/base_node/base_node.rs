@@ -98,6 +98,7 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
             (InitialSync(s), MetadataSynced(Lagging(_))) => BlockSync(s.into()),
             (InitialSync(_s), MetadataSynced(UpToDate)) => Listening(ListeningInfo),
             (BlockSync(_s), BlocksSynchronized) => Listening(ListeningInfo),
+            (BlockSync(s), MaxRequestAttemptsReached) => InitialSync(s.into()),
             (Listening(s), FallenBehind(Lagging(_))) => BlockSync(s.into()),
             (Listening(s), NetworkSilence) => InitialSync(s.into()),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),

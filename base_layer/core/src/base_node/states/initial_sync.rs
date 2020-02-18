@@ -35,7 +35,7 @@ use crate::{
     chain_storage::{BlockchainBackend, ChainMetadata},
 };
 
-use crate::base_node::states::{helpers::determine_sync_mode, listening::ListeningInfo};
+use crate::base_node::states::{block_sync::BlockSyncInfo, helpers::determine_sync_mode, listening::ListeningInfo};
 use log::*;
 use std::time::Duration;
 
@@ -242,6 +242,14 @@ impl From<Starting> for InitialSync {
 /// disconnected from the network.
 impl From<ListeningInfo> for InitialSync {
     fn from(_old: ListeningInfo) -> Self {
+        InitialSync::new()
+    }
+}
+
+/// State management for BlockSyncInfo -> InitialSync. This state change occurs when the block download requests
+/// repeatedly failed.
+impl From<BlockSyncInfo> for InitialSync {
+    fn from(_old: BlockSyncInfo) -> Self {
         InitialSync::new()
     }
 }
