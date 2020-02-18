@@ -35,5 +35,4 @@ pub mod block_validators;
 pub mod mocks;
 pub use error::ValidationError;
 pub use traits::{Validation, Validator};
-pub mod chain_validators;
 pub mod transaction_validators;

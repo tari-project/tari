@@ -644,12 +644,7 @@ fn handle_reorg() {
 #[test]
 fn store_and_retrieve_blocks() {
     let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 2 };
-    let validators = Validators::new(
-        MockValidator::new(true),
-        MockValidator::new(true),
-        MockValidator::new(true),
-        MockValidator::new(true),
-    );
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
     let rules = ConsensusManager::default();
     let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
     let mut store = BlockchainDatabase::new(db, &rules).unwrap();

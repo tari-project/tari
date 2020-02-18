@@ -25,10 +25,7 @@ use tari_core::{
     consensus::ConsensusManager,
     proof_of_work::DiffAdjManager,
     transactions::types::{CryptoFactories, HashDigest},
-    validation::{
-        block_validators::{FullConsensusValidator, StatelessValidator},
-        mocks::MockValidator,
-    },
+    validation::block_validators::{FullConsensusValidator, StatelessValidator},
 };
 
 #[test]
@@ -40,8 +37,6 @@ fn test_genesis_block() {
     let validators = Validators::new(
         FullConsensusValidator::new(rules.clone(), factories, db.clone()),
         StatelessValidator::new(),
-        MockValidator::new(true),
-        MockValidator::new(true),
     );
     db.set_validators(validators);
     let diff_adj_manager = DiffAdjManager::new(db.clone()).unwrap();

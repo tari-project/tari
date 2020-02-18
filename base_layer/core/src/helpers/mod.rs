@@ -47,12 +47,7 @@ pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>) ->
 }
 
 pub fn create_mem_db(network: Network) -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
-    let validators = Validators::new(
-        MockValidator::new(true),
-        MockValidator::new(true),
-        MockValidator::new(true),
-        MockValidator::new(true),
-    );
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
     let rules = ConsensusManager::new(None, ConsensusConstants::current_with_network(network));
     let db = MemoryDatabase::<HashDigest>::default();
     let mut db = BlockchainDatabase::new(db, &rules).unwrap();
