@@ -21,6 +21,10 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::message::Frame;
+use blake2::{
+    digest::{Input, VariableOutput},
+    VarBlake2b,
+};
 use derive_error::Error;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use std::{
@@ -34,16 +38,16 @@ use tari_crypto::tari_utilities::{
     hex::{to_hex, Hex},
     ByteArray,
     ByteArrayError,
-    Hashable,
 };
 
-const NODE_ID_ARRAY_SIZE: usize = 32;
+const NODE_ID_ARRAY_SIZE: usize = 13; // 104-bit as per RFC-0151
 type NodeIdArray = [u8; NODE_ID_ARRAY_SIZE];
 
 #[derive(Debug, Error, Clone)]
 pub enum NodeIdError {
     IncorrectByteCount,
     OutOfBounds,
+    DigestError,
 }
 
 /// Hold the XOR distance calculated between two NodeId's. This is used for DHT-style routing.
@@ -102,8 +106,12 @@ impl NodeId {
     }
 
     /// Derive a node id from a public key: node_id=hash(public_key)
-    pub fn from_key<K: Hashable>(key: &K) -> Result<Self, NodeIdError> {
-        Self::try_from(key.hash().as_slice())
+    pub fn from_key<K: ByteArray>(key: &K) -> Result<Self, NodeIdError> {
+        let bytes = key.as_bytes();
+        let mut hasher = VarBlake2b::new(NODE_ID_ARRAY_SIZE).map_err(|_| NodeIdError::DigestError)?;
+        hasher.input(bytes);
+        let v = hasher.vec_result();
+        Self::try_from(v.as_slice())
     }
 
     /// Generate a node id from a base layer registration using the block hash and public key
@@ -198,7 +206,7 @@ impl TryFrom<&[u8]> for NodeId {
 
     /// Construct a node id from 32 bytes
     fn try_from(elements: &[u8]) -> Result<Self, Self::Error> {
-        if elements.len() >= 32 {
+        if elements.len() >= NODE_ID_ARRAY_SIZE {
             let mut bytes = [0; NODE_ID_ARRAY_SIZE];
             bytes.copy_from_slice(&elements[0..NODE_ID_ARRAY_SIZE]);
             Ok(NodeId(bytes))
@@ -268,20 +276,11 @@ mod test {
 
     #[test]
     fn display() {
-        let node_id = NodeId::try_from(
-            [
-                144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159, 211, 53, 207, 0, 157, 5, 55, 235, 247, 160,
-                195, 240, 48, 146, 168, 119, 15, 241, 54,
-            ]
-            .as_bytes(),
-        )
-        .unwrap();
+        let node_id =
+            NodeId::try_from(&[144u8, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159, 211, 53][..]).unwrap();
 
         let result = format!("{}", node_id);
-        assert_eq!(
-            "901c6a70dcc5d87709d92a4d9fd335cf009d0537ebf7a0c3f03092a8770ff136",
-            result
-        );
+        assert_eq!("901c6a70dcc5d87709d92a4d9f", result);
     }
 
     #[test]
@@ -351,121 +350,31 @@ mod test {
     #[test]
     fn test_closest() {
         let mut node_ids: Vec<NodeId> = Vec::new();
-        node_ids.push(
-            NodeId::try_from(
-                [
-                    144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159, 211, 53, 207, 245, 157, 5, 55, 235,
-                    247, 160, 195, 240, 48, 146, 168, 119, 15, 241, 54,
-                ]
-                .as_bytes(),
-            )
-            .unwrap(),
-        );
-        node_ids.push(
-            NodeId::try_from(
-                [
-                    75, 249, 102, 1, 2, 166, 155, 37, 22, 54, 84, 98, 56, 62, 242, 115, 238, 149, 12, 239, 231, 217,
-                    35, 168, 106, 203, 199, 168, 147, 32, 234, 38,
-                ]
-                .as_bytes(),
-            )
-            .unwrap(),
-        );
-        node_ids.push(
-            NodeId::try_from(
-                [
-                    60, 32, 246, 39, 108, 201, 214, 91, 30, 230, 3, 126, 31, 46, 66, 203, 27, 51, 240, 177, 230, 22,
-                    118, 102, 201, 55, 211, 147, 229, 26, 116, 103,
-                ]
-                .as_bytes(),
-            )
-            .unwrap(),
-        );
-        node_ids.push(
-            NodeId::try_from(
-                [
-                    134, 116, 78, 53, 246, 206, 200, 147, 126, 96, 54, 113, 67, 56, 173, 52, 150, 35, 250, 18, 29, 87,
-                    231, 228, 125, 49, 95, 53, 103, 250, 54, 214,
-                ]
-                .as_bytes(),
-            )
-            .unwrap(),
-        );
-        node_ids.push(
-            NodeId::try_from(
-                [
-                    75, 146, 162, 130, 22, 63, 247, 182, 156, 103, 174, 32, 134, 97, 41, 240, 180, 116, 2, 142, 53,
-                    197, 209, 113, 191, 205, 45, 151, 93, 167, 43, 72,
-                ]
-                .as_bytes(),
-            )
-            .unwrap(),
-        );
-        node_ids.push(
-            NodeId::try_from(
-                [
-                    186, 43, 62, 14, 60, 214, 9, 180, 145, 122, 55, 160, 83, 83, 45, 185, 219, 206, 226, 128, 5, 26,
-                    20, 0, 192, 121, 216, 178, 134, 212, 51, 131,
-                ]
-                .as_bytes(),
-            )
-            .unwrap(),
-        );
-        node_ids.push(
-            NodeId::try_from(
-                [
-                    143, 189, 32, 210, 30, 231, 82, 5, 86, 85, 28, 82, 154, 127, 90, 98, 108, 106, 186, 179, 36, 194,
-                    246, 209, 17, 244, 126, 108, 104, 187, 204, 213,
-                ]
-                .as_bytes(),
-            )
-            .unwrap(),
-        );
-        node_ids.push(
-            NodeId::try_from(
-                [
-                    155, 210, 214, 160, 153, 70, 172, 234, 177, 178, 62, 82, 166, 202, 71, 205, 139, 247, 170, 91, 234,
-                    197, 239, 27, 14, 238, 97, 8, 28, 169, 96, 169,
-                ]
-                .as_bytes(),
-            )
-            .unwrap(),
-        );
-        node_ids.push(
-            NodeId::try_from(
-                [
-                    173, 218, 34, 188, 211, 173, 235, 82, 18, 159, 55, 47, 242, 24, 95, 60, 208, 53, 97, 51, 43, 71,
-                    149, 89, 123, 150, 162, 67, 240, 208, 67, 56,
-                ]
-                .as_bytes(),
-            )
-            .unwrap(),
-        );
+        node_ids.push(NodeId::try_from(&[144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159][..]).unwrap());
+        node_ids.push(NodeId::try_from(&[75, 249, 102, 1, 2, 166, 155, 37, 22, 54, 84, 98, 56][..]).unwrap());
+        node_ids.push(NodeId::try_from(&[60, 32, 246, 39, 108, 201, 214, 91, 30, 230, 3, 126, 31][..]).unwrap());
+        node_ids.push(NodeId::try_from(&[134, 116, 78, 53, 246, 206, 200, 147, 126, 96, 54, 113, 67][..]).unwrap());
+        node_ids.push(NodeId::try_from(&[75, 146, 162, 130, 22, 63, 247, 182, 156, 103, 174, 32, 134][..]).unwrap());
+        node_ids.push(NodeId::try_from(&[186, 43, 62, 14, 60, 214, 9, 180, 145, 122, 55, 160, 83][..]).unwrap());
+        node_ids.push(NodeId::try_from(&[143, 189, 32, 210, 30, 231, 82, 5, 86, 85, 28, 82, 154][..]).unwrap());
+        node_ids.push(NodeId::try_from(&[155, 210, 214, 160, 153, 70, 172, 234, 177, 178, 62, 82, 166][..]).unwrap());
+        node_ids.push(NodeId::try_from(&[173, 218, 34, 188, 211, 173, 235, 82, 18, 159, 55, 47, 242][..]).unwrap());
 
-        let node_id = NodeId::try_from(
-            [
-                169, 125, 200, 137, 210, 73, 241, 238, 25, 108, 8, 48, 66, 29, 2, 117, 1, 252, 36, 214, 252, 38, 207,
-                113, 175, 126, 36, 202, 215, 125, 114, 131,
-            ]
-            .as_bytes(),
-        )
-        .unwrap();
+        let node_id = NodeId::try_from(&[169, 125, 200, 137, 210, 73, 241, 238, 25, 108, 8, 48, 66][..]).unwrap();
+
         let k = 3;
         match node_id.closest(&node_ids, k) {
             Ok(knn_node_ids) => {
                 println!(" KNN = {:?}", knn_node_ids);
                 assert_eq!(knn_node_ids.len(), k);
                 assert_eq!(knn_node_ids[0].0, [
-                    173, 218, 34, 188, 211, 173, 235, 82, 18, 159, 55, 47, 242, 24, 95, 60, 208, 53, 97, 51, 43, 71,
-                    149, 89, 123, 150, 162, 67, 240, 208, 67, 56
+                    173, 218, 34, 188, 211, 173, 235, 82, 18, 159, 55, 47, 242
                 ]);
                 assert_eq!(knn_node_ids[1].0, [
-                    186, 43, 62, 14, 60, 214, 9, 180, 145, 122, 55, 160, 83, 83, 45, 185, 219, 206, 226, 128, 5, 26,
-                    20, 0, 192, 121, 216, 178, 134, 212, 51, 131
+                    186, 43, 62, 14, 60, 214, 9, 180, 145, 122, 55, 160, 83
                 ]);
                 assert_eq!(knn_node_ids[2].0, [
-                    143, 189, 32, 210, 30, 231, 82, 5, 86, 85, 28, 82, 154, 127, 90, 98, 108, 106, 186, 179, 36, 194,
-                    246, 209, 17, 244, 126, 108, 104, 187, 204, 213
+                    143, 189, 32, 210, 30, 231, 82, 5, 86, 85, 28, 82, 154
                 ]);
             },
             Err(_e) => assert!(false),

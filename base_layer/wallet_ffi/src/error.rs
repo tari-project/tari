@@ -276,6 +276,10 @@ impl From<NodeIdentityError> for LibWalletError {
                 code: 703,
                 message: format!("{:?}", n).to_string(),
             },
+            NodeIdentityError::NodeIdError(NodeIdError::DigestError) => Self {
+                code: 704,
+                message: format!("{:?}", n).to_string(),
+            },
         }
     }
 }

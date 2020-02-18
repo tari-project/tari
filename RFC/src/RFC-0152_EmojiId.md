@@ -1,4 +1,4 @@
-# RFC-0151/EmojiId
+# RFC-0152/EmojiId
 
 ## Emoji Id specification
 
@@ -114,7 +114,7 @@ The emoji string is created by mapping the `IDX` array to the emoji map.
 
 The emoji ID is an emoji string of 12 characters. Each character encodes 10 bits according to the bitmap:
 
-```
+```text
 +---------------------+------------------+-------------------+
 |  Node Id (104 bits) | Version (6 bits) | Checksum (10 bits)|
 +---------------------+------------------+-------------------+
