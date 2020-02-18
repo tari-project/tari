@@ -81,7 +81,7 @@ impl<B: BlockchainBackend> Miner<B> {
         }
     }
 
-    /// This function instanciates a new channel and returns the receiver so that the miner can send out a unblinded
+    /// This function instantiates a new channel and returns the receiver so that the miner can send out a unblinded
     /// output. This output is only sent if the miner successfully mines a block
     pub fn get_utxo_receiver_channel(&mut self) -> Receiver<UnblindedOutput> {
         let (sender, receiver): (Sender<UnblindedOutput>, Receiver<UnblindedOutput>) = mpsc::channel(1);

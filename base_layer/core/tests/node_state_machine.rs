@@ -23,6 +23,7 @@
 #[allow(dead_code)]
 mod helpers;
 
+use futures::StreamExt;
 use helpers::{
     block_builders::{append_block, chain_block, create_genesis_block},
     nodes::{create_network_with_2_base_nodes, create_network_with_2_base_nodes_with_config},
@@ -31,7 +32,15 @@ use std::time::Duration;
 use tari_core::{
     base_node::{
         service::BaseNodeServiceConfig,
-        states::{BlockSyncConfig, BlockSyncInfo, ListeningConfig, ListeningInfo, StateEvent, SyncStatus::Lagging},
+        states::{
+            BaseNodeState,
+            BlockSyncConfig,
+            BlockSyncInfo,
+            ListeningConfig,
+            ListeningInfo,
+            StateEvent,
+            SyncStatus::Lagging,
+        },
         BaseNodeStateMachine,
         BaseNodeStateMachineConfig,
     },
@@ -93,6 +102,60 @@ fn test_listening_lagging() {
     bob_node.comms.shutdown().unwrap();
 }
 
+#[test]
+fn test_event_channel() {
+    let mut runtime = Runtime::new().unwrap();
+    let factories = CryptoFactories::default();
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut prev_block, _) = create_genesis_block(&factories);
+    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(prev_block.clone())));
+    let (alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
+        &mut runtime,
+        BaseNodeServiceConfig::default(),
+        MmrCacheConfig::default(),
+        MempoolServiceConfig::default(),
+        LivenessConfig {
+            enable_auto_join: false,
+            enable_auto_stored_message_request: false,
+            auto_ping_interval: Some(Duration::from_millis(100)),
+            refresh_neighbours_interval: Duration::from_secs(60),
+        },
+        ConsensusManager::new(None, consensus_constants),
+        temp_dir.path().to_str().unwrap(),
+    );
+    let mut alice_state_machine = BaseNodeStateMachine::new(
+        &alice_node.blockchain_db,
+        &alice_node.outbound_nci,
+        runtime.handle().clone(),
+        alice_node.chain_metadata_handle.get_event_stream(),
+        BaseNodeStateMachineConfig::default(),
+    );
+    let mut rx = alice_state_machine.get_state_change_event();
+
+    runtime.spawn(async move {
+        alice_state_machine.run().await;
+    });
+    let bob_db = bob_node.blockchain_db;
+    let mut bob_local_nci = bob_node.local_nci;
+
+    runtime.block_on(async {
+        // Bob Block 1 - no block event
+        prev_block = append_block(&bob_db, &prev_block, vec![]).unwrap();
+        // Bob Block 2 - with block event and liveness service metadata update
+        let prev_block = bob_db.calculate_mmr_roots(chain_block(&prev_block, vec![])).unwrap();
+        bob_local_nci.submit_block(prev_block.clone()).await.unwrap();
+        assert_eq!(bob_db.get_height(), Ok(Some(2)));
+        let state = rx.select_next_some().await;
+        if let BaseNodeState::InitialSync(_) = *state {
+            assert!(true);
+        } else {
+            assert!(false);
+        }
+    });
+
+    alice_node.comms.shutdown().unwrap();
+    bob_node.comms.shutdown().unwrap();
+}
 #[test]
 fn test_listening_network_silence() {
     let mut runtime = Runtime::new().unwrap();

@@ -33,6 +33,7 @@ use std::ops::Deref;
 const LOG_TARGET: &str = "c::bn::states::starting_state";
 
 // The data structure handling Base Node Startup
+#[derive(Clone, Debug, PartialEq)]
 pub struct Starting;
 
 impl Starting {

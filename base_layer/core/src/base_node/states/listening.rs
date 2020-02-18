@@ -44,7 +44,7 @@ const LOG_TARGET: &str = "c::bn::states::listening";
 const LISTENING_SILENCE_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
 
 /// Configuration for the Listening state.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct ListeningConfig {
     pub listening_silence_timeout: Duration,
 }
@@ -61,6 +61,7 @@ impl Default for ListeningConfig {
 /// received metadata, if it detects that the current node is lagging behind the network it will switch to block sync
 /// state. If no metadata is received for a prolonged period of time it will transition to the initial sync state and
 /// request chain metadata from remote nodes.
+#[derive(Clone, Debug, PartialEq)]
 pub struct ListeningInfo;
 
 impl ListeningInfo {

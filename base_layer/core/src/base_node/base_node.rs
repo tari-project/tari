@@ -30,9 +30,11 @@ use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
 };
 use bitflags::_core::sync::atomic::AtomicBool;
+// use futures_util::sink::SinkExt;
+use futures::{stream::Fuse, SinkExt, StreamExt};
 use log::*;
 use std::sync::{atomic::Ordering, Arc};
-use tari_broadcast_channel::Subscriber;
+use tari_broadcast_channel::{bounded, Publisher, Subscriber};
 use tokio::runtime;
 
 const LOG_TARGET: &str = "c::bn::base_node";
@@ -67,6 +69,8 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) metadata_event_stream: Subscriber<ChainMetadataEvent>,
     pub(super) user_stopped: Arc<AtomicBool>,
     pub(super) config: BaseNodeStateMachineConfig,
+    event_sender: Publisher<BaseNodeState>,
+    event_receiver: Subscriber<BaseNodeState>,
 }
 
 impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
@@ -79,6 +83,7 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
         config: BaseNodeStateMachineConfig,
     ) -> Self
     {
+        let (event_sender, event_receiver): (Publisher<BaseNodeState>, Subscriber<BaseNodeState>) = bounded(1);
         Self {
             db: db.clone(),
             comms: comms.clone(),
@@ -86,6 +91,8 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
             metadata_event_stream,
             user_stopped: Arc::new(AtomicBool::new(false)),
             config,
+            event_sender,
+            event_receiver,
         }
     }
 
@@ -118,12 +125,20 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
         Arc::clone(&self.user_stopped)
     }
 
+    /// This clones the receiver end of the channel and gives out a copy to the caller
+    /// This allows multiple subscribers to this channel by only keeping one channel and cloning the receiver for every
+    /// caller.
+    pub fn get_state_change_event(&self) -> Fuse<Subscriber<BaseNodeState>> {
+        self.event_receiver.clone().fuse()
+    }
+
     /// Start the base node runtime.
     pub async fn run(self) {
         use crate::base_node::states::BaseNodeState::*;
         let mut state = Starting(states::Starting);
         let mut shared_state = self;
         loop {
+            let _ = shared_state.event_sender.send(state.clone()).await;
             let next_event = match &mut state {
                 Starting(s) => s.next_event(&mut shared_state).await,
                 InitialSync(s) => s.next_event(&mut shared_state).await,
