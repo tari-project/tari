@@ -1296,20 +1296,35 @@ where
     #[cfg(feature = "test_harness")]
     pub async fn mine_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         let completed_txs = self.db.get_completed_transactions().await?;
-        let found_tx = completed_txs.get(&tx_id.clone()).ok_or_else(|| {
+        let _found_tx = completed_txs.get(&tx_id.clone()).ok_or_else(|| {
             TransactionServiceError::TestHarnessError("Could not find Completed TX to mine.".to_string())
         })?;
 
         let pending_tx_outputs = self.output_manager_service.get_pending_transactions().await?;
-        let _pending_tx = pending_tx_outputs.get(&tx_id.clone()).ok_or_else(|| {
+        let pending_tx = pending_tx_outputs.get(&tx_id.clone()).ok_or_else(|| {
             TransactionServiceError::TestHarnessError("Could not find Pending TX to complete.".to_string())
         })?;
 
         self.output_manager_service
             .confirm_transaction(
                 tx_id.clone(),
-                found_tx.transaction.body.inputs().clone(),
-                found_tx.transaction.body.outputs().clone(),
+                pending_tx
+                    .outputs_to_be_spent
+                    .iter()
+                    .map(|o| {
+                        o.as_transaction_input(&self.factories.commitment, OutputFeatures::default())
+                            .clone()
+                    })
+                    .collect(),
+                pending_tx
+                    .outputs_to_be_received
+                    .iter()
+                    .map(|o| {
+                        o.as_transaction_output(&self.factories)
+                            .expect("Failed to convert to Transaction Output")
+                            .clone()
+                    })
+                    .collect(),
             )
             .await?;
 
