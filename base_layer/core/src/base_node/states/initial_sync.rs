@@ -43,6 +43,7 @@ const LOG_TARGET: &str = "c::bn::states::initial_sync";
 // The number of times we'll request the chain metadata before giving up
 const MAX_SYNC_ATTEMPTS: usize = 8;
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct InitialSync {
     // keeps track of how many times we've tried to sync with the network
     backoff: BackOff,

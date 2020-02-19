@@ -23,6 +23,7 @@ use log::*;
 
 const LOG_TARGET: &str = "c::bn::states::shutdown_state";
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct Shutdown {
     reason: String,
 }

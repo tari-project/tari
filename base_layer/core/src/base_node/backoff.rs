@@ -56,6 +56,7 @@ use tokio::time;
 /// };
 /// assert_eq!(backoff.attempts(), 4);
 /// ```
+#[derive(Clone, Debug, PartialEq)]
 pub struct BackOff {
     max_attempts: usize,
     current_attempts: usize,

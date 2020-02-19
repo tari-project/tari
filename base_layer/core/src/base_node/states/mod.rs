@@ -64,6 +64,7 @@ use std::fmt::{Display, Error, Formatter};
 ///
 /// Reject all new requests with a `Shutdown` message, complete current validations / tasks, flush all state if
 /// required, and then shutdown.
+#[derive(Clone, Debug, PartialEq)]
 pub enum BaseNodeState {
     Starting(Starting),
     InitialSync(InitialSync),

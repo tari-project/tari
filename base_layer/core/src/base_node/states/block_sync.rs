@@ -49,6 +49,7 @@ impl Default for BlockSyncConfig {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct BlockSyncInfo;
 
 impl BlockSyncInfo {
