@@ -26,6 +26,7 @@ use std::{marker::PhantomData, pin::Pin, task::Poll};
 /// Sink to nowhere. This is used as an initial type for the CommsBuilder
 /// and should be replaced with a working sink (otherwise inbound messages
 /// will just be discarded)
+#[derive(Default)]
 pub struct NullSink<T, E> {
     _t: PhantomData<T>,
     _e: PhantomData<E>,

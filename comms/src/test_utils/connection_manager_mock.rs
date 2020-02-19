@@ -123,7 +123,7 @@ impl ConnectionManagerMock {
                             .await
                             .get(&node_id)
                             .map(Clone::clone)
-                            .ok_or(ConnectionManagerError::DialConnectFailedAllAddresses),
+                            .ok_or_else(|| ConnectionManagerError::DialConnectFailedAllAddresses),
                     )
                     .unwrap();
             },

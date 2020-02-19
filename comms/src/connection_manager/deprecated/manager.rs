@@ -139,7 +139,7 @@ impl ConnectionManager {
             "Listener started on '{}'",
             conn.get_address()
                 .map(|addr| addr.to_string())
-                .unwrap_or("<unknown>".to_string())
+                .unwrap_or_else(|| "<unknown>".to_string())
         );
         let mut listener_connection = acquire_write_lock!(self.listener_connection);
         *listener_connection = Some(ListenerConnection::new(conn, public_key, join_handle));
@@ -308,11 +308,8 @@ impl ConnectionManager {
         let (listener_connection, curve_public_key) =
             self.get_listener_connection_and_public_key().expect("already checked");
 
-        match with_connection(listener_connection, curve_public_key).map_err(Into::into)? {
-            Some(conn) => {
-                self.connections.add_connection(peer.node_id.clone(), conn, None)?;
-            },
-            None => {},
+        if let Some(conn) = with_connection(listener_connection, curve_public_key).map_err(Into::into)? {
+            self.connections.add_connection(peer.node_id.clone(), conn, None)?;
         }
 
         Ok(())
@@ -469,7 +466,7 @@ impl ConnectionManager {
             RejectReason::ExistingConnection => self
                 .connections
                 .get_active_connection(&peer.node_id)
-                .ok_or(ConnectionManagerError::PeerConnectionNotFound),
+                .ok_or_else(|| ConnectionManagerError::PeerConnectionNotFound),
             _ => Err(ConnectionManagerError::ConnectionRejected(reason)),
         }
     }

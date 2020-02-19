@@ -103,7 +103,7 @@ impl LivePeerConnections {
             // If we're full drop the connection which has least recently been used
             if active_count >= self.max_connections {
                 let recent_list = repo.sorted_recent_activity();
-                if let Some(node_id) = recent_list.last().map(|(node_id, _)| node_id.clone().clone()) {
+                if let Some(node_id) = recent_list.last().map(|(node_id, _)| (*node_id).clone()) {
                     let conn = repo.remove(&node_id).expect(
                         "Invariant check: Unable to remove connection that was returned from \
                          ConnectionRepository::sorted_recent_activity",
@@ -141,8 +141,8 @@ impl LivePeerConnections {
         self.atomic_write(|mut repo| {
             let conn = repo
                 .remove(node_id)
-                .ok_or(ConnectionManagerError::PeerConnectionNotFound)
-                .map(|conn| conn.clone())?;
+                .ok_or_else(|| ConnectionManagerError::PeerConnectionNotFound)
+                .map(|conn| conn)?;
 
             if !conn.is_active() {
                 let join_handle = acquire_write_lock!(self.connection_thread_handles).remove(node_id);

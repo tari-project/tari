@@ -142,7 +142,7 @@ impl ConnectionEstablisher {
         let maybe_client = self.attempt_control_port_connection_for_peer(&peer, || {
             let address = addr_iter
                 .next()
-                .ok_or(ConnectionManagerError::ControlServiceFailedConnectionAllAddresses)?;
+                .ok_or_else(|| ConnectionManagerError::ControlServiceFailedConnectionAllAddresses)?;
             debug!(target: LOG_TARGET, "Attempting to connect to {}", address);
 
             let conn = Connection::new(&self.context, ConnectionDirection::Outbound)
@@ -299,7 +299,7 @@ impl ConnectionEstablisher {
             connection
                 .get_address()
                 .map(|a| a.to_string())
-                .unwrap_or("<unknown>".to_string())
+                .unwrap_or_else(|| "<unknown>".to_string())
         );
 
         Ok((Arc::new(connection), worker_handle))

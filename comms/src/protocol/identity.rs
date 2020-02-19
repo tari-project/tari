@@ -92,7 +92,7 @@ where
     let msg_bytes = framed
         .next()
         .await
-        .ok_or(IdentityProtocolError::PeerUnexpectedCloseConnection)??;
+        .ok_or_else(|| IdentityProtocolError::PeerUnexpectedCloseConnection)??;
     let identity_msg = PeerIdentityMsg::decode(msg_bytes)?;
 
     Ok(identity_msg)

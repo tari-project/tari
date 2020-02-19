@@ -49,7 +49,7 @@ use tari_crypto::tari_utilities::ByteArray;
 use tokio::{runtime, task};
 use tower::{Service, ServiceExt};
 
-const LOG_TARGET: &'static str = "comms::dht::store_forward";
+const LOG_TARGET: &str = "comms::dht::store_forward";
 
 pub struct MessageHandlerTask<S> {
     config: DhtConfig,
@@ -133,7 +133,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let retrieve_msgs = msg
             .decode_part::<StoredMessagesRequest>(0)?
-            .ok_or(StoreAndForwardError::InvalidEnvelopeBody)?;
+            .ok_or_else(|| StoreAndForwardError::InvalidEnvelopeBody)?;
 
         if !self.peer_manager.in_network_region(
             &message.source_peer.node_id,
@@ -153,7 +153,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .iter()
                 // All messages within start_time (if specified)
                 .filter(|(_, msg)| {
-                    retrieve_msgs.since.as_ref().map(|since| msg.stored_at.as_ref().map(|s| since.seconds <= s.seconds).unwrap_or(false)).unwrap_or(true)
+                    retrieve_msgs.since.as_ref().map(|since| msg.stored_at.as_ref().map(|s| since.seconds <= s.seconds).unwrap_or( false)).unwrap_or( true)
                 })
                 .filter(|(_, msg)|{
                     if msg.dht_header.is_none() {
@@ -211,7 +211,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .expect("already checked that this message decrypted successfully");
         let response = msg
             .decode_part::<StoredMessagesResponse>(0)?
-            .ok_or(StoreAndForwardError::InvalidEnvelopeBody)?;
+            .ok_or_else(|| StoreAndForwardError::InvalidEnvelopeBody)?;
         let source_peer = Arc::new(message.source_peer);
 
         debug!(
@@ -317,12 +317,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .try_into()
                 .map_err(StoreAndForwardError::DhtMessageError)?;
 
-            let dht_flags = dht_header.flags.clone();
+            let dht_flags = dht_header.flags;
 
             let origin = dht_header
                 .origin
                 .as_ref()
-                .ok_or(StoreAndForwardError::MessageOriginRequired)?;
+                .ok_or_else(|| StoreAndForwardError::MessageOriginRequired)?;
 
             // Check that the destination is either undisclosed
             Self::check_destination(&config, &peer_manager, &node_identity, &dht_header)?;
@@ -346,9 +346,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
     async fn check_duplicate(dht_requester: &mut DhtRequester, body: &[u8]) -> Result<(), StoreAndForwardError> {
         let msg_hash = Challenge::new().chain(body).result().to_vec();
-        match dht_requester.insert_message_hash(msg_hash).await? {
-            true => Err(StoreAndForwardError::DuplicateMessage),
-            false => Ok(()),
+        if dht_requester.insert_message_hash(msg_hash).await? {
+            Err(StoreAndForwardError::DuplicateMessage)
+        } else {
+            Ok(())
         }
     }
 
@@ -375,15 +376,18 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 },
             })
             .map(|_| ())
-            .ok_or(StoreAndForwardError::InvalidDestination)
+            .ok_or_else(|| StoreAndForwardError::InvalidDestination)
     }
 
     fn check_signature(origin: &DhtMessageOrigin, body: &[u8]) -> Result<(), StoreAndForwardError> {
         signature::verify(&origin.public_key, &origin.signature, body)
             .map_err(|_| StoreAndForwardError::InvalidSignature)
-            .and_then(|is_valid| match is_valid {
-                true => Ok(()),
-                false => Err(StoreAndForwardError::InvalidSignature),
+            .and_then(|is_valid| {
+                if is_valid {
+                    Ok(())
+                } else {
+                    Err(StoreAndForwardError::InvalidSignature)
+                }
             })
     }
 

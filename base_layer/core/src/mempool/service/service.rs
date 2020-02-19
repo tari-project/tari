@@ -58,7 +58,7 @@ use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::RequestContext;
 use tokio::runtime;
 
-const LOG_TARGET: &'static str = "c::mempool::service::service";
+const LOG_TARGET: &str = "c::mempool::service::service";
 
 /// A convenience struct to hold all the Mempool service streams
 pub struct MempoolStreams<SOutReq, SInReq, SInRes, STxIn> {
@@ -223,13 +223,13 @@ where B: BlockchainBackend
         let (origin_public_key, inner_msg) = domain_request_msg.into_origin_and_inner();
 
         // Convert proto::MempoolServiceRequest to a MempoolServiceRequest
-        let request = inner_msg.request.ok_or(MempoolServiceError::InvalidRequest(
-            "Received invalid mempool service request".to_string(),
-        ))?;
+        let request = inner_msg.request.ok_or_else(|| {
+            MempoolServiceError::InvalidRequest("Received invalid mempool service request".to_string())
+        })?;
 
         let response = self
             .inbound_handlers
-            .handle_request(&request.try_into().map_err(|e| MempoolServiceError::InvalidRequest(e))?)
+            .handle_request(&request.try_into().map_err(MempoolServiceError::InvalidRequest)?)
             .await?;
 
         let message = proto::MempoolServiceResponse {
@@ -258,12 +258,9 @@ where B: BlockchainBackend
         match self.waiting_requests.remove(&request_key) {
             Some(mut reply_tx) => {
                 if let Some(reply_tx) = reply_tx.take() {
-                    let response =
-                        response
-                            .and_then(|r| r.try_into().ok())
-                            .ok_or(MempoolServiceError::InvalidResponse(
-                                "Received an invalid Mempool response".to_string(),
-                            ))?;
+                    let response = response.and_then(|r| r.try_into().ok()).ok_or_else(|| {
+                        MempoolServiceError::InvalidResponse("Received an invalid Mempool response".to_string())
+                    })?;
                     let _ = reply_tx.send(Ok(response).or_else(|resp| {
                         error!(
                             target: LOG_TARGET,
@@ -309,7 +306,7 @@ where B: BlockchainBackend
             .map_err(|e| MempoolServiceError::OutboundMessageService(e.to_string()))?;
 
         match send_result.resolve_ok().await {
-            Some(tags) if tags.len() > 0 => {
+            Some(tags) if !tags.is_empty() => {
                 // Spawn timeout and wait for matching response to arrive
                 self.waiting_requests.insert(request_key, Some(reply_tx));
                 self.spawn_request_timeout(request_key, self.config.request_timeout)
@@ -349,7 +346,7 @@ where B: BlockchainBackend
         let DomainMessage::<_> { source_peer, inner, .. } = domain_transaction_msg;
 
         self.inbound_handlers
-            .handle_transaction(&inner.clone().into(), Some(source_peer.public_key))
+            .handle_transaction(&inner, Some(source_peer.public_key))
             .await?;
 
         Ok(())

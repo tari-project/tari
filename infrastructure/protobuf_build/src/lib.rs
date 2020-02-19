@@ -50,6 +50,7 @@ fn walk_files<P: AsRef<Path>>(search_path: P, search_ext: &str) -> Vec<PathBuf> 
     protos
 }
 
+#[derive(Default)]
 pub struct ProtoCompiler {
     out_dir: Option<PathBuf>,
     type_attributes: HashMap<&'static str, &'static str>,
@@ -87,13 +88,13 @@ impl ProtoCompiler {
 
     pub fn proto_paths<P: AsRef<Path>>(&mut self, proto_paths: &[P]) -> &mut Self {
         self.proto_paths
-            .extend(proto_paths.into_iter().map(|p| p.as_ref().to_path_buf()));
+            .extend(proto_paths.iter().map(|p| p.as_ref().to_path_buf()));
         self
     }
 
     pub fn include_paths<P: AsRef<Path>>(&mut self, include_paths: &[P]) -> &mut Self {
         self.include_paths
-            .extend(include_paths.into_iter().map(|p| p.as_ref().to_path_buf()));
+            .extend(include_paths.iter().map(|p| p.as_ref().to_path_buf()));
         self
     }
 

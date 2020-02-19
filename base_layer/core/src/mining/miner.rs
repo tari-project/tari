@@ -112,14 +112,13 @@ impl<B: BlockchainBackend> Miner<B> {
             let mining_handle =
                 spawn_blocking(move || CpuBlakePow::mine(difficulty, header, new_block_event_flag, kill));
             let result = mining_handle.await.unwrap_or(None);
-            if result.is_some() {
-                block.header = result.unwrap();
-                let _ = self.send_block(block).await.or_else(|e| {
+            if let Some(r) = result {
+                block.header = r;
+                self.send_block(block).await.or_else(|e| {
                     error!(target: LOG_TARGET, "Could not send block to base node. {:?}.", e);
                     Err(e)
                 })?;
-                let _ = self
-                    .utxo_sender
+                self.utxo_sender
                     .try_send(output)
                     .or_else(|e| {
                         error!(target: LOG_TARGET, "Could not send utxo to wallet. {:?}.", e);
@@ -209,7 +208,7 @@ impl<B: BlockchainBackend> Miner<B> {
         let fees = block.body.get_total_fee();
         let (key, r) = self.get_spending_key()?;
         let factories = CryptoFactories::default();
-        let builder = CoinbaseBuilder::new(factories.clone());
+        let builder = CoinbaseBuilder::new(factories);
         let builder = builder
             .with_block_height(block.header.height)
             .with_fees(fees)

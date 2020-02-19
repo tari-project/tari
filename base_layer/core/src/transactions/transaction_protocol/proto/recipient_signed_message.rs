@@ -33,14 +33,14 @@ impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
         let output = message
             .output
             .map(TryInto::try_into)
-            .ok_or("Transaction output not provided".to_string())??;
+            .ok_or_else(|| "Transaction output not provided".to_string())??;
 
         let public_spend_key = PublicKey::from_bytes(&message.public_spend_key).map_err(|err| format!("{}", err))?;
 
         let partial_signature = message
             .partial_signature
             .map(TryInto::try_into)
-            .ok_or("Transaction partial signature not provided".to_string())?
+            .ok_or_else(|| "Transaction partial signature not provided".to_string())?
             .map_err(|err| format!("{}", err))?;
 
         Ok(Self {

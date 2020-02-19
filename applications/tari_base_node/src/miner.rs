@@ -40,6 +40,5 @@ pub fn build_miner<B: BlockchainBackend>(
 ) -> Miner<B>
 {
     let node_local_interface = handles.get_handle::<LocalNodeCommsInterface>().unwrap();
-    let miner = Miner::new(stop_flag, consensus_manager, &node_local_interface);
-    miner
+    Miner::new(stop_flag, consensus_manager, &node_local_interface)
 }

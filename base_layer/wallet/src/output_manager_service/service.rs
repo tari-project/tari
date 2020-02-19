@@ -71,7 +71,7 @@ use tari_key_manager::{
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::reply_channel;
 
-const LOG_TARGET: &'static str = "base_layer::wallet::output_manager_service";
+const LOG_TARGET: &str = "base_layer::wallet::output_manager_service";
 
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
 /// The service will assemble transactions to be sent from the wallets available outputs and provide keys to receive
@@ -216,15 +216,15 @@ where
             OutputManagerRequest::AddOutput(uo) => {
                 self.add_output(uo).await.map(|_| OutputManagerResponse::OutputAdded)
             },
-            OutputManagerRequest::GetBalance => self.get_balance().await.map(|a| OutputManagerResponse::Balance(a)),
+            OutputManagerRequest::GetBalance => self.get_balance().await.map(OutputManagerResponse::Balance),
             OutputManagerRequest::GetRecipientKey((tx_id, amount)) => self
                 .get_recipient_spending_key(tx_id, amount)
                 .await
-                .map(|k| OutputManagerResponse::RecipientKeyGenerated(k)),
+                .map(OutputManagerResponse::RecipientKeyGenerated),
             OutputManagerRequest::PrepareToSendTransaction((amount, fee_per_gram, lock_height, message)) => self
                 .prepare_transaction_to_send(amount, fee_per_gram, lock_height, message)
                 .await
-                .map(|stp| OutputManagerResponse::TransactionToSend(stp)),
+                .map(OutputManagerResponse::TransactionToSend),
             OutputManagerRequest::ConfirmTransaction((tx_id, spent_outputs, received_outputs)) => self
                 .confirm_transaction(tx_id, &spent_outputs, &received_outputs)
                 .await
@@ -240,20 +240,20 @@ where
             OutputManagerRequest::GetPendingTransactions => self
                 .fetch_pending_transaction_outputs()
                 .await
-                .map(|p| OutputManagerResponse::PendingTransactions(p)),
+                .map(OutputManagerResponse::PendingTransactions),
             OutputManagerRequest::GetSpentOutputs => self
                 .fetch_spent_outputs()
                 .await
-                .map(|o| OutputManagerResponse::SpentOutputs(o)),
+                .map(OutputManagerResponse::SpentOutputs),
             OutputManagerRequest::GetUnspentOutputs => self
                 .fetch_unspent_outputs()
                 .await
-                .map(|o| OutputManagerResponse::UnspentOutputs(o)),
-            OutputManagerRequest::GetSeedWords => self.get_seed_words().map(|sw| OutputManagerResponse::SeedWords(sw)),
+                .map(OutputManagerResponse::UnspentOutputs),
+            OutputManagerRequest::GetSeedWords => self.get_seed_words().map(OutputManagerResponse::SeedWords),
             OutputManagerRequest::GetCoinbaseKey((tx_id, amount, maturity_height)) => self
                 .get_coinbase_spending_key(tx_id, amount, maturity_height)
                 .await
-                .map(|k| OutputManagerResponse::RecipientKeyGenerated(k)),
+                .map(OutputManagerResponse::RecipientKeyGenerated),
             OutputManagerRequest::SetBaseNodePublicKey(pk) => self
                 .set_base_node_public_key(pk, utxo_query_timeout_futures)
                 .await
@@ -410,7 +410,7 @@ where
         let mut key = PrivateKey::default();
         {
             let mut km = acquire_lock!(self.key_manager);
-            key = km.next_key()?.k.clone();
+            key = km.next_key()?.k;
         }
 
         self.db.increment_key_index().await?;
@@ -558,8 +558,8 @@ where
     pub async fn confirm_transaction(
         &mut self,
         tx_id: u64,
-        inputs: &Vec<TransactionInput>,
-        outputs: &Vec<TransactionOutput>,
+        inputs: &[TransactionInput],
+        outputs: &[TransactionOutput],
     ) -> Result<(), OutputManagerError>
     {
         let pending_transaction = self.db.fetch_pending_transaction_outputs(tx_id.clone()).await?;
@@ -570,11 +570,8 @@ where
             let input_to_check = output_to_spend
                 .clone()
                 .as_transaction_input(&self.factories.commitment, OutputFeatures::default());
-            inputs_confirmed = inputs_confirmed &&
-                inputs
-                    .iter()
-                    .find(|input| input.commitment == input_to_check.commitment)
-                    .is_some();
+            inputs_confirmed =
+                inputs_confirmed && inputs.iter().any(|input| input.commitment == input_to_check.commitment);
         }
 
         // Check that outputs to be received can all be found in the provided transaction outputs
@@ -586,8 +583,7 @@ where
             outputs_confirmed = outputs_confirmed &&
                 outputs
                     .iter()
-                    .find(|output| output.commitment == output_to_check.commitment)
-                    .is_some();
+                    .any(|output| output.commitment == output_to_check.commitment);
         }
 
         if !inputs_confirmed || !outputs_confirmed {
@@ -631,7 +627,7 @@ where
             UTXOSelectionStrategy::Smallest => {
                 for o in uo.iter() {
                     outputs.push(o.clone());
-                    total += o.value.clone();
+                    total += o.value;
                     // I am assuming that the only output will be the payment output and change if required
                     fee_without_change = Fee::calculate(fee_per_gram, outputs.len(), 1);
                     fee_with_change = Fee::calculate(fee_per_gram, outputs.len(), 2);

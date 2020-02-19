@@ -62,7 +62,7 @@ use tari_service_framework::{
 use tari_shutdown::ShutdownSignal;
 use tokio::runtime;
 
-const LOG_TARGET: &'static str = "base_layer::wallet::transaction_service";
+const LOG_TARGET: &str = "base_layer::wallet::transaction_service";
 
 pub struct TransactionServiceInitializer<T>
 where T: TransactionBackend

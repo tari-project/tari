@@ -162,7 +162,7 @@ impl DhtDiscoveryService {
             target: LOG_TARGET,
             self.inflight_discoveries
                 .remove(&discovery_msg.nonce)
-                .ok_or(DhtDiscoveryError::InflightDiscoveryRequestNotFound),
+                .ok_or_else(|| DhtDiscoveryError::InflightDiscoveryRequestNotFound),
             "{error}",
         ) {
             let DiscoveryRequestState { public_key, reply_tx } = request;

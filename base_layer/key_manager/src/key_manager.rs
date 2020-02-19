@@ -102,7 +102,7 @@ where
     /// Creates a KeyManager from the provided sequence of mnemonic words, the language of the mnemonic sequence will be
     /// auto detected
     pub fn from_mnemonic(
-        mnemonic_seq: &Vec<String>,
+        mnemonic_seq: &[String],
         branch_seed: String,
         primary_key_index: usize,
     ) -> Result<KeyManager<K, D>, KeyManagerError>

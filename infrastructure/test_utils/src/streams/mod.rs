@@ -23,6 +23,7 @@
 use std::{collections::HashMap, hash::Hash};
 
 #[allow(dead_code)]
+#[allow(clippy::mutable_key_type)] // Note: Clippy Breaks with Interior Mutability Error
 pub fn get_item_counts<I>(items: I) -> HashMap<I::Item, usize>
 where
     I: IntoIterator,

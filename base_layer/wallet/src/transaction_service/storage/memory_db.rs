@@ -45,6 +45,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+#[derive(Default)]
 struct InnerDatabase {
     pending_outbound_transactions: HashMap<TxId, OutboundTransaction>,
     pending_inbound_transactions: HashMap<TxId, InboundTransaction>,
@@ -63,7 +64,7 @@ impl InnerDatabase {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct TransactionMemoryDatabase {
     db: Arc<RwLock<InnerDatabase>>,
 }
@@ -202,7 +203,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
         Ok(None)
     }
 
-    fn transaction_exists(&self, tx_id: &u64) -> Result<bool, TransactionStorageError> {
+    fn transaction_exists(&self, tx_id: u64) -> Result<bool, TransactionStorageError> {
         let db = acquire_read_lock!(self.db);
 
         Ok(db.pending_outbound_transactions.contains_key(&tx_id) ||
@@ -226,9 +227,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
         let _ = db
             .pending_outbound_transactions
             .remove(&tx_id)
-            .ok_or(TransactionStorageError::ValueNotFound(
-                DbKey::PendingOutboundTransaction(tx_id.clone()),
-            ))?;
+            .ok_or_else(|| TransactionStorageError::ValueNotFound(DbKey::PendingOutboundTransaction(tx_id)))?;
 
         db.completed_transactions.insert(tx_id, transaction);
 
@@ -249,9 +248,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
         let _ = db
             .pending_inbound_transactions
             .remove(&tx_id)
-            .ok_or(TransactionStorageError::ValueNotFound(
-                DbKey::PendingInboundTransaction(tx_id.clone()),
-            ))?;
+            .ok_or_else(|| TransactionStorageError::ValueNotFound(DbKey::PendingInboundTransaction(tx_id)))?;
 
         db.completed_transactions.insert(tx_id, transaction);
         Ok(())
@@ -271,9 +268,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
         let _ = db
             .pending_coinbase_transactions
             .remove(&tx_id)
-            .ok_or(TransactionStorageError::ValueNotFound(
-                DbKey::PendingCoinbaseTransaction(tx_id.clone()),
-            ))?;
+            .ok_or_else(|| TransactionStorageError::ValueNotFound(DbKey::PendingCoinbaseTransaction(tx_id)))?;
 
         db.completed_transactions.insert(tx_id, completed_transaction);
         Ok(())
@@ -282,12 +277,10 @@ impl TransactionBackend for TransactionMemoryDatabase {
     fn broadcast_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let mut db = acquire_write_lock!(self.db);
 
-        let mut completed_tx =
-            db.completed_transactions
-                .get_mut(&tx_id)
-                .ok_or(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
-                    tx_id.clone(),
-                )))?;
+        let mut completed_tx = db
+            .completed_transactions
+            .get_mut(&tx_id)
+            .ok_or_else(|| TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(tx_id)))?;
 
         if completed_tx.status == TransactionStatus::Completed {
             completed_tx.status = TransactionStatus::Broadcast;
@@ -299,12 +292,10 @@ impl TransactionBackend for TransactionMemoryDatabase {
     fn mine_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let mut db = acquire_write_lock!(self.db);
 
-        let mut completed_tx =
-            db.completed_transactions
-                .get_mut(&tx_id)
-                .ok_or(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
-                    tx_id.clone(),
-                )))?;
+        let mut completed_tx = db
+            .completed_transactions
+            .get_mut(&tx_id)
+            .ok_or_else(|| TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(tx_id)))?;
         completed_tx.status = TransactionStatus::Mined;
 
         Ok(())

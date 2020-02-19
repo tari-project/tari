@@ -52,6 +52,12 @@ pub struct InitialSync {
     listen_votes: usize,
 }
 
+impl Default for InitialSync {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InitialSync {
     pub fn new() -> Self {
         let backoff = BackOff::new(MAX_SYNC_ATTEMPTS, Duration::from_secs(30), 1.0);
@@ -152,7 +158,7 @@ impl InitialSync {
                     target: LOG_TARGET,
                     "The base node input channel has closed unexpectedly. The best way to resolve this issue is to \
                      restart the node. {}. {}",
-                    e.to_string(),
+                    e,
                     msg
                 );
             },
@@ -160,9 +166,7 @@ impl InitialSync {
                 self.shutdown_votes += 1;
                 error!(
                     target: LOG_TARGET,
-                    "There was a problem accessing the blockchain database. {}. {}.",
-                    e.to_string(),
-                    msg
+                    "There was a problem accessing the blockchain database. {}. {}.", e, msg
                 );
             },
             CommsInterfaceError::UnexpectedApiResponse => {
@@ -180,9 +184,7 @@ impl InitialSync {
                 self.shutdown_votes += 1;
                 error!(
                     target: LOG_TARGET,
-                    "There was a problem with the outbound message service. {}. {}.",
-                    e.to_string(),
-                    msg
+                    "There was a problem with the outbound message service. {}. {}.", e, msg
                 );
             },
             CommsInterfaceError::EventStreamError => {
@@ -200,8 +202,7 @@ impl InitialSync {
                 self.shutdown_votes += 1;
                 error!(
                     target: LOG_TARGET,
-                    "There was a problem sending with the DHT broadcast middleware. {}.",
-                    e.to_string(),
+                    "There was a problem sending with the DHT broadcast middleware. {}.", e,
                 );
             },
             CommsInterfaceError::DifficultyAdjustmentManagerError(e) => {

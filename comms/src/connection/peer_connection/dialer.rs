@@ -203,7 +203,7 @@ impl PeerConnectionDialer {
                             peer_identity
                                 .as_ref()
                                 .map(Hex::to_hex)
-                                .unwrap_or("<unspecified>".to_string()),
+                                .unwrap_or_else(|| "<unspecified>".to_string()),
                         );
 
                         match self.send_payload(&peer_conn, PeerConnectionProtocolMessage::Message, frames) {
@@ -317,17 +317,14 @@ impl PeerConnectionDialer {
             },
             ConnectRetried => {
                 let mut lock = acquire_lock!(self.connection_state);
-                match *lock {
-                    PeerConnectionState::Connecting(_) => {
-                        self.retry_count += 1;
-                        if self.retry_count >= self.context.max_retry_attempts {
-                            self.set_state(
-                                &mut lock,
-                                PeerConnectionState::Failed(PeerConnectionError::ExceededMaxConnectRetryCount),
-                            );
-                        }
-                    },
-                    _ => {},
+                if let PeerConnectionState::Connecting(_) = *lock {
+                    self.retry_count += 1;
+                }
+                if self.retry_count >= self.context.max_retry_attempts {
+                    self.set_state(
+                        &mut lock,
+                        PeerConnectionState::Failed(PeerConnectionError::ExceededMaxConnectRetryCount),
+                    )
                 }
             },
             evt => {
@@ -363,8 +360,7 @@ impl PeerConnectionDialer {
                 return Err(PeerConnectionError::StateError(format!(
                     "Unable to transition to connected state from state '{}'",
                     PeerConnectionSimpleState::from(s)
-                ))
-                .into());
+                )));
             },
         }
 
@@ -438,7 +434,7 @@ impl PeerConnectionDialer {
             return None;
         }
         let mut msg_type_frame = frames.remove(0);
-        if msg_type_frame.len() == 0 {
+        if msg_type_frame.is_empty() {
             return None;
         }
         let message_type_u8 = msg_type_frame.remove(0);
@@ -516,7 +512,7 @@ impl PeerConnectionDialer {
                         .connection_identity
                         .as_ref()
                         .map(Hex::to_hex)
-                        .unwrap_or("<no-ident>".to_string())
+                        .unwrap_or_else(|| "<no-ident>".to_string())
                 )
                 .as_str(),
             )

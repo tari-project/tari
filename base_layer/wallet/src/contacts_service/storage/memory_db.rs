@@ -26,6 +26,7 @@ use crate::contacts_service::{
 };
 use std::sync::{Arc, RwLock};
 
+#[derive(Default)]
 pub struct InnerDatabase {
     contacts: Vec<Contact>,
 }
@@ -36,6 +37,7 @@ impl InnerDatabase {
     }
 }
 
+#[derive(Default)]
 pub struct ContactsServiceMemoryDatabase {
     db: Arc<RwLock<InnerDatabase>>,
 }

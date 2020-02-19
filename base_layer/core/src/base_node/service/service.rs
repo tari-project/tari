@@ -63,7 +63,7 @@ use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::RequestContext;
 use tokio::runtime;
 
-const LOG_TARGET: &'static str = "c::bn::base_node_service::service";
+const LOG_TARGET: &str = "c::bn::base_node_service::service";
 
 /// Configuration for the BaseNodeService.
 #[derive(Clone, Copy)]
@@ -289,17 +289,13 @@ where B: BlockchainBackend + 'static
         let (origin_public_key, inner_msg) = domain_request_msg.into_origin_and_inner();
 
         // Convert proto::BaseNodeServiceRequest to a BaseNodeServiceRequest
-        let request = inner_msg.request.ok_or(BaseNodeServiceError::InvalidRequest(
-            "Received invalid base node request".to_string(),
-        ))?;
+        let request = inner_msg
+            .request
+            .ok_or_else(|| BaseNodeServiceError::InvalidRequest("Received invalid base node request".to_string()))?;
 
         let response = self
             .inbound_nch
-            .handle_request(
-                &request
-                    .try_into()
-                    .map_err(|e| BaseNodeServiceError::InvalidRequest(e))?,
-            )
+            .handle_request(&request.try_into().map_err(BaseNodeServiceError::InvalidRequest)?)
             .await?;
 
         let message = proto::BaseNodeServiceResponse {
@@ -328,12 +324,9 @@ where B: BlockchainBackend + 'static
         let mut finalize_request = false;
         match self.waiting_requests.get_mut(&request_key) {
             Some(waiting_request) => {
-                let response =
-                    response
-                        .and_then(|r| r.try_into().ok())
-                        .ok_or(BaseNodeServiceError::InvalidResponse(
-                            "Received an invalid base node response".to_string(),
-                        ))?;
+                let response = response.and_then(|r| r.try_into().ok()).ok_or_else(|| {
+                    BaseNodeServiceError::InvalidResponse("Received an invalid base node response".to_string())
+                })?;
                 waiting_request.received_responses.push(response);
                 finalize_request = waiting_request.received_responses.len() >= waiting_request.desired_resp_count;
             },
@@ -391,7 +384,7 @@ where B: BlockchainBackend + 'static
             .map_err(|e| CommsInterfaceError::OutboundMessageService(e.to_string()))?;
 
         match send_result.resolve_ok().await {
-            Some(tags) if tags.len() == 0 => {
+            Some(tags) if tags.is_empty() => {
                 let _ = reply_tx
                     .send(Err(CommsInterfaceError::NoBootstrapNodesConfigured))
                     .or_else(|resp| {
@@ -454,8 +447,8 @@ where B: BlockchainBackend + 'static
     async fn handle_request_timeout(&mut self, request_key: RequestKey) -> Result<(), CommsInterfaceError> {
         if let Some(mut waiting_request) = self.waiting_requests.remove(&request_key) {
             if let Some(reply_tx) = waiting_request.reply_tx.take() {
-                let reply_msg = if waiting_request.received_responses.len() >= 1 {
-                    Ok(waiting_request.received_responses.clone())
+                let reply_msg = if !waiting_request.received_responses.is_empty() {
+                    Ok(waiting_request.received_responses)
                 } else {
                     Err(CommsInterfaceError::RequestTimedOut)
                 };

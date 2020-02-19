@@ -116,7 +116,7 @@ impl Default for LastConnectionAttempt {
 
 impl Display for LastConnectionAttempt {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "Last connection to peer\n")?;
+        writeln!(f, "Last connection to peer")?;
         use LastConnectionAttempt::*;
         match self {
             Never => write!(f, "Connection never attempted"),

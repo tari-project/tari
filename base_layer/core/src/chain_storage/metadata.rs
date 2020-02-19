@@ -82,7 +82,7 @@ impl Display for ChainMetadata {
             .best_block
             .clone()
             .map(|b| b.to_hex())
-            .unwrap_or("Empty Database".into());
+            .unwrap_or_else(|| "Empty Database".into());
         fmt.write_str(&format!("Height of longest chain : {}\n", height))?;
         fmt.write_str(&format!("Best_block : {}\n", best_block))?;
         fmt.write_str(&format!("Pruning horizon : {}\n", self.pruning_horizon))

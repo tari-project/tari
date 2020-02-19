@@ -38,8 +38,8 @@ pub fn decrypt(cipher_key: &CommsPublicKey, cipher_text: &[u8]) -> Result<Vec<u8
     CommsCipher::open_with_integral_nonce(cipher_text, cipher_key.as_bytes())
 }
 
-pub fn encrypt(cipher_key: &CommsPublicKey, plain_text: &Vec<u8>) -> Result<Vec<u8>, CipherError> {
-    CommsCipher::seal_with_integral_nonce(plain_text, &cipher_key.to_vec())
+pub fn encrypt(cipher_key: &CommsPublicKey, plain_text: &[u8]) -> Result<Vec<u8>, CipherError> {
+    CommsCipher::seal_with_integral_nonce(&plain_text.to_vec(), &cipher_key.to_vec())
 }
 
 #[cfg(test)]

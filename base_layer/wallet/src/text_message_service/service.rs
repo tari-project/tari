@@ -50,7 +50,7 @@ use tari_p2p::{
 use tari_service_framework::reply_channel;
 use tokio_executor::threadpool::blocking;
 
-const LOG_TARGET: &'static str = "base_layer::wallet::text_messsage_service";
+const LOG_TARGET: &str = "base_layer::wallet::text_messsage_service";
 
 /// Represents an Acknowledgement of receiving a Text Message
 #[derive(Clone, Debug, Serialize, Deserialize)]

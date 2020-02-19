@@ -28,7 +28,7 @@ impl ZmqEndpoint for Multiaddr {
 
     fn to_zmq_endpoint(&self) -> Result<String, Self::Error> {
         let mut iter = self.iter();
-        let protocol = iter.next().ok_or(multiaddr::Error::InvalidMultiaddr)?;
+        let protocol = iter.next().ok_or_else(|| multiaddr::Error::InvalidMultiaddr)?;
         let tcp_port = |tcp: Option<Protocol>| match tcp.unwrap_or(Protocol::Tcp(0)) {
             Protocol::Tcp(port) => Ok(port),
             _ => Err(multiaddr::Error::InvalidMultiaddr),

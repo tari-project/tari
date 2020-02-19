@@ -332,7 +332,7 @@ where
     {
         let authenticated_public_key = socket
             .get_remote_public_key()
-            .ok_or(ConnectionManagerError::InvalidStaticPublicKey)?;
+            .ok_or_else(|| ConnectionManagerError::InvalidStaticPublicKey)?;
 
         if &authenticated_public_key != expected_public_key {
             return Err(ConnectionManagerError::DialedPublicKeyMismatch);

@@ -66,7 +66,7 @@ use tari_shutdown::ShutdownSignal;
 use tokio::task;
 use ttl_cache::TtlCache;
 
-const LOG_TARGET: &'static str = "comms::dht::actor";
+const LOG_TARGET: &str = "comms::dht::actor";
 
 #[derive(Debug, Error)]
 pub enum DhtActorError {
@@ -316,9 +316,7 @@ impl<'a> DhtActor<'a> {
                     .closest(node_identity.node_id().clone(), num_neighbouring_nodes, Vec::new())
                     .with_dht_message_type(DhtMessageType::SafRequestMessages)
                     .finish(),
-                maybe_since
-                    .map(StoredMessagesRequest::since)
-                    .unwrap_or(StoredMessagesRequest::new()),
+                maybe_since.map(StoredMessagesRequest::since).unwrap_or_default(),
             )
             .await
             .map_err(|err| DhtActorError::SendFailed(format!("Failed to send request for stored messages: {}", err)))?;

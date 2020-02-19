@@ -141,7 +141,7 @@ where T: BlockchainBackend
     }
 
     /// Update the Mempool based on the received set of published blocks.
-    pub fn process_published_blocks(&self, published_blocks: &Vec<Block>) -> Result<(), MempoolError> {
+    pub fn process_published_blocks(&self, published_blocks: &[Block]) -> Result<(), MempoolError> {
         for published_block in published_blocks {
             self.process_published_block(published_block)?;
         }

@@ -79,9 +79,8 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
             .receive_message(config.peer_connection_establish_timeout)
             .map_err(|_| ConnectionManagerError::ConnectionRequestOutcomeRecvFail)?
             // Abort! Did not receive a connection outcome before the timeout
-            .ok_or(ConnectionManagerError::ConnectionRequestOutcomeTimeout)
-            .and_then(|msg: RequestConnectionOutcome| match msg.accepted {
-                true => {
+            .ok_or_else(|| ConnectionManagerError::ConnectionRequestOutcomeTimeout)
+            .and_then(|msg: RequestConnectionOutcome| if msg.accepted {
                     trace!(
                         target: LOG_TARGET,
                         "[NodeId={}] Peer set our identity to '{}'", self.node_identity.node_id(),  msg.identity.to_hex(),
@@ -108,14 +107,13 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
                         self.establish_requested_peer_connection(peer, curve_public_key, address, identity)?;
 
                     Ok((new_peer_conn, join_handle))
-                },
-                false => {
+                } else {
                     let RequestConnectionOutcome {
                         reject_reason,
                         ..
                     } = msg;
 
-                    let reject_reason = RejectReason::from_i32(reject_reason).unwrap_or(RejectReason::None);
+                    let reject_reason = RejectReason::from_i32(reject_reason).unwrap_or( RejectReason::None);
 
                     info!(
                         target: LOG_TARGET,
@@ -126,8 +124,7 @@ impl<'e, 'ni> PeerConnectionProtocol<'e, 'ni> {
 
                     // Abort! The connection request was rejected
                     Err(ConnectionManagerError::ConnectionRejected(reject_reason))
-                },
-            })
+                })
     }
 
     fn establish_requested_peer_connection(

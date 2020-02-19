@@ -85,7 +85,6 @@ impl WalletBackend for WalletSqliteDatabase {
                     if let Ok(_) = PeerSql::find(&k.to_vec(), &conn) {
                         return Err(WalletStorageError::DuplicateContact);
                     }
-
                     PeerSql::try_from(p)?.commit(&conn)?;
                 },
             },
@@ -134,7 +133,7 @@ impl PeerSql {
 
     /// Find a particular Peer, if it exists
     pub fn find(
-        public_key: &Vec<u8>,
+        public_key: &[u8],
         conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
     ) -> Result<PeerSql, WalletStorageError>
     {

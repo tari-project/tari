@@ -39,7 +39,7 @@ impl TryInto<MempoolResponse> for ProtoMempoolResponse {
             Stats(stats_response) => MempoolResponse::Stats(stats_response.try_into()?),
             TxStorage(tx_storage_response) => {
                 let tx_storage_response = ProtoTxStorageResponse::from_i32(tx_storage_response)
-                    .ok_or("Invalid or unrecognised `TxStorageResponse` enum".to_string())?;
+                    .ok_or_else(|| "Invalid or unrecognised `TxStorageResponse` enum".to_string())?;
                 MempoolResponse::TxStorage(tx_storage_response.try_into()?)
             },
         };
@@ -55,7 +55,7 @@ impl TryFrom<ProtoMempoolServiceResponse> for MempoolServiceResponse {
             request_key: response.request_key,
             response: response
                 .response
-                .ok_or("Response field not present to convert".to_string())?
+                .ok_or_else(|| "Response field not present to convert".to_string())?
                 .try_into()?,
         })
     }

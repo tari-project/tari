@@ -150,6 +150,7 @@ impl Display for Block {
     }
 }
 
+#[derive(Default)]
 pub struct BlockBuilder {
     header: BlockHeader,
     inputs: Vec<TransactionInput>,

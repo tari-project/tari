@@ -55,7 +55,7 @@ pub mod handle;
 pub mod service;
 pub mod storage;
 
-const LOG_TARGET: &'static str = "wallet::output_manager_service::initializer";
+const LOG_TARGET: &str = "wallet::output_manager_service::initializer";
 
 pub type TxId = u64;
 

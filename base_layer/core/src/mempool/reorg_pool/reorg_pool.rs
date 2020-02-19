@@ -71,11 +71,11 @@ impl ReorgPool {
     /// Insert a set of new transactions into the ReorgPool. Published transactions will have a limited Time-to-live in
     /// the ReorgPool and will be discarded once the Time-to-live threshold has been reached.
     pub fn insert_txs(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), ReorgPoolError> {
-        Ok(self
-            .pool_storage
+        self.pool_storage
             .write()
             .map_err(|_| ReorgPoolError::PoisonedAccess)?
-            .insert_txs(transactions))
+            .insert_txs(transactions);
+        Ok(())
     }
 
     /// Check if a transaction is stored in the ReorgPool

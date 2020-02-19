@@ -47,6 +47,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     cmp::{max, min, Ordering},
     fmt::{Display, Formatter},
+    hash::{Hash, Hasher},
     ops::Add,
 };
 use tari_crypto::{
@@ -160,7 +161,7 @@ pub enum TransactionError {
 
 /// An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
 /// build both inputs and outputs (every input comes from an output)
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone)]
 pub struct UnblindedOutput {
     pub value: MicroTari,
     pub spending_key: BlindingFactor,
@@ -173,7 +174,7 @@ impl UnblindedOutput {
         UnblindedOutput {
             value,
             spending_key,
-            features: features.unwrap_or_else(|| OutputFeatures::default()),
+            features: features.unwrap_or_default(),
         }
     }
 
@@ -211,6 +212,12 @@ impl Eq for UnblindedOutput {}
 impl PartialEq for UnblindedOutput {
     fn eq(&self, other: &UnblindedOutput) -> bool {
         self.value == other.value
+    }
+}
+
+impl Hash for UnblindedOutput {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.value.hash(state);
     }
 }
 
@@ -542,7 +549,7 @@ impl Display for TransactionKernel {
             self.excess.to_hex(),
             self.excess_sig
                 .to_json()
-                .unwrap_or("Failed to serialize signature".into()),
+                .unwrap_or_else(|_| "Failed to serialize signature".into()),
             match &self.meta_info {
                 None => "None".to_string(),
                 Some(v) => v.to_hex(),
@@ -599,13 +606,14 @@ impl Transaction {
     /// 1. Range proofs of the outputs are valid
     ///
     /// This function does NOT check that inputs come from the UTXO set
+    #[allow(clippy::erasing_op)] // This is for 0 * uT
     pub fn validate_internal_consistency(
         &self,
         factories: &CryptoFactories,
         reward: Option<MicroTari>,
     ) -> Result<(), TransactionError>
     {
-        let reward = reward.unwrap_or(0 * uT);
+        let reward = reward.unwrap_or_else(|| 0 * uT);
         self.body.validate_internal_consistency(&self.offset, reward, factories)
     }
 
@@ -737,9 +745,9 @@ impl TransactionBuilder {
             tx.validate_internal_consistency(factories, self.reward)?;
             Ok(tx)
         } else {
-            return Err(TransactionError::ValidationError(
+            Err(TransactionError::ValidationError(
                 "Transaction validation failed".into(),
-            ));
+            ))
         }
     }
 }

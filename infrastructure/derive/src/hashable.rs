@@ -29,16 +29,13 @@ pub fn create_derive_hashable(input: DeriveInput) -> proc_macro2::TokenStream {
     let object_name = &input.ident;
     let mut digest = None;
     for attr in &input.attrs {
-        match attr.interpret_meta().unwrap() {
-            syn::Meta::NameValue(val) => {
-                if val.ident.to_string() == "digest" {
-                    if let syn::Lit::Str(lit) = &val.lit {
-                        digest = Some(lit.value());
-                    }
+        if let syn::Meta::NameValue(val) = attr.interpret_meta().unwrap() {
+            if val.ident == "digest" {
+                if let syn::Lit::Str(lit) = &val.lit {
+                    digest = Some(lit.value());
                 }
-            },
-            _ => (),
-        };
+            }
+        }
     }
     let item = input.data;
     let fields_text = handle_fields_for_hashable(&item);
@@ -70,7 +67,7 @@ fn handle_fields_for_hashable(item: &Data) -> proc_macro2::TokenStream {
                         for attr in &f.attrs {
                             match attr.interpret_meta().unwrap() {
                                 syn::Meta::NameValue(ref val) => {
-                                    if val.ident.to_string() == "Hashable" {
+                                    if val.ident == "Hashable" {
                                         if let syn::Lit::Str(lit) = &val.lit {
                                             if lit.value() == "Ignore" {
                                                 do_we_ignore_field = true;
@@ -80,12 +77,12 @@ fn handle_fields_for_hashable(item: &Data) -> proc_macro2::TokenStream {
                                 },
                                 syn::Meta::List(ref val) => {
                                     // we have more than one property
-                                    if val.ident.to_string() == "Hashable" {
+                                    if val.ident == "Hashable" {
                                         // we have a hash command here, lets search for the sub command
                                         for nestedmeta in val.nested.iter() {
                                             if let syn::NestedMeta::Meta(meta) = nestedmeta {
                                                 if let syn::Meta::Word(ref val) = meta {
-                                                    if val.to_string() == "Ignore" {
+                                                    if val == "Ignore" {
                                                         do_we_ignore_field = true;
                                                     }
                                                 }

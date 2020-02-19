@@ -93,11 +93,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     None
                 },
             },
-            DbKey::PendingTransactionOutputs(tx_id) => match PendingTransactionOutputSql::find(tx_id, &conn) {
+            DbKey::PendingTransactionOutputs(tx_id) => match PendingTransactionOutputSql::find(*tx_id, &conn) {
                 Ok(p) => {
-                    let outputs = OutputSql::find_by_tx_id_and_encumbered(tx_id, &conn)?;
+                    let outputs = OutputSql::find_by_tx_id_and_encumbered(*tx_id, &conn)?;
                     Some(DbValue::PendingTransactionOutputs(Box::new(
-                        pending_transaction_outputs_from_sql_outputs(&(p.tx_id.clone() as u64), &p.timestamp, outputs)?,
+                        pending_transaction_outputs_from_sql_outputs(p.tx_id as u64, &p.timestamp, outputs)?,
                     )))
                 },
                 Err(e) => {
@@ -124,14 +124,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 let pending_sql_txs = PendingTransactionOutputSql::index(&conn)?;
                 let mut pending_txs = HashMap::new();
                 for p_tx in pending_sql_txs {
-                    let outputs = OutputSql::find_by_tx_id_and_encumbered(&(p_tx.tx_id.clone() as u64), &conn)?;
+                    let outputs = OutputSql::find_by_tx_id_and_encumbered(p_tx.tx_id as u64, &conn)?;
                     pending_txs.insert(
-                        p_tx.tx_id.clone() as u64,
-                        pending_transaction_outputs_from_sql_outputs(
-                            &(p_tx.tx_id.clone() as u64),
-                            &p_tx.timestamp,
-                            outputs,
-                        )?,
+                        p_tx.tx_id as u64,
+                        pending_transaction_outputs_from_sql_outputs(p_tx.tx_id as u64, &p_tx.timestamp, outputs)?,
                     );
                 }
                 Some(DbValue::AllPendingTransactionOutputs(pending_txs))
@@ -173,17 +169,15 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     OutputSql::new(*o, OutputStatus::Unspent, None).commit(&conn)?
                 },
                 DbKeyValuePair::PendingTransactionOutputs(tx_id, p) => {
-                    if let Ok(_) = PendingTransactionOutputSql::find(&tx_id, &conn) {
+                    if let Ok(_) = PendingTransactionOutputSql::find(tx_id, &conn) {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    PendingTransactionOutputSql::new(p.tx_id.clone(), p.timestamp.clone()).commit(&conn)?;
+                    PendingTransactionOutputSql::new(p.tx_id, p.timestamp).commit(&conn)?;
                     for o in p.outputs_to_be_spent {
-                        OutputSql::new(o.clone(), OutputStatus::EncumberedToBeSpent, Some(p.tx_id.clone()))
-                            .commit(&conn)?;
+                        OutputSql::new(o.clone(), OutputStatus::EncumberedToBeSpent, Some(p.tx_id)).commit(&conn)?;
                     }
                     for o in p.outputs_to_be_received {
-                        OutputSql::new(o.clone(), OutputStatus::EncumberedToBeReceived, Some(p.tx_id.clone()))
-                            .commit(&conn)?;
+                        OutputSql::new(o.clone(), OutputStatus::EncumberedToBeReceived, Some(p.tx_id)).commit(&conn)?;
                     }
                 },
                 DbKeyValuePair::KeyManagerState(km) => KeyManagerStateSql::set_state(km, &conn)?,
@@ -213,16 +207,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         };
                     },
                 },
-                DbKey::PendingTransactionOutputs(tx_id) => match PendingTransactionOutputSql::find(&tx_id, &conn) {
+                DbKey::PendingTransactionOutputs(tx_id) => match PendingTransactionOutputSql::find(tx_id, &conn) {
                     Ok(p) => {
-                        let outputs = OutputSql::find_by_tx_id_and_encumbered(&(p.tx_id as u64), &conn)?;
+                        let outputs = OutputSql::find_by_tx_id_and_encumbered(p.tx_id as u64, &conn)?;
                         p.clone().delete(&conn)?;
                         return Ok(Some(DbValue::PendingTransactionOutputs(Box::new(
-                            pending_transaction_outputs_from_sql_outputs(
-                                &(p.tx_id.clone() as u64),
-                                &p.timestamp,
-                                outputs,
-                            )?,
+                            pending_transaction_outputs_from_sql_outputs(p.tx_id as u64, &p.timestamp, outputs)?,
                         ))));
                     },
                     Err(e) => {
@@ -250,9 +240,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .get()
             .map_err(|_| OutputManagerStorageError::R2d2Error)?;
 
-        match PendingTransactionOutputSql::find(&tx_id, &conn) {
+        match PendingTransactionOutputSql::find(tx_id, &conn) {
             Ok(p) => {
-                let outputs = OutputSql::find_by_tx_id_and_encumbered(&tx_id, &conn)?;
+                let outputs = OutputSql::find_by_tx_id_and_encumbered(tx_id, &conn)?;
 
                 for o in outputs {
                     if o.status == (OutputStatus::EncumberedToBeReceived as i32) {
@@ -290,7 +280,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     fn encumber_outputs(
         &self,
         tx_id: u64,
-        outputs_to_send: &Vec<UnblindedOutput>,
+        outputs_to_send: &[UnblindedOutput],
         change_output: Option<UnblindedOutput>,
     ) -> Result<(), OutputManagerStorageError>
     {
@@ -309,20 +299,20 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             outputs_to_be_spent.push(output);
         }
 
-        PendingTransactionOutputSql::new(tx_id.clone(), Utc::now().naive_utc()).commit(&conn)?;
+        PendingTransactionOutputSql::new(tx_id, Utc::now().naive_utc()).commit(&conn)?;
 
         for o in outputs_to_be_spent {
             o.update(
                 UpdateOutput {
                     status: Some(OutputStatus::EncumberedToBeSpent),
-                    tx_id: Some(tx_id.clone()),
+                    tx_id: Some(tx_id),
                 },
                 &conn,
             )?;
         }
 
         if let Some(co) = change_output {
-            OutputSql::new(co, OutputStatus::EncumberedToBeReceived, Some(tx_id.clone())).commit(&conn)?;
+            OutputSql::new(co, OutputStatus::EncumberedToBeReceived, Some(tx_id)).commit(&conn)?;
         }
 
         Ok(())
@@ -335,9 +325,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .get()
             .map_err(|_| OutputManagerStorageError::R2d2Error)?;
 
-        match PendingTransactionOutputSql::find(&tx_id, &conn) {
+        match PendingTransactionOutputSql::find(tx_id, &conn) {
             Ok(p) => {
-                let outputs = OutputSql::find_by_tx_id_and_encumbered(&tx_id, &conn)?;
+                let outputs = OutputSql::find_by_tx_id_and_encumbered(tx_id, &conn)?;
 
                 for o in outputs {
                     if o.status == (OutputStatus::EncumberedToBeReceived as i32) {
@@ -360,7 +350,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 match e {
                     OutputManagerStorageError::DieselError(DieselError::NotFound) => {
                         return Err(OutputManagerStorageError::ValueNotFound(
-                            DbKey::PendingTransactionOutputs(tx_id.clone()),
+                            DbKey::PendingTransactionOutputs(tx_id),
                         ))
                     },
                     e => return Err(e),
@@ -384,7 +374,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         )?;
         drop(conn);
         for ptx in older_pending_txs {
-            self.cancel_pending_transaction(ptx.tx_id.clone() as u64)?;
+            self.cancel_pending_transaction(ptx.tx_id as u64)?;
         }
         Ok(())
     }
@@ -424,7 +414,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
 /// A utility function to construct a PendingTransactionOutputs structure for a TxId, set of Outputs and a Timestamp
 fn pending_transaction_outputs_from_sql_outputs(
-    tx_id: &TxId,
+    tx_id: TxId,
     timestamp: &NaiveDateTime,
     outputs: Vec<OutputSql>,
 ) -> Result<PendingTransactionOutputs, OutputManagerStorageError>
@@ -440,10 +430,10 @@ fn pending_transaction_outputs_from_sql_outputs(
     }
 
     Ok(PendingTransactionOutputs {
-        tx_id: tx_id.clone() as u64,
+        tx_id,
         outputs_to_be_spent,
         outputs_to_be_received,
-        timestamp: timestamp.clone(),
+        timestamp: *timestamp,
     })
 }
 
@@ -529,7 +519,7 @@ impl OutputSql {
 
     /// Find a particular Output, if it exists
     pub fn find(
-        spending_key: &Vec<u8>,
+        spending_key: &[u8],
         conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
     ) -> Result<OutputSql, OutputManagerStorageError>
     {
@@ -540,12 +530,12 @@ impl OutputSql {
 
     /// Find outputs via tx_id that are encumbered. Any outputs that are encumbered cannot be marked as spent.
     pub fn find_by_tx_id_and_encumbered(
-        tx_id: &TxId,
+        tx_id: TxId,
         conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError>
     {
         Ok(outputs::table
-            .filter(outputs::tx_id.eq(Some(*tx_id as i64)))
+            .filter(outputs::tx_id.eq(Some(tx_id as i64)))
             .filter(
                 outputs::status
                     .eq(OutputStatus::EncumberedToBeReceived as i32)
@@ -556,7 +546,7 @@ impl OutputSql {
 
     /// Find a particular Output, if it exists and is in the specified Spent state
     pub fn find_status(
-        spending_key: &Vec<u8>,
+        spending_key: &[u8],
         status: OutputStatus,
         conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
     ) -> Result<OutputSql, OutputManagerStorageError>
@@ -632,7 +622,8 @@ impl TryFrom<OutputSql> for UnblindedOutput {
             spending_key: PrivateKey::from_vec(&o.spending_key)
                 .map_err(|_| OutputManagerStorageError::ConversionError)?,
             features: OutputFeatures {
-                flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError)?,
+                flags: OutputFlags::from_bits(o.flags as u8)
+                    .ok_or_else(|| OutputManagerStorageError::ConversionError)?,
                 maturity: o.maturity as u64,
             },
         })
@@ -698,12 +689,12 @@ impl PendingTransactionOutputSql {
     }
 
     pub fn find(
-        tx_id: &TxId,
+        tx_id: TxId,
         conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
     ) -> Result<PendingTransactionOutputSql, OutputManagerStorageError>
     {
         Ok(pending_transaction_outputs::table
-            .filter(pending_transaction_outputs::tx_id.eq(tx_id.clone() as i64))
+            .filter(pending_transaction_outputs::tx_id.eq(tx_id as i64))
             .first::<PendingTransactionOutputSql>(conn)?)
     }
 
@@ -737,7 +728,7 @@ impl PendingTransactionOutputSql {
             return Err(OutputManagerStorageError::ValuesNotFound);
         }
 
-        let outputs = OutputSql::find_by_tx_id_and_encumbered(&(self.tx_id as u64), &conn)?;
+        let outputs = OutputSql::find_by_tx_id_and_encumbered(self.tx_id as u64, &conn)?;
         for o in outputs {
             o.delete(&conn)?;
         }
@@ -995,7 +986,7 @@ mod test {
             .commit(&conn)
             .unwrap();
 
-        let pt = PendingTransactionOutputSql::find(&tx_id, &conn).unwrap();
+        let pt = PendingTransactionOutputSql::find(tx_id, &conn).unwrap();
 
         assert_eq!(pt.tx_id as u64, tx_id);
 
@@ -1025,7 +1016,7 @@ mod test {
             )
             .unwrap();
 
-        let result = OutputSql::find_by_tx_id_and_encumbered(&44u64, &conn).unwrap();
+        let result = OutputSql::find_by_tx_id_and_encumbered(44u64, &conn).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].spending_key, outputs[1].spending_key);
 

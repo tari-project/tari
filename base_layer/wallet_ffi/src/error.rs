@@ -66,19 +66,19 @@ impl From<InterfaceError> for LibWalletError {
         match v {
             InterfaceError::NullError(_) => Self {
                 code: 1,
-                message: format!("{:?}", v).to_string(),
+                message: format!("{:?}", v),
             },
             InterfaceError::AllocationError => Self {
                 code: 2,
-                message: format!("{:?}", v).to_string(),
+                message: format!("{:?}", v),
             },
             InterfaceError::PositionInvalidError => Self {
                 code: 3,
-                message: format!("{:?}", v).to_string(),
+                message: format!("{:?}", v),
             },
             InterfaceError::TokioError(_) => Self {
                 code: 4,
-                message: format!("{:?}", v).to_string(),
+                message: format!("{:?}", v),
             },
         }
     }
@@ -214,7 +214,7 @@ impl From<WalletError> for LibWalletError {
             // This is the catch all error code. Any error that is not explicitly mapped above will be given this code
             _ => Self {
                 code: 999,
-                message: format!("{:?}", w).to_string(),
+                message: format!("{:?}", w),
             },
         }
     }
@@ -228,15 +228,15 @@ impl From<HexError> for LibWalletError {
         match h {
             HexError::LengthError => Self {
                 code: 501,
-                message: format!("{:?}", h).to_string(),
+                message: format!("{:?}", h),
             },
             HexError::HexConversionError => Self {
                 code: 502,
-                message: format!("{:?}", h).to_string(),
+                message: format!("{:?}", h),
             },
             HexError::InvalidCharacter(_) => Self {
                 code: 503,
-                message: format!("{:?}", h).to_string(),
+                message: format!("{:?}", h),
             },
         }
     }
@@ -250,11 +250,11 @@ impl From<ByteArrayError> for LibWalletError {
         match b {
             ByteArrayError::IncorrectLength => Self {
                 code: 601,
-                message: format!("{:?}", b).to_string(),
+                message: format!("{:?}", b),
             },
             ByteArrayError::ConversionError(_) => Self {
                 code: 602,
-                message: format!("{:?}", b).to_string(),
+                message: format!("{:?}", b),
             },
         }
     }
@@ -266,15 +266,15 @@ impl From<NodeIdentityError> for LibWalletError {
         match n {
             NodeIdentityError::NodeIdError(NodeIdError::IncorrectByteCount) => Self {
                 code: 701,
-                message: format!("{:?}", n).to_string(),
+                message: format!("{:?}", n),
             },
             NodeIdentityError::NodeIdError(NodeIdError::OutOfBounds) => Self {
                 code: 702,
-                message: format!("{:?}", n).to_string(),
+                message: format!("{:?}", n),
             },
             NodeIdentityError::PoisonedAccess => Self {
                 code: 703,
-                message: format!("{:?}", n).to_string(),
+                message: format!("{:?}", n),
             },
             NodeIdentityError::NodeIdError(NodeIdError::DigestError) => Self {
                 code: 704,
@@ -290,31 +290,31 @@ impl From<multiaddr::Error> for LibWalletError {
         match err {
             multiaddr::Error::ParsingError(_) => Self {
                 code: 801,
-                message: format!("{:?}", err).to_string(),
+                message: format!("{:?}", err),
             },
             multiaddr::Error::InvalidMultiaddr => Self {
                 code: 802,
-                message: format!("{:?}", err).to_string(),
+                message: format!("{:?}", err),
             },
             multiaddr::Error::DataLessThanLen => Self {
                 code: 803,
-                message: format!("{:?}", err).to_string(),
+                message: format!("{:?}", err),
             },
             multiaddr::Error::InvalidProtocolString => Self {
                 code: 804,
-                message: format!("{:?}", err).to_string(),
+                message: format!("{:?}", err),
             },
             multiaddr::Error::UnknownProtocolString(_) => Self {
                 code: 805,
-                message: format!("{:?}", err).to_string(),
+                message: format!("{:?}", err),
             },
             multiaddr::Error::InvalidUvar(_) => Self {
                 code: 806,
-                message: format!("{:?}", err).to_string(),
+                message: format!("{:?}", err),
             },
             err => Self {
                 code: 810,
-                message: format!("Multiaddr error: {:?}", err).to_string(),
+                message: format!("Multiaddr error: {:?}", err),
             },
         }
     }
@@ -326,7 +326,7 @@ impl From<SchnorrSignatureError> for LibWalletError {
         match err {
             SchnorrSignatureError::InvalidChallenge => Self {
                 code: 901,
-                message: format!("{:?}", err).to_string(),
+                message: format!("{:?}", err),
             },
         }
     }

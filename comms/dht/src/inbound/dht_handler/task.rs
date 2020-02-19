@@ -43,7 +43,7 @@ use tari_comms::{
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tower::{Service, ServiceExt};
 
-const LOG_TARGET: &'static str = "comms::dht::dht_handler";
+const LOG_TARGET: &str = "comms::dht::dht_handler";
 
 pub struct ProcessDhtMessage<S> {
     config: DhtConfig,
@@ -164,16 +164,17 @@ where
             ..
         } = message;
 
-        let origin = dht_header.origin.as_ref().ok_or(DhtInboundError::OriginRequired(
-            "Origin is required for this message type".to_string(),
-        ))?;
+        let origin = dht_header
+            .origin
+            .as_ref()
+            .ok_or_else(|| DhtInboundError::OriginRequired("Origin is required for this message type".to_string()))?;
 
         trace!(target: LOG_TARGET, "Received Join Message from {}", origin.public_key);
 
         let body = decryption_result.expect("already checked that this message decrypted successfully");
         let join_msg = body
             .decode_part::<JoinMessage>(0)?
-            .ok_or(DhtInboundError::InvalidJoinNetAddresses)?;
+            .ok_or_else(|| DhtInboundError::InvalidJoinNetAddresses)?;
 
         let addresses = join_msg
             .addresses
@@ -181,7 +182,7 @@ where
             .filter_map(|addr| addr.parse().ok())
             .collect::<Vec<_>>();
 
-        if addresses.len() == 0 {
+        if addresses.is_empty() {
             return Err(DhtInboundError::InvalidAddresses);
         }
 
@@ -267,7 +268,7 @@ where
                 .origin
                 .as_ref()
                 .map(|o| o.public_key.to_hex())
-                .unwrap_or("<unknown>".to_string())
+                .unwrap_or_else(|| "<unknown>".to_string())
         );
 
         let msg = message
@@ -276,7 +277,7 @@ where
 
         let discover_msg = msg
             .decode_part::<DiscoveryResponseMessage>(0)?
-            .ok_or(DhtInboundError::InvalidMessageBody)?;
+            .ok_or_else(|| DhtInboundError::InvalidMessageBody)?;
 
         self.discovery_requester
             .notify_discovery_response_received(discover_msg)
@@ -292,11 +293,11 @@ where
 
         let discover_msg = msg
             .decode_part::<DiscoveryMessage>(0)?
-            .ok_or(DhtInboundError::InvalidMessageBody)?;
+            .ok_or_else(|| DhtInboundError::InvalidMessageBody)?;
 
-        let origin = message.dht_header.origin.ok_or(DhtInboundError::OriginRequired(
-            "Origin header required for Discovery message".to_string(),
-        ))?;
+        let origin = message.dht_header.origin.ok_or_else(|| {
+            DhtInboundError::OriginRequired("Origin header required for Discovery message".to_string())
+        })?;
 
         trace!(
             target: LOG_TARGET,
@@ -310,7 +311,7 @@ where
             .filter_map(|addr| addr.parse().ok())
             .collect::<Vec<_>>();
 
-        if addresses.len() == 0 {
+        if addresses.is_empty() {
             return Err(DhtInboundError::InvalidAddresses);
         }
 

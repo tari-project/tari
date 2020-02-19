@@ -47,8 +47,8 @@ impl Metadata {
         self.inner.insert(key as i32, value);
     }
 
-    pub fn get(&self, key: &MetadataKey) -> Option<&Vec<u8>> {
-        self.inner.get(&(*key as i32))
+    pub fn get(&self, key: MetadataKey) -> Option<&Vec<u8>> {
+        self.inner.get(&(key as i32))
     }
 }
 
@@ -166,7 +166,7 @@ impl LivenessState {
             Some((node_id, sent_time)) => {
                 let now = Utc::now().naive_utc();
                 if let Some(ns) = self.nodes_to_monitor.get_mut(&node_id) {
-                    ns.last_pong_received = Some(sent_time.clone());
+                    ns.last_pong_received = Some(sent_time);
                     ns.average_latency.add_sample(convert_to_std_duration(now - sent_time));
                 }
                 let latency = self
@@ -189,9 +189,7 @@ impl LivenessState {
     }
 
     pub fn get_avg_latency_ms(&self, node_id: &NodeId) -> Option<u32> {
-        self.peer_latency
-            .get(node_id)
-            .and_then(|latency| Some(latency.calc_average()))
+        self.peer_latency.get(node_id).map(|latency| latency.calc_average())
     }
 
     pub fn add_node_id(&mut self, node_id: &NodeId) {
@@ -214,10 +212,10 @@ impl LivenessState {
     }
 
     pub fn get_node_id_stats(&self, node_id: &NodeId) -> Result<NodeStats, LivenessError> {
-        return match self.nodes_to_monitor.get(node_id) {
+        match self.nodes_to_monitor.get(node_id) {
             None => Err(LivenessError::NodeIdDoesNotExist),
             Some(s) => Ok((*s).clone()),
-        };
+        }
     }
 }
 
@@ -229,7 +227,7 @@ pub(super) fn convert_to_std_duration(old_duration: chrono::Duration) -> Duratio
 /// A very simple implementation for calculating average latency. Samples are added in milliseconds and the mean average
 /// is calculated for those samples. If more than [LATENCY_SAMPLE_WINDOW_SIZE](self::LATENCY_SAMPLE_WINDOW_SIZE) samples
 /// are added the oldest sample is discarded.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct AverageLatency {
     samples: Vec<u32>,
 }
@@ -253,7 +251,7 @@ impl AverageLatency {
     /// Calculate the average of the recorded samples
     pub fn calc_average(&self) -> u32 {
         let samples = &self.samples;
-        if samples.len() == 0 {
+        if samples.is_empty() {
             return 0;
         }
 
@@ -262,7 +260,7 @@ impl AverageLatency {
 }
 
 /// This struct contains the stats about a Node that is being monitored by the Liveness Service
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct NodeStats {
     last_ping_sent: Option<NaiveDateTime>,
     last_pong_received: Option<NaiveDateTime>,
@@ -350,7 +348,7 @@ mod test {
         let mut state = LivenessState::new();
         state.set_pong_metadata_entry(MetadataKey::ChainMetadata, b"dummy-data".to_vec());
         assert_eq!(
-            state.pong_metadata().get(&MetadataKey::ChainMetadata).unwrap(),
+            state.pong_metadata().get(MetadataKey::ChainMetadata).unwrap(),
             b"dummy-data"
         );
     }

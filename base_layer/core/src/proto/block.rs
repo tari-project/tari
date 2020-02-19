@@ -54,12 +54,12 @@ impl TryFrom<proto::Block> for Block {
         let header = block
             .header
             .map(TryInto::try_into)
-            .ok_or("Block header not provided".to_string())??;
+            .ok_or_else(|| "Block header not provided".to_string())??;
 
         let body = block
             .body
             .map(TryInto::try_into)
-            .ok_or("Block body not provided".to_string())??;
+            .ok_or_else(|| "Block body not provided".to_string())??;
 
         Ok(Self { header, body })
     }
@@ -86,7 +86,7 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
         let timestamp = header
             .timestamp
             .map(timestamp_to_datetime)
-            .ok_or("timestamp not provided".to_string())?;
+            .ok_or_else(|| "timestamp not provided".to_string())?;
 
         let pow = match header.pow {
             Some(p) => ProofOfWork::try_from(p)?,
@@ -142,7 +142,7 @@ impl TryFrom<proto::ProofOfWork> for ProofOfWork {
 impl From<ProofOfWork> for proto::ProofOfWork {
     fn from(pow: ProofOfWork) -> Self {
         Self {
-            pow_algo: *&pow.pow_algo as u64,
+            pow_algo: pow.pow_algo as u64,
             accumulated_monero_difficulty: pow.accumulated_monero_difficulty.as_u64(),
             accumulated_blake_difficulty: pow.accumulated_blake_difficulty.as_u64(),
             pow_data: pow.pow_data,
@@ -162,7 +162,7 @@ impl TryFrom<proto::HistoricalBlock> for HistoricalBlock {
         let block = historical_block
             .block
             .map(TryInto::try_into)
-            .ok_or("block in historical block not provided".to_string())??;
+            .ok_or_else(|| "block in historical block not provided".to_string())??;
 
         Ok(Self {
             confirmations: historical_block.confirmations,
@@ -191,12 +191,12 @@ impl TryFrom<proto::NewBlockTemplate> for NewBlockTemplate {
         let header = block_template
             .header
             .map(TryInto::try_into)
-            .ok_or("Block header template not provided".to_string())??;
+            .ok_or_else(|| "Block header template not provided".to_string())??;
 
         let body = block_template
             .body
             .map(TryInto::try_into)
-            .ok_or("Block body not provided".to_string())??;
+            .ok_or_else(|| "Block body not provided".to_string())??;
 
         Ok(Self { header, body })
     }

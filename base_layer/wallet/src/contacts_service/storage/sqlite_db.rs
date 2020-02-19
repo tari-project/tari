@@ -139,7 +139,7 @@ impl ContactSql {
 
     /// Find a particular Contact, if it exists
     pub fn find(
-        public_key: &Vec<u8>,
+        public_key: &[u8],
         conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
     ) -> Result<ContactSql, ContactsServiceStorageError>
     {

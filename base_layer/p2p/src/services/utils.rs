@@ -24,7 +24,7 @@ use crate::{comms_connector::PeerMessage, domain_message::DomainMessage};
 use log::*;
 use std::{fmt::Debug, sync::Arc};
 
-const LOG_TARGET: &'static str = "base_layer::p2p::services";
+const LOG_TARGET: &str = "base_layer::p2p::services";
 
 /// For use with `StreamExt::filter_map`. Log and filter any errors.
 pub async fn ok_or_skip_result<T, E>(res: Result<T, E>) -> Option<T>

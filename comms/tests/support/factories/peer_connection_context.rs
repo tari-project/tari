@@ -91,13 +91,13 @@ impl<'c> TestFactory for PeerConnectionContextFactory<'c> {
     type Object = PeerConnectionContext;
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
-        let context = self.context.ok_or(TestFactoryError::BuildFailed(
-            "Context must be set for PeerConnectionContextFactory".into(),
-        ))?;
+        let context = self.context.ok_or_else(|| {
+            TestFactoryError::BuildFailed("Context must be set for PeerConnectionContextFactory".into())
+        })?;
 
-        let direction = self.direction.ok_or(TestFactoryError::BuildFailed(
-            "Must set direction on PeerConnectionContextFactory".into(),
-        ))?;
+        let direction = self.direction.ok_or_else(|| {
+            TestFactoryError::BuildFailed("Must set direction on PeerConnectionContextFactory".into())
+        })?;
 
         let address = self.address.or(Some("/ip4/127.0.0.1/tcp/0".parse().unwrap())).unwrap();
 

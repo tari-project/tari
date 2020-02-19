@@ -57,7 +57,7 @@ impl TryFrom<proto::TransactionSenderMessage> for TransactionSenderMessage {
     fn try_from(message: proto::TransactionSenderMessage) -> Result<Self, Self::Error> {
         let inner_message = message
             .message
-            .ok_or("TransactionSenderMessage.message not provided".to_string())?;
+            .ok_or_else(|| "TransactionSenderMessage.message not provided".to_string())?;
 
         let sender_message = match inner_message {
             ProtoTxnSenderMessage::None(_) => TransactionSenderMessage::None,
@@ -94,7 +94,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
         let metadata = data
             .metadata
             .map(Into::into)
-            .ok_or("Transaction metadata not provided".to_string())?;
+            .ok_or_else(|| "Transaction metadata not provided".to_string())?;
         let message = data.message;
 
         Ok(Self {

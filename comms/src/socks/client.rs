@@ -342,7 +342,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         let mut addr_iter = address.iter();
         let part1 = addr_iter
             .next()
-            .ok_or(SocksError::InvalidTargetAddress("Address contained no components"))?;
+            .ok_or_else(|| SocksError::InvalidTargetAddress("Address contained no components"))?;
 
         let part2 = addr_iter.next();
 

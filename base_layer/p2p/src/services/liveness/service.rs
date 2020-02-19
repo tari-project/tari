@@ -154,7 +154,7 @@ where
     }
 
     async fn handle_incoming_message(&mut self, msg: DomainMessage<PingPongMessage>) -> Result<(), LivenessError> {
-        match msg.inner().kind().ok_or(LivenessError::InvalidPingPongType)? {
+        match msg.inner().kind().ok_or_else(|| LivenessError::InvalidPingPongType)? {
             PingPong::Ping => {
                 self.state.inc_pings_received();
                 self.send_pong(msg.inner.nonce, msg.source_peer.public_key)
@@ -233,7 +233,7 @@ where
             GetNodeIdStats(node_id) => self
                 .state
                 .get_node_id_stats(&node_id)
-                .map(|s| LivenessResponse::NodeIdStats(s)),
+                .map(LivenessResponse::NodeIdStats),
         }
     }
 
@@ -601,7 +601,7 @@ mod test {
                         match &*event {
                             LivenessEvent::ReceivedPong(event) => {
                                 rec_event_clone.store(true, Ordering::SeqCst);
-                                assert_eq!(event.metadata.get(&MetadataKey::ChainMetadata).unwrap(), b"dummy-data");
+                                assert_eq!(event.metadata.get(MetadataKey::ChainMetadata).unwrap(), b"dummy-data");
                             },
                             _ => panic!("Unexpected event"),
                         }

@@ -140,7 +140,9 @@ where T: BlockchainBackend + 'static
             },
             NodeCommsRequest::GetNewBlockTemplate => {
                 let metadata = async_db::get_metadata(self.blockchain_db.clone()).await?;
-                let best_block_hash = metadata.best_block.ok_or(CommsInterfaceError::UnexpectedApiResponse)?;
+                let best_block_hash = metadata
+                    .best_block
+                    .ok_or_else(|| CommsInterfaceError::UnexpectedApiResponse)?;
                 let best_block_header =
                     async_db::fetch_header_with_block_hash(self.blockchain_db.clone(), best_block_hash).await?;
                 let header = BlockHeader::from_previous(&best_block_header);
@@ -167,7 +169,7 @@ where T: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::NewBlock(block))
             },
             NodeCommsRequest::GetTargetDifficulty(pow_algo) => Ok(NodeCommsResponse::TargetDifficulty(
-                self.consensus_manager.get_target_difficulty(pow_algo)?,
+                self.consensus_manager.get_target_difficulty(*pow_algo)?,
             )),
         }
     }

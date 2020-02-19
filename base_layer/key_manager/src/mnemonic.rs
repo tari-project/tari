@@ -166,17 +166,13 @@ pub fn from_secret_key<K: SecretKey>(k: &K, language: &MnemonicLanguage) -> Resu
 
 /// Generates a vector of bytes that represent the provided mnemonic sequence of words, the language of the mnemonic
 /// sequence is autodetected
-pub fn to_bytes(mnemonic_seq: &Vec<String>) -> Result<Vec<u8>, MnemonicError> {
+pub fn to_bytes(mnemonic_seq: &[String]) -> Result<Vec<u8>, MnemonicError> {
     let language = MnemonicLanguage::from(&mnemonic_seq[0])?; // Autodetect language
     (to_bytes_with_language(mnemonic_seq, &language))
 }
 
 /// Generates a vector of bytes that represent the provided mnemonic sequence of words using the specified language
-pub fn to_bytes_with_language(
-    mnemonic_seq: &Vec<String>,
-    language: &MnemonicLanguage,
-) -> Result<Vec<u8>, MnemonicError>
-{
+pub fn to_bytes_with_language(mnemonic_seq: &[String], language: &MnemonicLanguage) -> Result<Vec<u8>, MnemonicError> {
     let mut bits: Vec<bool> = Vec::new();
     for curr_word in mnemonic_seq {
         match find_mnemonic_index_from_word(curr_word, &language) {
@@ -202,7 +198,7 @@ pub fn to_bytes_with_language(
 
 /// Generates a SecretKey that represent the provided mnemonic sequence of words, the language of the mnemonic sequence
 /// is autodetected
-pub fn to_secretkey<K: SecretKey>(mnemonic_seq: &Vec<String>) -> Result<K, MnemonicError> {
+pub fn to_secretkey<K: SecretKey>(mnemonic_seq: &[String]) -> Result<K, MnemonicError> {
     let bytes = to_bytes(mnemonic_seq)?;
     match K::from_bytes(&bytes) {
         Ok(k) => Ok(k),
@@ -212,7 +208,7 @@ pub fn to_secretkey<K: SecretKey>(mnemonic_seq: &Vec<String>) -> Result<K, Mnemo
 
 /// Generates a SecretKey that represent the provided mnemonic sequence of words using the specified language
 pub fn to_secretkey_with_language<K: SecretKey>(
-    mnemonic_seq: &Vec<String>,
+    mnemonic_seq: &[String],
     language: &MnemonicLanguage,
 ) -> Result<K, MnemonicError>
 {
@@ -224,25 +220,20 @@ pub fn to_secretkey_with_language<K: SecretKey>(
 }
 
 pub trait Mnemonic<T> {
-    fn from_mnemonic(mnemonic_seq: &Vec<String>) -> Result<T, MnemonicError>;
-    fn from_mnemonic_with_language(mnemonic_seq: &Vec<String>, language: &MnemonicLanguage)
-        -> Result<T, MnemonicError>;
+    fn from_mnemonic(mnemonic_seq: &[String]) -> Result<T, MnemonicError>;
+    fn from_mnemonic_with_language(mnemonic_seq: &[String], language: &MnemonicLanguage) -> Result<T, MnemonicError>;
     fn to_mnemonic(&self, language: &MnemonicLanguage) -> Result<Vec<String>, MnemonicError>;
 }
 
 impl<T: SecretKey> Mnemonic<T> for T {
     /// Generates a SecretKey that represent the provided mnemonic sequence of words, the language of the mnemonic
     /// sequence is autodetected
-    fn from_mnemonic(mnemonic_seq: &Vec<String>) -> Result<T, MnemonicError> {
+    fn from_mnemonic(mnemonic_seq: &[String]) -> Result<T, MnemonicError> {
         (to_secretkey(mnemonic_seq))
     }
 
     /// Generates a SecretKey that represent the provided mnemonic sequence of words using the specified language
-    fn from_mnemonic_with_language(
-        mnemonic_seq: &Vec<String>,
-        language: &MnemonicLanguage,
-    ) -> Result<T, MnemonicError>
-    {
+    fn from_mnemonic_with_language(mnemonic_seq: &[String], language: &MnemonicLanguage) -> Result<T, MnemonicError> {
         (to_secretkey_with_language(mnemonic_seq, language))
     }
 

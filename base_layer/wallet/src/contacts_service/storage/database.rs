@@ -28,7 +28,7 @@ use std::{
 };
 use tari_comms::types::CommsPublicKey;
 
-const LOG_TARGET: &'static str = "wallet::contacts_service::database";
+const LOG_TARGET: &str = "wallet::contacts_service::database";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Contact {
@@ -139,9 +139,7 @@ where T: ContactsBackend + 'static
                 .await
                 .or_else(|err| Err(ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string())))
                 .and_then(|inner_result| inner_result)?
-                .ok_or(ContactsServiceStorageError::ValueNotFound(DbKey::Contact(
-                    pub_key.clone(),
-                )))?;
+                .ok_or_else(|| ContactsServiceStorageError::ValueNotFound(DbKey::Contact(pub_key.clone())))?;
 
         match result {
             DbValue::Contact(c) => Ok(*c),
@@ -162,7 +160,7 @@ impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
             DbKey::Contact(c) => f.write_str(&format!("Contact: {:?}", c)),
-            DbKey::Contacts => f.write_str(&format!("Contacts")),
+            DbKey::Contacts => f.write_str(&"Contacts".to_string()),
         }
     }
 }
@@ -170,8 +168,8 @@ impl Display for DbKey {
 impl Display for DbValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbValue::Contact(_) => f.write_str(&format!("Contact")),
-            DbValue::Contacts(_) => f.write_str(&format!("Contacts")),
+            DbValue::Contact(_) => f.write_str(&"Contact".to_string()),
+            DbValue::Contacts(_) => f.write_str(&"Contacts".to_string()),
         }
     }
 }

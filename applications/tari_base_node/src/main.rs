@@ -214,7 +214,9 @@ fn cli_loop(shutdown_flag: Arc<AtomicBool>, executor: runtime::Handle, base_node
         match readline {
             Ok(line) => {
                 rustyline.add_history_entry(line.as_str());
-                rustyline.helper_mut().as_deref_mut().map(|p| p.handle_command(&line));
+                if let Some(p) = rustyline.helper_mut().as_deref_mut() {
+                    p.handle_command(&line)
+                }
             },
             Err(ReadlineError::Interrupted) => {
                 // shutdown section. Will shutdown all interfaces when ctrl-c was pressed

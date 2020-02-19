@@ -118,7 +118,7 @@ impl<T> Receiver<T> {
 
         let mut guard = self.cond.wait(guard).map_err(|_| ())?;
         let state = mem::replace(&mut *guard, State::None);
-        Self::get_result(state)?.ok_or(())
+        Self::get_result(state)?.ok_or_else(|| ())
     }
 
     pub fn recv_timeout(&self, timeout: Duration) -> Result<Option<T>, ()> {

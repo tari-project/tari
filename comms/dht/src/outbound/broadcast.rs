@@ -50,7 +50,7 @@ use tari_comms::{
 };
 use tower::{layer::Layer, Service, ServiceExt};
 
-const LOG_TARGET: &'static str = "comms::dht::outbound::broadcast_middleware";
+const LOG_TARGET: &str = "comms::dht::outbound::broadcast_middleware";
 
 pub struct BroadcastLayer {
     dht_requester: DhtRequester,
@@ -85,7 +85,7 @@ impl<S> Layer<S> for BroadcastLayer {
             Arc::clone(&self.node_identity),
             self.dht_requester.clone(),
             self.dht_discovery_requester.clone(),
-            self.target_network.clone(),
+            self.target_network,
         )
     }
 }
@@ -138,7 +138,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError> + Clo
             Arc::clone(&self.node_identity),
             self.dht_requester.clone(),
             self.dht_discovery_requester.clone(),
-            self.target_network.clone(),
+            self.target_network,
             msg,
         )
         .handle()
@@ -247,7 +247,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 //  - Discovery is enabled for this request
                 //  - There where no peers returned
                 //  - A direct public key broadcast strategy is used
-                if is_discovery_enabled && peers.len() == 0 && broadcast_strategy.direct_public_key().is_some() {
+                if is_discovery_enabled && peers.is_empty() && broadcast_strategy.direct_public_key().is_some() {
                     let (discovery_reply_tx, discovery_reply_rx) = oneshot::channel();
                     let target_public_key = broadcast_strategy.into_direct_public_key().expect("already checked");
 
@@ -398,7 +398,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     destination,
                     dht_message_type,
                     origin,
-                    self.target_network.clone(),
+                    self.target_network,
                     dht_flags,
                 ))
             })

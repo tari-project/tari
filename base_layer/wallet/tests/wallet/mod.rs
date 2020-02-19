@@ -280,7 +280,7 @@ fn test_import_utxo() {
 
     let tx_id = alice_wallet
         .import_utxo(
-            &utxo.value,
+            utxo.value,
             &utxo.spending_key,
             base_node_identity.public_key(),
             "Testing".to_string(),

@@ -52,6 +52,14 @@ impl<T: Clone> ArrayLike for MemDbVec<T> {
             .len())
     }
 
+    fn is_empty(&self) -> Result<bool, Self::Error> {
+        Ok(self
+            .db
+            .read()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+            .is_empty())
+    }
+
     fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error> {
         self.db
             .write()

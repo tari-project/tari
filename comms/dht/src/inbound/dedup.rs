@@ -29,7 +29,7 @@ use tari_comms::types::Challenge;
 use tari_crypto::tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
 
-const LOG_TARGET: &'static str = "comms::dht::dedup";
+const LOG_TARGET: &str = "comms::dht::dedup";
 
 /// # DHT Deduplication middleware
 ///
@@ -91,7 +91,7 @@ where
                     .dht_header
                     .origin
                     .map(|o| o.public_key.to_hex())
-                    .unwrap_or("<unknown>".to_string()),
+                    .unwrap_or_else(|| "<unknown>".to_string()),
             );
             return Ok(());
         }

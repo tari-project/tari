@@ -50,7 +50,7 @@ where T: BlockchainBackend
     }
 
     /// Returns the estimated target difficulty for the specified PoW algorithm at the chain tip.
-    pub fn get_target_difficulty(&self, pow_algo: &PowAlgorithm) -> Result<Difficulty, DiffAdjManagerError> {
+    pub fn get_target_difficulty(&self, pow_algo: PowAlgorithm) -> Result<Difficulty, DiffAdjManagerError> {
         self.diff_adj_storage
             .write()
             .map_err(|_| DiffAdjManagerError::PoisonedAccess)?
@@ -60,7 +60,7 @@ where T: BlockchainBackend
     /// Returns the estimated target difficulty for the specified PoW algorithm and provided height.
     pub fn get_target_difficulty_at_height(
         &self,
-        pow_algo: &PowAlgorithm,
+        pow_algo: PowAlgorithm,
         height: u64,
     ) -> Result<Difficulty, DiffAdjManagerError>
     {

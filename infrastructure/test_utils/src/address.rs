@@ -38,11 +38,10 @@ pub fn get_next_local_port() -> u16 {
         Ok(guard) => guard,
         Err(_) => panic!("Poisoned PORT_COUNTER"),
     };
-    let port = {
+    {
         *lock = cmp::max((*lock + 1) % PORT_RANGE.end, PORT_RANGE.start);
         *lock
-    };
-    port
+    }
 }
 
 /// Returns a local address with the next port in specified range.

@@ -105,7 +105,7 @@ where D: Digest + Send + Sync
             store.env(),
             store
                 .get_handle(LMDB_DB_UTXO_MMR_CP_BACKEND)
-                .ok_or(ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError)?
                 .db()
                 .clone(),
         );
@@ -113,7 +113,7 @@ where D: Digest + Send + Sync
             store.env(),
             store
                 .get_handle(LMDB_DB_KERNEL_MMR_CP_BACKEND)
-                .ok_or(ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError)?
                 .db()
                 .clone(),
         );
@@ -121,49 +121,49 @@ where D: Digest + Send + Sync
             store.env(),
             store
                 .get_handle(LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND)
-                .ok_or(ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError)?
                 .db()
                 .clone(),
         );
         Ok(Self {
             metadata_db: store
                 .get_handle(LMDB_DB_METADATA)
-                .ok_or(ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError)?
                 .db()
                 .clone(),
             headers_db: store
                 .get_handle(LMDB_DB_HEADERS)
-                .ok_or(ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError)?
                 .db()
                 .clone(),
             block_hashes_db: store
                 .get_handle(LMDB_DB_BLOCK_HASHES)
-                .ok_or(ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError)?
                 .db()
                 .clone(),
             utxos_db: store
                 .get_handle(LMDB_DB_UTXOS)
-                .ok_or(ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError)?
                 .db()
                 .clone(),
             stxos_db: store
                 .get_handle(LMDB_DB_STXOS)
-                .ok_or(ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError)?
                 .db()
                 .clone(),
             txos_hash_to_index_db: store
                 .get_handle(LMDB_DB_TXOS_HASH_TO_INDEX)
-                .ok_or(ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError)?
                 .db()
                 .clone(),
             kernels_db: store
                 .get_handle(LMDB_DB_KERNELS)
-                .ok_or(ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError)?
                 .db()
                 .clone(),
             orphans_db: store
                 .get_handle(LMDB_DB_ORPHANS)
-                .ok_or(ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError)?
                 .db()
                 .clone(),
             utxo_mmr: RwLock::new(MmrCache::new(
@@ -616,7 +616,7 @@ pub fn create_lmdb_database(
 ) -> Result<LMDBDatabase<HashDigest>, ChainStorageError>
 {
     let flags = db::CREATE;
-    let _ = std::fs::create_dir_all(&path).unwrap_or_default();
+    std::fs::create_dir_all(&path).unwrap_or_default();
     let lmdb_store = LMDBBuilder::new()
         .set_path(path.to_str().unwrap())
         .set_environment_size(15)
@@ -660,7 +660,7 @@ where D: Digest + Send + Sync
         Ok(match key {
             DbKey::Metadata(k) => {
                 let val: Option<MetadataValue> = lmdb_get(&self.env, &self.metadata_db, &(k.clone() as u32))?;
-                val.map(|val| DbValue::Metadata(val))
+                val.map(DbValue::Metadata)
             },
             DbKey::BlockHeader(k) => {
                 let val: Option<BlockHeader> = lmdb_get(&self.env, &self.headers_db, k)?;
@@ -769,7 +769,7 @@ where D: Digest + Send + Sync
                 .get(height as usize),
         }
         .map_err(|e| ChainStorageError::AccessError(format!("Checkpoint error: {}", e.to_string())))?
-        .ok_or(ChainStorageError::OutOfRange)
+        .ok_or_else(|| ChainStorageError::OutOfRange)
     }
 
     fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Vec<u8>, bool), ChainStorageError> {
@@ -790,12 +790,9 @@ where D: Digest + Send + Sync
                 .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
                 .fetch_mmr_node(pos)?,
         };
-        let hash = hash
-            .ok_or(ChainStorageError::UnexpectedResult(format!(
-                "A leaf node hash in the {} MMR tree was not found",
-                tree
-            )))?
-            .clone();
+        let hash = hash.ok_or_else(|| {
+            ChainStorageError::UnexpectedResult(format!("A leaf node hash in the {} MMR tree was not found", tree))
+        })?;
         Ok((hash, deleted))
     }
 

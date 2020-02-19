@@ -93,6 +93,12 @@ impl Drop for Shutdown {
     }
 }
 
+impl Default for Shutdown {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

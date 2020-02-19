@@ -481,7 +481,7 @@ where T: BlockchainBackend
             .expect("No validators added")
             .block
             .validate(&block)
-            .map_err(|e| ChainStorageError::ValidationError(e))?;
+            .map_err(ChainStorageError::ValidationError)?;
         self.store_new_block(block)?;
         self.update_metadata(block_height, block_hash)?;
         Ok(BlockAddResult::Ok)
@@ -558,9 +558,9 @@ where T: BlockchainBackend
 
     fn check_for_valid_height(&self, height: u64) -> Result<ChainMetadata, ChainStorageError> {
         let metadata = self.get_metadata()?;
-        let db_height = metadata.height_of_longest_chain.ok_or(ChainStorageError::InvalidQuery(
-            "Cannot retrieve block. Blockchain DB is empty".into(),
-        ))?;
+        let db_height = metadata
+            .height_of_longest_chain
+            .ok_or_else(|| ChainStorageError::InvalidQuery("Cannot retrieve block. Blockchain DB is empty".into()))?;
         if height > db_height {
             return Err(ChainStorageError::InvalidQuery(format!(
                 "Cannot get block at height {}. Chain tip is at {}",
@@ -636,7 +636,7 @@ where T: BlockchainBackend
         self.check_for_valid_height(height)?;
         let chain_height = self
             .get_height()?
-            .ok_or(ChainStorageError::InvalidQuery("Blockchain database is empty".into()))?;
+            .ok_or_else(|| ChainStorageError::InvalidQuery("Blockchain database is empty".into()))?;
         if height == chain_height {
             return Ok(()); // Rewind unnecessary, already on correct height
         }
@@ -690,9 +690,7 @@ where T: BlockchainBackend
         let metadata = self.get_metadata()?;
         let db_height = metadata
             .height_of_longest_chain
-            .ok_or(ChainStorageError::InvalidQuery(
-                "Cannot retrieve block. Blockchain DB is empty".into(),
-            ))
+            .ok_or_else(|| ChainStorageError::InvalidQuery("Cannot retrieve block. Blockchain DB is empty".into()))
             .or_else(|e| {
                 error!(
                     target: LOG_TARGET,
@@ -710,7 +708,7 @@ where T: BlockchainBackend
             .expect("No validators added")
             .orphan
             .validate(&block)
-            .map_err(|e| ChainStorageError::ValidationError(e))?;
+            .map_err(ChainStorageError::ValidationError)?;
         self.insert_orphan(block.clone())?;
         info!(
             target: LOG_TARGET,
@@ -735,7 +733,7 @@ where T: BlockchainBackend
         // happened on the previous call to this function.
         // Try and construct a path from `new_block` to the main chain:
         let reorg_chain = self.try_construct_fork(new_block.clone())?;
-        if reorg_chain.len() == 0 {
+        if reorg_chain.is_empty() {
             return Ok(BlockAddResult::OrphanBlock);
         }
         // Try and find all orphaned chain tips that can be linked to the new orphan block, if no better orphan chain
@@ -743,9 +741,10 @@ where T: BlockchainBackend
         let orphan_chain_tips = self.find_orphan_chain_tips(new_block.header.height, new_block.hash());
         // Check the accumulated difficulty of the best fork chain compared to the main chain.
         let (fork_accum_difficulty, fork_tip_hash) = self.find_strongest_orphan_tip(orphan_chain_tips)?;
-        let tip_header = self.db.fetch_last_header()?.ok_or(ChainStorageError::InvalidQuery(
-            "Cannot retrieve header. Blockchain DB is empty".into(),
-        ))?;
+        let tip_header = self
+            .db
+            .fetch_last_header()?
+            .ok_or_else(|| ChainStorageError::InvalidQuery("Cannot retrieve header. Blockchain DB is empty".into()))?;
         trace!(
             target: LOG_TARGET,
             "Comparing fork diff: ({}) with hash ({}) to main chain diff: ({}) with hash ({}) for possible reorg",
@@ -757,7 +756,7 @@ where T: BlockchainBackend
         if fork_accum_difficulty > tip_header.total_accumulated_difficulty_inclusive() {
             // We've built the strongest orphan chain we can by going backwards and forwards from the new orphan block
             // that is linked with the main chain.
-            let fork_tip_block = self.fetch_orphan(fork_tip_hash.clone())?;
+            let fork_tip_block = self.fetch_orphan(fork_tip_hash)?;
             let fork_header = fork_tip_block.header.clone();
             let reorg_chain = self.try_construct_fork(fork_tip_block)?;
             let fork_height = reorg_chain
@@ -786,7 +785,7 @@ where T: BlockchainBackend
         let mut fork_chain = VecDeque::new();
         let mut hash = new_block.header.prev_hash.clone();
         let mut height = new_block.header.height;
-        fork_chain.push_front(new_block.clone());
+        fork_chain.push_front(new_block);
         while let Ok(b) = self.fetch_orphan(hash.clone()) {
             if b.header.height + 1 != height {
                 // Well now. The block heights don't form a sequence, which means that we should not only stop now,
@@ -828,7 +827,7 @@ where T: BlockchainBackend
                     let next_parent_hash = block.hash();
                     let mut orphan_chain_tips =
                         self.find_orphan_chain_tips(block.header.height, next_parent_hash.clone());
-                    if orphan_chain_tips.len() > 0 {
+                    if !orphan_chain_tips.is_empty() {
                         tip_hashes.append(&mut orphan_chain_tips);
                     } else {
                         tip_hashes.push(next_parent_hash);
@@ -836,7 +835,7 @@ where T: BlockchainBackend
                 }
             })
             .expect("Unexpected result for database query");
-        if tip_hashes.len() == 0 {
+        if tip_hashes.is_empty() {
             // No chain tips found, then parent must be the tip.
             tip_hashes.push(parent_hash);
         }

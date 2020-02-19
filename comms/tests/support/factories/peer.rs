@@ -76,12 +76,10 @@ impl TestFactory for PeerFactory {
             })
             .unwrap();
 
-        let addresses =
-            self.net_addresses
-                .or(self.net_addresses_factory.build().ok())
-                .ok_or(TestFactoryError::BuildFailed(format!(
-                    "Failed to build net addresses for peer"
-                )))?;
+        let addresses = self
+            .net_addresses
+            .or(self.net_addresses_factory.build().ok())
+            .ok_or_else(|| TestFactoryError::BuildFailed(format!("Failed to build net addresses for peer")))?;
 
         Ok(Peer::new(
             public_key,

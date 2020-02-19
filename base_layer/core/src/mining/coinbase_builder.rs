@@ -110,17 +110,20 @@ impl CoinbaseBuilder {
     ///
     /// After `build` is called, the struct is destroyed and the private keys stored are dropped and the memory zeroed
     /// out (by virtue of the zero_on_drop crate).
+    #[allow(clippy::erasing_op)] // This is for 0 * uT
     pub fn build<B: BlockchainBackend>(
         self,
         rules: ConsensusManager<B>,
     ) -> Result<(Transaction, UnblindedOutput), CoinbaseBuildError>
     {
-        let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
-        let reward =
-            rules.emission_schedule().block_reward(height) + self.fees.ok_or(CoinbaseBuildError::MissingFees)?;
-        let nonce = self.private_nonce.ok_or(CoinbaseBuildError::MissingNonce)?;
+        let height = self
+            .block_height
+            .ok_or_else(|| CoinbaseBuildError::MissingBlockHeight)?;
+        let reward = rules.emission_schedule().block_reward(height) +
+            self.fees.ok_or_else(|| CoinbaseBuildError::MissingFees)?;
+        let nonce = self.private_nonce.ok_or_else(|| CoinbaseBuildError::MissingNonce)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
-        let key = self.spend_key.ok_or(CoinbaseBuildError::MissingSpendKey)?;
+        let key = self.spend_key.ok_or_else(|| CoinbaseBuildError::MissingSpendKey)?;
         let output_features =
             OutputFeatures::create_coinbase(height + ConsensusConstants::current().coinbase_lock_height());
         let excess = self.factories.commitment.commit_value(&key, 0);

@@ -29,7 +29,7 @@ use futures::{pin_mut, StreamExt};
 use log::*;
 use tari_service_framework::reply_channel;
 
-const LOG_TARGET: &'static str = "base_layer::wallet:contacts_service";
+const LOG_TARGET: &str = "base_layer::wallet:contacts_service";
 
 pub struct ContactsService<T>
 where T: ContactsBackend + 'static
@@ -94,11 +94,9 @@ where T: ContactsBackend + 'static
     ) -> Result<ContactsServiceResponse, ContactsServiceError>
     {
         Ok(match request {
-            ContactsServiceRequest::GetContact(pk) => self
-                .db
-                .get_contact(pk)
-                .await
-                .map(|c| ContactsServiceResponse::Contact(c))?,
+            ContactsServiceRequest::GetContact(pk) => {
+                self.db.get_contact(pk).await.map(ContactsServiceResponse::Contact)?
+            },
             ContactsServiceRequest::UpsertContact(c) => self
                 .db
                 .upsert_contact(c)
@@ -108,12 +106,10 @@ where T: ContactsBackend + 'static
                 .db
                 .remove_contact(pk)
                 .await
-                .map(|c| ContactsServiceResponse::ContactRemoved(c))?,
-            ContactsServiceRequest::GetContacts => self
-                .db
-                .get_contacts()
-                .await
-                .map(|c| ContactsServiceResponse::Contacts(c))?,
+                .map(ContactsServiceResponse::ContactRemoved)?,
+            ContactsServiceRequest::GetContacts => {
+                self.db.get_contacts().await.map(ContactsServiceResponse::Contacts)?
+            },
         })
     }
 }

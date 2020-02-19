@@ -64,7 +64,7 @@ impl Display for DiscoverPeerRequest {
                     .dest_node_id
                     .as_ref()
                     .map(|node_id| format!("{}", node_id))
-                    .unwrap_or("None".to_string()),
+                    .unwrap_or_else(|| "None".to_string()),
             )
             .field("destination", &format!("{}", self.destination))
             .finish()

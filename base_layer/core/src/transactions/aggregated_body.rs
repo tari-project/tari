@@ -137,7 +137,7 @@ impl AggregateBody {
             .inputs
             .iter()
             .filter(|input| self.outputs.iter().any(|o| o.is_equal_to(input)))
-            .map(|input| input.clone())
+            .cloned()
             .collect();
 
         for input in double_inputs {
@@ -232,7 +232,7 @@ impl AggregateBody {
                 sum: offset,
             },
             |acc, val| KernelSum {
-                fees: &acc.fees + &val.fee,
+                fees: acc.fees + val.fee,
                 sum: &acc.sum + &val.excess,
             },
         )

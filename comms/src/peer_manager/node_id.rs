@@ -125,15 +125,15 @@ impl NodeId {
     }
 
     /// Find and return the indices of the K nearest neighbours from the provided node id list
-    pub fn closest_indices(&self, node_ids: &Vec<NodeId>, k: usize) -> Result<Vec<usize>, NodeIdError> {
+    pub fn closest_indices(&self, node_ids: &[NodeId], k: usize) -> Result<Vec<usize>, NodeIdError> {
         if k > node_ids.len() {
             return Err(NodeIdError::OutOfBounds);
         }
         let mut indices: Vec<usize> = Vec::with_capacity(node_ids.len());
         let mut dists: Vec<NodeDistance> = Vec::with_capacity(node_ids.len());
-        for i in 0..node_ids.len() {
+        for (i, node_id) in node_ids.iter().enumerate() {
             indices.push(i);
-            dists.push(self.distance(&node_ids[i]));
+            dists.push(self.distance(node_id))
         }
         // Perform partial sort of elements only up to K elements
         let mut nearest_node_indices: Vec<usize> = Vec::with_capacity(k);
@@ -150,8 +150,8 @@ impl NodeId {
     }
 
     /// Find and return the node ids of the K nearest neighbours from the provided node id list
-    pub fn closest(&self, node_ids: &Vec<NodeId>, k: usize) -> Result<Vec<NodeId>, NodeIdError> {
-        let nearest_node_indices = self.closest_indices(&node_ids, k)?;
+    pub fn closest(&self, node_ids: &[NodeId], k: usize) -> Result<Vec<NodeId>, NodeIdError> {
+        let nearest_node_indices = self.closest_indices(&node_ids.to_vec(), k)?;
         let mut nearest_node_ids: Vec<NodeId> = Vec::with_capacity(nearest_node_indices.len());
         for nearest in nearest_node_indices {
             nearest_node_ids.push(node_ids[nearest].clone());

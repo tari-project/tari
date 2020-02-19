@@ -204,7 +204,7 @@ impl ControlServiceWorker {
     }
 
     fn process_control_messages(&mut self) -> Result<()> {
-        if let Some(msg) = self.receiver.recv_timeout(Duration::from_millis(5)).ok() {
+        if let Ok(msg) = self.receiver.recv_timeout(Duration::from_millis(5)) {
             debug!(target: LOG_TARGET, "Received control message: {:?}", msg);
             match msg {
                 ControlMessage::Shutdown => {
@@ -240,7 +240,7 @@ impl ControlServiceWorker {
 
         let envelope_header: MessageEnvelopeHeader = envelope
             .header
-            .ok_or(ControlServiceError::InvalidEnvelope)?
+            .ok_or_else(|| ControlServiceError::InvalidEnvelope)?
             .try_into()?;
 
         if !envelope_header.flags.contains(MessageFlags::ENCRYPTED) {
@@ -274,9 +274,9 @@ impl ControlServiceWorker {
     {
         let header = envelope_body
             .decode_part::<MessageHeader>(0)?
-            .ok_or(ControlServiceError::InvalidEnvelopeBody)?;
+            .ok_or_else(|| ControlServiceError::InvalidEnvelopeBody)?;
 
-        match MessageType::from_i32(header.message_type).ok_or(ControlServiceError::InvalidMessageType)? {
+        match MessageType::from_i32(header.message_type).ok_or_else(|| ControlServiceError::InvalidMessageType)? {
             MessageType::None => {
                 debug!(
                     target: LOG_TARGET,
@@ -288,7 +288,7 @@ impl ControlServiceWorker {
             MessageType::RequestConnection => {
                 let msg = envelope_body
                     .decode_part(1)?
-                    .ok_or(ControlServiceError::InvalidEnvelopeBody)?;
+                    .ok_or_else(|| ControlServiceError::InvalidEnvelopeBody)?;
                 self.handle_request_connection(envelope_header, identity_frame, msg)
             },
             _ => Err(ControlServiceError::UnrecognisedMessageType),
@@ -338,7 +338,7 @@ impl ControlServiceWorker {
                 pm.update_peer(
                     &peer.public_key,
                     None,
-                    Some(vec![control_service_address.clone()]),
+                    Some(vec![control_service_address]),
                     None,
                     Some(peer_features),
                     None,
@@ -446,7 +446,7 @@ impl ControlServiceWorker {
                     .as_ref()
                     .map(Clone::clone)
                     .or_else(|| inbound_conn.get_address().as_ref().map(socketaddr_to_multiaddr))
-                    .ok_or(ControlServiceError::ListenerAddressNotEstablished)?;
+                    .ok_or_else(|| ControlServiceError::ListenerAddressNotEstablished)?;
 
                 let permitted_identity = self.generate_random_identity();
                 debug!(
@@ -587,7 +587,7 @@ impl ControlServiceWorker {
         self.listener.send(frames).map_err(ControlServiceError::ConnectionError)
     }
 
-    fn decrypt_body(&self, body: &Vec<u8>, public_key: &CommsPublicKey) -> Result<Vec<u8>> {
+    fn decrypt_body(&self, body: &[u8], public_key: &CommsPublicKey) -> Result<Vec<u8>> {
         let ecdh_shared_secret = crypt::generate_ecdh_secret(self.node_identity.secret_key(), public_key);
         crypt::decrypt(&ecdh_shared_secret, &body).map_err(ControlServiceError::CipherError)
     }
