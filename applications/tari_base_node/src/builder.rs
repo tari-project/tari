@@ -76,10 +76,16 @@ use tari_p2p::{
         liveness::{LivenessConfig, LivenessInitializer},
     },
 };
+
+use futures::stream::Fuse;
 use tari_service_framework::{handles::ServiceHandles, StackBuilder};
 use tokio::runtime::Runtime;
 
-use tari_core::tari_utilities::{hex::Hex, message_format::MessageFormat};
+use tari_broadcast_channel::Subscriber;
+use tari_core::{
+    base_node::states::BaseNodeState,
+    tari_utilities::{hex::Hex, message_format::MessageFormat},
+};
 use tari_wallet::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
@@ -126,6 +132,13 @@ impl NodeType {
         }
         .await;
     }
+
+    pub fn get_state_change_event(&self) -> Subscriber<BaseNodeState> {
+        match self {
+            NodeType::LMDB(n) => n.get_state_change_event(),
+            NodeType::Memory(n) => n.get_state_change_event(),
+        }
+    }
 }
 
 pub enum MinerType {
@@ -148,6 +161,13 @@ impl MinerType {
         match self {
             MinerType::LMDB(n) => n.get_utxo_receiver_channel(),
             MinerType::Memory(n) => n.get_utxo_receiver_channel(),
+        }
+    }
+
+    pub fn subscribe_to_state_change(&mut self, state_change_event_rx: Subscriber<BaseNodeState>) {
+        match self {
+            MinerType::LMDB(n) => n.subscribe_to_state_change(state_change_event_rx),
+            MinerType::Memory(n) => n.subscribe_to_state_change(state_change_event_rx),
         }
     }
 }

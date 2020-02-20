@@ -135,10 +135,11 @@ fn main() {
             },
         };
     let flag = node.get_flag();
-
     // lets run the miner
     let miner_handle = if node_config.enable_mining {
         let mut rx = miner.get_utxo_receiver_channel();
+        let mut rx_events = node.get_state_change_event();
+        miner.subscribe_to_state_change(rx_events);
         let mut wallet_output_handle = base_node_context.wallet_output_service.clone();
         rt.spawn(async move {
             while let Some(utxo) = rx.next().await {
@@ -146,7 +147,7 @@ fn main() {
             }
         });
         Some(rt.spawn(async move {
-            debug!(target: LOG_TARGET, "starting miner");
+            debug!(target: LOG_TARGET, "Starting miner");
             miner.mine().await;
             debug!(target: LOG_TARGET, "Miner has shutdown");
         }))
