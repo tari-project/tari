@@ -81,7 +81,7 @@ cfg_next! {
 
 pub use self::{
     error::PeerManagerError,
-    node_id::NodeId,
+    node_id::{NodeId,NODE_ID_ARRAY_SIZE},
     node_identity::NodeIdentity,
     peer::{Peer, PeerFlags},
     peer_features::PeerFeatures,

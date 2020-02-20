@@ -157,6 +157,8 @@ use tari_wallet::{
     wallet::WalletConfig,
 };
 use tokio::runtime::Runtime;
+use std::convert::TryFrom;
+use tari_comms::peer_manager::NodeId;
 
 pub type TariWallet = tari_wallet::wallet::Wallet<
     WalletSqliteDatabase,
@@ -437,39 +439,6 @@ pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut
     }
 }
 
-/// Creates a TariPublicKey from an EmojiID string
-///
-/// ## Arguments
-/// `emoji` - The pointer to a char array which is emoji encoded
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns ptr::null_mut()
-/// if emoji is null or if there was an error creating the TariPublicKey from key
-#[no_mangle]
-pub unsafe extern "C" fn public_key_from_emoji(emoji: *const c_char, error_out: *mut c_int) -> *mut TariPublicKey {
-    let mut error = 0;
-    let emoji_str;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if emoji.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("key".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    } else {
-        emoji_str = CStr::from_ptr(emoji).to_str().unwrap().to_owned();
-    }
-    let public_key = EmojiId::try_convert_to_pubkey(&emoji_str);
-    match public_key {
-        Ok(public_key) => Box::into_raw(Box::new(public_key)),
-        Err(e) => {
-            error = LibWalletError::from(e).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            ptr::null_mut()
-        },
-    }
-}
-
 /// Creates a char array from a TariPublicKey in emoji format
 ///
 /// ## Arguments
@@ -481,7 +450,7 @@ pub unsafe extern "C" fn public_key_from_emoji(emoji: *const c_char, error_out: 
 /// `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
 /// if emoji is null or if there was an error creating the emoji string from TariPublicKey
 #[no_mangle]
-pub unsafe extern "C" fn public_key_to_emoji(pk: *mut TariPublicKey, error_out: *mut c_int) -> *mut c_char {
+pub unsafe extern "C" fn public_key_to_emoji_node_id(pk: *mut TariPublicKey, error_out: *mut c_int) -> *mut c_char {
     let mut error = 0;
     let mut result = CString::new("").unwrap();
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -491,8 +460,9 @@ pub unsafe extern "C" fn public_key_to_emoji(pk: *mut TariPublicKey, error_out: 
         return CString::into_raw(result);
     }
 
-    let emoji = EmojiId::from_pubkey(&(*pk));
-    result = CString::new(emoji.as_str()).unwrap();
+    let node_id = NodeId::from_key(&(*pk)).unwrap();
+    let emoji = EmojiId::try_from(node_id).unwrap();
+    result = CString::new(emoji.to_string()).unwrap();
     CString::into_raw(result)
 }
 /// -------------------------------------------------------------------------------------------- ///
@@ -3241,18 +3211,12 @@ mod test {
             assert_eq!(private_key_length, 32);
             assert_eq!(public_key_length, 32);
             assert_ne!((*private_bytes), (*public_bytes));
-            let emoji = public_key_to_emoji(public_key, error_ptr) as *mut c_char;
+            let emoji = public_key_to_emoji_node_id(public_key, error_ptr) as *mut c_char;
             let emoji_str = CStr::from_ptr(emoji).to_str().unwrap().to_owned();
-            assert_eq!(EmojiId::is_valid(&emoji_str), true);
-            let emoji_key = public_key_from_emoji(emoji, error_ptr);
-            let emoji_bytes = public_key_get_bytes(public_key, error_ptr);
-            assert_eq!((*emoji_bytes), (*public_bytes));
             private_key_destroy(private_key);
             public_key_destroy(public_key);
-            public_key_destroy(emoji_key);
             byte_vector_destroy(public_bytes);
             byte_vector_destroy(private_bytes);
-            byte_vector_destroy(emoji_bytes);
         }
     }
 

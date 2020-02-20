@@ -40,7 +40,7 @@ use tari_crypto::tari_utilities::{
     ByteArrayError,
 };
 
-const NODE_ID_ARRAY_SIZE: usize = 13; // 104-bit as per RFC-0151
+pub const NODE_ID_ARRAY_SIZE: usize = 13; // 104-bit as per RFC-0151
 type NodeIdArray = [u8; NODE_ID_ARRAY_SIZE];
 
 #[derive(Debug, Error, Clone)]
