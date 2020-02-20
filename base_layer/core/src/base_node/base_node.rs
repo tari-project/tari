@@ -129,8 +129,8 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
     /// This clones the receiver end of the channel and gives out a copy to the caller
     /// This allows multiple subscribers to this channel by only keeping one channel and cloning the receiver for every
     /// caller.
-    pub fn get_state_change_event(&self) -> Fuse<Subscriber<BaseNodeState>> {
-        self.event_receiver.clone().fuse()
+    pub fn get_state_change_event(&self) -> Subscriber<BaseNodeState> {
+        self.event_receiver.clone()
     }
 
     /// Start the base node runtime.
