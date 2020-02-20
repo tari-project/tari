@@ -107,10 +107,7 @@ struct TariPublicKey *public_key_from_hex(const char *hex,int* error_out);
 void public_key_destroy(struct TariPublicKey *pk);
 
 //Converts a TariPublicKey to char array in emoji format
-char *public_key_to_emoji(struct TariPublicKey *pk, int* error_out);
-
-//Converts a char array in emoji format to a TariPublicKey
-struct TariPublicKey *public_key_from_emoji(const char* emoji, int* error_out);
+char *public_key_to_emoji_node_id(struct TariPublicKey *pk, int* error_out);
 
 /// -------------------------------- TariPrivateKey ----------------------------------------------- ///
 
