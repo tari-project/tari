@@ -397,20 +397,21 @@ impl<'a> DhtActor<'a> {
         let mut not_propagation_node_count = 0;
         let query = PeerQuery::new()
             .select_where(|peer| {
+                trace!(target: LOG_TARGET, "Considering peer for broadcast: {}", peer.node_id);
                 // This is a quite ugly but is done this way to get the logging
                 let is_banned = peer.is_banned();
-
+                trace!(target: LOG_TARGET, "[{}] is banned: {}", peer.node_id, is_banned);
                 if is_banned {
                     banned_count += 1;
                     return false;
                 }
 
                 if !peer.has_features(PeerFeatures::MESSAGE_PROPAGATION) {
-                    not_propagation_node_count += 1;
-                    return false;
-                }
-
-                if !peer.has_features(PeerFeatures::MESSAGE_PROPAGATION) {
+                    trace!(
+                        target: LOG_TARGET,
+                        "[{}] does NOT have the message propagation feature",
+                        peer.node_id
+                    );
                     not_propagation_node_count += 1;
                     return false;
                 }
@@ -425,12 +426,18 @@ impl<'a> DhtActor<'a> {
                 };
 
                 if !is_connect_eligible {
+                    trace!(
+                        target: LOG_TARGET,
+                        "[{}] suffered too many connection attempt failures",
+                        peer.node_id
+                    );
                     connect_ineligable_count += 1;
                     return false;
                 }
 
                 let is_excluded = excluded_peers.contains(&peer.public_key);
                 if is_excluded {
+                    trace!(target: LOG_TARGET, "[{}] is explicitly excluded", peer.node_id);
                     excluded_count += 1;
                     return false;
                 }
@@ -441,7 +448,6 @@ impl<'a> DhtActor<'a> {
             .limit(n);
 
         let peers = peer_manager.perform_query(query)?;
-
         let total = banned_count + connect_ineligable_count + excluded_count;
         if total > 0 {
             debug!(
