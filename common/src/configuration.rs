@@ -144,7 +144,7 @@ pub trait ConfigExtractor {
     where Self: Sized;
 }
 //---------------------------------------------      Database type        ------------------------------------------//
-
+#[derive(Debug)]
 pub enum DatabaseType {
     LMDB(PathBuf),
     Memory,
@@ -152,6 +152,7 @@ pub enum DatabaseType {
 
 //-------------------------------------        Main Configuration Struct      --------------------------------------//
 
+#[derive(Debug)]
 pub struct GlobalConfig {
     pub network: Network,
     pub data_dir: PathBuf,

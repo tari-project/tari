@@ -367,6 +367,7 @@ pub fn configure_and_initialize_node(
 }
 
 fn assign_peers(seeds: &[String]) -> Vec<Peer> {
+    info!("Adding {} peers to the peer database", seeds.len());
     let mut result = Vec::with_capacity(seeds.len());
     for s in seeds {
         let parts: Vec<&str> = s.split("::").map(|s| s.trim()).collect();
@@ -468,7 +469,7 @@ where
         initialize_comms(rt.handle().clone(), comms_config, publisher).expect("Could not create comms layer");
 
     for p in peers {
-        debug!(target: LOG_TARGET, "Adding seed peer [{}]", p.node_id);
+        info!(target: LOG_TARGET, "Adding seed peer [{}]", p.node_id);
         comms
             .peer_manager()
             .add_peer(p)

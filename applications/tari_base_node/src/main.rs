@@ -84,6 +84,8 @@ fn main() {
         },
     };
 
+    trace!(target: LOG_TARGET, "Configuration file: {:?}", node_config);
+
     // Load or create the Node identity
     let node_id = match load_identity(&node_config.identity_file) {
         Ok(id) => id,
