@@ -125,7 +125,9 @@ impl LMDBBuilder {
             let mut builder = EnvBuilder::new()?;
             builder.set_mapsize(self.db_size_mb * 1024 * 1024)?;
             builder.set_maxdbs(max_dbs)?;
-            builder.open(&self.path, open::Flags::empty(), 0o600)?
+            // Using open::Flags::NOTLS does not compile!?! NOTLS=0x200000
+            let flags = open::Flags::from_bits(0x200000).expect("LMDB open::Flag is correct");
+            builder.open(&self.path, flags, 0o600)?
         };
         let env = Arc::new(env);
         info!(
