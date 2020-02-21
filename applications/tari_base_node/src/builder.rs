@@ -440,8 +440,9 @@ where
     // sql lite for wallet, create folders for sql lite
     let mut wallet_db_folder = PathBuf::from(wallet_file);
     wallet_db_folder.set_extension("dat");
-    let wallet_path = PathBuf::from(wallet_db_folder.file_stem().expect("unable to get wallet db path"));
-    std::fs::create_dir_all(&wallet_path).unwrap_or_default();
+    let wallet_path = PathBuf::from(wallet_db_folder.parent().expect("unable to get wallet db path"));
+    std::fs::create_dir_all(&wallet_path).expect("could not create wallet path");
+    std::fs::create_dir_all(&peer_db_path).expect("could not create peer db path");
 
     let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
     let (publisher, subscription_factory) = pubsub_connector(rt.handle().clone(), 100);
@@ -475,10 +476,9 @@ where
             .add_peer(p)
             .expect("Could not add peer to comms layer");
     }
-    let connection_pool = run_migration_and_create_connection_pool(
-        wallet_db_folder.to_str().expect("could not create db path").to_string(),
-    )
-    .expect("Could not create Sqlite database or Connection Manager");
+    let connection_pool =
+        run_migration_and_create_connection_pool(wallet_db_folder.to_str().expect("could not create db path"))
+            .expect("Could not create Sqlite database or Connection Manager");
 
     let fut = StackBuilder::new(rt.handle().clone(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))

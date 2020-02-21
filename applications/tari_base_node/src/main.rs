@@ -43,19 +43,32 @@ use std::sync::{
 };
 
 use tari_common::{load_configuration, GlobalConfig};
+use tari_comms::control_service::messages::RejectReason::ExistingConnection;
 use tokio::{runtime, runtime::Runtime};
 
 pub const LOG_TARGET: &str = "base_node::app";
 
+enum ExitCodes {
+    ConfigError = 101,
+    UnknownError = 102,
+}
+
 fn main() {
     cli::print_banner();
+    match main_inner() {
+        Ok(_) => std::process::exit(0),
+        Err(exit_code) => std::process::exit(exit_code as i32),
+    }
+}
+
+fn main_inner() -> Result<(), ExitCodes> {
     // Create the tari data directory
     if let Err(e) = tari_common::dir_utils::create_data_directory() {
         println!(
             "We couldn't create a default Tari data directory and have to quit now. This makes us sad :(\n {}",
             e.to_string()
         );
-        return;
+        return Err(ExitCodes::ConfigError);
     }
 
     // Parse and validate command-line arguments
@@ -63,7 +76,7 @@ fn main() {
 
     // Initialise the logger
     if !tari_common::initialize_logging(&arguments.bootstrap.log_config) {
-        return;
+        return Err(ExitCodes::ConfigError);
     }
 
     // Load and apply configuration file
@@ -71,7 +84,7 @@ fn main() {
         Ok(cfg) => cfg,
         Err(s) => {
             error!(target: LOG_TARGET, "{}", s);
-            return;
+            return Err(ExitCodes::ConfigError);
         },
     };
 
@@ -80,7 +93,7 @@ fn main() {
         Ok(c) => c,
         Err(e) => {
             error!(target: LOG_TARGET, "The configuration file has an error. {}", e);
-            return;
+            return Err(ExitCodes::ConfigError);
         },
     };
 
@@ -94,10 +107,10 @@ fn main() {
                 error!(
                     target: LOG_TARGET,
                     "Node identity information not found. {}. You can update the configuration file to point to a \
-                     valid node identity file, or re-run the node with the --create_id flag to create anew identity.",
+                     valid node identity file, or re-run the node with the --create_id flag to create a new identity.",
                     e
                 );
-                return;
+                return Err(ExitCodes::ConfigError);
             }
             debug!(target: LOG_TARGET, "Node id not found. {}. Creating new ID", e);
             match create_and_save_id(&node_config.identity_file, &node_config.address) {
@@ -112,7 +125,7 @@ fn main() {
                 },
                 Err(e) => {
                     error!(target: LOG_TARGET, "Could not create new node id. {}.", e);
-                    return;
+                    return Err(ExitCodes::ConfigError);
                 },
             }
         },
@@ -123,7 +136,7 @@ fn main() {
         Ok(rt) => rt,
         Err(s) => {
             error!(target: LOG_TARGET, "{}", s);
-            return;
+            return Err(ExitCodes::UnknownError);
         },
     };
 
@@ -133,7 +146,7 @@ fn main() {
             Ok(n) => n,
             Err(e) => {
                 error!(target: LOG_TARGET, "Could not instantiate node instance. {}", e);
-                return;
+                return Err(ExitCodes::UnknownError);
             },
         };
     let flag = node.get_flag();
@@ -181,6 +194,7 @@ fn main() {
     }
     rt.block_on(base_node_handle);
     println!("Goodbye!");
+    Ok(())
 }
 
 fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {

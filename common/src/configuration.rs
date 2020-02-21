@@ -312,7 +312,7 @@ pub fn default_config() -> Config {
         default_subdir("mainnet/node_id.json"),
     )
     .unwrap();
-    cfg.set_default("base_node.mainnet.address", "http://localhost:18089")
+    cfg.set_default("base_node.mainnet.address", "/ip4/0.0.0.0/tcp/18089/http")
         .unwrap();
     cfg.set_default("base_node.mainnet.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.mainnet.grpc_address", "tcp://127.0.0.1:18041")
@@ -332,7 +332,7 @@ pub fn default_config() -> Config {
         default_subdir("testnet/node_id.json"),
     )
     .unwrap();
-    cfg.set_default("base_node.testnet.address", "http://localhost:18189")
+    cfg.set_default("base_node.testnet.address", "/ip4/0.0.0.0/tcp/18189/http")
         .unwrap();
     cfg.set_default("base_node.testnet.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.testnet.grpc_address", "tcp://127.0.0.1:18141")

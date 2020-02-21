@@ -1762,7 +1762,7 @@ pub unsafe extern "C" fn wallet_create(
                 (*config).datastore_path.clone(),
                 (*config).peer_database_name.clone()
             );
-            let connection_pool = run_migration_and_create_connection_pool(sql_database_path)
+            let connection_pool = run_migration_and_create_connection_pool(&sql_database_path)
                 .expect("Could not create Sqlite Connection Pool");
             let wallet_backend = WalletSqliteDatabase::new(connection_pool.clone());
             let transaction_backend = TransactionServiceSqliteDatabase::new(connection_pool.clone());

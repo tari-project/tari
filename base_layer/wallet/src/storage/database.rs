@@ -268,8 +268,7 @@ mod test {
             .to_str()
             .unwrap()
             .to_string();
-        let connection_pool =
-            run_migration_and_create_connection_pool(format!("{}{}", db_folder, db_name).to_string()).unwrap();
+        let connection_pool = run_migration_and_create_connection_pool(&format!("{}{}", db_folder, db_name)).unwrap();
 
         test_database_crud(WalletSqliteDatabase::new(connection_pool));
     }
