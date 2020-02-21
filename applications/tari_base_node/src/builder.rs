@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::miner;
-use futures::{channel::mpsc::Receiver, stream};
+use futures::channel::mpsc::Receiver;
 use log::*;
 use rand::rngs::OsRng;
 use std::{
@@ -77,7 +77,6 @@ use tari_p2p::{
     },
 };
 
-use futures::stream::Fuse;
 use tari_service_framework::{handles::ServiceHandles, StackBuilder};
 use tokio::runtime::Runtime;
 

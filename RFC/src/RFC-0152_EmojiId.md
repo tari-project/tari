@@ -136,7 +136,7 @@ One can extract the node id from an emoji ID as follows:
    return with an error. if any emoji character is not in the emoji map, return an error.
 2. Extract the version number:
    3. Do a reverse lookup of emoji`[10]` to find its index. Store this u64 value in `I`.
-   4. The Version number is `(I && 0x3F) >> 2`. This can be used to set the Emoji map accordingly (and may have to be
+   4. The Version number is `(I & 0x3F) >> 2`. This can be used to set the Emoji map accordingly (and may have to be
       done iteratively, since the version is encoded into the emoji string).
 3. Set `CURSOR = 0`.
 4. Set `B = []`, and empty byte array
@@ -157,7 +157,7 @@ will usually cause incompatible versions of the emoji ID to be detected. However
 
 The last 6 bits of the 11th emoji encodes the version; this means that the first 4 bits are part of the node ID. On a
 reverse mapping, there is a chance that the reverse mapping would offer a valid, but incorrect version number if the new
-mapping are not chosen carefully.
+mapping is not chosen carefully.
 
 ##### Example.
 

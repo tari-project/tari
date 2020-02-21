@@ -23,7 +23,7 @@
 use crate::{
     blocks::{blockheader::BlockHash, Block, BlockBuilder, BlockHeader, NewBlockTemplate},
     chain_storage::{
-        db_transaction::{DbKey, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree},
+        db_transaction::{DbKey, DbTransaction, DbValue, MmrTree},
         error::ChainStorageError,
         ChainMetadata,
         HistoricalBlock,

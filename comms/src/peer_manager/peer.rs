@@ -231,7 +231,7 @@ mod test {
     #[test]
     fn json_ser_der() {
         let expected_pk_hex = "02622ace8f7303a31cafc63f8fc48fdc16e1c8c8d234b2f0d6685282a9076031";
-        let expected_nodeid_hex = "c1a7552e5d9e9b257c4008b965";
+        let expected_nodeid_hex = "61e0d155fe7f4bdc2b63de";
         let pk = CommsPublicKey::from_hex(expected_pk_hex).unwrap();
         let node_id = NodeId::from_key(&pk).unwrap();
         let peer = Peer::new(

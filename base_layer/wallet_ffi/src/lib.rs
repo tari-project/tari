@@ -123,6 +123,7 @@ use libc::{c_char, c_int, c_longlong, c_uchar, c_uint, c_ulonglong};
 use rand::rngs::OsRng;
 use std::{
     boxed::Box,
+    convert::TryFrom,
     ffi::{CStr, CString},
     slice,
     sync::Arc,
@@ -131,7 +132,7 @@ use std::{
 use tari_comms::{
     control_service::ControlServiceConfig,
     multiaddr::Multiaddr,
-    peer_manager::{NodeIdentity, PeerFeatures},
+    peer_manager::{NodeId, NodeIdentity, PeerFeatures},
 };
 use tari_comms_dht::DhtConfig;
 use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
@@ -458,8 +459,9 @@ pub unsafe extern "C" fn public_key_to_emoji_node_id(pk: *mut TariPublicKey, err
         return CString::into_raw(result);
     }
 
-    let emoji = EmojiId::from_pubkey(&(*pk));
-    result = CString::new(emoji.as_str()).unwrap();
+    let node_id = NodeId::from_key(&(*pk)).unwrap();
+    let emoji = EmojiId::try_from(node_id).unwrap();
+    result = CString::new(emoji.to_string()).unwrap();
     CString::into_raw(result)
 }
 /// -------------------------------------------------------------------------------------------- ///
@@ -3209,12 +3211,12 @@ mod test {
             assert_eq!(public_key_length, 32);
             assert_ne!((*private_bytes), (*public_bytes));
             let emoji = public_key_to_emoji_node_id(public_key, error_ptr) as *mut c_char;
-            let emoji_str = CStr::from_ptr(emoji).to_str().unwrap().to_owned();
-            assert_eq!(EmojiId::is_valid(&emoji_str, &(*public_key)), true);
+            assert_eq!(error, 0);
             private_key_destroy(private_key);
             public_key_destroy(public_key);
             byte_vector_destroy(public_bytes);
             byte_vector_destroy(private_bytes);
+            string_destroy(emoji);
         }
     }
 

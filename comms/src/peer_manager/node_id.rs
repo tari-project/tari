@@ -40,7 +40,7 @@ use tari_crypto::tari_utilities::{
     ByteArrayError,
 };
 
-const NODE_ID_ARRAY_SIZE: usize = 13; // 104-bit as per RFC-0151
+pub const NODE_ID_ARRAY_SIZE: usize = 11; // 88-bit as per RFC-0152
 type NodeIdArray = [u8; NODE_ID_ARRAY_SIZE];
 
 #[derive(Debug, Error, Clone)]
@@ -280,7 +280,7 @@ mod test {
             NodeId::try_from(&[144u8, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159, 211, 53][..]).unwrap();
 
         let result = format!("{}", node_id);
-        assert_eq!("901c6a70dcc5d87709d92a4d9f", result);
+        assert_eq!("901c6a70dcc5d87709d92a", result);
     }
 
     #[test]
@@ -350,32 +350,26 @@ mod test {
     #[test]
     fn test_closest() {
         let mut node_ids: Vec<NodeId> = Vec::new();
-        node_ids.push(NodeId::try_from(&[144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159][..]).unwrap());
-        node_ids.push(NodeId::try_from(&[75, 249, 102, 1, 2, 166, 155, 37, 22, 54, 84, 98, 56][..]).unwrap());
-        node_ids.push(NodeId::try_from(&[60, 32, 246, 39, 108, 201, 214, 91, 30, 230, 3, 126, 31][..]).unwrap());
-        node_ids.push(NodeId::try_from(&[134, 116, 78, 53, 246, 206, 200, 147, 126, 96, 54, 113, 67][..]).unwrap());
-        node_ids.push(NodeId::try_from(&[75, 146, 162, 130, 22, 63, 247, 182, 156, 103, 174, 32, 134][..]).unwrap());
-        node_ids.push(NodeId::try_from(&[186, 43, 62, 14, 60, 214, 9, 180, 145, 122, 55, 160, 83][..]).unwrap());
-        node_ids.push(NodeId::try_from(&[143, 189, 32, 210, 30, 231, 82, 5, 86, 85, 28, 82, 154][..]).unwrap());
-        node_ids.push(NodeId::try_from(&[155, 210, 214, 160, 153, 70, 172, 234, 177, 178, 62, 82, 166][..]).unwrap());
-        node_ids.push(NodeId::try_from(&[173, 218, 34, 188, 211, 173, 235, 82, 18, 159, 55, 47, 242][..]).unwrap());
+        node_ids.push(NodeId::try_from(&[144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42][..]).unwrap());
+        node_ids.push(NodeId::try_from(&[75, 249, 102, 1, 2, 166, 155, 37, 22, 54, 84][..]).unwrap());
+        node_ids.push(NodeId::try_from(&[60, 32, 246, 39, 108, 201, 214, 91, 30, 230, 3][..]).unwrap());
+        node_ids.push(NodeId::try_from(&[134, 116, 78, 53, 246, 206, 200, 147, 126, 96, 54][..]).unwrap());
+        node_ids.push(NodeId::try_from(&[75, 146, 162, 130, 22, 63, 247, 182, 156, 103, 174][..]).unwrap());
+        node_ids.push(NodeId::try_from(&[186, 43, 62, 14, 60, 214, 9, 180, 145, 122, 55][..]).unwrap());
+        node_ids.push(NodeId::try_from(&[143, 189, 32, 210, 30, 231, 82, 5, 86, 85, 28][..]).unwrap());
+        node_ids.push(NodeId::try_from(&[155, 210, 214, 160, 153, 70, 172, 234, 177, 178, 62][..]).unwrap());
+        node_ids.push(NodeId::try_from(&[173, 218, 34, 188, 211, 173, 235, 82, 18, 159, 55][..]).unwrap());
 
-        let node_id = NodeId::try_from(&[169, 125, 200, 137, 210, 73, 241, 238, 25, 108, 8, 48, 66][..]).unwrap();
+        let node_id = NodeId::try_from(&[169, 125, 200, 137, 210, 73, 241, 238, 25, 108, 8][..]).unwrap();
 
         let k = 3;
         match node_id.closest(&node_ids, k) {
             Ok(knn_node_ids) => {
                 println!(" KNN = {:?}", knn_node_ids);
                 assert_eq!(knn_node_ids.len(), k);
-                assert_eq!(knn_node_ids[0].0, [
-                    173, 218, 34, 188, 211, 173, 235, 82, 18, 159, 55, 47, 242
-                ]);
-                assert_eq!(knn_node_ids[1].0, [
-                    186, 43, 62, 14, 60, 214, 9, 180, 145, 122, 55, 160, 83
-                ]);
-                assert_eq!(knn_node_ids[2].0, [
-                    143, 189, 32, 210, 30, 231, 82, 5, 86, 85, 28, 82, 154
-                ]);
+                assert_eq!(knn_node_ids[0].0, [173, 218, 34, 188, 211, 173, 235, 82, 18, 159, 55,]);
+                assert_eq!(knn_node_ids[1].0, [186, 43, 62, 14, 60, 214, 9, 180, 145, 122, 55,]);
+                assert_eq!(knn_node_ids[2].0, [143, 189, 32, 210, 30, 231, 82, 5, 86, 85, 28,]);
             },
             Err(_e) => assert!(false),
         };
