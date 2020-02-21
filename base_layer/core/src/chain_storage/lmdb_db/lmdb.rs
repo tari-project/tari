@@ -75,6 +75,18 @@ where
         .map_err(|e| ChainStorageError::AccessError(e.to_string()))
 }
 
+pub fn lmdb_replace<K, V>(txn: &WriteTransaction, db: &Database, key: &K, val: &V) -> Result<(), ChainStorageError>
+where
+    K: Serialize,
+    V: Serialize,
+{
+    let key_buf = serialize(key)?;
+    let val_buf = serialize(val)?;
+    txn.access()
+        .put(&db, &key_buf, &val_buf, put::Flags::empty())
+        .map_err(|e| ChainStorageError::AccessError(e.to_string()))
+}
+
 pub fn lmdb_delete<K>(txn: &WriteTransaction, db: &Database, key: &K) -> Result<(), ChainStorageError>
 where K: Serialize {
     let key_buf = serialize(key)?;

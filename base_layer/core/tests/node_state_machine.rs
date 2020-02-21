@@ -127,14 +127,14 @@ fn test_event_channel() {
         ConsensusManager::new(None, consensus_constants),
         temp_dir.path().to_str().unwrap(),
     );
-    let mut alice_state_machine = BaseNodeStateMachine::new(
+    let alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.outbound_nci,
         runtime.handle().clone(),
         alice_node.chain_metadata_handle.get_event_stream(),
         BaseNodeStateMachineConfig::default(),
     );
-    let mut rx = alice_state_machine.get_state_change_event();
+    let rx = alice_state_machine.get_state_change_event();
 
     runtime.spawn(async move {
         alice_state_machine.run().await;

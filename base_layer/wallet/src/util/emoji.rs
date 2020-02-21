@@ -27,7 +27,6 @@ use tari_core::transactions::types::PublicKey;
 use tari_crypto::tari_utilities::{
     hex::{Hex, HexError},
     ByteArray,
-    ByteArrayError,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
