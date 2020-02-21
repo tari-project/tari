@@ -95,6 +95,12 @@ impl From<WalletError> for LibWalletError {
                 code: 101,
                 message: format!("{:?}", w),
             },
+            WalletError::TransactionServiceError(TransactionServiceError::OutputManagerError(
+                OutputManagerError::NotEnoughFunds,
+            )) => Self {
+                code: 101,
+                message: format!("{:?}", w),
+            },
             WalletError::OutputManagerError(OutputManagerError::IncompleteTransaction) => Self {
                 code: 102,
                 message: format!("{:?}", w),
@@ -103,8 +109,26 @@ impl From<WalletError> for LibWalletError {
                 code: 103,
                 message: format!("{:?}", w),
             },
+            WalletError::TransactionServiceError(TransactionServiceError::TransactionStorageError(
+                TransactionStorageError::DuplicateOutput,
+            )) => Self {
+                code: 103,
+                message: format!("{:?}", w),
+            },
+            WalletError::OutputManagerError(OutputManagerError::OutputManagerStorageError(
+                OutputManagerStorageError::DuplicateOutput,
+            )) => Self {
+                code: 103,
+                message: format!("{:?}", w),
+            },
             WalletError::OutputManagerError(OutputManagerError::OutputManagerStorageError(
                 OutputManagerStorageError::ValuesNotFound,
+            )) => Self {
+                code: 104,
+                message: format!("{:?}", w),
+            },
+            WalletError::ContactsServiceError(ContactsServiceError::ContactsServiceStorageError(
+                ContactsServiceStorageError::ValuesNotFound,
             )) => Self {
                 code: 104,
                 message: format!("{:?}", w),
@@ -122,13 +146,13 @@ impl From<WalletError> for LibWalletError {
                 message: format!("{:?}", w),
             },
             WalletError::OutputManagerError(OutputManagerError::OutputManagerStorageError(
-                OutputManagerStorageError::DuplicateOutput,
+                OutputManagerStorageError::ValueNotFound(_),
             )) => Self {
-                code: 107,
+                code: 108,
                 message: format!("{:?}", w),
             },
-            WalletError::OutputManagerError(OutputManagerError::OutputManagerStorageError(
-                OutputManagerStorageError::ValueNotFound(_),
+            WalletError::TransactionServiceError(TransactionServiceError::TransactionStorageError(
+                TransactionStorageError::ValueNotFound(_),
             )) => Self {
                 code: 108,
                 message: format!("{:?}", w),
@@ -154,30 +178,12 @@ impl From<WalletError> for LibWalletError {
                 code: 204,
                 message: format!("{:?}", w),
             },
-            WalletError::TransactionServiceError(TransactionServiceError::OutputManagerError(
-                OutputManagerError::NotEnoughFunds,
-            )) => Self {
-                code: 205,
-                message: format!("{:?}", w),
-            },
             WalletError::TransactionServiceError(TransactionServiceError::OutputManagerError(_)) => Self {
                 code: 206,
                 message: format!("{:?}", w),
             },
             WalletError::TransactionServiceError(TransactionServiceError::TransactionError(_)) => Self {
                 code: 207,
-                message: format!("{:?}", w),
-            },
-            WalletError::TransactionServiceError(TransactionServiceError::TransactionStorageError(
-                TransactionStorageError::DuplicateOutput,
-            )) => Self {
-                code: 208,
-                message: format!("{:?}", w),
-            },
-            WalletError::TransactionServiceError(TransactionServiceError::TransactionStorageError(
-                TransactionStorageError::ValueNotFound(_),
-            )) => Self {
-                code: 209,
                 message: format!("{:?}", w),
             },
             WalletError::TransactionServiceError(TransactionServiceError::OutboundSendDiscoveryInProgress(_)) => Self {
@@ -205,12 +211,6 @@ impl From<WalletError> for LibWalletError {
                 code: 404,
                 message: format!("{:?}", w),
             },
-            WalletError::ContactsServiceError(ContactsServiceError::ContactsServiceStorageError(
-                ContactsServiceStorageError::ValuesNotFound,
-            )) => Self {
-                code: 405,
-                message: format!("{:?}", w),
-            },
             // This is the catch all error code. Any error that is not explicitly mapped above will be given this code
             _ => Self {
                 code: 999,
@@ -226,12 +226,12 @@ impl From<HexError> for LibWalletError {
     fn from(h: HexError) -> Self {
         error!(target: LOG_TARGET, "{}", format!("{:?}", h));
         match h {
-            HexError::LengthError => Self {
-                code: 501,
+            HexError::HexConversionError => Self {
+                code: 404,
                 message: format!("{:?}", h),
             },
-            HexError::HexConversionError => Self {
-                code: 502,
+            HexError::LengthError => Self {
+                code: 501,
                 message: format!("{:?}", h),
             },
             HexError::InvalidCharacter(_) => Self {
@@ -248,12 +248,12 @@ impl From<ByteArrayError> for LibWalletError {
     fn from(b: ByteArrayError) -> Self {
         error!(target: LOG_TARGET, "{}", format!("{:?}", b));
         match b {
-            ByteArrayError::IncorrectLength => Self {
-                code: 601,
+            ByteArrayError::ConversionError(_) => Self {
+                code: 404,
                 message: format!("{:?}", b),
             },
-            ByteArrayError::ConversionError(_) => Self {
-                code: 602,
+            ByteArrayError::IncorrectLength => Self {
+                code: 601,
                 message: format!("{:?}", b),
             },
         }
