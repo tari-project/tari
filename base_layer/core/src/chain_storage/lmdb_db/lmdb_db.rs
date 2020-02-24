@@ -54,7 +54,7 @@ use lmdb_zero::{Database, Environment, WriteTransaction};
 use log::*;
 use std::{
     path::Path,
-    sync::{Arc, RwLock},
+    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use tari_crypto::tari_utilities::hash::Hashable;
 use tari_mmr::{
@@ -78,6 +78,9 @@ pub struct LMDBDatabase<D>
 where D: Digest
 {
     env: Arc<Environment>,
+    // Lock used to ensure there aren't two threads altering
+    // or reading data at the same time
+    transaction_write_lock: RwLock<u32>,
     metadata_db: DatabaseRef,
     headers_db: DatabaseRef,
     block_hashes_db: DatabaseRef,
@@ -188,12 +191,14 @@ where D: Digest + Send + Sync
             range_proof_checkpoints: RwLock::new(range_proof_checkpoints),
             curr_range_proof_checkpoint: RwLock::new(MerkleCheckPoint::new(Vec::new(), Bitmap::create())),
             env: store.env(),
+            transaction_write_lock: Default::default(),
         })
     }
 
     // Applies all MMR transactions excluding CreateMmrCheckpoint and RewindMmr on the header_mmr, utxo_mmr,
     // range_proof_mmr and kernel_mmr. CreateMmrCheckpoint and RewindMmr txns will be performed after the the storage
     // txns have been successfully applied.
+    // NOTE: Do not call this without having a lock on self.transaction_write_lock
     fn apply_mmr_txs(&self, tx: &DbTransaction) -> Result<(), ChainStorageError> {
         trace!(target: LOG_TARGET, "DB apply mmr instruction received: {:?}", tx);
         for op in tx.operations.iter() {
@@ -245,6 +250,7 @@ where D: Digest + Send + Sync
     }
 
     // Perform the RewindMmr and CreateMmrCheckpoint operations after MMR txns and storage txns have been applied.
+    // NOTE: Make sure you have a write lock on transaction_write_lock
     fn commit_mmrs(&self, tx: DbTransaction) -> Result<(), ChainStorageError> {
         trace!(target: LOG_TARGET, "DB commit instruction received: {:?}", tx);
         for op in tx.operations.into_iter() {
@@ -392,6 +398,7 @@ where D: Digest + Send + Sync
     }
 
     // Reset any mmr txns that have been applied.
+    // Note: Make sure you have a write lock on transaction_write_lock
     fn reset_mmrs(&self) -> Result<(), ChainStorageError> {
         debug!(target: LOG_TARGET, "Reset mmrs called");
         self.kernel_mmr
@@ -544,6 +551,7 @@ where D: Digest + Send + Sync
 
     // Construct a pruned mmr for the specified MMR tree based on the checkpoint state and new additions and deletions.
     fn get_pruned_mmr(&self, tree: &MmrTree) -> Result<PrunedMutableMmr<D>, ChainStorageError> {
+        let _lock = self.lock_for_read()?;
         Ok(match tree {
             MmrTree::Utxo => {
                 let mut pruned_mmr = prune_mutable_mmr(
@@ -608,6 +616,24 @@ where D: Digest + Send + Sync
             },
         })
     }
+
+    fn lock_for_write(&self) -> Result<RwLockWriteGuard<u32>, ChainStorageError> {
+        Ok(self.transaction_write_lock.write().map_err(|e| {
+            ChainStorageError::AccessError(format!(
+                "Could not exclusively gain write access to DB: {}",
+                e.to_string()
+            ))
+        })?)
+    }
+
+    fn lock_for_read(&self) -> Result<RwLockReadGuard<u32>, ChainStorageError> {
+        Ok(self.transaction_write_lock.read().map_err(|e| {
+            ChainStorageError::AccessError(format!(
+                "Could not exclusively gain write access to DB: {}",
+                e.to_string()
+            ))
+        })?)
+    }
 }
 
 pub fn create_lmdb_database(
@@ -641,6 +667,8 @@ impl<D> BlockchainBackend for LMDBDatabase<D>
 where D: Digest + Send + Sync
 {
     fn write(&self, tx: DbTransaction) -> Result<(), ChainStorageError> {
+        // Prevent other threads from running a transaction at the same time
+        let _lock = self.lock_for_write()?;
         match self.apply_mmr_txs(&tx) {
             Ok(_) => match self.apply_storage_txs(&tx) {
                 Ok(_) => self.commit_mmrs(tx),
@@ -657,6 +685,7 @@ where D: Digest + Send + Sync
     }
 
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
+        let _lock = self.lock_for_read()?;
         Ok(match key {
             DbKey::Metadata(k) => {
                 let val: Option<MetadataValue> = lmdb_get(&self.env, &self.metadata_db, &(k.clone() as u32))?;
@@ -696,6 +725,7 @@ where D: Digest + Send + Sync
     }
 
     fn contains(&self, key: &DbKey) -> Result<bool, ChainStorageError> {
+        let _lock = self.lock_for_read()?;
         Ok(match key {
             DbKey::Metadata(k) => lmdb_exists(&self.env, &self.metadata_db, &(k.clone() as u32))?,
             DbKey::BlockHeader(k) => lmdb_exists(&self.env, &self.headers_db, k)?,
@@ -708,11 +738,13 @@ where D: Digest + Send + Sync
     }
 
     fn fetch_mmr_root(&self, tree: MmrTree) -> Result<Vec<u8>, ChainStorageError> {
+        let _lock = self.lock_for_read()?;
         let pruned_mmr = self.get_pruned_mmr(&tree)?;
         Ok(pruned_mmr.get_merkle_root()?)
     }
 
     fn fetch_mmr_only_root(&self, tree: MmrTree) -> Result<Vec<u8>, ChainStorageError> {
+        let _lock = self.lock_for_read()?;
         let pruned_mmr = self.get_pruned_mmr(&tree)?;
         Ok(pruned_mmr.get_mmr_only_root()?)
     }
@@ -724,6 +756,7 @@ where D: Digest + Send + Sync
         deletions: Vec<HashOutput>,
     ) -> Result<Vec<u8>, ChainStorageError>
     {
+        let _lock = self.lock_for_read()?;
         let mut pruned_mmr = self.get_pruned_mmr(&tree)?;
         for hash in additions {
             pruned_mmr.push(&hash)?;
@@ -742,6 +775,7 @@ where D: Digest + Send + Sync
     /// Returns an MMR proof extracted from the full Merkle mountain range without trimming the MMR using the roaring
     /// bitmap
     fn fetch_mmr_proof(&self, tree: MmrTree, leaf_pos: usize) -> Result<MerkleProof, ChainStorageError> {
+        let _lock = self.lock_for_read()?;
         let pruned_mmr = self.get_pruned_mmr(&tree)?;
         Ok(match tree {
             MmrTree::Utxo => MerkleProof::for_leaf_node(&pruned_mmr.mmr(), leaf_pos)?,
@@ -751,6 +785,7 @@ where D: Digest + Send + Sync
     }
 
     fn fetch_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
+        let _lock = self.lock_for_read()?;
         match tree {
             MmrTree::Kernel => self
                 .kernel_checkpoints
@@ -773,6 +808,7 @@ where D: Digest + Send + Sync
     }
 
     fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Vec<u8>, bool), ChainStorageError> {
+        let _lock = self.lock_for_read();
         let (hash, deleted) = match tree {
             MmrTree::Kernel => self
                 .kernel_mmr
@@ -799,29 +835,34 @@ where D: Digest + Send + Sync
     /// Iterate over all the stored orphan blocks and execute the function `f` for each block.
     fn for_each_orphan<F>(&self, f: F) -> Result<(), ChainStorageError>
     where F: FnMut(Result<(HashOutput, Block), ChainStorageError>) {
+        let _lock = self.lock_for_read()?;
         lmdb_for_each::<F, HashOutput, Block>(&self.env, &self.orphans_db, f)
     }
 
     /// Iterate over all the stored transaction kernels and execute the function `f` for each kernel.
     fn for_each_kernel<F>(&self, f: F) -> Result<(), ChainStorageError>
     where F: FnMut(Result<(HashOutput, TransactionKernel), ChainStorageError>) {
+        let _lock = self.lock_for_read()?;
         lmdb_for_each::<F, HashOutput, TransactionKernel>(&self.env, &self.kernels_db, f)
     }
 
     /// Iterate over all the stored block headers and execute the function `f` for each header.
     fn for_each_header<F>(&self, f: F) -> Result<(), ChainStorageError>
     where F: FnMut(Result<(u64, BlockHeader), ChainStorageError>) {
+        let _lock = self.lock_for_read()?;
         lmdb_for_each::<F, u64, BlockHeader>(&self.env, &self.headers_db, f)
     }
 
     /// Iterate over all the stored unspent transaction outputs and execute the function `f` for each kernel.
     fn for_each_utxo<F>(&self, f: F) -> Result<(), ChainStorageError>
     where F: FnMut(Result<(HashOutput, TransactionOutput), ChainStorageError>) {
+        let _lock = self.lock_for_read()?;
         lmdb_for_each::<F, HashOutput, TransactionOutput>(&self.env, &self.utxos_db, f)
     }
 
     /// Finds and returns the last stored header.
     fn fetch_last_header(&self) -> Result<Option<BlockHeader>, ChainStorageError> {
+        let _lock = self.lock_for_read()?;
         let header_count = lmdb_len(&self.env, &self.headers_db)?;
         if header_count >= 1 {
             let k = header_count - 1;
