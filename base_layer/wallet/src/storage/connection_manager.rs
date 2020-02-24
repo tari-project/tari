@@ -31,19 +31,17 @@ use std::{io, path::Path, time::Duration};
 const DATABASE_CONNECTION_TIMEOUT_MS: u64 = 2000;
 
 pub fn run_migration_and_create_connection_pool(
-    database_path: String,
+    database_path: &str,
 ) -> Result<Pool<ConnectionManager<SqliteConnection>>, WalletStorageError> {
-    let db_exists = Path::new(&database_path).exists();
-
-    let connection = SqliteConnection::establish(&database_path)?;
-
-    connection.execute("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 60000;")?;
+    let db_exists = Path::new(database_path).exists();
     if !db_exists {
+        let connection = SqliteConnection::establish(database_path)?;
+        connection.execute("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 60000;")?;
+
         embed_migrations!("./migrations");
         embedded_migrations::run_with_output(&connection, &mut io::stdout())
             .map_err(|err| WalletStorageError::DatabaseMigrationError(format!("Database migration failed {}", err)))?;
     }
-    drop(connection);
 
     let manager = ConnectionManager::<SqliteConnection>::new(database_path);
     Ok(diesel::r2d2::Pool::builder()

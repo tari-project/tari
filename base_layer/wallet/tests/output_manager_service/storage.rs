@@ -293,8 +293,7 @@ pub fn test_output_manager_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
     let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    let connection_pool =
-        run_migration_and_create_connection_pool(format!("{}/{}", db_folder, db_name).to_string()).unwrap();
+    let connection_pool = run_migration_and_create_connection_pool(&format!("{}/{}", db_folder, db_name)).unwrap();
     test_db_backend(OutputManagerSqliteDatabase::new(connection_pool));
 }
 
@@ -344,7 +343,6 @@ pub fn test_key_manager_crud_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
     let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    let connection_pool =
-        run_migration_and_create_connection_pool(format!("{}/{}", db_folder, db_name).to_string()).unwrap();
+    let connection_pool = run_migration_and_create_connection_pool(&format!("{}/{}", db_folder, db_name)).unwrap();
     test_key_manager_crud(OutputManagerSqliteDatabase::new(connection_pool));
 }

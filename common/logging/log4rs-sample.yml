@@ -38,7 +38,7 @@ root:
 
 loggers:
   # Set the maximum console output to "error"
-  stdout:
+  base_node:
     level: error
     appenders:
       - stdout
