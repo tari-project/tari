@@ -29,6 +29,7 @@ use crate::{
 };
 use log::*;
 use std::collections::VecDeque;
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "c::bn::states::block_sync";
 
@@ -120,19 +121,39 @@ async fn synchronize_blocks<B: BlockchainBackend>(shared: &mut BaseNodeStateMach
             debug!(target: LOG_TARGET, "Requesting block {} from peers", block_num,);
 
             // Request the block from a random peer node and add to chain.
-            if let Ok(hist_block) = shared.comms.fetch_blocks(vec![block_num]).await {
-                debug!(target: LOG_TARGET, "Received {} blocks from peer", hist_block.len());
-                if let Some(hist_block) = hist_block.first() {
-                    match shared.db.add_block(hist_block.block.clone()) {
-                        Ok(_) => {
-                            attempts = 0;
-                            continue;
-                        },
-                        Err(ChainStorageError::InvalidBlock) => {}, // Retry
-                        Err(ChainStorageError::ValidationError(_)) => {}, // Retry
-                        Err(e) => return Err(e.to_string()),
+            match shared.comms.fetch_blocks(vec![block_num]).await {
+                Ok(hist_block) => {
+                    debug!(target: LOG_TARGET, "Received {} blocks from peer", hist_block.len());
+                    if let Some(hist_block) = hist_block.first() {
+                        match shared.db.add_block(hist_block.block.clone()) {
+                            Ok(_) => {
+                                attempts = 0;
+                                continue;
+                            },
+                            Err(ChainStorageError::InvalidBlock) => {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Invalid block {} received from peer. Retrying",
+                                    hist_block.block.hash().to_hex(),
+                                );
+                            },
+                            Err(ChainStorageError::ValidationError(_)) => {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Validation on block {} from peer failed. Retrying",
+                                    hist_block.block.hash().to_hex(),
+                                );
+                            },
+                            Err(e) => return Err(e.to_string()),
+                        }
                     }
-                }
+                },
+                Err(e) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to fetch blocks from peer:{:?}. Retrying.", e,
+                    );
+                },
             }
             // Attempt again to retrieve the correct block
             attempts += 1;

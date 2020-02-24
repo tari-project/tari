@@ -76,6 +76,13 @@ impl OutboundNodeCommsInterface {
             .for_each(|response| {
                 if let NodeCommsResponse::ChainMetadata(metadata) = response {
                     responses.push(metadata);
+                } else {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Received unexpected response from peer when requesting metadata: {:?}",
+                        response,
+                    );
+                    // TODO: Potentially ban peer
                 }
             });
         trace!(target: LOG_TARGET, "Remote metadata requested: {:?}", responses,);

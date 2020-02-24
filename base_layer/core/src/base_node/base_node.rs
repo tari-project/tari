@@ -126,6 +126,11 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
         Arc::clone(&self.user_stopped)
     }
 
+    /// Returns `true` if the `user_stopped` flag has been set
+    pub fn is_stop_requested(&self) -> bool {
+        self.user_stopped.load(Ordering::SeqCst)
+    }
+
     /// This clones the receiver end of the channel and gives out a copy to the caller
     /// This allows multiple subscribers to this channel by only keeping one channel and cloning the receiver for every
     /// caller.
@@ -139,6 +144,9 @@ impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
         let mut state = Starting(states::Starting);
         let mut shared_state = self;
         loop {
+            if shared_state.is_stop_requested() {
+                break;
+            }
             let _ = shared_state.event_sender.send(state.clone()).await;
             let next_event = match &mut state {
                 Starting(s) => s.next_event(&mut shared_state).await,
