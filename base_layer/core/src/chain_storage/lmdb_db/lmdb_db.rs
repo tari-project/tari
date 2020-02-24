@@ -27,7 +27,7 @@ use crate::{
         db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataValue, MmrTree, WriteOperation},
         error::ChainStorageError,
         lmdb_db::{
-            lmdb::{lmdb_delete, lmdb_exists, lmdb_for_each, lmdb_get, lmdb_insert, lmdb_len},
+            lmdb::{lmdb_delete, lmdb_exists, lmdb_for_each, lmdb_get, lmdb_insert, lmdb_len, lmdb_replace},
             LMDBVec,
             LMDB_DB_BLOCK_HASHES,
             LMDB_DB_HEADERS,
@@ -419,7 +419,7 @@ where D: Digest + Send + Sync
                 match op {
                     WriteOperation::Insert(insert) => match insert {
                         DbKeyValuePair::Metadata(k, v) => {
-                            lmdb_insert(&txn, &self.metadata_db, &(k.clone() as u32), &v)?;
+                            lmdb_replace(&txn, &self.metadata_db, &(k.clone() as u32), &v)?;
                         },
                         DbKeyValuePair::BlockHeader(k, v) => {
                             let hash = v.hash();

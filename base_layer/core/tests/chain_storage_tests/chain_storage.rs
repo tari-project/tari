@@ -28,8 +28,9 @@ use croaring::Bitmap;
 use env_logger;
 use std::thread;
 use tari_core::{
-    blocks::{Block, BlockHeader},
+    blocks::{Block, BlockHash, BlockHeader},
     chain_storage::{
+        create_lmdb_database,
         BlockAddResult,
         BlockchainDatabase,
         ChainStorageError,
@@ -39,7 +40,7 @@ use tari_core::{
         MmrTree,
         Validators,
     },
-    consensus::{ConsensusManager, Network},
+    consensus::{ConsensusConstants, ConsensusManager, Network},
     helpers::{create_mem_db, create_orphan_block},
     proof_of_work::Difficulty,
     transactions::{
@@ -53,6 +54,7 @@ use tari_core::{
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_mmr::{MmrCacheConfig, MutableMmr};
+use tari_test_utils::paths::create_temporary_data_path;
 
 fn init_log() {
     let _ = env_logger::builder().is_test(true).try_init();
@@ -726,4 +728,33 @@ fn total_utxo_commitment() {
         total_utxo_commitment,
         &(&(block0.body.outputs()[0].commitment) + &utxo1.commitment) + &(&utxo2.commitment + &utxo3.commitment)
     );
+}
+
+#[test]
+fn restore_metadata() {
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let rules = ConsensusManager::new(None, ConsensusConstants::current_with_network(Network::Rincewind));
+    let block_hash: BlockHash;
+    let path = create_temporary_data_path();
+    {
+        let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
+        let mut db = BlockchainDatabase::new(db, &rules).unwrap();
+        db.set_validators(validators.clone());
+
+        let block0 = db.fetch_block(0).unwrap().block().clone();
+        let block1 = append_block(&db, &block0, vec![]).unwrap();
+        db.add_block(block1.clone()).unwrap();
+        block_hash = block1.hash();
+        let metadata = db.get_metadata().unwrap();
+        assert_eq!(metadata.height_of_longest_chain, Some(1));
+        assert_eq!(metadata.best_block, Some(block_hash.clone()));
+    }
+    // Restore blockchain db
+    let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
+    let mut db = BlockchainDatabase::new(db, &rules).unwrap();
+    db.set_validators(validators);
+
+    let metadata = db.get_metadata().unwrap();
+    assert_eq!(metadata.height_of_longest_chain, Some(1));
+    assert_eq!(metadata.best_block, Some(block_hash));
 }

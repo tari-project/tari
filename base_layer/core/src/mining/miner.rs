@@ -50,11 +50,9 @@ use log::*;
 use rand::rngs::OsRng;
 use std::{
     sync::{atomic::Ordering, Arc},
-    thread,
-    time,
     time::Duration,
 };
-use tari_broadcast_channel::{bounded, Publisher, Subscriber};
+use tari_broadcast_channel::Subscriber;
 use tari_crypto::keys::SecretKey;
 use tokio::task::spawn_blocking;
 

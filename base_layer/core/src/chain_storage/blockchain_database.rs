@@ -23,7 +23,7 @@
 use crate::{
     blocks::{blockheader::BlockHash, Block, BlockBuilder, BlockHeader, NewBlockTemplate},
     chain_storage::{
-        db_transaction::{DbKey, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree},
+        db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree},
         error::ChainStorageError,
         ChainMetadata,
         HistoricalBlock,
@@ -230,7 +230,7 @@ where T: BlockchainBackend
             db: Arc::new(db),
             validators: None,
         };
-        if let None = blockchain_db.db.fetch_last_header()/*get_height()*/? {
+        if let None = blockchain_db.get_height()? {
             let genesis_block = consensus_manager.get_genesis_block();
             let genesis_block_hash = genesis_block.hash();
             blockchain_db.store_new_block(genesis_block)?;
@@ -247,24 +247,16 @@ where T: BlockchainBackend
     /// If the metadata values aren't in the database, (e.g. when running a node for the first time),
     /// then log as much and return a reasonable default.
     fn read_metadata(db: &T) -> Result<ChainMetadata, ChainStorageError> {
-        // Todo fix this as part of issue #1329. This is a temp fix so that it queries the DB every time
-        // let height = fetch!(meta db, ChainHeight, None);
-        // let hash = fetch!(meta db, BestBlock, None);
-        // let _work = fetch!(meta db, AccumulatedWork, 0);
+        let height = fetch!(meta db, ChainHeight, None);
+        let hash = fetch!(meta db, BestBlock, None);
+        let _work = fetch!(meta db, AccumulatedWork, 0);
         // Set a default of 2880 blocks (2 days with 1min blocks)
-        // let horizon = fetch!(meta db, PruningHorizon, 2880);
-        match db.fetch_last_header()? {
-            Some(v) => Ok(ChainMetadata {
-                height_of_longest_chain: Some(v.height),
-                best_block: Some(v.hash()),
-                pruning_horizon: 2880,
-            }),
-            _ => Ok(ChainMetadata {
-                height_of_longest_chain: None,
-                best_block: None,
-                pruning_horizon: 2880,
-            }),
-        }
+        let horizon = fetch!(meta db, PruningHorizon, 2880);
+        Ok(ChainMetadata {
+            height_of_longest_chain: height,
+            best_block: hash,
+            pruning_horizon: horizon,
+        })
     }
 
     /// If a call to any metadata function fails, you can try and force a re-sync with this function. If the RWLock
@@ -321,7 +313,17 @@ where T: BlockchainBackend
         })?;
         db.height_of_longest_chain = Some(new_height);
         db.best_block = Some(new_hash);
-        Ok(())
+
+        let mut txn = DbTransaction::new();
+        txn.insert(DbKeyValuePair::Metadata(
+            MetadataKey::ChainHeight,
+            MetadataValue::ChainHeight(db.height_of_longest_chain),
+        ));
+        txn.insert(DbKeyValuePair::Metadata(
+            MetadataKey::BestBlock,
+            MetadataValue::BestBlock(db.best_block.clone()),
+        ));
+        self.commit(txn)
     }
 
     /// Returns the height of the current longest chain. This method will only fail if there's a fairly serious

@@ -150,9 +150,6 @@ where D: Digest + Send + Sync
                 WriteOperation::Insert(insert) => match insert {
                     DbKeyValuePair::Metadata(k, v) => {
                         let key = k as u32;
-                        if db.metadata.contains_key(&key) {
-                            return Err(ChainStorageError::InvalidOperation("Duplicate key".to_string()));
-                        }
                         db.metadata.insert(key, v);
                     },
                     DbKeyValuePair::BlockHeader(k, v) => {
