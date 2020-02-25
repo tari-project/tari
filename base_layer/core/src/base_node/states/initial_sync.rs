@@ -91,7 +91,7 @@ impl InitialSync {
         );
         // Fetch peer metadata
         let mut theirs = vec![];
-        while !self.backoff.is_finished() {
+        while !self.backoff.is_finished() && !shared.is_stop_requested() {
             match shared.comms.get_metadata().await {
                 Err(e) => {
                     self.log_error(e);
