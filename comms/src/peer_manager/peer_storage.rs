@@ -88,6 +88,7 @@ where DS: KeyValueStore<PeerId, Peer>
             Some(peer_key) => {
                 trace!(target: LOG_TARGET, "Replacing peer that has NodeId '{}'", peer.node_id,);
                 // Replace existing entry
+                peer.set_id(peer_key);
                 self.peer_db
                     .insert(peer_key, peer)
                     .map_err(PeerManagerError::DatabaseError)?;
