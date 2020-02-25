@@ -20,12 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{Dht, DhtConfig};
+use crate::{outbound::DhtOutboundRequest, Dht, DhtConfig};
+use futures::channel::mpsc;
 use std::{sync::Arc, time::Duration};
-use tari_comms::{
-    builder::CommsNode,
-    peer_manager::{NodeIdentity, PeerManager},
-};
+use tari_comms::peer_manager::{NodeIdentity, PeerManager};
 use tari_shutdown::ShutdownSignal;
 use tokio::runtime;
 
@@ -33,24 +31,16 @@ pub struct DhtBuilder {
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
     config: DhtConfig,
-    executor: runtime::Handle,
+    executor: Option<runtime::Handle>,
+    outbound_tx: mpsc::Sender<DhtOutboundRequest>,
     shutdown_signal: ShutdownSignal,
 }
 
 impl DhtBuilder {
-    pub fn from_comms(comms: &CommsNode) -> Self {
-        Self::new(
-            comms.node_identity(),
-            comms.peer_manager(),
-            comms.executor().clone(),
-            comms.shutdown_signal(),
-        )
-    }
-
     pub fn new(
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
-        executor: runtime::Handle,
+        outbound_tx: mpsc::Sender<DhtOutboundRequest>,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
@@ -61,13 +51,19 @@ impl DhtBuilder {
             config: Default::default(),
             node_identity,
             peer_manager,
-            executor,
+            executor: None,
+            outbound_tx,
             shutdown_signal,
         }
     }
 
     pub fn with_config(mut self, config: DhtConfig) -> Self {
         self.config = config;
+        self
+    }
+
+    pub fn with_executor(mut self, executor: runtime::Handle) -> Self {
+        self.executor = Some(executor);
         self
     }
 
@@ -106,12 +102,16 @@ impl DhtBuilder {
         self
     }
 
+    /// Build a Dht object.
+    ///
+    /// Will panic if an executor is not given AND not in a tokio runtime context
     pub fn finish(self) -> Dht {
         Dht::new(
             self.config,
-            self.executor,
+            self.executor.unwrap_or(runtime::Handle::current()),
             self.node_identity,
             self.peer_manager,
+            self.outbound_tx,
             self.shutdown_signal,
         )
     }

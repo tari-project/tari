@@ -24,22 +24,28 @@ use futures::channel::mpsc;
 use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
-    builder::CommsNode,
-    connection_manager::PeerConnectionConfig,
-    control_service::ControlServiceConfig,
-    multiaddr::Multiaddr,
-    peer_manager::{peer_storage::PeerStorage, NodeIdentity, Peer, PeerFeatures},
-    pipeline::{ServicePipeline, SinkService},
+    backoff::ConstantBackoff,
+    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerStorage},
+    pipeline,
+    pipeline::SinkService,
+    transports::MemoryTransport,
     types::CommsDatabase,
     CommsBuilder,
+    CommsNode,
 };
 use tari_comms_dht::{envelope::NodeDestination, inbound::DecryptedDhtMessage, Dht, DhtBuilder};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
-use tari_test_utils::{async_assert_eventually, paths::create_temporary_data_path, random, runtime};
+use tari_test_utils::{async_assert_eventually, paths::create_temporary_data_path, random};
 use tower::ServiceBuilder;
 
-fn new_node_identity(control_service_address: Multiaddr) -> NodeIdentity {
-    NodeIdentity::random(&mut OsRng, control_service_address, PeerFeatures::COMMUNICATION_NODE).unwrap()
+fn new_node_identity() -> NodeIdentity {
+    let port = MemoryTransport::acquire_next_memsocket_port();
+    NodeIdentity::random(
+        &mut OsRng,
+        format!("/memory/{}", port).parse().unwrap(),
+        PeerFeatures::COMMUNICATION_NODE,
+    )
+    .unwrap()
 }
 
 fn create_peer_storage(peers: Vec<Peer>) -> CommsDatabase {
@@ -62,233 +68,233 @@ fn create_peer_storage(peers: Vec<Peer>) -> CommsDatabase {
     storage.into()
 }
 
-fn setup_comms_dht(
-    executor: tokio::runtime::Handle,
+async fn setup_comms_dht(
     node_identity: NodeIdentity,
     storage: CommsDatabase,
-    inbound_sink: mpsc::Sender<DecryptedDhtMessage>,
+    inbound_tx: mpsc::Sender<DecryptedDhtMessage>,
 ) -> (CommsNode, Dht)
 {
     // Create inbound and outbound channels
-    let (inbound_tx, inbound_rx) = mpsc::channel(10);
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
 
-    let comms = CommsBuilder::new(executor.clone())
-        .with_peer_storage(storage)
-        .with_inbound_sink(inbound_tx)
-        .with_outbound_stream(outbound_rx)
-        .configure_control_service(ControlServiceConfig {
-            listening_address: node_identity.public_address(),
-            ..Default::default()
-        })
-        .configure_peer_connections(PeerConnectionConfig {
-            listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
-            ..Default::default()
-        })
+    let comms = CommsBuilder::new()
+        // In this case the listener address and the public address are the same (/memory/...)
+        .with_listener_address(node_identity.public_address())
+        .with_transport(MemoryTransport)
         .with_node_identity(Arc::new(node_identity))
+        .with_peer_storage(storage)
+        .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(100)))
         .build()
-        .unwrap()
-        .start()
         .unwrap();
 
-    // Create a channel for outbound requests
-    let mut dht = DhtBuilder::from_comms(&comms)
-        .local_test()
-        .with_discovery_timeout(Duration::from_secs(60))
-        .finish();
+    let dht = DhtBuilder::new(
+        comms.node_identity(),
+        comms.peer_manager(),
+        outbound_tx,
+        comms.shutdown_signal(),
+    )
+    .local_test()
+    .with_executor(comms.executor().clone())
+    .with_discovery_timeout(Duration::from_secs(60))
+    .finish();
 
-    //---------------------------------- Inbound Pipeline --------------------------------------------//
+    let dht_outbound_layer = dht.outbound_middleware_layer();
 
-    // Connect inbound comms messages to the inbound pipeline and run it
-    let inbound_pipeline = ServicePipeline::new(
-        // Messages coming IN from comms to DHT
-        inbound_rx,
-        // Messages going OUT from DHT to connector (pubsub)
-        ServiceBuilder::new()
-            .layer(dht.inbound_middleware_layer())
-            .service(SinkService::new(inbound_sink)),
-    );
-    inbound_pipeline.spawn_with(executor.clone());
-
-    //---------------------------------- Outbound Pipeline --------------------------------------------//
-
-    //    // Connect outbound message pipeline to comms, and run it
-    let outbound_pipeline = ServicePipeline::new(
-        // Requests coming IN from services to DHT
-        dht.take_outbound_receiver().expect("take outbound receiver only once"),
-        // Messages going OUT from DHT to comms
-        ServiceBuilder::new()
-            .layer(dht.outbound_middleware_layer())
-            .service(SinkService::new(outbound_tx)),
-    );
-    outbound_pipeline.spawn_with(executor);
+    let comms = comms
+        .with_messaging_pipeline(
+            pipeline::Builder::new()
+                .outbound_buffer_size(10)
+                .with_outbound_pipeline(outbound_rx, |sink| {
+                    ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
+                })
+                .max_concurrent_inbound_tasks(10)
+                .with_inbound_pipeline(
+                    ServiceBuilder::new()
+                        .layer(dht.inbound_middleware_layer())
+                        .service(SinkService::new(inbound_tx)),
+                )
+                .finish(),
+        )
+        .spawn()
+        .await
+        .unwrap();
 
     (comms, dht)
 }
 
-#[test]
+#[tokio_macros::test]
 #[allow(non_snake_case)]
-fn dht_join_propagation() {
-    runtime::test_async(|rt| {
-        // Create 3 nodes where only Node B knows A and C, but A and C want to talk to each other
-        let node_A_identity = new_node_identity("/ip4/127.0.0.1/tcp/11113".parse::<Multiaddr>().unwrap());
-        let node_B_identity = new_node_identity("/ip4/127.0.0.1/tcp/11114".parse::<Multiaddr>().unwrap());
-        let node_C_identity = new_node_identity("/ip4/127.0.0.1/tcp/11115".parse::<Multiaddr>().unwrap());
+async fn dht_join_propagation() {
+    // Create 3 nodes where only Node B knows A and C, but A and C want to talk to each other
+    let node_A_identity = new_node_identity();
+    let node_B_identity = new_node_identity();
+    let node_C_identity = new_node_identity();
 
-        // Node A knows about Node B
-        let (tx, ims_rx_A) = mpsc::channel(1);
-        let (node_A_comms, node_A_dht) = setup_comms_dht(
-            rt.handle().clone(),
-            node_A_identity.clone(),
-            create_peer_storage(vec![node_B_identity.clone().into()]),
-            tx,
-        );
-        // Node B knows about Node A and C
-        let (tx, ims_rx_B) = mpsc::channel(1);
-        let (node_B_comms, node_B_dht) = setup_comms_dht(
-            rt.handle().clone(),
-            node_B_identity.clone(),
-            create_peer_storage(vec![node_A_identity.clone().into(), node_C_identity.clone().into()]),
-            tx,
-        );
-        // Node C knows about Node B
-        let (tx, ims_rx_C) = mpsc::channel(1);
-        let (node_C_comms, node_C_dht) = setup_comms_dht(
-            rt.handle().clone(),
-            node_C_identity.clone(),
-            create_peer_storage(vec![node_B_identity.clone().into()]),
-            tx,
-        );
+    // Node A knows about Node B
+    let (tx, ims_rx_A) = mpsc::channel(1);
+    let (node_A_comms, node_A_dht) = setup_comms_dht(
+        node_A_identity.clone(),
+        create_peer_storage(vec![node_B_identity.clone().into()]),
+        tx,
+    )
+    .await;
+    // Node B knows about Node A and C
+    let (tx, ims_rx_B) = mpsc::channel(1);
+    let (node_B_comms, node_B_dht) = setup_comms_dht(
+        node_B_identity.clone(),
+        create_peer_storage(vec![node_A_identity.clone().into(), node_C_identity.clone().into()]),
+        tx,
+    )
+    .await;
+    // Node C knows about Node B
+    let (tx, ims_rx_C) = mpsc::channel(1);
+    let (node_C_comms, node_C_dht) = setup_comms_dht(
+        node_C_identity.clone(),
+        create_peer_storage(vec![node_B_identity.clone().into()]),
+        tx,
+    )
+    .await;
 
-        rt.spawn(async move {
-            // Send a join request from Node A, through B to C. As all Nodes are in the same network region, once
-            // Node C receives the join request from Node A, it will send a direct join request back
-            // to A.
-            node_A_dht.dht_requester().send_join().await.unwrap();
+    // Send a join request from Node A, through B to C. As all Nodes are in the same network region, once
+    // Node C receives the join request from Node A, it will send a direct join request back
+    // to A.
+    node_A_dht.dht_requester().send_join().await.unwrap();
 
-            let node_A_peer_manager = node_A_comms.peer_manager();
-            let node_A_node_identity = node_A_comms.node_identity();
-            let node_C_peer_manager = node_C_comms.peer_manager();
-            let node_C_node_identity = node_C_comms.node_identity();
+    let node_A_peer_manager = node_A_comms.async_peer_manager();
+    let node_A_node_identity = node_A_comms.node_identity();
+    let node_C_peer_manager = node_C_comms.async_peer_manager();
+    let node_C_node_identity = node_C_comms.node_identity();
 
-            // Check that Node A knows about Node C and vice versa
-            async_assert_eventually!(
-                node_A_peer_manager.exists(node_C_node_identity.public_key()),
-                expect = true,
-                max_attempts = 10,
-                interval = Duration::from_millis(1000)
-            );
-            async_assert_eventually!(
-                node_C_peer_manager.exists(node_A_node_identity.public_key()),
-                expect = true,
-                max_attempts = 10,
-                interval = Duration::from_millis(500)
-            );
+    // Check that Node A knows about Node C and vice versa
+    async_assert_eventually!(
+        node_A_peer_manager
+            .exists(node_C_node_identity.public_key())
+            .await
+            .unwrap(),
+        expect = true,
+        max_attempts = 10,
+        interval = Duration::from_millis(1000)
+    );
+    async_assert_eventually!(
+        node_C_peer_manager
+            .exists(node_A_node_identity.public_key())
+            .await
+            .unwrap(),
+        expect = true,
+        max_attempts = 10,
+        interval = Duration::from_millis(500)
+    );
 
-            let node_C_peer = node_A_peer_manager
-                .find_by_public_key(node_C_node_identity.public_key())
-                .unwrap();
-            assert_eq!(&node_C_peer.features, node_C_node_identity.features());
+    let node_C_peer = node_A_peer_manager
+        .find_by_public_key(node_C_node_identity.public_key())
+        .await
+        .unwrap();
+    assert_eq!(&node_C_peer.features, node_C_node_identity.features());
 
-            // Make sure these variables only drop after the test is done
-            drop(ims_rx_A);
-            drop(ims_rx_B);
-            drop(ims_rx_C);
+    // Make sure these variables only drop after the test is done
+    drop(ims_rx_A);
+    drop(ims_rx_B);
+    drop(ims_rx_C);
 
-            drop(node_A_dht);
-            drop(node_B_dht);
-            drop(node_C_dht);
-            node_A_comms.shutdown().unwrap();
-            node_B_comms.shutdown().unwrap();
-            node_C_comms.shutdown().unwrap();
-        });
-    });
+    drop(node_A_dht);
+    drop(node_B_dht);
+    drop(node_C_dht);
+
+    node_A_comms.shutdown().await;
+    node_B_comms.shutdown().await;
+    node_C_comms.shutdown().await;
 }
 
-#[test]
+#[tokio_macros::test]
 #[allow(non_snake_case)]
-fn dht_discover_propagation() {
+async fn dht_discover_propagation() {
     // Create 4 nodes where A knows B, B knows A and C, C knows B and D, and D knows C
-    let node_A_identity = new_node_identity("/ip4/127.0.0.1/tcp/11116".parse().unwrap());
-    let node_B_identity = new_node_identity("/ip4/127.0.0.1/tcp/11117".parse().unwrap());
-    let node_C_identity = new_node_identity("/ip4/127.0.0.1/tcp/11118".parse().unwrap());
-    let node_D_identity = new_node_identity("/ip4/127.0.0.1/tcp/11119".parse().unwrap());
+    let node_A_identity = new_node_identity();
+    let node_B_identity = new_node_identity();
+    let node_C_identity = new_node_identity();
+    let node_D_identity = new_node_identity();
 
-    runtime::test_async(|rt| {
-        // Node A knows about Node B
-        let (tx, ims_rx_A) = mpsc::channel(1);
-        let (node_A_comms, node_A_dht) = setup_comms_dht(
-            rt.handle().clone(),
-            node_A_identity.clone(),
-            create_peer_storage(vec![node_B_identity.clone().into()]),
-            tx,
-        );
-        // Node B knows about Node C
-        let (tx, ims_rx_B) = mpsc::channel(1);
-        let (node_B_comms, node_B_dht) = setup_comms_dht(
-            rt.handle().clone(),
-            node_B_identity.clone(),
-            create_peer_storage(vec![node_C_identity.clone().into()]),
-            tx,
-        );
-        // Node C knows about Node D
-        let (tx, ims_rx_C) = mpsc::channel(1);
-        let (node_C_comms, node_C_dht) = setup_comms_dht(
-            rt.handle().clone(),
-            node_C_identity.clone(),
-            create_peer_storage(vec![node_D_identity.clone().into()]),
-            tx,
-        );
-        // Node C knows no one
-        let (tx, ims_rx_D) = mpsc::channel(1);
-        let (node_D_comms, node_D_dht) = setup_comms_dht(
-            rt.handle().clone(),
-            node_D_identity.clone(),
-            create_peer_storage(vec![]),
-            tx,
-        );
+    // Node A knows about Node B
+    let (tx, ims_rx_A) = mpsc::channel(1);
+    let (node_A_comms, node_A_dht) = setup_comms_dht(
+        node_A_identity.clone(),
+        create_peer_storage(vec![node_B_identity.clone().into()]),
+        tx,
+    )
+    .await;
+    // Node B knows about Node C
+    let (tx, ims_rx_B) = mpsc::channel(1);
+    let (node_B_comms, node_B_dht) = setup_comms_dht(
+        node_B_identity.clone(),
+        create_peer_storage(vec![node_C_identity.clone().into()]),
+        tx,
+    )
+    .await;
+    // Node C knows about Node D
+    let (tx, ims_rx_C) = mpsc::channel(1);
+    let (node_C_comms, node_C_dht) = setup_comms_dht(
+        node_C_identity.clone(),
+        create_peer_storage(vec![node_D_identity.clone().into()]),
+        tx,
+    )
+    .await;
+    // Node C knows no one
+    let (tx, ims_rx_D) = mpsc::channel(1);
+    let (node_D_comms, node_D_dht) = setup_comms_dht(node_D_identity.clone(), create_peer_storage(vec![]), tx).await;
 
-        rt.spawn(async move {
-            // Send a discover request from Node A, through B and C, to D. Once Node D
-            // receives the discover request from Node A, it should send a  discovery response
-            // request back to A at which time this call will resolve (or timeout).
-            node_A_dht
-                .discovery_service_requester()
-                .discover_peer(node_D_identity.public_key().clone(), None, NodeDestination::Unknown)
-                .await
-                .unwrap();
+    // Send a discover request from Node A, through B and C, to D. Once Node D
+    // receives the discover request from Node A, it should send a  discovery response
+    // request back to A at which time this call will resolve (or timeout).
+    node_A_dht
+        .discovery_service_requester()
+        .discover_peer(node_D_identity.public_key().clone(), None, NodeDestination::Unknown)
+        .await
+        .unwrap();
 
-            let node_A_peer_manager = node_A_comms.peer_manager();
-            let node_A_node_identity = node_A_comms.node_identity();
-            let node_B_peer_manager = node_B_comms.peer_manager();
-            let node_B_node_identity = node_B_comms.node_identity();
-            let node_C_peer_manager = node_C_comms.peer_manager();
-            let node_C_node_identity = node_C_comms.node_identity();
-            let node_D_peer_manager = node_D_comms.peer_manager();
-            let node_D_node_identity = node_D_comms.node_identity();
+    let node_A_peer_manager = node_A_comms.async_peer_manager();
+    let node_A_node_identity = node_A_comms.node_identity();
+    let node_B_peer_manager = node_B_comms.async_peer_manager();
+    let node_B_node_identity = node_B_comms.node_identity();
+    let node_C_peer_manager = node_C_comms.async_peer_manager();
+    let node_C_node_identity = node_C_comms.node_identity();
+    let node_D_peer_manager = node_D_comms.async_peer_manager();
+    let node_D_node_identity = node_D_comms.node_identity();
 
-            // Check that all the nodes know about each other in the chain and the discovery worked
-            assert!(node_A_peer_manager.exists(node_D_node_identity.public_key()));
-            assert!(node_B_peer_manager.exists(node_A_node_identity.public_key()));
-            assert!(node_C_peer_manager.exists(node_B_node_identity.public_key()));
-            assert!(node_D_peer_manager.exists(node_C_node_identity.public_key()));
-            assert!(node_D_peer_manager.exists(node_A_node_identity.public_key()));
+    // Check that all the nodes know about each other in the chain and the discovery worked
+    assert!(node_A_peer_manager
+        .exists(node_D_node_identity.public_key())
+        .await
+        .unwrap());
+    assert!(node_B_peer_manager
+        .exists(node_A_node_identity.public_key())
+        .await
+        .unwrap());
+    assert!(node_C_peer_manager
+        .exists(node_B_node_identity.public_key())
+        .await
+        .unwrap());
+    assert!(node_D_peer_manager
+        .exists(node_C_node_identity.public_key())
+        .await
+        .unwrap());
+    assert!(node_D_peer_manager
+        .exists(node_A_node_identity.public_key())
+        .await
+        .unwrap());
 
-            // Make sure these variables only drop after the test is done
-            drop(ims_rx_A);
-            drop(ims_rx_B);
-            drop(ims_rx_C);
-            drop(ims_rx_D);
+    // Make sure these variables only drop after the test is done
+    drop(ims_rx_A);
+    drop(ims_rx_B);
+    drop(ims_rx_C);
+    drop(ims_rx_D);
 
-            drop(node_A_dht);
-            drop(node_B_dht);
-            drop(node_C_dht);
-            drop(node_D_dht);
+    drop(node_A_dht);
+    drop(node_B_dht);
+    drop(node_C_dht);
+    drop(node_D_dht);
 
-            node_A_comms.shutdown().unwrap();
-            node_B_comms.shutdown().unwrap();
-            node_C_comms.shutdown().unwrap();
-            node_D_comms.shutdown().unwrap();
-        });
-    });
+    node_A_comms.shutdown().await;
+    node_B_comms.shutdown().await;
+    node_C_comms.shutdown().await;
+    node_D_comms.shutdown().await;
 }

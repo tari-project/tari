@@ -23,7 +23,7 @@ use derive_error::Error;
 use log::*;
 use tari_comms::{
     multiaddr,
-    peer_manager::{node_id::NodeIdError, node_identity::NodeIdentityError},
+    peer_manager::{node_id::NodeIdError, NodeIdentityError},
 };
 use tari_crypto::{
     signatures::SchnorrSignatureError,

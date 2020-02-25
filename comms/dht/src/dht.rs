@@ -37,8 +37,7 @@ use futures::{channel::mpsc, future, Future};
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
-    message::InboundMessage,
-    outbound_message_service::OutboundMessage,
+    message::{InboundMessage, OutboundMessage},
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
 };
 use tari_shutdown::ShutdownSignal;
@@ -56,9 +55,7 @@ pub struct Dht {
     /// Dht configuration
     config: DhtConfig,
     /// Used to create a OutboundMessageRequester.
-    outbound_sender: mpsc::Sender<DhtOutboundRequest>,
-    /// Receiver for DHT outbound requests.
-    outbound_receiver: Option<mpsc::Receiver<DhtOutboundRequest>>,
+    outbound_tx: mpsc::Sender<DhtOutboundRequest>,
     /// Sender for DHT requests
     dht_sender: mpsc::Sender<DhtRequest>,
     /// Sender for DHT requests
@@ -71,10 +68,10 @@ impl Dht {
         executor: runtime::Handle,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
+        outbound_tx: mpsc::Sender<DhtOutboundRequest>,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
-        let (outbound_sender, outbound_receiver) = mpsc::channel(config.outbound_buffer_size);
         let (dht_sender, dht_receiver) = mpsc::channel(10);
         let (discovery_sender, discovery_receiver) = mpsc::channel(10);
 
@@ -82,8 +79,7 @@ impl Dht {
             node_identity,
             peer_manager,
             config,
-            outbound_sender,
-            outbound_receiver: Some(outbound_receiver),
+            outbound_tx,
             dht_sender,
             discovery_sender,
         };
@@ -130,7 +126,7 @@ impl Dht {
 
     /// Return a new OutboundMessageRequester connected to the receiver
     pub fn outbound_requester(&self) -> OutboundMessageRequester {
-        OutboundMessageRequester::new(self.outbound_sender.clone())
+        OutboundMessageRequester::new(self.outbound_tx.clone())
     }
 
     /// Returns a requester for the DhtActor associated with this instance
@@ -141,12 +137,6 @@ impl Dht {
     /// Returns a requester for the DhtDiscoveryService associated with this instance
     pub fn discovery_service_requester(&self) -> DhtDiscoveryRequester {
         DhtDiscoveryRequester::new(self.discovery_sender.clone(), self.config.discovery_request_timeout)
-    }
-
-    /// Takes ownership of the receiver for DhtOutboundRequest. Will return None if ownership
-    /// has already been taken.
-    pub fn take_outbound_receiver(&mut self) -> Option<mpsc::Receiver<DhtOutboundRequest>> {
-        self.outbound_receiver.take()
     }
 
     /// Returns an the full DHT stack as a `tower::layer::Layer`. This can be composed with
@@ -269,6 +259,7 @@ impl Dht {
 #[cfg(test)]
 mod test {
     use crate::{
+        crypt,
         envelope::DhtMessageFlags,
         outbound::mock::create_outbound_service_mock,
         proto::envelope::DhtMessageType,
@@ -286,28 +277,24 @@ mod test {
     use tari_comms::{
         message::{MessageExt, MessageFlags},
         pipeline::SinkService,
-        utils::crypt::{encrypt, generate_ecdh_secret},
         wrap_in_envelope_body,
     };
     use tari_shutdown::Shutdown;
-    use tokio::{runtime::Runtime, time};
+    use tokio::{runtime, time};
     use tower::{layer::Layer, Service};
 
-    #[test]
-    fn stack_unencrypted() {
+    #[tokio_macros::test_basic]
+    async fn stack_unencrypted() {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
-        let mut rt = Runtime::new().unwrap();
+
+        // Dummy out channel, we are not testing outbound here.
+        let (out_tx, _) = mpsc::channel(10);
 
         let shutdown = Shutdown::new();
-        let dht = DhtBuilder::new(
-            Arc::clone(&node_identity),
-            peer_manager,
-            rt.handle().clone(),
-            shutdown.to_signal(),
-        )
-        .local_test()
-        .finish();
+        let dht = DhtBuilder::new(Arc::clone(&node_identity), peer_manager, out_tx, shutdown.to_signal())
+            .local_test()
+            .finish();
 
         let (out_tx, mut out_rx) = mpsc::channel(10);
 
@@ -325,32 +312,28 @@ mod test {
             MessageFlags::empty(),
         );
 
-        let msg = rt.block_on(async move {
+        let msg = {
             service.call(inbound_message).await.unwrap();
             let msg = time::timeout(Duration::from_secs(10), out_rx.next())
                 .await
                 .unwrap()
                 .unwrap();
             msg.success().unwrap().decode_part::<Vec<u8>>(0).unwrap().unwrap()
-        });
+        };
 
         assert_eq!(msg, b"secret");
     }
 
-    #[test]
-    fn stack_encrypted() {
+    #[tokio_macros::test_basic]
+    async fn stack_encrypted() {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
 
-        let mut rt = Runtime::new().unwrap();
+        // Dummy out channel, we are not testing outbound here.
+        let (out_tx, _) = mpsc::channel(10);
+
         let shutdown = Shutdown::new();
-        let dht = DhtBuilder::new(
-            Arc::clone(&node_identity),
-            peer_manager,
-            rt.handle().clone(),
-            shutdown.to_signal(),
-        )
-        .finish();
+        let dht = DhtBuilder::new(Arc::clone(&node_identity), peer_manager, out_tx, shutdown.to_signal()).finish();
 
         let (out_tx, mut out_rx) = mpsc::channel(10);
 
@@ -358,8 +341,8 @@ mod test {
 
         let msg = wrap_in_envelope_body!(b"secret".to_vec()).unwrap();
         // Encrypt for self
-        let ecdh_key = generate_ecdh_secret(node_identity.secret_key(), node_identity.public_key());
-        let encrypted_bytes = encrypt(&ecdh_key, &msg.to_encoded_bytes().unwrap()).unwrap();
+        let ecdh_key = crypt::generate_ecdh_secret(node_identity.secret_key(), node_identity.public_key());
+        let encrypted_bytes = crypt::encrypt(&ecdh_key, &msg.to_encoded_bytes().unwrap()).unwrap();
         let dht_envelope = make_dht_envelope(&node_identity, encrypted_bytes, DhtMessageFlags::ENCRYPTED);
         let inbound_message = make_comms_inbound_message(
             &node_identity,
@@ -367,39 +350,38 @@ mod test {
             MessageFlags::empty(),
         );
 
-        let msg = rt.block_on(async move {
+        let msg = {
             service.call(inbound_message).await.unwrap();
             let msg = time::timeout(Duration::from_secs(10), out_rx.next())
                 .await
                 .unwrap()
                 .unwrap();
             msg.success().unwrap().decode_part::<Vec<u8>>(0).unwrap().unwrap()
-        });
+        };
 
         assert_eq!(msg, b"secret");
     }
 
-    #[test]
-    fn stack_forward() {
+    #[tokio_macros::test_basic]
+    async fn stack_forward() {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
 
-        let mut rt = Runtime::new().unwrap();
         let shutdown = Shutdown::new();
-        let mut dht = DhtBuilder::new(
-            Arc::clone(&node_identity),
-            peer_manager,
-            rt.handle().clone(),
-            shutdown.to_signal(),
-        )
-        .finish();
 
         let (next_service_tx, mut next_service_rx) = mpsc::channel(10);
         let (oms_requester, oms_mock) = create_outbound_service_mock(1);
+
         // Send all outbound requests to the mock
-        dht.outbound_sender = oms_requester.get_mpsc_sender();
+        let dht = DhtBuilder::new(
+            Arc::clone(&node_identity),
+            peer_manager,
+            oms_requester.get_mpsc_sender(),
+            shutdown.to_signal(),
+        )
+        .finish();
         let oms_mock_state = oms_mock.get_state();
-        rt.spawn(oms_mock.run());
+        runtime::Handle::current().spawn(oms_mock.run());
 
         let mut service = dht.inbound_middleware_layer().layer(SinkService::new(next_service_tx));
 
@@ -407,8 +389,8 @@ mod test {
 
         // Encrypt for someone else
         let node_identity2 = make_node_identity();
-        let ecdh_key = generate_ecdh_secret(node_identity2.secret_key(), node_identity2.public_key());
-        let encrypted_bytes = encrypt(&ecdh_key, &msg.to_encoded_bytes().unwrap()).unwrap();
+        let ecdh_key = crypt::generate_ecdh_secret(node_identity2.secret_key(), node_identity2.public_key());
+        let encrypted_bytes = crypt::encrypt(&ecdh_key, &msg.to_encoded_bytes().unwrap()).unwrap();
         let dht_envelope = make_dht_envelope(&node_identity, encrypted_bytes, DhtMessageFlags::ENCRYPTED);
 
         let origin_sig = dht_envelope
@@ -426,7 +408,7 @@ mod test {
             MessageFlags::empty(),
         );
 
-        rt.block_on(service.call(inbound_message)).unwrap();
+        service.call(inbound_message).await.unwrap();
 
         assert_eq!(oms_mock_state.call_count(), 1);
         let (params, _) = oms_mock_state.pop_call().unwrap();
@@ -438,20 +420,16 @@ mod test {
         assert!(next_service_rx.try_next().is_err());
     }
 
-    #[test]
-    fn stack_filter_saf_message() {
+    #[tokio_macros::test_basic]
+    async fn stack_filter_saf_message() {
         let node_identity = make_client_identity();
         let peer_manager = make_peer_manager();
 
-        let mut rt = Runtime::new().unwrap();
+        // Dummy out channel, we are not testing outbound here.
+        let (out_tx, _) = mpsc::channel(10);
+
         let shutdown = Shutdown::new();
-        let dht = DhtBuilder::new(
-            Arc::clone(&node_identity),
-            peer_manager,
-            rt.handle().clone(),
-            shutdown.to_signal(),
-        )
-        .finish();
+        let dht = DhtBuilder::new(Arc::clone(&node_identity), peer_manager, out_tx, shutdown.to_signal()).finish();
 
         let (next_service_tx, mut next_service_rx) = mpsc::channel(10);
 
@@ -473,8 +451,7 @@ mod test {
             MessageFlags::empty(),
         );
 
-        let err = rt.block_on(service.call(inbound_message));
-        assert!(err.is_err());
+        service.call(inbound_message).await.unwrap_err();
         // This seems like the best way to tell that an open channel is empty without the test blocking indefinitely
         assert_eq!(
             format!("{}", next_service_rx.try_next().unwrap_err()),

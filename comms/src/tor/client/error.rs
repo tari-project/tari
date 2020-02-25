@@ -39,6 +39,8 @@ pub enum TorClientError {
     ServerNoResponse,
     /// Server did not return a ServiceID for ADD_ONION command
     AddOnionNoServiceId,
+    /// The given service id was invalid
+    InvalidServiceId,
 }
 
 impl From<LinesCodecError> for TorClientError {

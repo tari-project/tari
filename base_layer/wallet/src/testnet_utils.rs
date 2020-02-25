@@ -42,8 +42,9 @@ use log::*;
 use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng, RngCore};
 use std::{iter, sync::Arc, thread, time::Duration};
 use tari_comms::{
-    control_service::ControlServiceConfig,
-    peer_manager::{NodeIdentity, PeerFeatures},
+    multiaddr::Multiaddr,
+    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    transports::MemoryTransport,
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_comms_dht::DhtConfig;
@@ -57,7 +58,7 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
     tari_utilities::hex::Hex,
 };
-use tari_p2p::initialization::CommsConfig;
+use tari_p2p::{initialization::CommsConfig, transport::TransportType};
 use tari_test_utils::collect_stream;
 use tokio::runtime::Runtime;
 
@@ -103,33 +104,25 @@ pub fn random_string(len: usize) -> String {
 /// Create a wallet for testing purposes
 pub fn create_wallet(
     secret_key: CommsSecretKey,
-    net_address: String,
+    public_address: Multiaddr,
     data_path: String,
 ) -> Wallet<WalletMemoryDatabase, TransactionMemoryDatabase, OutputManagerMemoryDatabase, ContactsServiceMemoryDatabase>
 {
     let runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
 
-    let node_id = NodeIdentity::new(
-        secret_key,
-        net_address.as_str().parse().expect("Invalid Net Address"),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .expect("Could not construct Node Id");
+    let node_identity = Arc::new(
+        NodeIdentity::new(secret_key, public_address.clone(), PeerFeatures::COMMUNICATION_NODE)
+            .expect("Could not construct Node Identity"),
+    );
     let comms_config = CommsConfig {
-        node_identity: Arc::new(node_id.clone()),
-        peer_connection_listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
-        socks_proxy_address: None,
-        control_service: ControlServiceConfig {
-            listening_address: node_id.public_address(),
-            socks_proxy_address: None,
-            public_peer_address: None,
-            requested_connection_timeout: Duration::from_millis(500),
+        transport_type: TransportType::Memory {
+            listener_address: public_address,
         },
-        establish_connection_timeout: Duration::from_secs(2),
+        node_identity,
         datastore_path: data_path,
         peer_database_name: random_string(8),
-        inbound_buffer_size: 100,
+        max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_millis(500),
@@ -152,6 +145,11 @@ pub fn create_wallet(
         ContactsServiceMemoryDatabase::new(),
     )
     .expect("Could not create Wallet")
+}
+
+pub fn get_next_memory_address() -> Multiaddr {
+    let port = MemoryTransport::acquire_next_memsocket_port();
+    format!("/memory/{}", port).parse().unwrap()
 }
 
 /// This function will generate a set of test data for the supplied wallet. Takes a few seconds to complete
@@ -197,10 +195,6 @@ pub fn generate_wallet_test_data<
     .collect();
     let mut message_index = 0;
 
-    // attempt to avoid colliding ports for if two wallets are run on the same machine using this test data generation
-    // function
-    let random_port_offset = (OsRng.next_u64() % 100) as usize;
-
     // Generate contacts
     let mut generated_contacts = Vec::new();
     for i in 0..names.len() {
@@ -213,14 +207,8 @@ pub fn generate_wallet_test_data<
                 public_key: public_key.clone(),
             }))?;
 
-        wallet.set_base_node_peer(
-            public_key.clone(),
-            format!("/ip4/127.0.0.1/tcp/{}", 15200 + i + random_port_offset).to_string(),
-        )?;
-        generated_contacts.push((
-            secret_key,
-            format!("/ip4/127.0.0.1/tcp/{}", 15200 + i + random_port_offset).to_string(),
-        ));
+        let addr = get_next_memory_address();
+        generated_contacts.push((secret_key, addr));
     }
     let contacts = wallet.runtime.block_on(wallet.contacts_service.get_contacts())?;
     assert_eq!(contacts.len(), names.len());
@@ -278,7 +266,45 @@ pub fn generate_wallet_test_data<
     }
     info!(target: LOG_TARGET, "Bob Wallet created");
 
+    let alice_peer = Peer::new(
+        wallet_alice.comms.node_identity().public_key().clone(),
+        wallet_alice.comms.node_identity().node_id().clone(),
+        vec![wallet_alice.comms.listening_address().clone()].into(),
+        PeerFlags::empty(),
+        PeerFeatures::COMMUNICATION_NODE,
+    );
+
+    wallet.comms.peer_manager().add_peer(alice_peer.clone())?;
+    let bob_peer = Peer::new(
+        wallet_bob.comms.node_identity().public_key().clone(),
+        wallet_bob.comms.node_identity().node_id().clone(),
+        vec![wallet_bob.comms.listening_address().clone()].into(),
+        PeerFlags::empty(),
+        PeerFeatures::COMMUNICATION_NODE,
+    );
+
+    wallet.comms.peer_manager().add_peer(bob_peer.clone())?;
+
+    wallet
+        .runtime
+        .block_on(
+            wallet
+                .comms
+                .connection_manager()
+                .dial_peer(wallet_alice.comms.node_identity().node_id().clone()),
+        )
+        .unwrap();
+    wallet
+        .runtime
+        .block_on(
+            wallet
+                .comms
+                .connection_manager()
+                .dial_peer(wallet_bob.comms.node_identity().node_id().clone()),
+        )
+        .unwrap();
     info!(target: LOG_TARGET, "Starting to execute test transactions");
+
     // Completed TX
     wallet.runtime.block_on(wallet.transaction_service.send_transaction(
         contacts[0].public_key.clone(),
@@ -358,20 +384,20 @@ pub fn generate_wallet_test_data<
     message_index = (message_index + 1) % messages.len();
 
     // Pending Outbound
-    wallet.runtime.block_on(wallet.transaction_service.send_transaction(
+    let _ = wallet.runtime.block_on(wallet.transaction_service.send_transaction(
         contacts[2].public_key.clone(),
         MicroTari::from(2_500_000),
         MicroTari::from(107),
         messages[message_index].clone(),
-    ))?;
+    ));
     message_index = (message_index + 1) % messages.len();
 
-    wallet.runtime.block_on(wallet.transaction_service.send_transaction(
+    let _ = wallet.runtime.block_on(wallet.transaction_service.send_transaction(
         contacts[3].public_key.clone(),
         MicroTari::from(3_512_000),
         MicroTari::from(117),
         messages[message_index].clone(),
-    ))?;
+    ));
     message_index = (message_index + 1) % messages.len();
 
     // Make sure that the messages have been received by the alice and bob wallets before they start sending messages so
@@ -394,7 +420,6 @@ pub fn generate_wallet_test_data<
             timeout = Duration::from_secs(60)
         )
     });
-
     // Make sure that the messages have been received by the alice and bob wallets before they start sending messages so
     // that they have the wallet in their peer_managers
     let alice_event_stream = wallet_alice.transaction_service.get_event_stream_fused();

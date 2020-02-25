@@ -22,15 +22,10 @@
 
 use derive_error::Error;
 use std::io;
-use tari_crypto::tari_utilities::ByteArrayError;
 
 #[derive(Debug, Error)]
 pub enum NoiseError {
     SnowError(snow::Error),
-    /// Unable to determine the peer's static key after protocol completed
-    PeerPublicStaticKeyUnknown,
-    #[error(no_from)]
-    InvalidCommsPublicKey(ByteArrayError),
     #[error(no_from)]
     HandshakeFailed(io::Error),
 }

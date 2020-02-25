@@ -1,9 +1,9 @@
 {
-  "node_id": "9bc05c37b5e2af2fda98e99e768d5426cecf83b9f5692d6a4f3c12b6ffe5c58a",
-  "public_key": "d6f64db85ccd90407f20930dadba37f09ca776c334c16d4d48f984de114e7a63",
+  "node_id": "62bb030909d58160624e52af48",
+  "public_key": "d4b5066214a8568cb636cb8b734117f213a59336a73ce3fc012eaf858a3fda38",
   "features": {
     "bits": 3
   },
-  "secret_key": "c644dadfc2a3bf7c5872342b94748809f5c6c490bfcc01903f303507a1cc640c",
-  "control_service_address": "/ip4/127.0.0.1/tcp/33445"
+  "secret_key": "019388b67c5bfba732b6441f8cc5118a5547f8dea85e110da4fdd4c19936970a",
+  "public_address": "/ip4/127.0.0.1/tcp/33445"
 }

@@ -20,115 +20,105 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use super::{consts, placeholder::PlaceholderService, CommsShutdown};
 use crate::{
     backoff::{Backoff, BoxedBackoff, ExponentialBackoff},
-    builder::null_sink::NullSink,
-    connection::{ConnectionError, PeerConnectionError, ZmqContext},
+    bounded_executor::BoundedExecutor,
     connection_manager::{
-        actor::{ConnectionManagerActor, ConnectionManagerRequest},
         ConnectionManager,
-        ConnectionManagerDialer,
+        ConnectionManagerConfig,
         ConnectionManagerError,
+        ConnectionManagerEvent,
+        ConnectionManagerRequest,
         ConnectionManagerRequester,
-        PeerConnectionConfig,
     },
-    control_service::{ControlService, ControlServiceConfig, ControlServiceError, ControlServiceHandle},
-    inbound_message_service::inbound_message_service::InboundMessageService,
-    message::{FrameSet, InboundMessage},
-    outbound_message_service::{
-        OutboundEventPublisher,
-        OutboundEventSubscription,
-        OutboundMessage,
-        OutboundMessageService,
-        OutboundServiceConfig,
-        OutboundServiceError,
-    },
-    peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
-    types::CommsDatabase,
+    message::InboundMessage,
+    multiaddr::Multiaddr,
+    noise::NoiseConfig,
+    peer_manager::{AsyncPeerManager, NodeIdentity, PeerManager, PeerManagerError},
+    pipeline,
+    protocol::{messaging, messaging::MessagingProtocol, ProtocolNotification, Protocols},
+    tor,
+    transports::{SocksTransport, TcpTransport, Transport},
+    types::{CommsDatabase, CommsSubstream},
 };
 use derive_error::Error;
-use futures::{channel::mpsc, stream, Sink, Stream};
+use futures::{channel::mpsc, AsyncRead, AsyncWrite, StreamExt};
 use log::*;
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt, fmt::Debug, sync::Arc, time::Duration};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{runtime, sync::broadcast};
+use tokio::{runtime, sync::broadcast, time};
+use tower::Service;
 
 const LOG_TARGET: &str = "comms::builder";
 
 #[derive(Debug, Error)]
 pub enum CommsBuilderError {
     PeerManagerError(PeerManagerError),
-    InboundMessageServiceError(ConnectionError),
-    OutboundServiceError(OutboundServiceError),
+    ConnectionManagerError(ConnectionManagerError),
     /// Node identity not set. Call `with_node_identity(node_identity)` on [CommsBuilder]
     NodeIdentityNotSet,
-    DatastoreUndefined,
+    /// The PeerStorage was not provided to the CommsBuilder. Use `with_peer_storage` to set it.
+    PeerStorageNotProvided,
+    /// The messaging pipeline was not provided to the CommsBuilder. Use `with_messaging_pipeline` to set it.
+    /// pipeline.
+    MessagingPiplineNotProvided,
+    /// Unable to receive a ConnectionManagerEvent within timeout
+    ConnectionManagerEventStreamTimeout,
+    /// ConnectionManagerEvent stream unexpectedly closed
+    ConnectionManagerEventStreamClosed,
+    /// Receiving on ConnectionManagerEvent stream lagged unexpectedly
+    ConnectionManagerEventStreamLagged,
 }
-
-#[derive(Clone)]
-pub struct CommsBuilderConfig {
-    inbound_message_buffer_size: usize,
-    inbound_message_sink_buffer_size: usize,
-}
-
-impl Default for CommsBuilderConfig {
-    fn default() -> Self {
-        Self {
-            inbound_message_buffer_size: 1000,
-            inbound_message_sink_buffer_size: 1000,
-        }
-    }
-}
-
-type CommsConnectionManagerActor =
-    ConnectionManagerActor<ConnectionManagerDialer, mpsc::Receiver<ConnectionManagerRequest>>;
 
 /// The `CommsBuilder` provides a simple builder API for getting Tari comms p2p messaging up and running.
-///
-/// The [build] method will return an error if any required builder methods are not called. These
-/// are detailed further down on the method docs.
-pub struct CommsBuilder<TInSink, TOutStream> {
-    zmq_context: ZmqContext,
+pub struct CommsBuilder<TTransport> {
     peer_storage: Option<CommsDatabase>,
-    control_service_config: Option<ControlServiceConfig>,
-    outbound_service_config: Option<OutboundServiceConfig>,
-    inbound_sink: Option<TInSink>,
-    outbound_stream: Option<TOutStream>,
     node_identity: Option<Arc<NodeIdentity>>,
-    peer_conn_config: Option<PeerConnectionConfig>,
-    comms_builder_config: Option<CommsBuilderConfig>,
-    executor: runtime::Handle,
-    oms_backoff: Option<BoxedBackoff>,
-    on_shutdown: Option<Box<dyn FnOnce() + Send + Sync>>,
+    transport: Option<TTransport>,
+    executor: Option<runtime::Handle>,
+    protocols: Option<Protocols<CommsSubstream>>,
+    dial_backoff: Option<BoxedBackoff>,
+    hidden_service: Option<tor::HiddenService>,
+    connection_manager_config: ConnectionManagerConfig,
+    shutdown: Shutdown,
 }
 
-impl CommsBuilder<NullSink<InboundMessage, mpsc::SendError>, stream::Empty<OutboundMessage>> {
+impl CommsBuilder<TcpTransport> {
     /// Create a new CommsBuilder
-    pub fn new(executor: runtime::Handle) -> Self {
-        let zmq_context = ZmqContext::new();
-
+    pub fn new() -> Self {
         Self {
-            zmq_context,
-            control_service_config: None,
-            peer_conn_config: None,
-            inbound_sink: Some(NullSink::new()),
-            outbound_stream: Some(stream::empty()),
-            outbound_service_config: None,
             peer_storage: None,
             node_identity: None,
-            comms_builder_config: None,
-            on_shutdown: None,
-            oms_backoff: Some(Box::new(ExponentialBackoff::default())),
-            executor,
+            transport: Some(Self::default_tcp_transport()),
+            dial_backoff: Some(Box::new(ExponentialBackoff::default())),
+            executor: None,
+            protocols: None,
+            hidden_service: None,
+            connection_manager_config: ConnectionManagerConfig::default(),
+            shutdown: Shutdown::new(),
         }
+    }
+
+    fn default_tcp_transport() -> TcpTransport {
+        let mut tcp = TcpTransport::new();
+        tcp.set_nodelay(true);
+        tcp
     }
 }
 
-impl<TInSink, TOutStream> CommsBuilder<TInSink, TOutStream>
+impl<TTransport> CommsBuilder<TTransport>
 where
-    TInSink: Sink<InboundMessage, Error = mpsc::SendError> + Unpin + Send + 'static,
-    TOutStream: Stream<Item = OutboundMessage> + Send + Sync + Unpin + 'static,
+    TTransport: Transport + Unpin + Send + Sync + Clone + 'static,
+    TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
 {
+    /// Set the runtime handle to use for spawning tasks. If this is not set the handle that is executing
+    /// `CommsBuilder::spawn` will be used, so this will rarely need to be explicitly set.
+    pub fn with_executor(mut self, handle: runtime::Handle) -> Self {
+        self.executor = Some(handle);
+        self
+    }
+
     /// Set the [NodeIdentity] for this comms instance. This is required.
     ///
     /// [OutboundMessagePool]: ../../outbound_message_service/index.html#outbound-message-pool
@@ -137,98 +127,119 @@ where
         self
     }
 
-    /// Set the peer storage database to use. This is optional.
+    pub fn with_listener_address(mut self, listener_address: Multiaddr) -> Self {
+        self.connection_manager_config.listener_address = listener_address;
+        self
+    }
+
+    /// The maximum number of connection tasks that will be spawned at the same time. Once this limit is reached, peers
+    /// attempting to connect will have to wait for another connection attempt to complete.
+    pub fn with_max_simultaneous_inbound_connects(mut self, max_simultaneous_inbound_connects: usize) -> Self {
+        self.connection_manager_config.max_simultaneous_inbound_connects = max_simultaneous_inbound_connects;
+        self
+    }
+
+    /// The number of dial attempts to make before giving up.
+    pub fn with_max_dial_attempts(mut self, max_dial_attempts: usize) -> Self {
+        self.connection_manager_config.max_dial_attempts = max_dial_attempts;
+        self
+    }
+
+    /// Set the peer storage database to use.
     pub fn with_peer_storage(mut self, peer_storage: CommsDatabase) -> Self {
         self.peer_storage = Some(peer_storage);
         self
     }
 
-    /// Configure inbound message publisher/subscriber buffer size. This is optional
-    pub fn configure_comms_builder_config(mut self, config: CommsBuilderConfig) -> Self {
-        self.comms_builder_config = Some(config);
-        self
+    /// Configure the `CommsBuilder` to build a node which communicates using the given `tor::HiddenService`.
+    pub fn configure_from_hidden_service(mut self, hidden_service: tor::HiddenService) -> CommsBuilder<SocksTransport> {
+        // Set the listener address to be the address (usually local) to which tor will forward all traffic
+        self.connection_manager_config.listener_address = hidden_service.proxied_address().clone();
+
+        CommsBuilder {
+            // Set the socks transport configured for this hidden service
+            transport: Some(hidden_service.get_transport()),
+            // Set the hidden service.
+            hidden_service: Some(hidden_service),
+            peer_storage: self.peer_storage,
+            node_identity: self.node_identity,
+            executor: self.executor,
+            protocols: self.protocols,
+            dial_backoff: self.dial_backoff,
+            connection_manager_config: self.connection_manager_config,
+            shutdown: self.shutdown,
+        }
     }
 
-    /// Configure the [ControlService]. This is optional.
-    ///
-    /// [ControlService]: ../../control_service/index.html
-    pub fn configure_control_service(mut self, config: ControlServiceConfig) -> Self {
-        self.control_service_config = Some(config);
-        self
-    }
-
-    /// Configure the [OutboundService]. This is optional. If omitted the default configuration is used.
-    ///
-    /// [OutboundService]: ../../outbound_service/index.html#outbound-service
-    pub fn configure_outbound_service(mut self, config: OutboundServiceConfig) -> Self {
-        self.outbound_service_config = Some(config);
-        self
-    }
-
-    /// Set the backoff for the [OutboundService]. This is optional. If omitted the default ExponentialBackoff is used.
-    ///
-    /// [OutboundService]: ../../outbound_service/index.html#outbound-service
-    pub fn with_outbound_backoff<T>(mut self, backoff: T) -> Self
+    /// Set the backoff that [ConnectionManager] uses when dialing peers. This is optional. If omitted the default
+    /// ExponentialBackoff is used. [ConnectionManager]: crate::connection_manager::next::ConnectionManager
+    pub fn with_dial_backoff<T>(mut self, backoff: T) -> Self
     where T: Backoff + Send + Sync + 'static {
-        self.oms_backoff = Some(Box::new(backoff));
+        self.dial_backoff = Some(Box::new(backoff));
         self
     }
 
-    /// Common configuration for all [PeerConnection]s. This is optional.
-    /// If omitted the default configuration is used.
-    ///
-    /// [PeerConnection]: ../../connection/peer_connection/index.html
-    pub fn configure_peer_connections(mut self, config: PeerConnectionConfig) -> Self {
-        self.peer_conn_config = Some(config);
+    pub fn with_transport<T>(self, transport: T) -> CommsBuilder<T>
+    where
+        T: Transport + Unpin + Send + Sync + Clone + 'static,
+        T::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
+    {
+        CommsBuilder {
+            transport: Some(transport),
+            peer_storage: self.peer_storage,
+            node_identity: self.node_identity,
+            hidden_service: self.hidden_service,
+            executor: self.executor,
+            protocols: self.protocols,
+            dial_backoff: self.dial_backoff,
+            connection_manager_config: self.connection_manager_config,
+            shutdown: self.shutdown,
+        }
+    }
+
+    pub fn with_protocols(mut self, protocols: Protocols<yamux::Stream>) -> Self {
+        self.protocols = Some(protocols);
         self
-    }
-
-    /// Set the sink to use to consume all inbound messages
-    pub fn with_inbound_sink<S>(self, sink: S) -> CommsBuilder<S, TOutStream>
-    where S: Sink<InboundMessage> + Send + 'static {
-        CommsBuilder {
-            inbound_sink: Some(sink),
-            // This unofficial RFC would avoid repeated fields.
-            // https://github.com/jturner314/rust-rfcs/blob/type-changing-struct-update-syntax/text/0000-type-changing-struct-update-syntax.md
-            zmq_context: self.zmq_context,
-            control_service_config: self.control_service_config,
-            peer_conn_config: self.peer_conn_config,
-            outbound_service_config: self.outbound_service_config,
-            outbound_stream: self.outbound_stream,
-            peer_storage: self.peer_storage,
-            node_identity: self.node_identity,
-            comms_builder_config: self.comms_builder_config,
-            executor: self.executor,
-            oms_backoff: self.oms_backoff,
-            on_shutdown: self.on_shutdown,
-        }
-    }
-
-    /// Set the stream which emits messages to be sent by the OMS
-    pub fn with_outbound_stream<S>(self, stream: S) -> CommsBuilder<TInSink, S>
-    where S: Stream<Item = OutboundMessage> + Send + 'static {
-        CommsBuilder {
-            outbound_stream: Some(stream),
-            // This unofficial RFC would avoid repeated fields.
-            // https://github.com/jturner314/rust-rfcs/blob/type-changing-struct-update-syntax/text/0000-type-changing-struct-update-syntax.md
-            zmq_context: self.zmq_context,
-            inbound_sink: self.inbound_sink,
-            control_service_config: self.control_service_config,
-            peer_conn_config: self.peer_conn_config,
-            outbound_service_config: self.outbound_service_config,
-            peer_storage: self.peer_storage,
-            node_identity: self.node_identity,
-            comms_builder_config: self.comms_builder_config,
-            executor: self.executor,
-            oms_backoff: self.oms_backoff,
-            on_shutdown: self.on_shutdown,
-        }
     }
 
     pub fn on_shutdown<F>(mut self, on_shutdown: F) -> Self
     where F: FnOnce() + Send + Sync + 'static {
-        self.on_shutdown = Some(Box::new(on_shutdown));
+        self.shutdown.on_triggered(on_shutdown);
         self
+    }
+
+    fn make_messaging(
+        &self,
+        executor: runtime::Handle,
+        conn_man_requester: ConnectionManagerRequester,
+        peer_manager: Arc<PeerManager>,
+        node_identity: Arc<NodeIdentity>,
+    ) -> (
+        messaging::MessagingProtocol,
+        mpsc::Sender<ProtocolNotification<CommsSubstream>>,
+        mpsc::Sender<messaging::MessagingRequest>,
+        mpsc::Receiver<InboundMessage>,
+        messaging::MessagingEventSender,
+    )
+    {
+        let (proto_tx, proto_rx) = mpsc::channel(consts::MESSAGING_PROTOCOL_EVENTS_BUFFER_SIZE);
+        let (messaging_request_tx, messaging_request_rx) = mpsc::channel(consts::MESSAGING_REQUEST_BUFFER_SIZE);
+        let (inbound_message_tx, inbound_message_rx) = mpsc::channel(consts::INBOUND_MESSAGE_BUFFER_SIZE);
+        let (event_tx, _) = broadcast::channel(consts::MESSAGING_EVENTS_BUFFER_SIZE);
+        let messaging = MessagingProtocol::new(
+            executor,
+            conn_man_requester,
+            peer_manager.into(),
+            node_identity,
+            proto_rx,
+            messaging_request_rx,
+            event_tx.clone(),
+            inbound_message_tx,
+            consts::MESSAGING_MAX_SEND_RETRIES,
+            self.shutdown.to_signal(),
+        );
+
+        (messaging, proto_tx, messaging_request_tx, inbound_message_rx, event_tx)
     }
 
     fn make_peer_manager(&mut self) -> Result<Arc<PeerManager>, CommsBuilderError> {
@@ -237,232 +248,246 @@ where
                 let peer_manager = PeerManager::new(storage).map_err(CommsBuilderError::PeerManagerError)?;
                 Ok(Arc::new(peer_manager))
             },
-            None => Err(CommsBuilderError::DatastoreUndefined),
+            None => Err(CommsBuilderError::PeerStorageNotProvided),
         }
-    }
-
-    fn make_control_service(&mut self, node_identity: Arc<NodeIdentity>) -> Option<ControlService> {
-        self.control_service_config
-            .take()
-            .map(|config| ControlService::new(self.zmq_context.clone(), node_identity, config))
     }
 
     fn make_connection_manager(
         &mut self,
+        executor: runtime::Handle,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
-        config: PeerConnectionConfig,
-        message_sink_sender: mpsc::Sender<FrameSet>,
-    ) -> Arc<ConnectionManager>
+        protocols: Protocols<CommsSubstream>,
+        request_rx: mpsc::Receiver<ConnectionManagerRequest>,
+        connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
+    ) -> ConnectionManager<TTransport, BoxedBackoff>
     {
-        Arc::new(ConnectionManager::new(
-            self.zmq_context.clone(),
-            node_identity,
-            peer_manager,
+        let backoff = self.dial_backoff.take().expect("always set");
+        let noise_config = NoiseConfig::new(Arc::clone(&node_identity));
+        let config = self.connection_manager_config.clone();
+
+        ConnectionManager::new(
             config,
-            message_sink_sender,
-        ))
-    }
-
-    fn make_connection_manager_actor(
-        &mut self,
-        connection_manager: Arc<ConnectionManager>,
-        shutdown_signal: ShutdownSignal,
-    ) -> (ConnectionManagerRequester, CommsConnectionManagerActor)
-    {
-        let (tx, rx) = mpsc::channel(10);
-        let requester = ConnectionManagerRequester::new(tx);
-        let actor = ConnectionManagerActor::new(ConnectionManagerDialer::new(connection_manager), rx, shutdown_signal);
-
-        (requester, actor)
-    }
-
-    fn make_peer_connection_config(&mut self) -> PeerConnectionConfig {
-        self.peer_conn_config.take().unwrap_or_default()
-    }
-
-    fn make_node_identity(&mut self) -> Result<Arc<NodeIdentity>, CommsBuilderError> {
-        self.node_identity
-            .take()
-            .ok_or_else(|| CommsBuilderError::NodeIdentityNotSet)
-    }
-
-    fn make_outbound_message_service(
-        &mut self,
-        node_identity: Arc<NodeIdentity>,
-        connection_manager_requester: ConnectionManagerRequester,
-        shutdown_signal: ShutdownSignal,
-    ) -> (OutboundMessageService<TOutStream, BoxedBackoff>, OutboundEventPublisher)
-    {
-        let outbound_stream = self.outbound_stream.take().expect("outbound_stream cannot be None");
-        let oms_backoff = self.oms_backoff.take().expect("oms_backoff was None");
-        let config = self.outbound_service_config.take().unwrap_or_default();
-        let (event_tx, _) = broadcast::channel(config.broadcast_channel_buf_size);
-        (
-            OutboundMessageService::with_backoff(
-                config,
-                outbound_stream,
-                node_identity,
-                connection_manager_requester,
-                shutdown_signal,
-                oms_backoff,
-                event_tx.clone(),
-            ),
-            event_tx,
+            executor,
+            self.transport.take().expect("transport has already been taken"),
+            noise_config,
+            backoff,
+            request_rx,
+            node_identity,
+            peer_manager.into(),
+            protocols,
+            connection_manager_events_tx,
+            self.shutdown.to_signal(),
         )
     }
 
     /// Build the required comms services. Services will not be started.
-    pub fn build(mut self) -> Result<CommsContainer<TInSink, TOutStream>, CommsBuilderError> {
-        let config = self.comms_builder_config.clone().unwrap_or_default();
+    pub fn build(mut self) -> Result<BuiltCommsNode<TTransport>, CommsBuilderError> {
+        let node_identity = self.node_identity.take().ok_or(CommsBuilderError::NodeIdentityNotSet)?;
+        let executor = self
+            .executor
+            .take()
+            .or_else(|| Some(runtime::Handle::current()))
+            .unwrap();
 
-        let node_identity = self.make_node_identity()?;
-
-        //---------------------------------- Peer Manager --------------------------------------------//
         let peer_manager = self.make_peer_manager()?;
 
-        let peer_conn_config = self.make_peer_connection_config();
+        //---------------------------------- Messaging --------------------------------------------//
 
-        //---------------------------------- Control Service --------------------------------------------//
+        let (conn_man_tx, conn_man_rx) = mpsc::channel(consts::CONNECTION_MANAGER_REQUEST_BUFFER_SIZE);
+        let (connection_manager_event_tx, _) = broadcast::channel(consts::CONNECTION_MANAGER_EVENTS_BUFFER_SIZE);
+        let connection_manager_requester =
+            ConnectionManagerRequester::new(conn_man_tx, connection_manager_event_tx.clone());
 
-        let control_service = self.make_control_service(node_identity.clone());
+        let (messaging, messaging_proto_tx, messaging_request_tx, inbound_message_rx, messaging_event_tx) = self
+            .make_messaging(
+                executor.clone(),
+                connection_manager_requester.clone(),
+                peer_manager.clone(),
+                node_identity.clone(),
+            );
+
+        //---------------------------------- Protocols --------------------------------------------//
+        let protocols = self
+            .protocols
+            .take()
+            .or_else(|| Some(Protocols::new()))
+            .map(move |protocols| protocols.add(&[messaging::MESSAGING_PROTOCOL], messaging_proto_tx))
+            .expect("cannot fail");
 
         //---------------------------------- ConnectionManager --------------------------------------------//
-        // Channel used for sending FrameSets from PeerConnections to IMS
-        let (peer_connection_message_sender, peer_connection_message_receiver) =
-            mpsc::channel(config.inbound_message_sink_buffer_size);
         let connection_manager = self.make_connection_manager(
+            executor.clone(),
             node_identity.clone(),
             peer_manager.clone(),
-            peer_conn_config,
-            peer_connection_message_sender,
+            protocols,
+            conn_man_rx,
+            connection_manager_event_tx.clone(),
         );
 
-        let mut shutdown = Shutdown::new();
-
-        if let Some(on_shutdown) = self.on_shutdown.take() {
-            shutdown.on_triggered(on_shutdown);
-        }
-
-        let (connection_manager_requester, connection_manager_actor) =
-            self.make_connection_manager_actor(Arc::clone(&connection_manager), shutdown.to_signal());
-
-        let (outbound_message_service, outbound_event_publisher) = self.make_outbound_message_service(
-            Arc::clone(&node_identity),
-            connection_manager_requester,
-            shutdown.to_signal(),
-        );
-
-        //---------------------------------- Inbound message pipeline --------------------------------------------//
-        let inbound_message_service = InboundMessageService::new(
-            peer_connection_message_receiver,
-            self.inbound_sink.take().expect("inbound_sink cannot be None"),
-            Arc::clone(&peer_manager),
-            shutdown.to_signal(),
-        );
-
-        Ok(CommsContainer {
+        Ok(BuiltCommsNode {
+            executor,
             connection_manager,
-            connection_manager_actor,
-            control_service,
-            executor: self.executor,
-            shutdown,
-            inbound_message_service,
+            connection_manager_requester,
+            connection_manager_event_tx,
+            messaging_request_tx,
+            messaging_pipeline: None,
+            messaging,
+            messaging_event_tx,
+            inbound_message_rx,
             node_identity,
-            outbound_message_service,
-            outbound_event_publisher,
             peer_manager,
+            hidden_service: self.hidden_service,
+            shutdown: self.shutdown,
         })
     }
-}
-
-#[derive(Debug, Error)]
-pub enum CommsError {
-    ControlServiceError(ControlServiceError),
-    PeerConnectionError(PeerConnectionError),
-    ConnectionManagerError(ConnectionManagerError),
-    /// Comms services shut down uncleanly
-    UncleanShutdown,
-    /// The message type was not registered
-    MessageTypeNotRegistered,
-    /// Failed to send shutdown signals
-    FailedSendShutdownSignals,
 }
 
 /// Contains the built comms services
-pub struct CommsContainer<TInSink, TOutStream> {
-    connection_manager: Arc<ConnectionManager>,
-    connection_manager_actor: CommsConnectionManagerActor,
-    control_service: Option<ControlService>,
-
+pub struct BuiltCommsNode<
+    TTransport,
+    TInPipe = PlaceholderService<InboundMessage, (), ()>,
+    TOutPipe = PlaceholderService<(), (), ()>,
+    TOutReq = (),
+> {
+    connection_manager: ConnectionManager<TTransport, BoxedBackoff>,
+    connection_manager_requester: ConnectionManagerRequester,
+    connection_manager_event_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
+    messaging_pipeline: Option<pipeline::Config<TInPipe, TOutPipe, TOutReq>>,
     executor: runtime::Handle,
-
-    inbound_message_service: InboundMessageService<TInSink>,
-
     node_identity: Arc<NodeIdentity>,
+    messaging: MessagingProtocol,
+    messaging_event_tx: messaging::MessagingEventSender,
+    inbound_message_rx: mpsc::Receiver<InboundMessage>,
 
-    outbound_message_service: OutboundMessageService<TOutStream, BoxedBackoff>,
-    outbound_event_publisher: OutboundEventPublisher,
-
+    hidden_service: Option<tor::HiddenService>,
+    messaging_request_tx: mpsc::Sender<messaging::MessagingRequest>,
     shutdown: Shutdown,
-
     peer_manager: Arc<PeerManager>,
 }
 
-impl<TInSink, TOutStream> CommsContainer<TInSink, TOutStream>
+impl<TTransport, TInPipe, TOutPipe, TOutReq> BuiltCommsNode<TTransport, TInPipe, TOutPipe, TOutReq>
 where
-    TInSink: Sink<InboundMessage, Error = mpsc::SendError> + Unpin + Send + 'static,
-    TOutStream: Stream<Item = OutboundMessage> + Unpin + Send + Sync + 'static,
+    TTransport: Transport + Unpin + Send + Sync + Clone + 'static,
+    TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
+    TOutPipe: Service<TOutReq, Response = ()> + Clone + Send + 'static,
+    TOutPipe::Error: fmt::Debug + Send,
+    TOutPipe::Future: Send + 'static,
+    TInPipe: Service<InboundMessage> + Clone + Send + 'static,
+    TInPipe::Error: fmt::Debug + Send,
+    TInPipe::Future: Send + 'static,
+    TOutReq: Send + 'static,
 {
-    /// Start all the comms services and return a [CommsServices] object
-    ///
-    /// [CommsServices]: ./struct.CommsServices.html
-    pub fn start(self) -> Result<CommsNode, CommsError> {
-        let mut control_service_handle = None;
-        if let Some(control_service) = self.control_service {
-            control_service_handle = Some(
-                control_service
-                    .serve(Arc::clone(&self.connection_manager))
-                    .map_err(CommsError::ControlServiceError)?,
-            );
-        }
-        self.connection_manager.run_listener()?;
+    pub fn with_messaging_pipeline<I, O, R>(
+        self,
+        messaging_pipeline: pipeline::Config<I, O, R>,
+    ) -> BuiltCommsNode<TTransport, I, O, R>
+    where
+        O: Service<R, Response = ()> + Clone + Send + 'static,
+        O::Error: fmt::Debug + Send,
+        O::Future: Send + 'static,
+        I: Service<InboundMessage> + Clone + Send + 'static,
+        I::Error: fmt::Debug + Send,
+        I::Future: Send + 'static,
+    {
+        BuiltCommsNode {
+            messaging_pipeline: Some(messaging_pipeline),
 
-        self.executor.spawn(self.connection_manager_actor.run());
-        self.executor.spawn(self.outbound_message_service.start());
-        self.executor.spawn(self.inbound_message_service.run());
-
-        Ok(CommsNode {
             connection_manager: self.connection_manager,
-            outbound_event_publisher: self.outbound_event_publisher,
+            connection_manager_requester: self.connection_manager_requester,
+            connection_manager_event_tx: self.connection_manager_event_tx,
+            node_identity: self.node_identity,
+            messaging: self.messaging,
+            messaging_event_tx: self.messaging_event_tx,
+            inbound_message_rx: self.inbound_message_rx,
             executor: self.executor,
             shutdown: self.shutdown,
-            control_service_handle,
-            node_identity: self.node_identity,
+            messaging_request_tx: self.messaging_request_tx,
+            hidden_service: self.hidden_service,
             peer_manager: self.peer_manager,
+        }
+    }
+
+    /// Wait until the ConnectionManager emits a Listening event. This is the signal that comms is ready.
+    async fn wait_listening(
+        mut events: broadcast::Receiver<Arc<ConnectionManagerEvent>>,
+    ) -> Result<Multiaddr, CommsBuilderError> {
+        loop {
+            let event = time::timeout(Duration::from_secs(10), events.next())
+                .await
+                .map_err(|_| CommsBuilderError::ConnectionManagerEventStreamTimeout)?
+                .ok_or(CommsBuilderError::ConnectionManagerEventStreamClosed)?
+                .map_err(|_| CommsBuilderError::ConnectionManagerEventStreamLagged)?;
+
+            match &*event {
+                ConnectionManagerEvent::Listening(addr) => return Ok(addr.clone()),
+                ConnectionManagerEvent::ListenFailed(err) => return Err(err.clone().into()),
+                _ => {},
+            }
+        }
+    }
+
+    pub async fn spawn(self) -> Result<CommsNode, CommsBuilderError> {
+        let BuiltCommsNode {
+            connection_manager,
+            connection_manager_requester,
+            connection_manager_event_tx,
+            messaging_pipeline,
+            messaging_request_tx,
+            inbound_message_rx,
+            executor,
+            node_identity,
+            shutdown,
+            peer_manager,
+            messaging,
+            messaging_event_tx,
+            hidden_service,
+        } = self;
+
+        let messaging_pipeline = messaging_pipeline.ok_or(CommsBuilderError::MessagingPiplineNotProvided)?;
+
+        let events_stream = connection_manager_event_tx.subscribe();
+        let conn_man_shutdown_signal = connection_manager.complete_signal();
+
+        executor.spawn(connection_manager.run());
+
+        // Spawn messaging protocol
+        let messaging_signal = messaging.complete_signal();
+        executor.spawn(messaging.run());
+
+        // Spawn inbound pipeline
+        let bounded_executor = BoundedExecutor::new(executor.clone(), messaging_pipeline.max_concurrent_inbound_tasks);
+        let inbound = pipeline::Inbound::new(bounded_executor, inbound_message_rx, messaging_pipeline.inbound);
+        executor.spawn(inbound.run());
+
+        // Spawn outbound pipeline
+        let outbound = pipeline::Outbound::new(executor.clone(), messaging_pipeline.outbound, messaging_request_tx);
+        executor.spawn(outbound.run());
+
+        let listening_addr = Self::wait_listening(events_stream).await?;
+
+        Ok(CommsNode {
+            shutdown,
+            connection_manager_event_tx,
+            connection_manager_requester,
+            listening_addr,
+            node_identity,
+            peer_manager,
+            messaging_event_tx,
+            hidden_service,
+            executor,
+            complete_signals: vec![messaging_signal, conn_man_shutdown_signal],
         })
     }
-}
 
-/// # CommsNode
-///
-/// This struct provides a handle to and control over all the running comms services.
-/// You can get a [DomainConnector] from which to receive messages by using the `create_connector`
-/// method. Use the `shutdown` method to attempt to cleanly shut all comms services down.
-pub struct CommsNode {
-    connection_manager: Arc<ConnectionManager>,
-    control_service_handle: Option<ControlServiceHandle>,
-    shutdown: Shutdown,
-    node_identity: Arc<NodeIdentity>,
-    peer_manager: Arc<PeerManager>,
-    executor: runtime::Handle,
-    outbound_event_publisher: OutboundEventPublisher,
-}
-
-impl CommsNode {
     /// Return a cloned atomic reference of the PeerManager
     pub fn peer_manager(&self) -> Arc<PeerManager> {
         Arc::clone(&self.peer_manager)
+    }
+
+    /// Return an asynchronous PeerManager
+    pub fn async_peer_manager(&self) -> AsyncPeerManager {
+        Arc::clone(&self.peer_manager).into()
     }
 
     /// Return a cloned atomic reference of the NodeIdentity
@@ -470,14 +495,99 @@ impl CommsNode {
         Arc::clone(&self.node_identity)
     }
 
-    /// Return a subscription to OMS events. This will emit events sent _after_ this subscription was created.
-    pub fn outbound_event_subscription(&self) -> OutboundEventSubscription {
-        self.outbound_event_publisher.subscribe()
-    }
-
-    /// Return a reference to the executor used to run comms tasks
+    /// Return a cloned atomic reference of the NodeIdentity
     pub fn executor(&self) -> &runtime::Handle {
         &self.executor
+    }
+
+    /// Return a subscription to OMS events. This will emit events sent _after_ this subscription was created.
+    pub fn subscribe_messaging_events(&self) -> messaging::MessagingEventReceiver {
+        self.messaging_event_tx.subscribe()
+    }
+
+    /// Return an owned copy of a ConnectionManagerRequester. Used to initiate connections to peers.
+    pub fn connection_manager_requester(&self) -> ConnectionManagerRequester {
+        self.connection_manager_requester.clone()
+    }
+
+    /// Returns a new `ShutdownSignal`
+    pub fn shutdown_signal(&self) -> ShutdownSignal {
+        self.shutdown.to_signal()
+    }
+}
+
+/// CommsNode is a handle to a comms node.
+///
+/// It allows communication with the internals of tari_comms. Note that if this handle is dropped, tari_comms will shut
+/// down.
+pub struct CommsNode {
+    /// The Shutdown instance for this node. All applicable internal services will use this as a signal to shutdown.
+    shutdown: Shutdown,
+    /// Connection manager broadcast event channel. A `broadcast::Sender` is kept because it can create subscriptions
+    /// as needed.
+    connection_manager_event_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
+    /// Requester object for the ConnectionManager
+    connection_manager_requester: ConnectionManagerRequester,
+    /// Node identity for this node
+    node_identity: Arc<NodeIdentity>,
+    /// Shared PeerManager instance
+    peer_manager: Arc<PeerManager>,
+    /// Tari messaging broadcast event channel. A `broadcast::Sender` is kept because it can create subscriptions as
+    /// needed.
+    messaging_event_tx: messaging::MessagingEventSender,
+    /// The resolved Ip-Tcp listening address.
+    listening_addr: Multiaddr,
+    /// The executor handle used to run the comms stack
+    executor: runtime::Handle,
+    /// `Some` if the comms node is configured to run via a hidden service, otherwise `None`
+    hidden_service: Option<tor::HiddenService>,
+    /// The 'reciprocal' shutdown signals for each comms service
+    complete_signals: Vec<ShutdownSignal>,
+}
+
+impl CommsNode {
+    pub fn subscribe_connection_manager_events(&self) -> broadcast::Receiver<Arc<ConnectionManagerEvent>> {
+        self.connection_manager_event_tx.subscribe()
+    }
+
+    /// Return a cloned atomic reference of the PeerManager
+    pub fn peer_manager(&self) -> Arc<PeerManager> {
+        Arc::clone(&self.peer_manager)
+    }
+
+    /// Return an asynchronous PeerManager
+    pub fn async_peer_manager(&self) -> AsyncPeerManager {
+        Arc::clone(&self.peer_manager).into()
+    }
+
+    /// Return a cloned atomic reference of the NodeIdentity
+    pub fn node_identity(&self) -> Arc<NodeIdentity> {
+        Arc::clone(&self.node_identity)
+    }
+
+    /// Return a cloned atomic reference of the NodeIdentity
+    pub fn executor(&self) -> &runtime::Handle {
+        &self.executor
+    }
+
+    /// Return the Ip/Tcp address that this node is listening on
+    pub fn listening_address(&self) -> &Multiaddr {
+        &self.listening_addr
+    }
+
+    /// Return the Ip/Tcp address that this node is listening on
+    pub fn hidden_service(&self) -> Option<&tor::HiddenService> {
+        self.hidden_service.as_ref()
+    }
+
+    /// Return a subscription to OMS events. This will emit events sent _after_ this subscription was created.
+    pub fn subscribe_messaging_events(&self) -> messaging::MessagingEventReceiver {
+        self.messaging_event_tx.subscribe()
+    }
+
+    /// Return an owned copy of a ConnectionManagerRequester. Used to initiate connections to peers.
+    pub fn connection_manager(&self) -> ConnectionManagerRequester {
+        self.connection_manager_requester.clone()
     }
 
     /// Returns a new `ShutdownSignal`
@@ -485,78 +595,10 @@ impl CommsNode {
         self.shutdown.to_signal()
     }
 
-    /// Shuts comms down. This function returns an error if any of the services failed to shutdown
-    pub fn shutdown(mut self) -> Result<(), CommsError> {
+    /// Shuts comms down. The object is consumed to ensure that no handles/channels are kept after shutdown
+    pub fn shutdown(mut self) -> CommsShutdown {
         info!(target: LOG_TARGET, "Comms is shutting down");
-
-        let mut shutdown_results = Vec::new();
-
-        // Send shutdown signals and wait for shutdown
-        shutdown_results.push(
-            self.shutdown
-                .trigger()
-                .map_err(|_| CommsError::FailedSendShutdownSignals),
-        );
-
-        // Shutdown control service
-        if let Some(control_service_shutdown_result) = self.control_service_handle.map(|hnd| hnd.shutdown()) {
-            shutdown_results.push(control_service_shutdown_result.map_err(CommsError::ControlServiceError));
-        }
-
-        // Lastly, Shutdown connection manager
-        for result in self.connection_manager.shutdown() {
-            shutdown_results.push(result.map_err(Into::into));
-        }
-
-        Self::check_clean_shutdown(shutdown_results)
-    }
-
-    fn check_clean_shutdown(results: Vec<Result<(), CommsError>>) -> Result<(), CommsError> {
-        let mut has_error = false;
-        for result in results {
-            if let Err(err) = result {
-                error!(target: LOG_TARGET, "Error occurred when shutting down {:?}", err);
-                has_error = true;
-            }
-        }
-
-        if has_error {
-            Err(CommsError::UncleanShutdown)
-        } else {
-            Ok(())
-        }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::peer_manager::PeerFeatures;
-    use tari_storage::HashmapDatabase;
-    use tokio::runtime::Runtime;
-
-    #[test]
-    fn new_no_control_service() {
-        let rt = Runtime::new().unwrap();
-        let container = CommsBuilder::new(rt.handle().clone())
-            .with_node_identity(Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::empty())))
-            .with_peer_storage(HashmapDatabase::new())
-            .build()
-            .unwrap();
-
-        assert!(container.control_service.is_none());
-    }
-
-    #[test]
-    fn new_with_control_service() {
-        let rt = Runtime::new().unwrap();
-        let container = CommsBuilder::new(rt.handle().clone())
-            .with_node_identity(Arc::new(NodeIdentity::random_for_test(None, PeerFeatures::empty())))
-            .with_peer_storage(HashmapDatabase::new())
-            .configure_control_service(ControlServiceConfig::default())
-            .build()
-            .unwrap();
-
-        assert!(container.control_service.is_some());
+        self.shutdown.trigger().expect("Shutdown failed to trigger signal");
+        CommsShutdown::new(self.complete_signals)
     }
 }

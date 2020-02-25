@@ -22,11 +22,11 @@
 
 use futures::Sink;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
-use std::{error::Error, iter, sync::Arc, time::Duration};
+use std::{error::Error, iter, sync::Arc};
 use tari_comms::{
-    builder::CommsNode,
-    control_service::ControlServiceConfig,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    transports::MemoryTransport,
+    CommsNode,
 };
 use tari_comms_dht::{outbound::OutboundMessageRequester, Dht};
 use tari_core::{
@@ -59,10 +59,10 @@ use tari_p2p::{
         comms_outbound::CommsOutboundServiceInitializer,
         liveness::{LivenessConfig, LivenessInitializer},
     },
+    transport::TransportType,
 };
 use tari_service_framework::StackBuilder;
-use tari_test_utils::address::get_next_local_address;
-use tokio::runtime::{self, Runtime};
+use tokio::runtime::Runtime;
 
 /// The NodeInterfaces is used as a container for providing access to all the services and interfaces of a single node.
 pub struct NodeInterfaces {
@@ -199,12 +199,7 @@ impl BaseNodeBuilder {
                 self.base_node_service_config
                     .unwrap_or(BaseNodeServiceConfig::default()),
                 self.mempool_service_config.unwrap_or(MempoolServiceConfig::default()),
-                self.liveness_service_config.unwrap_or(LivenessConfig {
-                    auto_ping_interval: None,
-                    enable_auto_join: false,
-                    enable_auto_stored_message_request: true,
-                    refresh_neighbours_interval: Duration::from_secs(3 * 60),
-                }),
+                self.liveness_service_config.unwrap_or(LivenessConfig::default()),
                 data_path,
             );
 
@@ -272,6 +267,15 @@ pub fn create_network_with_2_base_nodes_with_config(
         .with_consensus_manager(consensus_manager.clone())
         .start(runtime, data_path);
 
+    runtime
+        .block_on(
+            alice_node
+                .comms
+                .connection_manager()
+                .dial_peer(bob_node.node_identity.node_id().clone()),
+        )
+        .unwrap();
+
     (alice_node, bob_node)
 }
 
@@ -287,12 +291,7 @@ pub fn create_network_with_3_base_nodes(
         BaseNodeServiceConfig::default(),
         mmr_cache_config,
         MempoolServiceConfig::default(),
-        LivenessConfig {
-            auto_ping_interval: None,
-            enable_auto_join: false,
-            enable_auto_stored_message_request: false,
-            ..Default::default()
-        },
+        LivenessConfig::default(),
         ConsensusManager::default(),
         data_path,
     )
@@ -341,6 +340,28 @@ pub fn create_network_with_3_base_nodes_with_config(
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
 
+    runtime.block_on(async {
+        // Alice (pre)connects to bob and carol
+        let mut conn_man = alice_node.comms.connection_manager();
+        conn_man
+            .dial_peer(bob_node.node_identity.node_id().clone())
+            .await
+            .unwrap();
+        conn_man
+            .dial_peer(carol_node.node_identity.node_id().clone())
+            .await
+            .unwrap();
+
+        // Bob (pre)connects to carol
+        let mut conn_man = bob_node.comms.connection_manager();
+        conn_man
+            .dial_peer(carol_node.node_identity.node_id().clone())
+            .await
+            .unwrap();
+
+        // All node have an existing connection
+    });
+
     (alice_node, bob_node, carol_node)
 }
 
@@ -350,10 +371,11 @@ fn random_string(len: usize) -> String {
 
 // Helper function for creating a random node indentity.
 pub fn random_node_identity() -> Arc<NodeIdentity> {
+    let next_port = MemoryTransport::acquire_next_memsocket_port();
     Arc::new(
         NodeIdentity::random(
             &mut OsRng,
-            get_next_local_address().parse().unwrap(),
+            format!("/memory/{}", next_port).parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         )
         .unwrap(),
@@ -361,8 +383,7 @@ pub fn random_node_identity() -> Arc<NodeIdentity> {
 }
 
 // Helper function for starting the comms stack.
-fn setup_comms_services<TSink>(
-    executor: runtime::Handle,
+async fn setup_comms_services<TSink>(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
     publisher: InboundDomainConnector<TSink>,
@@ -372,30 +393,25 @@ where
     TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
+    let transport_type = TransportType::Memory {
+        listener_address: node_identity.public_address(),
+    };
     let comms_config = CommsConfig {
-        node_identity: Arc::clone(&node_identity),
-        peer_connection_listening_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
-        socks_proxy_address: None,
-        control_service: ControlServiceConfig {
-            listening_address: node_identity.public_address(),
-            socks_proxy_address: None,
-            public_peer_address: None,
-            requested_connection_timeout: Duration::from_millis(2000),
-        },
+        node_identity,
+        transport_type,
         datastore_path: data_path.to_string(),
-        establish_connection_timeout: Duration::from_secs(5),
         peer_database_name: random_string(8),
-        inbound_buffer_size: 100,
-        outbound_buffer_size: 100,
+        max_concurrent_inbound_tasks: 10,
+        outbound_buffer_size: 10,
         dht: Default::default(),
     };
 
-    let (comms, dht) = initialize_comms(executor, comms_config, publisher).unwrap();
+    let (comms, dht) = initialize_comms(comms_config, publisher).await.unwrap();
 
     for p in peers {
         let addr = p.public_address();
         comms
-            .peer_manager()
+            .async_peer_manager()
             .add_peer(Peer::new(
                 p.public_key().clone(),
                 p.node_id().clone(),
@@ -403,6 +419,7 @@ where
                 PeerFlags::empty(),
                 p.features().clone(),
             ))
+            .await
             .unwrap();
     }
 
@@ -432,7 +449,7 @@ fn setup_base_node_services(
 {
     let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100);
     let subscription_factory = Arc::new(subscription_factory);
-    let (comms, dht) = setup_comms_services(runtime.handle().clone(), node_identity, peers, publisher, data_path);
+    let (comms, dht) = runtime.block_on(setup_comms_services(node_identity, peers, publisher, data_path));
 
     let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))

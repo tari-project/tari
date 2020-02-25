@@ -22,7 +22,7 @@
 
 use crate::{
     backoff::ConstantBackoff,
-    connection_manager::next::{ConnectionManager, ConnectionManagerConfig, ConnectionManagerRequester},
+    connection_manager::{ConnectionManager, ConnectionManagerConfig, ConnectionManagerRequester},
     noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
     protocol::Protocols,

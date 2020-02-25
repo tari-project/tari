@@ -30,6 +30,7 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 
 /// Requests which are handled by the ConnectionManagerService
+#[derive(Debug)]
 pub enum ConnectionManagerRequest {
     DialPeer(NodeId, oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>),
     NotifyListening(oneshot::Sender<Multiaddr>),
@@ -56,7 +57,7 @@ impl ConnectionManagerRequester {
 
 impl ConnectionManagerRequester {
     /// Returns a ConnectionManagerEvent stream
-    pub fn subscribe_events(&self) -> broadcast::Receiver<Arc<ConnectionManagerEvent>> {
+    pub fn get_event_subscription(&self) -> broadcast::Receiver<Arc<ConnectionManagerEvent>> {
         self.event_tx.subscribe()
     }
 

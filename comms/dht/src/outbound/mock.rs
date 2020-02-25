@@ -31,7 +31,6 @@ use std::{
     sync::{Arc, Condvar, Mutex, RwLock},
     time::Duration,
 };
-use tari_comms::condvar_shim;
 
 /// Creates a mock outbound request "handler" for testing purposes.
 ///
@@ -150,6 +149,42 @@ impl OutboundServiceMock {
                     reply_tx.send(response).expect("Reply channel cancelled");
                 },
             }
+        }
+    }
+}
+
+mod condvar_shim {
+    use std::{
+        sync::{Condvar, LockResult, MutexGuard, PoisonError},
+        time::{Duration, Instant},
+    };
+
+    pub fn wait_timeout_until<'a, T, F>(
+        condvar: &Condvar,
+        mut guard: MutexGuard<'a, T>,
+        dur: Duration,
+        mut condition: F,
+    ) -> LockResult<(MutexGuard<'a, T>, bool)>
+    where
+        F: FnMut(&mut T) -> bool,
+    {
+        let start = Instant::now();
+        loop {
+            if condition(&mut *guard) {
+                return Ok((guard, false));
+            }
+            let timeout = match dur.checked_sub(start.elapsed()) {
+                Some(timeout) => timeout,
+                None => return Ok((guard, true)),
+            };
+            guard = condvar
+                .wait_timeout(guard, timeout)
+                .map(|(guard, timeout)| (guard, timeout.timed_out()))
+                .map_err(|err| {
+                    let (guard, timeout) = err.into_inner();
+                    PoisonError::new((guard, timeout.timed_out()))
+                })?
+                .0;
         }
     }
 }

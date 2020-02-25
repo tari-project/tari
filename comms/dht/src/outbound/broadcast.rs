@@ -228,6 +228,15 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             dht_header,
         } = params;
 
+        if broadcast_strategy
+            .direct_public_key()
+            .filter(|pk| *pk == self.node_identity.public_key())
+            .is_some()
+        {
+            warn!(target: LOG_TARGET, "Attempt to send to own peer");
+            return Err(DhtOutboundError::SendToOurselves);
+        }
+
         match self.select_peers(broadcast_strategy.clone()).await {
             Ok(mut peers) => {
                 if reply_tx.is_canceled() {

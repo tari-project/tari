@@ -23,7 +23,7 @@
 // This file is heavily influenced by the Libra Noise protocol implementation.
 
 use crate::{
-    connection::ConnectionDirection,
+    connection_manager::ConnectionDirection,
     noise::{
         crypto_resolver::TariCryptoResolver,
         error::NoiseError,

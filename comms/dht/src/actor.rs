@@ -250,7 +250,7 @@ impl<'a> DhtActor<'a> {
                         match Self::select_peers(config, node_identity, peer_manager, broadcast_strategy) {
                             Ok(peers) => reply_tx.send(peers).map_err(|_| DhtActorError::ReplyCanceled),
                             Err(err) => {
-                                error!(target: LOG_TARGET, "Peer selection failed: {}", err);
+                                error!(target: LOG_TARGET, "Peer selection failed: {:?}", err);
                                 reply_tx.send(Vec::new()).map_err(|_| DhtActorError::ReplyCanceled)
                             },
                         }
@@ -473,7 +473,7 @@ mod test {
     use super::*;
     use crate::test_utils::{make_node_identity, make_peer_manager};
     use tari_comms::{
-        connection::NetAddressesWithStats,
+        net_address::MultiaddressesWithStats,
         peer_manager::{PeerFeatures, PeerFlags},
     };
     use tari_shutdown::Shutdown;
@@ -550,7 +550,7 @@ mod test {
                 .add_peer(Peer::new(
                     node_identity.public_key().clone(),
                     node_identity.node_id().clone(),
-                    NetAddressesWithStats::new(vec![]),
+                    MultiaddressesWithStats::new(vec![]),
                     PeerFlags::empty(),
                     PeerFeatures::COMMUNICATION_CLIENT,
                 ))

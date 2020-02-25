@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    outbound_message_service::OutboundMessage,
+    message::OutboundMessage,
     pipeline::builder::OutboundPipelineConfig,
     protocol::messaging::MessagingRequest,
 };
@@ -118,7 +118,8 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{pipeline::SinkService, Bytes};
+    use crate::pipeline::SinkService;
+    use bytes::Bytes;
     use futures::stream;
     use std::time::Duration;
     use tari_test_utils::{collect_stream, unpack_enum};

@@ -20,28 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod deprecated;
+mod common;
+mod dial_state;
+mod dialer;
+mod listener;
 
-pub use deprecated::*;
+mod types;
+pub use types::ConnectionDirection;
 
-cfg_next! {
-    mod common;
-    mod dial_state;
-    mod dialer;
-    mod error;
-    mod listener;
-    mod manager;
-    mod requester;
+mod requester;
+pub use requester::{ConnectionManagerRequest, ConnectionManagerRequester};
 
-    mod peer_connection;
-    pub use peer_connection::{PeerConnection, PeerConnectionRequest, NegotiatedSubstream};
+mod manager;
+pub use manager::{ConnectionManager, ConnectionManagerConfig, ConnectionManagerEvent};
 
-    pub mod next {
-        pub use super::manager::{ConnectionManager, ConnectionManagerConfig, ConnectionManagerEvent};
-        pub use super::error::{ConnectionManagerError, PeerConnectionError};
-        pub use super::requester::{ConnectionManagerRequester, ConnectionManagerRequest};
-    }
+mod error;
+pub use error::{ConnectionManagerError, PeerConnectionError};
 
-    #[cfg(test)]
-    mod tests;
-}
+mod peer_connection;
+pub use peer_connection::{NegotiatedSubstream, PeerConnection, PeerConnectionRequest};
+
+#[cfg(test)]
+mod tests;

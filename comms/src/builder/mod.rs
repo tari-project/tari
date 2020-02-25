@@ -24,69 +24,16 @@
 //!
 //! The [CommsBuilder] provides a simple builder API for getting Tari comms p2p messaging up and running.
 //!
-//! ```edition2018
-//! # use tari_comms::builder::CommsBuilder;
-//! # use tari_comms::control_service::ControlServiceConfig;
-//! # use tari_comms::peer_manager::{NodeIdentity, PeerFeatures};
-//! # use std::sync::Arc;
-//! # use rand::rngs::OsRng;
-//! # use tari_storage::lmdb_store::LMDBBuilder;
-//! # use lmdb_zero::db;
-//! # use tari_storage::LMDBWrapper;
-//! # use tokio::runtime::Runtime;
-//! # use futures::channel::mpsc;
-//! // This should be loaded up from storage
-//! let my_node_identity = NodeIdentity::random(&mut OsRng, "/ip4/127.0.0.1/tcp/9000".parse().unwrap(), PeerFeatures::COMMUNICATION_NODE).unwrap();
-//!
-//! let database_name = "b_peer_database";
-//! let datastore = LMDBBuilder::new()
-//!            .set_path("/tmp/")
-//!            .set_environment_size(10)
-//!            .set_max_number_of_databases(2)
-//!            .add_database(database_name, lmdb_zero::db::CREATE)
-//!           .build().unwrap();
-//! let peer_database = datastore.get_handle(database_name).unwrap();
-//! let peer_database = LMDBWrapper::new(Arc::new(peer_database));
-//!
-//! // Futures mpsc channel where all incoming messages will be received
-//! let (inbound_tx, _inbound_rx) = mpsc::channel(10);
-//! let (_outbound_tx, outbound_rx) = mpsc::channel(10);
-//! let runtime = Runtime::new().unwrap();
-//! let services = CommsBuilder::new(runtime.handle().clone())
-//!    .with_inbound_sink(inbound_tx)
-//!    .with_outbound_stream(outbound_rx)
-//!    // This enables the control service - allowing another peer to connect to this node
-//!    .configure_control_service(ControlServiceConfig::default())
-//!    .with_node_identity(Arc::new(my_node_identity))
-//!    .with_peer_storage(peer_database)
-//!    .build()
-//!    .unwrap();
-//!
-//! let mut handle = services.start().unwrap();
-//!
-//! // use _inbound_rx to receive comms messages
-//! // _inbound_rx.next().await
-//!
-//! // use _outbound_tx to send messages
-//! // _outbound_tx.send(OutboundMessage { .. }).await
-//!
-//! // Call shutdown when program shuts down
-//! handle.shutdown();
-//! ```
-//!
 //! [CommsBuilder]: ./builder/struct.CommsBuilder.html
 
 mod builder;
-mod null_sink;
+pub use self::builder::{BuiltCommsNode, CommsBuilder, CommsBuilderError, CommsNode};
 
-cfg_next! {
-    mod consts;
-    mod placeholder;
-    pub mod builder_next;
+mod shutdown;
+pub use shutdown::CommsShutdown;
 
-    #[cfg(test)]
-    mod tests;
-}
+mod consts;
+mod placeholder;
 
-pub use self::builder::{CommsBuilder, CommsBuilderError, CommsError, CommsNode};
-pub use null_sink::NullSink;
+#[cfg(test)]
+mod tests;

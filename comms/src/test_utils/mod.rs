@@ -20,18 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod dialers;
+#[allow(dead_code)]
+pub mod factories;
+
 pub mod node_id;
+pub mod node_identity;
+pub mod peer_manager;
+pub mod test_node;
+pub mod transport;
 
-cfg_next! {
-    pub mod node_identity;
-    pub mod transport;
-    pub mod test_node;
-    pub mod peer_manager;
+mod connection_manager_mock;
+pub use connection_manager_mock::{create_connection_manager_mock, ConnectionManagerMockState};
 
-    mod connection_manager_mock;
-    pub use connection_manager_mock::{create_connection_manager_mock, ConnectionManagerMockState};
-
-    mod peer_connection_mock;
-    pub use peer_connection_mock::{create_peer_connection_mock_pair, PeerConnectionMockState};
-}
+mod peer_connection_mock;
+pub use peer_connection_mock::{create_peer_connection_mock_pair, PeerConnectionMockState};

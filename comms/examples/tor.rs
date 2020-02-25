@@ -9,15 +9,15 @@ use futures::{
 use rand::{rngs::OsRng, thread_rng, RngCore};
 use std::{collections::HashMap, convert::identity, env, path::Path, process, sync::Arc};
 use tari_comms::{
-    builder::builder_next::{CommsBuilderError, CommsNode},
-    message::InboundMessage,
+    message::{InboundMessage, OutboundMessage},
     multiaddr::Multiaddr,
-    next::CommsBuilder,
-    outbound_message_service::OutboundMessage,
-    peer_manager::{node_identity::NodeIdentityError, NodeId, NodeIdentity, Peer, PeerFeatures, PeerManagerError},
+    peer_manager::{NodeId, NodeIdentity, NodeIdentityError, Peer, PeerFeatures, PeerManagerError},
     pipeline,
     pipeline::SinkService,
     tor,
+    CommsBuilder,
+    CommsBuilderError,
+    CommsNode,
 };
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tempdir::TempDir;
@@ -62,11 +62,11 @@ async fn run() -> Result<(), Error> {
     println!("Starting comms nodes...",);
 
     let temp_dir1 = TempDir::new("tor-example1").unwrap();
-    let (mut comms_node1, _hidden_service1, inbound_rx1, mut outbound_tx1) =
+    let (comms_node1, inbound_rx1, mut outbound_tx1) =
         setup_node_with_tor(control_port_addr.clone(), temp_dir1.as_ref(), 9098).await?;
 
     let temp_dir2 = TempDir::new("tor-example2").unwrap();
-    let (mut comms_node2, _hidden_service2, inbound_rx2, outbound_tx2) =
+    let (comms_node2, inbound_rx2, outbound_tx2) =
         setup_node_with_tor(control_port_addr, temp_dir2.as_ref(), 9099).await?;
 
     let node_identity1 = comms_node1.node_identity();
@@ -124,8 +124,8 @@ async fn run() -> Result<(), Error> {
     tokio::signal::ctrl_c().await.expect("ctrl-c failed");
 
     println!("Tor example is shutting down...");
-    comms_node1.shutdown();
-    comms_node2.shutdown();
+    comms_node1.shutdown().await;
+    comms_node2.shutdown().await;
 
     handle1.await??;
     handle2.await??;
@@ -137,15 +137,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
     control_port_addr: Multiaddr,
     database_path: &Path,
     port_mapping: P,
-) -> Result<
-    (
-        CommsNode,
-        tor::HiddenService<'_>,
-        mpsc::Receiver<InboundMessage>,
-        mpsc::Sender<OutboundMessage>,
-    ),
-    Error,
->
+) -> Result<(CommsNode, mpsc::Receiver<InboundMessage>, mpsc::Sender<OutboundMessage>), Error>
 {
     let datastore = LMDBBuilder::new()
         .set_path(database_path.to_str().unwrap())
@@ -168,19 +160,23 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
 
     println!(
         "Tor hidden service created with address '{}'",
-        tor_hidden_service.onion_address()
+        tor_hidden_service.get_onion_address()
     );
 
     let node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
-        tor_hidden_service.onion_address().clone(),
+        tor_hidden_service.get_onion_address().clone(),
         PeerFeatures::COMMUNICATION_CLIENT,
     )?);
 
     let comms_node = CommsBuilder::new()
         .with_node_identity(node_identity)
-        .configure_from_hidden_service(&tor_hidden_service)
+        .configure_from_hidden_service(tor_hidden_service)
         .with_peer_storage(peer_database)
+        .build()
+        .unwrap();
+
+    let comms_node = comms_node
         .with_messaging_pipeline(
             pipeline::Builder::new()
             // Outbound messages will be forwarded "as is" to outbound messaging
@@ -193,7 +189,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
         .spawn()
         .await?;
 
-    Ok((comms_node, tor_hidden_service, inbound_rx, outbound_tx))
+    Ok((comms_node, inbound_rx, outbound_tx))
 }
 
 async fn start_ping_ponger(

@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    crypt,
     envelope::DhtMessageFlags,
     inbound::message::{DecryptedDhtMessage, DhtInboundMessage},
     PipelineError,
@@ -29,7 +30,7 @@ use futures::{task::Context, Future};
 use log::*;
 use prost::Message;
 use std::{sync::Arc, task::Poll};
-use tari_comms::{message::EnvelopeBody, peer_manager::NodeIdentity, utils::crypt};
+use tari_comms::{message::EnvelopeBody, peer_manager::NodeIdentity};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::middleware::encryption";

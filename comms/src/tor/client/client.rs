@@ -56,6 +56,7 @@ impl TorControlPortClient<<TcpTransport as Transport>::Output> {
 }
 
 /// Represents tor control port authentication mechanisms
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Authentication {
     /// No control port authentication required
     None,
@@ -112,14 +113,14 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     }
 
     /// The ADD_ONION command, used to create onion hidden services.
-    pub async fn add_onion<P: Into<PortMapping>>(
+    pub async fn add_onion<'a, P: Into<PortMapping>>(
         &mut self,
         key_type: KeyType,
-        key_blob: KeyBlob,
+        key_blob: KeyBlob<'a>,
         flags: Vec<AddOnionFlag>,
         port: P,
         num_streams: Option<NonZeroU16>,
-    ) -> Result<AddOnionResponse<'_>, TorClientError>
+    ) -> Result<AddOnionResponse<'a>, TorClientError>
     {
         let command = commands::AddOnion::new(key_type, key_blob, flags, port.into(), num_streams);
         self.request_response(command).await
@@ -150,17 +151,17 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     }
 
     /// The ADD_ONION command using the given `PrivateKey`.
-    pub async fn add_onion_from_private_key<P: Into<PortMapping>>(
+    pub async fn add_onion_from_private_key<'a, P: Into<PortMapping>>(
         &mut self,
-        private_key: PrivateKey<'_>,
+        private_key: &'a PrivateKey,
         flags: Vec<AddOnionFlag>,
         port: P,
         num_streams: Option<NonZeroU16>,
-    ) -> Result<AddOnionResponse<'_>, TorClientError>
+    ) -> Result<AddOnionResponse<'a>, TorClientError>
     {
         let (key_type, key_blob) = match private_key {
-            PrivateKey::Rsa1024(key) => (KeyType::Rsa1024, KeyBlob::String(key.into_owned())),
-            PrivateKey::Ed25519V3(key) => (KeyType::Ed25519V3, KeyBlob::String(key.into_owned())),
+            PrivateKey::Rsa1024(key) => (KeyType::Rsa1024, KeyBlob::String(key)),
+            PrivateKey::Ed25519V3(key) => (KeyType::Ed25519V3, KeyBlob::String(key)),
         };
         self.add_onion(key_type, key_blob, flags, port, num_streams).await
     }
@@ -214,7 +215,11 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn receive_line(&mut self) -> Result<ResponseLine<'_>, TorClientError> {
-        let raw = self.framed.next().await.ok_or_else(|| TorClientError::UnexpectedEof)??;
+        let raw = self
+            .framed
+            .next()
+            .await
+            .ok_or_else(|| TorClientError::UnexpectedEof)??;
         let parsed = parsers::response_line(&raw)?;
         Ok(parsed.into_owned())
     }
@@ -228,7 +233,7 @@ mod test {
         tor::client::{test_server, test_server::canned_responses, types::PrivateKey},
     };
     use futures::future;
-    use std::{borrow::Cow, net::SocketAddr};
+    use std::net::SocketAddr;
     use tari_test_utils::unpack_enum;
 
     async fn setup_test() -> (TorControlPortClient<MemorySocket>, test_server::State) {
@@ -321,7 +326,7 @@ mod test {
 
         let private_key = PrivateKey::Rsa1024("dummy-key".into());
         let response = tor
-            .add_onion_from_private_key(private_key, vec![], 8080, None)
+            .add_onion_from_private_key(&private_key, vec![], 8080, None)
             .await
             .unwrap();
 
@@ -355,9 +360,9 @@ mod test {
         );
         assert_eq!(
             response.private_key,
-            Some(PrivateKey::Ed25519V3(Cow::from(
-                "Pg3GEyssauPRW3jP6mHwKOxvl_fMsF0QsZC3DvQ8jZ9AxmfRvSP35m9l0vOYyOxkOqWM6ufjdYuM8Ae6cR2UdreG6"
-            )))
+            Some(PrivateKey::Ed25519V3(
+                "Pg3GEyssauPRW3jP6mHwKOxvl_fMsF0QsZC3DvQ8jZ9AxmfRvSP35m9l0vOYyOxkOqWM6ufjdYuM8Ae6cR2UdreG6".to_string()
+            ))
         );
 
         let request = mock_state.take_requests().await.pop().unwrap();

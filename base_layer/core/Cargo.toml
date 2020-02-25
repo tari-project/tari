@@ -69,7 +69,7 @@ tari_p2p = {path = "../../base_layer/p2p", version = "^0.0", features=["test-moc
 tari_test_utils = { path = "../../infrastructure/test_utils", version = "^0.0" }
 env_logger = "0.7.0"
 tempdir = "0.3.7"
-tokio-macros = "0.2.3"
+tokio-macros = "0.2.4"
 
 [build-dependencies]
 tari_protobuf_build = { version = "^0.0", path="../../infrastructure/protobuf_build"}

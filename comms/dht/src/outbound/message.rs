@@ -27,8 +27,7 @@ use crate::{
 use futures::channel::oneshot;
 use std::fmt;
 use tari_comms::{
-    message::MessageFlags,
-    outbound_message_service::MessageTag,
+    message::{MessageFlags, MessageTag},
     peer_manager::Peer,
     types::CommsPublicKey,
 };

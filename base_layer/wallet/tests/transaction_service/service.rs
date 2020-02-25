@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support::{
-    comms_and_services::{create_dummy_message, setup_comms_services},
+    comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
     utils::{make_input, random_string, TestParams},
 };
 use chrono::Utc;
@@ -29,6 +29,7 @@ use futures::{
     channel::{mpsc, mpsc::Sender},
     stream,
     SinkExt,
+    StreamExt,
 };
 use prost::Message;
 use rand::rngs::OsRng;
@@ -39,9 +40,9 @@ use std::{
 };
 use tari_broadcast_channel::bounded;
 use tari_comms::{
-    builder::CommsNode,
     message::EnvelopeBody,
     peer_manager::{NodeIdentity, PeerFeatures},
+    CommsNode,
 };
 use tari_comms_dht::outbound::mock::{create_outbound_service_mock, OutboundServiceMockState};
 use tari_core::{
@@ -58,11 +59,7 @@ use tari_core::{
         proto::types::TransactionOutput as TransactionOutputProto,
         tari_amount::*,
         transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction, TransactionOutput},
-        transaction_protocol::{
-            proto,
-            recipient::{RecipientSignedMessage, RecipientState},
-            sender::TransactionSenderMessage,
-        },
+        transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
         types::{CryptoFactories, PrivateKey, PublicKey, RangeProof, Signature},
         ReceiverTransactionProtocol,
     },
@@ -77,7 +74,7 @@ use tari_p2p::{
     services::comms_outbound::CommsOutboundServiceInitializer,
 };
 use tari_service_framework::{reply_channel, StackBuilder};
-use tari_test_utils::{collect_stream, paths::with_temp_dir};
+use tari_test_utils::{collect_stream, paths::with_temp_dir, unpack_enum};
 use tari_wallet::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
@@ -108,7 +105,10 @@ use tari_wallet::{
     },
 };
 use tempdir::TempDir;
-use tokio::runtime::{Builder, Runtime};
+use tokio::{
+    runtime,
+    runtime::{Builder, Runtime},
+};
 
 fn create_runtime() -> Runtime {
     Builder::new()
@@ -121,8 +121,8 @@ fn create_runtime() -> Runtime {
 
 pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
     runtime: &mut Runtime,
-    node_identity: NodeIdentity,
-    peers: Vec<NodeIdentity>,
+    node_identity: Arc<NodeIdentity>,
+    peers: Vec<Arc<NodeIdentity>>,
     factories: CryptoFactories,
     backend: T,
     database_path: String,
@@ -131,14 +131,13 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
 {
     let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100);
     let subscription_factory = Arc::new(subscription_factory);
-    let (comms, dht) = setup_comms_services(
-        runtime.handle().clone(),
-        Arc::new(node_identity.clone()),
+    let (comms, dht) = runtime.block_on(setup_comms_services(
+        node_identity,
         peers,
         publisher,
         database_path,
         discovery_request_timeout,
-    );
+    ));
 
     let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
@@ -232,12 +231,7 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
         outbound_message_requester.clone(),
         event_publisher,
         Arc::new(
-            NodeIdentity::random(
-                &mut OsRng,
-                "/ip4/0.0.0.0/tcp/41239".parse().unwrap(),
-                PeerFeatures::COMMUNICATION_NODE,
-            )
-            .unwrap(),
+            NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
         ),
         factories.clone(),
     );
@@ -258,7 +252,6 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
 fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
     alice_backend: T,
     bob_backend: T,
-    port_offset: i32,
     database_path: String,
 )
 {
@@ -266,29 +259,25 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
 
     let factories = CryptoFactories::default();
     // Alice's parameters
-    let alice_port = 31501 + port_offset;
-    let alice_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        format!("/ip4/127.0.0.1/tcp/{}", alice_port).parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let alice_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
 
     // Bob's parameters
-    let bob_port = 32713 + port_offset;
-    let bob_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        format!("/ip4/127.0.0.1/tcp/{}", bob_port).parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let bob_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
 
-    let base_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        "/ip4/127.0.0.1/tcp/54225".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let base_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
+
+    log::info!(
+        "manage_single_transaction: Alice: '{}', Bob: '{}', Base: '{}'",
+        alice_node_identity.node_id().short_str(),
+        bob_node_identity.node_id().short_str(),
+        base_node_identity.node_id().short_str()
+    );
 
     let (mut alice_ts, mut alice_oms, alice_comms) = setup_transaction_service(
         &mut runtime,
@@ -297,13 +286,36 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
         factories.clone(),
         alice_backend,
         database_path.clone(),
-        Duration::from_secs(1),
+        Duration::from_secs(0),
     );
     runtime
         .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
         .unwrap();
 
     let alice_event_stream = alice_ts.get_event_stream_fused();
+
+    let (mut bob_ts, mut bob_oms, bob_comms) = setup_transaction_service(
+        &mut runtime,
+        bob_node_identity.clone(),
+        vec![alice_node_identity.clone()],
+        factories.clone(),
+        bob_backend,
+        database_path,
+        Duration::from_secs(0),
+    );
+    runtime
+        .block_on(bob_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
+        .unwrap();
+
+    let bob_event_stream = bob_ts.get_event_stream_fused();
+
+    runtime
+        .block_on(
+            bob_comms
+                .connection_manager()
+                .dial_peer(alice_node_identity.node_id().clone()),
+        )
+        .unwrap();
 
     let value = MicroTari::from(1000);
     let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
@@ -327,73 +339,57 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
             message.clone(),
         ))
         .unwrap();
-    let alice_pending_outbound = runtime.block_on(alice_ts.get_pending_outbound_transactions()).unwrap();
-    let alice_completed_tx = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
-    assert_eq!(alice_pending_outbound.len(), 1);
-    assert_eq!(alice_completed_tx.len(), 0);
 
-    let (mut bob_ts, mut bob_oms, bob_comms) = setup_transaction_service(
-        &mut runtime,
-        bob_node_identity.clone(),
-        vec![alice_node_identity.clone()],
-        factories.clone(),
-        bob_backend,
-        database_path,
-        Duration::from_secs(1),
-    );
-    runtime
-        .block_on(bob_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
-        .unwrap();
+    let _alice_events = runtime.block_on(async {
+        collect_stream!(
+            alice_event_stream.map(|i| (*i).clone()),
+            take = 2,
+            timeout = Duration::from_secs(20)
+        )
+    });
+
+    let bob_events = runtime.block_on(async {
+        collect_stream!(
+            bob_event_stream.map(|i| (*i).clone()),
+            take = 2,
+            timeout = Duration::from_secs(20)
+        )
+    });
+
+    let tx_id = match bob_events.iter().find(|e| {
+        if let TransactionEvent::ReceivedFinalizedTransaction(_) = e {
+            true
+        } else {
+            false
+        }
+    }) {
+        Some(TransactionEvent::ReceivedFinalizedTransaction(tx_id)) => tx_id.clone(),
+        _ => {
+            assert!(false, "Bob's transaction should be finalized");
+            0u64
+        },
+    };
+
+    let mut bob_completed_tx = runtime.block_on(bob_ts.get_completed_transactions()).unwrap();
+
+    match bob_completed_tx.remove(&tx_id) {
+        None => assert!(false, "Completed transaction could not be found"),
+        Some(tx) => {
+            runtime
+                .block_on(bob_oms.confirm_transaction(tx_id, vec![], tx.transaction.body.outputs().clone()))
+                .unwrap();
+        },
+    }
 
     assert_eq!(
-        runtime
-            .block_on(async {
-                collect_stream!(
-                    alice_event_stream.map(|i| (*i).clone()),
-                    take = 1,
-                    timeout = Duration::from_secs(10)
-                )
-            })
-            .iter()
-            .fold(0, |acc, x| match x {
-                TransactionEvent::ReceivedTransactionReply(_) => acc + 1,
-                _ => acc,
-            }),
-        1
+        runtime.block_on(bob_oms.get_balance()).unwrap().available_balance,
+        value
     );
 
-    let alice_pending_outbound = runtime.block_on(alice_ts.get_pending_outbound_transactions()).unwrap();
-    let alice_completed_tx = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
-    assert_eq!(alice_pending_outbound.len(), 0);
-    assert_eq!(alice_completed_tx.len(), 1);
-
-    let bob_pending_inbound_tx = runtime.block_on(bob_ts.get_pending_inbound_transactions()).unwrap();
-    assert_eq!(bob_pending_inbound_tx.len(), 1);
-    for (_k, v) in bob_pending_inbound_tx.clone().drain().take(1) {
-        assert_eq!(v.message, message);
-    }
-
-    let mut alice_tx_id = 0;
-    for (k, _v) in alice_completed_tx.iter() {
-        alice_tx_id = k.clone();
-    }
-    for (k, v) in bob_pending_inbound_tx.iter() {
-        assert_eq!(*k, alice_tx_id);
-        if let RecipientState::Finalized(rsm) = &v.receiver_protocol.state {
-            runtime
-                .block_on(bob_oms.confirm_transaction(alice_tx_id, vec![], vec![rsm.output.clone()]))
-                .unwrap();
-            assert_eq!(
-                runtime.block_on(bob_oms.get_balance()).unwrap().available_balance,
-                value
-            );
-        } else {
-            assert!(false);
-        }
-    }
-
-    alice_comms.shutdown().unwrap();
-    bob_comms.shutdown().unwrap();
+    runtime.block_on(async move {
+        alice_comms.shutdown().await;
+        bob_comms.shutdown().await;
+    });
 }
 
 #[test]
@@ -402,7 +398,6 @@ fn manage_single_transaction_memory_db() {
     manage_single_transaction(
         TransactionMemoryDatabase::new(),
         TransactionMemoryDatabase::new(),
-        2,
         temp_dir.path().to_str().unwrap().to_string(),
     );
 }
@@ -420,7 +415,6 @@ fn manage_single_transaction_sqlite_db() {
     manage_single_transaction(
         TransactionServiceSqliteDatabase::new(connection_pool_alice),
         TransactionServiceSqliteDatabase::new(connection_pool_bob),
-        1,
         temp_dir.path().to_str().unwrap().to_string(),
     );
 }
@@ -429,45 +423,26 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
     alice_backend: T,
     bob_backend: T,
     carol_backend: T,
-    port_offset: i32,
     database_path: String,
 )
 {
     let mut runtime = create_runtime();
     let factories = CryptoFactories::default();
     // Alice's parameters
-    let alice_port = 31484 + port_offset;
-    let alice_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        format!("/ip4/127.0.0.1/tcp/{}", alice_port).parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let alice_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
 
     // Bob's parameters
-    let bob_port = 31475 + port_offset;
-    let bob_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        format!("/ip4/127.0.0.1/tcp/{}", bob_port).parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let bob_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
 
     // Carols's parameters
-    let carol_port = 31488 + port_offset;
-    let carol_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        format!("/ip4/127.0.0.1/tcp/{}", carol_port).parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let carol_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
 
-    let base_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        "/ip4/127.0.0.1/tcp/54225".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
     let (mut alice_ts, mut alice_oms, alice_comms) = setup_transaction_service(
         &mut runtime,
         alice_node_identity.clone(),
@@ -477,9 +452,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
         database_path.clone(),
         Duration::from_secs(1),
     );
-    runtime
-        .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
-        .unwrap();
+
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
     // Add some funds to Alices wallet
@@ -535,12 +508,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
         database_path,
         Duration::from_secs(1),
     );
-    runtime
-        .block_on(bob_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
-        .unwrap();
-    runtime
-        .block_on(carol_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
-        .unwrap();
+
     let bob_event_stream = bob_ts.get_event_stream_fused();
     let carol_event_stream = carol_ts.get_event_stream_fused();
 
@@ -565,21 +533,19 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
             "".to_string(),
         ))
         .unwrap();
+    let result = runtime.block_on(async {
+        collect_stream!(
+            alice_event_stream.map(|i| (*i).clone()),
+            take = 5,
+            timeout = Duration::from_secs(30)
+        )
+    });
 
     assert_eq!(
-        runtime
-            .block_on(async {
-                collect_stream!(
-                    alice_event_stream.map(|i| (*i).clone()),
-                    take = 5,
-                    timeout = Duration::from_secs(30)
-                )
-            })
-            .iter()
-            .fold(0, |acc, x| match x {
-                TransactionEvent::ReceivedTransactionReply(_) => acc + 1,
-                _ => acc,
-            }),
+        result.iter().fold(0, |acc, x| match x {
+            TransactionEvent::ReceivedTransactionReply(_) => acc + 1,
+            _ => acc,
+        }),
         3
     );
 
@@ -600,9 +566,11 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
     assert_eq!(carol_pending_inbound.len(), 0);
     assert_eq!(carol_completed_tx.len(), 1);
 
-    alice_comms.shutdown().unwrap();
-    bob_comms.shutdown().unwrap();
-    carol_comms.shutdown().unwrap();
+    runtime.block_on(async move {
+        alice_comms.shutdown().await;
+        bob_comms.shutdown().await;
+        carol_comms.shutdown().await;
+    });
 }
 
 #[test]
@@ -613,7 +581,6 @@ fn manage_multiple_transactions_memory_db() {
         TransactionMemoryDatabase::new(),
         TransactionMemoryDatabase::new(),
         TransactionMemoryDatabase::new(),
-        0,
         temp_dir.path().to_str().unwrap().to_string(),
     );
 }
@@ -636,7 +603,6 @@ fn manage_multiple_transactions_sqlite_db() {
         TransactionServiceSqliteDatabase::new(connection_pool_alice),
         TransactionServiceSqliteDatabase::new(connection_pool_bob),
         TransactionServiceSqliteDatabase::new(connection_pool_carol),
-        1,
         path_string,
     );
 }
@@ -744,12 +710,8 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
     let mut runtime = create_runtime();
     let factories = CryptoFactories::default();
 
-    let bob_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        "/ip4/127.0.0.1/tcp/31585".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let bob_node_identity =
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
     let (
         mut alice_ts,
         mut alice_output_manager,
@@ -923,12 +885,8 @@ fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(al
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend);
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
-    let bob_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        "/ip4/127.0.0.1/tcp/55741".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let bob_node_identity =
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
     let (_bob_ts, mut bob_output_manager, _bob_outbound_service, _bob_tx_sender, _bob_tx_ack_sender, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend);
 
@@ -1036,12 +994,8 @@ fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alic
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend);
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
-    let bob_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        "/ip4/127.0.0.1/tcp/55714".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let bob_node_identity =
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
     let (_bob_ts, mut bob_output_manager, _bob_outbound_service, _bob_tx_sender, _bob_tx_ack_sender, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend);
 
@@ -1134,77 +1088,99 @@ fn finalize_tx_with_missing_output_sqlite_db() {
 
 #[test]
 fn discovery_async_return_test() {
+    env_logger::Builder::from_default_env().format_timestamp_nanos().init();
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
 
-    let mut runtime = Runtime::new().unwrap();
+    let mut runtime = runtime::Builder::new()
+        .basic_scheduler()
+        .enable_time()
+        .thread_name("discovery_async_return_test")
+        .build()
+        .unwrap();
     let factories = CryptoFactories::default();
 
     let alice_backend = TransactionMemoryDatabase::new();
     let bob_backend = TransactionMemoryDatabase::new();
     let dave_backend = TransactionMemoryDatabase::new();
-    let port_offset = 1;
 
     // Alice's parameters
-    let alice_port = 30484 + port_offset;
-    let alice_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        format!("/ip4/127.0.0.1/tcp/{}", alice_port).parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let alice_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
 
     // Bob's parameters
-    let bob_port = 30475 + port_offset;
-    let bob_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        format!("/ip4/127.0.0.1/tcp/{}", bob_port).parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let bob_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
 
     // Carols's parameters
-    let carol_port = 30488 + port_offset;
-    let carol_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        format!("/ip4/127.0.0.1/tcp/{}", carol_port).parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let carol_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
 
     // Dave's parameters
-    let dave_port = 30498 + port_offset;
-    let dave_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        format!("/ip4/127.0.0.1/tcp/{}", dave_port).parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let dave_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
 
-    let (mut alice_ts, mut alice_oms, _alice_comms) = setup_transaction_service(
+    log::info!(
+        "discovery_async_return_test: Alice: '{}', Bob: '{}', Carol: '{}', Dave: '{}'",
+        alice_node_identity.node_id().short_str(),
+        bob_node_identity.node_id().short_str(),
+        carol_node_identity.node_id().short_str(),
+        dave_node_identity.node_id().short_str()
+    );
+
+    let (mut alice_ts, mut alice_oms, alice_comms) = setup_transaction_service(
         &mut runtime,
         alice_node_identity.clone(),
         vec![bob_node_identity.clone()],
         factories.clone(),
         alice_backend,
         db_folder.clone(),
-        Duration::from_secs(1),
+        Duration::from_secs(5),
     );
-    let alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
-    let (_bob_ts, _bob_oms, _bob_comms) = setup_transaction_service(
+    let (_bob_ts, _bob_oms, bob_comms) = setup_transaction_service(
         &mut runtime,
         bob_node_identity.clone(),
-        vec![
-            alice_node_identity.clone(),
-            carol_node_identity.clone(),
-            dave_node_identity.clone(),
-        ],
+        vec![alice_node_identity.clone(), dave_node_identity.clone()],
         factories.clone(),
         bob_backend,
         db_folder.clone(),
         Duration::from_secs(1),
     );
+
+    let (_dave_ts, _dave_oms, dave_comms) = setup_transaction_service(
+        &mut runtime,
+        dave_node_identity.clone(),
+        vec![bob_node_identity.clone()],
+        factories.clone(),
+        dave_backend,
+        db_folder,
+        Duration::from_secs(1),
+    );
+
+    // Establish some connections beforehand, to reduce the amount of work done concurrently in tests
+    // Connect Bob and Alice
+    runtime
+        .block_on(
+            bob_comms
+                .connection_manager()
+                .dial_peer(alice_node_identity.node_id().clone()),
+        )
+        .unwrap();
+
+    // Connect Dave to Bob
+    runtime
+        .block_on(
+            dave_comms
+                .connection_manager()
+                .dial_peer(bob_node_identity.node_id().clone()),
+        )
+        .unwrap();
 
     let (_utxo, uo1a) = make_input(&mut OsRng, MicroTari(5500), &factories.commitment);
     runtime.block_on(alice_oms.add_output(uo1a)).unwrap();
@@ -1231,35 +1207,12 @@ fn discovery_async_return_test() {
     };
     assert_ne!(initial_balance, runtime.block_on(alice_oms.get_balance()).unwrap());
 
-    assert!(runtime
-        .block_on(async {
-            collect_stream!(
-                alice_event_stream.map(|i| (*i).clone()),
-                take = 1,
-                timeout = Duration::from_secs(10)
-            )
-        })
-        .iter()
-        .find(
-            |i| if let TransactionEvent::TransactionSendDiscoveryComplete(t, result) = i {
-                t == &tx_id && !(*result)
-            } else {
-                false
-            }
-        )
-        .is_some());
+    let event = runtime.block_on(alice_event_stream.next()).unwrap();
+    unpack_enum!(TransactionEvent::TransactionSendDiscoveryComplete(txid, is_success) = &*event);
+    assert_eq!(txid, &tx_id);
+    assert_eq!(*is_success, false);
 
     assert_eq!(initial_balance, runtime.block_on(alice_oms.get_balance()).unwrap());
-
-    let (_dave_ts, _dave_oms, _dave_comms) = setup_transaction_service(
-        &mut runtime,
-        dave_node_identity.clone(),
-        vec![bob_node_identity.clone()],
-        factories.clone(),
-        dave_backend,
-        db_folder,
-        Duration::from_secs(1),
-    );
 
     let tx_id2 = match runtime.block_on(alice_ts.send_transaction(
         dave_node_identity.public_key().clone(),
@@ -1273,24 +1226,16 @@ fn discovery_async_return_test() {
             0u64
         },
     };
-    let alice_event_stream = alice_ts.get_event_stream_fused();
-    let result = runtime.block_on(async {
-        collect_stream!(
-            alice_event_stream.map(|i| (*i).clone()),
-            take = 3,
-            timeout = Duration::from_secs(10)
-        )
+    let event = runtime.block_on(alice_event_stream.next()).unwrap();
+    unpack_enum!(TransactionEvent::TransactionSendDiscoveryComplete(txid, is_success) = &*event);
+    assert_eq!(txid, &tx_id2);
+    assert!(is_success);
+
+    runtime.block_on(async move {
+        alice_comms.shutdown().await;
+        bob_comms.shutdown().await;
+        dave_comms.shutdown().await;
     });
-    assert!(result
-        .iter()
-        .find(
-            |i| if let TransactionEvent::TransactionSendDiscoveryComplete(t, result) = i {
-                t == &tx_id2 && *result
-            } else {
-                false
-            }
-        )
-        .is_some());
 }
 
 fn test_coinbase<T: TransactionBackend + Clone + 'static>(backend: T) {
@@ -1415,26 +1360,14 @@ fn transaction_mempool_broadcast() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
-    let alice_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        "/ip4/127.0.0.1/tcp/54212".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let alice_node_identity =
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
 
-    let bob_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        "/ip4/127.0.0.1/tcp/54223".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let bob_node_identity =
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
 
-    let base_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        "/ip4/127.0.0.1/tcp/54225".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let base_node_identity =
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
 
     let (
         mut alice_ts,
@@ -1776,26 +1709,14 @@ fn transaction_base_node_monitoring() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
-    let alice_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        "/ip4/127.0.0.1/tcp/54212".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let alice_node_identity =
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
 
-    let bob_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        "/ip4/127.0.0.1/tcp/54223".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let bob_node_identity =
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
 
-    let base_node_identity = NodeIdentity::random(
-        &mut OsRng,
-        "/ip4/127.0.0.1/tcp/54225".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+    let base_node_identity =
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
 
     let (
         mut alice_ts,

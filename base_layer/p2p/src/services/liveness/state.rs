@@ -67,7 +67,7 @@ impl From<Metadata> for HashMap<i32, Vec<u8>> {
 /// State for the LivenessService.
 #[derive(Default)]
 pub struct LivenessState {
-    inflight_pings: HashMap<NodeId, NaiveDateTime>,
+    inflight_pings: HashMap<u64, (NodeId, NaiveDateTime)>,
     peer_latency: HashMap<NodeId, AverageLatency>,
 
     pings_received: AtomicUsize,
@@ -139,9 +139,9 @@ impl LivenessState {
     }
 
     /// Adds a ping to the inflight ping list, while noting the current time that a ping was sent.
-    pub fn add_inflight_ping(&mut self, node_id: &NodeId) {
+    pub fn add_inflight_ping(&mut self, nonce: u64, node_id: &NodeId) {
         let now = Utc::now().naive_utc();
-        self.inflight_pings.insert((*node_id).clone(), now.clone());
+        self.inflight_pings.insert(nonce, ((*node_id).clone(), now.clone()));
         if let Some(ns) = self.nodes_to_monitor.get_mut(node_id) {
             ns.last_ping_sent = Some(now);
         }
@@ -153,17 +153,17 @@ impl LivenessState {
         self.inflight_pings = self
             .inflight_pings
             .drain()
-            .filter(|(_, time)| convert_to_std_duration(Utc::now().naive_utc() - *time) <= MAX_INFLIGHT_TTL)
+            .filter(|(_, (_, time))| convert_to_std_duration(Utc::now().naive_utc() - *time) <= MAX_INFLIGHT_TTL)
             .collect();
     }
 
     /// Records a pong. Specifically, the pong counter is incremented and
     /// a latency sample is added and calculated.
-    pub fn record_pong(&mut self, node_id: &NodeId) -> Option<u32> {
+    pub fn record_pong(&mut self, nonce: u64) -> Option<u32> {
         self.inc_pongs_received();
 
-        match self.inflight_pings.remove_entry(&node_id) {
-            Some((node_id, sent_time)) => {
+        match self.inflight_pings.remove_entry(&nonce) {
+            Some((_, (node_id, sent_time))) => {
                 let now = Utc::now().naive_utc();
                 if let Some(ns) = self.nodes_to_monitor.get_mut(&node_id) {
                     ns.last_pong_received = Some(sent_time);
@@ -337,9 +337,9 @@ mod test {
         let mut state = LivenessState::new();
 
         let node_id = NodeId::default();
-        state.add_inflight_ping(&node_id);
+        state.add_inflight_ping(123, &node_id);
 
-        let latency = state.record_pong(&node_id).unwrap();
+        let latency = state.record_pong(123).unwrap();
         assert!(latency < 50);
     }
 
@@ -359,9 +359,9 @@ mod test {
         let mut state = LivenessState::new();
         state.add_node_id(&node_id);
 
-        state.add_inflight_ping(&node_id);
+        state.add_inflight_ping(123, &node_id);
 
-        let latency = state.record_pong(&node_id).unwrap();
+        let latency = state.record_pong(123).unwrap();
         assert!(latency < 50);
 
         assert_eq!(state.get_num_monitored_nodes(), 1);

@@ -64,14 +64,19 @@ use serde::{Deserialize, Serialize};
 
 #[macro_use]
 mod envelope;
-mod error;
-mod inbound_message;
+pub use envelope::{Envelope, EnvelopeBody, EnvelopeHeader, MessageEnvelopeHeader};
 
-pub use self::{
-    envelope::{Envelope, EnvelopeBody, EnvelopeHeader, MessageEnvelopeHeader},
-    error::MessageError,
-    inbound_message::*,
-};
+mod error;
+pub use error::MessageError;
+
+mod inbound;
+pub use inbound::InboundMessage;
+
+mod outbound;
+pub use outbound::OutboundMessage;
+
+mod tag;
+pub use tag::MessageTag;
 
 pub trait MessageExt: prost::Message {
     /// Encodes a message, allocating the buffer on the heap as necessary
@@ -83,11 +88,6 @@ pub trait MessageExt: prost::Message {
     }
 }
 impl<T: prost::Message> MessageExt for T {}
-
-/// Represents a single message frame.
-pub type Frame = Vec<u8>;
-/// Represents a collection of frames which make up a multipart message.
-pub type FrameSet = Vec<Frame>;
 
 bitflags! {
     /// Used to indicate characteristics of the incoming or outgoing message, such

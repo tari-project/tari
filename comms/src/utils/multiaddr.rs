@@ -19,22 +19,11 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-use multiaddr::{Multiaddr, Protocol};
+use crate::multiaddr::{Multiaddr, Protocol};
 use std::{
     io,
     net::{IpAddr, SocketAddr},
 };
-
-/// Convert a socket address to a multiaddress. Assumes the protocol is Tcp
-pub fn socketaddr_to_multiaddr(socket_addr: &SocketAddr) -> Multiaddr {
-    let mut addr: Multiaddr = match socket_addr.ip() {
-        IpAddr::V4(addr) => Protocol::Ip4(addr).into(),
-        IpAddr::V6(addr) => Protocol::Ip6(addr).into(),
-    };
-    addr.push(Protocol::Tcp(socket_addr.port()));
-    addr
-}
 
 /// Convert a multiaddr to a socket address required for `TcpStream`
 pub fn multiaddr_to_socketaddr(addr: &Multiaddr) -> io::Result<SocketAddr> {
@@ -63,17 +52,15 @@ pub fn multiaddr_to_socketaddr(addr: &Multiaddr) -> io::Result<SocketAddr> {
     }
 }
 
-// /// Creates a Multiaddr from Protocols. This macro currently only supports tuple Protocols
-//#[macro_export]
-// macro_rules! multiaddr_from_components {
-//    ($first:ident ( $($first_vars:expr),+ )$(,)? $($parts:ident ( $($var:expr),+ )),* ) => {{
-//        let mut addr: $crate::multiaddr::Multiaddr = $crate::multiaddr::Protocol::$first($($first_vars),*).into();
-//        $(
-//            addr.append($crate::multiaddr::Protocol::$parts($($var),+));
-//        )*
-//        addr
-//    }};
-//}
+/// Convert a socket address to a multiaddress. Assumes the protocol is Tcp
+pub fn socketaddr_to_multiaddr(socket_addr: &SocketAddr) -> Multiaddr {
+    let mut addr: Multiaddr = match socket_addr.ip() {
+        IpAddr::V4(addr) => Protocol::Ip4(addr).into(),
+        IpAddr::V6(addr) => Protocol::Ip6(addr).into(),
+    };
+    addr.push(Protocol::Tcp(socket_addr.port()));
+    addr
+}
 
 #[cfg(test)]
 mod test {

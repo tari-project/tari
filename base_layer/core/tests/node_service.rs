@@ -88,11 +88,11 @@ fn request_response_get_metadata() {
         assert_eq!(received_metadata.len(), 2);
         assert_eq!(received_metadata[0].height_of_longest_chain, Some(0));
         assert_eq!(received_metadata[1].height_of_longest_chain, Some(0));
-    });
 
-    alice_node.comms.shutdown().unwrap();
-    bob_node.comms.shutdown().unwrap();
-    carol_node.comms.shutdown().unwrap();
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+        carol_node.comms.shutdown().await;
+    });
 }
 
 #[test]
@@ -132,11 +132,11 @@ fn request_and_response_fetch_headers() {
             (received_headers.contains(&headerb1) && (received_headers.contains(&headerb2))) ||
                 (received_headers.contains(&headerc1) && (received_headers.contains(&headerc2)))
         );
-    });
 
-    alice_node.comms.shutdown().unwrap();
-    bob_node.comms.shutdown().unwrap();
-    carol_node.comms.shutdown().unwrap();
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+        carol_node.comms.shutdown().await;
+    });
 }
 
 #[test]
@@ -173,11 +173,11 @@ fn request_and_response_fetch_kernels() {
         assert_eq!(received_kernels.len(), 2);
         assert!(received_kernels.contains(&kernel1));
         assert!(received_kernels.contains(&kernel2));
-    });
 
-    alice_node.comms.shutdown().unwrap();
-    bob_node.comms.shutdown().unwrap();
-    carol_node.comms.shutdown().unwrap();
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+        carol_node.comms.shutdown().await;
+    });
 }
 
 #[test]
@@ -211,11 +211,11 @@ fn request_and_response_fetch_utxos() {
         assert_eq!(received_utxos.len(), 2);
         assert!(received_utxos.contains(&utxo1));
         assert!(received_utxos.contains(&utxo2));
-    });
 
-    alice_node.comms.shutdown().unwrap();
-    bob_node.comms.shutdown().unwrap();
-    carol_node.comms.shutdown().unwrap();
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+        carol_node.comms.shutdown().await;
+    });
 }
 
 #[test]
@@ -254,11 +254,11 @@ fn request_and_response_fetch_blocks() {
         assert_ne!(*received_blocks[0].block(), *received_blocks[1].block());
         assert!((*received_blocks[0].block() == blocks[0]) || (*received_blocks[1].block() == blocks[0]));
         assert!((*received_blocks[0].block() == blocks[1]) || (*received_blocks[1].block() == blocks[1]));
-    });
 
-    alice_node.comms.shutdown().unwrap();
-    bob_node.comms.shutdown().unwrap();
-    carol_node.comms.shutdown().unwrap();
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+        carol_node.comms.shutdown().await;
+    });
 }
 
 pub async fn event_stream_next<TStream>(mut stream: TStream, timeout: Duration) -> Option<TStream::Item>
@@ -352,12 +352,12 @@ fn propagate_and_forward_valid_block() {
         } else {
             panic!("Dan's node did not receive and validate the expected block");
         }
-    });
 
-    alice_node.comms.shutdown().unwrap();
-    bob_node.comms.shutdown().unwrap();
-    carol_node.comms.shutdown().unwrap();
-    dan_node.comms.shutdown().unwrap();
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+        carol_node.comms.shutdown().await;
+        dan_node.comms.shutdown().await;
+    });
 }
 
 #[test]
@@ -405,17 +405,18 @@ fn propagate_and_forward_invalid_block() {
     block1.header.height = 0;
     let block1_hash = block1.hash();
     runtime.block_on(async {
+        let bob_block_event_stream = bob_node.local_nci.get_block_event_stream_fused();
+        let carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
+        let dan_block_event_stream = dan_node.local_nci.get_block_event_stream_fused();
+
         assert!(alice_node
             .outbound_nci
             .propagate_block(block1.clone(), vec![])
             .await
             .is_ok());
 
-        let bob_block_event_stream = bob_node.local_nci.get_block_event_stream_fused();
         let bob_block_event_fut = event_stream_next(bob_block_event_stream, Duration::from_millis(20000));
-        let carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
         let carol_block_event_fut = event_stream_next(carol_block_event_stream, Duration::from_millis(20000));
-        let dan_block_event_stream = dan_node.local_nci.get_block_event_stream_fused();
         let dan_block_event_fut = event_stream_next(dan_block_event_stream, Duration::from_millis(5000));
         let (bob_block_event, carol_block_event, dan_block_event) =
             join!(bob_block_event_fut, carol_block_event_fut, dan_block_event_fut);
@@ -431,11 +432,12 @@ fn propagate_and_forward_invalid_block() {
             panic!("Carol's node should have detected an invalid block");
         }
         assert!(dan_block_event.is_none());
+
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+        carol_node.comms.shutdown().await;
+        dan_node.comms.shutdown().await;
     });
-    alice_node.comms.shutdown().unwrap();
-    bob_node.comms.shutdown().unwrap();
-    carol_node.comms.shutdown().unwrap();
-    dan_node.comms.shutdown().unwrap();
 }
 
 #[test]
@@ -461,10 +463,10 @@ fn service_request_timeout() {
             alice_node.outbound_nci.get_metadata().await,
             Err(CommsInterfaceError::RequestTimedOut)
         );
-    });
 
-    alice_node.comms.shutdown().unwrap();
-    bob_node.comms.shutdown().unwrap();
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+    });
 }
 
 #[test]
@@ -481,9 +483,9 @@ fn local_get_metadata() {
         let metadata = node.local_nci.get_metadata().await.unwrap();
         assert_eq!(metadata.height_of_longest_chain, Some(2));
         assert_eq!(metadata.best_block, Some(block2.hash()));
-    });
 
-    node.comms.shutdown().unwrap();
+        node.comms.shutdown().await;
+    });
 }
 
 #[test]
@@ -517,9 +519,9 @@ fn local_get_new_block_template_and_get_new_block() {
         assert_eq!(block.body, block_template.body);
 
         assert!(node.blockchain_db.add_block(block.clone()).is_ok());
-    });
 
-    node.comms.shutdown().unwrap();
+        node.comms.shutdown().await;
+    });
 }
 
 #[test]
@@ -560,9 +562,9 @@ fn local_get_target_difficulty() {
         let blake_target_difficulty2 = node.local_nci.get_target_difficulty(PowAlgorithm::Blake).await.unwrap();
         assert!(monero_target_difficulty1 <= monero_target_difficulty2);
         assert!(blake_target_difficulty1 <= blake_target_difficulty2);
-    });
 
-    node.comms.shutdown().unwrap();
+        node.comms.shutdown().await;
+    });
 }
 
 #[test]
@@ -586,7 +588,7 @@ fn local_submit_block() {
         } else {
             panic!("Block validation failed");
         }
-    });
 
-    node.comms.shutdown().unwrap();
+        node.comms.shutdown().await;
+    });
 }

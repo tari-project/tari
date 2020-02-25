@@ -567,8 +567,17 @@ where
             )
             .await?;
 
-        self.broadcast_completed_transaction_to_mempool(tx_id, broadcast_timeout_futures)
-            .await?;
+        // Logging this error here instead of propogating it up to the select! catchall which generates the Error Event.
+        let _ = self
+            .broadcast_completed_transaction_to_mempool(tx_id, broadcast_timeout_futures)
+            .await
+            .map_err(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Error broadcasting completed transaction to mempool: {:?}", e
+                );
+                e
+            });
 
         self.event_publisher
             .send(TransactionEvent::ReceivedTransactionReply(tx_id))
@@ -748,8 +757,17 @@ where
             source_pubkey.clone()
         );
 
-        self.broadcast_completed_transaction_to_mempool(tx_id, broadcast_timeout_futures)
-            .await?;
+        // Logging this error here instead of propogating it up to the select! catchall which generates the Error Event.
+        let _ = self
+            .broadcast_completed_transaction_to_mempool(tx_id, broadcast_timeout_futures)
+            .await
+            .map_err(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Error broadcasting completed transaction to mempool: {:?}", e
+                );
+                e
+            });
 
         Ok(())
     }

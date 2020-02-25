@@ -160,7 +160,8 @@ pub struct GlobalConfig {
     pub core_threads: usize,
     pub blocking_threads: usize,
     pub identity_file: PathBuf,
-    pub address: String,
+    pub public_address: String,
+    pub listener_address: String,
     pub peer_seeds: Vec<String>,
     pub peer_db_path: String,
     pub enable_mining: bool,
@@ -227,9 +228,15 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
     let identity_file = PathBuf::from(identity_file);
 
-    // Address
-    let key = config_string(&net_str, "address");
-    let address = cfg
+    // Public Address
+    let key = config_string(&net_str, "public_address");
+    let public_address = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+
+    // Listener Address
+    let key = config_string(&net_str, "listener_address");
+    let listener_address = cfg
         .get_str(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
@@ -262,7 +269,8 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         core_threads,
         blocking_threads,
         identity_file,
-        address,
+        public_address,
+        listener_address,
         peer_seeds,
         peer_db_path,
         enable_mining,
@@ -312,7 +320,9 @@ pub fn default_config() -> Config {
         default_subdir("mainnet/node_id.json"),
     )
     .unwrap();
-    cfg.set_default("base_node.mainnet.address", "/ip4/0.0.0.0/tcp/18089/http")
+    cfg.set_default("base_node.mainnet.listener_address", "/ip4/0.0.0.0/tcp/18089")
+        .unwrap();
+    cfg.set_default("base_node.mainnet.public_address", "/ip4/0.0.0.0/tcp/18089")
         .unwrap();
     cfg.set_default("base_node.mainnet.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.mainnet.grpc_address", "tcp://127.0.0.1:18041")
@@ -332,7 +342,9 @@ pub fn default_config() -> Config {
         default_subdir("testnet/node_id.json"),
     )
     .unwrap();
-    cfg.set_default("base_node.testnet.address", "/ip4/0.0.0.0/tcp/18189/http")
+    cfg.set_default("base_node.testnet.public_address", "/ip4/0.0.0.0/tcp/18189")
+        .unwrap();
+    cfg.set_default("base_node.testnet.listener_address", "/ip4/0.0.0.0/tcp/18189")
         .unwrap();
     cfg.set_default("base_node.testnet.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.testnet.grpc_address", "tcp://127.0.0.1:18141")

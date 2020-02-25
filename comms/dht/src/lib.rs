@@ -115,10 +115,20 @@ mod macros;
 mod test_utils;
 
 mod actor;
+pub use actor::{DhtActorError, DhtRequest, DhtRequester};
+
 mod builder;
+pub use builder::DhtBuilder;
+
 mod config;
+pub use config::DhtConfig;
+
 mod consts;
+mod crypt;
+
 mod dht;
+pub use dht::Dht;
+
 mod discovery;
 mod proto;
 mod utils;
@@ -129,10 +139,5 @@ pub mod envelope;
 pub mod inbound;
 pub mod outbound;
 pub mod store_forward;
-
-pub use actor::{DhtActorError, DhtRequest, DhtRequester};
-pub use builder::DhtBuilder;
-pub use config::DhtConfig;
-pub use dht::Dht;
 
 pub type PipelineError = Box<dyn std::error::Error + Send + Sync>;

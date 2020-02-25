@@ -24,6 +24,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    memsocket,
     memsocket::{MemoryListener, MemorySocket},
     transports::Transport,
 };
@@ -31,6 +32,7 @@ use futures::{future, stream::Stream, Future};
 use multiaddr::{Multiaddr, Protocol};
 use std::{
     io,
+    num::NonZeroU16,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -38,6 +40,20 @@ use std::{
 /// Transport to build in-memory connections
 #[derive(Debug, Default, Clone)]
 pub struct MemoryTransport;
+
+impl MemoryTransport {
+    /// Acquire a free memory socket port. This port will not be used when using `/memory/0` or by subsequent calls to
+    /// `acquire_next_memsocket_port`.
+    pub fn acquire_next_memsocket_port() -> NonZeroU16 {
+        memsocket::acquire_next_memsocket_port()
+    }
+
+    /// Release a memory socket port. This port could be used when using `/memory/0` or when calling to
+    /// `acquire_next_memsocket_port`.
+    pub fn release_next_memsocket_port(port: NonZeroU16) {
+        memsocket::release_memsocket_port(port);
+    }
+}
 
 impl Transport for MemoryTransport {
     type Error = io::Error;
@@ -157,5 +173,14 @@ mod test {
 
         let result = t.dial("/ip4/127.0.0.1/tcp/22".parse().unwrap());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn acquire_release_memsocket_port() {
+        let port1 = MemoryTransport::acquire_next_memsocket_port();
+        let port2 = MemoryTransport::acquire_next_memsocket_port();
+        assert_ne!(port1, port2);
+        MemoryTransport::release_next_memsocket_port(port1);
+        MemoryTransport::release_next_memsocket_port(port2);
     }
 }

@@ -41,19 +41,15 @@ use futures::{
     stream::{FusedStream, StreamExt},
     Stream,
 };
-use multiaddr::multiaddr;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::{
     fs,
     iter,
-    net::SocketAddr,
     sync::{Arc, RwLock},
-    time::Duration,
 };
 use tari_comms::{
-    control_service::ControlServiceConfig,
-    multiaddr::{Multiaddr, Protocol},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags},
+    tor,
 };
 use tari_crypto::tari_utilities::message_format::MessageFormat;
 use tari_p2p::{
@@ -63,42 +59,20 @@ use tari_p2p::{
         comms_outbound::CommsOutboundServiceInitializer,
         liveness::{LivenessConfig, LivenessEvent, LivenessHandle, LivenessInitializer},
     },
+    transport::{TorConfig, TransportType},
 };
 use tari_service_framework::StackBuilder;
-use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_shutdown::ShutdownSignal;
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
-fn load_identity(path: &str) -> NodeIdentity {
+fn load_file<T: MessageFormat>(path: &str) -> T {
     let contents = fs::read_to_string(path).unwrap();
-    NodeIdentity::from_json(contents.as_str()).unwrap()
+    T::from_json(contents.as_str()).unwrap()
 }
 
 pub fn random_string(len: usize) -> String {
     iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
-}
-
-fn get_lan_address() -> Multiaddr {
-    let interfaces = get_if_addrs::get_if_addrs().unwrap();
-    interfaces
-        .into_iter()
-        .find(|if_addr| !if_addr.is_loopback())
-        .and_then(|if_addr| Some(if_addr.ip().into()))
-        .unwrap()
-}
-
-fn set_lan_address(identity: &NodeIdentity) {
-    let mut addr = get_lan_address();
-    let control_addr = identity.public_address();
-    let tcp = control_addr
-        .iter()
-        .find(|p| match p {
-            Protocol::Tcp(_) => true,
-            _ => false,
-        })
-        .expect("no tcp protocol in address");
-    addr.push(tcp);
-    identity.set_public_address(addr).unwrap();
 }
 
 fn main() {
@@ -133,83 +107,75 @@ fn main() {
                 .default_value("base_layer/p2p/examples/example-log-config.yml"),
         )
         .arg(
-            Arg::with_name("port")
-                .value_name("PORT")
-                .long("port")
-                .short("p")
-                .help("The port to use for the listener service (default:0 (os-assigned))")
-                .takes_value(true)
-                .default_value("0"),
+            Arg::with_name("enable-tor")
+                .long("enable-tor")
+                .help("Set to enable tor"),
         )
         .arg(
-            Arg::with_name("socks proxy")
-                .value_name("PROXYADDR")
-                .long("proxy")
-                .help("Use this proxy when connecting")
+            Arg::with_name("tor-identity")
+                .long("tor-identity")
+                .help("Path to the file containing the onion address and private key")
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("local")
-                .long("local")
-                .help("Advertise local LAN address")
-                .takes_value(false),
+            Arg::with_name("tor-control-address")
+                .value_name("TORADDR")
+                .long("tor-control-addr")
+                .short("t")
+                .help("Address of the control server")
+                .takes_value(true)
+                .default_value("/ip4/127.0.0.1/tcp/9051"),
         )
         .get_matches();
 
+    let mut rt = Runtime::new().expect("Failed to initialize tokio runtime");
+
     log4rs::init_file(matches.value_of("log-config").unwrap(), Default::default()).unwrap();
 
-    let node_identity = Arc::new(load_identity(matches.value_of("node-identity").unwrap()));
-    let peer_identity = load_identity(matches.value_of("peer-identity").unwrap());
-    let port = matches.value_of("port").unwrap();
-    let proxy = matches.value_of("socks proxy").and_then(|proxy| {
-        if proxy.is_empty() {
-            None
-        } else {
-            Some(proxy.parse::<SocketAddr>().unwrap())
-        }
-    });
+    let node_identity = Arc::new(load_file::<NodeIdentity>(matches.value_of("node-identity").unwrap()));
+    let peer_identity = load_file::<NodeIdentity>(matches.value_of("peer-identity").unwrap());
+    let tor_control_server_addr = matches.value_of("tor-control-address").unwrap();
+    let is_tor_enabled = matches.is_present("enable-tor");
 
-    if matches.value_of("local").is_some() {
-        set_lan_address(&node_identity);
-        set_lan_address(&peer_identity);
-    }
+    let tor_identity = if is_tor_enabled {
+        Some(load_file::<tor::TorIdentity>(matches.value_of("tor-identity").unwrap()))
+    } else {
+        None
+    };
 
     let datastore_path = TempDir::new(random_string(8).as_str()).unwrap();
-
-    let comms_config = CommsConfig {
-        node_identity: Arc::clone(&node_identity),
-        peer_connection_listening_address: format!("0.0.0.0:{}", port).parse().unwrap(),
-        socks_proxy_address: proxy.clone(),
-        control_service: ControlServiceConfig {
-            listening_address: {
-                let tcp_port = node_identity
-                    .public_address()
-                    .iter()
-                    .find_map(|p| match p {
-                        Protocol::Tcp(port) => Some(port),
-                        _ => None,
-                    })
-                    .expect("no tcp protocol in node_identity address");
-
-                multiaddr!(Ip4([0, 0, 0, 0]), Tcp(tcp_port))
-            },
-            public_peer_address: Some(node_identity.public_address()),
-            socks_proxy_address: proxy,
-            requested_connection_timeout: Duration::from_millis(2000),
-        },
-        establish_connection_timeout: Duration::from_secs(10),
-        datastore_path: datastore_path.path().to_str().unwrap().to_string(),
-        peer_database_name: random_string(8),
-        inbound_buffer_size: 10,
-        outbound_buffer_size: 10,
-        dht: Default::default(),
-    };
-    let mut rt = Runtime::new().expect("Failed to create tokio Runtime");
 
     let (publisher, subscription_factory) = pubsub_connector(rt.handle().clone(), 100);
     let subscription_factory = Arc::new(subscription_factory);
 
-    let (comms, dht) = initialize_comms(rt.handle().clone(), comms_config, publisher).unwrap();
+    let transport_type = if is_tor_enabled {
+        let tor_identity = tor_identity.unwrap();
+        TransportType::Tor(TorConfig {
+            control_server_addr: tor_control_server_addr.parse().expect("Invalid tor-control-addr value"),
+            control_server_auth: Default::default(),
+            port_mapping: tor_identity.onion_port.into(),
+            private_key: Some(Box::new(tor_identity.private_key)),
+            socks_auth: Default::default(),
+        })
+    } else {
+        TransportType::Tcp {
+            listener_address: node_identity.public_address(),
+        }
+    };
+
+    let comms_config = CommsConfig {
+        transport_type,
+        node_identity,
+        datastore_path: datastore_path.path().to_str().unwrap().to_string(),
+        peer_database_name: random_string(8),
+        max_concurrent_inbound_tasks: 10,
+        outbound_buffer_size: 10,
+        dht: Default::default(),
+    };
+
+    let (comms, dht) = rt.block_on(initialize_comms(comms_config, publisher)).unwrap();
+
+    println!("Comms listening on {}", comms.listening_address());
 
     let peer = Peer::new(
         peer_identity.public_key().clone(),
@@ -219,33 +185,35 @@ fn main() {
         peer_identity.features().clone(),
     );
     comms.peer_manager().add_peer(peer).unwrap();
+    let shutdown_signal = comms.shutdown_signal();
 
-    let fut = StackBuilder::new(rt.handle().clone(), comms.shutdown_signal())
-        .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
-        .add_initializer(LivenessInitializer::new(
-            LivenessConfig {
-                auto_ping_interval: Some(Duration::from_secs(5)), // None,
-                enable_auto_stored_message_request: false,
-                enable_auto_join: true,
-                ..Default::default()
-            },
-            Arc::clone(&subscription_factory),
-            dht.dht_requester(),
-        ))
-        .finish();
-
-    let handles = rt.block_on(fut).expect("Service initialization failed");
+    let handles = rt
+        .block_on(
+            StackBuilder::new(rt.handle().clone(), comms.shutdown_signal())
+                .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
+                .add_initializer(LivenessInitializer::new(
+                    LivenessConfig {
+                        auto_ping_interval: None, // Some(Duration::from_secs(5)),
+                        enable_auto_stored_message_request: false,
+                        enable_auto_join: true,
+                        ..Default::default()
+                    },
+                    Arc::clone(&subscription_factory),
+                    dht.dht_requester(),
+                ))
+                .finish(),
+        )
+        .expect("Service initialization failed");
 
     let mut app = setup_ui();
 
     // Updates the UI when pings/pongs are received
     let ui_update_signal = app.cb_sink().clone();
     let liveness_handle = handles.get_handle::<LivenessHandle>().unwrap();
-    let mut shutdown = Shutdown::new();
     rt.spawn(update_ui(
         ui_update_signal,
         liveness_handle.clone(),
-        shutdown.to_signal(),
+        shutdown_signal.clone(),
     ));
 
     // Send pings when 'p' is pressed
@@ -261,14 +229,13 @@ fn main() {
         ui_update_signal,
         liveness_handle,
         node_to_ping,
-        shutdown.to_signal(),
+        shutdown_signal.clone(),
     ));
 
     app.add_global_callback('q', |s| s.quit());
     app.run();
 
-    shutdown.trigger().unwrap();
-    comms.shutdown().unwrap();
+    rt.block_on(comms.shutdown());
 }
 
 fn setup_ui() -> Cursive {

@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{message::InboundMessage, outbound_message_service::OutboundMessage, pipeline::SinkService};
+use crate::{
+    message::{InboundMessage, OutboundMessage},
+    pipeline::SinkService,
+};
 use derive_error::Error;
 use futures::channel::mpsc;
 use tower::Service;

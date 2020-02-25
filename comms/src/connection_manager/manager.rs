@@ -20,17 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::dialer::DialerRequest;
+use super::{
+    dialer::{Dialer, DialerRequest},
+    error::ConnectionManagerError,
+    listener::PeerListener,
+    peer_connection::{ConnId, PeerConnection},
+    requester::ConnectionManagerRequest,
+    types::ConnectionDirection,
+};
 use crate::{
     backoff::Backoff,
-    connection::ConnectionDirection,
-    connection_manager::{
-        dialer::Dialer,
-        error::ConnectionManagerError,
-        listener::PeerListener,
-        peer_connection::PeerConnection,
-        requester::ConnectionManagerRequest,
-    },
     noise::NoiseConfig,
     peer_manager::{AsyncPeerManager, NodeId, NodeIdentity},
     protocol::{ProtocolEvent, ProtocolId, Protocols},
@@ -42,13 +41,15 @@ use futures::{
     stream::Fuse,
     AsyncRead,
     AsyncWrite,
+    SinkExt,
     StreamExt,
 };
 use log::*;
 use multiaddr::Multiaddr;
-use std::{collections::HashMap, sync::Arc};
-use tari_shutdown::ShutdownSignal;
-use tokio::{runtime, sync::broadcast};
+use std::{collections::HashMap, fmt, sync::Arc};
+use tari_shutdown::{Shutdown, ShutdownSignal};
+use time::Duration;
+use tokio::{runtime, sync::broadcast, task, time};
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
 
@@ -61,6 +62,7 @@ pub enum ConnectionManagerEvent {
     PeerConnected(PeerConnection),
     PeerDisconnected(Box<NodeId>),
     PeerConnectFailed(Box<NodeId>, ConnectionManagerError),
+    PeerConnectWillClose(ConnId, Box<NodeId>, ConnectionDirection),
     PeerInboundConnectFailed(ConnectionManagerError),
 
     // Listener
@@ -69,6 +71,33 @@ pub enum ConnectionManagerEvent {
 
     // Substreams
     NewInboundSubstream(Box<NodeId>, ProtocolId, yamux::Stream),
+}
+
+impl fmt::Display for ConnectionManagerEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        use ConnectionManagerEvent::*;
+        match self {
+            PeerConnected(conn) => write!(f, "PeerConnected({})", conn),
+            PeerDisconnected(node_id) => write!(f, "PeerDisconnected({})", node_id.short_str()),
+            PeerConnectFailed(node_id, err) => write!(f, "PeerConnectFailed({}, {:?})", node_id.short_str(), err),
+            PeerConnectWillClose(id, node_id, direction) => write!(
+                f,
+                "PeerConnectWillClose({}, {}, {})",
+                id,
+                node_id.short_str(),
+                direction
+            ),
+            PeerInboundConnectFailed(err) => write!(f, "PeerInboundConnectFailed({:?})", err),
+            Listening(addr) => write!(f, "Listening({})", addr),
+            ListenFailed(err) => write!(f, "ListenFailed({:?})", err),
+            NewInboundSubstream(node_id, protocol, _) => write!(
+                f,
+                "NewInboundSubstream({}, {}, Stream)",
+                node_id.short_str(),
+                String::from_utf8_lossy(protocol)
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -81,6 +110,8 @@ pub struct ConnectionManagerConfig {
     /// The maximum number of connection tasks that will be spawned at the same time. Once this limit is reached, peers
     /// attempting to connect will have to wait for another connection attempt to complete. Default: 20
     pub max_simultaneous_inbound_connects: usize,
+    /// The period of time to keep the peer connection around before disconnecting. Default: 3s
+    pub disconnect_linger: Duration,
 }
 
 impl Default for ConnectionManagerConfig {
@@ -91,12 +122,14 @@ impl Default for ConnectionManagerConfig {
                 .expect("DEFAULT_LISTENER_ADDRESS is malformed"),
             max_dial_attempts: 3,
             max_simultaneous_inbound_connects: 20,
+            disconnect_linger: Duration::from_secs(3),
         }
     }
 }
 
 pub struct ConnectionManager<TTransport, TBackoff> {
     executor: runtime::Handle,
+    config: ConnectionManagerConfig,
     request_rx: Fuse<mpsc::Receiver<ConnectionManagerRequest>>,
     internal_event_rx: Fuse<mpsc::Receiver<ConnectionManagerEvent>>,
     dialer_tx: mpsc::Sender<DialerRequest>,
@@ -110,6 +143,7 @@ pub struct ConnectionManager<TTransport, TBackoff> {
     listener_address: Option<Multiaddr>,
     listening_notifiers: Vec<oneshot::Sender<Multiaddr>>,
     connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
+    complete_trigger: Shutdown,
 }
 
 impl<TTransport, TBackoff> ConnectionManager<TTransport, TBackoff>
@@ -152,7 +186,7 @@ where
 
         let dialer = Dialer::new(
             executor.clone(),
-            config,
+            config.clone(),
             Arc::clone(&node_identity),
             peer_manager.clone(),
             transport,
@@ -166,6 +200,7 @@ where
 
         Self {
             executor,
+            config,
             shutdown_signal: Some(shutdown_signal),
             request_rx: request_rx.fuse(),
             node_identity,
@@ -179,7 +214,12 @@ where
             listener_address: None,
             listening_notifiers: Vec::new(),
             connection_manager_events_tx,
+            complete_trigger: Shutdown::new(),
         }
+    }
+
+    pub fn complete_signal(&self) -> ShutdownSignal {
+        self.complete_trigger.to_signal()
     }
 
     pub async fn run(mut self) {
@@ -253,11 +293,7 @@ where
         match request {
             DialPeer(node_id, reply_tx) => match self.get_active_connection(&node_id) {
                 Some(conn) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Found existing active connection for peer '{}'",
-                        node_id.short_str()
-                    );
+                    debug!(target: LOG_TARGET, "[{}] Found existing active connection", conn);
                     log_if_error_fmt!(
                         target: LOG_TARGET,
                         reply_tx.send(Ok(conn.clone())),
@@ -268,7 +304,9 @@ where
                 None => {
                     debug!(
                         target: LOG_TARGET,
-                        "Active peer connection not found. Attempting to establish a new connection to peer '{}'.",
+                        "[ThisNode={}] Existing peer connection NOT found. Attempting to establish a new connection \
+                         to peer '{}'.",
+                        self.node_identity.node_id().short_str(),
                         node_id.short_str()
                     );
                     self.dial_peer(node_id, reply_tx).await
@@ -293,7 +331,7 @@ where
 
         trace!(
             target: LOG_TARGET,
-            "[ThisNode = {}] Received internal event '{:?}'",
+            "[ThisNode = {}] Received internal event '{}'",
             self.node_identity.node_id().short_str(),
             event
         );
@@ -320,37 +358,58 @@ where
                     "Error sending NewSubstream notification because '{error}'",
                 );
             },
-            PeerConnected(mut new_conn) => {
+            PeerConnected(new_conn) => {
                 let node_id = new_conn.peer_node_id().clone();
+
+                // If we're dialing this node, let's cancel it
+                self.send_dialer_request(DialerRequest::CancelPendingDial(node_id.clone()))
+                    .await;
+
                 match self.active_connections.remove(&node_id) {
-                    Some(mut existing_conn) => {
+                    Some(existing_conn) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Existing {} peer connection found for peer '{}'",
+                            existing_conn.direction(),
+                            existing_conn.peer_node_id()
+                        );
+
                         if self.tie_break_existing_connection(&existing_conn, &new_conn) {
-                            log_if_error!(
-                                target: LOG_TARGET,
-                                existing_conn.disconnect_silent().await,
-                                "Failed to disconnect (tie break) existing connection because '{error}'",
-                            );
                             debug!(
-                                "Disconnecting existing connection to Peer {} because of simultaneous dial",
-                                existing_conn.peer_node_id()
+                                target: LOG_TARGET,
+                                "Disconnecting existing {} connection to peer '{}' because of simultaneous dial",
+                                existing_conn.direction(),
+                                existing_conn.peer_node_id().short_str()
                             );
 
+                            self.publish_event(ConnectionManagerEvent::PeerConnectWillClose(
+                                existing_conn.id(),
+                                Box::new(existing_conn.peer_node_id().clone()),
+                                existing_conn.direction(),
+                            ));
+                            self.delayed_disconnect(existing_conn);
                             self.active_connections.insert(node_id, new_conn.clone());
                             self.publish_event(ConnectionManagerEvent::PeerConnected(new_conn));
                         } else {
-                            log_if_error!(
-                                target: LOG_TARGET,
-                                new_conn.disconnect_silent().await,
-                                "Failed to disconnect (tie break) new connection because '{error}'",
-                            );
                             debug!(
-                                "Disconnecting new connection to Peer {} because of simultaneous dial",
-                                new_conn.peer_node_id()
+                                target: LOG_TARGET,
+                                "Disconnecting new {} connection to peer '{}' because of
+                         simultaneous dial",
+                                new_conn.direction(),
+                                new_conn.peer_node_id().short_str()
                             );
+
+                            self.delayed_disconnect(new_conn);
                             self.active_connections.insert(node_id, existing_conn);
                         }
                     },
                     None => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Adding new {} peer connection for peer '{}'",
+                            new_conn.direction(),
+                            new_conn.peer_node_id().short_str()
+                        );
                         self.active_connections.insert(node_id, new_conn.clone());
                         self.publish_event(ConnectionManagerEvent::PeerConnected(new_conn));
                     },
@@ -361,7 +420,23 @@ where
                     self.publish_event(ConnectionManagerEvent::PeerDisconnected(node_id));
                 }
             },
-            _ => {},
+            event => {
+                self.publish_event(event);
+            },
+        }
+
+        trace!(
+            target: LOG_TARGET,
+            "[ThisNode={}] {} active connection(s)",
+            self.node_identity.node_id().short_str(),
+            self.active_connections.len()
+        );
+    }
+
+    #[inline]
+    async fn send_dialer_request(&mut self, req: DialerRequest) {
+        if let Err(err) = self.dialer_tx.send(req).await {
+            error!(target: LOG_TARGET, "Unable to send DialerRequest because '{}'", err);
         }
     }
 
@@ -388,13 +463,45 @@ where
         }
     }
 
-    fn publish_event(&self, event: ConnectionManagerEvent) {
-        log_if_error_fmt!(
-            level: trace,
+    /// A 'gentle' disconnect starts by firing a `PeerConnectWillClose` event, waiting (lingering) for a period of time
+    /// and then disconnecting. This gives other components time to conclude their work before the connection is
+    /// closed.
+    fn delayed_disconnect(&mut self, mut conn: PeerConnection) -> task::JoinHandle<()> {
+        let linger = self.config.disconnect_linger;
+        debug!(
             target: LOG_TARGET,
-            self.connection_manager_events_tx.send(Arc::new(event)),
-            "Didn't send ConnectionManagerEvent because there are no subscribers",
+            "{} connection for peer '{}' will close after {}ms",
+            conn.direction(),
+            conn.peer_node_id(),
+            linger.as_millis()
         );
+
+        self.executor.spawn(async move {
+            debug!(
+                target: LOG_TARGET,
+                "Waiting for linger period ({}ms) to expire...",
+                linger.as_millis()
+            );
+            time::delay_for(linger).await;
+
+            match conn.disconnect_silent().await {
+                Ok(_) => {},
+                Err(err) => {
+                    error!(target: LOG_TARGET, "Failed to disconnect because '{:?}'", err);
+                },
+            }
+        })
+    }
+
+    fn publish_event(&self, event: ConnectionManagerEvent) {
+        let event = Arc::new(event);
+        if self.connection_manager_events_tx.send(event.clone()).is_err() {
+            trace!(
+                target: LOG_TARGET,
+                "Didn't send event '{}' because there are no subscribers",
+                event
+            );
+        }
     }
 
     #[inline]
@@ -415,6 +522,8 @@ where
                         target: LOG_TARGET,
                         "Failed to send request to establisher because '{}'", err
                     );
+                    // TODO: If the channel is full - we'll fail to dial. This function should block until the dial
+                    //       request channel has cleared
 
                     match err.into_inner() {
                         DialerRequest::Dial(_, reply_tx) => {
@@ -425,6 +534,7 @@ where
                                 node_id.short_str()
                             );
                         },
+                        _ => {},
                     }
                 }
             },

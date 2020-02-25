@@ -220,7 +220,6 @@ fn fetch_async_mmr_roots() {
 
 #[test]
 fn async_add_block_fetch_orphan() {
-    env_logger::init();
     let (db, _, _) = create_blockchain_db_no_cut_through();
     let orphan = create_orphan_block(7, vec![]);
     let block_hash = orphan.hash();

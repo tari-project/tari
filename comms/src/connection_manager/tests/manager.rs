@@ -25,7 +25,8 @@ use crate::{
     connection_manager::{
         error::ConnectionManagerError,
         manager::ConnectionManagerEvent,
-        next::{ConnectionManager, ConnectionManagerRequester},
+        ConnectionManager,
+        ConnectionManagerRequester,
     },
     noise::NoiseConfig,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags, PeerManagerError},
@@ -37,7 +38,7 @@ use crate::{
     transports::MemoryTransport,
 };
 use futures::{channel::mpsc, future, StreamExt};
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_stream, unpack_enum};
 use tokio::{runtime::Handle, sync::broadcast};
@@ -103,7 +104,7 @@ async fn simultaneous_dial_events() {
         shutdown.to_signal(),
     );
 
-    let subscription1 = conn_man1.subscribe_events();
+    let subscription1 = conn_man1.get_event_subscription();
     let public_address1 = conn_man1.wait_until_listening().await.unwrap();
 
     let peer_manager2 = build_peer_manager();
@@ -116,7 +117,7 @@ async fn simultaneous_dial_events() {
         peer_manager2.clone(),
         shutdown.to_signal(),
     );
-    let mut subscription2 = conn_man2.subscribe_events();
+    let mut subscription2 = conn_man2.get_event_subscription();
     let public_address2 = conn_man2.wait_until_listening().await.unwrap();
 
     peer_manager1
@@ -146,15 +147,20 @@ async fn simultaneous_dial_events() {
     )
     .await;
 
-    result1.unwrap();
-    result2.unwrap();
+    // Either dial could fail (due to being cancelled/rejected by tie breaking) but never both
+    match (result1, result2) {
+        (Ok(_), Ok(_)) => {},
+        (Err(_), Ok(_)) => {},
+        (Ok(_), Err(_)) => {},
+        _ => panic!("unexpected simultaneous dial result"),
+    }
 
     // Wait for listening and peer connected events
-    let event = Arc::try_unwrap(subscription2.next().await.unwrap().unwrap()).unwrap();
-    unpack_enum!(ConnectionManagerEvent::Listening(_addr) = event);
+    let event = subscription2.next().await.unwrap().unwrap();
+    unpack_enum!(ConnectionManagerEvent::Listening(_addr) = &*event);
 
-    let event = Arc::try_unwrap(subscription2.next().await.unwrap().unwrap()).unwrap();
-    unpack_enum!(ConnectionManagerEvent::PeerConnected(_conn) = event);
+    let event = subscription2.next().await.unwrap().unwrap();
+    assert!(count_events(&[event], &["PeerConnected", "PeerInboundConnectFailed"]) >= 1);
 
     shutdown.trigger().unwrap();
     drop(conn_man1);
@@ -170,19 +176,15 @@ async fn simultaneous_dial_events() {
         .map(Result::unwrap)
         .collect::<Vec<_>>();
 
-    let count_disconnected_events = |events: Vec<Arc<ConnectionManagerEvent>>| {
-        events
-            .iter()
-            .filter(|event| match &***event {
-                ConnectionManagerEvent::PeerDisconnected(_) => true,
-                _ => false,
-            })
-            .count()
-    };
+    // TODO: Investigate why two PeerDisconnected events are sometimes received
+    assert!(count_events(&events1, &["PeerDisconnected", "PeerConnectWillClose"]) >= 1);
+    assert!(count_events(&events2, &["PeerDisconnected", "PeerConnectWillClose"]) >= 1);
+}
 
-    // Check for only one disconnect event
-    // TODO: Understand why these can sometimes be 2. It shouldn't ever be a problem for something to receive this event
-    //       more than once.
-    assert!(count_disconnected_events(events1) >= 1);
-    assert!(count_disconnected_events(events2) >= 1);
+fn count_events<T>(events: &[T], expected: &[&str]) -> usize
+where T: AsRef<ConnectionManagerEvent> {
+    events
+        .iter()
+        .filter(|event| expected.iter().any(|exp| event.as_ref().to_string().starts_with(exp)))
+        .count()
 }

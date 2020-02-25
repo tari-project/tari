@@ -154,10 +154,11 @@ where
     }
 
     async fn handle_incoming_message(&mut self, msg: DomainMessage<PingPongMessage>) -> Result<(), LivenessError> {
-        match msg.inner().kind().ok_or_else(|| LivenessError::InvalidPingPongType)? {
+        let inner_msg = msg.inner();
+        match inner_msg.kind().ok_or_else(|| LivenessError::InvalidPingPongType)? {
             PingPong::Ping => {
                 self.state.inc_pings_received();
-                self.send_pong(msg.inner.nonce, msg.source_peer.public_key)
+                self.send_pong(msg.inner.nonce, msg.source_peer.public_key.clone())
                     .await
                     .unwrap();
                 self.state.inc_pongs_sent();
@@ -165,12 +166,12 @@ where
                 self.publish_event(LivenessEvent::ReceivedPing).await?;
             },
             PingPong::Pong => {
-                let maybe_latency = self.state.record_pong(&msg.source_peer.node_id);
+                let maybe_latency = self.state.record_pong(inner_msg.nonce);
                 trace!(target: LOG_TARGET, "Recorded latency: {:?}", maybe_latency);
                 let is_neighbour = self.neighbours.peers().contains(&msg.source_peer);
                 let is_monitored = self.state.is_monitored_node_id(&msg.source_peer.node_id);
                 let pong_event = PongEvent::new(
-                    msg.source_peer.node_id,
+                    msg.source_peer.node_id.clone(),
                     maybe_latency,
                     msg.inner.metadata.into(),
                     is_neighbour,
@@ -239,7 +240,7 @@ where
 
     async fn send_ping(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
         let msg = PingPongMessage::ping();
-        self.state.add_inflight_ping(&node_id);
+        self.state.add_inflight_ping(msg.nonce, &node_id);
         self.oms_handle
             .send_direct_node_id(
                 node_id,
@@ -280,7 +281,7 @@ where
 
         for peer in peers {
             let msg = PingPongMessage::ping();
-            self.state.add_inflight_ping(&peer.node_id);
+            self.state.add_inflight_ping(msg.nonce, &peer.node_id);
             self.oms_handle
                 .send_direct(
                     peer.public_key.clone(),
@@ -306,11 +307,7 @@ where
             );
             for k in self.state.get_monitored_node_ids() {
                 let msg = PingPongMessage::ping();
-                // TODO: Match the nonce of a pong message to an inflight ping message to determine latency,
-                //       rather than using node id.
-                //       The time between _any_ ping/pong from a specific node yields incorrect
-                //       latency results
-                self.state.add_inflight_ping(&k);
+                self.state.add_inflight_ping(msg.nonce, &k);
                 self.oms_handle
                     .send_direct_node_id(
                         k,
@@ -496,7 +493,7 @@ mod test {
 
     fn create_dummy_message<T>(inner: T) -> DomainMessage<T> {
         let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-        let peer_source = Peer::new(
+        let source_peer = Peer::new(
             pk.clone(),
             NodeId::from_key(&pk).unwrap(),
             Vec::<Multiaddr>::new().into(),
@@ -511,7 +508,7 @@ mod test {
                 Network::LocalTest,
                 Default::default(),
             ),
-            source_peer: peer_source,
+            source_peer,
             inner,
         }
     }
@@ -568,7 +565,7 @@ mod test {
                 metadata.insert(MetadataKey::ChainMetadata, b"dummy-data".to_vec());
                 let msg = create_dummy_message(PingPongMessage::pong_with_metadata(123, metadata));
 
-                state.add_inflight_ping(&msg.source_peer.node_id);
+                state.add_inflight_ping(msg.inner.nonce, &msg.source_peer.node_id);
                 // A stream which emits one message and then closes
                 let pingpong_stream = stream::iter(std::iter::once(msg));
 
@@ -598,6 +595,7 @@ mod test {
                         let event = time::timeout(Duration::from_secs(10), subscriber.fuse().select_next_some())
                             .await
                             .unwrap();
+
                         match &*event {
                             LivenessEvent::ReceivedPong(event) => {
                                 rec_event_clone.store(true, Ordering::SeqCst);

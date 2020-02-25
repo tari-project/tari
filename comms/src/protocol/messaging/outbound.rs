@@ -20,13 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{error::MessagingProtocolError, MessagingEventSender};
+use super::{error::MessagingProtocolError, MessagingEvent, MessagingProtocol, MESSAGING_PROTOCOL};
 use crate::{
-    connection_manager::{next::ConnectionManagerRequester, NegotiatedSubstream, PeerConnection},
-    message::{Envelope, MessageExt},
-    outbound_message_service::OutboundMessage,
+    connection_manager::{ConnectionManagerError, ConnectionManagerRequester, NegotiatedSubstream, PeerConnection},
+    message::{Envelope, MessageExt, OutboundMessage},
     peer_manager::{NodeId, NodeIdentity},
-    protocol::messaging::messaging::{MessagingEvent, MessagingProtocol, MESSAGING_PROTOCOL},
     types::CommsSubstream,
 };
 use bytes::Bytes;
@@ -40,7 +38,7 @@ pub struct OutboundMessaging {
     conn_man_requester: ConnectionManagerRequester,
     node_identity: Arc<NodeIdentity>,
     request_rx: mpsc::Receiver<OutboundMessage>,
-    messaging_events_tx: MessagingEventSender,
+    messaging_events_tx: mpsc::Sender<MessagingEvent>,
     peer_node_id: NodeId,
 }
 
@@ -48,7 +46,7 @@ impl OutboundMessaging {
     pub fn new(
         conn_man_requester: ConnectionManagerRequester,
         node_identity: Arc<NodeIdentity>,
-        messaging_events_tx: MessagingEventSender,
+        messaging_events_tx: mpsc::Sender<MessagingEvent>,
         request_rx: mpsc::Receiver<OutboundMessage>,
         peer_node_id: NodeId,
     ) -> Self
@@ -77,18 +75,28 @@ impl OutboundMessaging {
     }
 
     async fn try_dial_peer(&mut self) -> Result<PeerConnection, MessagingProtocolError> {
-        match self.conn_man_requester.dial_peer(self.peer_node_id.clone()).await {
-            Ok(conn) => Ok(conn),
-            Err(err) => {
-                error!(
-                    target: LOG_TARGET,
-                    "MessagingProtocol failed to dial peer '{}' because '{:?}'",
-                    self.peer_node_id.short_str(),
-                    err
-                );
-                self.flush_all_messages_to_failed_event().await;
-                Err(MessagingProtocolError::PeerDialFailed)
-            },
+        loop {
+            match self.conn_man_requester.dial_peer(self.peer_node_id.clone()).await {
+                Ok(conn) => break Ok(conn),
+                Err(ConnectionManagerError::DialCancelled) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Dial was cancelled unexpectedly for peer '{}'",
+                        self.peer_node_id.short_str(),
+                    );
+                    continue;
+                },
+                Err(err) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "MessagingProtocol failed to dial peer '{}' because '{:?}'",
+                        self.peer_node_id.short_str(),
+                        err
+                    );
+                    self.flush_all_messages_to_failed_event().await;
+                    break Err(MessagingProtocolError::PeerDialFailed);
+                },
+            }
         }
     }
 
@@ -117,16 +125,23 @@ impl OutboundMessaging {
         while let Some(out_msg) = self.request_rx.next().await {
             match self.to_envelope_bytes(&out_msg).await {
                 Ok(body) => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Sending message ({} bytes) on outbound messaging substream",
+                        body.len()
+                    );
                     if let Err(err) = framed.send(body).await {
                         debug!(
                             target: LOG_TARGET,
-                            "OutboundMessaging failed to send message to peer '{}' because '{}'",
+                            "[ThisNode={}] OutboundMessaging failed to send message to peer '{}' because '{}'",
+                            self.node_identity.node_id().short_str(),
                             self.peer_node_id.short_str(),
                             err
                         );
                         let _ = self
                             .messaging_events_tx
-                            .send(Arc::new(MessagingEvent::SendMessageFailed(out_msg)));
+                            .send(MessagingEvent::SendMessageFailed(out_msg))
+                            .await;
                         // FATAL: Failed to send on the substream
                         self.flush_all_messages_to_failed_event().await;
                         return Err(MessagingProtocolError::OutboundSubstreamFailure);
@@ -134,7 +149,8 @@ impl OutboundMessaging {
 
                     let _ = self
                         .messaging_events_tx
-                        .send(Arc::new(MessagingEvent::MessageSent(out_msg.tag)));
+                        .send(MessagingEvent::MessageSent(out_msg.tag))
+                        .await;
                 },
                 Err(err) => {
                     debug!(
@@ -143,9 +159,11 @@ impl OutboundMessaging {
                         out_msg.peer_node_id.short_str(),
                         err
                     );
+
                     let _ = self
                         .messaging_events_tx
-                        .send(Arc::new(MessagingEvent::SendMessageFailed(out_msg)));
+                        .send(MessagingEvent::SendMessageFailed(out_msg))
+                        .await;
                 },
             }
         }
@@ -160,7 +178,8 @@ impl OutboundMessaging {
         while let Some(out_msg) = self.request_rx.next().await {
             let _ = self
                 .messaging_events_tx
-                .send(Arc::new(MessagingEvent::SendMessageFailed(out_msg)));
+                .send(MessagingEvent::SendMessageFailed(out_msg))
+                .await;
         }
     }
 

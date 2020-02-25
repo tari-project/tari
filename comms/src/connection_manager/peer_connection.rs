@@ -20,10 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::error::ConnectionManagerError;
+use super::{
+    error::{ConnectionManagerError, PeerConnectionError},
+    manager::ConnectionManagerEvent,
+    types::ConnectionDirection,
+};
 use crate::{
-    connection::ConnectionDirection,
-    connection_manager::{error::PeerConnectionError, manager::ConnectionManagerEvent},
     multiplexing::{IncomingSubstreams, Yamux},
     peer_manager::NodeId,
     protocol::{ProtocolId, ProtocolNegotiation},
@@ -37,13 +39,18 @@ use futures::{
 };
 use log::*;
 use multiaddr::Multiaddr;
-use std::fmt;
+use std::{
+    fmt,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 use tari_shutdown::Shutdown;
 use tokio::runtime;
 
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 
 const PEER_REQUEST_BUFFER_SIZE: usize = 64;
+
+static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 pub fn create(
     executor: runtime::Handle,
@@ -61,9 +68,12 @@ pub fn create(
         peer_node_id.short_str()
     );
     let (peer_tx, peer_rx) = mpsc::channel(PEER_REQUEST_BUFFER_SIZE);
-    let peer_conn = PeerConnection::new(peer_tx, peer_node_id.clone(), peer_addr, direction);
+    let id = ID_COUNTER.fetch_add(1, Ordering::Relaxed); // Monotonic
+    let peer_conn = PeerConnection::new(id, peer_tx, peer_node_id.clone(), peer_addr, direction);
     let peer_actor = PeerConnectionActor::new(
+        id,
         peer_node_id,
+        direction,
         connection,
         peer_rx,
         event_notifier,
@@ -85,9 +95,12 @@ pub enum PeerConnectionRequest {
     Disconnect(bool, oneshot::Sender<()>),
 }
 
+pub type ConnId = usize;
+
 /// Request handle for an active peer connection
 #[derive(Clone, Debug)]
 pub struct PeerConnection {
+    id: ConnId,
     peer_node_id: NodeId,
     request_tx: mpsc::Sender<PeerConnectionRequest>,
     address: Multiaddr,
@@ -95,7 +108,8 @@ pub struct PeerConnection {
 }
 
 impl PeerConnection {
-    pub fn new(
+    pub(crate) fn new(
+        id: ConnId,
         request_tx: mpsc::Sender<PeerConnectionRequest>,
         peer_node_id: NodeId,
         address: Multiaddr,
@@ -103,6 +117,7 @@ impl PeerConnection {
     ) -> Self
     {
         Self {
+            id,
             request_tx,
             peer_node_id,
             address,
@@ -116,6 +131,10 @@ impl PeerConnection {
 
     pub fn direction(&self) -> ConnectionDirection {
         self.direction
+    }
+
+    pub fn id(&self) -> ConnId {
+        self.id
     }
 
     pub async fn open_substream<P: Into<ProtocolId>>(
@@ -153,10 +172,23 @@ impl PeerConnection {
     }
 }
 
+impl fmt::Display for PeerConnection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        f.debug_struct("PeerConnection")
+            .field("id", &self.id)
+            .field("peer_node_id", &self.peer_node_id.short_str())
+            .field("direction", &self.direction.to_string())
+            .field("address", &self.address.to_string())
+            .finish()
+    }
+}
+
 /// Actor for an active connection to a peer.
 pub struct PeerConnectionActor {
+    id: ConnId,
     peer_node_id: NodeId,
     request_rx: Fuse<mpsc::Receiver<PeerConnectionRequest>>,
+    direction: ConnectionDirection,
     incoming_substreams: Fuse<IncomingSubstreams>,
     substream_shutdown: Option<Shutdown>,
     control: yamux::Control,
@@ -166,8 +198,10 @@ pub struct PeerConnectionActor {
 }
 
 impl PeerConnectionActor {
-    pub fn new(
+    fn new(
+        id: ConnId,
         peer_node_id: NodeId,
+        direction: ConnectionDirection,
         connection: Yamux,
         request_rx: mpsc::Receiver<PeerConnectionRequest>,
         event_notifier: mpsc::Sender<ConnectionManagerEvent>,
@@ -175,7 +209,9 @@ impl PeerConnectionActor {
     ) -> Self
     {
         Self {
+            id,
             peer_node_id,
+            direction,
             control: connection.get_yamux_control(),
             incoming_substreams: connection.incoming().fuse(),
             substream_shutdown: None,
@@ -197,18 +233,19 @@ impl PeerConnectionActor {
                             if let Err(err) = self.handle_incoming_substream(substream).await {
                                 error!(
                                     target: LOG_TARGET,
-                                    "Incoming substream for peer '{}' failed to open because '{error}'",
+                                    "[{}] Incoming substream for peer '{}' failed to open because '{error}'",
+                                    self,
                                     self.peer_node_id.short_str(),
                                     error = err
                                 )
                             }
                         },
                         Some(Err(err)) => {
-                            warn!(target: LOG_TARGET, "Incoming substream error '{}'. Closing connection for peer '{}'", err, self.peer_node_id.short_str());
+                            warn!(target: LOG_TARGET, "[{}] Incoming substream error '{}'. Closing connection for peer '{}'", self, err, self.peer_node_id.short_str());
                             self.disconnect(false).await;
                         },
                         None => {
-                            warn!(target: LOG_TARGET, "Peer '{}' closed the connection", self.peer_node_id.short_str());
+                            warn!(target: LOG_TARGET, "[{}] Peer '{}' closed the connection", self, self.peer_node_id.short_str());
                             self.disconnect(false).await;
                         },
                     }
@@ -235,7 +272,10 @@ impl PeerConnectionActor {
             Disconnect(silent, reply_tx) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Disconnect requested for peer '{}'",
+                    "[{}] Disconnect{}requested for {} connection to peer '{}'",
+                    self,
+                    if silent { " (silent) " } else { " " },
+                    self.direction,
                     self.peer_node_id.short_str()
                 );
                 self.disconnect(silent).await;
@@ -266,7 +306,8 @@ impl PeerConnectionActor {
     {
         debug!(
             target: LOG_TARGET,
-            "Negotiating protocol '{}' on new substream for peer '{}'",
+            "[{}] Negotiating protocol '{}' on new substream for peer '{}'",
+            self,
             String::from_utf8_lossy(&protocol),
             self.peer_node_id.short_str()
         );
@@ -294,7 +335,8 @@ impl PeerConnectionActor {
         if let Err(err) = self.control.close().await {
             warn!(
                 target: LOG_TARGET,
-                "Failed to politely close connection to peer '{}' because '{}'",
+                "[{}] Failed to politely close connection to peer '{}' because '{}'",
+                self,
                 self.peer_node_id.short_str(),
                 err
             );
@@ -314,6 +356,18 @@ impl PeerConnectionActor {
             )))
             .await;
         }
+    }
+}
+
+impl fmt::Display for PeerConnectionActor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "PeerConnection(id={}, peer_node_id={}, direction={})",
+            self.id,
+            self.peer_node_id.short_str(),
+            self.direction,
+        )
     }
 }
 

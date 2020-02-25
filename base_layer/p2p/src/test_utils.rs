@@ -86,13 +86,13 @@ pub fn make_dht_inbound_message(
 {
     DhtInboundMessage::new(
         make_dht_header(node_identity, &message, flags),
-        Peer::new(
+        Arc::new(Peer::new(
             node_identity.public_key().clone(),
             node_identity.node_id().clone(),
             Vec::<Multiaddr>::new().into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
-        ),
+        )),
         message,
     )
 }

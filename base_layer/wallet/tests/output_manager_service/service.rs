@@ -71,7 +71,6 @@ use tari_wallet::{
             memory_db::OutputManagerMemoryDatabase,
             sqlite_db::OutputManagerSqliteDatabase,
         },
-        OutputManagerServiceInitializer,
     },
     storage::connection_manager::run_migration_and_create_connection_pool,
 };

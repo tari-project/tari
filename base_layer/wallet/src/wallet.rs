@@ -48,10 +48,10 @@ use log4rs::{
 };
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 use tari_comms::{
-    builder::CommsNode,
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     types::CommsPublicKey,
+    CommsNode,
 };
 use tari_comms_dht::Dht;
 use tari_core::transactions::{
@@ -150,11 +150,13 @@ where
         let transaction_backend_handle = transaction_backend.clone();
 
         let factories = config.factories;
-        let (publisher, subscription_factory) =
-            pubsub_connector(runtime.handle().clone(), config.comms_config.inbound_buffer_size);
+        let (publisher, subscription_factory) = pubsub_connector(
+            runtime.handle().clone(),
+            config.comms_config.max_concurrent_inbound_tasks,
+        );
         let subscription_factory = Arc::new(subscription_factory);
 
-        let (comms, dht) = initialize_comms(runtime.handle().clone(), config.comms_config.clone(), publisher)?;
+        let (comms, dht) = runtime.block_on(initialize_comms(config.comms_config.clone(), publisher))?;
 
         let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
             .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
@@ -224,10 +226,8 @@ where
 
     /// This method consumes the wallet so that the handles are dropped which will result in the services async loops
     /// exiting.
-    pub fn shutdown(self) -> Result<(), WalletError> {
-        self.comms.shutdown()?;
-        drop(self.runtime);
-        Ok(())
+    pub fn shutdown(mut self) {
+        self.runtime.block_on(self.comms.shutdown());
     }
 
     /// This function will set the base_node that the wallet uses to broadcast transactions and monitor the blockchain

@@ -36,10 +36,6 @@ pub(crate) fn datetime_to_timestamp(datetime: DateTime<Utc>) -> Timestamp {
 }
 
 impl StoredMessagesRequest {
-    pub fn new() -> Self {
-        Self { since: None }
-    }
-
     pub fn since(since: DateTime<Utc>) -> Self {
         Self {
             since: Some(datetime_to_timestamp(since)),

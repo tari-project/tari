@@ -27,7 +27,10 @@ use crate::{
     utils::multiaddr::socketaddr_to_multiaddr,
 };
 use derive_error::Error;
+use log::*;
 use std::net::SocketAddr;
+
+const LOG_TARGET: &str = "comms::tor::hidden_service";
 
 #[derive(Debug, Error)]
 pub enum HiddenServiceBuilderError {
@@ -42,21 +45,21 @@ pub enum HiddenServiceBuilderError {
 
 /// Builder for Tor Hidden Services
 #[derive(Default)]
-pub struct HiddenServiceBuilder<'a> {
-    onion_private_key: Option<PrivateKey<'a>>,
+pub struct HiddenServiceBuilder {
+    onion_private_key: Option<PrivateKey>,
     port_mapping: Option<PortMapping>,
     control_server_addr: Option<Multiaddr>,
     control_server_auth: Authentication,
     socks_auth: socks::Authentication,
 }
 
-impl HiddenServiceBuilder<'_> {
+impl HiddenServiceBuilder {
     pub fn new() -> Self {
         Default::default()
     }
 }
 
-impl<'a> HiddenServiceBuilder<'a> {
+impl HiddenServiceBuilder {
     /// The address of the Tor Control Port. An error will result if this is not provided.
     setter!(with_control_server_address, control_server_addr, Option<Multiaddr>);
 
@@ -68,7 +71,7 @@ impl<'a> HiddenServiceBuilder<'a> {
 
     /// The `PrivateKey` of the hidden service. When set, this key is used to enable routing from the Tor network to
     /// this address. If this is not set, a new private key will be requested from the Tor Control Port.
-    setter!(with_onion_private_key, onion_private_key, Option<PrivateKey<'a>>);
+    setter!(with_onion_private_key, onion_private_key, Option<PrivateKey>);
 
     /// Set the PortMapping to use when creating this hidden service. A PortMapping maps a Tor port to a proxied address
     /// (usually local). An error will result if this is not provided.
@@ -78,15 +81,22 @@ impl<'a> HiddenServiceBuilder<'a> {
     }
 }
 
-impl<'a> HiddenServiceBuilder<'a> {
+impl HiddenServiceBuilder {
     /// Create a HiddenService witht he given builder parameters.
-    pub async fn finish(self) -> Result<HiddenService<'a>, HiddenServiceBuilderError> {
+    pub async fn finish(self) -> Result<HiddenService, HiddenServiceBuilderError> {
         let proxied_port_mapping = self
             .port_mapping
             .ok_or(HiddenServiceBuilderError::ProxiedPortMappingNotProvided)?;
         let control_server_addr = self
             .control_server_addr
             .ok_or(HiddenServiceBuilderError::TorControlServerAddressNotProvided)?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Building tor hidden service with control port '{}' and port mapping '{}'",
+            control_server_addr,
+            proxied_port_mapping
+        );
 
         let mut client = TorControlPortClient::connect(control_server_addr).await?;
         client.authenticate(self.control_server_auth).await?;
@@ -105,9 +115,9 @@ impl<'a> HiddenServiceBuilder<'a> {
         let onion_private_key;
         let add_onion_resp = match self.onion_private_key {
             Some(private_key) => {
-                onion_private_key = private_key.clone();
+                onion_private_key = private_key;
                 client
-                    .add_onion_from_private_key(private_key, vec![], proxied_port_mapping, None)
+                    .add_onion_from_private_key(&onion_private_key, vec![], proxied_port_mapping, None)
                     .await?
             },
             // TODO: Once multiaddr supports onion3 addresses, change this to create v3 hidden services
@@ -116,19 +126,22 @@ impl<'a> HiddenServiceBuilder<'a> {
                 onion_private_key = resp
                     .private_key
                     .clone()
-                    .map(|pk| pk.into_owned())
                     .expect("Tor server MUST return private key according to spec");
                 resp
             },
         };
-        // Set the public address to the new onion address
-        let onion_addr = add_onion_resp.onion_address();
+
+        debug!(
+            target: LOG_TARGET,
+            "Added hidden service with service id '{}' on port '{}'",
+            add_onion_resp.service_id,
+            add_onion_resp.onion_port
+        );
 
         Ok(HiddenService {
             socks_addr,
             socks_auth: self.socks_auth,
             service_id: add_onion_resp.service_id.into_owned(),
-            onion_addr,
             onion_port: add_onion_resp.onion_port,
             private_key: onion_private_key,
             proxied_addr,

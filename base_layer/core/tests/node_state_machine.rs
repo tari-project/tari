@@ -87,10 +87,10 @@ fn test_listening_lagging() {
         BaseNodeStateMachineConfig::default(),
     );
 
-    let bob_db = bob_node.blockchain_db;
-    let mut bob_local_nci = bob_node.local_nci;
+    runtime.block_on(async move {
+        let bob_db = bob_node.blockchain_db;
+        let mut bob_local_nci = bob_node.local_nci;
 
-    runtime.block_on(async {
         // Bob Block 1 - no block event
         prev_block = append_block(&bob_db, &prev_block, vec![]).unwrap();
         // Bob Block 2 - with block event and liveness service metadata update
@@ -98,12 +98,12 @@ fn test_listening_lagging() {
         bob_local_nci.submit_block(prev_block.clone()).await.unwrap();
         assert_eq!(bob_db.get_height(), Ok(Some(2)));
 
-        let state_event = ListeningInfo {}.next_event(&mut alice_state_machine).await;
+        let state_event = ListeningInfo.next_event(&mut alice_state_machine).await;
         assert_eq!(state_event, StateEvent::FallenBehind(Lagging(2)));
-    });
 
-    alice_node.comms.shutdown().unwrap();
-    bob_node.comms.shutdown().unwrap();
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+    });
 }
 
 #[test]
@@ -139,10 +139,11 @@ fn test_event_channel() {
     runtime.spawn(async move {
         alice_state_machine.run().await;
     });
-    let bob_db = bob_node.blockchain_db;
-    let mut bob_local_nci = bob_node.local_nci;
 
     runtime.block_on(async {
+        let bob_db = bob_node.blockchain_db;
+        let mut bob_local_nci = bob_node.local_nci;
+
         // Bob Block 1 - no block event
         prev_block = append_block(&bob_db, &prev_block, vec![]).unwrap();
         // Bob Block 2 - with block event and liveness service metadata update
@@ -155,10 +156,10 @@ fn test_event_channel() {
         } else {
             assert!(false);
         }
-    });
 
-    alice_node.comms.shutdown().unwrap();
-    bob_node.comms.shutdown().unwrap();
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+    });
 }
 #[test]
 fn test_listening_network_silence() {
@@ -182,10 +183,10 @@ fn test_listening_network_silence() {
     runtime.block_on(async {
         let state_event = ListeningInfo {}.next_event(&mut alice_state_machine).await;
         assert_eq!(state_event, StateEvent::NetworkSilence);
-    });
 
-    alice_node.comms.shutdown().unwrap();
-    bob_node.comms.shutdown().unwrap();
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+    });
 }
 
 #[test]
@@ -213,13 +214,13 @@ fn test_block_sync() {
         state_machine_config,
     );
 
-    let adb = &alice_node.blockchain_db;
-    let db = &bob_node.blockchain_db;
-    for _ in 1..6 {
-        prev_block = append_block(db, &prev_block, vec![]).unwrap();
-    }
-
     runtime.block_on(async {
+        let adb = &alice_node.blockchain_db;
+        let db = &bob_node.blockchain_db;
+        for _ in 1..6 {
+            prev_block = append_block(db, &prev_block, vec![]).unwrap();
+        }
+
         // Sync Blocks from genesis block to tip
         let state_event = BlockSyncInfo {}.next_event(&mut alice_state_machine).await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
@@ -229,10 +230,10 @@ fn test_block_sync() {
         for height in 1..=bob_tip_height {
             assert_eq!(adb.fetch_block(height), db.fetch_block(height));
         }
-    });
 
-    alice_node.comms.shutdown().unwrap();
-    bob_node.comms.shutdown().unwrap();
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+    });
 }
 
 #[test]
@@ -288,10 +289,10 @@ fn test_lagging_block_sync() {
                 bob_node.blockchain_db.fetch_block(height)
             );
         }
-    });
 
-    alice_node.comms.shutdown().unwrap();
-    bob_node.comms.shutdown().unwrap();
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+    });
 }
 
 #[test]
@@ -319,22 +320,36 @@ fn test_block_sync_recovery() {
         state_machine_config,
     );
 
-    let alice_db = &alice_node.blockchain_db;
-    let bob_db = &bob_node.blockchain_db;
-    let carol_db = &carol_node.blockchain_db;
-    // Bob and Carol is ahead of Alice and Bob is ahead of Carol
-    prev_block = append_block(bob_db, &prev_block, vec![]).unwrap();
-    carol_db.add_block(prev_block.clone()).unwrap();
-    for _ in 0..2 {
-        prev_block = append_block(bob_db, &prev_block, vec![]).unwrap();
-    }
-
     runtime.block_on(async {
+        // Connect Alice to Bob and Carol
+        alice_node
+            .comms
+            .connection_manager()
+            .dial_peer(bob_node.node_identity.node_id().clone())
+            .await
+            .unwrap();
+        alice_node
+            .comms
+            .connection_manager()
+            .dial_peer(carol_node.node_identity.node_id().clone())
+            .await
+            .unwrap();
+
+        let alice_db = &alice_node.blockchain_db;
+        let bob_db = &bob_node.blockchain_db;
+        let carol_db = &carol_node.blockchain_db;
+        // Bob and Carol is ahead of Alice and Bob is ahead of Carol
+        prev_block = append_block(bob_db, &prev_block, vec![]).unwrap();
+        carol_db.add_block(prev_block.clone()).unwrap();
+        for _ in 0..2 {
+            prev_block = append_block(bob_db, &prev_block, vec![]).unwrap();
+        }
+
         // Sync Blocks from genesis block to tip. Alice will notice that the chain tip is equivalent to Bobs tip and
         // start to request blocks from her random peers. When Alice requests these blocks from Carol, Carol
         // won't always have these blocks and Alice will have to request these blocks again until her maximum attempts
         // have been reached.
-        let state_event = BlockSyncInfo {}.next_event(&mut alice_state_machine).await;
+        let state_event = BlockSyncInfo.next_event(&mut alice_state_machine).await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
         println!("state_event={:?}", state_event);
 
@@ -345,9 +360,9 @@ fn test_block_sync_recovery() {
                 bob_db.fetch_block(height).unwrap().block()
             );
         }
-    });
 
-    alice_node.comms.shutdown().unwrap();
-    bob_node.comms.shutdown().unwrap();
-    carol_node.comms.shutdown().unwrap();
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+        carol_node.comms.shutdown().await;
+    });
 }

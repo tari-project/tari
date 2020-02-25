@@ -40,3 +40,5 @@ pub const MESSAGING_EVENTS_BUFFER_SIZE: usize = 100;
 /// Buffer size for requests to the messaging protocol. All outbound messages will be sent along this channel. Some
 /// buffering may be required if the node needs to send many messages out at the same time.
 pub const MESSAGING_REQUEST_BUFFER_SIZE: usize = 50;
+/// The default maximum number of times to retry sending a failed message before publishing a SendMessageFailed event
+pub const MESSAGING_MAX_SEND_RETRIES: usize = 3;

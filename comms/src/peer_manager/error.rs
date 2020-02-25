@@ -21,11 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
 use derive_error::Error;
+use std::sync::PoisonError;
 use tari_storage::KeyValStoreError;
 
 #[derive(Debug, Error, Clone)]
 pub enum PeerManagerError {
-    /// The requested peer does not exist or could not be located
+    /// The requested peer does not exist
     PeerNotFoundError,
     /// The peer has been banned
     BannedPeer,
@@ -42,5 +43,11 @@ impl PeerManagerError {
             PeerManagerError::PeerNotFoundError => true,
             _ => false,
         }
+    }
+}
+
+impl<T> From<PoisonError<T>> for PeerManagerError {
+    fn from(_: PoisonError<T>) -> Self {
+        PeerManagerError::DatabaseError(KeyValStoreError::PoisonedAccess)
     }
 }

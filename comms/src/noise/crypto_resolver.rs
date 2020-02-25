@@ -20,17 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    types::{CommsPublicKey, CommsSecretKey},
-};
+use crate::types::{CommsPublicKey, CommsSecretKey};
+use rand::rngs::OsRng;
 use snow::{
     params::{CipherChoice, DHChoice, HashChoice},
     resolvers::{CryptoResolver, DefaultResolver},
     types::{Cipher, Dh, Hash, Random},
 };
-use tari_crypto::keys::{DiffieHellmanSharedSecret, PublicKey, SecretKey};
-use tari_crypto::tari_utilities::ByteArray;
-use rand::rngs::OsRng;
+use tari_crypto::{
+    keys::{DiffieHellmanSharedSecret, PublicKey, SecretKey},
+    tari_utilities::ByteArray,
+};
 
 macro_rules! copy_slice {
     ($inslice:expr, $outslice:expr) => {
