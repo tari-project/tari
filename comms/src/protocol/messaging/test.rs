@@ -28,9 +28,8 @@ use super::messaging::{
     MESSAGING_PROTOCOL,
 };
 use crate::{
-    connection::NetAddressesWithStats,
-    message::{InboundMessage, MessageExt, MessageFlags},
-    outbound_message_service::OutboundMessage,
+    message::{InboundMessage, MessageExt, MessageFlags, OutboundMessage},
+    net_address::MultiaddressesWithStats,
     peer_manager::{AsyncPeerManager, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     proto::envelope::Envelope,
     protocol::{ProtocolEvent, ProtocolNotification},
@@ -53,7 +52,7 @@ use std::{sync::Arc, time::Duration};
 use tari_crypto::keys::PublicKey;
 use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_stream, unpack_enum};
-use tokio::{runtime::Handle, sync::broadcast};
+use tokio::{runtime::Handle, sync::broadcast, time};
 use tokio_macros as runtime;
 
 const TEST_MSG1: Bytes = Bytes::from_static(b"TEST_MSG1");
@@ -91,6 +90,7 @@ async fn spawn_messaging_protocol() -> (
         request_rx,
         events_tx,
         inbound_msg_tx,
+        0,
         shutdown.to_signal(),
     );
     rt_handle.spawn(msg_proto.run());
@@ -135,7 +135,7 @@ async fn new_inbound_substream_handling() {
         .add_peer(Peer::new(
             pk,
             expected_node_id.clone(),
-            NetAddressesWithStats::default(),
+            MultiaddressesWithStats::default(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
         ))
@@ -147,12 +147,19 @@ async fn new_inbound_substream_handling() {
         .await
         .unwrap();
 
-    let in_msg = inbound_msg_rx.next().await.unwrap();
+    let in_msg = time::timeout(Duration::from_secs(5), inbound_msg_rx.next())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(in_msg.source_peer.node_id, expected_node_id);
     assert_eq!(in_msg.body, TEST_MSG1);
-    let expected_tag = in_msg.tag;
 
-    let event = events_rx.next().await.unwrap().unwrap();
+    let expected_tag = in_msg.tag;
+    let event = time::timeout(Duration::from_secs(5), events_rx.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
     unpack_enum!(MessagingEvent::MessageReceived(node_id, tag) = &*event);
     assert_eq!(tag, &expected_tag);
     assert_eq!(**node_id, expected_node_id);
@@ -199,7 +206,9 @@ async fn send_message_dial_failed() {
     unpack_enum!(MessagingEvent::SendMessageFailed(out_msg) = &*event);
     assert_eq!(out_msg.tag, expected_out_msg_tag);
 
-    assert_eq!(conn_manager_mock.call_count(), 1);
+    let calls = conn_manager_mock.take_calls().await;
+    assert_eq!(calls.len(), 1);
+    assert!(calls[0].starts_with("DialPeer"));
 }
 
 #[runtime::test_basic]

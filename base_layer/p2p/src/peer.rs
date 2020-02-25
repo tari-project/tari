@@ -1,4 +1,4 @@
-use tari_comms::peer_manager::peer::Peer;
+use tari_comms::peer_manager::Peer;
 
 #[derive(Debug)]
 pub enum PeerType {

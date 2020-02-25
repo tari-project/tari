@@ -26,7 +26,7 @@ use crate::{
         dialer::{Dialer, DialerRequest},
         listener::PeerListener,
         manager::ConnectionManagerEvent,
-        next::ConnectionManagerConfig,
+        ConnectionManagerConfig,
     },
     noise::NoiseConfig,
     peer_manager::{Peer, PeerFeatures, PeerFlags},

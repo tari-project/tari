@@ -21,13 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    crypt,
     outbound::message::{DhtOutboundMessage, OutboundEncryption},
     PipelineError,
 };
 use futures::{task::Context, Future};
 use log::*;
 use std::{sync::Arc, task::Poll};
-use tari_comms::{peer_manager::NodeIdentity, utils::crypt};
+use tari_comms::peer_manager::NodeIdentity;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::middleware::encryption";
@@ -132,8 +133,8 @@ mod test {
     };
     use futures::executor::block_on;
     use tari_comms::{
-        connection::NetAddressesWithStats,
         message::MessageFlags,
+        net_address::MultiaddressesWithStats,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
         types::CommsPublicKey,
     };
@@ -153,7 +154,7 @@ mod test {
             Peer::new(
                 CommsPublicKey::default(),
                 NodeId::default(),
-                NetAddressesWithStats::new(vec![]),
+                MultiaddressesWithStats::new(vec![]),
                 PeerFlags::empty(),
                 PeerFeatures::COMMUNICATION_NODE,
             ),
@@ -183,7 +184,7 @@ mod test {
             Peer::new(
                 CommsPublicKey::default(),
                 NodeId::default(),
-                NetAddressesWithStats::new(vec![]),
+                MultiaddressesWithStats::new(vec![]),
                 PeerFlags::empty(),
                 PeerFeatures::COMMUNICATION_NODE,
             ),

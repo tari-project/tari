@@ -23,10 +23,11 @@
 use futures::Sink;
 use std::{error::Error, sync::Arc, time::Duration};
 use tari_comms::{
-    builder::CommsNode,
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    transports::MemoryTransport,
     types::CommsPublicKey,
+    CommsNode,
 };
 use tari_comms_dht::{
     envelope::{DhtMessageHeader, Network},
@@ -37,12 +38,15 @@ use tari_p2p::{
     domain_message::DomainMessage,
     initialization::initialize_local_test_comms,
 };
-use tokio::runtime;
 
-pub fn setup_comms_services<TSink>(
-    executor: runtime::Handle,
+pub fn get_next_memory_address() -> Multiaddr {
+    let port = MemoryTransport::acquire_next_memsocket_port();
+    format!("/memory/{}", port).parse().unwrap()
+}
+
+pub async fn setup_comms_services<TSink>(
     node_identity: Arc<NodeIdentity>,
-    peers: Vec<NodeIdentity>,
+    peers: Vec<Arc<NodeIdentity>>,
     publisher: InboundDomainConnector<TSink>,
     database_path: String,
     discovery_request_timeout: Duration,
@@ -51,19 +55,14 @@ where
     TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
-    let (comms, dht) = initialize_local_test_comms(
-        executor,
-        node_identity,
-        publisher,
-        &database_path,
-        discovery_request_timeout,
-    )
-    .unwrap();
+    let (comms, dht) = initialize_local_test_comms(node_identity, publisher, &database_path, discovery_request_timeout)
+        .await
+        .unwrap();
 
     for p in peers {
         let addr = p.public_address();
         comms
-            .peer_manager()
+            .async_peer_manager()
             .add_peer(Peer::new(
                 p.public_key().clone(),
                 p.node_id().clone(),
@@ -71,6 +70,7 @@ where
                 PeerFlags::empty(),
                 PeerFeatures::COMMUNICATION_NODE,
             ))
+            .await
             .unwrap();
     }
 

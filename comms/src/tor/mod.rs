@@ -34,4 +34,4 @@ mod client;
 mod hidden_service;
 
 pub use client::{Authentication, KeyBlob, KeyType, PortMapping, PrivateKey, TorClientError, TorControlPortClient};
-pub use hidden_service::{HiddenService, HiddenServiceBuilder, HiddenServiceBuilderError};
+pub use hidden_service::{HiddenService, HiddenServiceBuilder, HiddenServiceBuilderError, TorIdentity};

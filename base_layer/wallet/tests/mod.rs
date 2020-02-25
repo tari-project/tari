@@ -22,8 +22,6 @@
 
 #![feature(type_alias_impl_trait)]
 
-#[macro_use]
-extern crate lazy_static;
 pub mod output_manager_service;
 pub mod support;
 // pub mod text_message_service;

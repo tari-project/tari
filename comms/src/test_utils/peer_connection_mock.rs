@@ -21,8 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection::ConnectionDirection,
-    connection_manager::{next::PeerConnectionError, NegotiatedSubstream, PeerConnection, PeerConnectionRequest},
+    connection_manager::{
+        ConnectionDirection,
+        NegotiatedSubstream,
+        PeerConnection,
+        PeerConnectionError,
+        PeerConnectionRequest,
+    },
     multiplexing,
     multiplexing::{IncomingSubstreams, Yamux},
     peer_manager::NodeId,
@@ -60,9 +65,9 @@ pub async fn create_peer_connection_mock_pair(
     rt_handle.spawn(mock.run());
 
     (
-        PeerConnection::new(tx1, node_id_in, listen_addr.clone(), ConnectionDirection::Inbound),
+        PeerConnection::new(1, tx1, node_id_in, listen_addr.clone(), ConnectionDirection::Inbound),
         mock_state_in,
-        PeerConnection::new(tx2, node_id_out, listen_addr, ConnectionDirection::Outbound),
+        PeerConnection::new(2, tx2, node_id_out, listen_addr, ConnectionDirection::Outbound),
         mock_state_out,
     )
 }

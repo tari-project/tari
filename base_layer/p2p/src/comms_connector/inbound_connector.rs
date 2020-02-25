@@ -22,12 +22,9 @@
 
 use super::peer_message::PeerMessage;
 use futures::{task::Context, Future, Sink, SinkExt};
-use log::*;
 use std::{error::Error, pin::Pin, sync::Arc, task::Poll};
 use tari_comms_dht::{domain_message::MessageHeader, inbound::DecryptedDhtMessage, PipelineError};
 use tower::Service;
-
-const LOG_TARGET: &str = "comms::middleware::inbound_domain_connector";
 
 /// This service receives DecryptedInboundMessages, deserializes the MessageHeader and
 /// sends a `PeerMessage` on the given sink.
@@ -86,12 +83,10 @@ where
 
         let peer_message = PeerMessage {
             message_header: header,
-            source_peer,
+            source_peer: Clone::clone(&*source_peer),
             dht_header,
             body: msg_bytes,
         };
-
-        trace!(target: LOG_TARGET, "Sending domain message on sink");
 
         // If this fails there is something wrong with the sink and the pubsub middleware should not
         // continue

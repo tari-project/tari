@@ -21,17 +21,18 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{consts::DHT_ENVELOPE_HEADER_VERSION, envelope::DhtMessageHeader};
+use std::sync::Arc;
 use tari_comms::{message::EnvelopeBody, peer_manager::Peer, types::CommsPublicKey};
 
 #[derive(Debug, Clone)]
 pub struct DhtInboundMessage {
     pub version: u32,
-    pub source_peer: Peer,
+    pub source_peer: Arc<Peer>,
     pub dht_header: DhtMessageHeader,
     pub body: Vec<u8>,
 }
 impl DhtInboundMessage {
-    pub fn new(dht_header: DhtMessageHeader, source_peer: Peer, body: Vec<u8>) -> Self {
+    pub fn new(dht_header: DhtMessageHeader, source_peer: Arc<Peer>, body: Vec<u8>) -> Self {
         Self {
             version: DHT_ENVELOPE_HEADER_VERSION,
             dht_header,
@@ -47,7 +48,7 @@ pub struct DecryptedDhtMessage {
     pub version: u32,
     /// The _connected_ peer which sent or forwarded this message. This may not be the peer
     /// which created this message.
-    pub source_peer: Peer,
+    pub source_peer: Arc<Peer>,
     pub dht_header: DhtMessageHeader,
     pub decryption_result: Result<EnvelopeBody, Vec<u8>>,
 }

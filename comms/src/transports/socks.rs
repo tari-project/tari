@@ -27,7 +27,7 @@ use crate::{
     transports::{tcp::TcpTransport, TcpSocket, Transport},
 };
 use futures::{Future, FutureExt};
-use std::io;
+use std::{io, time::Duration};
 
 #[derive(Clone, Debug)]
 struct SocksConfig {
@@ -45,6 +45,7 @@ impl SocksTransport {
     pub fn new(proxy_address: Multiaddr, authentication: socks::Authentication) -> Self {
         let mut tcp_transport = TcpTransport::new();
         tcp_transport.set_nodelay(true);
+        tcp_transport.set_keepalive(Some(Duration::from_millis(600)));
 
         Self {
             socks_config: SocksConfig {

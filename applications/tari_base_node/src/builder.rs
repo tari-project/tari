@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::miner;
-use futures::{channel::mpsc::Receiver, stream};
+use futures::channel::mpsc::Receiver;
 use log::*;
 use rand::rngs::OsRng;
 use std::{
@@ -29,17 +29,18 @@ use std::{
     sync::{atomic::AtomicBool, Arc},
     time::Duration,
 };
+use tari_broadcast_channel::Subscriber;
 use tari_common::{DatabaseType, GlobalConfig};
 use tari_comms::{
-    builder::CommsNode,
-    control_service::ControlServiceConfig,
     multiaddr::Multiaddr,
-    peer_manager::{node_identity::NodeIdentity, NodeId, Peer, PeerFeatures, PeerFlags},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    CommsNode,
 };
 use tari_core::{
     base_node::{
         chain_metadata_service::{ChainMetadataHandle, ChainMetadataServiceInitializer},
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
+        states::BaseNodeState,
         BaseNodeStateMachine,
         BaseNodeStateMachineConfig,
         LocalNodeCommsInterface,
@@ -57,6 +58,7 @@ use tari_core::{
     mempool::{Mempool, MempoolConfig, MempoolValidators},
     mining::Miner,
     proof_of_work::DiffAdjManager,
+    tari_utilities::{hex::Hex, message_format::MessageFormat},
     transactions::{
         crypto::keys::SecretKey as SK,
         transaction::UnblindedOutput,
@@ -75,17 +77,9 @@ use tari_p2p::{
         comms_outbound::CommsOutboundServiceInitializer,
         liveness::{LivenessConfig, LivenessInitializer},
     },
+    transport::TransportType,
 };
-
-use futures::stream::Fuse;
 use tari_service_framework::{handles::ServiceHandles, StackBuilder};
-use tokio::runtime::Runtime;
-
-use tari_broadcast_channel::Subscriber;
-use tari_core::{
-    base_node::states::BaseNodeState,
-    tari_utilities::{hex::Hex, message_format::MessageFormat},
-};
 use tari_wallet::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
@@ -101,6 +95,7 @@ use tari_wallet::{
         TransactionServiceInitializer,
     },
 };
+use tokio::runtime::Runtime;
 
 const LOG_TARGET: &str = "base_node::initialization";
 
@@ -215,10 +210,10 @@ fn new_node_id(private_key: PrivateKey, control_addr: &str) -> Result<NodeIdenti
 }
 
 /// Create a new node id and save it to disk
-pub fn create_and_save_id(path: &Path, control_addr: &str) -> Result<NodeIdentity, String> {
+pub fn create_and_save_id(path: &Path, public_addr: &str) -> Result<NodeIdentity, String> {
     let pk = PrivateKey::random(&mut OsRng);
     // build config file
-    let id = new_node_id(pk, control_addr)?;
+    let id = new_node_id(pk, public_addr)?;
     let node_str = id.to_json().unwrap();
     if let Some(p) = path.parent() {
         if !p.exists() {
@@ -238,11 +233,11 @@ pub fn create_and_save_id(path: &Path, control_addr: &str) -> Result<NodeIdentit
 
 pub fn configure_and_initialize_node(
     config: &GlobalConfig,
-    id: NodeIdentity,
+    node_identity: NodeIdentity,
     rt: &mut Runtime,
 ) -> Result<(CommsNode, NodeType, MinerType, BaseNodeContext), String>
 {
-    let id = Arc::new(id);
+    let node_identity = Arc::new(node_identity);
     let factories = CryptoFactories::default();
     let peers = assign_peers(&config.peer_seeds);
     let executor = rt.handle().clone();
@@ -265,8 +260,9 @@ pub fn configure_and_initialize_node(
             rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
             let (comms, handles) = setup_comms_services(
                 rt,
-                id,
+                node_identity,
                 peers,
+                &config.listener_address,
                 &config.peer_db_path,
                 &config.wallet_file,
                 db.clone(),
@@ -323,8 +319,9 @@ pub fn configure_and_initialize_node(
             rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
             let (comms, handles) = setup_comms_services(
                 rt,
-                id,
+                node_identity,
                 peers,
+                &config.listener_address,
                 &config.peer_db_path,
                 &config.wallet_file,
                 db.clone(),
@@ -427,6 +424,7 @@ fn setup_comms_services<T>(
     rt: &mut Runtime,
     id: Arc<NodeIdentity>,
     peers: Vec<Peer>,
+    listener_addr: &str,
     peer_db_path: &str,
     wallet_file: &str,
     db: BlockchainDatabase<T>,
@@ -449,28 +447,27 @@ where
     let subscription_factory = Arc::new(subscription_factory);
     let comms_config = CommsConfig {
         node_identity: id.clone(),
-        peer_connection_listening_address: "/ip4/0.0.0.0/tcp/0".parse().expect("cannot fail"), /* TODO - make this
-                                                                                                * configurable */
-        socks_proxy_address: None,
-        control_service: ControlServiceConfig {
-            listening_address: id.public_address(),
-            socks_proxy_address: None,
-            public_peer_address: None, // TODO - make this configurable
-            requested_connection_timeout: Duration::from_millis(2000),
+        // TODO - make this configurable
+        transport_type: TransportType::Tcp {
+            listener_address: listener_addr.parse().expect("Unable to parse listener_address"),
         },
-        establish_connection_timeout: Duration::from_secs(10), // TODO - make this configurable
         datastore_path: peer_db_path.to_string(),
         peer_database_name: "peers".to_string(),
-        inbound_buffer_size: 100,
+        max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
-        dht: Default::default(), // TODO - make this configurable
+        // TODO - make this configurable
+        dht: Default::default(),
     };
 
-    let (comms, dht) =
-        initialize_comms(rt.handle().clone(), comms_config, publisher).expect("Could not create comms layer");
+    let (comms, dht) = rt
+        .block_on(initialize_comms(comms_config, publisher))
+        .expect("Could not create comms layer");
 
     for p in peers {
-        info!(target: LOG_TARGET, "Adding seed peer [{}]", p.node_id);
+        info!(
+            target: LOG_TARGET,
+            "Adding seed peer [pk={}, node_id={}]", p.public_key, p.node_id
+        );
         comms
             .peer_manager()
             .add_peer(p)
@@ -503,7 +500,12 @@ where
             factories,
         ))
         .add_initializer(LivenessInitializer::new(
-            LivenessConfig::default(),
+            LivenessConfig {
+                auto_ping_interval: Some(Duration::from_secs(5)),
+                enable_auto_join: true,
+                enable_auto_stored_message_request: true,
+                refresh_neighbours_interval: Duration::from_secs(3 * 60),
+            },
             subscription_factory,
             dht.dht_requester(),
         ))

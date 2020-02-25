@@ -21,12 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::peer_manager::{Peer, PeerId};
-use tari_crypto::{
-    common::Blake256,
-    keys::PublicKey,
-    ristretto::RistrettoPublicKey,
-    tari_utilities::ciphers::chacha20::ChaCha20,
-};
+use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
 use tari_storage::lmdb_store::LMDBStore;
 #[cfg(test)]
 use tari_storage::HashmapDatabase;
@@ -47,9 +42,6 @@ pub type CommsSecretKey = <CommsPublicKey as PublicKey>::K;
 /// Specify the RNG that should be used for random selection
 pub type CommsRng = rand::rngs::OsRng;
 
-/// Specify what cipher to use for encryption/decryption
-pub type CommsCipher = ChaCha20;
-
 /// Datastore and Database used for persistence storage
 pub type CommsDataStore = LMDBStore;
 
@@ -58,5 +50,4 @@ pub type CommsDatabase = LMDBWrapper<PeerId, Peer>;
 #[cfg(test)]
 pub type CommsDatabase = HashmapDatabase<PeerId, Peer>;
 
-#[cfg(feature = "next")]
 pub type CommsSubstream = yamux::Stream;

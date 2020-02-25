@@ -23,10 +23,9 @@
 use super::error::MessagingProtocolError;
 use crate::{
     compat::IoCompat,
-    connection_manager::next::ConnectionManagerRequester,
-    message::InboundMessage,
-    outbound_message_service::{MessageTag, OutboundMessage},
-    peer_manager::{AsyncPeerManager, NodeId, NodeIdentity},
+    connection_manager::{ConnectionManagerEvent, ConnectionManagerRequester},
+    message::{InboundMessage, MessageTag, OutboundMessage},
+    peer_manager::{AsyncPeerManager, NodeId, NodeIdentity, Peer, PeerManagerError},
     protocol::{
         messaging::{inbound::InboundMessaging, outbound::OutboundMessaging},
         ProtocolEvent,
@@ -42,15 +41,13 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     fmt,
     sync::Arc,
-    time::Duration,
 };
-use tari_shutdown::ShutdownSignal;
-use tokio::{runtime, sync::broadcast, time::delay_for};
+use tari_shutdown::{Shutdown, ShutdownSignal};
+use tokio::{runtime, sync::broadcast};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 const LOG_TARGET: &str = "comms::protocol::messaging";
 pub const MESSAGING_PROTOCOL: Bytes = Bytes::from_static(b"/tari/messaging/0.1.0");
-const MAX_SEND_MSG_ATTEMPTS: usize = 4;
 /// The size of the buffered channel used for _each_ peer's message queue
 const MESSAGE_QUEUE_BUF_SIZE: usize = 20;
 
@@ -75,14 +72,10 @@ impl fmt::Display for MessagingEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         use MessagingEvent::*;
         match self {
-            MessageReceived(node_id, tag) => {
-                write!(f, "MessagingEvent::MessageReceived({}, {})", node_id.short_str(), tag)
-            },
-            InvalidMessageReceived(node_id) => {
-                write!(f, "MessagingEvent::InvalidMessageReceived({})", node_id.short_str())
-            },
-            SendMessageFailed(out_msg) => write!(f, "MessagingEvent::SendMessageFailed({})", out_msg),
-            MessageSent(tag) => write!(f, "MessagingEvent::SendMessageSucceeded({})", tag),
+            MessageReceived(node_id, tag) => write!(f, "MessageReceived({}, {})", node_id.short_str(), tag),
+            InvalidMessageReceived(node_id) => write!(f, "InvalidMessageReceived({})", node_id.short_str()),
+            SendMessageFailed(out_msg) => write!(f, "SendMessageFailed({})", out_msg),
+            MessageSent(tag) => write!(f, "SendMessageSucceeded({})", tag),
         }
     }
 }
@@ -97,7 +90,14 @@ pub struct MessagingProtocol {
     request_rx: Fuse<mpsc::Receiver<MessagingRequest>>,
     messaging_events_tx: MessagingEventSender,
     inbound_message_tx: mpsc::Sender<InboundMessage>,
+    internal_messaging_event_tx: mpsc::Sender<MessagingEvent>,
+    internal_messaging_event_rx: Fuse<mpsc::Receiver<MessagingEvent>>,
+    retry_queue_tx: mpsc::Sender<OutboundMessage>,
+    retry_queue_rx: Fuse<mpsc::Receiver<OutboundMessage>>,
+    attempts: HashMap<MessageTag, usize>,
+    max_attempts: usize,
     shutdown_signal: Option<ShutdownSignal>,
+    complete_trigger: Shutdown,
 }
 
 impl MessagingProtocol {
@@ -110,9 +110,12 @@ impl MessagingProtocol {
         request_rx: mpsc::Receiver<MessagingRequest>,
         messaging_events_tx: MessagingEventSender,
         inbound_message_tx: mpsc::Sender<InboundMessage>,
+        max_attempts: usize,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
+        let (internal_messaging_event_tx, internal_messaging_event_rx) = mpsc::channel(50);
+        let (retry_queue_tx, retry_queue_rx) = mpsc::channel(50);
         Self {
             executor,
             connection_manager_requester,
@@ -120,11 +123,22 @@ impl MessagingProtocol {
             node_identity,
             proto_notification: proto_notification.fuse(),
             request_rx: request_rx.fuse(),
-            active_queues: HashMap::new(),
+            active_queues: Default::default(),
             messaging_events_tx,
+            internal_messaging_event_rx: internal_messaging_event_rx.fuse(),
+            internal_messaging_event_tx,
             inbound_message_tx,
+            retry_queue_rx: retry_queue_rx.fuse(),
+            retry_queue_tx,
             shutdown_signal: Some(shutdown_signal),
+            max_attempts,
+            attempts: Default::default(),
+            complete_trigger: Shutdown::new(),
         }
+    }
+
+    pub fn complete_signal(&self) -> ShutdownSignal {
+        self.complete_trigger.to_signal()
     }
 
     pub async fn run(mut self) {
@@ -133,8 +147,21 @@ impl MessagingProtocol {
             .take()
             .expect("Messaging initialized without shutdown_signal");
 
+        let mut conn_man_events = self.connection_manager_requester.get_event_subscription().fuse();
+
         loop {
             futures::select! {
+                event = conn_man_events.select_next_some() => {
+                    if let Some(event) = log_if_error!(target: LOG_TARGET, event, "Event error: '{error}'",) {
+                        self.handle_conn_man_event(event).await;
+                    }
+                },
+                event = self.internal_messaging_event_rx.select_next_some() => {
+                    self.handle_internal_messaging_event(event).await;
+                },
+                out_msg = self.retry_queue_rx.select_next_some() => {
+                    log_if_error!(target: LOG_TARGET, self.send_message(out_msg).await, "Failed to send message {error}",);
+                },
                 req = self.request_rx.select_next_some() => {
                     log_if_error!(
                         target: LOG_TARGET,
@@ -162,6 +189,80 @@ impl MessagingProtocol {
         Framed::new(IoCompat::new(socket), LengthDelimitedCodec::new())
     }
 
+    async fn handle_internal_messaging_event(&mut self, event: MessagingEvent) {
+        use MessagingEvent::*;
+        trace!(target: LOG_TARGET, "Internal messaging event '{}'", event);
+        match event {
+            SendMessageFailed(out_msg) => match self.attempts.entry(out_msg.tag) {
+                Entry::Occupied(mut entry) => match *entry.get() {
+                    n if n >= self.max_attempts => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Failed to send message '{}' to peer '{}'.",
+                            out_msg.tag,
+                            out_msg.peer_node_id.short_str()
+                        );
+                        let _ = self.messaging_events_tx.send(Arc::new(SendMessageFailed(out_msg)));
+                    },
+                    n => {
+                        *entry.get_mut() = n + 1;
+                    },
+                },
+                Entry::Vacant(entry) => {
+                    if self.max_attempts == 0 {
+                        let _ = self.messaging_events_tx.send(Arc::new(SendMessageFailed(out_msg)));
+                    } else {
+                        match self.retry_queue_tx.send(out_msg).await {
+                            Ok(_) => {
+                                entry.insert(1);
+                            },
+                            Err(err) => {
+                                warn!(target: LOG_TARGET, "Failed to send to retry_queue '{:?}'", err);
+                            },
+                        }
+                    }
+                },
+            },
+            MessageSent(tag) => {
+                self.attempts.remove(&tag);
+                let _ = self.messaging_events_tx.send(Arc::new(MessageSent(tag)));
+            },
+            evt => {
+                // Forward the event
+                let _ = self.messaging_events_tx.send(Arc::new(evt));
+            },
+        }
+    }
+
+    async fn handle_conn_man_event(&mut self, event: Arc<ConnectionManagerEvent>) {
+        trace!(target: LOG_TARGET, "ConnectionManagerEvent: {}", event);
+        use ConnectionManagerEvent::*;
+        match &*event {
+            PeerDisconnected(node_id) => {
+                if self.active_queues.remove(node_id).is_some() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Removing active queue because peer '{}' disconnected",
+                        node_id.short_str()
+                    );
+                }
+            },
+            PeerConnectWillClose(_, node_id, direction) => {
+                if let Some(mut sender) = self.active_queues.remove(node_id) {
+                    sender.close_channel();
+                    debug!(
+                        target: LOG_TARGET,
+                        "Removing active queue because {} peer connection '{}' will close",
+                        direction,
+                        node_id.short_str()
+                    );
+                }
+            },
+
+            _ => {},
+        }
+    }
+
     async fn handle_request(&mut self, req: MessagingRequest) -> Result<(), MessagingProtocolError> {
         use MessagingRequest::*;
         match req {
@@ -179,53 +280,50 @@ impl MessagingProtocol {
     }
 
     async fn send_message(&mut self, out_msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
-        let sender = match self.active_queues.entry(Box::new(out_msg.peer_node_id.clone())) {
-            Entry::Occupied(entry) => entry.into_mut(),
-            Entry::Vacant(entry) => {
-                let sender = Self::spawn_outbound_handler(
-                    self.executor.clone(),
-                    self.node_identity.clone(),
-                    self.connection_manager_requester.clone(),
-                    self.messaging_events_tx.clone(),
-                    out_msg.peer_node_id.clone(),
-                )
-                .await?;
-                entry.insert(sender)
-            },
-        };
-
-        let mut attempts = 0;
-        loop {
-            match sender.send(out_msg.clone()).await {
-                Ok(_) => {
-                    return Ok(());
+        let sender = loop {
+            match self.active_queues.entry(Box::new(out_msg.peer_node_id.clone())) {
+                Entry::Occupied(entry) => {
+                    if entry.get().is_closed() {
+                        entry.remove();
+                        continue;
+                    }
+                    break entry.into_mut();
                 },
-                Err(err) => {
-                    // Lazily remove Senders from the active queue if the MessagingProtocolHandler has shut down
-                    if err.is_disconnected() {
-                        self.active_queues.remove(&out_msg.peer_node_id);
-                        break;
-                    }
-
-                    attempts += 1;
-                    if attempts > MAX_SEND_MSG_ATTEMPTS {
-                        break;
-                    }
-
-                    // The queue is full. Retry after a slight delay
-                    delay_for(Duration::from_millis(100)).await;
+                Entry::Vacant(entry) => {
+                    let sender = Self::spawn_outbound_handler(
+                        self.executor.clone(),
+                        self.node_identity.clone(),
+                        self.connection_manager_requester.clone(),
+                        self.internal_messaging_event_tx.clone(),
+                        out_msg.peer_node_id.clone(),
+                    )
+                    .await?;
+                    break entry.insert(sender);
                 },
             }
-        }
+        };
 
-        Err(MessagingProtocolError::MessageSendFailed(out_msg))
+        match sender.send(out_msg.clone()).await {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Failed to send message on channel because '{:?}'", err
+                );
+                // Lazily remove Senders from the active queue if the MessagingProtocolHandler has shut down
+                if err.is_disconnected() {
+                    self.active_queues.remove(&out_msg.peer_node_id);
+                }
+                Err(MessagingProtocolError::MessageSendFailed(out_msg))
+            },
+        }
     }
 
     async fn spawn_outbound_handler(
         executor: runtime::Handle,
         our_node_identity: Arc<NodeIdentity>,
         conn_man_requester: ConnectionManagerRequester,
-        events_tx: MessagingEventSender,
+        events_tx: mpsc::Sender<MessagingEvent>,
         peer_node_id: NodeId,
     ) -> Result<mpsc::Sender<OutboundMessage>, MessagingProtocolError>
     {
@@ -236,18 +334,25 @@ impl MessagingProtocol {
         Ok(msg_tx)
     }
 
-    async fn spawn_inbound_handler(&mut self, node_id: Box<NodeId>, substream: CommsSubstream) {
+    async fn spawn_inbound_handler(&mut self, peer: Arc<Peer>, substream: CommsSubstream) {
         let messaging_events_tx = self.messaging_events_tx.clone();
         let mut inbound_message_tx = self.inbound_message_tx.clone();
         let mut framed_substream = Self::framed(substream);
-        let mut inbound = InboundMessaging::new(self.peer_manager.clone());
+        let inbound = InboundMessaging;
 
         self.executor.spawn(async move {
             while let Some(result) = framed_substream.next().await {
                 match result {
                     Ok(raw_msg) => {
+                        trace!(
+                            target: LOG_TARGET,
+                            "Received message from peer '{}' ({} bytes)",
+                            peer.node_id.short_str(),
+                            raw_msg.len()
+                        );
+
                         let mut raw_msg = raw_msg.freeze();
-                        let (event, in_msg) = match inbound.process_message(&node_id, &mut raw_msg).await {
+                        let (event, in_msg) = match inbound.process_message(Arc::clone(&peer), &mut raw_msg).await {
                             Ok(inbound_msg) => (
                                 MessagingEvent::MessageReceived(
                                     Box::new(inbound_msg.source_peer.node_id.clone()),
@@ -260,10 +365,13 @@ impl MessagingProtocol {
                                 warn!(
                                     target: LOG_TARGET,
                                     "Received invalid message from peer '{}' ({})",
-                                    node_id.short_str(),
+                                    peer.node_id.short_str(),
                                     err
                                 );
-                                (MessagingEvent::InvalidMessageReceived(node_id.clone()), None)
+                                (
+                                    MessagingEvent::InvalidMessageReceived(Box::new(peer.node_id.clone())),
+                                    None,
+                                )
                             },
                         };
 
@@ -272,7 +380,7 @@ impl MessagingProtocol {
                                 warn!(
                                     target: LOG_TARGET,
                                     "Failed to send InboundMessage for peer '{}' because '{}'",
-                                    node_id.short_str(),
+                                    peer.node_id.short_str(),
                                     err
                                 );
 
@@ -282,20 +390,21 @@ impl MessagingProtocol {
                             }
                         }
 
+                        trace!(target: LOG_TARGET, "Inbound handler sending event '{:?}'", event);
                         if let Err(err) = messaging_events_tx.send(Arc::new(event)) {
                             debug!(
                                 target: LOG_TARGET,
                                 "Messaging event '{}' not sent for peer '{}' because there are no subscribers. \
                                  MessagingEvent dropped",
                                 err.0,
-                                node_id.short_str(),
+                                peer.node_id.short_str(),
                             );
                         }
                     },
                     Err(err) => debug!(
                         target: LOG_TARGET,
                         "Failed to receive from peer '{}' because '{}'",
-                        node_id.short_str(),
+                        peer.node_id.short_str(),
                         err
                     ),
                 }
@@ -304,7 +413,7 @@ impl MessagingProtocol {
             trace!(
                 target: LOG_TARGET,
                 "Inbound messaging handler for peer '{}' has stopped",
-                node_id.short_str()
+                peer.node_id.short_str()
             );
         });
     }
@@ -319,8 +428,31 @@ impl MessagingProtocol {
                     "NewInboundSubstream for peer '{}'",
                     node_id.short_str()
                 );
-                // For an inbound substream, read messages from the peer and forward on the incoming_messages channel
-                self.spawn_inbound_handler(node_id, substream).await;
+                match self.peer_manager.find_by_node_id(&node_id).await {
+                    Ok(peer) => {
+                        // For an inbound substream, read messages from the peer and forward on the incoming_messages
+                        // channel
+                        self.spawn_inbound_handler(Arc::new(peer), substream).await;
+                    },
+                    Err(PeerManagerError::PeerNotFoundError) => {
+                        // This should never happen if everything is working correctly
+
+                        error!(
+                            target: LOG_TARGET,
+                            "[ThisNode={}] *** Could not find verified node_id '{}' in peer list. This should not \
+                             happen ***",
+                            self.node_identity.node_id().short_str(),
+                            node_id.short_str()
+                        );
+                    },
+                    Err(err) => {
+                        // This should never happen if everything is working correctly
+                        error!(
+                            target: LOG_TARGET,
+                            "Peer manager error when handling protocol notification: '{:?}'", err
+                        );
+                    },
+                }
             },
         }
     }

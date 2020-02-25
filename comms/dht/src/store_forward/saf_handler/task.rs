@@ -23,6 +23,7 @@
 use crate::{
     actor::DhtRequester,
     config::DhtConfig,
+    crypt,
     envelope::{Destination, DhtMessageFlags, DhtMessageHeader, DhtMessageOrigin, NodeDestination},
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
     outbound::{OutboundMessageRequester, SendMessageParams},
@@ -43,7 +44,7 @@ use tari_comms::{
     message::EnvelopeBody,
     peer_manager::{NodeIdentity, Peer, PeerManager, PeerManagerError},
     types::Challenge,
-    utils::{crypt, signature},
+    utils::signature,
 };
 use tari_crypto::tari_utilities::ByteArray;
 use tokio::{runtime, task};
@@ -189,7 +190,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         self.outbound_service
             .send_message_no_header(
                 SendMessageParams::new()
-                    .direct_public_key(message.source_peer.public_key)
+                    .direct_public_key(message.source_peer.public_key.clone())
                     .with_dht_message_type(DhtMessageType::SafStoredMessages)
                     .finish(),
                 stored_messages,
@@ -337,7 +338,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             let decrypted_body =
                 Self::maybe_decrypt_and_deserialize(&node_identity, origin, dht_flags, &message.encrypted_body)?;
 
-            let inbound_msg = DhtInboundMessage::new(dht_header, Clone::clone(&*source_peer), message.encrypted_body);
+            let inbound_msg = DhtInboundMessage::new(dht_header, Arc::clone(&source_peer), message.encrypted_body);
 
             Ok(DecryptedDhtMessage::succeeded(decrypted_body, inbound_msg))
         })
@@ -524,7 +525,9 @@ mod test {
 
         let inbound_msg_a = make_dht_inbound_message(&node_identity, msg_a.clone(), DhtMessageFlags::ENCRYPTED);
         // Need to know the peer to process a stored message
-        peer_manager.add_peer(inbound_msg_a.source_peer.clone()).unwrap();
+        peer_manager
+            .add_peer(Clone::clone(&*inbound_msg_a.source_peer))
+            .unwrap();
         let msg_b = crypt::encrypt(
             &shared_key,
             &wrap_in_envelope_body!(b"B".to_vec())
@@ -536,7 +539,9 @@ mod test {
 
         let inbound_msg_b = make_dht_inbound_message(&node_identity, msg_b.clone(), DhtMessageFlags::ENCRYPTED);
         // Need to know the peer to process a stored message
-        peer_manager.add_peer(inbound_msg_b.source_peer.clone()).unwrap();
+        peer_manager
+            .add_peer(Clone::clone(&*inbound_msg_b.source_peer))
+            .unwrap();
 
         let msg1 = StoredMessage::new(0, inbound_msg_a.dht_header.clone(), msg_a);
         let msg2 = StoredMessage::new(0, inbound_msg_b.dht_header, msg_b);

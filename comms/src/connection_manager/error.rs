@@ -69,6 +69,8 @@ pub enum ConnectionManagerError {
     /// Unable to parse any of the network addresses offered by the connecting peer
     PeerIdentityNoValidAddresses,
     IdentityProtocolError(IdentityProtocolError),
+    /// The dial was cancelled
+    DialCancelled,
 }
 
 impl From<yamux::ConnectionError> for ConnectionManagerError {

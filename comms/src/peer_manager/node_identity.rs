@@ -47,13 +47,7 @@ pub enum NodeIdentityError {
     PoisonedAccess,
 }
 
-/// Identity of this node
-/// # Fields
-/// `identity`: The public identity fields for this node
-///
-/// `secret_key`: The secret key corresponding to the public key of this node
-///
-/// `control_service_address`: The Multiaddr of the local node's Control port
+/// The public and private identity of this node on the network
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NodeIdentity {
     #[serde(serialize_with = "serialize_to_hex")]

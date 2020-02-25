@@ -29,11 +29,12 @@ use crate::{
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
 };
-use bitflags::_core::sync::atomic::AtomicBool;
-// use futures_util::sink::SinkExt;
 use futures::SinkExt;
 use log::*;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use tari_broadcast_channel::{bounded, Publisher, Subscriber};
 use tokio::runtime;
 

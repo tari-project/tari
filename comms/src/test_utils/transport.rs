@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection::ConnectionDirection,
+    connection_manager::ConnectionDirection,
     memsocket::MemorySocket,
     multiaddr::Multiaddr,
     multiplexing::Yamux,

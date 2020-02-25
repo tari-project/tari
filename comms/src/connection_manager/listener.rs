@@ -20,15 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::error::ConnectionManagerError;
+use super::{
+    common,
+    error::ConnectionManagerError,
+    peer_connection::{self, PeerConnection},
+    types::ConnectionDirection,
+    ConnectionManagerConfig,
+    ConnectionManagerEvent,
+};
 use crate::{
     bounded_executor::BoundedExecutor,
-    connection::ConnectionDirection,
-    connection_manager::{
-        common,
-        next::{ConnectionManagerConfig, ConnectionManagerEvent},
-        peer_connection::{self, PeerConnection},
-    },
     multiaddr::Multiaddr,
     multiplexing::Yamux,
     noise::NoiseConfig,
@@ -142,6 +143,7 @@ where
         // back-pressure on nodes connecting to this node
         self.bounded_executor
             .spawn(async move {
+                let this_node_id_str = node_identity.node_id().short_str();
                 let result = Self::perform_socket_upgrade_procedure(
                     executor,
                     node_identity,
@@ -165,6 +167,12 @@ where
                         );
                     },
                     Err(err) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "[ThisNode={}] Peer connection upgrade failed for peer because '{:?}'",
+                            this_node_id_str,
+                            err
+                        );
                         log_if_error!(
                             target: LOG_TARGET,
                             conn_man_notifier
@@ -221,7 +229,7 @@ where
             "Starting peer identity exchange for peer with public key '{}'",
             authenticated_public_key
         );
-        let peer_identity = common::perform_identity_exchange(&mut muxer, node_identity, CONNECTION_DIRECTION).await?;
+        let peer_identity = common::perform_identity_exchange(&mut muxer, &node_identity, CONNECTION_DIRECTION).await?;
 
         debug!(
             target: LOG_TARGET,
@@ -230,13 +238,16 @@ where
         );
         trace!(target: LOG_TARGET, "{:?}", peer_identity);
 
-        let peer_node_id =
-            common::validate_and_add_peer_from_peer_identity(&peer_manager, authenticated_public_key, peer_identity)
-                .await?;
+        let peer_node_id = common::validate_and_add_peer_from_peer_identity(
+            peer_manager.inner(),
+            authenticated_public_key,
+            peer_identity,
+        )?;
 
         debug!(
             target: LOG_TARGET,
-            "Peer '{}' added to peer list.",
+            "[ThisNode={}] Peer '{}' added to peer list.",
+            node_identity.node_id().short_str(),
             peer_node_id.short_str()
         );
 

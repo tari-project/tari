@@ -20,30 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # Comms Middleware
+//! # Comms Pipeline
 //!
-//! Comms Middleware contains the middleware layers that can be composed when processing
+//! Comms Pipeline contains the middleware layers that can be composed when processing
 //! inbound and outbound comms messages.
 //!
 //! For example, should you want your messages to be encrypted, you'll add the EncryptionLayer to
 //! the outbound middleware stack and the DecryptionLayer to the inbound stack.
 //!
-//! Middlewares use `tower_layer` and `tower_service`. A Middleware is simply any service which
-//! is `Service<InboundMessage, Response = (), Error = MiddlewareError>`. This service will usually
+//! Middlewares use `tower_layer` and `tower_service`. A Pipeline is simply any service which
+//! is `Service<InboundMessage, Response = ()>`. This service will usually
 //! be composed of other services by using the `tower_util::ServiceBuilder`.
 
 mod builder;
-mod pipeline;
-mod sink;
-
 pub use builder::{Builder, Config, PipelineBuilderError};
-pub use pipeline::ServicePipeline;
+
+mod sink;
 pub use sink::SinkService;
 
-cfg_next! {
-    mod inbound;
-    mod outbound;
+mod inbound;
+pub(crate) use inbound::Inbound;
 
-    pub(crate) use inbound::Inbound;
-    pub(crate) use outbound::Outbound;
-}
+mod outbound;
+pub(crate) use outbound::Outbound;

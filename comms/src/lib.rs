@@ -15,50 +15,38 @@ extern crate lazy_static;
 
 #[macro_use]
 mod macros;
+
+mod connection_manager;
+mod consts;
+mod multiplexing;
+mod noise;
+mod proto;
+mod protocol;
+
+pub mod backoff;
+pub mod bounded_executor;
+pub mod compat;
+pub mod memsocket;
+pub mod peer_manager;
 #[macro_use]
 pub mod message;
+pub mod net_address;
+pub mod pipeline;
+pub mod socks;
+pub mod tor;
+pub mod transports;
+pub mod types;
 #[macro_use]
 pub mod utils;
 
-pub mod builder;
-#[macro_use]
-pub mod connection;
-pub mod backoff;
-pub mod condvar_shim;
-pub mod connection_manager;
-mod consts;
-pub mod control_service;
-pub mod inbound_message_service;
-pub mod outbound_message_service;
-pub mod peer_manager;
-pub mod pipeline;
-mod proto;
-pub mod types;
+mod builder;
+pub use builder::{BuiltCommsNode, CommsBuilder, CommsBuilderError, CommsNode};
 
-// Re-export
+// Re-exports
 pub use bytes::Bytes;
-
-cfg_next! {
-    mod multiplexing;
-    mod noise;
-    mod protocol;
-
-    pub mod socks;
-    pub mod bounded_executor;
-    pub mod compat;
-    pub mod memsocket;
-    pub mod transports;
-    pub mod tor;
-
-    pub mod next {
-        pub use crate::builder::builder_next::CommsBuilder;
-    }
-}
 
 #[cfg(test)]
 pub(crate) mod test_utils;
-
-pub use self::builder::CommsBuilder;
 
 pub mod multiaddr {
     // Re-export so that client code does not have to have multiaddr as a dependency

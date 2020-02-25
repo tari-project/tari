@@ -20,18 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    multiaddr::Multiaddr,
-    tor::client::{
-        commands::TorCommand,
-        error::TorClientError,
-        parsers,
-        parsers::ParseError,
-        response::ResponseLine,
-        types::{KeyBlob, KeyType, PortMapping, PrivateKey},
-    },
+use crate::tor::client::{
+    commands::TorCommand,
+    error::TorClientError,
+    parsers,
+    parsers::ParseError,
+    response::ResponseLine,
+    types::{KeyBlob, KeyType, PortMapping, PrivateKey},
 };
-use std::{borrow::Cow, marker::PhantomData, num::NonZeroU16};
+use std::{borrow::Cow, num::NonZeroU16};
 
 pub enum AddOnionFlag {
     /// The server should not include the newly generated private key as part of the response.
@@ -65,17 +62,16 @@ impl ToString for AddOnionFlag {
 /// This command instructs Tor to create onion hidden services.
 pub struct AddOnion<'a> {
     key_type: KeyType,
-    key_blob: KeyBlob,
+    key_blob: KeyBlob<'a>,
     flags: Vec<AddOnionFlag>,
     port_mapping: PortMapping,
     num_streams: Option<NonZeroU16>,
-    _lifetime: PhantomData<&'a ()>,
 }
 
-impl AddOnion<'_> {
+impl<'a> AddOnion<'a> {
     pub fn new(
         key_type: KeyType,
-        key_blob: KeyBlob,
+        key_blob: KeyBlob<'a>,
         flags: Vec<AddOnionFlag>,
         port_mapping: PortMapping,
         num_streams: Option<NonZeroU16>,
@@ -87,7 +83,6 @@ impl AddOnion<'_> {
             flags,
             port_mapping,
             num_streams,
-            _lifetime: PhantomData,
         }
     }
 }
@@ -148,8 +143,8 @@ impl<'a> TorCommand for AddOnion<'a> {
                         .ok_or_else(|| ParseError("Failed to parse private key".to_string()))?;
 
                     private_key = match key {
-                        "ED25519-V3" => Some(PrivateKey::Ed25519V3(value)),
-                        "RSA1024" => Some(PrivateKey::Rsa1024(value)),
+                        "ED25519-V3" => Some(PrivateKey::Ed25519V3(value.into_owned())),
+                        "RSA1024" => Some(PrivateKey::Rsa1024(value.into_owned())),
                         k => {
                             return Err(
                                 ParseError(format!("Server returned unrecognised private key type '{}'", k)).into(),
@@ -176,30 +171,8 @@ impl<'a> TorCommand for AddOnion<'a> {
 #[derive(Debug, Clone)]
 pub struct AddOnionResponse<'a> {
     pub(crate) service_id: Cow<'a, str>,
-    pub(crate) private_key: Option<PrivateKey<'a>>,
+    pub(crate) private_key: Option<PrivateKey>,
     pub(crate) onion_port: u16,
-}
-
-impl<'a> AddOnionResponse<'a> {
-    /// Return the .onion address relating to this `AddOnionResponse`.
-    pub fn onion_address(&self) -> Multiaddr {
-        const ONION_V2_LEN: usize = 16;
-        const ONION_V3_LEN: usize = 56;
-        // service_id should always come from the tor control server, so the length can be relied on
-        const EXPECT_MSG: &str = "failed to parse onion address from AddOnionResponse";
-        match self.service_id.len() {
-            ONION_V2_LEN => format!("/onion/{}:{}", self.service_id, self.onion_port)
-                .parse()
-                .expect(EXPECT_MSG),
-            ONION_V3_LEN => {
-                // This will fail until this PR is released (https://github.com/libp2p/rust-libp2p/pull/1354)
-                format!("/onion3/{}:{}", self.service_id, self.onion_port)
-                    .parse()
-                    .expect(EXPECT_MSG)
-            },
-            _ => panic!(EXPECT_MSG),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -208,16 +181,17 @@ mod test {
 
     #[test]
     fn to_command_string() {
+        let key = "this-is-a-key".to_string();
         let command = AddOnion::new(
             KeyType::New,
-            KeyBlob::String("this-is-a-key".to_string()),
+            KeyBlob::String(&key),
             vec![],
             PortMapping::from_port(9090),
             None,
         );
         assert_eq!(
             command.to_command_string().unwrap(),
-            "ADD_ONION NEW:this-is-a-key Port=9090,127.0.0.1:9090"
+            format!("ADD_ONION NEW:{} Port=9090,127.0.0.1:9090", key)
         );
     }
 }

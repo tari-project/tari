@@ -37,3 +37,4 @@ pub mod peer;
 pub mod proto;
 pub mod services;
 pub mod tari_message;
+pub mod transport;

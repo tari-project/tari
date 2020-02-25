@@ -86,7 +86,7 @@ where DS: KeyValueStore<PeerId, Peer>
         let (public_key, node_id) = (peer.public_key.clone(), peer.node_id.clone());
         match self.public_key_index.get(&peer.public_key).copied() {
             Some(peer_key) => {
-                trace!(target: LOG_TARGET, "Replacing peer that has NodeId '{}'", peer.node_id,);
+                trace!(target: LOG_TARGET, "Replacing peer that has NodeId '{}'", peer.node_id);
                 // Replace existing entry
                 peer.set_id(peer_key);
                 self.peer_db
@@ -130,15 +130,30 @@ where DS: KeyValueStore<PeerId, Peer>
                     .get(&peer_key)
                     .map_err(PeerManagerError::DatabaseError)?
                     .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+                trace!(target: LOG_TARGET, "Updating peer '{}'", stored_peer.node_id);
 
+                let must_update_node_id = node_id.is_some();
+                if must_update_node_id {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Node id update from '{}' to '{}'",
+                        stored_peer.node_id.short_str(),
+                        node_id.as_ref().expect("already checked").short_str()
+                    );
+                }
                 stored_peer.update(node_id, net_addresses, flags, peer_features, connection_stats);
-                let (public_key, node_id) = (stored_peer.public_key.clone(), stored_peer.node_id.clone());
+
+                let public_key = stored_peer.public_key.clone();
+                let node_id = stored_peer.node_id.clone();
+
                 self.peer_db
                     .insert(peer_key, stored_peer)
                     .map_err(PeerManagerError::DatabaseError)?;
 
-                self.remove_index_links(peer_key);
-                self.add_index_links(peer_key, public_key, node_id);
+                if must_update_node_id {
+                    self.remove_index_links(peer_key);
+                    self.add_index_links(peer_key, public_key, node_id);
+                }
 
                 Ok(())
             },
@@ -406,7 +421,7 @@ impl Into<CommsDatabase> for PeerStorage<CommsDatabase> {
 mod test {
     use super::*;
     use crate::{
-        connection::net_address::NetAddressesWithStats,
+        net_address::MultiaddressesWithStats,
         peer_manager::{peer::PeerFlags, PeerFeatures},
     };
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
@@ -421,7 +436,7 @@ mod test {
         let net_address1 = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address2 = "/ip4/5.6.7.8/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/5.6.7.8/tcp/7000".parse::<Multiaddr>().unwrap();
-        let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
+        let mut net_addresses = MultiaddressesWithStats::from(net_address1.clone());
         net_addresses.add_net_address(&net_address2);
         net_addresses.add_net_address(&net_address3);
         let peer1 = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), PeerFeatures::empty());
@@ -429,14 +444,14 @@ mod test {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_address4 = "/ip4/9.10.11.12/tcp/7000".parse::<Multiaddr>().unwrap();
-        let net_addresses = NetAddressesWithStats::from(net_address4.clone());
+        let net_addresses = MultiaddressesWithStats::from(net_address4.clone());
         let peer2: Peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), PeerFeatures::empty());
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_address5 = "/ip4/13.14.15.16/tcp/6000".parse::<Multiaddr>().unwrap();
         let net_address6 = "/ip4/17.18.19.20/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut net_addresses = NetAddressesWithStats::from(net_address5.clone());
+        let mut net_addresses = MultiaddressesWithStats::from(net_address5.clone());
         net_addresses.add_net_address(&net_address6);
         let peer3 = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), PeerFeatures::empty());
 
@@ -476,7 +491,7 @@ mod test {
         let net_address1 = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address2 = "/ip4/5.6.7.8/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/5.6.7.8/tcp/7000".parse::<Multiaddr>().unwrap();
-        let mut net_addresses = NetAddressesWithStats::from(net_address1.clone());
+        let mut net_addresses = MultiaddressesWithStats::from(net_address1.clone());
         net_addresses.add_net_address(&net_address2);
         net_addresses.add_net_address(&net_address3);
         let peer1 = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), PeerFeatures::empty());
@@ -484,14 +499,14 @@ mod test {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_address4 = "/ip4/9.10.11.12/tcp/7000".parse::<Multiaddr>().unwrap();
-        let net_addresses = NetAddressesWithStats::from(net_address4.clone());
+        let net_addresses = MultiaddressesWithStats::from(net_address4.clone());
         let peer2: Peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), PeerFeatures::empty());
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_address5 = "/ip4/13.14.15.16/tcp/6000".parse::<Multiaddr>().unwrap();
         let net_address6 = "/ip4/17.18.19.20/tcp/8000".parse::<Multiaddr>().unwrap();
-        let mut net_addresses = NetAddressesWithStats::from(net_address5.clone());
+        let mut net_addresses = MultiaddressesWithStats::from(net_address5.clone());
         net_addresses.add_net_address(&net_address6);
         let peer3 = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), PeerFeatures::empty());
         // Test adding and searching for peers

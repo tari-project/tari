@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
     compat::IoCompat,
-    connection::ConnectionDirection,
+    connection_manager::ConnectionDirection,
     message::MessageExt,
     peer_manager::NodeIdentity,
     proto::identity::PeerIdentityMsg,
@@ -31,7 +31,7 @@ use derive_error::Error;
 use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
 use prost::Message;
-use std::{io, sync::Arc};
+use std::io;
 use tari_crypto::tari_utilities::ByteArray;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
@@ -39,7 +39,7 @@ const IDENTITY_PROTOCOL: &[u8] = b"/tari/identity/1.0.0";
 const LOG_TARGET: &str = "comms::protocol::identity";
 
 pub async fn identity_exchange<TSocket>(
-    node_identity: Arc<NodeIdentity>,
+    node_identity: &NodeIdentity,
     direction: ConnectionDirection,
     mut socket: TSocket,
 ) -> Result<PeerIdentityMsg, IdentityProtocolError>
@@ -133,7 +133,7 @@ impl From<prost::DecodeError> for IdentityProtocolError {
 #[cfg(test)]
 mod test {
     use crate::{
-        connection::ConnectionDirection,
+        connection_manager::ConnectionDirection,
         peer_manager::PeerFeatures,
         test_utils::node_identity::build_node_identity,
         transports::{MemoryTransport, Transport},
@@ -156,8 +156,8 @@ mod test {
         let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_CLIENT);
 
         let (result1, result2) = future::join(
-            super::identity_exchange(node_identity1.clone(), ConnectionDirection::Inbound, in_sock),
-            super::identity_exchange(node_identity2.clone(), ConnectionDirection::Outbound, out_sock),
+            super::identity_exchange(&node_identity1, ConnectionDirection::Inbound, in_sock),
+            super::identity_exchange(&node_identity2, ConnectionDirection::Outbound, out_sock),
         )
         .await;
 

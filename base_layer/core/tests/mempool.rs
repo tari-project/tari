@@ -414,12 +414,7 @@ fn request_response_get_stats() {
         BaseNodeServiceConfig::default(),
         MmrCacheConfig { rewind_hist_len: 10 },
         MempoolServiceConfig::default(),
-        LivenessConfig {
-            auto_ping_interval: None,
-            enable_auto_join: false,
-            enable_auto_stored_message_request: true,
-            refresh_neighbours_interval: Duration::from_secs(3 * 60),
-        },
+        LivenessConfig::default(),
         ConsensusManager::new(None, consensus_constants),
         temp_dir.path().to_str().unwrap(),
     );
@@ -455,10 +450,10 @@ fn request_response_get_stats() {
         assert_eq!(received_stats.timelocked_txs, 1);
         assert_eq!(received_stats.published_txs, 0);
         assert_eq!(received_stats.total_weight, 35);
-    });
 
-    alice.comms.shutdown().unwrap();
-    bob.comms.shutdown().unwrap();
+        alice.comms.shutdown().await;
+        bob.comms.shutdown().await;
+    });
 }
 
 #[test]
@@ -519,11 +514,11 @@ fn request_response_get_tx_state_with_excess_sig() {
                 .unwrap(),
             TxStorageResponse::OrphanPool
         );
-    });
 
-    alice_node.comms.shutdown().unwrap();
-    bob_node.comms.shutdown().unwrap();
-    carol_node.comms.shutdown().unwrap();
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+        carol_node.comms.shutdown().await;
+    });
 }
 
 #[test]
@@ -555,7 +550,7 @@ fn receive_and_propagate_transaction() {
             .outbound_message_service
             .send_direct(
                 bob_node.node_identity.public_key().clone(),
-                OutboundEncryption::EncryptForPeer,
+                OutboundEncryption::None,
                 OutboundDomainMessage::new(TariMessageType::NewTransaction, proto::types::Transaction::from(tx)),
             )
             .await
@@ -564,7 +559,7 @@ fn receive_and_propagate_transaction() {
             .outbound_message_service
             .send_direct(
                 carol_node.node_identity.public_key().clone(),
-                OutboundEncryption::EncryptForPeer,
+                OutboundEncryption::None,
                 OutboundDomainMessage::new(TariMessageType::NewTransaction, proto::types::Transaction::from(orphan)),
             )
             .await
@@ -594,11 +589,11 @@ fn receive_and_propagate_transaction() {
             max_attempts = 10,
             interval = Duration::from_millis(1000)
         );
-    });
 
-    alice_node.comms.shutdown().unwrap();
-    bob_node.comms.shutdown().unwrap();
-    carol_node.comms.shutdown().unwrap();
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+        carol_node.comms.shutdown().await;
+    });
 }
 
 #[test]
@@ -614,12 +609,7 @@ fn service_request_timeout() {
         BaseNodeServiceConfig::default(),
         MmrCacheConfig::default(),
         mempool_service_config,
-        LivenessConfig {
-            auto_ping_interval: None,
-            enable_auto_join: false,
-            enable_auto_stored_message_request: true,
-            refresh_neighbours_interval: Duration::from_secs(3 * 60),
-        },
+        LivenessConfig::default(),
         ConsensusManager::default(),
         temp_dir.path().to_str().unwrap(),
     );
@@ -629,8 +619,8 @@ fn service_request_timeout() {
             Err(MempoolServiceError::RequestTimedOut) => assert!(true),
             _ => assert!(false),
         }
-    });
 
-    alice_node.comms.shutdown().unwrap();
-    bob_node.comms.shutdown().unwrap();
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+    });
 }

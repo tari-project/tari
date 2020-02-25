@@ -85,12 +85,12 @@ impl Envelope {
     /// Returns true if the message contains a valid public key in the header, otherwise
     /// false
     pub fn is_valid(&self) -> bool {
-        self.get_comms_public_key().is_some()
+        self.get_public_key().is_some()
     }
 
     /// Returns a valid public key from the header of this envelope, or None if the
     /// public key is invalid
-    pub fn get_comms_public_key(&self) -> Option<CommsPublicKey> {
+    pub fn get_public_key(&self) -> Option<CommsPublicKey> {
         self.header.as_ref().and_then(|header| header.get_comms_public_key())
     }
 }
@@ -193,7 +193,7 @@ mod test {
     fn construct_signed() {
         let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
         let envelope = Envelope::construct_signed(&sk, &pk, Bytes::new(), MessageFlags::all()).unwrap();
-        assert_eq!(envelope.get_comms_public_key().unwrap(), pk);
+        assert_eq!(envelope.get_public_key().unwrap(), pk);
         assert!(envelope.verify_signature().unwrap());
     }
 

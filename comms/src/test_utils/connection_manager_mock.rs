@@ -22,7 +22,10 @@
 
 use crate::{
     connection_manager::{
-        next::{ConnectionManagerError, ConnectionManagerEvent, ConnectionManagerRequest, ConnectionManagerRequester},
+        ConnectionManagerError,
+        ConnectionManagerEvent,
+        ConnectionManagerRequest,
+        ConnectionManagerRequester,
         PeerConnection,
     },
     peer_manager::NodeId,
@@ -49,6 +52,7 @@ pub fn create_connection_manager_mock(buf_size: usize) -> (ConnectionManagerRequ
 #[derive(Debug, Clone)]
 pub struct ConnectionManagerMockState {
     call_count: Arc<AtomicUsize>,
+    calls: Arc<Mutex<Vec<String>>>,
     active_conns: Arc<Mutex<HashMap<NodeId, PeerConnection>>>,
     event_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
 }
@@ -57,6 +61,7 @@ impl ConnectionManagerMockState {
     pub fn new(event_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>) -> Self {
         Self {
             call_count: Arc::new(AtomicUsize::new(0)),
+            calls: Arc::new(Mutex::new(Vec::new())),
             event_tx,
             active_conns: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -64,6 +69,14 @@ impl ConnectionManagerMockState {
 
     fn inc_call_count(&self) {
         self.call_count.fetch_add(1, Ordering::SeqCst);
+    }
+
+    async fn add_call(&self, call_str: String) {
+        self.calls.lock().await.push(call_str);
+    }
+
+    pub async fn take_calls(&self) -> Vec<String> {
+        self.calls.lock().await.drain(..).collect()
     }
 
     #[allow(dead_code)]
@@ -112,6 +125,7 @@ impl ConnectionManagerMock {
     async fn handle_request(&self, req: ConnectionManagerRequest) {
         use ConnectionManagerRequest::*;
         self.state.inc_call_count();
+        self.state.add_call(format!("{:?}", req)).await;
         match req {
             DialPeer(node_id, reply_tx) => {
                 // Send Ok(conn) if we have an active connection, otherwise Err(DialConnectFailedAllAddresses)

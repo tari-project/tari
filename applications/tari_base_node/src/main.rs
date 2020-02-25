@@ -41,9 +41,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-
 use tari_common::{load_configuration, GlobalConfig};
-use tari_comms::control_service::messages::RejectReason::ExistingConnection;
 use tokio::{runtime, runtime::Runtime};
 
 pub const LOG_TARGET: &str = "base_node::app";
@@ -113,7 +111,7 @@ fn main_inner() -> Result<(), ExitCodes> {
                 return Err(ExitCodes::ConfigError);
             }
             debug!(target: LOG_TARGET, "Node id not found. {}. Creating new ID", e);
-            match create_and_save_id(&node_config.identity_file, &node_config.address) {
+            match create_and_save_id(&node_config.identity_file, &node_config.public_address) {
                 Ok(id) => {
                     info!(
                         target: LOG_TARGET,
@@ -153,7 +151,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     // lets run the miner
     let miner_handle = if node_config.enable_mining {
         let mut rx = miner.get_utxo_receiver_channel();
-        let mut rx_events = node.get_state_change_event();
+        let rx_events = node.get_state_change_event();
         miner.subscribe_to_state_change(rx_events);
         let mut wallet_output_handle = base_node_context.wallet_output_service.clone();
         rt.spawn(async move {
@@ -177,14 +175,7 @@ fn main_inner() -> Result<(), ExitCodes> {
             target: LOG_TARGET,
             "The node has finished all it's work. initiating Comms stack shutdown"
         );
-        match comms.shutdown() {
-            Ok(()) => info!(target: LOG_TARGET, "The comms stack reported a clean shutdown"),
-            Err(e) => warn!(
-                target: LOG_TARGET,
-                "The comms stack did not shut down cleanly: {}",
-                e.to_string()
-            ),
-        }
+        comms.shutdown().await;
     };
     let base_node_handle = rt.spawn(main);
 

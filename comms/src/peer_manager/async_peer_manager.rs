@@ -42,55 +42,41 @@ pub struct AsyncPeerManager {
     peer_manager: Arc<PeerManager>,
 }
 
-macro_rules! make_async {
-    ($fn:ident()) => {
-        make_async!($fn() -> ());
-    };
-    ($fn:ident() -> $rtype:ty) => {
-        pub async fn $fn(&self) -> Result<$rtype, PeerManagerError> {
-            let peer_manager = Arc::clone(&self.peer_manager);
-            tokio::task::spawn_blocking(move || peer_manager.$fn())
-                .await
-                .map_err(|_| PeerManagerError::BlockingTaskSpawnError)?
-        }
-    };
-     ($fn:ident($($param:ident:$ptype:ty),+)) => {
-        make_async!($fn($($param),+) -> ());
-    };
-
-    ($fn:ident($($param:ident:$ptype:ty),+) -> $rtype:ty) => {
-        pub async fn $fn(&self, $($param: $ptype),+) -> Result<$rtype, PeerManagerError> {
-            let peer_manager = Arc::clone(&self.peer_manager);
-            tokio::task::spawn_blocking(move || peer_manager.$fn($($param),+))
-                .await
-                .map_err(|_| PeerManagerError::BlockingTaskSpawnError)?
-        }
-    };
-}
-
 impl AsyncPeerManager {
-    make_async!(add_peer(peer: Peer) -> PeerId);
-
     pub fn new(peer_manager: Arc<PeerManager>) -> Self {
         Self { peer_manager }
     }
 
+    pub async fn add_peer(&self, peer: Peer) -> Result<PeerId, PeerManagerError> {
+        self.blocking_call(move |pm| pm.add_peer(peer)).await?
+    }
+
+    /// Get a peer matching the given node ID
     pub async fn find_by_node_id(&self, node_id: &NodeId) -> Result<Peer, PeerManagerError> {
         // TODO: When tokio block_in_place is more stable, this clone may not be necessary
         let node_id = node_id.clone();
-        let peer_manager = Arc::clone(&self.peer_manager);
-        task::spawn_blocking(move || peer_manager.find_by_node_id(&node_id))
-            .await
-            .map_err(|_| PeerManagerError::BlockingTaskSpawnError)?
+        self.blocking_call(move |pm| pm.find_by_node_id(&node_id)).await?
+    }
+
+    pub async fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
+        let node_id = node_id.clone();
+        self.blocking_call(move |pm| pm.direct_identity_node_id(&node_id))
+            .await?
     }
 
     pub async fn find_by_public_key(&self, public_key: &CommsPublicKey) -> Result<Peer, PeerManagerError> {
         // TODO: When tokio block_in_place is more stable, this clone may not be necessary
         let public_key = public_key.clone();
-        let peer_manager = Arc::clone(&self.peer_manager);
-        task::spawn_blocking(move || peer_manager.find_by_public_key(&public_key))
-            .await
-            .map_err(|_| PeerManagerError::BlockingTaskSpawnError)?
+        self.blocking_call(move |pm| pm.find_by_public_key(&public_key)).await?
+    }
+
+    pub async fn exists(&self, public_key: &CommsPublicKey) -> Result<bool, PeerManagerError> {
+        let public_key = public_key.clone();
+        self.blocking_call(move |pm| Ok(pm.exists(&public_key))).await?
+    }
+
+    pub fn inner(&self) -> &PeerManager {
+        &self.peer_manager
     }
 
     /// Updates fields for a peer. Any fields set to Some(xx) will be updated. All None
@@ -107,9 +93,8 @@ impl AsyncPeerManager {
     {
         // TODO: When tokio block_in_place is more stable, this clone may not be necessary
         let public_key = public_key.clone();
-        let peer_manager = Arc::clone(&self.peer_manager);
-        task::spawn_blocking(move || {
-            peer_manager.update_peer(
+        self.blocking_call(move |pm| {
+            pm.update_peer(
                 &public_key,
                 node_id,
                 net_addresses,
@@ -118,13 +103,62 @@ impl AsyncPeerManager {
                 connection_stats,
             )
         })
-        .await
-        .map_err(|_| PeerManagerError::BlockingTaskSpawnError)?
+        .await?
+    }
+
+    async fn blocking_call<F, R>(&self, f: F) -> Result<R, PeerManagerError>
+    where
+        F: FnOnce(Arc<PeerManager>) -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        let peer_manager = self.peer_manager.clone();
+        task::spawn_blocking(move || f(peer_manager))
+            .await
+            .map_err(|_| PeerManagerError::BlockingTaskSpawnError)
     }
 }
 
 impl From<Arc<PeerManager>> for AsyncPeerManager {
     fn from(peer_manager: Arc<PeerManager>) -> Self {
         Self { peer_manager }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::test_utils::peer_manager::build_peer_manager;
+    use rand::rngs::OsRng;
+    use tari_crypto::keys::PublicKey;
+
+    #[tokio_macros::test_basic]
+    async fn update_peer() {
+        let pm = AsyncPeerManager::from(build_peer_manager());
+        let pk = CommsPublicKey::default();
+        let node_id = NodeId::default();
+
+        pm.add_peer(Peer::new(
+            pk.clone(),
+            node_id.clone(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ))
+        .await
+        .unwrap();
+
+        pm.find_by_node_id(&node_id).await.unwrap();
+
+        let (_, pk2) = CommsPublicKey::random_keypair(&mut OsRng);
+        let node_id2 = NodeId::from_key(&pk2).unwrap();
+
+        pm.update_peer(&pk, Some(node_id2.clone()), None, None, None, None)
+            .await
+            .unwrap();
+
+        pm.find_by_node_id(&node_id2).await.unwrap();
+
+        let err = pm.find_by_node_id(&node_id).await.unwrap_err();
+        assert!(err.is_peer_not_found());
     }
 }

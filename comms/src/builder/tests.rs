@@ -22,12 +22,11 @@
 
 use crate::{
     backoff::ConstantBackoff,
-    builder::builder_next::{CommsBuilder, CommsNode},
-    connection_manager::next::ConnectionManagerEvent,
+    builder::builder::{CommsBuilder, CommsNode},
+    connection_manager::ConnectionManagerEvent,
     memsocket,
-    message::InboundMessage,
+    message::{InboundMessage, OutboundMessage},
     multiaddr::{Multiaddr, Protocol},
-    outbound_message_service::OutboundMessage,
     peer_manager::{Peer, PeerFeatures},
     pipeline,
     pipeline::SinkService,
@@ -38,7 +37,7 @@ use crate::{
 };
 use bytes::Bytes;
 use futures::{channel::mpsc, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
-use std::{convert::identity, sync::Arc, time::Duration};
+use std::{collections::HashSet, convert::identity, hash::Hash, sync::Arc, time::Duration};
 use tari_storage::HashmapDatabase;
 use tari_test_utils::{collect_stream, unpack_enum};
 use tokio::runtime;
@@ -65,6 +64,13 @@ async fn spawn_node(
         .with_listener_address(addr)
         .with_transport(MemoryTransport)
         .with_peer_storage(HashmapDatabase::new())
+
+        .with_node_identity(node_identity)
+        .with_protocols(protocols)
+        .build()
+        .unwrap();
+
+    let comms_node = comms_node
         .with_messaging_pipeline(
             pipeline::Builder::new()
                 // Outbound messages will be forwarded "as is" to outbound messaging
@@ -74,8 +80,6 @@ async fn spawn_node(
                 .with_inbound_pipeline(SinkService::new(inbound_tx))
                 .finish(),
         )
-        .with_node_identity(node_identity)
-        .with_protocols(protocols)
         .spawn()
         .await
         .unwrap();
@@ -107,8 +111,8 @@ async fn peer_to_peer_custom_protocols() {
         .add(&[TEST_PROTOCOL], test_sender)
         .add(&[ANOTHER_TEST_PROTOCOL], another_test_sender);
 
-    let (mut comms_node1, _, _) = spawn_node(protocols1).await;
-    let (mut comms_node2, _, _) = spawn_node(protocols2).await;
+    let (comms_node1, _, _) = spawn_node(protocols1).await;
+    let (comms_node2, _, _) = spawn_node(protocols2).await;
 
     let node_identity1 = comms_node1.node_identity();
     let node_identity2 = comms_node2.node_identity();
@@ -125,7 +129,7 @@ async fn peer_to_peer_custom_protocols() {
         .unwrap();
 
     let mut conn_man_events1 = comms_node1.subscribe_connection_manager_events();
-    let mut conn_man_requester1 = comms_node1.connection_manager_requester();
+    let mut conn_man_requester1 = comms_node1.connection_manager();
     let mut conn_man_events2 = comms_node2.subscribe_connection_manager_events();
 
     let mut conn1 = conn_man_requester1
@@ -167,16 +171,16 @@ async fn peer_to_peer_custom_protocols() {
     substream.read_exact(&mut buf).await.unwrap();
     assert_eq!(buf, ANOTHER_TEST_MSG);
 
-    comms_node1.shutdown();
-    comms_node2.shutdown();
+    comms_node1.shutdown().await;
+    comms_node2.shutdown().await;
 }
 
 #[tokio_macros::test_basic]
 async fn peer_to_peer_messaging() {
     const NUM_MSGS: usize = 100;
 
-    let (mut comms_node1, inbound_rx1, mut outbound_rx1) = spawn_node(Protocols::new()).await;
-    let (mut comms_node2, inbound_rx2, mut outbound_rx2) = spawn_node(Protocols::new()).await;
+    let (comms_node1, inbound_rx1, mut outbound_tx1) = spawn_node(Protocols::new()).await;
+    let (comms_node2, inbound_rx2, mut outbound_tx2) = spawn_node(Protocols::new()).await;
 
     let messaging_events1 = comms_node1.subscribe_messaging_events();
     let messaging_events2 = comms_node2.subscribe_messaging_events();
@@ -202,7 +206,7 @@ async fn peer_to_peer_messaging() {
             Default::default(),
             format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
         );
-        outbound_rx1.send(outbound_msg).await.unwrap();
+        outbound_tx1.send(outbound_msg).await.unwrap();
     }
 
     let messages1_to_2 = collect_stream!(inbound_rx2, take = NUM_MSGS, timeout = Duration::from_secs(10));
@@ -223,7 +227,7 @@ async fn peer_to_peer_messaging() {
             Default::default(),
             format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
         );
-        outbound_rx2.send(outbound_msg).await.unwrap();
+        outbound_tx2.send(outbound_msg).await.unwrap();
     }
 
     let messages2_to_1 = collect_stream!(inbound_rx1, take = NUM_MSGS, timeout = Duration::from_secs(10));
@@ -241,9 +245,91 @@ async fn peer_to_peer_messaging() {
     assert_eq!(messages2_to_1.len(), NUM_MSGS);
     check_messages(messages2_to_1);
 
-    comms_node1.shutdown();
-    comms_node2.shutdown();
+    comms_node1.shutdown().await;
+    comms_node2.shutdown().await;
+}
 
-    comms_node1.shutdown_signal().await.unwrap();
-    comms_node2.shutdown_signal().await.unwrap();
+#[tokio_macros::test_basic]
+async fn peer_to_peer_messaging_simultaneous() {
+    const NUM_MSGS: usize = 10;
+
+    let (comms_node1, inbound_rx1, mut outbound_tx1) = spawn_node(Protocols::new()).await;
+    let (comms_node2, inbound_rx2, mut outbound_tx2) = spawn_node(Protocols::new()).await;
+
+    let o1 = outbound_tx1.clone();
+    let o2 = outbound_tx2.clone();
+
+    let node_identity1 = comms_node1.node_identity();
+    let node_identity2 = comms_node2.node_identity();
+    comms_node1
+        .async_peer_manager()
+        .add_peer(Peer::new(
+            node_identity2.public_key().clone(),
+            node_identity2.node_id().clone(),
+            node_identity2.public_address().clone().into(),
+            Default::default(),
+            Default::default(),
+        ))
+        .await
+        .unwrap();
+    comms_node2
+        .async_peer_manager()
+        .add_peer(Peer::new(
+            node_identity1.public_key().clone(),
+            node_identity1.node_id().clone(),
+            node_identity1.public_address().clone().into(),
+            Default::default(),
+            Default::default(),
+        ))
+        .await
+        .unwrap();
+
+    // Simultaneously send messages between the two nodes
+    let rt_handle = runtime::Handle::current();
+    let handle1 = rt_handle.spawn(async move {
+        for i in 0..NUM_MSGS {
+            let outbound_msg = OutboundMessage::new(
+                node_identity2.node_id().clone(),
+                Default::default(),
+                format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
+            );
+            outbound_tx1.send(outbound_msg).await.unwrap();
+        }
+    });
+
+    let handle2 = rt_handle.spawn(async move {
+        for i in 0..NUM_MSGS {
+            let outbound_msg = OutboundMessage::new(
+                node_identity1.node_id().clone(),
+                Default::default(),
+                format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
+            );
+            outbound_tx2.send(outbound_msg).await.unwrap();
+        }
+    });
+
+    handle1.await.unwrap();
+    handle2.await.unwrap();
+
+    // Tasks are finished, let's see if all the messages made it though
+    let messages1_to_2 = collect_stream!(inbound_rx2, take = NUM_MSGS, timeout = Duration::from_secs(10));
+    let messages2_to_1 = collect_stream!(inbound_rx1, take = NUM_MSGS, timeout = Duration::from_secs(10));
+
+    assert!(has_unique_elements(messages1_to_2.into_iter().map(|m| m.body)));
+    assert!(has_unique_elements(messages2_to_1.into_iter().map(|m| m.body)));
+
+    drop(o1);
+    drop(o2);
+
+    comms_node1.shutdown().await;
+    comms_node2.shutdown().await;
+}
+
+fn has_unique_elements<T>(iter: T) -> bool
+where
+    T: IntoIterator,
+    T::Item: Eq + Hash,
+{
+    let mut uniq = HashSet::new();
+    iter.into_iter().all(move |x| uniq.insert(x))
 }

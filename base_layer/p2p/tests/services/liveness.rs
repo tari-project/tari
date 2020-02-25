@@ -21,10 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support::comms_and_services::setup_comms_services;
+use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
-    builder::CommsNode,
     peer_manager::{NodeIdentity, PeerFeatures},
+    transports::MemoryTransport,
+    CommsNode,
 };
 use tari_comms_dht::Dht;
 use tari_p2p::{
@@ -37,26 +39,20 @@ use tari_p2p::{
 use tari_service_framework::StackBuilder;
 use tari_test_utils::{collect_stream, random::string};
 use tempdir::TempDir;
-use tokio::runtime::Runtime;
+use tokio::runtime;
 
-pub fn setup_liveness_service(
-    runtime: &mut Runtime,
-    node_identity: NodeIdentity,
-    peers: Vec<NodeIdentity>,
+pub async fn setup_liveness_service(
+    node_identity: Arc<NodeIdentity>,
+    peers: Vec<Arc<NodeIdentity>>,
     data_path: &str,
 ) -> (LivenessHandle, CommsNode, Dht)
 {
-    let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100);
+    let rt_handle = runtime::Handle::current();
+    let (publisher, subscription_factory) = pubsub_connector(rt_handle.clone(), 100);
     let subscription_factory = Arc::new(subscription_factory);
-    let (comms, dht) = setup_comms_services(
-        runtime.handle().clone(),
-        Arc::new(node_identity.clone()),
-        peers,
-        publisher,
-        data_path,
-    );
+    let (comms, dht) = setup_comms_services(node_identity.clone(), peers, publisher, data_path).await;
 
-    let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
+    let handles = StackBuilder::new(rt_handle.clone(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(LivenessInitializer::new(
             LivenessConfig {
@@ -68,80 +64,68 @@ pub fn setup_liveness_service(
             Arc::clone(&subscription_factory),
             dht.dht_requester(),
         ))
-        .finish();
-
-    let handles = runtime.block_on(fut).expect("Service initialization failed");
+        .finish()
+        .await
+        .expect("Service initialization failed");
 
     let liveness_handle = handles.get_handle::<LivenessHandle>().unwrap();
 
     (liveness_handle, comms, dht)
 }
 
-#[test]
-fn end_to_end() {
-    let mut runtime = Runtime::new().unwrap();
-
-    let mut rng = rand::rngs::OsRng;
-
-    let node_1_identity = NodeIdentity::random(
-        &mut rng,
-        "/ip4/127.0.0.1/tcp/31593".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
+fn make_node_identity() -> Arc<NodeIdentity> {
+    let next_port = MemoryTransport::acquire_next_memsocket_port();
+    Arc::new(
+        NodeIdentity::random(
+            &mut OsRng,
+            format!("/memory/{}", next_port).parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        )
+        .unwrap(),
     )
-    .unwrap();
-    let node_2_identity = NodeIdentity::random(
-        &mut rng,
-        "/ip4/127.0.0.1/tcp/31195".parse().unwrap(),
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
+}
+
+#[tokio_macros::test_basic]
+async fn end_to_end() {
+    let node_1_identity = make_node_identity();
+    let node_2_identity = make_node_identity();
 
     let alice_temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let (mut liveness1, comms_1, _dht_1) = setup_liveness_service(
-        &mut runtime,
         node_1_identity.clone(),
         vec![node_2_identity.clone()],
         alice_temp_dir.path().to_str().unwrap(),
-    );
+    )
+    .await;
     let bob_temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let (mut liveness2, comms_2, _dht_2) = setup_liveness_service(
-        &mut runtime,
         node_2_identity.clone(),
         vec![node_1_identity.clone()],
         bob_temp_dir.path().to_str().unwrap(),
+    )
+    .await;
+
+    for _ in 0..5 {
+        liveness2.send_ping(node_1_identity.node_id().clone()).await.unwrap();
+    }
+
+    for _ in 0..4 {
+        liveness1.send_ping(node_2_identity.node_id().clone()).await.unwrap();
+    }
+
+    for _ in 0..5 {
+        liveness2.send_ping(node_1_identity.node_id().clone()).await.unwrap();
+    }
+
+    for _ in 0..4 {
+        liveness1.send_ping(node_2_identity.node_id().clone()).await.unwrap();
+    }
+
+    let events = collect_stream!(
+        liveness1.get_event_stream_fused(),
+        take = 18,
+        timeout = Duration::from_secs(20),
     );
-
-    for _ in 0..5 {
-        let _ = runtime
-            .block_on(liveness2.send_ping(node_1_identity.node_id().clone()))
-            .unwrap();
-    }
-
-    for _ in 0..4 {
-        let _ = runtime
-            .block_on(liveness1.send_ping(node_2_identity.node_id().clone()))
-            .unwrap();
-    }
-
-    for _ in 0..5 {
-        let _ = runtime
-            .block_on(liveness2.send_ping(node_1_identity.node_id().clone()))
-            .unwrap();
-    }
-
-    for _ in 0..4 {
-        let _ = runtime
-            .block_on(liveness1.send_ping(node_2_identity.node_id().clone()))
-            .unwrap();
-    }
-
-    let events = runtime.block_on(async {
-        collect_stream!(
-            liveness1.get_event_stream_fused(),
-            take = 18,
-            timeout = Duration::from_secs(20),
-        )
-    });
 
     let ping_count = events
         .iter()
@@ -163,13 +147,11 @@ fn end_to_end() {
 
     assert_eq!(pong_count, 8);
 
-    let events = runtime.block_on(async {
-        collect_stream!(
-            liveness2.get_event_stream_fused(),
-            take = 18,
-            timeout = Duration::from_secs(10),
-        )
-    });
+    let events = collect_stream!(
+        liveness2.get_event_stream_fused(),
+        take = 18,
+        timeout = Duration::from_secs(10),
+    );
 
     let ping_count = events
         .iter()
@@ -191,16 +173,16 @@ fn end_to_end() {
 
     assert_eq!(pong_count, 10);
 
-    let pingcount1 = runtime.block_on(liveness1.get_ping_count()).unwrap();
-    let pongcount1 = runtime.block_on(liveness1.get_pong_count()).unwrap();
-    let pingcount2 = runtime.block_on(liveness2.get_ping_count()).unwrap();
-    let pongcount2 = runtime.block_on(liveness2.get_pong_count()).unwrap();
+    let pingcount1 = liveness1.get_ping_count().await.unwrap();
+    let pongcount1 = liveness1.get_pong_count().await.unwrap();
+    let pingcount2 = liveness2.get_ping_count().await.unwrap();
+    let pongcount2 = liveness2.get_pong_count().await.unwrap();
 
     assert_eq!(pingcount1, 10);
     assert_eq!(pongcount1, 8);
     assert_eq!(pingcount2, 8);
     assert_eq!(pongcount2, 10);
 
-    comms_1.shutdown().unwrap();
-    comms_2.shutdown().unwrap();
+    comms_1.shutdown().await;
+    comms_2.shutdown().await;
 }

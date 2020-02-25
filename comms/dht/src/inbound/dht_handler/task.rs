@@ -169,6 +169,11 @@ where
             .as_ref()
             .ok_or_else(|| DhtInboundError::OriginRequired("Origin is required for this message type".to_string()))?;
 
+        if &origin.public_key == self.node_identity.public_key() {
+            trace!(target: LOG_TARGET, "Received our own join message. Discarding it.");
+            return Ok(());
+        }
+
         trace!(target: LOG_TARGET, "Received Join Message from {}", origin.public_key);
 
         let body = decryption_result.expect("already checked that this message decrypted successfully");
@@ -230,13 +235,14 @@ where
             "Propagating join message to at most {} peer(s)",
             self.config.num_neighbouring_nodes
         );
+
         // Propagate message to closer peers
         self.outbound_service
             .send_raw(
                 SendMessageParams::new()
                     .closest(origin_peer.node_id, self.config.num_neighbouring_nodes, vec![
                         origin.public_key.clone(),
-                        source_peer.public_key,
+                        source_peer.public_key.clone(),
                     ])
                     .with_dht_header(dht_header)
                     .finish(),

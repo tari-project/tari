@@ -61,31 +61,34 @@
 //! let returned_peer = peer_manager.find_by_node_id(&node_id).unwrap();
 //! ```
 
-mod peer_features;
-
 mod connection_stats;
+
 mod error;
+pub use error::PeerManagerError;
+
 pub mod node_id;
-pub mod node_identity;
-pub mod peer;
+pub use node_id::NodeId;
+
+mod node_identity;
+pub use node_identity::{NodeIdentity, NodeIdentityError};
+
+mod peer;
+pub use peer::{Peer, PeerFlags};
+
+mod peer_features;
+pub use peer_features::PeerFeatures;
+
+mod async_peer_manager;
+pub use async_peer_manager::AsyncPeerManager;
+
 mod peer_id;
+pub use peer_id::PeerId;
+
 mod peer_manager;
+pub use peer_manager::PeerManager;
+
 mod peer_query;
-pub mod peer_storage;
+pub use peer_query::{PeerQuery, PeerQuerySortBy};
 
-cfg_next! {
-    mod async_peer_manager;
-
-    pub use async_peer_manager::AsyncPeerManager;
-}
-
-pub use self::{
-    error::PeerManagerError,
-    node_id::NodeId,
-    node_identity::NodeIdentity,
-    peer::{Peer, PeerFlags},
-    peer_features::PeerFeatures,
-    peer_id::PeerId,
-    peer_manager::PeerManager,
-    peer_query::{PeerQuery, PeerQuerySortBy},
-};
+mod peer_storage;
+pub use peer_storage::PeerStorage;

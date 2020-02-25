@@ -34,12 +34,7 @@ use futures::{
     channel::{mpsc, oneshot},
     SinkExt,
 };
-use tari_comms::{
-    message::{Frame, MessageExt},
-    peer_manager::NodeId,
-    types::CommsPublicKey,
-    wrap_in_envelope_body,
-};
+use tari_comms::{message::MessageExt, peer_manager::NodeId, types::CommsPublicKey, wrap_in_envelope_body};
 
 #[derive(Clone)]
 pub struct OutboundMessageRequester {
@@ -210,7 +205,7 @@ impl OutboundMessageRequester {
     pub async fn send_raw(
         &mut self,
         params: FinalSendMessageParams,
-        body: Frame,
+        body: Vec<u8>,
     ) -> Result<SendMessageResponse, DhtOutboundError>
     {
         let (reply_tx, reply_rx) = oneshot::channel();

@@ -73,13 +73,13 @@ pub fn make_client_identity() -> Arc<NodeIdentity> {
 
 pub fn make_comms_inbound_message(node_identity: &NodeIdentity, message: Bytes, flags: MessageFlags) -> InboundMessage {
     InboundMessage::new(
-        Peer::new(
+        Arc::new(Peer::new(
             node_identity.public_key().clone(),
             node_identity.node_id().clone(),
             Vec::<Multiaddr>::new().into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
-        ),
+        )),
         MessageEnvelopeHeader {
             public_key: node_identity.public_key().clone(),
             signature: Bytes::new(),
@@ -114,13 +114,13 @@ pub fn make_dht_inbound_message(
 {
     DhtInboundMessage::new(
         make_dht_header(node_identity, &body, flags),
-        Peer::new(
+        Arc::new(Peer::new(
             node_identity.public_key().clone(),
             node_identity.node_id().clone(),
             Vec::<Multiaddr>::new().into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
-        ),
+        )),
         body,
     )
 }

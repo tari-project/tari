@@ -21,9 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection_manager::next::PeerConnectionError,
-    message::MessageError,
-    outbound_message_service::OutboundMessage,
+    connection_manager::PeerConnectionError,
+    message::{MessageError, OutboundMessage},
     peer_manager::PeerManagerError,
     protocol::ProtocolError,
 };
@@ -31,8 +30,6 @@ use derive_error::Error;
 
 #[derive(Debug, Error)]
 pub enum InboundMessagingError {
-    /// The source peer did not exist in the peer manager
-    CannotFindSourcePeer,
     PeerManagerError(PeerManagerError),
     /// Inbound message signatures are invalid
     InvalidMessageSignature,

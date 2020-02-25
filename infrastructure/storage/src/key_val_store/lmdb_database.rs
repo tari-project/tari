@@ -65,7 +65,7 @@ where
     fn insert(&self, key: K, value: V) -> Result<(), KeyValStoreError> {
         self.inner
             .insert::<K, V>(&key, &value)
-            .map_err(|e| KeyValStoreError::DatabaseError(e.to_string()))
+            .map_err(|e| KeyValStoreError::DatabaseError(format!("{:?}", e)))
     }
 
     /// Get the value corresponding to the provided key from the key-value database.
@@ -73,14 +73,14 @@ where
     where for<'t> V: serde::de::DeserializeOwned {
         self.inner
             .get::<K, V>(key)
-            .map_err(|e| KeyValStoreError::DatabaseError(e.to_string()))
+            .map_err(|e| KeyValStoreError::DatabaseError(format!("{:?}", e)))
     }
 
     /// Returns the total number of entries recorded in the key-value database.
     fn size(&self) -> Result<usize, KeyValStoreError> {
         self.inner
             .len()
-            .map_err(|e| KeyValStoreError::DatabaseError(e.to_string()))
+            .map_err(|e| KeyValStoreError::DatabaseError(format!("{:?}", e)))
     }
 
     /// Iterate over all the stored records and execute the function `f` for each pair in the key-value database.
@@ -88,21 +88,21 @@ where
     where F: FnMut(Result<(K, V), KeyValStoreError>) -> IterationResult {
         self.inner
             .for_each::<K, V, F>(f)
-            .map_err(|e| KeyValStoreError::DatabaseError(e.to_string()))
+            .map_err(|e| KeyValStoreError::DatabaseError(format!("{:?}", e)))
     }
 
     /// Checks whether a record exist in the key-value database that corresponds to the provided `key`.
     fn exists(&self, key: &K) -> Result<bool, KeyValStoreError> {
         self.inner
             .contains_key::<K>(key)
-            .map_err(|e| KeyValStoreError::DatabaseError(e.to_string()))
+            .map_err(|e| KeyValStoreError::DatabaseError(format!("{:?}", e)))
     }
 
     /// Remove the record from the key-value database that corresponds with the provided `key`.
     fn delete(&self, key: &K) -> Result<(), KeyValStoreError> {
         self.inner
             .remove::<K>(key)
-            .map_err(|e| KeyValStoreError::DatabaseError(e.to_string()))
+            .map_err(|e| KeyValStoreError::DatabaseError(format!("{:?}", e)))
     }
 }
 

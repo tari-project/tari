@@ -20,8 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection::ConnectionDirection;
-use bitflags::_core::pin::Pin;
+use crate::connection_manager::ConnectionDirection;
 use futures::{
     channel::mpsc,
     future,
@@ -33,7 +32,7 @@ use futures::{
     StreamExt,
 };
 use log::*;
-use std::{io, task::Poll};
+use std::{io, pin::Pin, task::Poll};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::runtime;
 use yamux::Mode;
@@ -192,7 +191,7 @@ where S: Stream<Item = Result<yamux::Stream, yamux::ConnectionError>> + Unpin
 
 #[cfg(test)]
 mod test {
-    use crate::{connection::ConnectionDirection, memsocket::MemorySocket, multiplexing::yamux::Yamux};
+    use crate::{connection_manager::ConnectionDirection, memsocket::MemorySocket, multiplexing::yamux::Yamux};
     use futures::{
         future,
         io::{AsyncReadExt, AsyncWriteExt},

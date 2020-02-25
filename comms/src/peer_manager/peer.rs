@@ -22,7 +22,7 @@
 
 use super::node_id::deserialize_node_id_from_hex;
 use crate::{
-    connection::net_address::NetAddressesWithStats,
+    net_address::MultiaddressesWithStats,
     peer_manager::{connection_stats::PeerConnectionStats, node_id::NodeId, peer_id::PeerId, PeerFeatures},
     types::CommsPublicKey,
 };
@@ -55,7 +55,7 @@ pub struct Peer {
     #[serde(serialize_with = "serialize_to_hex")]
     #[serde(deserialize_with = "deserialize_node_id_from_hex")]
     pub node_id: NodeId,
-    pub addresses: NetAddressesWithStats,
+    pub addresses: MultiaddressesWithStats,
     pub flags: PeerFlags,
     pub features: PeerFeatures,
     pub connection_stats: PeerConnectionStats,
@@ -67,7 +67,7 @@ impl Peer {
     pub fn new(
         public_key: CommsPublicKey,
         node_id: NodeId,
-        addresses: NetAddressesWithStats,
+        addresses: MultiaddressesWithStats,
         flags: PeerFlags,
         features: PeerFeatures,
     ) -> Peer
@@ -158,7 +158,7 @@ impl Peer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{connection::net_address::NetAddressesWithStats, peer_manager::node_id::NodeId, types::CommsPublicKey};
+    use crate::{net_address::MultiaddressesWithStats, peer_manager::NodeId, types::CommsPublicKey};
     use serde_json::Value;
     use tari_crypto::{
         keys::PublicKey,
@@ -171,7 +171,7 @@ mod test {
         let mut rng = rand::rngs::OsRng;
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
-        let addresses = NetAddressesWithStats::from("/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap());
+        let addresses = MultiaddressesWithStats::from("/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap());
         let mut peer: Peer = Peer::new(pk, node_id, addresses, PeerFlags::default(), PeerFeatures::empty());
         assert_eq!(peer.is_banned(), false);
         peer.set_banned(true);
@@ -189,7 +189,7 @@ mod test {
         let mut peer: Peer = Peer::new(
             public_key1.clone(),
             node_id,
-            NetAddressesWithStats::from(net_address1.clone()),
+            MultiaddressesWithStats::from(net_address1.clone()),
             PeerFlags::default(),
             PeerFeatures::empty(),
         );
@@ -213,17 +213,17 @@ mod test {
             .addresses
             .addresses
             .iter()
-            .any(|net_address_with_stats| net_address_with_stats.net_address == net_address1));
+            .any(|net_address_with_stats| net_address_with_stats.address == net_address1));
         assert!(peer
             .addresses
             .addresses
             .iter()
-            .any(|net_address_with_stats| net_address_with_stats.net_address == net_address2));
+            .any(|net_address_with_stats| net_address_with_stats.address == net_address2));
         assert!(peer
             .addresses
             .addresses
             .iter()
-            .any(|net_address_with_stats| net_address_with_stats.net_address == net_address3));
+            .any(|net_address_with_stats| net_address_with_stats.address == net_address3));
         assert_eq!(peer.flags, PeerFlags::BANNED);
         assert_eq!(peer.has_features(PeerFeatures::MESSAGE_PROPAGATION), true);
     }

@@ -20,7 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::message::Frame;
 use blake2::{
     digest::{Input, VariableOutput},
     VarBlake2b,
@@ -213,15 +212,6 @@ impl TryFrom<&[u8]> for NodeId {
         } else {
             Err(NodeIdError::IncorrectByteCount)
         }
-    }
-}
-
-impl TryFrom<Frame> for NodeId {
-    type Error = NodeIdError;
-
-    /// Try construct a node id from a frame
-    fn try_from(frame: Frame) -> Result<Self, Self::Error> {
-        frame.as_slice().try_into()
     }
 }
 

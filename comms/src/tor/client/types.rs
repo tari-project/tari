@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde_derive::{Deserialize, Serialize};
-use std::{borrow::Cow, net::SocketAddr};
+use std::{fmt, net::SocketAddr};
 
 #[derive(Clone, Copy, Debug)]
 pub enum KeyType {
@@ -43,7 +43,7 @@ impl KeyType {
     }
 }
 
-pub enum KeyBlob {
+pub enum KeyBlob<'a> {
     /// The server should generate a key using the "best" supported algorithm (KeyType == "NEW").
     Best,
     /// The server should generate a 1024 bit RSA key (KeyType == "NEW") (v2).
@@ -51,10 +51,10 @@ pub enum KeyBlob {
     /// The server should generate an ed25519 private key (KeyType == "NEW") (v3).
     Ed25519V3,
     /// A serialized private key (without whitespace)
-    String(String),
+    String(&'a str),
 }
 
-impl KeyBlob {
+impl KeyBlob<'_> {
     pub fn as_tor_repr(&self) -> &str {
         match self {
             KeyBlob::Best => "BEST",
@@ -66,18 +66,23 @@ impl KeyBlob {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PrivateKey<'a> {
+pub enum PrivateKey {
     /// The server should use the 1024 bit RSA key provided in as KeyBlob (v2).
-    Rsa1024(Cow<'a, str>),
+    Rsa1024(String),
     /// The server should use the ed25519 v3 key provided in as KeyBlob (v3).
-    Ed25519V3(Cow<'a, str>),
+    Ed25519V3(String),
 }
 
-impl PrivateKey<'_> {
-    pub fn into_owned<'b>(self) -> PrivateKey<'b> {
+impl Drop for PrivateKey {
+    fn drop(&mut self) {
+        use clear_on_drop::clear::Clear;
         match self {
-            PrivateKey::Rsa1024(key) => PrivateKey::Rsa1024(Cow::from(key.into_owned())),
-            PrivateKey::Ed25519V3(key) => PrivateKey::Ed25519V3(Cow::from(key.into_owned())),
+            PrivateKey::Rsa1024(ref mut key) => {
+                Clear::clear(key);
+            },
+            PrivateKey::Ed25519V3(ref mut key) => {
+                Clear::clear(key);
+            },
         }
     }
 }
@@ -110,5 +115,11 @@ impl PortMapping {
 impl From<u16> for PortMapping {
     fn from(onion_port: u16) -> Self {
         Self::from_port(onion_port.into())
+    }
+}
+
+impl fmt::Display for PortMapping {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "PortMapping [{} -> {}]", self.0, self.1)
     }
 }

@@ -26,8 +26,7 @@ use log::*;
 use rand::rngs::OsRng;
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
-    message::MessageExt,
-    outbound_message_service::OutboundMessage,
+    message::{MessageExt, OutboundMessage},
     peer_manager::NodeIdentity,
     utils::signature,
     Bytes,
@@ -151,8 +150,8 @@ mod test {
     use futures::executor::block_on;
     use prost::Message;
     use tari_comms::{
-        connection::NetAddressesWithStats,
         message::MessageFlags,
+        net_address::MultiaddressesWithStats,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
         types::CommsPublicKey,
     };
@@ -172,7 +171,7 @@ mod test {
             Peer::new(
                 CommsPublicKey::default(),
                 NodeId::default(),
-                NetAddressesWithStats::new(vec![]),
+                MultiaddressesWithStats::new(vec![]),
                 PeerFlags::empty(),
                 PeerFeatures::COMMUNICATION_NODE,
             ),

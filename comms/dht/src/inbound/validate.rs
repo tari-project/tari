@@ -112,7 +112,7 @@ where
             outbound_requester
                 .send_raw(
                     SendMessageParams::new()
-                        .direct_public_key(message.source_peer.public_key)
+                        .direct_public_key(message.source_peer.public_key.clone())
                         .with_dht_message_type(DhtMessageType::RejectMsg)
                         .finish(),
                     RejectMessage {

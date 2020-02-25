@@ -22,94 +22,53 @@
 
 use crate::{
     message::{Envelope, InboundMessage},
-    peer_manager::{AsyncPeerManager, NodeId, Peer, PeerManagerError},
+    peer_manager::Peer,
     protocol::messaging::error::InboundMessagingError,
 };
 use bytes::Bytes;
 use log::*;
 use prost::Message;
-use std::convert::TryInto;
+use std::{convert::TryInto, sync::Arc};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
 
-pub struct InboundMessaging {
-    /// Peer manager used to verify peer sending the message
-    peer_manager: AsyncPeerManager,
-}
+pub struct InboundMessaging;
 
 impl InboundMessaging {
-    pub fn new(peer_manager: AsyncPeerManager) -> Self {
-        Self { peer_manager }
-    }
-
     /// Process a single received message from its raw serialized form i.e. a FrameSet
     pub async fn process_message(
-        &mut self,
-        source_node_id: &NodeId,
+        &self,
+        source_peer: Arc<Peer>,
         msg: &mut Bytes,
     ) -> Result<InboundMessage, InboundMessagingError>
     {
         let envelope = Envelope::decode(msg)?;
 
-        if !envelope.is_valid() {
-            return Err(InboundMessagingError::InvalidEnvelope);
-        }
+        let public_key = envelope
+            .get_public_key()
+            .ok_or_else(|| InboundMessagingError::InvalidEnvelope)?;
 
         trace!(
             target: LOG_TARGET,
             "Received message envelope version {} from peer '{}'",
             envelope.version,
-            source_node_id.short_str()
+            source_peer.node_id.short_str()
         );
+
+        if source_peer.public_key != public_key {
+            return Err(InboundMessagingError::PeerPublicKeyMismatch);
+        }
 
         if !envelope.verify_signature()? {
             return Err(InboundMessagingError::InvalidMessageSignature);
-        }
-
-        let peer = self.find_known_peer(source_node_id).await?;
-
-        let public_key = envelope.get_comms_public_key().expect("already checked");
-
-        if peer.public_key != public_key {
-            return Err(InboundMessagingError::PeerPublicKeyMismatch);
         }
 
         // -- Message is authenticated --
         let Envelope { header, body, .. } = envelope;
         let header = header.expect("already checked").try_into().expect("already checked");
 
-        let inbound_message = InboundMessage::new(peer, header, body.into());
+        let inbound_message = InboundMessage::new(source_peer, header, body.into());
 
         Ok(inbound_message)
-    }
-
-    /// Check whether the the source of the message is known to our Peer Manager, if it is return the peer but otherwise
-    /// we discard the message as it should be in our Peer Manager
-    async fn find_known_peer(&self, source_node_id: &NodeId) -> Result<Peer, InboundMessagingError> {
-        match self.peer_manager.find_by_node_id(source_node_id).await {
-            Ok(peer) => Ok(peer),
-            Err(PeerManagerError::PeerNotFoundError) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Received unknown node id from peer connection. Discarding message from NodeId '{}'",
-                    source_node_id
-                );
-                Err(InboundMessagingError::CannotFindSourcePeer)
-            },
-            Err(PeerManagerError::BannedPeer) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Received banned node id from peer connection. Discarding message from NodeId '{}'", source_node_id
-                );
-                Err(InboundMessagingError::CannotFindSourcePeer)
-            },
-            Err(err) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Peer manager failed to look up source node id because '{}'", err
-                );
-                Err(InboundMessagingError::PeerManagerError(err))
-            },
-        }
     }
 }

@@ -39,7 +39,6 @@ macro_rules! setter {
 
 /// Creates a setter function used with the builder pattern
 /// A mutable reference is taken and returned
-#[cfg(feature = "next")]
 macro_rules! setter_mut {
     ($func:ident, $name: ident, Option<$type: ty>) => {
         #[allow(dead_code)]
@@ -74,13 +73,7 @@ macro_rules! acquire_lock {
         recover_lock!($e.$m())
     };
     ($e:expr) => {
-        acquire_lock!($e, lock)
-    };
-}
-
-macro_rules! acquire_write_lock {
-    ($e:expr) => {
-        acquire_lock!($e, write)
+        recover_lock!($e.lock())
     };
 }
 
@@ -143,14 +136,4 @@ macro_rules! log_if_error_fmt {
     ($msg:expr, $expr:expr, $($args:tt)+) => {{
         log_if_error_fmt!(level:error, target: "$crate", $expr, $($args)+)
     }};
-}
-
-/// Adds #[cfg(feature = "next")] to mod and use statements
-macro_rules! cfg_next {
-    ($($item:item)+) => {
-        $(
-            #[cfg(feature = "next")]
-            $item
-        )+
-    }
 }
