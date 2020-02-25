@@ -124,7 +124,7 @@ impl Parser {
         let command = BaseNodeCommand::from_str(commands[0]);
         if command.is_err() {
             println!(
-                "Received: {}, this is not a valid command, please enter a valid command",
+                "{} is not a valid command, please enter a valid command",
                 command_str
             );
             println!("Enter help or press tab for available commands");
@@ -200,7 +200,7 @@ impl Parser {
                     warn!(target: LOG_TARGET, "Error communicating with wallet: {}", e.to_string(),);
                     return;
                 },
-                Ok(data) => println!("Current balance is: {}", data),
+                Ok(data) => println!("Balances:\n{}", data),
             };
         });
     }
@@ -227,7 +227,7 @@ impl Parser {
     // Function to process  the send transaction function
     fn process_send_tari(&mut self, command_arg: Vec<&str>) {
         if command_arg.len() != 3 {
-            println!("Command entered wrong, please enter in the following format: ");
+            println!("Command entered incorrectly, please use the following format: ");
             println!("send_tari [amount of tari to send] [public key to send to]");
             return;
         }
