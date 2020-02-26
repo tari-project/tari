@@ -10,6 +10,7 @@ edition = "2018"
 
 [features]
 test-mocks = []
+pingpong-example = ["cursive"]
 
 [dependencies]
 tari_broadcast_channel = { version="^0.0",  path = "../../infrastructure/broadcast_channel" }
@@ -23,9 +24,10 @@ tari_storage = {version = "^0.0", path = "../../infrastructure/storage"}
 tari_utilities = "^0.1"
 
 bytes = "0.4.12"
-chrono = { version = "0.4.6", features = ["serde"]}
+chrono = {version = "0.4.6", features = ["serde"]}
+cursive = {version = "0.12.0", optional = true}
 derive-error = "0.0.4"
-futures = { version = "^0.3.1"}
+futures = {version = "^0.3.1"}
 lmdb-zero = "0.4.4"
 log = "0.4.6"
 prost = "0.6.1"
@@ -41,7 +43,6 @@ tari_test_utils = { version = "^0.0", path="../../infrastructure/test_utils" }
 
 clap = "2.33.0"
 crossbeam-channel = "0.3.8"
-cursive = "0.12.0"
 env_logger = "0.6.2"
 futures-test = { version = "0.3.0-alpha.19", package = "futures-test-preview" }
 futures-timer = "0.3.0"
@@ -58,3 +59,7 @@ default-features = false
 
 [build-dependencies]
 tari_protobuf_build = { version = "^0.0", path="../../infrastructure/protobuf_build"}
+
+[[example]]
+name = "pingpong"
+required-features = ["pingpong-example"]
