@@ -69,7 +69,7 @@ impl UnconfirmedPool {
     pub fn insert(&self, transaction: Arc<Transaction>) -> Result<(), UnconfirmedPoolError> {
         self.pool_storage
             .write()
-            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
             .insert(transaction)
     }
 
@@ -77,7 +77,7 @@ impl UnconfirmedPool {
     pub fn insert_txs(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), UnconfirmedPoolError> {
         self.pool_storage
             .write()
-            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
             .insert_txs(transactions)
     }
 
@@ -86,7 +86,7 @@ impl UnconfirmedPool {
         Ok(self
             .pool_storage
             .read()
-            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
             .has_tx_with_excess_sig(excess_sig))
     }
 
@@ -94,7 +94,7 @@ impl UnconfirmedPool {
     pub fn highest_priority_txs(&self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError> {
         self.pool_storage
             .read()
-            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
             .highest_priority_txs(total_weight)
     }
 
@@ -108,7 +108,7 @@ impl UnconfirmedPool {
         Ok(self
             .pool_storage
             .write()
-            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
             .remove_published_and_discard_double_spends(published_block))
     }
 
@@ -117,7 +117,7 @@ impl UnconfirmedPool {
         Ok(self
             .pool_storage
             .read()
-            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
             .len())
     }
 
@@ -126,7 +126,7 @@ impl UnconfirmedPool {
         Ok(self
             .pool_storage
             .read()
-            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
             .snapshot())
     }
 
@@ -135,7 +135,7 @@ impl UnconfirmedPool {
         Ok(self
             .pool_storage
             .read()
-            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
             .calculate_weight())
     }
 
@@ -145,7 +145,7 @@ impl UnconfirmedPool {
         Ok(self
             .pool_storage
             .read()
-            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
             .check_status())
     }
 }

@@ -73,7 +73,7 @@ impl ReorgPool {
     pub fn insert_txs(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), ReorgPoolError> {
         self.pool_storage
             .write()
-            .map_err(|_| ReorgPoolError::PoisonedAccess)?
+            .map_err(|e| ReorgPoolError::BackendError(e.to_string()))?
             .insert_txs(transactions);
         Ok(())
     }
@@ -83,22 +83,23 @@ impl ReorgPool {
         Ok(self
             .pool_storage
             .read()
-            .map_err(|_| ReorgPoolError::PoisonedAccess)?
+            .map_err(|e| ReorgPoolError::BackendError(e.to_string()))?
             .has_tx_with_excess_sig(excess_sig))
     }
 
     /// Remove the transactions from the ReorgPool that were used in provided removed blocks. The transactions can be
     /// resubmitted to the Unconfirmed Pool.
-    pub fn scan_for_and_remove_reorged_txs(
+    pub fn remove_reorged_txs_and_discard_double_spends(
         &self,
         removed_blocks: Vec<Block>,
+        new_blocks: &Vec<Block>,
     ) -> Result<Vec<Arc<Transaction>>, ReorgPoolError>
     {
         Ok(self
             .pool_storage
             .write()
-            .map_err(|_| ReorgPoolError::PoisonedAccess)?
-            .scan_for_and_remove_reorged_txs(removed_blocks))
+            .map_err(|e| ReorgPoolError::BackendError(e.to_string()))?
+            .remove_reorged_txs_and_discard_double_spends(removed_blocks, new_blocks))
     }
 
     /// Returns the total number of published transactions stored in the ReorgPool
@@ -106,7 +107,7 @@ impl ReorgPool {
         Ok(self
             .pool_storage
             .write()
-            .map_err(|_| ReorgPoolError::PoisonedAccess)?
+            .map_err(|e| ReorgPoolError::BackendError(e.to_string()))?
             .len())
     }
 
@@ -115,7 +116,7 @@ impl ReorgPool {
         Ok(self
             .pool_storage
             .write()
-            .map_err(|_| ReorgPoolError::PoisonedAccess)?
+            .map_err(|e| ReorgPoolError::BackendError(e.to_string()))?
             .calculate_weight())
     }
 }
@@ -285,7 +286,9 @@ mod test {
             create_orphan_block(4000, vec![(*tx1).clone(), (*tx2).clone()]),
         ];
 
-        let removed_txs = reorg_pool.scan_for_and_remove_reorged_txs(reorg_blocks).unwrap();
+        let removed_txs = reorg_pool
+            .remove_reorged_txs_and_discard_double_spends(reorg_blocks, &vec![])
+            .unwrap();
         assert_eq!(removed_txs.len(), 3);
         assert!(removed_txs.contains(&tx2));
         assert!(removed_txs.contains(&tx3));

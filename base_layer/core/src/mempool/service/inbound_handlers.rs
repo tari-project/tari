@@ -21,7 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::BlockchainBackend,
+    base_node::comms_interface::BlockEvent,
+    chain_storage::{BlockAddResult, BlockchainBackend},
     mempool::{
         service::{MempoolRequest, MempoolResponse, MempoolServiceError, OutboundMempoolServiceInterface},
         Mempool,
@@ -31,6 +32,7 @@ use crate::{
 use log::*;
 use std::sync::Arc;
 use tari_comms::types::CommsPublicKey;
+
 pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
 
 /// The MempoolInboundHandlers is used to handle all received inbound mempool requests and transactions from remote
@@ -76,6 +78,22 @@ where T: BlockchainBackend
             Vec::new()
         };
         self.outbound_nmi.propagate_tx(tx.clone(), exclude_list).await?;
+
+        Ok(())
+    }
+
+    /// Handle inbound block events from the local base node service.
+    pub async fn handle_block_event(&mut self, block_event: &BlockEvent) -> Result<(), MempoolServiceError> {
+        match block_event {
+            BlockEvent::Verified((block, BlockAddResult::Ok)) => {
+                self.mempool.process_published_block(block)?;
+            },
+            BlockEvent::Verified((_, BlockAddResult::ChainReorg((removed_blocks, added_blocks)))) => {
+                self.mempool
+                    .process_reorg(removed_blocks.to_vec(), added_blocks.to_vec())?;
+            },
+            BlockEvent::Verified(_) | BlockEvent::Invalid(_) => {},
+        }
 
         Ok(())
     }

@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    base_node::comms_interface::LocalNodeCommsInterface,
     chain_storage::BlockchainBackend,
     mempool::{
         mempool::Mempool,
@@ -172,12 +173,17 @@ where T: BlockchainBackend + 'static
                 .get_handle::<OutboundMessageRequester>()
                 .expect("OutboundMessageRequester handle required for MempoolService");
 
+            let base_node = handles
+                .get_handle::<LocalNodeCommsInterface>()
+                .expect("LocalNodeCommsInterface required to initialize ChainStateSyncService");
+
             let streams = MempoolStreams::new(
                 outbound_request_stream,
                 outbound_tx_stream,
                 inbound_request_stream,
                 inbound_response_stream,
                 inbound_transaction_stream,
+                base_node.get_block_event_stream(),
             );
             let service =
                 MempoolService::new(executer_clone, outbound_message_service, inbound_handlers, config).start(streams);

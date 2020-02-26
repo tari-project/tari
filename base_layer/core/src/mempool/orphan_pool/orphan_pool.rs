@@ -76,7 +76,7 @@ where T: BlockchainBackend
     pub fn insert(&self, transaction: Arc<Transaction>) -> Result<(), OrphanPoolError> {
         self.pool_storage
             .write()
-            .map_err(|_| OrphanPoolError::PoisonedAccess)?
+            .map_err(|e| OrphanPoolError::BackendError(e.to_string()))?
             .insert(transaction);
         Ok(())
     }
@@ -86,7 +86,7 @@ where T: BlockchainBackend
     pub fn insert_txs(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), OrphanPoolError> {
         self.pool_storage
             .write()
-            .map_err(|_| OrphanPoolError::PoisonedAccess)?
+            .map_err(|e| OrphanPoolError::BackendError(e.to_string()))?
             .insert_txs(transactions);
         Ok(())
     }
@@ -96,7 +96,7 @@ where T: BlockchainBackend
         Ok(self
             .pool_storage
             .read()
-            .map_err(|_| OrphanPoolError::PoisonedAccess)?
+            .map_err(|e| OrphanPoolError::BackendError(e.to_string()))?
             .has_tx_with_excess_sig(excess_sig))
     }
 
@@ -107,7 +107,7 @@ where T: BlockchainBackend
     ) -> Result<(Vec<Arc<Transaction>>, Vec<Arc<Transaction>>), OrphanPoolError> {
         self.pool_storage
             .write()
-            .map_err(|_| OrphanPoolError::PoisonedAccess)?
+            .map_err(|e| OrphanPoolError::BackendError(e.to_string()))?
             .scan_for_and_remove_unorphaned_txs()
     }
 
@@ -116,7 +116,7 @@ where T: BlockchainBackend
         Ok(self
             .pool_storage
             .write()
-            .map_err(|_| OrphanPoolError::PoisonedAccess)?
+            .map_err(|e| OrphanPoolError::BackendError(e.to_string()))?
             .len())
     }
 
@@ -125,7 +125,7 @@ where T: BlockchainBackend
         Ok(self
             .pool_storage
             .write()
-            .map_err(|_| OrphanPoolError::PoisonedAccess)?
+            .map_err(|e| OrphanPoolError::BackendError(e.to_string()))?
             .snapshot())
     }
 
@@ -134,7 +134,7 @@ where T: BlockchainBackend
         Ok(self
             .pool_storage
             .write()
-            .map_err(|_| OrphanPoolError::PoisonedAccess)?
+            .map_err(|e| OrphanPoolError::BackendError(e.to_string()))?
             .calculate_weight())
     }
 }
