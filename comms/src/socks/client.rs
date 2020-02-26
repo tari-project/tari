@@ -34,14 +34,14 @@ pub type Result<T> = std::result::Result<T, SocksError>;
 /// Authentication methods
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Authentication {
-    Password { username: String, password: String },
     None,
+    Password(String, String),
 }
 
 impl Authentication {
     fn id(&self) -> u8 {
         match self {
-            Authentication::Password { .. } => 0x02,
+            Authentication::Password(_, _) => 0x02,
             Authentication::None => 0x00,
         }
     }
@@ -119,7 +119,8 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
     fn validate_auth(auth: &Authentication) -> Result<()> {
         match auth {
-            Authentication::Password { username, password } => {
+            Authentication::None => {},
+            Authentication::Password(username, password) => {
                 let username_len = username.as_bytes().len();
                 if username_len < 1 || username_len > 255 {
                     Err(SocksError::InvalidAuthValues("username length should between 1 to 255"))?
@@ -129,7 +130,6 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                     Err(SocksError::InvalidAuthValues("password length should between 1 to 255"))?
                 }
             },
-            Authentication::None => {},
         }
         Ok(())
     }
@@ -314,7 +314,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
     fn prepare_send_password_auth(&mut self) {
         match &self.authentication {
-            Authentication::Password { username, password } => {
+            Authentication::Password(username, password) => {
                 self.ptr = 0;
                 self.buf[0] = 0x01;
                 let username_bytes = username.as_bytes();

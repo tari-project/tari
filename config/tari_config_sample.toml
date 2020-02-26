@@ -57,6 +57,12 @@
 #  b) know what you are doing!
 #wallet_file = "~/.tari/wallet/wallet.dat"
 
+#[base_node.transport.tor]
+#control_address = "/ip4/127.0.0.1/tcp/9051"
+#control_auth_type = "none" # or "password"
+# Required for control_auth_type = "password"
+#control_auth_password = "super-secure-password"
+
 ########################################################################################################################
 #                                                                                                                      #
 #                                          Base Node Configuration Options                                             #
@@ -73,6 +79,7 @@
 #   mainnet - the "real" Tari network (default)
 #   testnet - the Tari test net
 #network = "mainnet"
+
 
 # Configuration options for testnet
 [base_node.testnet]
@@ -99,12 +106,11 @@ peer_seeds = []
 # n - blocking_threads, where n is the number of cores on your machine, and blocking_thread is set above.
  #core_threads = 4
 
-# The node's publicly-accessible address. This is the address that is advertised on the network so that
+# The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
 # peers can find you.
+# _NOTE_: If using the `tor` transport type, public_address will be ignored and an onion address will be
+# automatically configured
 #public_address = "/ip4/172.2.3.4/tcp/18189"
-
-# The address and port to listen for peer connections.
-#listener_address = "/ip4/172.2.3.4/tcp/18189"
 
 # Enable the gRPC server for the base node. Set this to true if you want to enable third-party wallet software
 #grpc_enabled = false
@@ -115,6 +121,36 @@ peer_seeds = []
 
 # A path to the file that stores your node identity and secret key
 #identity_file = "~/.tari/testnet/node_id.json"
+
+# -------------- Transport configuration --------------
+# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
+# e.g. tor onion addresses will not be contactable.
+#transport = "tcp"
+# # The address and port to listen for peer connections over TCP.
+#tcp_listener_address = "/ip4/0.0.0.0/tcp/18189"
+
+# Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
+# onion v2, onion v3 and dns addresses.
+#transport = "tor"
+# Address of the tor control server
+#tor_control_address = "/ip4/127.0.0.1/tcp/9051"
+# Authentication to use for the tor control server
+#tor_control_auth = "none" # or "password=xxxxxx"
+# The onion port to use.
+#tor_onion_port = 18141
+# The address to which traffic on the node's onion address will be forwarded
+#tor_forward_address = "/ip4/127.0.0.1/tcp/18141"
+
+# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
+#transport = "socks5"
+# The address of the SOCKS5 proxy
+#socks5_proxy_address = "/ip4/127.0.0.1/tcp/9050"
+# The address to which traffic will be forwarded
+#socks5_listener_address = "/ip4/127.0.0.1/tcp/18189"
+#socks5_auth = "none" # or "username_password=username:xxxxxxx"
+
+# A path to the file that stores the tor hidden service private key, if using the tor transport.
+# tor_private_key_file = "~/.tari/testnet/tor.key"
 
 [base_node.mainnet]
 # The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
@@ -139,10 +175,6 @@ peer_seeds = []
 # n - blocking_threads, where n is the number of cores on your machine, and blocking_thread is set above.
  #core_threads = 6
 
-# The address and port to listen for peer connections. This is the address that is advertised on the network so that
-# peers can find you. You may specify more than one address here
-#address = "tcp://0.0.0.0:18089"
-
 # Enable the gRPC server for the base node. Set this to true if you want to enable third-party wallet software
 #grpc_enabled = false
 
@@ -152,6 +184,36 @@ peer_seeds = []
 
 # A path to the file that stores your node identity and secret key
 #identity_file = "~/.tari/mainnet/node_id.json"
+
+# -------------- Transport configuration --------------
+# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
+# e.g. tor onion addresses will not be contactable.
+#transport = "tcp"
+# # The address and port to listen for peer connections over TCP.
+#tcp_listener_address = "/ip4/0.0.0.0/tcp/18189"
+
+# Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
+# onion v2, onion v3 and dns addresses.
+#transport = "tor"
+# Address of the tor control server
+#tor_control_address = "/ip4/127.0.0.1/tcp/9051"
+# Authentication to use for the tor control server
+#tor_control_auth = "none" # or "password=xxxxxx"
+# The onion port to use.
+#tor_onion_port = 18141
+# The address to which traffic on the node's onion address will be forwarded
+#tor_forward_address = "/ip4/127.0.0.1/tcp/18141"
+
+# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
+#transport = "socks5"
+# The address of the SOCKS5 proxy
+#socks5_proxy_address = "/ip4/127.0.0.1/tcp/9050"
+# The address to which traffic will be forwarded
+#socks5_listener_address = "/ip4/127.0.0.1/tcp/18189"
+#socks5_auth = "none" # or "username_password=username:xxxxxxx"
+
+# A path to the file that stores the tor hidden service private key, if using the tor transport
+# tor_private_key_file = "~/.tari/mainnet/tor.key"
 
 ########################################################################################################################
 #                                                                                                                      #
