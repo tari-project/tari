@@ -70,9 +70,37 @@ impl ReorgPoolStorage {
         self.txs_by_signature.contains_key(excess_sig)
     }
 
+    /// Remove double-spends from the ReorgPool. These transactions were orphaned by the provided published
+    /// block. Check if any of the transactions in the ReorgPool has inputs that was spent by the provided
+    /// published block.
+    fn discard_double_spends(&mut self, published_block: &Block) {
+        let mut removed_tx_keys: Vec<Signature> = Vec::new();
+        for (tx_key, ptx) in self.txs_by_signature.iter() {
+            for input in ptx.body.inputs() {
+                if published_block.body.inputs().contains(input) {
+                    removed_tx_keys.push(tx_key.clone());
+                }
+            }
+        }
+
+        for tx_key in &removed_tx_keys {
+            trace!(target: LOG_TARGET, "Removed double spends: {:?}", tx_key);
+            self.txs_by_signature.remove(&tx_key);
+        }
+    }
+
     /// Remove the transactions from the ReorgPoolStorage that were used in provided removed blocks. The transactions
     /// can be resubmitted to the Unconfirmed Pool.
-    pub fn scan_for_and_remove_reorged_txs(&mut self, removed_blocks: Vec<Block>) -> Vec<Arc<Transaction>> {
+    pub fn remove_reorged_txs_and_discard_double_spends(
+        &mut self,
+        removed_blocks: Vec<Block>,
+        new_blocks: &Vec<Block>,
+    ) -> Vec<Arc<Transaction>>
+    {
+        for block in new_blocks {
+            self.discard_double_spends(block);
+        }
+
         let mut removed_txs: Vec<Arc<Transaction>> = Vec::new();
         for block in &removed_blocks {
             for kernel in block.body.kernels() {

@@ -162,7 +162,11 @@ where T: BlockchainBackend
                 block
             );
         }
-        self.insert_txs(self.reorg_pool.scan_for_and_remove_reorged_txs(removed_blocks)?)?;
+
+        self.insert_txs(
+            self.reorg_pool
+                .remove_reorged_txs_and_discard_double_spends(removed_blocks, &new_blocks)?,
+        )?;
         self.process_published_blocks(&new_blocks)?;
         Ok(())
     }

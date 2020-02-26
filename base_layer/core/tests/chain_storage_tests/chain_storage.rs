@@ -493,10 +493,11 @@ fn handle_tip_reorg() {
     .is_ok());
 
     // Adding B2 to the main chain will produce a reorg to GB->A1->B2.
-    assert_eq!(
-        store.add_block(orphan_blocks[2].clone()),
-        Ok(BlockAddResult::ChainReorg)
-    );
+    if let Ok(BlockAddResult::ChainReorg(_)) = store.add_block(orphan_blocks[2].clone()) {
+        assert!(true);
+    } else {
+        assert!(false);
+    }
     assert_eq!(store.fetch_tip_header(), Ok(orphan_blocks[2].header.clone()));
 
     // Check that B2 was removed from the block orphans and A2 has been orphaned.

@@ -22,6 +22,12 @@
 #[allow(dead_code)]
 mod helpers;
 
+use crate::helpers::block_builders::{
+    chain_block,
+    create_genesis_block_with_coinbase_value,
+    find_header_with_achieved_difficulty,
+};
+use futures::{future, future::Either, stream::FusedStream, FutureExt, Stream, StreamExt};
 use helpers::{
     block_builders::{create_genesis_block, generate_block, generate_new_block},
     nodes::{create_network_with_2_base_nodes_with_config, create_network_with_3_base_nodes_with_config},
@@ -41,6 +47,7 @@ use tari_core::{
         MempoolValidators,
         TxStorageResponse,
     },
+    proof_of_work::Difficulty,
     transactions::{
         helpers::{schema_to_transaction, spend_utxos},
         proto,
@@ -622,5 +629,127 @@ fn service_request_timeout() {
 
         alice_node.comms.shutdown().await;
         bob_node.comms.shutdown().await;
+    });
+}
+
+#[test]
+fn block_event_and_reorg_event_handling() {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (block0, utxos0) = create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), 1);
+    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(block0.clone())));
+    let (alice, mut bob) = create_network_with_2_base_nodes_with_config(
+        &mut runtime,
+        BaseNodeServiceConfig::default(),
+        MmrCacheConfig { rewind_hist_len: 10 },
+        MempoolServiceConfig::default(),
+        LivenessConfig {
+            auto_ping_interval: None,
+            enable_auto_join: false,
+            enable_auto_stored_message_request: true,
+            refresh_neighbours_interval: Duration::from_secs(3 * 60),
+        },
+        ConsensusManager::new(None, consensus_constants),
+        temp_dir.path().to_str().unwrap(),
+    );
+
+    // Bob creates Block 1 and sends it to Alice. Alice adds it to her chain and creates a block event that the Mempool
+    // service will receive.
+    let (tx1, utxos1) = schema_to_transaction(&vec![txn_schema!(from: vec![utxos0.clone()], to: vec![1 * T, 1 * T])]);
+    let (txs2, _utxos2) = schema_to_transaction(&vec![
+        txn_schema!(from: vec![utxos1[0].clone()], to: vec![400_000 * uT, 590_000 * uT]),
+        txn_schema!(from: vec![utxos1[1].clone()], to: vec![750_000 * uT, 240_000 * uT]),
+    ]);
+    let (txs3, _utxos3) = schema_to_transaction(&vec![
+        txn_schema!(from: vec![utxos1[0].clone()], to: vec![100_000 * uT, 890_000 * uT]),
+        txn_schema!(from: vec![utxos1[1].clone()], to: vec![850_000 * uT, 140_000 * uT]),
+    ]);
+    let tx1 = (*tx1[0]).clone();
+    let tx2 = (*txs2[0]).clone();
+    let tx3 = (*txs2[1]).clone();
+    let tx4 = (*txs3[0]).clone();
+    let tx5 = (*txs3[1]).clone();
+    let tx1_excess_sig = tx1.body.kernels()[0].excess_sig.clone();
+    let tx2_excess_sig = tx2.body.kernels()[0].excess_sig.clone();
+    let tx3_excess_sig = tx3.body.kernels()[0].excess_sig.clone();
+    let tx4_excess_sig = tx4.body.kernels()[0].excess_sig.clone();
+    let tx5_excess_sig = tx5.body.kernels()[0].excess_sig.clone();
+    alice.mempool.insert(Arc::new(tx1.clone())).unwrap();
+    bob.mempool.insert(Arc::new(tx1.clone())).unwrap();
+    alice.mempool.insert(Arc::new(tx2.clone())).unwrap();
+    alice.mempool.insert(Arc::new(tx3.clone())).unwrap();
+    alice.mempool.insert(Arc::new(tx4.clone())).unwrap();
+    alice.mempool.insert(Arc::new(tx5.clone())).unwrap();
+    bob.mempool.insert(Arc::new(tx2.clone())).unwrap();
+    bob.mempool.insert(Arc::new(tx3.clone())).unwrap();
+    bob.mempool.insert(Arc::new(tx4.clone())).unwrap();
+    bob.mempool.insert(Arc::new(tx5.clone())).unwrap();
+
+    // These blocks are manually constructed to allow the block event system to be used.
+    let mut block1 = bob
+        .blockchain_db
+        .calculate_mmr_roots(chain_block(&block0, vec![tx1]))
+        .unwrap();
+    find_header_with_achieved_difficulty(&mut block1.header, Difficulty::from(1));
+
+    let mut block2a = bob
+        .blockchain_db
+        .calculate_mmr_roots(chain_block(&block1, vec![tx2, tx3]))
+        .unwrap();
+    find_header_with_achieved_difficulty(&mut block2a.header, Difficulty::from(1));
+    // Block2b also builds on Block1 but has a stronger PoW
+    let mut block2b = bob
+        .blockchain_db
+        .calculate_mmr_roots(chain_block(&block1, vec![tx4, tx5]))
+        .unwrap();
+    find_header_with_achieved_difficulty(&mut block2b.header, Difficulty::from(10));
+
+    runtime.block_on(async {
+        // Add Block1 - tx1 will be moved to the ReorgPool.
+        assert!(bob.local_nci.submit_block(block1.clone()).await.is_ok());
+        async_assert_eventually!(
+            alice.mempool.has_tx_with_excess_sig(&tx1_excess_sig).unwrap(),
+            expect = TxStorageResponse::ReorgPool,
+            max_attempts = 20,
+            interval = Duration::from_millis(1000)
+        );
+
+        // Add Block2a - tx4 and tx5 will be discarded as double spends.
+        assert!(bob.local_nci.submit_block(block2a.clone()).await.is_ok());
+        async_assert_eventually!(
+            alice.mempool.has_tx_with_excess_sig(&tx2_excess_sig).unwrap(),
+            expect = TxStorageResponse::ReorgPool,
+            max_attempts = 20,
+            interval = Duration::from_millis(1000)
+        );
+        assert_eq!(
+            alice.mempool.has_tx_with_excess_sig(&tx3_excess_sig).unwrap(),
+            TxStorageResponse::ReorgPool
+        );
+        assert_eq!(
+            alice.mempool.has_tx_with_excess_sig(&tx4_excess_sig).unwrap(),
+            TxStorageResponse::NotStored
+        );
+        assert_eq!(
+            alice.mempool.has_tx_with_excess_sig(&tx5_excess_sig).unwrap(),
+            TxStorageResponse::NotStored
+        );
+
+        // Re-org chain by adding Block2b - tx2 and tx3 will be discarded as double spends.
+        assert!(bob.local_nci.submit_block(block2b.clone()).await.is_ok());
+        async_assert_eventually!(
+            alice.mempool.has_tx_with_excess_sig(&tx2_excess_sig).unwrap(),
+            expect = TxStorageResponse::NotStored,
+            max_attempts = 20,
+            interval = Duration::from_millis(1000)
+        );
+        assert_eq!(
+            alice.mempool.has_tx_with_excess_sig(&tx3_excess_sig).unwrap(),
+            TxStorageResponse::NotStored
+        );
+
+        alice.comms.shutdown().await;
+        bob.comms.shutdown().await;
     });
 }

@@ -25,8 +25,9 @@ use derive_error::Error;
 
 #[derive(Debug, Error)]
 pub enum OrphanPoolError {
-    /// The Thread Safety has been breached and the data access has become poisoned
-    PoisonedAccess,
+    /// A problem has been encountered with the storage backend.
+    #[error(non_std, no_from)]
+    BackendError(String),
     ChainStorageError(ChainStorageError),
     /// The Blockchain height is undefined
     ChainHeightUndefined,

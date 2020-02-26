@@ -56,7 +56,7 @@ pub enum BlockAddResult {
     Ok,
     BlockExists,
     OrphanBlock,
-    ChainReorg,
+    ChainReorg((Box<Vec<Block>>, Box<Vec<Block>>)), // Set of removed blocks and set of added blocks
 }
 
 /// MutableMmrState provides the total number of leaf nodes in the base MMR and the requested leaf nodes.
@@ -637,18 +637,19 @@ where T: BlockchainBackend
         self.db.write(txn)
     }
 
-    /// Rewind the blockchain state to the block height given.
+    /// Rewind the blockchain state to the block height given and return the blocks that were removed and orphaned.
     ///
     /// The operation will fail if
     /// * The block height is in the future
     /// * The block height is before pruning horizon
-    pub fn rewind_to_height(&self, height: u64) -> Result<(), ChainStorageError> {
+    pub fn rewind_to_height(&self, height: u64) -> Result<Vec<Block>, ChainStorageError> {
         self.check_for_valid_height(height)?;
         let chain_height = self
             .get_height()?
             .ok_or_else(|| ChainStorageError::InvalidQuery("Blockchain database is empty".into()))?;
+        let mut removed_blocks = Vec::<Block>::new();
         if height == chain_height {
-            return Ok(()); // Rewind unnecessary, already on correct height
+            return Ok(removed_blocks); // Rewind unnecessary, already on correct height
         }
 
         let steps_back = (chain_height - height) as usize;
@@ -656,6 +657,7 @@ where T: BlockchainBackend
         for rewind_height in (height + 1)..=chain_height {
             // Reconstruct block at height and add to orphan block pool
             let orphaned_block = self.fetch_block(rewind_height)?.block().clone();
+            removed_blocks.push(orphaned_block.clone());
             txn.insert_orphan(orphaned_block);
 
             // Remove Header and block hash
@@ -691,7 +693,9 @@ where T: BlockchainBackend
         self.commit(txn)?;
 
         let last_block = self.fetch_block(height)?.block().clone();
-        self.update_metadata(height, last_block.hash())
+        self.update_metadata(height, last_block.hash())?;
+
+        Ok(removed_blocks)
     }
 
     /// Checks whether we should add the block as an orphan. If it is the case, the orphan block is added and the chain
@@ -769,19 +773,24 @@ where T: BlockchainBackend
             let fork_tip_block = self.fetch_orphan(fork_tip_hash)?;
             let fork_header = fork_tip_block.header.clone();
             let reorg_chain = self.try_construct_fork(fork_tip_block)?;
+            let added_blocks: Vec<Block> = reorg_chain.iter().map(Clone::clone).collect();
+
             let fork_height = reorg_chain
                 .front()
                 .expect("The new orphan block should be in the queue")
                 .header
                 .height -
                 1;
-            self.reorganize_chain(fork_height, reorg_chain)?;
+            let removed_blocks = self.reorganize_chain(fork_height, reorg_chain)?;
             warn!(
                 target: LOG_TARGET,
                 "Chain reorg happened from difficulty: ({}) to difficulty: ({})", tip_header.pow, fork_header.pow
             );
             trace!(target: LOG_TARGET, "Reorg from ({}) to ({})", tip_header, fork_header,);
-            return Ok(BlockAddResult::ChainReorg);
+            return Ok(BlockAddResult::ChainReorg((
+                Box::new(removed_blocks),
+                Box::new(added_blocks),
+            )));
         }
         debug!(target: LOG_TARGET, "Orphan block received: {}", new_block);
         Ok(BlockAddResult::OrphanBlock)
@@ -872,8 +881,8 @@ where T: BlockchainBackend
     }
 
     /// Reorganize the main chain with the provided fork chain, starting at the specified height.
-    fn reorganize_chain(&self, height: u64, chain: VecDeque<Block>) -> Result<(), ChainStorageError> {
-        self.rewind_to_height(height)?;
+    fn reorganize_chain(&self, height: u64, chain: VecDeque<Block>) -> Result<Vec<Block>, ChainStorageError> {
+        let removed_blocks = self.rewind_to_height(height)?;
         let mut txn = DbTransaction::new();
         for block in chain.into_iter() {
             let orphan_hash = block.hash();
@@ -881,7 +890,7 @@ where T: BlockchainBackend
             self.add_block(block)?;
         }
         self.commit(txn)?;
-        Ok(())
+        Ok(removed_blocks)
     }
 
     /// Insert the provided block into the orphan pool.

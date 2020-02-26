@@ -351,7 +351,6 @@ fn test_block_sync_recovery() {
         // have been reached.
         let state_event = BlockSyncInfo.next_event(&mut alice_state_machine).await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
-        println!("state_event={:?}", state_event);
 
         let bob_tip_height = bob_db.get_height().unwrap().unwrap();
         for height in 1..=bob_tip_height {

@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    base_node::comms_interface::BlockEvent,
     chain_storage::BlockchainBackend,
     mempool::{
         proto,
@@ -48,6 +49,7 @@ use futures::{
 use log::*;
 use rand::rngs::OsRng;
 use std::{collections::HashMap, convert::TryInto, time::Duration};
+use tari_broadcast_channel::Subscriber;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
@@ -67,6 +69,7 @@ pub struct MempoolStreams<SOutReq, SInReq, SInRes, STxIn> {
     inbound_request_stream: SInReq,
     inbound_response_stream: SInRes,
     inbound_transaction_stream: STxIn,
+    block_event_stream: Subscriber<BlockEvent>,
 }
 
 impl<SOutReq, SInReq, SInRes, STxIn> MempoolStreams<SOutReq, SInReq, SInRes, STxIn>
@@ -82,6 +85,7 @@ where
         inbound_request_stream: SInReq,
         inbound_response_stream: SInRes,
         inbound_transaction_stream: STxIn,
+        block_event_stream: Subscriber<BlockEvent>,
     ) -> Self
     {
         Self {
@@ -90,6 +94,7 @@ where
             inbound_request_stream,
             inbound_response_stream,
             inbound_transaction_stream,
+            block_event_stream,
         }
     }
 }
@@ -148,6 +153,8 @@ where B: BlockchainBackend
         pin_mut!(inbound_response_stream);
         let inbound_transaction_stream = streams.inbound_transaction_stream.fuse();
         pin_mut!(inbound_transaction_stream);
+        let block_event_stream = streams.block_event_stream.fuse();
+        pin_mut!(block_event_stream);
         let timeout_receiver_stream = self
             .timeout_receiver_stream
             .take()
@@ -197,6 +204,14 @@ where B: BlockchainBackend
                         Err(err)
                     });
                 }
+
+                // Block events from local Base Node.
+                block_event = block_event_stream.select_next_some() => {
+                    let _ = self.handle_block_event(&block_event).await.or_else(|err| {
+                        error!(target: LOG_TARGET, "Failed to handle base node block event: {:?}", err);
+                        Err(err)
+                    });
+                },
 
                 // Timeout events for waiting requests
                 timeout_request_key = timeout_receiver_stream.select_next_some() => {
@@ -388,6 +403,13 @@ where B: BlockchainBackend
             })
             .map_err(|e| MempoolServiceError::OutboundMessageService(e.to_string()))
             .map(|_| ())
+    }
+
+    /// Handle block events from local base node service.
+    async fn handle_block_event(&mut self, block_event: &BlockEvent) -> Result<(), MempoolServiceError> {
+        self.inbound_handlers.handle_block_event(block_event).await?;
+
+        Ok(())
     }
 
     async fn spawn_request_timeout(&self, request_key: RequestKey, timeout: Duration) {

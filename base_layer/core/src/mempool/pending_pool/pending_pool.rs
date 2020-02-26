@@ -65,7 +65,7 @@ impl PendingPool {
     pub fn insert(&self, transaction: Arc<Transaction>) -> Result<(), PendingPoolError> {
         self.pool_storage
             .write()
-            .map_err(|_| PendingPoolError::PoisonedAccess)?
+            .map_err(|e| PendingPoolError::BackendError(e.to_string()))?
             .insert(transaction)
     }
 
@@ -73,7 +73,7 @@ impl PendingPool {
     pub fn insert_txs(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), PendingPoolError> {
         self.pool_storage
             .write()
-            .map_err(|_| PendingPoolError::PoisonedAccess)?
+            .map_err(|e| PendingPoolError::BackendError(e.to_string()))?
             .insert_txs(transactions)
     }
 
@@ -82,7 +82,7 @@ impl PendingPool {
         Ok(self
             .pool_storage
             .read()
-            .map_err(|_| PendingPoolError::PoisonedAccess)?
+            .map_err(|e| PendingPoolError::BackendError(e.to_string()))?
             .has_tx_with_excess_sig(excess_sig))
     }
 
@@ -95,7 +95,7 @@ impl PendingPool {
     {
         self.pool_storage
             .write()
-            .map_err(|_| PendingPoolError::PoisonedAccess)?
+            .map_err(|e| PendingPoolError::BackendError(e.to_string()))?
             .remove_unlocked_and_discard_double_spends(published_block)
     }
 
@@ -104,7 +104,7 @@ impl PendingPool {
         Ok(self
             .pool_storage
             .read()
-            .map_err(|_| PendingPoolError::PoisonedAccess)?
+            .map_err(|e| PendingPoolError::BackendError(e.to_string()))?
             .len())
     }
 
@@ -113,7 +113,7 @@ impl PendingPool {
         Ok(self
             .pool_storage
             .read()
-            .map_err(|_| PendingPoolError::PoisonedAccess)?
+            .map_err(|e| PendingPoolError::BackendError(e.to_string()))?
             .snapshot())
     }
 
@@ -122,7 +122,7 @@ impl PendingPool {
         Ok(self
             .pool_storage
             .read()
-            .map_err(|_| PendingPoolError::PoisonedAccess)?
+            .map_err(|e| PendingPoolError::BackendError(e.to_string()))?
             .calculate_weight())
     }
 
@@ -132,7 +132,7 @@ impl PendingPool {
         Ok(self
             .pool_storage
             .read()
-            .map_err(|_| PendingPoolError::PoisonedAccess)?
+            .map_err(|e| PendingPoolError::BackendError(e.to_string()))?
             .check_status())
     }
 }

@@ -56,9 +56,10 @@ use tari_mmr::MutableMmr;
 fn create_coinbase(
     factories: &CryptoFactories,
     value: MicroTari,
+    maturity_height: u64,
 ) -> (TransactionOutput, TransactionKernel, UnblindedOutput)
 {
-    let features = OutputFeatures::create_coinbase(100);
+    let features = OutputFeatures::create_coinbase(maturity_height);
     let (mut utxo, key) = create_utxo(value, &factories, None);
     utxo.features = features.clone();
     let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&key));
@@ -73,9 +74,14 @@ fn create_coinbase(
     (utxo, kernel, output)
 }
 
-fn genesis_template(factories: &CryptoFactories, coinbase_value: MicroTari) -> (NewBlockTemplate, UnblindedOutput) {
+fn genesis_template(
+    factories: &CryptoFactories,
+    coinbase_value: MicroTari,
+    maturity_height: u64,
+) -> (NewBlockTemplate, UnblindedOutput)
+{
     let header = BlockHeader::new(0);
-    let (utxo, kernel, output) = create_coinbase(factories, coinbase_value);
+    let (utxo, kernel, output) = create_coinbase(factories, coinbase_value, maturity_height);
     let block = NewBlockTemplate::from(
         BlockBuilder::new()
             .with_header(header)
@@ -123,7 +129,7 @@ pub fn create_act_gen_block() {
 /// Right now this function does not use consensus rules to generate the block. The coinbase output has an arbitrary
 /// value, and the maturity is zero.
 pub fn create_genesis_block(factories: &CryptoFactories) -> (Block, UnblindedOutput) {
-    create_genesis_block_with_coinbase_value(factories, 100_000_000.into())
+    create_genesis_block_with_coinbase_value(factories, 100_000_000.into(), 100)
 }
 
 // Calculate the MMR Merkle roots for the genesis block template and update the header.
@@ -146,9 +152,10 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
 pub fn create_genesis_block_with_coinbase_value(
     factories: &CryptoFactories,
     coinbase_value: MicroTari,
+    maturity_height: u64,
 ) -> (Block, UnblindedOutput)
 {
-    let (template, output) = genesis_template(&factories, coinbase_value);
+    let (template, output) = genesis_template(&factories, coinbase_value, maturity_height);
     let mut block = update_genesis_block_mmr_roots(template).unwrap();
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
     (block, output)
@@ -161,7 +168,7 @@ pub fn create_genesis_block_with_utxos(
     values: &[MicroTari],
 ) -> (Block, Vec<UnblindedOutput>)
 {
-    let (mut template, coinbase) = genesis_template(&factories, 100_000_000.into());
+    let (mut template, coinbase) = genesis_template(&factories, 100_000_000.into(), 100);
     let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
         let (t, k) = create_utxo(*v, factories, None);
         template.body.add_output(t);
@@ -279,7 +286,7 @@ pub fn generate_new_block_with_coinbase(
         block_utxos.append(&mut utxos);
         keys.push(param);
     }
-    let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(factories, coinbase_value);
+    let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(factories, coinbase_value, 100);
     block_utxos.push(coinbase_output);
 
     outputs.push(block_utxos);

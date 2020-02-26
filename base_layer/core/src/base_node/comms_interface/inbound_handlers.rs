@@ -203,9 +203,17 @@ where T: BlockchainBackend + 'static
             .await
             .map_err(|_| CommsInterfaceError::EventStreamError)?;
         // Propagate verified block to remote nodes
-        if let Ok(BlockAddResult::Ok) = add_block_result {
-            let exclude_peers = source_peer.map_or_else(|| vec![], |comms_public_key| vec![comms_public_key]);
-            self.outbound_nci.propagate_block(block.clone(), exclude_peers).await?;
+        if let Ok(add_block_result) = add_block_result {
+            let propagate = match add_block_result {
+                BlockAddResult::Ok => true,
+                BlockAddResult::BlockExists => false,
+                BlockAddResult::OrphanBlock => false,
+                BlockAddResult::ChainReorg(_) => true,
+            };
+            if propagate {
+                let exclude_peers = source_peer.map_or_else(|| vec![], |comms_public_key| vec![comms_public_key]);
+                self.outbound_nci.propagate_block(block.clone(), exclude_peers).await?;
+            }
         }
         Ok(())
     }
