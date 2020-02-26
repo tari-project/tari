@@ -24,7 +24,6 @@ mkdir -p android
 cd ../..
 IOS_LOG_PATH=${CURRENT_DIR}/logs/${timestamp}/ios
 ANDROID_LOG_PATH=${CURRENT_DIR}/logs/${timestamp}/android
-ZMQ_FOLDER=libzmq
 SQLITE_FOLDER=sqlite
 cd ../../..
 
@@ -60,36 +59,12 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${PKG_PATH}" ] && [ "${BUILD_IOS}" -eq 1 ] 
   rustup target add aarch64-apple-ios x86_64-apple-ios >> ${IOS_LOG_PATH}/rust.txt 2>&1
   cargo install cargo-lipo >> ${IOS_LOG_PATH}/rust.txt 2>&1
   echo "\t${CYAN}Configuring complete${NC}"
-  ZMQ_BUILD_FOUND=0
-  if [ -f ${DEPENDENCIES}/MobileWallet/TariLib/libzmq.a ]; then
-    ZMQ_BUILD_FOUND=1
-  fi
   #below line is temporary
-  ZMQ_REPO_IOS="https://github.com/azawawi/libzmq-ios"
   cd ${DEPENDENCIES} || exit
   mkdir -p build
   cd build || exit
   BUILD_ROOT=$PWD
   cd ..
-  if [ ${ZMQ_BUILD_FOUND} -eq 0 ]; then
-    echo "\t${CYAN}Fetching ZMQ source${NC}"
-    if [ ! -d "${ZMQ_FOLDER}-ios" ]; then
-      git clone ${ZMQ_REPO_IOS} > ${IOS_LOG_PATH}/zmq.txt 2>&1
-      cd ${ZMQ_FOLDER}-ios || exit
-    else
-      cd ${ZMQ_FOLDER}-ios || exit
-      git pull > ${IOS_LOG_PATH}/zmq.txt 2>&1
-    fi
-    echo "\t${CYAN}Source fetched${NC}"
-    # On macOS catalina, build for 32bit will throw linker error for unsupported architecture, can be safely ignored.
-    # Only libs we interested in from the below build script are for aarch64 and x86_64
-    echo "\t${CYAN}Building ZMQ${NC}"
-    ruby libzmq.rb >> ${IOS_LOG_PATH}/zmq.txt 2>&1
-    echo "\t${CYAN}ZMQ built${NC}"
-    cp "${PWD}/dist/ios/lib/libzmq.a" "${DEPENDENCIES}/MobileWallet/TariLib/"
-  else
-    echo "\t${CYAN}ZMQ located${NC}"
-  fi
   cd ${CURRENT_DIR} || exit
   cargo clean
   cp wallet.h "${DEPENDENCIES}/MobileWallet/TariLib/"
@@ -104,7 +79,6 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${PKG_PATH}" ] && [ "${BUILD_IOS}" -eq 1 ] 
   cd ../../.. || exit
   rm -rf target
   cd ${DEPENDENCIES} || exit
-  rm -rf ${ZMQ_FOLDER}-ios
   echo "${GREEN}iOS build completed${NC}"
 elif [ "${BUILD_IOS}" -eq 1 ]; then
   echo "${RED}Cannot configure iOS Wallet Library build${NC}"
@@ -129,11 +103,6 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ -n "${PKG_PATH}" ] && [
   export NDK_TOOLCHAIN_VERSION=clang
   DEPENDENCIES=${DEPENDENCIES}/jniLibs
 
-  ZMQ_BUILD_FOUND=0
-  if [ -f ${DEPENDENCIES}/x86/libzmq.a ] && [ -f ${DEPENDENCIES}/x86_64/libzmq.a ] && [ -f ${DEPENDENCIES}/armeabi-v7a/libzmq.a ] && [ -f ${DEPENDENCIES}/arm64-v8a/libzmq.a ]; then
-    ZMQ_BUILD_FOUND=1
-  fi
-
   SQLITE_BUILD_FOUND=0
   if [ -f ${DEPENDENCIES}/x86/libsqlite3.a ] && [ -f ${DEPENDENCIES}/x86_64/libsqlite3.a ] && [ -f ${DEPENDENCIES}/armeabi-v7a/libsqlite3.a ] && [ -f ${DEPENDENCIES}/arm64-v8a/libsqlite3.a ]; then
     SQLITE_BUILD_FOUND=1
@@ -153,19 +122,6 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ -n "${PKG_PATH}" ] && [
     fi
   fi
   cd ..
-  if [ ${ZMQ_BUILD_FOUND} -eq 0 ]; then
-    echo "\t${CYAN}Fetching ZMQ source${NC}"
-    if [ ! -d ${ZMQ_FOLDER} ]; then
-      git clone ${ZMQ_REPO} > ${ANDROID_LOG_PATH}/zmq.txt 2>&1
-      cd ${ZMQ_FOLDER} || exit
-    else
-      cd ${ZMQ_FOLDER} || exit
-      git pull > ${ANDROID_LOG_PATH}/zmq.txt 2>&1
-    fi
-    echo "\t${CYAN}Source fetched${NC}"
-  else
-    echo "\t${CYAN}ZMQ located${NC}"
-  fi
 
   if [ ${SQLITE_BUILD_FOUND} -eq 0 ]; then
     touch ${ANDROID_LOG_PATH}/sqlite.txt
@@ -197,7 +153,7 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ -n "${PKG_PATH}" ] && [
       mkdir -p ${PLATFORM_OUTDIR}
       OUTPUT_DIR=${BUILD_ROOT}/${PLATFORM_OUTDIR}
 
-      if [ ${ZMQ_BUILD_FOUND} -eq 1 ] || [ ${SQLITE_BUILD_FOUND} -eq 1 ]; then
+      if [ ${SQLITE_BUILD_FOUND} -eq 1 ]; then
         mkdir -p ${BUILD_ROOT}/${PLATFORM_OUTDIR}/lib
       fi
 
@@ -259,15 +215,6 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ -n "${PKG_PATH}" ] && [
         echo "\t${CYAN}Sqlite3 located${NC}"
       fi
       cd ../..
-      if [ ${ZMQ_BUILD_FOUND} -eq 0 ]; then
-        cd ${ZMQ_FOLDER} || exit
-        echo "\t${CYAN}Building ZMQ${NC}"
-        make clean >> ${ANDROID_LOG_PATH}/zmq.txt 2>&1
-        ./autogen.sh >> ${ANDROID_LOG_PATH}/zmq.txt 2>&1
-        ./configure --enable-static --disable-shared --host=${PLATFORMABI} --prefix=${OUTPUT_DIR} --without-docs >> ${ANDROID_LOG_PATH}/zmq.txt >> ${ANDROID_LOG_PATH}/zmq.txt 2>&1
-        make install >> ${ANDROID_LOG_PATH}/zmq.txt 2>&1
-        echo "\t${CYAN}ZMQ built${NC}"
-      fi
 
       if [ "${MACHINE}" == "Mac" ]; then
         if [ "${MAC_SUB_VERSION}" -ge 15 ]; then
@@ -275,15 +222,9 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ -n "${PKG_PATH}" ] && [
           export CFLAGS="${CFLAGS} -I${NDK_HOME}/sources/cxx-stl/llvm-libc++/include -I${NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include -I${NDK_HOME}/sysroot/usr/include/${PLATFORMABI}"
         fi
       fi
-      export LDFLAGS="-L${NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/${PLATFORMABI_TOOLCHAIN}/${LEVEL} -L${OUTPUT_DIR}/lib -lc++ -lzmq -lsqilte3"
+      export LDFLAGS="-L${NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/${PLATFORMABI_TOOLCHAIN}/${LEVEL} -L${OUTPUT_DIR}/lib -lc++ -lsqilte3"
       cd ${OUTPUT_DIR}/lib || exit
 
-      if [ ${ZMQ_BUILD_FOUND} -eq 0 ]; then
-        rm *.so
-        rm *.la
-      else
-        cp ${DEPENDENCIES}/${PLATFORM_OUTDIR}/libzmq.a ${OUTPUT_DIR}/lib/libzmq.a
-      fi
       if [ ${SQLITE_BUILD_FOUND} -eq 1 ]; then
        cp ${DEPENDENCIES}/${PLATFORM_OUTDIR}/libsqlite3.a ${OUTPUT_DIR}/lib/libsqlite3.a
       fi
@@ -304,8 +245,6 @@ ar = "${AR}"
 linker = "${CC}"
 rustflags = "-L${OUTPUT_DIR}/lib"
 
-[target.${PLATFORMABI}.zmq]
-rustc-flags = "-L${OUTPUT_DIR}/lib"
 EOF
 
         else
@@ -314,8 +253,6 @@ EOF
 ar = "${AR}"
 linker = "${CC}"
 
-[target.${PLATFORMABI}.zmq]
-rustc-flags = "-L${OUTPUT_DIR}/lib"
 EOF
 
         fi
@@ -349,15 +286,11 @@ EOF
         cp ${OUTPUT_DIR}/lib/libsqlite3.a ${PWD}
       fi
       cp ${OUTPUT_DIR}/libtari_wallet_ffi.a ${PWD}
-      if [ ${ZMQ_BUILD_FOUND} -eq 0 ]; then
-        cp ${OUTPUT_DIR}/lib/libzmq.a ${PWD}
-      fi
       echo "\t${GREEN}Wallet library built for android architecture ${PLATFORM_OUTDIR} with minimum platform level support of ${LEVEL}${NC}"
     done
   done
   cd ${DEPENDENCIES} || exit
   rm -rf build
-  rm -rf ${ZMQ_FOLDER}
   rm -rf ${SQLITE_FOLDER}
   echo "${GREEN}Android build completed${NC}"
 elif [ "${BUILD_ANDROID}" -eq 1 ]; then

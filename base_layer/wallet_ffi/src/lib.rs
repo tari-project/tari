@@ -1576,6 +1576,14 @@ pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut T
 /// -------------------------------------------------------------------------------------------- ///
 
 /// ----------------------------------- Transport Types -----------------------------------------///
+
+/// Creates a memory transport type
+///
+/// ## Arguments
+/// `()` - Does not take any arguments
+///
+/// ## Returns
+/// `*mut TariTransportType` - Returns a pointer to a memory TariTransportType
 #[no_mangle]
 pub unsafe extern "C" fn transport_memory_create() -> *mut TariTransportType {
     let transport = TariTransportType::Memory {
@@ -1584,6 +1592,15 @@ pub unsafe extern "C" fn transport_memory_create() -> *mut TariTransportType {
     return Box::into_raw(Box::new(transport));
 }
 
+/// Creates a tcp transport type
+///
+/// ## Arguments
+/// `listener_address` - The pointer to a char array
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariTransportType` - Returns a pointer to a tcp TariTransportType, null on error.
 #[no_mangle]
 pub unsafe extern "C" fn transport_tcp_create(
     listener_address: *const c_char,
@@ -1607,6 +1624,20 @@ pub unsafe extern "C" fn transport_tcp_create(
     return Box::into_raw(Box::new(transport));
 }
 
+/// Creates a tor transport type
+///
+/// ## Arguments
+/// `control_server_address` - The pointer to a char array
+/// `tor_password` - The pointer to a char array containing the tor password, can be null
+/// `tor_private_key` - The pointer to a ByteVector containing the tor private key, can be null.
+/// `tor_port` - The tor port
+/// `socks_username` - The pointer to a char array containing the socks username, can be null
+/// `socks_password` - The pointer to a char array containing the socks password, can be null
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariTransportType` - Returns a pointer to a tor TariTransportType, null on error.
 #[no_mangle]
 pub unsafe extern "C" fn transport_tor_create(
     control_server_address: *const c_char,
@@ -1666,6 +1697,15 @@ pub unsafe extern "C" fn transport_tor_create(
     return Box::into_raw(Box::new(transport));
 }
 
+/// Gets the address for a memory transport type
+///
+/// ## Arguments
+/// `transport` - Pointer to a TariTransportType
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_char` - Returns the address as a pointer to a char array, array will be empty on error
 #[no_mangle]
 pub unsafe extern "C" fn transport_memory_get_address(
     transport: *const TariTransportType,
@@ -1693,42 +1733,58 @@ pub unsafe extern "C" fn transport_memory_get_address(
     return address.into_raw();
 }
 
-// #[no_mangle]
-// pub unsafe extern "C" fn transport_tor_get_private_key(
-// transport: *const TariTransportType,
-// error_out: *mut c_int,
-// ) -> *mut TorPrivateKey
-// {
-// let mut error = 0;
-// ptr::swap(error_out, &mut error as *mut c_int);
-// let mut key = CString::new("").unwrap();
-// if !transport.is_null()
-// {
-// match &*transport {
-// TransportType::Tor { TorConfig } => {
-// key = CString::new(TorConfig.).unwrap();
-// },
-// _ => {
-// error = LibWalletError::from(InterfaceError::NullError("transport".to_string())).code;
-// ptr::swap(error_out, &mut error as *mut c_int);
-// }
-// };
-// } else
-// {
-// error = LibWalletError::from(InterfaceError::NullError("transport".to_string())).code;
-// ptr::swap(error_out, &mut error as *mut c_int);
-// }
-//
-// return key.into_raw();
-// }
+/// Gets the private key for tor
+///
+/// ## Arguments
+/// `walllet` - Pointer to a TariWallet
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut ByteVector` - Returns the private key as a pointer to a ByteVector, contents for ByteVector will be empty on
+/// error.
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_tor_private_key(
+    wallet: *const TariWallet,
+    error_out: *mut c_int,
+) -> *mut ByteVector
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut key = CString::new("").unwrap();
+    if !wallet.is_null() {
+        let service = (*wallet).comms.hidden_service();
+        match service {
+            Some(s) => {
+                let tor_key = s.get_tor_identity().private_key.clone();
+                let bin = tor_key.to_binary().unwrap();
+                key = CString::new(bin).unwrap();
+            },
+            None => {},
+        };
+    } else {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
 
+    let bytes = ByteVector(key.into_bytes());
+    return Box::into_raw(Box::new(bytes));
+}
+
+/// Frees memory for a TariTransportType
+///
+/// ## Arguments
+/// `transport` - The pointer to a TariTransportType
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
 #[no_mangle]
 pub unsafe extern "C" fn transport_type_destroy(transport: *mut TariTransportType) {
     if !transport.is_null() {
         Box::from_raw(transport);
     }
 }
-///
+/// ---------------------------------------------------------------------------------------------///
 
 /// ----------------------------------- CommsConfig ---------------------------------------------///
 
@@ -2128,7 +2184,6 @@ pub unsafe extern "C" fn wallet_test_generate_data(
     ) {
         Ok(_) => true,
         Err(e) => {
-            println!("ERROR {:?}", e);
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             false
@@ -3328,6 +3383,49 @@ mod test {
     }
 
     #[test]
+    fn test_transport_type_memory() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let transport = transport_memory_create();
+            let _address = transport_memory_get_address(transport, error_ptr);
+            assert_eq!(error, 0);
+        }
+    }
+
+    #[test]
+    fn test_transport_type_tcp() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let address_listener = CString::new("/ip4/127.0.0.1/tcp/0").unwrap();
+            let address_listener_str: *const c_char = CString::into_raw(address_listener.clone()) as *const c_char;
+            let _transport = transport_tcp_create(address_listener_str, error_ptr);
+            assert_eq!(error, 0);
+        }
+    }
+
+    #[test]
+    fn test_transport_type_tor() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let address_control = CString::new("/ip4/127.0.0.1/tcp/8080").unwrap();
+            let address_control_str: *const c_char = CString::into_raw(address_control.clone()) as *const c_char;
+            let _transport = transport_tor_create(
+                address_control_str,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                8080,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                error_ptr,
+            );
+            assert_eq!(error, 0);
+        }
+    }
+
+    #[test]
     fn test_keys() {
         unsafe {
             let mut error = 0;
@@ -3490,14 +3588,14 @@ mod test {
             let alice_temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice.clone()) as *const c_char;
-            let transport_type = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_type, error_ptr);
-            let address_alice_str = CString::from_raw(address_alice);
-            let address_alice_str: *const c_char = address_alice_str.into_raw() as *const c_char;
+            let transport_type_alice = transport_memory_create();
+            let address_alice = transport_memory_get_address(transport_type_alice, error_ptr);
+            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
+            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
 
             let alice_config = comms_config_create(
                 address_alice_str,
-                transport_type,
+                transport_type_alice,
                 db_name_alice_str,
                 db_path_alice_str,
                 secret_key_alice,
@@ -3521,13 +3619,13 @@ mod test {
             let bob_temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
             let db_path_bob = CString::new(bob_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_bob_str: *const c_char = CString::into_raw(db_path_bob.clone()) as *const c_char;
-            let transport_type = transport_memory_create();
-            let address_bob = CString::from_raw(transport_memory_get_address(transport_type, error_ptr));
-            let address_bob_str = CString::new(address_bob).unwrap();
-            let address_bob_str: *const c_char = address_bob_str.into_raw() as *const c_char;
+            let transport_type_bob = transport_memory_create();
+            let address_bob = transport_memory_get_address(transport_type_bob, error_ptr);
+            let address_bob_str = CStr::from_ptr(address_bob).to_str().unwrap().to_owned();
+            let address_bob_str: *const c_char = CString::new(address_bob_str).unwrap().into_raw() as *const c_char;
             let bob_config = comms_config_create(
                 address_bob_str,
-                transport_type,
+                transport_type_bob,
                 db_name_bob_str,
                 db_path_bob_str,
                 secret_key_bob,
@@ -3589,7 +3687,10 @@ mod test {
                 false
             );
 
-            let inbound_transactions = (*alice_wallet)
+            let inbound_transactions: std::collections::HashMap<
+                u64,
+                tari_wallet::transaction_service::storage::database::InboundTransaction,
+            > = (*alice_wallet)
                 .runtime
                 .block_on((*alice_wallet).transaction_service.get_pending_inbound_transactions())
                 .unwrap();
@@ -3598,14 +3699,20 @@ mod test {
 
             wallet_test_receive_transaction(alice_wallet, error_ptr);
 
-            let inbound_transactions = (*alice_wallet)
+            let inbound_transactions: std::collections::HashMap<
+                u64,
+                tari_wallet::transaction_service::storage::database::InboundTransaction,
+            > = (*alice_wallet)
                 .runtime
                 .block_on((*alice_wallet).transaction_service.get_pending_inbound_transactions())
                 .unwrap();
 
             assert_eq!(inbound_transactions.len(), 1);
 
-            let completed_transactions = (*alice_wallet)
+            let completed_transactions: std::collections::HashMap<
+                u64,
+                tari_wallet::transaction_service::storage::database::CompletedTransaction,
+            > = (*alice_wallet)
                 .runtime
                 .block_on((*alice_wallet).transaction_service.get_completed_transactions())
                 .unwrap();
@@ -3618,7 +3725,10 @@ mod test {
                 break;
             }
 
-            let completed_transactions = (*alice_wallet)
+            let completed_transactions: std::collections::HashMap<
+                u64,
+                tari_wallet::transaction_service::storage::database::CompletedTransaction,
+            > = (*alice_wallet)
                 .runtime
                 .block_on((*alice_wallet).transaction_service.get_completed_transactions())
                 .unwrap();
@@ -3626,7 +3736,10 @@ mod test {
             assert_eq!(num_completed_tx_pre + 1, completed_transactions.len());
 
             // TODO: Test transaction collection and transaction methods
-            let completed_transactions = (*alice_wallet)
+            let completed_transactions: std::collections::HashMap<
+                u64,
+                tari_wallet::transaction_service::storage::database::CompletedTransaction,
+            > = (*alice_wallet)
                 .runtime
                 .block_on((*alice_wallet).transaction_service.get_completed_transactions())
                 .unwrap();
@@ -3681,17 +3794,12 @@ mod test {
                 .expect("Tx should be in collection");
 
             assert_eq!(import_transaction.amount, utxo_value * uT);
-
             assert_eq!(wallet_sync_with_base_node(alice_wallet, error_ptr), false);
-
             let mut peer_added =
                 wallet_add_base_node_peer(alice_wallet, public_key_bob.clone(), address_bob_str, error_ptr);
-
             assert_eq!(peer_added, true);
             peer_added = wallet_add_base_node_peer(bob_wallet, public_key_alice.clone(), address_alice_str, error_ptr);
             assert_eq!(peer_added, true);
-
-            //             Connect Alice to Bob
             (*alice_wallet)
                 .runtime
                 .block_on(
@@ -3701,7 +3809,6 @@ mod test {
                         .dial_peer((*bob_wallet).comms.node_identity().node_id().clone()),
                 )
                 .unwrap();
-
             assert_eq!(wallet_sync_with_base_node(alice_wallet, error_ptr), true);
 
             let lock = CALLBACK_STATE_FFI.lock().unwrap();
@@ -3732,6 +3839,8 @@ mod test {
             // free config memory
             comms_config_destroy(bob_config);
             comms_config_destroy(alice_config);
+            transport_type_destroy(transport_type_alice);
+            transport_type_destroy(transport_type_bob);
         }
     }
 }
