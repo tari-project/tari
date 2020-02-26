@@ -22,7 +22,6 @@ brew install cmake
 brew install autoconf
 brew install automake
 brew install libtool
-brew install zmq
 ```
 
 ## iOS Dependencies
@@ -89,7 +88,7 @@ BUILD_IOS=1
 SQLITE_SOURCE=https://www.sqlite.org/snapshot/sqlite-snapshot-201911192122.tar.gz
 NDK_PATH=/Users/user/Desktop/android-ndk-r20
 PKG_PATH=/usr/local/Cellar/zeromq/4.3.2/lib/pkgconfig
-ZMQ_REPO=https://github.com/zeromq/libzmq.git
+
 ANDROID_WALLET_PATH=/Users/user/Desktop/wallet-android
 IOS_WALLET_PATH=/Users/user/Desktop/wallet-ios
 TARI_REPO_PATH=/Users/user/Desktop/tari-main
