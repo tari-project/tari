@@ -131,6 +131,7 @@ pub use dht::Dht;
 
 mod discovery;
 mod proto;
+mod tower_filter;
 mod utils;
 
 pub mod broadcast_strategy;

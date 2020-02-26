@@ -1,6 +1,5 @@
 #![doc(html_root_url = "https://docs.rs/tower-filter/0.3.0-alpha.2")]
-#![warn(missing_debug_implementations, missing_docs, rust_2018_idioms, unreachable_pub)]
-#![allow(elided_lifetimes_in_paths)]
+// #![allow(elided_lifetimes_in_paths)]
 
 //! Conditionally dispatch requests to the inner service based on the result of
 //! a predicate.
@@ -10,12 +9,17 @@ pub mod future;
 mod layer;
 mod predicate;
 
-pub use crate::{layer::FilterLayer, predicate::Predicate};
+pub use layer::FilterLayer;
+pub use predicate::Predicate;
 
-use crate::{error::Error, future::ResponseFuture};
-use futures_core::ready;
+use error::Error;
+use future::ResponseFuture;
+use futures::ready;
 use std::task::{Context, Poll};
 use tower::Service;
+
+#[cfg(test)]
+mod test;
 
 /// Conditionally dispatch requests to the inner service based on a predicate.
 #[derive(Clone, Debug)]

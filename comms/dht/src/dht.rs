@@ -30,6 +30,8 @@ use crate::{
     outbound::DhtOutboundRequest,
     proto::envelope::DhtMessageType,
     store_forward,
+    tower_filter,
+    tower_filter::error::Error as FilterError,
     DhtConfig,
     PipelineError,
 };
@@ -43,7 +45,6 @@ use tari_comms::{
 use tari_shutdown::ShutdownSignal;
 use tokio::runtime;
 use tower::{layer::Layer, Service, ServiceBuilder};
-use tower_filter::error::Error as FilterError;
 
 /// Responsible for starting the DHT actor, building the DHT middleware stack and as a factory
 /// for producing DHT requesters.

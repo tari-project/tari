@@ -1,4 +1,4 @@
-use crate::Filter;
+use super::Filter;
 use tower::layer::Layer;
 
 /// Conditionally dispatch requests to the inner service based on a predicate.
