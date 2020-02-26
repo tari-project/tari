@@ -263,7 +263,7 @@ where
     B2: ArrayLike<Value = Hash>,
 {
     fn eq(&self, other: &MutableMmr<D, B2>) -> bool {
-        (self.get_merkle_root() == other.get_merkle_root())
+        self.get_merkle_root() == other.get_merkle_root()
     }
 }
 

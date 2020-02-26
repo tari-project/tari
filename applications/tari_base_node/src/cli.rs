@@ -59,12 +59,3 @@ pub fn parse_cli_args() -> Arguments {
 
     Arguments { bootstrap, create_id }
 }
-
-fn exists(s: String) -> Result<(), String> {
-    let path = Path::new(&s);
-    if path.exists() {
-        Ok(())
-    } else {
-        Err(format!("{} does not exist", s))
-    }
-}

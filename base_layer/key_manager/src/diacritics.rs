@@ -76,7 +76,7 @@ pub fn remove_diacritics(word: &str) -> String {
             })
             .collect();
     // Remove any remaining non-ascii characters
-    (clean_string.replace(|c: char| !c.is_ascii(), ""))
+    clean_string.replace(|c: char| !c.is_ascii(), "")
 }
 
 #[cfg(test)]

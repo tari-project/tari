@@ -115,17 +115,13 @@ impl ReorgPoolStorage {
 
     /// Returns the total number of published transactions stored in the ReorgPoolStorage
     pub fn len(&mut self) -> usize {
-        let mut count = 0;
-        self.txs_by_signature.iter().for_each(|_| count += 1);
-        (count)
+        self.txs_by_signature.iter().count()
     }
 
     /// Returns the total weight of all transactions stored in the pool.
     pub fn calculate_weight(&mut self) -> u64 {
-        let mut weight: u64 = 0;
         self.txs_by_signature
             .iter()
-            .for_each(|(_, tx)| weight += tx.calculate_weight());
-        (weight)
+            .fold(0, |weight, (_, tx)| weight + tx.calculate_weight())
     }
 }

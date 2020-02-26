@@ -22,14 +22,15 @@
 #[allow(dead_code)]
 mod helpers;
 
-use crate::helpers::block_builders::{
-    chain_block,
-    create_genesis_block_with_coinbase_value,
-    find_header_with_achieved_difficulty,
-};
-use futures::{future, future::Either, stream::FusedStream, FutureExt, Stream, StreamExt};
 use helpers::{
-    block_builders::{create_genesis_block, generate_block, generate_new_block},
+    block_builders::{
+        chain_block,
+        create_genesis_block,
+        create_genesis_block_with_coinbase_value,
+        find_header_with_achieved_difficulty,
+        generate_block,
+        generate_new_block,
+    },
     nodes::{create_network_with_2_base_nodes_with_config, create_network_with_3_base_nodes_with_config},
     sample_blockchains::create_new_blockchain,
 };

@@ -130,7 +130,7 @@ where
     /// Generate next deterministic private key derived from master key
     pub fn next_key(&mut self) -> Result<DerivedKey<K>, ByteArrayError> {
         self.primary_key_index += 1;
-        (self.derive_key(self.primary_key_index))
+        self.derive_key(self.primary_key_index)
     }
 }
 

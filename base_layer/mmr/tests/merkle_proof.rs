@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+#[allow(dead_code)]
 mod support;
 
 use support::{create_mmr, int_to_hash, Hasher};
