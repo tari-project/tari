@@ -3575,9 +3575,10 @@ mod test {
     #[test]
     fn test_wallet_ffi() {
         unsafe {
-            let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
-            lock.reset();
-            drop(lock);
+            {
+                let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
+                lock.reset();
+            }
 
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;

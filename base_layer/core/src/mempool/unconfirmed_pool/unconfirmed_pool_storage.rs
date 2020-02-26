@@ -177,20 +177,17 @@ impl UnconfirmedPoolStorage {
 
     /// Returns all transaction stored in the UnconfirmedPoolStorage.
     pub fn snapshot(&self) -> Vec<Arc<Transaction>> {
-        let mut txs: Vec<Arc<Transaction>> = Vec::with_capacity(self.txs_by_signature.len());
         self.txs_by_signature
             .iter()
-            .for_each(|(_, ptx)| txs.push(ptx.transaction.clone()));
-        txs
+            .map(|(_, ptx)| ptx.transaction.clone())
+            .collect()
     }
 
     /// Returns the total weight of all transactions stored in the pool.
     pub fn calculate_weight(&self) -> u64 {
-        let mut weight: u64 = 0;
         self.txs_by_signature
             .iter()
-            .for_each(|(_, ptx)| weight += ptx.transaction.calculate_weight());
-        (weight)
+            .fold(0, |weight, (_, ptx)| weight + ptx.transaction.calculate_weight())
     }
 
     #[cfg(test)]

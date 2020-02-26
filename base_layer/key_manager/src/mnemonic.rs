@@ -80,7 +80,7 @@ impl MnemonicLanguage {
             MnemonicLanguage::Korean,
             MnemonicLanguage::Spanish,
         ];
-        (MNEMONIC_LANGUAGES.iter())
+        MNEMONIC_LANGUAGES.iter()
     }
 }
 
@@ -156,19 +156,19 @@ pub fn from_bytes(bytes: Vec<u8>, language: &MnemonicLanguage) -> Result<Vec<Str
             Err(err) => return Err(err),
         }
     }
-    (Ok(mnemonic_sequence))
+    Ok(mnemonic_sequence)
 }
 
 /// Generates a mnemonic sequence of words from the provided secret key
 pub fn from_secret_key<K: SecretKey>(k: &K, language: &MnemonicLanguage) -> Result<Vec<String>, MnemonicError> {
-    (from_bytes(k.to_vec(), language))
+    from_bytes(k.to_vec(), language)
 }
 
 /// Generates a vector of bytes that represent the provided mnemonic sequence of words, the language of the mnemonic
 /// sequence is autodetected
 pub fn to_bytes(mnemonic_seq: &[String]) -> Result<Vec<u8>, MnemonicError> {
     let language = MnemonicLanguage::from(&mnemonic_seq[0])?; // Autodetect language
-    (to_bytes_with_language(mnemonic_seq, &language))
+    to_bytes_with_language(mnemonic_seq, &language)
 }
 
 /// Generates a vector of bytes that represent the provided mnemonic sequence of words using the specified language
@@ -229,17 +229,17 @@ impl<T: SecretKey> Mnemonic<T> for T {
     /// Generates a SecretKey that represent the provided mnemonic sequence of words, the language of the mnemonic
     /// sequence is autodetected
     fn from_mnemonic(mnemonic_seq: &[String]) -> Result<T, MnemonicError> {
-        (to_secretkey(mnemonic_seq))
+        to_secretkey(mnemonic_seq)
     }
 
     /// Generates a SecretKey that represent the provided mnemonic sequence of words using the specified language
     fn from_mnemonic_with_language(mnemonic_seq: &[String], language: &MnemonicLanguage) -> Result<T, MnemonicError> {
-        (to_secretkey_with_language(mnemonic_seq, language))
+        to_secretkey_with_language(mnemonic_seq, language)
     }
 
     /// Generates a mnemonic sequence of words from the provided secret key
     fn to_mnemonic(&self, language: &MnemonicLanguage) -> Result<Vec<String>, MnemonicError> {
-        (from_secret_key(self, language))
+        from_secret_key(self, language)
     }
 }
 

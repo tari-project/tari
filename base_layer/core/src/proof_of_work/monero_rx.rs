@@ -36,8 +36,6 @@ enum MergeMineError {
     DeserializeError,
     // Hashing of Monero data failed
     HashingError,
-    // Verification failed
-    VerificationFailed,
     // RandomX Failure
     RandomXError(RandomXError),
 }

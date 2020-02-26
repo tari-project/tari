@@ -129,24 +129,18 @@ where T: BlockchainBackend
 
     /// Returns the total number of orphaned transactions stored in the OrphanPoolStorage
     pub fn len(&mut self) -> usize {
-        let mut count = 0;
-        self.txs_by_signature.iter().for_each(|_| count += 1);
-        (count)
+        self.txs_by_signature.iter().count()
     }
 
     /// Returns all transaction stored in the OrphanPoolStorage.
     pub fn snapshot(&mut self) -> Vec<Arc<Transaction>> {
-        let mut txs: Vec<Arc<Transaction>> = Vec::new();
-        self.txs_by_signature.iter().for_each(|(_, tx)| txs.push(tx.clone()));
-        txs
+        self.txs_by_signature.iter().map(|(_, tx)| tx).cloned().collect()
     }
 
     /// Returns the total weight of all transactions stored in the pool.
     pub fn calculate_weight(&mut self) -> u64 {
-        let mut weight: u64 = 0;
         self.txs_by_signature
             .iter()
-            .for_each(|(_, tx)| weight += tx.calculate_weight());
-        (weight)
+            .fold(0, |weight, (_, tx)| weight + tx.calculate_weight())
     }
 }
