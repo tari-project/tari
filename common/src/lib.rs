@@ -59,11 +59,14 @@ pub use configuration::{
     default_config,
     install_default_config_file,
     load_configuration,
+    CommsTransport,
     ConfigExtractor,
     ConfigurationError,
     DatabaseType,
     GlobalConfig,
     Network,
+    SocksAuthentication,
+    TorControlAuthentication,
 };
 pub use logging::initialize_logging;
 use std::io;

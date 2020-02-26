@@ -1636,10 +1636,7 @@ pub unsafe extern "C" fn transport_tor_create(
     if !socks_username.is_null() && !socks_password.is_null() {
         username_str = CStr::from_ptr(socks_username).to_str().unwrap().to_owned();
         password_str = CStr::from_ptr(socks_password).to_str().unwrap().to_owned();
-        authentication = socks::Authentication::Password {
-            username: username_str,
-            password: password_str,
-        }
+        authentication = socks::Authentication::Password(username_str, password_str);
     }
 
     let mut tor_authentication = tor::Authentication::None;

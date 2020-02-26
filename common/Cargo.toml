@@ -11,11 +11,13 @@ edition = "2018"
 
 
 [dependencies]
+clap = "2.33.0"
+config = { version = "0.9.3" }
 dirs = "2.0"
+get_if_addrs = "0.5.3"
 log = "0.4.8"
 log4rs = "0.8.3"
-config = { version = "0.9.3" }
-clap = "2.33.0"
+multiaddr={package="parity-multiaddr", version = "0.7.2"}
 
 [dev-dependencies]
 tempdir = "0.3.7"

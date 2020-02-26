@@ -25,15 +25,19 @@ use futures::channel::mpsc::Receiver;
 use log::*;
 use rand::rngs::OsRng;
 use std::{
+    fs,
     path::{Path, PathBuf},
     sync::{atomic::AtomicBool, Arc},
     time::Duration,
 };
 use tari_broadcast_channel::Subscriber;
-use tari_common::{DatabaseType, GlobalConfig};
+use tari_common::{CommsTransport, DatabaseType, GlobalConfig, SocksAuthentication, TorControlAuthentication};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    socks,
+    tor,
+    utils::multiaddr::multiaddr_to_socketaddr,
     CommsNode,
 };
 use tari_core::{
@@ -77,7 +81,7 @@ use tari_p2p::{
         comms_outbound::CommsOutboundServiceInitializer,
         liveness::{LivenessConfig, LivenessInitializer},
     },
-    transport::TransportType,
+    transport::{TorConfig, TransportType},
 };
 use tari_service_framework::{handles::ServiceHandles, StackBuilder};
 use tari_wallet::{
@@ -196,39 +200,43 @@ pub fn load_identity(path: &Path) -> Result<NodeIdentity, String> {
     Ok(id)
 }
 
-fn new_node_id(private_key: PrivateKey, control_addr: &str) -> Result<NodeIdentity, String> {
-    let address = control_addr.parse::<Multiaddr>().map_err(|e| {
-        format!(
-            "Error. '{}' is not a valid control port address. {}",
-            control_addr,
-            e.to_string()
-        )
-    })?;
+/// Create a new node id and save it to disk
+pub fn create_new_base_node_identity(public_addr: Multiaddr) -> Result<NodeIdentity, String> {
+    let private_key = PrivateKey::random(&mut OsRng);
     let features = PeerFeatures::COMMUNICATION_NODE;
-    NodeIdentity::new(private_key, address, features)
+    NodeIdentity::new(private_key, public_addr, features)
         .map_err(|e| format!("We were unable to construct a node identity. {}", e.to_string()))
 }
 
-/// Create a new node id and save it to disk
-pub fn create_and_save_id(path: &Path, public_addr: &str) -> Result<NodeIdentity, String> {
-    let pk = PrivateKey::random(&mut OsRng);
-    // build config file
-    let id = new_node_id(pk, public_addr)?;
-    let node_str = id.to_json().unwrap();
-    if let Some(p) = path.parent() {
+pub fn load_from_json<P: AsRef<Path>, T: MessageFormat>(path: P) -> Result<T, String> {
+    if !path.as_ref().exists() {
+        return Err(format!(
+            "Identity file, {}, does not exist.",
+            path.as_ref().to_str().unwrap()
+        ));
+    }
+
+    let contents = fs::read_to_string(path).map_err(|err| err.to_string())?;
+    let object = T::from_json(&contents).map_err(|err| err.to_string())?;
+    Ok(object)
+}
+
+pub fn save_as_json<P: AsRef<Path>, T: MessageFormat>(path: P, object: &T) -> Result<(), String> {
+    let json = object.to_json().unwrap();
+    if let Some(p) = path.as_ref().parent() {
         if !p.exists() {
-            std::fs::create_dir_all(p)
-                .map_err(|e| format!("Could not create identity data folder. {}", e.to_string()))?;
+            fs::create_dir_all(p).map_err(|e| format!("Could not save json to data folder. {}", e.to_string()))?;
         }
     }
-    std::fs::write(path, node_str.as_bytes()).map_err(|e| {
+    fs::write(path.as_ref(), json.as_bytes()).map_err(|e| {
         format!(
-            "Error writing identity file, {}. {}",
-            path.to_str().unwrap_or("??"),
+            "Error writing json file, {}. {}",
+            path.as_ref().to_str().unwrap_or("<invalid UTF-8>"),
             e.to_string()
         )
     })?;
-    Ok(id)
+
+    Ok(())
 }
 
 pub fn configure_and_initialize_node(
@@ -262,9 +270,7 @@ pub fn configure_and_initialize_node(
                 rt,
                 node_identity,
                 peers,
-                &config.listener_address,
-                &config.peer_db_path,
-                &config.wallet_file,
+                &config,
                 db.clone(),
                 mempool,
                 rules.clone(),
@@ -321,9 +327,7 @@ pub fn configure_and_initialize_node(
                 rt,
                 node_identity,
                 peers,
-                &config.listener_address,
-                &config.peer_db_path,
-                &config.wallet_file,
+                &config,
                 db.clone(),
                 mempool,
                 rules.clone(),
@@ -420,13 +424,63 @@ fn assign_peers(seeds: &[String]) -> Vec<Peer> {
     result
 }
 
+fn setup_transport_type(config: &GlobalConfig) -> TransportType {
+    match config.comms_transport.clone() {
+        CommsTransport::Tcp { listener_address } => TransportType::Tcp { listener_address },
+        CommsTransport::TorHiddenService {
+            control_server_address,
+            forward_address,
+            auth,
+            onion_port,
+        } => {
+            let tor_private_key_path = Path::new(&config.tor_private_key_file);
+            let private_key = if tor_private_key_path.exists() {
+                // If this fails, we can just use another address
+                load_from_json(tor_private_key_path).ok()
+            } else {
+                None
+            };
+            let forward_addr = multiaddr_to_socketaddr(&forward_address).expect("Invalid tor forward address");
+            TransportType::Tor(TorConfig {
+                control_server_addr: control_server_address,
+                control_server_auth: {
+                    match auth {
+                        TorControlAuthentication::None => tor::Authentication::None,
+                        TorControlAuthentication::Password(password) => {
+                            tor::Authentication::HashedPassword(password.clone())
+                        },
+                    }
+                },
+                private_key: private_key.map(Box::new),
+                port_mapping: (onion_port, forward_addr).into(),
+                // TODO: make configurable
+                socks_auth: socks::Authentication::None,
+            })
+        },
+        CommsTransport::Socks5 {
+            proxy_address,
+            listener_address,
+            auth,
+        } => TransportType::Socks {
+            proxy_address,
+            listener_address,
+            authentication: {
+                match auth {
+                    SocksAuthentication::None => socks::Authentication::None,
+                    SocksAuthentication::UsernamePassword(username, password) => {
+                        socks::Authentication::Password(username, password)
+                    },
+                }
+            },
+        },
+    }
+}
+
 fn setup_comms_services<T>(
     rt: &mut Runtime,
     id: Arc<NodeIdentity>,
     peers: Vec<Peer>,
-    listener_addr: &str,
-    peer_db_path: &str,
-    wallet_file: &str,
+    config: &GlobalConfig,
     db: BlockchainDatabase<T>,
     mempool: Mempool<T>,
     consensus_manager: ConsensusManager<T>,
@@ -436,22 +490,23 @@ where
     T: BlockchainBackend + 'static,
 {
     // sql lite for wallet, create folders for sql lite
-    let mut wallet_db_folder = PathBuf::from(wallet_file);
+    let mut wallet_db_folder = PathBuf::from(&config.wallet_file);
     wallet_db_folder.set_extension("dat");
     let wallet_path = PathBuf::from(wallet_db_folder.parent().expect("unable to get wallet db path"));
-    std::fs::create_dir_all(&wallet_path).expect("could not create wallet path");
-    std::fs::create_dir_all(&peer_db_path).expect("could not create peer db path");
+    fs::create_dir_all(&wallet_path).expect("could not create wallet path");
+    fs::create_dir_all(&config.peer_db_path).expect("could not create peer db path");
 
     let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
     let (publisher, subscription_factory) = pubsub_connector(rt.handle().clone(), 100);
     let subscription_factory = Arc::new(subscription_factory);
+
+    let transport_type = setup_transport_type(config);
+
     let comms_config = CommsConfig {
         node_identity: id.clone(),
         // TODO - make this configurable
-        transport_type: TransportType::Tcp {
-            listener_address: listener_addr.parse().expect("Unable to parse listener_address"),
-        },
-        datastore_path: peer_db_path.to_string(),
+        transport_type,
+        datastore_path: config.peer_db_path.clone(),
         peer_database_name: "peers".to_string(),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
@@ -462,6 +517,13 @@ where
     let (comms, dht) = rt
         .block_on(initialize_comms(comms_config, publisher))
         .expect("Could not create comms layer");
+
+    // Save final node identity after comms has initialized. This is required because the public_address can be changed
+    // by comms during initialization when using tor.
+    save_as_json(&config.identity_file, &*comms.node_identity()).expect("Failed to save node identity");
+    if let Some(hs) = comms.hidden_service() {
+        save_as_json(&config.tor_private_key_file, hs.private_key()).expect("Failed to save tor identity");
+    }
 
     for p in peers {
         info!(

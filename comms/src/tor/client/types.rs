@@ -114,7 +114,13 @@ impl PortMapping {
 
 impl From<u16> for PortMapping {
     fn from(onion_port: u16) -> Self {
-        Self::from_port(onion_port.into())
+        Self::from_port(onion_port)
+    }
+}
+
+impl<T: Into<u16>, U: Into<SocketAddr>> From<(T, U)> for PortMapping {
+    fn from((port, addr): (T, U)) -> Self {
+        Self(port.into(), addr.into())
     }
 }
 

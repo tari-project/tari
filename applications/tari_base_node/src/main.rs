@@ -32,7 +32,7 @@ mod miner;
 /// Parser module used to control user commands
 mod parser;
 
-use crate::builder::{create_and_save_id, load_identity, BaseNodeContext};
+use crate::builder::{create_new_base_node_identity, load_identity, BaseNodeContext};
 use futures::stream::StreamExt;
 use log::*;
 use parser::Parser;
@@ -98,7 +98,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     trace!(target: LOG_TARGET, "Configuration file: {:?}", node_config);
 
     // Load or create the Node identity
-    let node_id = match load_identity(&node_config.identity_file) {
+    let node_identity = match load_identity(&node_config.identity_file) {
         Ok(id) => id,
         Err(e) => {
             if !arguments.create_id {
@@ -111,7 +111,7 @@ fn main_inner() -> Result<(), ExitCodes> {
                 return Err(ExitCodes::ConfigError);
             }
             debug!(target: LOG_TARGET, "Node id not found. {}. Creating new ID", e);
-            match create_and_save_id(&node_config.identity_file, &node_config.public_address) {
+            match create_new_base_node_identity(node_config.public_address.clone()) {
                 Ok(id) => {
                     info!(
                         target: LOG_TARGET,
@@ -140,13 +140,11 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     // Build, node, build!
     let (comms, node, mut miner, base_node_context) =
-        match builder::configure_and_initialize_node(&node_config, node_id, &mut rt) {
-            Ok(n) => n,
-            Err(e) => {
-                error!(target: LOG_TARGET, "Could not instantiate node instance. {}", e);
-                return Err(ExitCodes::UnknownError);
-            },
-        };
+        builder::configure_and_initialize_node(&node_config, node_identity, &mut rt).map_err(|err| {
+            error!(target: LOG_TARGET, "Could not instantiate node instance. {}", err);
+            ExitCodes::UnknownError
+        })?;
+
     let flag = node.get_flag();
     // lets run the miner
     let miner_handle = if node_config.enable_mining {
