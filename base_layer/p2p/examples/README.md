@@ -10,7 +10,6 @@ cargo run --example $name -- [args]
 
 ## C Dependencies
 
-- [libzmq](https://github.com/zeromq/libzmq)
 - [ncurses](https://github.com/mirror/ncurses)
 
 ---
@@ -34,6 +33,6 @@ A basic ncurses UI that sends ping and receives pong messages to a single peer u
 Press 'p' to send a ping.
 
 ```bash
-cargo run --example pingpong -- --help
-cargo run --example pingpong -- --node-identity examples/sample_identities/node-identity1.json --peer-identity examples/sample_identities/node-identity2.json
+cargo run --example pingpong --features pingpong-example -- --help
+cargo run --example pingpong --features pingpong-example -- --node-identity examples/sample_identities/node-identity1.json --peer-identity examples/sample_identities/node-identity2.json
 ```
