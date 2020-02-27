@@ -167,6 +167,7 @@ pub fn create_new_blockchain(
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
+        .with_factories(factories)
         .with_block(block0.clone())
         .build();
     let db = create_mem_db(consensus_manager.clone());

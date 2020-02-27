@@ -24,20 +24,19 @@ use tari_core::{
     chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
     consensus::{ConsensusManagerBuilder, Network},
     proof_of_work::DiffAdjManager,
-    transactions::types::{CryptoFactories, HashDigest},
+    transactions::types::{ HashDigest},
     validation::block_validators::{FullConsensusValidator, StatelessValidator},
 };
 
 #[test]
 fn test_genesis_block() {
-    let factories = CryptoFactories::default();
     let network = Network::LocalNet;
     let rules = ConsensusManagerBuilder::new(network)
         .build();
     let backend = MemoryDatabase::<HashDigest>::default();
     let mut db = BlockchainDatabase::new(backend, rules.clone()).unwrap();
     let validators = Validators::new(
-        FullConsensusValidator::new(rules.clone(), factories, db.clone()),
+        FullConsensusValidator::new(rules.clone(), db.clone()),
         StatelessValidator::new(&rules.consensus_constants()),
     );
     db.set_validators(validators);

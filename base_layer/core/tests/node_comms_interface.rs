@@ -269,7 +269,7 @@ fn outbound_fetch_utxos() {
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
-        let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
+        let (utxo, _) = create_utxo(MicroTari(10_000), factories, None);
         let hash = utxo.hash();
         let utxo_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::TransactionOutputs(vec![utxo.clone()])];
         let (received_utxos, _) = futures::join!(
@@ -284,7 +284,6 @@ fn outbound_fetch_utxos() {
 
 #[test]
 fn inbound_fetch_utxos() {
-    let factories = CryptoFactories::default();
     let (mempool, store) = new_mempool();
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     let network = Network::LocalNet;
@@ -301,11 +300,11 @@ fn inbound_fetch_utxos() {
         block_event_publisher,
         store.clone(),
         mempool,
-        consensus_manager,
+        consensus_manager.clone(),
         outbound_nci,
     );
 
-    let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (utxo, _) = create_utxo(MicroTari(10_000), consensus_manager.factories(), None);
     let hash = utxo.hash();
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo.clone(), true);

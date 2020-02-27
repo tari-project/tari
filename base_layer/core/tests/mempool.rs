@@ -34,6 +34,7 @@ use helpers::{
     nodes::{create_network_with_2_base_nodes_with_config, create_network_with_3_base_nodes_with_config},
     sample_blockchains::create_new_blockchain,
 };
+use tari_core::transactions::types::CryptoFactories;
 use std::{ops::Deref, sync::Arc, time::Duration};
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundEncryption};
 use tari_core::{
@@ -54,7 +55,6 @@ use tari_core::{
         proto,
         tari_amount::{uT, T},
         transaction::{OutputFeatures, Transaction},
-        types::CryptoFactories,
     },
     tx,
     txn_schema,
@@ -476,16 +476,17 @@ fn test_orphaned_mempool_transactions() {
 
 #[test]
 fn request_response_get_stats() {
-    let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_coinbase_lockheight(100)
         .build();
+    let factories = CryptoFactories::default();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
+        .with_factories(factories)
         .with_block(block0.clone())
         .build();
     let (mut alice, bob, _consensus_manager) = create_network_with_2_base_nodes_with_config(
@@ -537,16 +538,17 @@ fn request_response_get_stats() {
 
 #[test]
 fn request_response_get_tx_state_with_excess_sig() {
-    let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_coinbase_lockheight(100)
         .build();
+        let factories = CryptoFactories::default();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
+        .with_factories(factories)
         .with_block(block0.clone())
         .build();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
@@ -609,16 +611,17 @@ fn request_response_get_tx_state_with_excess_sig() {
 
 #[test]
 fn receive_and_propagate_transaction() {
-    let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let network = Network::LocalNet;
+    let factories = CryptoFactories::default();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_coinbase_lockheight(100)
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
+        .with_factories(factories)
         .with_block(block0.clone())
         .build();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
@@ -722,7 +725,6 @@ fn service_request_timeout() {
 
 #[test]
 fn block_event_and_reorg_event_handling() {
-    let factories = CryptoFactories::default();
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
 

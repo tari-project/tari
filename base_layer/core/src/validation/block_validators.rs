@@ -29,7 +29,7 @@ use crate::{
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::{ConsensusConstants, ConsensusManager},
-    transactions::{transaction::OutputFlags, types::CryptoFactories},
+    transactions::{transaction::OutputFlags},
     validation::{
         helpers::{check_achieved_difficulty_at_chain_tip, check_median_timestamp_at_chain_tip},
         Validation,
@@ -69,15 +69,14 @@ impl<B: BlockchainBackend> Validation<Block, B> for StatelessValidator {
 /// next block on the blockchain.
 pub struct FullConsensusValidator<B: BlockchainBackend> {
     rules: ConsensusManager<B>,
-    factories: CryptoFactories,
     db: BlockchainDatabase<B>,
 }
 
 impl<B: BlockchainBackend> FullConsensusValidator<B>
 where B: BlockchainBackend
 {
-    pub fn new(rules: ConsensusManager<B>, factories: CryptoFactories, db: BlockchainDatabase<B>) -> Self {
-        Self { rules, factories, db }
+    pub fn new(rules: ConsensusManager<B>, db: BlockchainDatabase<B>) -> Self {
+        Self { rules, db }
     }
 
     fn db(&self) -> Result<BlockchainDatabase<B>, ValidationError> {
@@ -97,7 +96,7 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator<B> {
         check_coinbase_output(block, &self.rules.consensus_constants())?;
         check_cut_through(block)?;
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
-        check_accounting_balance(block, self.rules.clone(), &self.factories)?;
+        check_accounting_balance(block, self.rules.clone())?;
         check_inputs_are_utxos(block, self.db()?)?;
         check_timestamp_ftl(&block.header, &self.rules)?;
         check_median_timestamp_at_chain_tip(&block.header, self.db()?, self.rules.clone())?;
@@ -110,14 +109,13 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator<B> {
 fn check_accounting_balance<B: BlockchainBackend>(
     block: &Block,
     rules: ConsensusManager<B>,
-    factories: &CryptoFactories,
 ) -> Result<(), ValidationError>
 {
     let offset = &block.header.total_kernel_offset;
     let total_coinbase = rules.calculate_coinbase_and_fees(block);
     block
         .body
-        .validate_internal_consistency(&offset, total_coinbase, factories)
+        .validate_internal_consistency(&offset, total_coinbase, &rules.factories())
         .map_err(ValidationError::TransactionError)
 }
 

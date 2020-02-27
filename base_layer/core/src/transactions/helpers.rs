@@ -143,8 +143,9 @@ pub fn create_random_signature_from_s_key(
 #[macro_export]
 macro_rules! tx {
   ($amount:expr, fee: $fee:expr, lock: $lock:expr, inputs: $n_in:expr, maturity: $mat:expr, outputs: $n_out:expr) => {{
-    use $crate::transactions::helpers::create_tx;
-    create_tx($amount, $fee, $lock, $n_in, $mat, $n_out)
+    use $crate::transactions::{helpers::create_tx, types::CryptoFactories};
+    let factories = CryptoFactories::default();
+    create_tx($amount, $fee, $lock, $n_in, $mat, $n_out, &factories)
   }};
 
   ($amount:expr, fee: $fee:expr, lock: $lock:expr, inputs: $n_in:expr, outputs: $n_out:expr) => {
@@ -239,9 +240,9 @@ pub fn create_tx(
     input_count: u64,
     input_maturity: u64,
     output_count: u64,
+    factories : &CryptoFactories,
 ) -> (Transaction, Vec<UnblindedOutput>, Vec<UnblindedOutput>)
 {
-    let factories = CryptoFactories::default();
     let test_params = TestParams::new();
     let mut stx_builder: SenderTransactionInitializer = SenderTransactionProtocol::builder(0);
     stx_builder
@@ -295,8 +296,7 @@ pub fn create_tx(
 /// You only need to provide the unblinded outputs to spend. This function will calculate the commitment for you.
 /// This is obviously less efficient, but is offered as a convenience.
 /// The output features will be applied to every output
-pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutput>, TestParams) {
-    let factories = CryptoFactories::default();
+pub fn spend_utxos(schema: TransactionSchema, factories: &CryptoFactories) -> (Transaction, Vec<UnblindedOutput>, TestParams) {
     let test_params = TestParams::new();
     let mut stx_builder = SenderTransactionProtocol::builder(0);
     stx_builder
@@ -362,11 +362,11 @@ pub fn create_utxo(
     (utxo, keys.k)
 }
 
-pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction>>, Vec<UnblindedOutput>) {
+pub fn schema_to_transaction(txns: &[TransactionSchema],factories: &CryptoFactories) -> (Vec<Arc<Transaction>>, Vec<UnblindedOutput>) {
     let mut tx = Vec::new();
     let mut utxos = Vec::new();
     txns.iter().for_each(|schema| {
-        let (txn, mut output, _) = spend_utxos(schema.clone());
+        let (txn, mut output, _) = spend_utxos(schema.clone(), factories);
         tx.push(Arc::new(txn));
         utxos.append(&mut output);
     });

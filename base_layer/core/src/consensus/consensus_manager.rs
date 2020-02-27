@@ -34,6 +34,7 @@ use crate::{
     consensus::{emission::EmissionSchedule, network::Network, ConsensusConstants},
     proof_of_work::{DiffAdjManager, DiffAdjManagerError, Difficulty, DifficultyAdjustmentError, PowAlgorithm},
     transactions::tari_amount::MicroTari,
+    transactions::types::CryptoFactories,
 };
 use derive_error::Error;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
@@ -179,6 +180,11 @@ where B: BlockchainBackend
     pub fn network(&self) -> Network {
         self.inner.network
     }
+
+    /// This function will provide access to the crypto factores
+    pub fn factories(&self)-> CryptoFactories{
+        self.inner.factories.clone()
+    }
 }
 
 impl<B> Clone for ConsensusManager<B>
@@ -206,6 +212,8 @@ where B: BlockchainBackend
     pub emission: EmissionSchedule,
     /// This allows the user to set a custom Genesis block
     pub gen_block: Option<Block>,
+    /// factories controlling commitments and rangeproofs
+    pub factories: CryptoFactories
 }
 
 /// Constructor for the consensus manager struct
@@ -222,6 +230,8 @@ where B: BlockchainBackend
     pub emission: Option<EmissionSchedule>,
     /// This allows the user to set a custom Genesis block
     pub gen_block: Option<Block>,
+    /// factories controlling commitments and rangeproofs
+    pub factories: Option<CryptoFactories>,
 }
 
 impl<B> ConsensusManagerBuilder<B>
@@ -235,7 +245,14 @@ where B: BlockchainBackend
             network,
             emission: None,
             gen_block: None,
+            factories : None,
         }
+    }
+
+    /// Adds a crypto factories
+    pub fn with_crypto_factories(mut self, factories: CryptoFactories) -> Self {
+        self.factories = Some(factories);
+        self
     }
 
     /// Adds in a custom consensus constants to be used
@@ -272,12 +289,14 @@ where B: BlockchainBackend
             consensus_constants.emission_decay,
             consensus_constants.emission_tail,
         ));
+        let factories = self.factories.unwrap_or(CryptoFactories::default());
         let inner = ConsensusManagerInner {
             diff_adj_manager: RwLock::new(self.diff_adj_manager),
             consensus_constants,
             network: self.network,
             emission,
             gen_block: self.gen_block,
+            factories,
         };
         ConsensusManager { inner: Arc::new(inner) }
     }

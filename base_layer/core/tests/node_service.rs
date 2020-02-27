@@ -69,13 +69,14 @@ use tokio::runtime::Runtime;
 #[test]
 fn request_response_get_metadata() {
     let mut runtime = Runtime::new().unwrap();
-    let factories = CryptoFactories::default();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
+    let factories = CryptoFactories::default();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
+        .with_factories(factories)
         .with_block(block0.clone())
         .build();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
@@ -188,13 +189,12 @@ fn request_and_response_fetch_kernels() {
 #[test]
 fn request_and_response_fetch_utxos() {
     let mut runtime = Runtime::new().unwrap();
-    let factories = CryptoFactories::default();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut alice_node, bob_node, carol_node, _consensus_manager) =
+    let (mut alice_node, bob_node, carol_node, consensus_manager) =
         create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
 
-    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
-    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
+    let (utxo1, _) = create_utxo(MicroTari(10_000), consensus_manager.factories(), None);
+    let (utxo2, _) = create_utxo(MicroTari(15_000), consensus_manager.factories(), None);
     let hash1 = utxo1.hash();
     let hash2 = utxo2.hash();
 
@@ -233,6 +233,7 @@ fn request_and_response_fetch_blocks() {
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
+        .with_factories(factories)
         .with_block(block0.clone())
         .build();
     let (mut alice_node, mut bob_node, carol_node, _) = create_network_with_3_base_nodes_with_config(
@@ -303,6 +304,7 @@ fn propagate_and_forward_valid_block() {
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let rules = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
+        .with_factories(factories)
         .with_block(block0.clone())
         .build();
     let (mut alice_node, rules) = BaseNodeBuilder::new(network)
@@ -395,6 +397,7 @@ fn propagate_and_forward_invalid_block() {
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let rules = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
+        .with_factories(factories)
         .with_block(block0.clone())
         .build();
     let (mut alice_node, rules) = BaseNodeBuilder::new(network)
@@ -521,6 +524,7 @@ fn local_get_new_block_template_and_get_new_block() {
     let (block0, outputs) = create_genesis_block_with_utxos(&factories, &[T, T], &consensus_constants);
     let rules = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
+        .with_factories(factories)
         .with_block(block0)
         .build();
     let (mut node, _rules) = BaseNodeBuilder::new(network)

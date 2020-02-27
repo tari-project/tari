@@ -33,7 +33,7 @@ use crate::{
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         transaction::UnblindedOutput,
-        types::{CryptoFactories, PrivateKey},
+        types::{PrivateKey},
     },
 };
 use core::sync::atomic::AtomicBool;
@@ -238,8 +238,7 @@ impl<B: BlockchainBackend> Miner<B> {
     fn add_coinbase(&self, block: &mut NewBlockTemplate) -> Result<UnblindedOutput, MinerError> {
         let fees = block.body.get_total_fee();
         let (key, r) = self.get_spending_key()?;
-        let factories = CryptoFactories::default();
-        let builder = CoinbaseBuilder::new(factories);
+        let builder = CoinbaseBuilder::new();
         let builder = builder
             .with_block_height(block.header.height)
             .with_fees(fees)

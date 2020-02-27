@@ -35,7 +35,7 @@ use crate::{
             UnblindedOutput,
         },
         transaction_protocol::{build_challenge, TransactionMetadata},
-        types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, Signature},
+        types::{BlindingFactor, PrivateKey, PublicKey, Signature},
     },
 };
 use derive_error::Error;
@@ -59,7 +59,6 @@ pub enum CoinbaseBuildError {
 }
 
 pub struct CoinbaseBuilder {
-    factories: CryptoFactories,
     block_height: Option<u64>,
     fees: Option<MicroTari>,
     spend_key: Option<PrivateKey>,
@@ -69,9 +68,8 @@ pub struct CoinbaseBuilder {
 impl CoinbaseBuilder {
     /// Start building a new Coinbase transaction. From here you can build the transaction piecemeal with the builder
     /// methods, or pass in a block to `using_block` to determine most of the coinbase parameters automatically.
-    pub fn new(factories: CryptoFactories) -> Self {
+    pub fn new() -> Self {
         CoinbaseBuilder {
-            factories,
             block_height: None,
             fees: None,
             spend_key: None,
@@ -126,7 +124,7 @@ impl CoinbaseBuilder {
         let key = self.spend_key.ok_or_else(|| CoinbaseBuildError::MissingSpendKey)?;
         let output_features =
             OutputFeatures::create_coinbase(height + rules.consensus_constants().coinbase_lock_height());
-        let excess = self.factories.commitment.commit_value(&key, 0);
+        let excess = rules.factories().commitment.commit_value(&key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
         let metadata = TransactionMetadata::default();
         let challenge = build_challenge(&public_nonce, &metadata);
@@ -134,7 +132,7 @@ impl CoinbaseBuilder {
             .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
         let unblinded_output = UnblindedOutput::new(reward, key, Some(output_features));
         let output = unblinded_output
-            .as_transaction_output(&self.factories)
+            .as_transaction_output(&rules.factories())
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
         let kernel = KernelBuilder::new()
             .with_fee(0 * uT)
@@ -152,7 +150,7 @@ impl CoinbaseBuilder {
             .with_reward(reward)
             .with_kernel(kernel);
         let tx = builder
-            .build(&self.factories)
+            .build(&rules.factories())
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
         Ok((tx, unblinded_output))
     }
@@ -168,22 +166,20 @@ mod test {
             helpers::TestParams,
             tari_amount::uT,
             transaction::{OutputFlags, UnblindedOutput},
-            types::CryptoFactories,
         },
     };
     use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
-    fn get_builder() -> (CoinbaseBuilder, ConsensusManager<MockBackend>, CryptoFactories) {
+    fn get_builder() -> (CoinbaseBuilder, ConsensusManager<MockBackend>) {
         let network = Network::LocalNet;
         let rules = ConsensusManagerBuilder::new(network)
             .build();
-        let factories = CryptoFactories::default();
-        (CoinbaseBuilder::new(factories.clone()), rules, factories)
+        (CoinbaseBuilder::new(), rules)
     }
 
     #[test]
     fn missing_height() {
-        let (builder, rules, _) = get_builder();
+        let (builder, rules) = get_builder();
         assert_eq!(
             builder.build(rules).unwrap_err(),
             CoinbaseBuildError::MissingBlockHeight
@@ -192,7 +188,7 @@ mod test {
 
     #[test]
     fn missing_fees() {
-        let (builder, rules, _) = get_builder();
+        let (builder, rules) = get_builder();
         let builder = builder.with_block_height(42);
         assert_eq!(builder.build(rules).unwrap_err(), CoinbaseBuildError::MissingFees);
     }
@@ -200,7 +196,7 @@ mod test {
     #[test]
     fn missing_spend_key() {
         let p = TestParams::new();
-        let (builder, rules, _) = get_builder();
+        let (builder, rules) = get_builder();
         let builder = builder.with_block_height(42).with_fees(0 * uT).with_nonce(p.nonce);
         assert_eq!(builder.build(rules).unwrap_err(), CoinbaseBuildError::MissingSpendKey);
     }
@@ -208,7 +204,7 @@ mod test {
     #[test]
     fn valid_coinbase() {
         let p = TestParams::new();
-        let (builder, rules, factories) = get_builder();
+        let (builder, rules) = get_builder();
         let builder = builder
             .with_block_height(42)
             .with_fees(145 * uT)
@@ -219,10 +215,10 @@ mod test {
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
         let unblinded_test = UnblindedOutput::new(block_reward, p.spend_key.clone(), Some(utxo.features.clone()));
         assert_eq!(unblinded_output, unblinded_test);
-        assert!(factories
+        assert!(rules.factories()
             .commitment
             .open_value(&p.spend_key, block_reward.into(), utxo.commitment()));
-        assert!(utxo.verify_range_proof(&factories.range_proof).unwrap());
+        assert!(utxo.verify_range_proof(&rules.factories().range_proof).unwrap());
         assert!(utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT));
     }
 }

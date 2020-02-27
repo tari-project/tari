@@ -68,6 +68,7 @@ fn test_listening_lagging() {
     let (mut prev_block, _) = create_genesis_block(&factories, &constants_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(constants_constants)
+        .with_factories(factories)
         .with_block(prev_block.clone())
         .build();
     let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
@@ -128,6 +129,7 @@ fn test_event_channel() {
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
         .with_block(prev_block.clone())
+        .with_factories(factories)
         .build();
     let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
@@ -222,6 +224,7 @@ fn test_block_sync() {
     let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
+        .with_factories(factories)
         .with_block(prev_block.clone())
         .build();
     let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
@@ -274,6 +277,7 @@ fn test_lagging_block_sync() {
     let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
+        .with_factories(factories)
         .with_block(prev_block.clone())
         .build();
     let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
@@ -339,6 +343,7 @@ fn test_block_sync_recovery() {
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
         .with_block(prev_block.clone())
+        .with_factories(factories)
         .build();
     let (alice_node, bob_node, carol_node, _) = create_network_with_3_base_nodes_with_config(
         &mut runtime,

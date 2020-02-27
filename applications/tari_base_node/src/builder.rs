@@ -66,7 +66,7 @@ use tari_core::{
     transactions::{
         crypto::keys::SecretKey as SK,
         transaction::UnblindedOutput,
-        types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
+        types::{HashDigest, PrivateKey, PublicKey},
     },
     validation::{
         block_validators::{FullConsensusValidator, StatelessValidator},
@@ -246,7 +246,6 @@ pub fn configure_and_initialize_node(
 ) -> Result<(CommsNode, NodeType, MinerType, BaseNodeContext), String>
 {
     let node_identity = Arc::new(node_identity);
-    let factories = CryptoFactories::default();
     let peers = assign_peers(&config.peer_seeds);
     let executor = rt.handle().clone();
     let network = match &config.network {
@@ -492,7 +491,6 @@ fn setup_comms_services<T>(
     db: BlockchainDatabase<T>,
     mempool: Mempool<T>,
     consensus_manager: ConsensusManager<T>,
-    factories: CryptoFactories,
 ) -> (CommsNode, Arc<ServiceHandles>)
 where
     T: BlockchainBackend + 'static,

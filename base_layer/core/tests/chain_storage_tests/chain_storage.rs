@@ -46,7 +46,7 @@ use tari_core::{
     transactions::{
         helpers::{create_test_kernel, create_utxo, spend_utxos},
         tari_amount::{uT, MicroTari, T},
-        types::{CryptoFactories, HashDigest},
+        types::{HashDigest},
     },
     tx,
     txn_schema,
@@ -122,12 +122,11 @@ fn insert_and_fetch_header() {
 
 #[test]
 fn insert_and_fetch_utxo() {
-    let factories = CryptoFactories::default();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .build();
     let store = create_mem_db(consensus_manager.clone());
-    let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (utxo, _) = create_utxo(MicroTari(10_000), &consensus_manager.factories(), None);
     let hash = utxo.hash();
     assert_eq!(store.is_utxo(hash.clone()).unwrap(), false);
     let mut txn = DbTransaction::new();
@@ -196,12 +195,11 @@ fn utxo_and_rp_merkle_root() {
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .build();
     let store = create_mem_db(consensus_manager.clone());
-    let factories = CryptoFactories::default();
     let block0 = store.fetch_block(0).unwrap().block().clone();
 
     let utxo0 = block0.body.outputs()[0].clone();
-    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
-    let (utxo2, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &consensus_manager.factories(), None);
+    let (utxo2, _) = create_utxo(MicroTari(10_000), &consensus_manager.factories(), None);
     let hash0 = utxo0.hash();
     let hash1 = utxo1.hash();
     let hash2 = utxo2.hash();
@@ -260,10 +258,9 @@ fn utxo_and_rp_future_merkle_root() {
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .build();
     let store = create_mem_db(consensus_manager.clone());
-    let factories = CryptoFactories::default();
 
-    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
-    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &consensus_manager.factories(), None);
+    let (utxo2, _) = create_utxo(MicroTari(15_000), &consensus_manager.factories(), None);
     let utxo_hash2 = utxo2.hash();
     let rp_hash2 = utxo2.proof.hash();
 
@@ -330,11 +327,10 @@ fn utxo_and_rp_mmr_proof() {
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .build();
     let store = create_mem_db(consensus_manager.clone());
-    let factories = CryptoFactories::default();
 
-    let (utxo1, _) = create_utxo(MicroTari(5_000), &factories, None);
-    let (utxo2, _) = create_utxo(MicroTari(10_000), &factories, None);
-    let (utxo3, _) = create_utxo(MicroTari(15_000), &factories, None);
+    let (utxo1, _) = create_utxo(MicroTari(5_000), &consensus_manager.factories(), None);
+    let (utxo2, _) = create_utxo(MicroTari(10_000), &consensus_manager.factories(), None);
+    let (utxo3, _) = create_utxo(MicroTari(15_000), &consensus_manager.factories(), None);
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo1.clone(), true);
     txn.insert_utxo(utxo2.clone(), true);
@@ -805,16 +801,15 @@ fn total_kernel_offset() {
 
 #[test]
 fn total_utxo_commitment() {
-    let factories = CryptoFactories::default();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .build();
     let store = create_mem_db(consensus_manager.clone());
     let block0 = store.fetch_block(0).unwrap().block().clone();
 
-    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
-    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
-    let (utxo3, _) = create_utxo(MicroTari(20_000), &factories, None);
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &consensus_manager.factories(), None);
+    let (utxo2, _) = create_utxo(MicroTari(15_000), &consensus_manager.factories(), None);
+    let (utxo3, _) = create_utxo(MicroTari(20_000), &consensus_manager.factories(), None);
 
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo1.clone(), true);

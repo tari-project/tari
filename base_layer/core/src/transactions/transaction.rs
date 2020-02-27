@@ -909,25 +909,25 @@ mod test {
 
     #[test]
     fn test_validate_internal_consistency() {
-        let (tx, _, _) = create_tx(5000.into(), 15.into(), 1, 2, 1, 4);
-
         let factories = CryptoFactories::default();
+        let (tx, _, _) = create_tx(5000.into(), 15.into(), 1, 2, 1, 4, &factories);
+
         assert!(tx.validate_internal_consistency(&factories, None).is_ok());
     }
 
     #[test]
     fn check_cut_through_() {
-        let (tx, _, outputs) = create_tx(50000000.into(), 15.into(), 1, 2, 1, 2);
+        let factories = CryptoFactories::default();
+        let (tx, _, outputs) = create_tx(50000000.into(), 15.into(), 1, 2, 1, 2, &factories);
 
         assert_eq!(tx.body.inputs().len(), 2);
         assert_eq!(tx.body.outputs().len(), 2);
         assert_eq!(tx.body.kernels().len(), 1);
 
-        let factories = CryptoFactories::default();
         assert!(tx.validate_internal_consistency(&factories, None).is_ok());
 
         let schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T, 2 * T]);
-        let (tx2, _outputs, _) = spend_utxos(schema);
+        let (tx2, _outputs, _) = spend_utxos(schema, &factories);
 
         assert_eq!(tx2.body.inputs().len(), 1);
         assert_eq!(tx2.body.outputs().len(), 3);

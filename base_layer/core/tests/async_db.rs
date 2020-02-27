@@ -179,7 +179,7 @@ fn async_add_new_block() {
     let network = Network::LocalNet;
     let (db, blocks, outputs, consensus_manager) = create_new_blockchain(network);
     let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![20 * T, 20 * T])];
-    let txns = schema_to_transaction(&schema)
+    let txns = schema_to_transaction(&schema, &consensus_manager.factories())
         .0
         .iter()
         .map(|t| t.deref().clone())
