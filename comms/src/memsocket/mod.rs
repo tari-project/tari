@@ -535,8 +535,7 @@ mod test {
 
     #[test]
     fn listen_on_port_zero() -> Result<()> {
-        let port = acquire_next_memsocket_port().into();
-        let mut listener = MemoryListener::bind(port)?;
+        let mut listener = MemoryListener::bind(0)?;
         let listener_addr = listener.local_addr();
 
         let mut dialer = MemorySocket::connect(listener_addr)?;
