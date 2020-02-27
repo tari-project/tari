@@ -22,6 +22,7 @@
 
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
+    consensus::ConsensusConstants,
     proof_of_work::{
         diff_adj_manager::{diff_adj_storage::DiffAdjStorage, error::DiffAdjManagerError},
         Difficulty,
@@ -43,9 +44,13 @@ impl<T> DiffAdjManager<T>
 where T: BlockchainBackend
 {
     /// Constructs a new DiffAdjManager with access to the blockchain db.
-    pub fn new(blockchain_db: BlockchainDatabase<T>) -> Result<Self, DiffAdjManagerError> {
+    pub fn new(
+        blockchain_db: BlockchainDatabase<T>,
+        consensus_constants: &ConsensusConstants,
+    ) -> Result<Self, DiffAdjManagerError>
+    {
         Ok(Self {
-            diff_adj_storage: Arc::new(RwLock::new(DiffAdjStorage::new(blockchain_db))),
+            diff_adj_storage: Arc::new(RwLock::new(DiffAdjStorage::new(blockchain_db, consensus_constants))),
         })
     }
 

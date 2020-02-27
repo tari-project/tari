@@ -24,7 +24,8 @@ use croaring::Bitmap;
 use tari_core::{
     blocks::{Block, BlockBuilder, BlockHeader, NewBlockTemplate},
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, MemoryDatabase},
-    consensus::emission::EmissionSchedule,
+    consensus::{ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, Network},
+    helpers::MockBackend,
     proof_of_work::Difficulty,
     transactions::{
         helpers::{
@@ -53,6 +54,8 @@ use tari_crypto::{
 };
 use tari_mmr::MutableMmr;
 
+const MAINNET: Network = Network::MainNet;
+
 fn create_coinbase(
     factories: &CryptoFactories,
     value: MicroTari,
@@ -77,13 +80,13 @@ fn create_coinbase(
 fn genesis_template(
     factories: &CryptoFactories,
     coinbase_value: MicroTari,
-    maturity_height: u64,
+    consensus_constants: &ConsensusConstants,
 ) -> (NewBlockTemplate, UnblindedOutput)
 {
     let header = BlockHeader::new(0);
-    let (utxo, kernel, output) = create_coinbase(factories, coinbase_value, maturity_height);
+    let (utxo, kernel, output) = create_coinbase(factories, coinbase_value, consensus_constants.coinbase_lock_height());
     let block = NewBlockTemplate::from(
-        BlockBuilder::new()
+        BlockBuilder::new(consensus_constants)
             .with_header(header)
             .with_coinbase_utxo(utxo, kernel)
             .build(),
@@ -93,10 +96,11 @@ fn genesis_template(
 
 // This is a helper function to generate and print out a block that can be used as the genesis block.
 pub fn create_act_gen_block() {
+    let network = MAINNET;
+    let consensus_manager: ConsensusManager<MockBackend> = ConsensusManagerBuilder::new(network).build();
     let factories = CryptoFactories::default();
     let mut header = BlockHeader::new(0);
-    let emission_schedule = EmissionSchedule::new(10_000_000.into(), 0.999, 100.into());
-    let value = emission_schedule.supply_at_block(0);
+    let value = consensus_manager.emission_schedule().supply_at_block(0);
     let (mut utxo, key) = create_utxo(value, &factories, None);
     utxo.features = OutputFeatures::create_coinbase(1);
     let (pk, sig) = create_random_signature_from_s_key(key.clone(), 0.into(), 0);
@@ -114,7 +118,7 @@ pub fn create_act_gen_block() {
     header.kernel_mr = kern;
     header.output_mr = utxo_hash;
     header.range_proof_mr = rp;
-    let block = BlockBuilder::new()
+    let block = BlockBuilder::new(&consensus_manager.consensus_constants())
         .with_header(header)
         .with_coinbase_utxo(utxo, kernel)
         .build();
@@ -128,8 +132,12 @@ pub fn create_act_gen_block() {
 ///
 /// Right now this function does not use consensus rules to generate the block. The coinbase output has an arbitrary
 /// value, and the maturity is zero.
-pub fn create_genesis_block(factories: &CryptoFactories) -> (Block, UnblindedOutput) {
-    create_genesis_block_with_coinbase_value(factories, 100_000_000.into(), 100)
+pub fn create_genesis_block(
+    factories: &CryptoFactories,
+    consensus_constants: &ConsensusConstants,
+) -> (Block, UnblindedOutput)
+{
+    create_genesis_block_with_coinbase_value(factories, consensus_constants.emission_amounts().0, consensus_constants)
 }
 
 // Calculate the MMR Merkle roots for the genesis block template and update the header.
@@ -152,10 +160,10 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
 pub fn create_genesis_block_with_coinbase_value(
     factories: &CryptoFactories,
     coinbase_value: MicroTari,
-    maturity_height: u64,
+    consensus_constants: &ConsensusConstants,
 ) -> (Block, UnblindedOutput)
 {
-    let (template, output) = genesis_template(&factories, coinbase_value, maturity_height);
+    let (template, output) = genesis_template(&factories, coinbase_value, consensus_constants);
     let mut block = update_genesis_block_mmr_roots(template).unwrap();
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
     (block, output)
@@ -166,9 +174,10 @@ pub fn create_genesis_block_with_coinbase_value(
 pub fn create_genesis_block_with_utxos(
     factories: &CryptoFactories,
     values: &[MicroTari],
+    consensus_constants: &ConsensusConstants,
 ) -> (Block, Vec<UnblindedOutput>)
 {
-    let (mut template, coinbase) = genesis_template(&factories, 100_000_000.into(), 100);
+    let (mut template, coinbase) = genesis_template(&factories, 100_000_000.into(), consensus_constants);
     let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
         let (t, k) = create_utxo(*v, factories, None);
         template.body.add_output(t);
@@ -181,10 +190,15 @@ pub fn create_genesis_block_with_utxos(
 }
 
 /// Create a new block using the provided transactions that adds to the blockchain given in `prev_block`.
-pub fn chain_block(prev_block: &Block, transactions: Vec<Transaction>) -> NewBlockTemplate {
+pub fn chain_block(
+    prev_block: &Block,
+    transactions: Vec<Transaction>,
+    consensus_constants: &ConsensusConstants,
+) -> NewBlockTemplate
+{
     let header = BlockHeader::from_previous(&prev_block.header);
     NewBlockTemplate::from(
-        BlockBuilder::new()
+        BlockBuilder::new(consensus_constants)
             .with_header(header)
             .with_transactions(transactions)
             .build(),
@@ -197,11 +211,12 @@ pub fn chain_block_with_coinbase(
     transactions: Vec<Transaction>,
     coinbase_utxo: TransactionOutput,
     coinbase_kernel: TransactionKernel,
+    consensus_constants: &ConsensusConstants,
 ) -> NewBlockTemplate
 {
     let header = BlockHeader::from_previous(&prev_block.header);
     NewBlockTemplate::from(
-        BlockBuilder::new()
+        BlockBuilder::new(consensus_constants)
             .with_header(header)
             .with_transactions(transactions)
             .with_coinbase_utxo(coinbase_utxo, coinbase_kernel)
@@ -215,9 +230,10 @@ pub fn append_block<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     prev_block: &Block,
     txns: Vec<Transaction>,
+    consensus_constants: &ConsensusConstants,
 ) -> Result<Block, ChainStorageError>
 {
-    let template = chain_block(prev_block, txns);
+    let template = chain_block(prev_block, txns, consensus_constants);
     let block = db.calculate_mmr_roots(template)?;
     db.add_block(block.clone())?;
     Ok(block)
@@ -230,6 +246,7 @@ pub fn generate_new_block(
     blocks: &mut Vec<Block>,
     outputs: &mut Vec<Vec<UnblindedOutput>>,
     schemas: Vec<TransactionSchema>,
+    consensus_constants: &ConsensusConstants,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let mut txns = Vec::new();
@@ -242,7 +259,7 @@ pub fn generate_new_block(
         keys.push(param);
     }
     outputs.push(block_utxos);
-    generate_block(db, blocks, txns)
+    generate_block(db, blocks, txns, consensus_constants)
 }
 
 pub fn generate_new_block_with_achieved_difficulty(
@@ -251,6 +268,7 @@ pub fn generate_new_block_with_achieved_difficulty(
     outputs: &mut Vec<Vec<UnblindedOutput>>,
     schemas: Vec<TransactionSchema>,
     achieved_difficulty: Difficulty,
+    consensus_constants: &ConsensusConstants,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let mut txns = Vec::new();
@@ -263,7 +281,7 @@ pub fn generate_new_block_with_achieved_difficulty(
         keys.push(param);
     }
     outputs.push(block_utxos);
-    generate_block_with_achieved_difficulty(db, blocks, txns, achieved_difficulty)
+    generate_block_with_achieved_difficulty(db, blocks, txns, achieved_difficulty, consensus_constants)
 }
 
 /// Generate a new block using the given transaction schema and coinbase value and add it to the provided database.
@@ -275,6 +293,7 @@ pub fn generate_new_block_with_coinbase(
     outputs: &mut Vec<Vec<UnblindedOutput>>,
     schemas: Vec<TransactionSchema>,
     coinbase_value: MicroTari,
+    consensus_constants: &ConsensusConstants,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let mut txns = Vec::new();
@@ -290,7 +309,7 @@ pub fn generate_new_block_with_coinbase(
     block_utxos.push(coinbase_output);
 
     outputs.push(block_utxos);
-    generate_block_with_coinbase(db, blocks, txns, coinbase_utxo, coinbase_kernel)
+    generate_block_with_coinbase(db, blocks, txns, coinbase_utxo, coinbase_kernel, consensus_constants)
 }
 
 pub fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_difficulty: Difficulty) {
@@ -307,9 +326,10 @@ pub fn generate_block(
     db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
     blocks: &mut Vec<Block>,
     transactions: Vec<Transaction>,
+    consensus_constants: &ConsensusConstants,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
-    let template = chain_block(&blocks.last().unwrap(), transactions);
+    let template = chain_block(&blocks.last().unwrap(), transactions, consensus_constants);
     let new_block = db.calculate_mmr_roots(template)?;
     let result = db.add_block(new_block.clone());
     if let Ok(BlockAddResult::Ok) = result {
@@ -323,9 +343,10 @@ pub fn generate_block_with_achieved_difficulty(
     blocks: &mut Vec<Block>,
     transactions: Vec<Transaction>,
     achieved_difficulty: Difficulty,
+    consensus_constants: &ConsensusConstants,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
-    let template = chain_block(&blocks.last().unwrap(), transactions);
+    let template = chain_block(&blocks.last().unwrap(), transactions, consensus_constants);
     let mut new_block = db.calculate_mmr_roots(template)?;
     find_header_with_achieved_difficulty(&mut new_block.header, achieved_difficulty);
     let result = db.add_block(new_block.clone());
@@ -343,9 +364,16 @@ pub fn generate_block_with_coinbase(
     transactions: Vec<Transaction>,
     coinbase_utxo: TransactionOutput,
     coinbase_kernel: TransactionKernel,
+    consensus_constants: &ConsensusConstants,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
-    let template = chain_block_with_coinbase(&blocks.last().unwrap(), transactions, coinbase_utxo, coinbase_kernel);
+    let template = chain_block_with_coinbase(
+        &blocks.last().unwrap(),
+        transactions,
+        coinbase_utxo,
+        coinbase_kernel,
+        consensus_constants,
+    );
     let new_block = db.calculate_mmr_roots(template)?;
     let result = db.add_block(new_block.clone());
     if let Ok(BlockAddResult::Ok) = result {

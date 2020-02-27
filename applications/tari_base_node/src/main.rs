@@ -149,7 +149,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     // lets run the miner
     let miner_handle = if node_config.enable_mining {
         let mut rx = miner.get_utxo_receiver_channel();
-        let rx_events = node.get_state_change_event();
+        let mut rx_events = node.get_state_change_event_stream();
         miner.subscribe_to_state_change(rx_events);
         let mut wallet_output_handle = base_node_context.wallet_output_service.clone();
         rt.spawn(async move {

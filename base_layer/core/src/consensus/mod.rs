@@ -26,6 +26,6 @@ mod network;
 
 pub mod emission;
 
-pub use consensus_constants::ConsensusConstants;
-pub use consensus_manager::{ConsensusManager, ConsensusManagerError};
+pub use consensus_constants::{ConsensusConstants, ConsensusConstantsBuilder};
+pub use consensus_manager::{ConsensusManager, ConsensusManagerBuilder, ConsensusManagerError};
 pub use network::Network;

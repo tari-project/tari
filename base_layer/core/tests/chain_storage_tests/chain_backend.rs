@@ -35,6 +35,7 @@ use tari_core::{
         MetadataValue,
         MmrTree,
     },
+    consensus::{ConsensusConstants, Network},
     helpers::create_orphan_block,
     transactions::{
         helpers::{create_test_kernel, create_utxo},
@@ -158,12 +159,12 @@ fn lmdb_insert_contains_delete_and_fetch_kernel() {
     insert_contains_delete_and_fetch_kernel(db);
 }
 
-fn insert_contains_delete_and_fetch_orphan<T: BlockchainBackend>(db: T) {
+fn insert_contains_delete_and_fetch_orphan<T: BlockchainBackend>(db: T, consensus_constants: &ConsensusConstants) {
     let txs = vec![
         (tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0,
         (tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0,
     ];
-    let orphan = create_orphan_block(10, txs);
+    let orphan = create_orphan_block(10, txs, consensus_constants);
     let hash = orphan.hash();
     assert_eq!(db.contains(&DbKey::OrphanBlock(hash.clone())), Ok(false));
 
@@ -186,14 +187,18 @@ fn insert_contains_delete_and_fetch_orphan<T: BlockchainBackend>(db: T) {
 
 #[test]
 fn memory_insert_contains_delete_and_fetch_orphan() {
+    let network = Network::LocalNet;
+    let consensus_constants = network.create_consensus_constants();
     let db = MemoryDatabase::<HashDigest>::default();
-    insert_contains_delete_and_fetch_orphan(db);
+    insert_contains_delete_and_fetch_orphan(db, &consensus_constants);
 }
 
 #[test]
 fn lmdb_insert_contains_delete_and_fetch_orphan() {
+    let network = Network::LocalNet;
+    let consensus_constants = network.create_consensus_constants();
     let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    insert_contains_delete_and_fetch_orphan(db);
+    insert_contains_delete_and_fetch_orphan(db, &consensus_constants);
 }
 
 fn spend_utxo_and_unspend_stxo<T: BlockchainBackend>(db: T) {
@@ -650,10 +655,22 @@ fn lmdb_commit_block_and_create_fetch_checkpoint_and_rewind_mmr() {
 
 // TODO: Test Needed: fetch_mmr_node
 
-fn for_each_orphan<T: BlockchainBackend>(db: T) {
-    let orphan1 = create_orphan_block(5, vec![(tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0]);
-    let orphan2 = create_orphan_block(10, vec![(tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0]);
-    let orphan3 = create_orphan_block(15, vec![(tx!(3000.into(), fee: 40.into(), inputs: 1, outputs: 2)).0]);
+fn for_each_orphan<T: BlockchainBackend>(db: T, consensus_constants: &ConsensusConstants) {
+    let orphan1 = create_orphan_block(
+        5,
+        vec![(tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0],
+        consensus_constants,
+    );
+    let orphan2 = create_orphan_block(
+        10,
+        vec![(tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0],
+        consensus_constants,
+    );
+    let orphan3 = create_orphan_block(
+        15,
+        vec![(tx!(3000.into(), fee: 40.into(), inputs: 1, outputs: 2)).0],
+        consensus_constants,
+    );
     let hash1 = orphan1.hash();
     let hash2 = orphan2.hash();
     let hash3 = orphan3.hash();
@@ -687,14 +704,18 @@ fn for_each_orphan<T: BlockchainBackend>(db: T) {
 
 #[test]
 fn memory_for_each_orphan() {
+    let network = Network::LocalNet;
+    let consensus_constants = network.create_consensus_constants();
     let db = MemoryDatabase::<HashDigest>::default();
-    for_each_orphan(db);
+    for_each_orphan(db, &consensus_constants);
 }
 
 #[test]
 fn lmdb_for_each_orphan() {
+    let network = Network::LocalNet;
+    let consensus_constants = network.create_consensus_constants();
     let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    for_each_orphan(db);
+    for_each_orphan(db, &consensus_constants);
 }
 
 fn for_each_kernel<T: BlockchainBackend>(db: T) {
@@ -842,9 +863,11 @@ fn lmdb_for_each_utxo() {
 #[test]
 fn lmdb_backend_restore() {
     let factories = CryptoFactories::default();
+    let network = Network::LocalNet;
+    let consensus_constants = network.create_consensus_constants();
 
     let txs = vec![(tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0];
-    let orphan = create_orphan_block(10, txs);
+    let orphan = create_orphan_block(10, txs, &consensus_constants);
     let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
     let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
     let kernel = create_test_kernel(100.into(), 0);

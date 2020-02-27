@@ -28,7 +28,7 @@ mod mock_backend;
 use crate::{
     blocks::{Block, BlockBuilder, BlockHeader},
     chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
-    consensus::{ConsensusConstants, ConsensusManager, Network},
+    consensus::{ConsensusConstants, ConsensusManager},
     transactions::{transaction::Transaction, types::HashDigest},
     validation::mocks::MockValidator,
 };
@@ -37,20 +37,26 @@ pub use mock_backend::MockBackend;
 
 /// Create a partially constructed block using the provided set of transactions
 /// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument
-pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>) -> Block {
+pub fn create_orphan_block(
+    block_height: u64,
+    transactions: Vec<Transaction>,
+    consensus_constants: &ConsensusConstants,
+) -> Block
+{
     let mut header = BlockHeader::new(0);
     header.height = block_height;
-    BlockBuilder::new()
+    BlockBuilder::new(consensus_constants)
         .with_header(header)
         .with_transactions(transactions)
         .build()
 }
 
-pub fn create_mem_db(network: Network) -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
+pub fn create_mem_db(
+    consensus_manager: ConsensusManager<MemoryDatabase<HashDigest>>,
+) -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
     let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
-    let rules = ConsensusManager::new(None, ConsensusConstants::current_with_network(network));
     let db = MemoryDatabase::<HashDigest>::default();
-    let mut db = BlockchainDatabase::new(db, &rules).unwrap();
+    let mut db = BlockchainDatabase::new(db, consensus_manager).unwrap();
     db.set_validators(validators);
     db
 }

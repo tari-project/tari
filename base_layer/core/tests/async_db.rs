@@ -32,7 +32,8 @@ use std::ops::Deref;
 use tari_core::{
     blocks::Block,
     chain_storage::{async_db, BlockAddResult, MmrTree},
-    helpers::create_orphan_block,
+    consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
+    helpers::{create_orphan_block, MockBackend},
     transactions::{
         helpers::schema_to_transaction,
         tari_amount::T,
@@ -60,7 +61,7 @@ fn find_utxo(output: &UnblindedOutput, block: &Block, factory: &CommitmentFactor
 
 #[test]
 fn fetch_async_kernel() {
-    let (db, blocks, _) = create_blockchain_db_no_cut_through();
+    let (db, blocks, _, _) = create_blockchain_db_no_cut_through();
     test_async(|rt| {
         for block in blocks.into_iter() {
             block.body.kernels().into_iter().for_each(|k| {
@@ -78,7 +79,7 @@ fn fetch_async_kernel() {
 
 #[test]
 fn fetch_async_headers() {
-    let (db, blocks, _) = create_blockchain_db_no_cut_through();
+    let (db, blocks, _, _) = create_blockchain_db_no_cut_through();
     test_async(move |rt| {
         for block in blocks.into_iter() {
             let height = block.header.height;
@@ -96,7 +97,7 @@ fn fetch_async_headers() {
 
 #[test]
 fn async_rewind_to_height() {
-    let (db, blocks, _) = create_blockchain_db_no_cut_through();
+    let (db, blocks, _, _) = create_blockchain_db_no_cut_through();
     test_async(move |rt| {
         let dbc = db.clone();
         rt.spawn(async move {
@@ -112,7 +113,7 @@ fn async_rewind_to_height() {
 
 #[test]
 fn fetch_async_utxo() {
-    let (db, blocks, outputs) = create_blockchain_db_no_cut_through();
+    let (db, blocks, outputs, _) = create_blockchain_db_no_cut_through();
     let factory = CommitmentFactory::default();
     // Retrieve a UTXO and an STXO
     let utxo = find_utxo(&outputs[4][0], &blocks[4], &factory).unwrap();
@@ -134,7 +135,7 @@ fn fetch_async_utxo() {
 
 #[test]
 fn async_is_utxo() {
-    let (db, blocks, outputs) = create_blockchain_db_no_cut_through();
+    let (db, blocks, outputs, _) = create_blockchain_db_no_cut_through();
     let factory = CommitmentFactory::default();
     blocks.iter().for_each(|b| println!("{}", b));
     // Retrieve a UTXO and an STXO
@@ -160,7 +161,7 @@ fn async_is_utxo() {
 
 #[test]
 fn fetch_async_block() {
-    let (db, blocks, _) = create_blockchain_db_no_cut_through();
+    let (db, blocks, _, _) = create_blockchain_db_no_cut_through();
     test_async(move |rt| {
         for block in blocks.into_iter() {
             let height = block.header.height;
@@ -175,14 +176,15 @@ fn fetch_async_block() {
 
 #[test]
 fn async_add_new_block() {
-    let (db, blocks, outputs) = create_new_blockchain();
+    let network = Network::LocalNet;
+    let (db, blocks, outputs, consensus_manager) = create_new_blockchain(network);
     let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![20 * T, 20 * T])];
     let txns = schema_to_transaction(&schema)
         .0
         .iter()
         .map(|t| t.deref().clone())
         .collect();
-    let new_block = chain_block(&blocks.last().unwrap(), txns);
+    let new_block = chain_block(&blocks.last().unwrap(), txns, &consensus_manager.consensus_constants());
     let new_block = db.calculate_mmr_roots(new_block).unwrap();
     test_async(|rt| {
         let dbc = db.clone();
@@ -199,7 +201,7 @@ fn async_add_new_block() {
 
 #[test]
 fn fetch_async_mmr_roots() {
-    let (db, _blocks, _) = create_blockchain_db_no_cut_through();
+    let (db, _blocks, _, _) = create_blockchain_db_no_cut_through();
     let metadata = db.get_metadata().unwrap();
     test_async(move |rt| {
         let dbc = db.clone();
@@ -220,8 +222,11 @@ fn fetch_async_mmr_roots() {
 
 #[test]
 fn async_add_block_fetch_orphan() {
-    let (db, _, _) = create_blockchain_db_no_cut_through();
-    let orphan = create_orphan_block(7, vec![]);
+    env_logger::init();
+    let network = Network::LocalNet;
+    let consensus: ConsensusManager<MockBackend> = ConsensusManagerBuilder::new(network).build();
+    let (db, _, _, _) = create_blockchain_db_no_cut_through();
+    let orphan = create_orphan_block(7, vec![], &consensus.consensus_constants());
     let block_hash = orphan.hash();
     test_async(move |rt| {
         let dbc = db.clone();

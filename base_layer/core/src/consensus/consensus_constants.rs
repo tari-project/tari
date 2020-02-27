@@ -20,12 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::consensus::{emission::EmissionSchedule, network::Network};
+use crate::{
+    consensus::network::Network,
+    transactions::tari_amount::{uT, MicroTari, T},
+};
 use chrono::{DateTime, Duration, Utc};
 use std::ops::Add;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 /// This is the inner struct used to control all consensus values.
+#[derive(Clone)]
 pub struct ConsensusConstants {
     /// The min height maturity a coinbase utxo must have
     coinbase_lock_height: u64,
@@ -44,24 +48,19 @@ pub struct ConsensusConstants {
     pow_algo_count: u64,
     /// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward
     median_timestamp_count: usize,
-    /// The configured chain network.
-    network: Network,
-    /// The configuration for the emission schedule.
-    emission: EmissionSchedule,
+    /// This is the initial emission curve amount
+    pub(in crate::consensus) emission_initial: MicroTari,
+    /// This is the emission curve delay
+    pub(in crate::consensus) emission_decay: f64,
+    /// This is the emission curve tail amount
+    pub(in crate::consensus) emission_tail: MicroTari,
 }
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
 // algorithm count
 impl ConsensusConstants {
-    pub fn current() -> Self {
-        // CONSENSUS_RULES
-        ConsensusConstants::default()
-    }
-
-    /// Use the the current consensus constants with a configurable chain network.
-    pub fn current_with_network(network: Network) -> Self {
-        let mut consensus_constants = ConsensusConstants::current();
-        consensus_constants.network = network;
-        consensus_constants
+    /// This gets the emission curve values as (initial, decay, tail)
+    pub fn emission_amounts(&self) -> (MicroTari, f64, MicroTari) {
+        (self.emission_initial, self.emission_decay, self.emission_tail)
     }
 
     /// The min height maturity a coinbase utxo must have.
@@ -121,19 +120,25 @@ impl ConsensusConstants {
         self.median_timestamp_count
     }
 
-    /// This is the currently configured chain network.
-    pub fn network(&self) -> &Network {
-        &self.network
+    pub fn rincewind() -> Self {
+        let target_block_interval = 60;
+        let difficulty_block_window = 150;
+        ConsensusConstants {
+            coinbase_lock_height: 1,
+            blockchain_version: 1,
+            future_time_limit: target_block_interval * difficulty_block_window / 20,
+            target_block_interval,
+            difficulty_block_window,
+            max_block_transaction_weight: 10000, // TODO: a better weight estimate should be selected
+            pow_algo_count: 2,
+            median_timestamp_count: 11,
+            emission_initial: 5_538_846_115 * uT,
+            emission_decay: 0.999_999_560_409_038_5,
+            emission_tail: 1 * T,
+        }
     }
 
-    /// This is the currently configured emission schedule used for coinbase rewards.
-    pub fn emission_schedule(&self) -> &EmissionSchedule {
-        &self.emission
-    }
-}
-
-impl Default for ConsensusConstants {
-    fn default() -> Self {
+    pub fn localnet() -> Self {
         let target_block_interval = 120;
         let difficulty_block_window = 90;
         ConsensusConstants {
@@ -145,8 +150,63 @@ impl Default for ConsensusConstants {
             max_block_transaction_weight: 10000, // TODO: a better weight estimate should be selected
             pow_algo_count: 2,
             median_timestamp_count: 11,
-            network: Network::Rincewind,
-            emission: EmissionSchedule::new(10_000_000.into(), 0.999, 100.into()),
+            emission_initial: 10_000_000.into(),
+            emission_decay: 0.999,
+            emission_tail: 100.into(),
         }
+    }
+
+    pub fn mainnet() -> Self {
+        // Note these values are all placeholders for final values
+        let target_block_interval = 120;
+        let difficulty_block_window = 90;
+        ConsensusConstants {
+            coinbase_lock_height: 1,
+            blockchain_version: 1,
+            future_time_limit: target_block_interval * difficulty_block_window / 20,
+            target_block_interval,
+            difficulty_block_window,
+            max_block_transaction_weight: 10000,
+            pow_algo_count: 2,
+            median_timestamp_count: 11,
+            emission_initial: 10_000_000.into(),
+            emission_decay: 0.999,
+            emission_tail: 100.into(),
+        }
+    }
+}
+
+/// Class to create custom consensus constants
+pub struct ConsensusConstantsBuilder {
+    consensus: ConsensusConstants,
+}
+
+impl ConsensusConstantsBuilder {
+    pub fn new(network: Network) -> ConsensusConstantsBuilder {
+        ConsensusConstantsBuilder {
+            consensus: network.create_consensus_constants(),
+        }
+    }
+
+    pub fn with_coinbase_lockheight(mut self, height: u64) -> ConsensusConstantsBuilder {
+        self.consensus.coinbase_lock_height = height;
+        self
+    }
+
+    pub fn with_emission_amounts(
+        mut self,
+        intial_amount: MicroTari,
+        decay: f64,
+        tail_amount: MicroTari,
+    ) -> ConsensusConstantsBuilder
+    {
+        self.consensus.emission_initial = intial_amount;
+        self.consensus.emission_decay = decay;
+        self.consensus.emission_tail = tail_amount;
+        self
+    }
+
+    pub fn build(self) -> ConsensusConstants {
+        self.consensus
     }
 }

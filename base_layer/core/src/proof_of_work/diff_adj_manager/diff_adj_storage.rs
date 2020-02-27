@@ -56,19 +56,31 @@ where T: BlockchainBackend
     blake_lwma: LinearWeightedMovingAverage,
     sync_data: Option<(u64, BlockHash)>,
     timestamps: VecDeque<EpochTime>,
+    difficulty_block_window: u64,
+    diff_target_block_interval: u64,
+    median_timestamp_count: usize,
 }
 
 impl<T> DiffAdjStorage<T>
 where T: BlockchainBackend
 {
     /// Constructs a new DiffAdjStorage with access to the blockchain db.
-    pub fn new(blockchain_db: BlockchainDatabase<T>) -> Self {
+    pub fn new(blockchain_db: BlockchainDatabase<T>, consensus_constants: &ConsensusConstants) -> Self {
         Self {
             blockchain_db,
-            monero_lwma: LinearWeightedMovingAverage::default(),
-            blake_lwma: LinearWeightedMovingAverage::default(),
+            monero_lwma: LinearWeightedMovingAverage::new(
+                consensus_constants.get_difficulty_block_window() as usize,
+                consensus_constants.get_diff_target_block_interval(),
+            ),
+            blake_lwma: LinearWeightedMovingAverage::new(
+                consensus_constants.get_difficulty_block_window() as usize,
+                consensus_constants.get_diff_target_block_interval(),
+            ),
             sync_data: None,
             timestamps: VecDeque::new(),
+            difficulty_block_window: consensus_constants.get_difficulty_block_window(),
+            median_timestamp_count: consensus_constants.get_median_timestamp_count(),
+            diff_target_block_interval: consensus_constants.get_diff_target_block_interval(),
         }
     }
 
@@ -157,8 +169,10 @@ where T: BlockchainBackend
 
     // Resets the DiffAdjStorage.
     fn reset(&mut self) {
-        self.monero_lwma = LinearWeightedMovingAverage::default();
-        self.blake_lwma = LinearWeightedMovingAverage::default();
+        self.monero_lwma =
+            LinearWeightedMovingAverage::new(self.difficulty_block_window as usize, self.diff_target_block_interval);
+        self.blake_lwma =
+            LinearWeightedMovingAverage::new(self.difficulty_block_window as usize, self.diff_target_block_interval);
         self.sync_data = None;
         self.timestamps = VecDeque::new();
     }
@@ -180,18 +194,17 @@ where T: BlockchainBackend
     ) -> Result<(), DiffAdjManagerError>
     {
         self.reset();
-        let difficulty_block_window = ConsensusConstants::current().get_difficulty_block_window();
-        let mut monero_diff_list = Vec::<(EpochTime, Difficulty)>::with_capacity(difficulty_block_window as usize);
-        let mut blake_diff_list = Vec::<(EpochTime, Difficulty)>::with_capacity(difficulty_block_window as usize);
+        let mut monero_diff_list = Vec::<(EpochTime, Difficulty)>::with_capacity(self.difficulty_block_window as usize);
+        let mut blake_diff_list = Vec::<(EpochTime, Difficulty)>::with_capacity(self.difficulty_block_window as usize);
         for height in (0..=height_of_longest_chain).rev() {
             let header = self.blockchain_db.fetch_header(height)?;
             // keep MEDIAN_TIMESTAMP_COUNT blocks for median timestamp
-            if self.timestamps.len() < ConsensusConstants::current().get_median_timestamp_count() {
+            if self.timestamps.len() < self.median_timestamp_count {
                 self.timestamps.push_front(header.timestamp);
             }
             match header.pow.pow_algo {
                 PowAlgorithm::Monero => {
-                    if (monero_diff_list.len() as u64) < difficulty_block_window {
+                    if (monero_diff_list.len() as u64) < self.difficulty_block_window {
                         monero_diff_list.push((
                             header.timestamp,
                             header.pow.accumulated_monero_difficulty + header.achieved_difficulty(),
@@ -199,7 +212,7 @@ where T: BlockchainBackend
                     }
                 },
                 PowAlgorithm::Blake => {
-                    if (blake_diff_list.len() as u64) < difficulty_block_window {
+                    if (blake_diff_list.len() as u64) < self.difficulty_block_window {
                         blake_diff_list.push((
                             header.timestamp,
                             header.pow.accumulated_blake_difficulty + header.achieved_difficulty(),
@@ -207,8 +220,8 @@ where T: BlockchainBackend
                     }
                 },
             }
-            if ((monero_diff_list.len() as u64) >= difficulty_block_window) &&
-                ((blake_diff_list.len() as u64) >= difficulty_block_window)
+            if ((monero_diff_list.len() as u64) >= self.difficulty_block_window) &&
+                ((blake_diff_list.len() as u64) >= self.difficulty_block_window)
             {
                 break;
             }
@@ -236,7 +249,7 @@ where T: BlockchainBackend
                 let header = self.blockchain_db.fetch_header(height)?;
                 // add new timestamps
                 self.timestamps.push_back(header.timestamp);
-                if self.timestamps.len() > ConsensusConstants::current().get_median_timestamp_count() {
+                if self.timestamps.len() > self.median_timestamp_count {
                     self.timestamps.remove(0); // remove oldest
                 }
                 match header.pow.pow_algo {
