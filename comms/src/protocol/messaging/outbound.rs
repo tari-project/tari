@@ -81,7 +81,8 @@ impl OutboundMessaging {
                 Err(ConnectionManagerError::DialCancelled) => {
                     error!(
                         target: LOG_TARGET,
-                        "Dial was cancelled unexpectedly for peer '{}'",
+                        "Dial was cancelled for peer '{}'. This is probably because of connection tie-breaking. \
+                         Retrying...",
                         self.peer_node_id.short_str(),
                     );
                     continue;

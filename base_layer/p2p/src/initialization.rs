@@ -198,13 +198,14 @@ where
 
 async fn initialize_hidden_service(config: TorConfig) -> Result<tor::HiddenService, tor::HiddenServiceBuilderError> {
     let mut builder = tor::HiddenServiceBuilder::new()
+        .with_hs_flags(tor::HsFlags::DETACH)
         .with_port_mapping(config.port_mapping)
         .with_socks_authentication(config.socks_auth)
         .with_control_server_auth(config.control_server_auth)
         .with_control_server_address(config.control_server_addr);
 
-    if let Some(private_key) = config.private_key {
-        builder = builder.with_onion_private_key(*private_key);
+    if let Some(identity) = config.identity {
+        builder = builder.with_tor_identity(*identity);
     }
 
     builder.finish().await

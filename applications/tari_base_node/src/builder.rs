@@ -37,6 +37,7 @@ use tari_comms::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     socks,
     tor,
+    tor::TorIdentity,
     utils::multiaddr::multiaddr_to_socketaddr,
     CommsNode,
 };
@@ -439,13 +440,24 @@ fn setup_transport_type(config: &GlobalConfig) -> TransportType {
             auth,
             onion_port,
         } => {
-            let tor_private_key_path = Path::new(&config.tor_private_key_file);
-            let private_key = if tor_private_key_path.exists() {
+            let tor_identity_path = Path::new(&config.tor_identity_file);
+            let identity = if tor_identity_path.exists() {
                 // If this fails, we can just use another address
-                load_from_json(tor_private_key_path).ok()
+                load_from_json::<_, TorIdentity>(&tor_identity_path).ok()
             } else {
                 None
             };
+            info!(
+                target: LOG_TARGET,
+                "Tor identity at path '{}' {:?}",
+                tor_identity_path.to_string_lossy(),
+                identity
+                    .as_ref()
+                    .map(|ident| format!("loaded for address '{}.onion'", ident.service_id))
+                    .or_else(|| Some("not found".to_string()))
+                    .unwrap()
+            );
+
             let forward_addr = multiaddr_to_socketaddr(&forward_address).expect("Invalid tor forward address");
             TransportType::Tor(TorConfig {
                 control_server_addr: control_server_address,
@@ -457,7 +469,7 @@ fn setup_transport_type(config: &GlobalConfig) -> TransportType {
                         },
                     }
                 },
-                private_key: private_key.map(Box::new),
+                identity: identity.map(Box::new),
                 port_mapping: (onion_port, forward_addr).into(),
                 // TODO: make configurable
                 socks_auth: socks::Authentication::None,
@@ -528,7 +540,7 @@ where
     // by comms during initialization when using tor.
     save_as_json(&config.identity_file, &*comms.node_identity()).expect("Failed to save node identity");
     if let Some(hs) = comms.hidden_service() {
-        save_as_json(&config.tor_private_key_file, hs.private_key()).expect("Failed to save tor identity");
+        save_as_json(&config.tor_identity_file, &hs.get_tor_identity()).expect("Failed to save tor identity");
     }
 
     for p in peers {

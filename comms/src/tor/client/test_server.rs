@@ -98,12 +98,21 @@ fn all_to_owned<'a, T: AsRef<[&'a str]>>(strings: T) -> Vec<String> {
 
 pub mod canned_responses {
     pub const OK: &[&str] = &["250 OK"];
-    pub const GET_CONF_OK: &[&str] = &[
+    pub const GET_CONF_HIDDEN_SERVICE_PORT_OK: &[&str] = &[
         "250-HiddenServicePort=8080",
         "250-HiddenServicePort=8081 127.0.0.1:9000",
         "250 HiddenServicePort=8082 127.0.0.1:9001",
     ];
-    pub const GET_INFO_OK: &[&str] = &["250-net/listeners/socks=\"127.0.0.1:9050\"", "250 OK"];
+
+    pub const GET_INFO_NET_LISTENERS_OK: &[&str] = &["250-net/listeners/socks=\"127.0.0.1:9050\"", "250 OK"];
+
+    pub const GET_INFO_ONIONS_DETACHED_OK: &[&str] = &[
+        "250+onions/detached=",
+        "mochz2xppfziim5olr5f6q27poc4vfob2xxxxxxxxxxxxxxxxxxxxxxx",
+        "nhqdqym6j35rk7tdou4cdj4gjjqagimutxxxxxxxxxxxxxxxxxxxxxxx",
+        ".",
+        "250 OK",
+    ];
 
     pub const ADD_ONION_OK: &[&str] = &[
         "250-ServiceID=qigbgbs4ue3ghbupsotgh73cmmkjrin2aprlyxsrnrvpmcmzy3g4wbid",

@@ -87,9 +87,9 @@ impl<'a> AddOnion<'a> {
     }
 }
 
-impl<'a> TorCommand for AddOnion<'a> {
+impl TorCommand for AddOnion<'_> {
     type Error = TorClientError;
-    type Output = AddOnionResponse<'a>;
+    type Output = AddOnionResponse;
 
     fn to_command_string(&self) -> Result<String, Self::Error> {
         let mut s = String::from("ADD_ONION ");
@@ -119,6 +119,9 @@ impl<'a> TorCommand for AddOnion<'a> {
     fn parse_responses(&self, mut responses: Vec<ResponseLine<'_>>) -> Result<Self::Output, Self::Error> {
         let last_response = responses.pop().ok_or_else(|| TorClientError::UnexpectedEof)?;
         if let Some(err) = last_response.err() {
+            if err.contains("Onion address collision") {
+                return Err(TorClientError::OnionAddressCollision);
+            }
             return Err(TorClientError::TorCommandFailed(err.into_owned()));
         }
 
@@ -129,7 +132,7 @@ impl<'a> TorCommand for AddOnion<'a> {
             let (key, value) = parsers::key_value(&response.value)?;
             match &*key {
                 "ServiceID" => {
-                    service_id = Some(Cow::from(value.into_owned()));
+                    service_id = Some(value.into_owned());
                 },
                 "PrivateKey" => {
                     let mut split = value.split(':');
@@ -169,8 +172,8 @@ impl<'a> TorCommand for AddOnion<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct AddOnionResponse<'a> {
-    pub(crate) service_id: Cow<'a, str>,
+pub struct AddOnionResponse {
+    pub(crate) service_id: String,
     pub(crate) private_key: Option<PrivateKey>,
     pub(crate) onion_port: u16,
 }

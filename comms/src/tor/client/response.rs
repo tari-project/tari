@@ -27,9 +27,10 @@ pub const EVENT_CODE: u16 = 650;
 
 /// Represents a single response line from the server.
 pub struct ResponseLine<'a> {
-    pub value: Cow<'a, str>,
-    pub code: u16,
-    pub has_more: bool,
+    pub(super) value: Cow<'a, str>,
+    pub(super) code: u16,
+    pub(super) has_more: bool,
+    pub(super) is_multiline: bool,
 }
 
 impl<'a> ResponseLine<'a> {
@@ -46,6 +47,7 @@ impl<'a> ResponseLine<'a> {
             value: Cow::Owned(self.value.into_owned()),
             code: self.code,
             has_more: self.has_more,
+            is_multiline: self.is_multiline,
         }
     }
 

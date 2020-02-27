@@ -23,5 +23,5 @@
 mod builder;
 mod hidden_service;
 
-pub use builder::{HiddenServiceBuilder, HiddenServiceBuilderError};
+pub use builder::{HiddenServiceBuilder, HiddenServiceBuilderError, HsFlags};
 pub use hidden_service::{HiddenService, TorIdentity};

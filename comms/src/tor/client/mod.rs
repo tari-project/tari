@@ -21,15 +21,18 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod client;
-mod commands;
+pub use client::{Authentication, TorControlPortClient};
+
 mod error;
+pub use error::TorClientError;
+
+pub mod commands;
+
 mod parsers;
 mod response;
+
 mod types;
+pub use types::{KeyBlob, KeyType, PortMapping, PrivateKey};
 
 #[cfg(test)]
 mod test_server;
-
-pub use client::{Authentication, TorControlPortClient};
-pub use error::TorClientError;
-pub use types::{KeyBlob, KeyType, PortMapping, PrivateKey};

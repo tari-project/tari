@@ -31,7 +31,7 @@
 //! `tari_comms` to function over Tor.
 
 mod client;
-mod hidden_service;
-
 pub use client::{Authentication, KeyBlob, KeyType, PortMapping, PrivateKey, TorClientError, TorControlPortClient};
-pub use hidden_service::{HiddenService, HiddenServiceBuilder, HiddenServiceBuilderError, TorIdentity};
+
+mod hidden_service;
+pub use hidden_service::{HiddenService, HiddenServiceBuilder, HiddenServiceBuilderError, HsFlags, TorIdentity};

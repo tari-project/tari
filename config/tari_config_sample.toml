@@ -150,7 +150,7 @@ peer_seeds = []
 #socks5_auth = "none" # or "username_password=username:xxxxxxx"
 
 # A path to the file that stores the tor hidden service private key, if using the tor transport.
-# tor_private_key_file = "~/.tari/testnet/tor.key"
+# tor_identity_file = "~/.tari/testnet/tor.key"
 
 [base_node.mainnet]
 # The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
@@ -213,7 +213,7 @@ peer_seeds = []
 #socks5_auth = "none" # or "username_password=username:xxxxxxx"
 
 # A path to the file that stores the tor hidden service private key, if using the tor transport
-# tor_private_key_file = "~/.tari/mainnet/tor.key"
+# tor_identity_file = "~/.tari/mainnet/tor.key"
 
 ########################################################################################################################
 #                                                                                                                      #

@@ -154,7 +154,7 @@ fn main() {
             control_server_addr: tor_control_server_addr.parse().expect("Invalid tor-control-addr value"),
             control_server_auth: Default::default(),
             port_mapping: tor_identity.onion_port.into(),
-            private_key: Some(Box::new(tor_identity.private_key)),
+            identity: Some(Box::new(tor_identity)),
             socks_auth: Default::default(),
         })
     } else {
