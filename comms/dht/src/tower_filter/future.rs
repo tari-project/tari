@@ -1,7 +1,7 @@
 //! Future types
 
-use crate::error::{self, Error};
-use futures_core::ready;
+use super::error::{self, Error};
+use futures::ready;
 use pin_project::{pin_project, project};
 use std::{
     future::Future,

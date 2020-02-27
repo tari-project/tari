@@ -1,4 +1,4 @@
-use crate::error::Error;
+use super::error::Error;
 use std::future::Future;
 
 /// Checks a request

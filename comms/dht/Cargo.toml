@@ -32,8 +32,9 @@ serde_derive = "1.0.90"
 serde_repr = "0.1.5"
 tokio = {version="0.2.10", features=["rt-threaded", "blocking"]}
 tower= "0.3.0"
-tower-filter = {version="0.3.0-alpha.2", path="../tower-filter"}
 ttl_cache = "0.5.1"
+# tower-filter dependencies
+pin-project = "0.4"
 
 [dev-dependencies]
 tari_test_utils = { version = "^0.0", path = "../../infrastructure/test_utils"}
@@ -44,6 +45,12 @@ lmdb-zero = "0.4.4"
 tempdir = "0.3.7"
 env_logger = "0.7.0"
 tokio-macros = "0.2.3"
+
+# tower-filter dependencies
+tower-test = { version = "^0.3" }
+tokio-test = "^0.2"
+tokio = "^0.2"
+futures-util = "^0.3.1"
 
 [build-dependencies]
 tari_protobuf_build = { version = "^0.0", path="../../infrastructure/protobuf_build"}

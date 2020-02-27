@@ -645,12 +645,7 @@ fn block_event_and_reorg_event_handling() {
         BaseNodeServiceConfig::default(),
         MmrCacheConfig { rewind_hist_len: 10 },
         MempoolServiceConfig::default(),
-        LivenessConfig {
-            auto_ping_interval: None,
-            enable_auto_join: false,
-            enable_auto_stored_message_request: true,
-            refresh_neighbours_interval: Duration::from_secs(3 * 60),
-        },
+        LivenessConfig::default(),
         ConsensusManager::new(None, consensus_constants),
         temp_dir.path().to_str().unwrap(),
     );
