@@ -258,7 +258,7 @@ impl<B: BlockchainBackend> Miner<B> {
 
     ///  function to send a block
     async fn send_block(&mut self, block: Block) -> Result<(), MinerError> {
-        trace!(target: LOG_TARGET, "Mined a block: {:?}", block);
+        info!(target: LOG_TARGET, "Mined a block: {}", block);
         self.node_interface
             .submit_block(block)
             .await
