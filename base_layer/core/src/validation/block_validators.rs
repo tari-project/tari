@@ -41,12 +41,13 @@ use tari_crypto::tari_utilities::hash::Hashable;
 pub const LOG_TARGET: &str = "c::val::block_validators";
 
 /// This validator tests whether a candidate block is internally consistent
-#[derive(Default)]
-pub struct StatelessValidator {}
+pub struct StatelessValidator {
+    consensus_constants: ConsensusConstants,
+}
 
 impl StatelessValidator {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(consensus_constants: &ConsensusConstants) -> Self {
+        Self { consensus_constants: consensus_constants.clone() }
     }
 }
 
@@ -56,7 +57,7 @@ impl<B: BlockchainBackend> Validation<Block, B> for StatelessValidator {
     /// 1. Is the accounting correct?
     /// 1. Are all inputs allowed to be spent (Are the feature flags satisfied)
     fn validate(&self, block: &Block) -> Result<(), ValidationError> {
-        check_coinbase_output(block)?;
+        check_coinbase_output(block, &self.consensus_constants)?;
         // Check that the inputs are are allowed to be spent
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
         check_cut_through(block)?;
@@ -93,12 +94,12 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator<B> {
     /// 1. Is the Proof of Work valid?
     /// 1. Is the achieved difficulty of this block >= the target difficulty for this block?
     fn validate(&self, block: &Block) -> Result<(), ValidationError> {
-        check_coinbase_output(block)?;
+        check_coinbase_output(block, &self.rules.consensus_constants())?;
         check_cut_through(block)?;
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
         check_accounting_balance(block, self.rules.clone(), &self.factories)?;
         check_inputs_are_utxos(block, self.db()?)?;
-        check_timestamp_ftl(&block.header)?;
+        check_timestamp_ftl(&block.header, &self.rules)?;
         check_median_timestamp_at_chain_tip(&block.header, self.db()?, self.rules.clone())?;
         check_achieved_difficulty_at_chain_tip(&block.header, self.db()?, self.rules.clone())?; // Update function signature once diff adjuster is complete
         Ok(())
@@ -120,8 +121,10 @@ fn check_accounting_balance<B: BlockchainBackend>(
         .map_err(ValidationError::TransactionError)
 }
 
-fn check_coinbase_output(block: &Block) -> Result<(), ValidationError> {
-    block.check_coinbase_output().map_err(ValidationError::from)
+fn check_coinbase_output(block: &Block, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
+    block
+        .check_coinbase_output(consensus_constants)
+        .map_err(ValidationError::from)
 }
 
 /// This function checks that all inputs in the blocks are valid UTXO's to be spend
@@ -145,8 +148,12 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(
 }
 
 /// This function tests that the block timestamp is less than the ftl.
-fn check_timestamp_ftl(block_header: &BlockHeader) -> Result<(), ValidationError> {
-    if block_header.timestamp > ConsensusConstants::current().ftl() {
+fn check_timestamp_ftl<B: BlockchainBackend>(
+    block_header: &BlockHeader,
+    consensus_manager: &ConsensusManager<B>,
+) -> Result<(), ValidationError>
+{
+    if block_header.timestamp > consensus_manager.consensus_constants().ftl() {
         return Err(ValidationError::BlockHeaderError(
             BlockHeaderValidationError::InvalidTimestampFutureTimeLimit,
         ));

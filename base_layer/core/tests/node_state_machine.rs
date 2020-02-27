@@ -48,7 +48,7 @@ use tari_core::{
         BaseNodeStateMachine,
         BaseNodeStateMachineConfig,
     },
-    consensus::{ConsensusConstants, ConsensusManager, Network},
+    consensus::{ConsensusManagerBuilder, Network},
     mempool::MempoolServiceConfig,
     transactions::types::CryptoFactories,
 };
@@ -62,10 +62,15 @@ use tokio::runtime::Runtime;
 fn test_listening_lagging() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
+    let network = Network::LocalNet;
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut prev_block, _) = create_genesis_block(&factories);
-    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(prev_block.clone())));
-    let (alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
+    let constants_constants = network.create_consensus_constants();
+    let (mut prev_block, _) = create_genesis_block(&factories, &constants_constants);
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(constants_constants)
+        .with_block(prev_block.clone())
+        .build();
+    let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
         BaseNodeServiceConfig::default(),
         MmrCacheConfig::default(),
@@ -76,7 +81,7 @@ fn test_listening_lagging() {
             auto_ping_interval: Some(Duration::from_millis(100)),
             refresh_neighbours_interval: Duration::from_secs(60),
         },
-        ConsensusManager::new(None, consensus_constants),
+        consensus_manager,
         temp_dir.path().to_str().unwrap(),
     );
     let mut alice_state_machine = BaseNodeStateMachine::new(
@@ -92,9 +97,15 @@ fn test_listening_lagging() {
         let mut bob_local_nci = bob_node.local_nci;
 
         // Bob Block 1 - no block event
-        prev_block = append_block(&bob_db, &prev_block, vec![]).unwrap();
+        prev_block = append_block(&bob_db, &prev_block, vec![], &consensus_manager.consensus_constants()).unwrap();
         // Bob Block 2 - with block event and liveness service metadata update
-        let prev_block = bob_db.calculate_mmr_roots(chain_block(&prev_block, vec![])).unwrap();
+        let prev_block = bob_db
+            .calculate_mmr_roots(chain_block(
+                &prev_block,
+                vec![],
+                &consensus_manager.consensus_constants(),
+            ))
+            .unwrap();
         bob_local_nci.submit_block(prev_block.clone()).await.unwrap();
         assert_eq!(bob_db.get_height(), Ok(Some(2)));
 
@@ -111,9 +122,14 @@ fn test_event_channel() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut prev_block, _) = create_genesis_block(&factories);
-    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(prev_block.clone())));
-    let (alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
+    let network = Network::LocalNet;
+    let consensus_constants = network.create_consensus_constants();
+    let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants)
+        .with_block(prev_block.clone())
+        .build();
+    let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
         BaseNodeServiceConfig::default(),
         MmrCacheConfig::default(),
@@ -124,7 +140,7 @@ fn test_event_channel() {
             auto_ping_interval: Some(Duration::from_millis(100)),
             refresh_neighbours_interval: Duration::from_secs(60),
         },
-        ConsensusManager::new(None, consensus_constants),
+        consensus_manager,
         temp_dir.path().to_str().unwrap(),
     );
     let alice_state_machine = BaseNodeStateMachine::new(
@@ -134,7 +150,7 @@ fn test_event_channel() {
         alice_node.chain_metadata_handle.get_event_stream(),
         BaseNodeStateMachineConfig::default(),
     );
-    let rx = alice_state_machine.get_state_change_event();
+    let rx = alice_state_machine.get_state_change_event_stream();
 
     runtime.spawn(async move {
         alice_state_machine.run().await;
@@ -145,9 +161,15 @@ fn test_event_channel() {
         let mut bob_local_nci = bob_node.local_nci;
 
         // Bob Block 1 - no block event
-        prev_block = append_block(&bob_db, &prev_block, vec![]).unwrap();
+        prev_block = append_block(&bob_db, &prev_block, vec![], &consensus_manager.consensus_constants()).unwrap();
         // Bob Block 2 - with block event and liveness service metadata update
-        let prev_block = bob_db.calculate_mmr_roots(chain_block(&prev_block, vec![])).unwrap();
+        let prev_block = bob_db
+            .calculate_mmr_roots(chain_block(
+                &prev_block,
+                vec![],
+                &consensus_manager.consensus_constants(),
+            ))
+            .unwrap();
         bob_local_nci.submit_block(prev_block.clone()).await.unwrap();
         assert_eq!(bob_db.get_height(), Ok(Some(2)));
         let state = rx.fuse().select_next_some().await;
@@ -165,7 +187,8 @@ fn test_event_channel() {
 fn test_listening_network_silence() {
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (alice_node, bob_node) = create_network_with_2_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
+    let (alice_node, bob_node, _consensus_manager) =
+        create_network_with_2_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
     let state_machine_config = BaseNodeStateMachineConfig {
         block_sync_config: BlockSyncConfig::default(),
         listening_config: ListeningConfig {
@@ -194,15 +217,20 @@ fn test_block_sync() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut prev_block, _) = create_genesis_block(&factories);
-    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(prev_block.clone())));
-    let (alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
+    let network = Network::LocalNet;
+    let consensus_constants = network.create_consensus_constants();
+    let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants)
+        .with_block(prev_block.clone())
+        .build();
+    let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
         BaseNodeServiceConfig::default(),
         MmrCacheConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
-        ConsensusManager::new(None, consensus_constants),
+        consensus_manager,
         temp_dir.path().to_str().unwrap(),
     );
     let state_machine_config = BaseNodeStateMachineConfig::default();
@@ -218,7 +246,7 @@ fn test_block_sync() {
         let adb = &alice_node.blockchain_db;
         let db = &bob_node.blockchain_db;
         for _ in 1..6 {
-            prev_block = append_block(db, &prev_block, vec![]).unwrap();
+            prev_block = append_block(db, &prev_block, vec![], &consensus_manager.consensus_constants()).unwrap();
         }
 
         // Sync Blocks from genesis block to tip
@@ -241,15 +269,20 @@ fn test_lagging_block_sync() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut prev_block, _) = create_genesis_block(&factories);
-    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(prev_block.clone())));
-    let (alice_node, bob_node) = create_network_with_2_base_nodes_with_config(
+    let network = Network::LocalNet;
+    let consensus_constants = network.create_consensus_constants();
+    let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants)
+        .with_block(prev_block.clone())
+        .build();
+    let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
         BaseNodeServiceConfig::default(),
         MmrCacheConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
-        ConsensusManager::new(None, consensus_constants),
+        consensus_manager,
         temp_dir.path().to_str().unwrap(),
     );
     let state_machine_config = BaseNodeStateMachineConfig::default();
@@ -263,11 +296,11 @@ fn test_lagging_block_sync() {
 
     let db = &bob_node.blockchain_db;
     for _ in 0..4 {
-        prev_block = append_block(db, &prev_block, vec![]).unwrap();
+        prev_block = append_block(db, &prev_block, vec![], &consensus_manager.consensus_constants()).unwrap();
         alice_node.blockchain_db.add_block(prev_block.clone()).unwrap();
     }
     for _ in 0..2 {
-        prev_block = append_block(db, &prev_block, vec![]).unwrap();
+        prev_block = append_block(db, &prev_block, vec![], &consensus_manager.consensus_constants()).unwrap();
     }
     assert_eq!(alice_node.blockchain_db.get_height(), Ok(Some(4)));
     assert_eq!(bob_node.blockchain_db.get_height(), Ok(Some(6)));
@@ -300,15 +333,20 @@ fn test_block_sync_recovery() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let (mut prev_block, _) = create_genesis_block(&factories);
-    let consensus_constants = ConsensusConstants::current_with_network(Network::LocalNet(Box::new(prev_block.clone())));
-    let (alice_node, bob_node, carol_node) = create_network_with_3_base_nodes_with_config(
+    let network = Network::LocalNet;
+    let consensus_constants = network.create_consensus_constants();
+    let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants)
+        .with_block(prev_block.clone())
+        .build();
+    let (alice_node, bob_node, carol_node, _) = create_network_with_3_base_nodes_with_config(
         &mut runtime,
         BaseNodeServiceConfig::default(),
         MmrCacheConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
-        ConsensusManager::new(None, consensus_constants),
+        consensus_manager.clone(),
         temp_dir.path().to_str().unwrap(),
     );
     let state_machine_config = BaseNodeStateMachineConfig::default();
@@ -339,10 +377,10 @@ fn test_block_sync_recovery() {
         let bob_db = &bob_node.blockchain_db;
         let carol_db = &carol_node.blockchain_db;
         // Bob and Carol is ahead of Alice and Bob is ahead of Carol
-        prev_block = append_block(bob_db, &prev_block, vec![]).unwrap();
+        prev_block = append_block(bob_db, &prev_block, vec![], &consensus_manager.consensus_constants()).unwrap();
         carol_db.add_block(prev_block.clone()).unwrap();
         for _ in 0..2 {
-            prev_block = append_block(bob_db, &prev_block, vec![]).unwrap();
+            prev_block = append_block(bob_db, &prev_block, vec![], &consensus_manager.consensus_constants()).unwrap();
         }
 
         // Sync Blocks from genesis block to tip. Alice will notice that the chain tip is equivalent to Bobs tip and

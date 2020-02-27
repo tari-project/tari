@@ -38,7 +38,7 @@ use tari_core::{
     },
     blocks::Block,
     chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
-    consensus::ConsensusManager,
+    consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
     mempool::{
         Mempool,
         MempoolConfig,
@@ -89,11 +89,12 @@ pub struct BaseNodeBuilder {
     liveness_service_config: Option<LivenessConfig>,
     validators: Option<Validators<MemoryDatabase<HashDigest>>>,
     consensus_manager: Option<ConsensusManager<MemoryDatabase<HashDigest>>>,
+    network: Network,
 }
 
 impl BaseNodeBuilder {
     /// Create a new BaseNodeBuilder
-    pub fn new() -> Self {
+    pub fn new(network: Network) -> Self {
         Self {
             node_identity: None,
             peers: None,
@@ -104,6 +105,7 @@ impl BaseNodeBuilder {
             liveness_service_config: None,
             validators: None,
             consensus_manager: None,
+            network,
         }
     }
 
@@ -167,14 +169,21 @@ impl BaseNodeBuilder {
     }
 
     /// Build the test base node and start its services.
-    pub fn start(self, runtime: &mut Runtime, data_path: &str) -> NodeInterfaces {
+    pub fn start(
+        self,
+        runtime: &mut Runtime,
+        data_path: &str,
+    ) -> (NodeInterfaces, ConsensusManager<MemoryDatabase<HashDigest>>)
+    {
         let mmr_cache_config = self.mmr_cache_config.unwrap_or(MmrCacheConfig { rewind_hist_len: 10 });
         let validators = self
             .validators
             .unwrap_or(Validators::new(MockValidator::new(true), MockValidator::new(true)));
-        let consensus_manager = self.consensus_manager.unwrap_or(ConsensusManager::default());
+        let consensus_manager = self
+            .consensus_manager
+            .unwrap_or(ConsensusManagerBuilder::new(self.network).build());
         let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
-        let mut blockchain_db = BlockchainDatabase::new(db, &consensus_manager).unwrap();
+        let mut blockchain_db = BlockchainDatabase::new(db, consensus_manager.clone()).unwrap();
         blockchain_db.set_validators(validators);
         let mempool_validator = MempoolValidators::new(
             TxInputAndMaturityValidator::new(blockchain_db.clone()),
@@ -185,7 +194,8 @@ impl BaseNodeBuilder {
             self.mempool_config.unwrap_or(MempoolConfig::default()),
             mempool_validator,
         );
-        let diff_adj_manager = DiffAdjManager::new(blockchain_db.clone()).unwrap();
+        let diff_adj_manager =
+            DiffAdjManager::new(blockchain_db.clone(), &consensus_manager.consensus_constants()).unwrap();
         consensus_manager.set_diff_manager(diff_adj_manager).unwrap();
         let node_identity = self.node_identity.unwrap_or(random_node_identity());
         let (outbound_nci, local_nci, outbound_mp_interface, outbound_message_service, chain_metadata_handle, comms) =
@@ -195,7 +205,7 @@ impl BaseNodeBuilder {
                 self.peers.unwrap_or(Vec::new()),
                 blockchain_db.clone(),
                 mempool.clone(),
-                consensus_manager,
+                consensus_manager.clone(),
                 self.base_node_service_config
                     .unwrap_or(BaseNodeServiceConfig::default()),
                 self.mempool_service_config.unwrap_or(MempoolServiceConfig::default()),
@@ -203,35 +213,48 @@ impl BaseNodeBuilder {
                 data_path,
             );
 
-        NodeInterfaces {
-            node_identity,
-            outbound_nci,
-            local_nci,
-            outbound_mp_interface,
-            outbound_message_service,
-            blockchain_db,
-            mempool,
-            chain_metadata_handle,
-            comms,
-        }
+        (
+            NodeInterfaces {
+                node_identity,
+                outbound_nci,
+                local_nci,
+                outbound_mp_interface,
+                outbound_message_service,
+                blockchain_db,
+                mempool,
+                chain_metadata_handle,
+                comms,
+            },
+            consensus_manager,
+        )
     }
 }
 
 // Creates a network with two Base Nodes where each node in the network knows the other nodes in the network.
-pub fn create_network_with_2_base_nodes(runtime: &mut Runtime, data_path: &str) -> (NodeInterfaces, NodeInterfaces) {
+pub fn create_network_with_2_base_nodes(
+    runtime: &mut Runtime,
+    data_path: &str,
+) -> (
+    NodeInterfaces,
+    NodeInterfaces,
+    ConsensusManager<MemoryDatabase<HashDigest>>,
+)
+{
     let alice_node_identity = random_node_identity();
     let bob_node_identity = random_node_identity();
 
-    let alice_node = BaseNodeBuilder::new()
+    let network = Network::LocalNet;
+    let (alice_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone()])
         .start(runtime, data_path);
-    let bob_node = BaseNodeBuilder::new()
+    let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity)
         .with_peers(vec![alice_node_identity])
+        .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
 
-    (alice_node, bob_node)
+    (alice_node, bob_node, consensus_manager)
 }
 
 // Creates a network with two Base Nodes where each node in the network knows the other nodes in the network.
@@ -243,28 +266,32 @@ pub fn create_network_with_2_base_nodes_with_config(
     liveness_service_config: LivenessConfig,
     consensus_manager: ConsensusManager<MemoryDatabase<HashDigest>>,
     data_path: &str,
-) -> (NodeInterfaces, NodeInterfaces)
+) -> (
+    NodeInterfaces,
+    NodeInterfaces,
+    ConsensusManager<MemoryDatabase<HashDigest>>,
+)
 {
     let alice_node_identity = random_node_identity();
     let bob_node_identity = random_node_identity();
-
-    let alice_node = BaseNodeBuilder::new()
+    let network = Network::LocalNet;
+    let (alice_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config)
-        .with_consensus_manager(consensus_manager.clone())
+        .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
-    let bob_node = BaseNodeBuilder::new()
+    let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity)
         .with_peers(vec![alice_node_identity])
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config)
-        .with_consensus_manager(consensus_manager.clone())
+        .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
 
     runtime
@@ -276,15 +303,23 @@ pub fn create_network_with_2_base_nodes_with_config(
         )
         .unwrap();
 
-    (alice_node, bob_node)
+    (alice_node, bob_node, consensus_manager)
 }
 
 // Creates a network with three Base Nodes where each node in the network knows the other nodes in the network.
 pub fn create_network_with_3_base_nodes(
     runtime: &mut Runtime,
     data_path: &str,
-) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces)
+) -> (
+    NodeInterfaces,
+    NodeInterfaces,
+    NodeInterfaces,
+    ConsensusManager<MemoryDatabase<HashDigest>>,
+)
 {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .build();
     let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 10 };
     create_network_with_3_base_nodes_with_config(
         runtime,
@@ -292,7 +327,7 @@ pub fn create_network_with_3_base_nodes(
         mmr_cache_config,
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
-        ConsensusManager::default(),
+        consensus_manager,
         data_path,
     )
 }
@@ -306,31 +341,37 @@ pub fn create_network_with_3_base_nodes_with_config(
     liveness_service_config: LivenessConfig,
     consensus_manager: ConsensusManager<MemoryDatabase<HashDigest>>,
     data_path: &str,
-) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces)
+) -> (
+    NodeInterfaces,
+    NodeInterfaces,
+    NodeInterfaces,
+    ConsensusManager<MemoryDatabase<HashDigest>>,
+)
 {
     let alice_node_identity = random_node_identity();
     let bob_node_identity = random_node_identity();
     let carol_node_identity = random_node_identity();
+    let network = Network::LocalNet;
 
-    let alice_node = BaseNodeBuilder::new()
+    let (alice_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone(), carol_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config)
-        .with_consensus_manager(consensus_manager.clone())
+        .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
-    let bob_node = BaseNodeBuilder::new()
+    let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![alice_node_identity.clone(), carol_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config)
-        .with_consensus_manager(consensus_manager.clone())
+        .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
-    let carol_node = BaseNodeBuilder::new()
+    let (carol_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(carol_node_identity.clone())
         .with_peers(vec![alice_node_identity, bob_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
@@ -362,7 +403,7 @@ pub fn create_network_with_3_base_nodes_with_config(
         // All node have an existing connection
     });
 
-    (alice_node, bob_node, carol_node)
+    (alice_node, bob_node, carol_node, consensus_manager)
 }
 
 fn random_string(len: usize) -> String {

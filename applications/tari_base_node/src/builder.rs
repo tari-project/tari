@@ -31,7 +31,7 @@ use std::{
     time::Duration,
 };
 use tari_broadcast_channel::Subscriber;
-use tari_common::{CommsTransport, DatabaseType, GlobalConfig, SocksAuthentication, TorControlAuthentication};
+use tari_common::{CommsTransport, DatabaseType, GlobalConfig, Network, SocksAuthentication, TorControlAuthentication};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
@@ -58,7 +58,7 @@ use tari_core::{
         MemoryDatabase,
         Validators,
     },
-    consensus::ConsensusManager,
+    consensus::{ConsensusManager, ConsensusManagerBuilder, Network as NetworkType},
     mempool::{Mempool, MempoolConfig, MempoolValidators},
     mining::Miner,
     proof_of_work::DiffAdjManager,
@@ -132,10 +132,10 @@ impl NodeType {
         .await;
     }
 
-    pub fn get_state_change_event(&self) -> Subscriber<BaseNodeState> {
+    pub fn get_state_change_event_stream(&self) -> Subscriber<BaseNodeState> {
         match self {
-            NodeType::LMDB(n) => n.get_state_change_event(),
-            NodeType::Memory(n) => n.get_state_change_event(),
+            NodeType::LMDB(n) => n.get_state_change_event_stream(),
+            NodeType::Memory(n) => n.get_state_change_event_stream(),
         }
     }
 }
@@ -249,14 +249,19 @@ pub fn configure_and_initialize_node(
     let factories = CryptoFactories::default();
     let peers = assign_peers(&config.peer_seeds);
     let executor = rt.handle().clone();
+    let network = match &config.network {
+        Network::MainNet => NetworkType::MainNet,
+        Network::TestNet => NetworkType::Rincewind,
+    };
     let result = match &config.db_type {
         DatabaseType::Memory => {
-            let rules = ConsensusManager::default();
+            let rules = ConsensusManagerBuilder::new(network)
+                .build();
             let backend = MemoryDatabase::<HashDigest>::default();
-            let mut db = BlockchainDatabase::new(backend, &rules).map_err(|e| e.to_string())?;
+            let mut db = BlockchainDatabase::new(backend, rules.clone()).map_err(|e| e.to_string())?;
             let validators = Validators::new(
                 FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
-                StatelessValidator::new(),
+                StatelessValidator::new(&rules.consensus_constants()),
             );
             db.set_validators(validators);
             let mempool_validator = MempoolValidators::new(
@@ -264,7 +269,8 @@ pub fn configure_and_initialize_node(
                 TxInputAndMaturityValidator::new(db.clone()),
             );
             let mempool = Mempool::new(db.clone(), MempoolConfig::default(), mempool_validator);
-            let diff_adj_manager = DiffAdjManager::new(db.clone()).map_err(|e| e.to_string())?;
+            let diff_adj_manager =
+                DiffAdjManager::new(db.clone(), &rules.consensus_constants()).map_err(|e| e.to_string())?;
             rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
             let (comms, handles) = setup_comms_services(
                 rt,
@@ -308,12 +314,13 @@ pub fn configure_and_initialize_node(
             (comms, node, miner, base_node_context)
         },
         DatabaseType::LMDB(p) => {
-            let rules = ConsensusManager::default();
+            let rules = ConsensusManagerBuilder::new(network)
+                .build();
             let backend = create_lmdb_database(&p, MmrCacheConfig::default()).map_err(|e| e.to_string())?;
-            let mut db = BlockchainDatabase::new(backend, &rules).map_err(|e| e.to_string())?;
+            let mut db = BlockchainDatabase::new(backend, rules.clone()).map_err(|e| e.to_string())?;
             let validators = Validators::new(
                 FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
-                StatelessValidator::new(),
+                StatelessValidator::new(&rules.consensus_constants()),
             );
             db.set_validators(validators);
             let mempool_validator = MempoolValidators::new(
@@ -321,7 +328,8 @@ pub fn configure_and_initialize_node(
                 TxInputAndMaturityValidator::new(db.clone()),
             );
             let mempool = Mempool::new(db.clone(), MempoolConfig::default(), mempool_validator);
-            let diff_adj_manager = DiffAdjManager::new(db.clone()).map_err(|e| e.to_string())?;
+            let diff_adj_manager =
+                DiffAdjManager::new(db.clone(), &rules.consensus_constants()).map_err(|e| e.to_string())?;
             rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
             let (comms, handles) = setup_comms_services(
                 rt,

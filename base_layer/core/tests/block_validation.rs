@@ -22,7 +22,7 @@
 
 use tari_core::{
     chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
-    consensus::ConsensusManager,
+    consensus::{ConsensusManagerBuilder, Network},
     proof_of_work::DiffAdjManager,
     transactions::types::{CryptoFactories, HashDigest},
     validation::block_validators::{FullConsensusValidator, StatelessValidator},
@@ -31,15 +31,17 @@ use tari_core::{
 #[test]
 fn test_genesis_block() {
     let factories = CryptoFactories::default();
-    let rules = ConsensusManager::default();
+    let network = Network::LocalNet;
+    let rules = ConsensusManagerBuilder::new(network)
+        .build();
     let backend = MemoryDatabase::<HashDigest>::default();
-    let mut db = BlockchainDatabase::new(backend, &rules).unwrap();
+    let mut db = BlockchainDatabase::new(backend, rules.clone()).unwrap();
     let validators = Validators::new(
         FullConsensusValidator::new(rules.clone(), factories, db.clone()),
-        StatelessValidator::new(),
+        StatelessValidator::new(&rules.consensus_constants()),
     );
     db.set_validators(validators);
-    let diff_adj_manager = DiffAdjManager::new(db.clone()).unwrap();
+    let diff_adj_manager = DiffAdjManager::new(db.clone(), &rules.consensus_constants()).unwrap();
     rules.set_diff_manager(diff_adj_manager).unwrap();
     let block = rules.get_genesis_block();
     let result = db.add_block(block);

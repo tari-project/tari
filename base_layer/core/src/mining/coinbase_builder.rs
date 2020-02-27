@@ -23,7 +23,7 @@
 
 use crate::{
     chain_storage::BlockchainBackend,
-    consensus::{ConsensusConstants, ConsensusManager},
+    consensus::ConsensusManager,
     transactions::{
         tari_amount::{uT, MicroTari},
         transaction::{
@@ -125,7 +125,7 @@ impl CoinbaseBuilder {
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let key = self.spend_key.ok_or_else(|| CoinbaseBuildError::MissingSpendKey)?;
         let output_features =
-            OutputFeatures::create_coinbase(height + ConsensusConstants::current().coinbase_lock_height());
+            OutputFeatures::create_coinbase(height + rules.consensus_constants().coinbase_lock_height());
         let excess = self.factories.commitment.commit_value(&key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
         let metadata = TransactionMetadata::default();
@@ -161,7 +161,7 @@ impl CoinbaseBuilder {
 #[cfg(test)]
 mod test {
     use crate::{
-        consensus::ConsensusManager,
+        consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
         helpers::MockBackend,
         mining::{coinbase_builder::CoinbaseBuildError, CoinbaseBuilder},
         transactions::{
@@ -174,7 +174,9 @@ mod test {
     use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager<MockBackend>, CryptoFactories) {
-        let rules = ConsensusManager::default();
+        let network = Network::LocalNet;
+        let rules = ConsensusManagerBuilder::new(network)
+            .build();
         let factories = CryptoFactories::default();
         (CoinbaseBuilder::new(factories.clone()), rules, factories)
     }

@@ -21,15 +21,23 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::Block,
+    blocks::{
+        genesis_block::{
+            get_mainnet_block_hash,
+            get_mainnet_genesis_block,
+            get_rincewind_block_hash,
+            get_rincewind_genesis_block,
+        },
+        Block,
+    },
     chain_storage::{BlockchainBackend, ChainStorageError},
-    consensus::{emission::EmissionSchedule, ConsensusConstants},
+    consensus::{emission::EmissionSchedule, network::Network, ConsensusConstants},
     proof_of_work::{DiffAdjManager, DiffAdjManagerError, Difficulty, DifficultyAdjustmentError, PowAlgorithm},
     transactions::tari_amount::MicroTari,
 };
 use derive_error::Error;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
-use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable};
 
 #[derive(Debug, Error, Clone, PartialEq)]
 pub enum ConsensusManagerError {
@@ -60,15 +68,32 @@ where B: BlockchainBackend
 impl<B> ConsensusManager<B>
 where B: BlockchainBackend
 {
-    pub fn new(diff_adj_manager: Option<DiffAdjManager<B>>, consensus_constants: ConsensusConstants) -> Self {
-        Self {
-            inner: Arc::new(ConsensusManagerInner::new(diff_adj_manager, consensus_constants)),
+    /// Returns the genesis block for the selected network.
+    pub fn get_genesis_block(&self) -> Block {
+        match self.inner.network {
+            Network::MainNet => get_mainnet_genesis_block(),
+            Network::Rincewind => get_rincewind_genesis_block(),
+            Network::LocalNet => (self.inner.gen_block.clone().unwrap_or(get_rincewind_genesis_block())),
+        }
+    }
+
+    /// Returns the genesis block hash for the selected network.
+    pub fn get_genesis_block_hash(&self) -> Vec<u8> {
+        match self.inner.network {
+            Network::MainNet => get_mainnet_block_hash(),
+            Network::Rincewind => get_rincewind_block_hash(),
+            Network::LocalNet => (self.inner.gen_block.as_ref().unwrap_or(&get_rincewind_genesis_block())).hash(),
         }
     }
 
     /// Get a pointer to the emission schedule
     pub fn emission_schedule(&self) -> &EmissionSchedule {
-        &self.inner.consensus_constants.emission_schedule()
+        &self.inner.emission
+    }
+
+    /// Get a pointer to the consensus constants
+    pub fn consensus_constants(&self) -> &ConsensusConstants {
+        &self.inner.consensus_constants
     }
 
     /// This moves over a difficulty adjustment manager to the ConsensusManager to control.
@@ -150,24 +175,9 @@ where B: BlockchainBackend
             .map_err(|e| ConsensusManagerError::PoisonedAccess(e.to_string()))
     }
 
-    /// Returns the genesis block for the configured network.
-    pub fn get_genesis_block(&self) -> Block {
-        self.inner.consensus_constants.network().get_genesis_block()
-    }
-
-    /// Returns the genesis block hash for the configured network.
-    pub fn get_genesis_block_hash(&self) -> Vec<u8> {
-        self.inner.consensus_constants.network().get_genesis_block_hash()
-    }
-}
-
-impl<B> Default for ConsensusManager<B>
-where B: BlockchainBackend
-{
-    fn default() -> Self {
-        ConsensusManager {
-            inner: Arc::new(ConsensusManagerInner::default()),
-        }
+    /// This is the currently configured chain network.
+    pub fn network(&self) -> Network {
+        self.inner.network
     }
 }
 
@@ -189,23 +199,86 @@ where B: BlockchainBackend
     pub diff_adj_manager: RwLock<Option<DiffAdjManager<B>>>,
     /// This is the inner struct used to control all consensus values.
     pub consensus_constants: ConsensusConstants,
+
+    /// The configured chain network.
+    pub network: Network,
+    /// The configuration for the emission schedule.
+    pub emission: EmissionSchedule,
+    /// This allows the user to set a custom Genesis block
+    pub gen_block: Option<Block>,
 }
 
-impl<B> ConsensusManagerInner<B>
+/// Constructor for the consensus manager struct
+pub struct ConsensusManagerBuilder<B>
 where B: BlockchainBackend
 {
-    pub fn new(diff_adj_manager: Option<DiffAdjManager<B>>, consensus_constants: ConsensusConstants) -> Self {
-        Self {
-            diff_adj_manager: RwLock::new(diff_adj_manager),
-            consensus_constants,
+    /// Difficulty adjustment manager for the blockchain
+    pub diff_adj_manager: Option<DiffAdjManager<B>>,
+    /// This is the inner struct used to control all consensus values.
+    pub consensus_constants: Option<ConsensusConstants>,
+    /// The configured chain network.
+    pub network: Network,
+    /// The configuration for the emission schedule.
+    pub emission: Option<EmissionSchedule>,
+    /// This allows the user to set a custom Genesis block
+    pub gen_block: Option<Block>,
+}
+
+impl<B> ConsensusManagerBuilder<B>
+where B: BlockchainBackend
+{
+    /// Creates a new ConsensusManagerBuilder with the specified network
+    pub fn new(network: Network) -> Self {
+        ConsensusManagerBuilder {
+            diff_adj_manager: None,
+            consensus_constants: None,
+            network,
+            emission: None,
+            gen_block: None,
         }
     }
-}
 
-impl<B> Default for ConsensusManagerInner<B>
-where B: BlockchainBackend
-{
-    fn default() -> Self {
-        Self::new(None, ConsensusConstants::default())
+    /// Adds in a custom consensus constants to be used
+    pub fn with_consensus_constants(mut self, consensus_constants: ConsensusConstants) -> Self {
+        self.consensus_constants = Some(consensus_constants);
+        self
+    }
+
+    /// Adds in a difficulty adjustment manager to be used to be used
+    pub fn with_difficulty_adjustment_manager(mut self, difficulty_adj: DiffAdjManager<B>) -> Self {
+        self.diff_adj_manager = Some(difficulty_adj);
+        self
+    }
+
+    /// Adds in a custom emission curve to be used to be used
+    pub fn with_emission_curve(mut self, emission: EmissionSchedule) -> Self {
+        self.emission = Some(emission);
+        self
+    }
+
+    /// Adds in a custom block to be used. This will be overwritten if the network is anything else than localnet
+    pub fn with_block(mut self, block: Block) -> Self {
+        self.gen_block = Some(block);
+        self
+    }
+
+    /// Builds a consensus manager
+    pub fn build(self) -> ConsensusManager<B> {
+        let consensus_constants = self
+            .consensus_constants
+            .unwrap_or(self.network.create_consensus_constants());
+        let emission = self.emission.unwrap_or(EmissionSchedule::new(
+            consensus_constants.emission_initial,
+            consensus_constants.emission_decay,
+            consensus_constants.emission_tail,
+        ));
+        let inner = ConsensusManagerInner {
+            diff_adj_manager: RwLock::new(self.diff_adj_manager),
+            consensus_constants,
+            network: self.network,
+            emission,
+            gen_block: self.gen_block,
+        };
+        ConsensusManager { inner: Arc::new(inner) }
     }
 }

@@ -93,13 +93,12 @@ impl Block {
     /// 1. There is exactly ONE coinbase output
     /// 1. The output's maturity is correctly set
     /// NOTE this does not check the coinbase amount
-    pub fn check_coinbase_output(&self) -> Result<(), BlockValidationError> {
+    pub fn check_coinbase_output(&self, consensus_constants: &ConsensusConstants) -> Result<(), BlockValidationError> {
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase
         for utxo in self.body.outputs() {
             if utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT) {
                 coinbase_counter += 1;
-                if utxo.features.maturity < (self.header.height + ConsensusConstants::current().coinbase_lock_height())
-                {
+                if utxo.features.maturity < (self.header.height + consensus_constants.coinbase_lock_height()) {
                     debug!(target: LOG_TARGET, "Coinbase found with maturity set to low");
                     return Err(BlockValidationError::InvalidCoinbase);
                 }
@@ -160,9 +159,9 @@ pub struct BlockBuilder {
 }
 
 impl BlockBuilder {
-    pub fn new() -> BlockBuilder {
+    pub fn new(consensus_constants: &ConsensusConstants) -> BlockBuilder {
         BlockBuilder {
-            header: BlockHeader::new(ConsensusConstants::current().blockchain_version()),
+            header: BlockHeader::new(consensus_constants.blockchain_version()),
             inputs: Vec::new(),
             outputs: Vec::new(),
             kernels: Vec::new(),

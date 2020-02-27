@@ -6,12 +6,9 @@
 // https://github.com/zawy12/difficulty-algorithms/issues/3#issuecomment-442129791
 // https://github.com/zcash/zcash/issues/4021
 
-use crate::{
-    consensus::ConsensusConstants,
-    proof_of_work::{
-        difficulty::{Difficulty, DifficultyAdjustment},
-        error::DifficultyAdjustmentError,
-    },
+use crate::proof_of_work::{
+    difficulty::{Difficulty, DifficultyAdjustment},
+    error::DifficultyAdjustmentError,
 };
 use log::*;
 use std::{cmp, collections::VecDeque};
@@ -25,16 +22,6 @@ pub struct LinearWeightedMovingAverage {
     accumulated_difficulties: VecDeque<Difficulty>,
     block_window: usize,
     target_time: u64,
-}
-
-impl Default for LinearWeightedMovingAverage {
-    fn default() -> Self {
-        let consensus = ConsensusConstants::current();
-        LinearWeightedMovingAverage::new(
-            consensus.get_difficulty_block_window() as usize,
-            consensus.get_diff_target_block_interval(),
-        )
-    }
 }
 
 impl LinearWeightedMovingAverage {
@@ -140,13 +127,13 @@ mod test {
 
     #[test]
     fn lwma_zero_len() {
-        let dif = LinearWeightedMovingAverage::default();
+        let dif = LinearWeightedMovingAverage::new(90, 120);
         assert_eq!(dif.get_difficulty(), Difficulty::min());
     }
 
     #[test]
     fn lwma_add_non_increasing_diff() {
-        let mut dif = LinearWeightedMovingAverage::default();
+        let mut dif = LinearWeightedMovingAverage::new(90, 120);
         assert!(dif.add(100.into(), 100.into()).is_ok());
         assert!(dif.add(100.into(), 100.into()).is_err());
         assert!(dif.add(100.into(), 50.into()).is_err());
@@ -154,7 +141,7 @@ mod test {
 
     #[test]
     fn lwma_negative_solve_times() {
-        let mut dif = LinearWeightedMovingAverage::default();
+        let mut dif = LinearWeightedMovingAverage::new(90, 120);
         let mut timestamp = 60.into();
         let mut cum_diff = Difficulty::from(100);
         let _ = dif.add(timestamp, cum_diff);

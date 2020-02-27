@@ -543,7 +543,7 @@ pub fn default_config() -> Config {
     cfg.set_default("base_node.testnet.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.testnet.grpc_address", "tcp://127.0.0.1:18141")
         .unwrap();
-    cfg.set_default("base_node.testnet.enable_mining", true).unwrap();
+    cfg.set_default("base_node.testnet.enable_mining", false).unwrap();
 
     set_transport_defaults(&mut cfg);
 
