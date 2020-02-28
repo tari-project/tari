@@ -28,7 +28,7 @@ use croaring::Bitmap;
 use env_logger;
 use std::thread;
 use tari_core::{
-    blocks::{Block, BlockHash, BlockHeader},
+    blocks::{genesis_block, Block, BlockHash, BlockHeader},
     chain_storage::{
         create_lmdb_database,
         BlockAddResult,
@@ -186,7 +186,8 @@ fn multiple_threads() {
 #[test]
 fn utxo_and_rp_merkle_root() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let gen_block = genesis_block::get_rincewind_genesis_block_raw();
+    let consensus_manager = ConsensusManagerBuilder::new(network).with_block(gen_block).build();
     let store = create_mem_db(consensus_manager.clone());
     let factories = CryptoFactories::default();
     let block0 = store.fetch_block(0).unwrap().block().clone();
@@ -248,7 +249,8 @@ fn kernel_merkle_root() {
 #[test]
 fn utxo_and_rp_future_merkle_root() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let gen_block = genesis_block::get_rincewind_genesis_block_raw();
+    let consensus_manager = ConsensusManagerBuilder::new(network).with_block(gen_block).build();
     let store = create_mem_db(consensus_manager.clone());
     let factories = CryptoFactories::default();
 
@@ -289,7 +291,8 @@ fn utxo_and_rp_future_merkle_root() {
 #[test]
 fn kernel_future_merkle_root() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let gen_block = genesis_block::get_rincewind_genesis_block_raw();
+    let consensus_manager = ConsensusManagerBuilder::new(network).with_block(gen_block).build();
     let store = create_mem_db(consensus_manager.clone());
 
     let kernel1 = create_test_kernel(100.into(), 0);
@@ -316,7 +319,8 @@ fn kernel_future_merkle_root() {
 #[test]
 fn utxo_and_rp_mmr_proof() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let gen_block = genesis_block::get_rincewind_genesis_block_raw();
+    let consensus_manager = ConsensusManagerBuilder::new(network).with_block(gen_block).build();
     let store = create_mem_db(consensus_manager.clone());
     let factories = CryptoFactories::default();
 
@@ -790,7 +794,8 @@ fn total_kernel_offset() {
 fn total_utxo_commitment() {
     let factories = CryptoFactories::default();
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let gen_block = genesis_block::get_rincewind_genesis_block_raw();
+    let consensus_manager = ConsensusManagerBuilder::new(network).with_block(gen_block).build();
     let store = create_mem_db(consensus_manager.clone());
     let block0 = store.fetch_block(0).unwrap().block().clone();
 
