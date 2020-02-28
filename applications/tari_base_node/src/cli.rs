@@ -23,7 +23,6 @@
 
 use crate::consts;
 use clap::clap_app;
-use std::path::Path;
 use tari_common::{bootstrap_config_from_cli, ConfigBootstrap};
 
 /// Prints a pretty banner on the console

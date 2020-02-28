@@ -22,6 +22,7 @@
 
 // Acknowledgement to @sticnarf for tokio-socks on which this code is based
 use super::error::SocksError;
+use data_encoding::BASE32;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use multiaddr::{Multiaddr, Protocol};
 use std::{
@@ -371,6 +372,16 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             (p @ Protocol::Onion(_, _), None) => {
                 self.buf[3] = 0x03;
                 let (domain, port) = Self::extract_onion_address(p)?;
+                let len = domain.len();
+                self.buf[4] = len as u8;
+                self.buf[5..5 + len].copy_from_slice(domain.as_bytes());
+                self.buf[(5 + len)..(7 + len)].copy_from_slice(&port.to_be_bytes());
+                self.len = 7 + len;
+            },
+            (Protocol::Onion3(addr), None) => {
+                self.buf[3] = 0x03;
+                let port = addr.port();
+                let domain = format!("{}.onion", BASE32.encode(addr.hash()));
                 let len = domain.len();
                 self.buf[4] = len as u8;
                 self.buf[5..5 + len].copy_from_slice(domain.as_bytes());

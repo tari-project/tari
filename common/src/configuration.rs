@@ -264,7 +264,7 @@ pub struct GlobalConfig {
     pub peer_db_path: String,
     pub enable_mining: bool,
     pub wallet_file: String,
-    pub tor_private_key_file: String,
+    pub tor_identity_file: String,
 }
 
 impl GlobalConfig {
@@ -328,8 +328,8 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let identity_file = PathBuf::from(identity_file);
 
     // Tor private key persistence
-    let key = config_string(&net_str, "tor_private_key_file");
-    let tor_private_key_file = cfg
+    let key = config_string(&net_str, "tor_identity_file");
+    let tor_identity_file = cfg
         .get_str(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
@@ -381,7 +381,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         peer_db_path,
         enable_mining,
         wallet_file,
-        tor_private_key_file,
+        tor_identity_file,
     })
 }
 
@@ -503,7 +503,7 @@ pub fn default_config() -> Config {
     )
     .unwrap();
     cfg.set_default(
-        "base_node.mainnet.tor_private_key_file",
+        "base_node.mainnet.tor_identity_file",
         default_subdir("mainnet/tor.json"),
     )
     .unwrap();
@@ -526,7 +526,7 @@ pub fn default_config() -> Config {
     cfg.set_default("base_node.testnet.data_dir", default_subdir("testnet/"))
         .unwrap();
     cfg.set_default(
-        "base_node.testnet.tor_private_key_file",
+        "base_node.testnet.tor_identity_file",
         default_subdir("testnet/tor.json"),
     )
     .unwrap();

@@ -45,8 +45,9 @@ pub struct TorConfig {
     pub control_server_addr: Multiaddr,
     /// Authentication for the Tor control server
     pub control_server_auth: tor::Authentication,
-    /// The private key for the Tor hidden service. If not supplied, a new address and private key will be generated
-    pub private_key: Option<Box<tor::PrivateKey>>,
+    /// The private key and service ID for the Tor hidden service. If not supplied, a new address and private key will
+    /// be generated
+    pub identity: Option<Box<tor::TorIdentity>>,
     /// The onion -> local address mapping to use.
     pub port_mapping: tor::PortMapping,
     /// Authentication for the Tor SOCKS5 proxy

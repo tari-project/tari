@@ -1629,7 +1629,7 @@ pub unsafe extern "C" fn transport_tcp_create(
 /// ## Arguments
 /// `control_server_address` - The pointer to a char array
 /// `tor_password` - The pointer to a char array containing the tor password, can be null
-/// `tor_private_key` - The pointer to a ByteVector containing the tor private key, can be null.
+/// `tor_identity` - The pointer to a ByteVector containing the tor identity, can be null.
 /// `tor_port` - The tor port
 /// `socks_username` - The pointer to a char array containing the socks username, can be null
 /// `socks_password` - The pointer to a char array containing the socks password, can be null
@@ -1642,7 +1642,7 @@ pub unsafe extern "C" fn transport_tcp_create(
 pub unsafe extern "C" fn transport_tor_create(
     control_server_address: *const c_char,
     tor_password: *const c_char,
-    tor_private_key: *const ByteVector,
+    tor_identity: *const ByteVector,
     tor_port: c_ushort,
     socks_username: *const c_char,
     socks_password: *const c_char,
@@ -1676,16 +1676,16 @@ pub unsafe extern "C" fn transport_tor_create(
         tor_authentication = tor::Authentication::HashedPassword(tor_password_str);
     }
 
-    let mut key = None;
-    if !tor_private_key.is_null() {
-        let bytes = (*tor_private_key).0.as_slice();
-        key = Some(Box::new(tor::PrivateKey::from_binary(bytes.clone()).unwrap()));
+    let mut identity = None;
+    if !tor_identity.is_null() {
+        let bytes = (*tor_identity).0.as_slice();
+        identity = Some(Box::new(tor::TorIdentity::from_binary(bytes.clone()).unwrap()));
     }
 
     let tor_config = TorConfig {
         control_server_addr: control_address_str.parse::<Multiaddr>().unwrap(),
         control_server_auth: tor_authentication,
-        private_key: key,
+        identity,
         port_mapping: tor::PortMapping::from_port(tor_port),
         socks_auth: authentication,
     };
@@ -1733,38 +1733,36 @@ pub unsafe extern "C" fn transport_memory_get_address(
 /// Gets the private key for tor
 ///
 /// ## Arguments
-/// `walllet` - Pointer to a TariWallet
+/// `wallet` - Pointer to a TariWallet
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut ByteVector` - Returns the private key as a pointer to a ByteVector, contents for ByteVector will be empty on
-/// error.
+/// `*mut ByteVector` - Returns the serialized tor identity as a pointer to a ByteVector, contents for ByteVector will
+/// be empty on error.
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_tor_private_key(
-    wallet: *const TariWallet,
-    error_out: *mut c_int,
-) -> *mut ByteVector
-{
+pub unsafe extern "C" fn wallet_get_tor_identity(wallet: *const TariWallet, error_out: *mut c_int) -> *mut ByteVector {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
-    let mut key = CString::new("").unwrap();
+    let identity_bytes;
     if !wallet.is_null() {
         let service = (*wallet).comms.hidden_service();
         match service {
             Some(s) => {
-                let tor_key = s.get_tor_identity().private_key.clone();
-                let bin = tor_key.to_binary().unwrap();
-                key = CString::new(bin).unwrap();
+                let tor_identity = s.get_tor_identity().clone();
+                identity_bytes = tor_identity.to_binary().unwrap();
             },
-            None => {},
+            None => {
+                identity_bytes = Vec::new();
+            },
         };
     } else {
+        identity_bytes = Vec::new();
         error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
-    let bytes = ByteVector(key.into_bytes());
+    let bytes = ByteVector(identity_bytes);
     return Box::into_raw(Box::new(bytes));
 }
 

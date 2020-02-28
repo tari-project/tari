@@ -83,14 +83,14 @@ struct TariTransportType *transport_tcp_create(const char *listener_address,int*
 struct TariTransportType *transport_tor_create(
     const char *control_server_address,
     const char *tor_password,
-    struct ByteVector *tor_private_key,
+    struct ByteVector *tor_identity,
     unsigned short tor_port,
     const char *socks_username,
     const char *socks_password,
     int* error_out);
 
 // Gets the tor private key from the wallet
-struct ByteVector *wallet_get_tor_private_key(struct TariWallet *wallet,int* error_out );
+struct ByteVector *wallet_get_tor_identity(struct TariWallet *wallet,int* error_out );
 
 // Gets the address from a memory transport type
 char *transport_memory_get_address(struct TariTransportType *transport,int* error_out);

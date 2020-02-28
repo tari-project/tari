@@ -41,6 +41,8 @@ pub enum TorClientError {
     AddOnionNoServiceId,
     /// The given service id was invalid
     InvalidServiceId,
+    /// Onion address is exists
+    OnionAddressCollision,
 }
 
 impl From<LinesCodecError> for TorClientError {

@@ -13,18 +13,19 @@ tari_crypto = { version = "^0.3" }
 tari_storage = { version="^0.0", path = "../infrastructure/storage" }
 tari_shutdown = { version="^0.0",  path = "../infrastructure/shutdown" }
 
-blake2 = "0.8.1"
 bitflags = "1.0.4"
+blake2 = "0.8.1"
 bytes = "0.5.x"
 chrono = { version = "0.4.6", features = ["serde"] }
 clear_on_drop = "0.2.3"
+data-encoding = "2.2.0"
 derive-error = "0.0.4"
 digest = "0.8.0"
 futures =  { version = "^0.3", features = ["async-await"]}
 lazy_static = "1.3.0"
 lmdb-zero = "0.4.4"
 log = { version = "0.4.0", features = ["std"] }
-multiaddr = {version = "0.7.1", package = "parity-multiaddr"}
+multiaddr = {version = "0.7.2", package = "parity-multiaddr"}
 nom = {version = "5.1.0", features=["std"], default-features=false}
 prost = "0.6.1"
 rand = "0.7.2"

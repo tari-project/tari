@@ -52,15 +52,16 @@ pub fn response_line(line: &str) -> Result<ResponseLine<'_>, ParseError> {
     let parser = map_res(digit1, |code: &str| code.parse::<u16>());
     let (rest, code) = parser(line)?;
     let (rest, ch) = anychar(rest)?;
-    if ch != ' ' && ch != '-' {
+    if ![' ', '-', '+'].contains(&ch) {
         return Err(ParseError(format!(
-            "Unexpected end-of-response character '{}'. Expected ' ' or '-'.",
+            "Unexpected response character '{}'. Expected ' ', '-' or '+'.",
             ch
         )));
     }
 
     Ok(ResponseLine {
-        has_more: ch == '-',
+        has_more: ['-', '+'].contains(&ch),
+        is_multiline: ch == '+',
         code,
         value: rest.into(),
     })
@@ -69,6 +70,6 @@ pub fn response_line(line: &str) -> Result<ResponseLine<'_>, ParseError> {
 pub fn key_value(line: &str) -> Result<(Cow<'_, str>, Cow<'_, str>), ParseError> {
     let (rest, identifier) = take_while1(|ch| ch != '=')(line)?;
     let (rest, _) = chr('=')(rest)?;
-    let rest = rest.trim_matches('\"');
+    let rest = rest.trim_matches('"').trim();
     Ok((identifier.into(), rest.into()))
 }

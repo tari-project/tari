@@ -103,4 +103,10 @@ mod test {
         let command = KeyValueCommand::new("GETINFO", &["net/listeners/socks"]);
         assert_eq!(command.to_command_string().unwrap(), "GETINFO net/listeners/socks");
     }
+
+    // #[test]
+    // fn parse_responses() {
+    //     let command = KeyValueCommand::new("", &[]);
+    //     command.parse_responses(vec!)
+    // }
 }

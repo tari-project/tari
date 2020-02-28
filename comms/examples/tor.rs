@@ -19,6 +19,7 @@ use tari_comms::{
     CommsBuilderError,
     CommsNode,
 };
+use tari_crypto::tari_utilities::message_format::MessageFormat;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tempdir::TempDir;
 use tokio::{runtime, task};
@@ -51,23 +52,31 @@ async fn main() {
     }
 }
 
+fn load_tor_identity<P: AsRef<Path>>(path: P) -> tor::TorIdentity {
+    let contents = std::fs::read_to_string(path).unwrap();
+    tor::TorIdentity::from_json(&contents).unwrap()
+}
+
 async fn run() -> Result<(), Error> {
-    let control_port_addr = env::args()
-        .skip(1)
+    let mut args_iter = env::args().skip(1);
+    let control_port_addr = args_iter
         .next()
         .unwrap_or("/ip4/127.0.0.1/tcp/9095".to_string())
         .parse::<Multiaddr>()
         .map_err(|_| Error::InvalidArgControlPortAddress)?;
 
+    let tor_identity1 = args_iter.next().map(load_tor_identity);
+    let tor_identity2 = args_iter.next().map(load_tor_identity);
+
     println!("Starting comms nodes...",);
 
     let temp_dir1 = TempDir::new("tor-example1").unwrap();
     let (comms_node1, inbound_rx1, mut outbound_tx1) =
-        setup_node_with_tor(control_port_addr.clone(), temp_dir1.as_ref(), 9098).await?;
+        setup_node_with_tor(control_port_addr.clone(), temp_dir1.as_ref(), 9098, tor_identity1).await?;
 
     let temp_dir2 = TempDir::new("tor-example2").unwrap();
     let (comms_node2, inbound_rx2, outbound_tx2) =
-        setup_node_with_tor(control_port_addr, temp_dir2.as_ref(), 9099).await?;
+        setup_node_with_tor(control_port_addr, temp_dir2.as_ref(), 9099, tor_identity2).await?;
 
     let node_identity1 = comms_node1.node_identity();
     let node_identity2 = comms_node2.node_identity();
@@ -137,6 +146,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
     control_port_addr: Multiaddr,
     database_path: &Path,
     port_mapping: P,
+    tor_identity: Option<tor::TorIdentity>,
 ) -> Result<(CommsNode, mpsc::Receiver<InboundMessage>, mpsc::Sender<OutboundMessage>), Error>
 {
     let datastore = LMDBBuilder::new()
@@ -152,11 +162,15 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
     let (inbound_tx, inbound_rx) = mpsc::channel(10);
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
 
-    let tor_hidden_service = tor::HiddenServiceBuilder::new()
+    let mut hs_builder = tor::HiddenServiceBuilder::new()
         .with_port_mapping(port_mapping)
-        .with_control_server_address(control_port_addr)
-        .finish()
-        .await?;
+        .with_control_server_address(control_port_addr);
+
+    if let Some(ident) = tor_identity {
+        hs_builder = hs_builder.with_tor_identity(ident);
+    }
+
+    let tor_hidden_service = hs_builder.finish().await?;
 
     println!(
         "Tor hidden service created with address '{}'",
