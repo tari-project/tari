@@ -918,9 +918,6 @@ mod test {
     #[test]
     fn check_cut_through_() {
         let (tx, _, outputs) = create_tx(50000000.into(), 15.into(), 1, 2, 1, 2);
-        dbg!(&tx.body.outputs().len());
-        dbg!(&tx.body.inputs().len());
-        dbg!(&tx.body.kernels().len());
 
         assert_eq!(tx.body.inputs().len(), 2);
         assert_eq!(tx.body.outputs().len(), 2);

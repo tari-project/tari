@@ -104,8 +104,8 @@ impl<B: BlockchainBackend> Miner<B> {
 
     /// Async function to mine a block
     async fn mining(&mut self) -> Result<(), MinerError> {
-        debug!(target: LOG_TARGET, "start mining thread");
         // Lets make sure its set to mine
+        debug!(target: LOG_TARGET, "Start mining thread");
         while !self.kill_flag.load(Ordering::Relaxed) {
             while !self.received_new_block_flag.load(Ordering::Relaxed) {
                 tokio::time::delay_for(Duration::from_millis(100)).await; // wait for new block event
@@ -150,7 +150,11 @@ impl<B: BlockchainBackend> Miner<B> {
     pub async fn mine(mut self) {
         let flag = self.received_new_block_flag.clone();
         let block_event = self.node_interface.clone().get_block_event_stream_fused();
-        let state_event = self.state_change_event_rx.take().expect("todo").fuse();
+        let state_event = self
+            .state_change_event_rx
+            .take()
+            .expect("Miner does not have access to state event stream")
+            .fuse();
         let t_miner = self.mining().fuse();
 
         pin_mut!(block_event);

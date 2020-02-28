@@ -20,18 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::blocks::{
-    genesis_block::{
-        get_mainnet_block_hash,
-        get_mainnet_genesis_block,
-        get_rincewind_block_hash,
-        get_rincewind_genesis_block,
-    },
-    Block,
-};
-use tari_crypto::tari_utilities::hash::Hashable;
+use super::consensus_constants::ConsensusConstants;
 
 /// Specifies the configured chain network.
+#[derive(Copy, Clone)]
 pub enum Network {
     /// Mainnet of Tari, currently should panic if network is set to this.
     MainNet,
@@ -39,25 +31,15 @@ pub enum Network {
     Rincewind,
     /// Local network constants used inside of unit and integration tests. Contains the genesis block to be used for
     /// that chain.
-    LocalNet(Box<Block>),
+    LocalNet,
 }
 
 impl Network {
-    /// Returns the genesis block for the selected network.
-    pub fn get_genesis_block(&self) -> Block {
+    pub fn create_consensus_constants(&self) -> ConsensusConstants {
         match self {
-            Network::MainNet => get_mainnet_genesis_block(),
-            Network::Rincewind => get_rincewind_genesis_block(),
-            Network::LocalNet(genesis_block) => (**genesis_block).clone(),
-        }
-    }
-
-    /// Returns the genesis block hash for the selected network.
-    pub fn get_genesis_block_hash(&self) -> Vec<u8> {
-        match self {
-            Network::MainNet => get_mainnet_block_hash(),
-            Network::Rincewind => get_rincewind_block_hash(),
-            Network::LocalNet(genesis_block) => (**genesis_block).hash(),
+            Network::MainNet => ConsensusConstants::mainnet(),
+            Network::Rincewind => ConsensusConstants::rincewind(),
+            Network::LocalNet => ConsensusConstants::localnet(),
         }
     }
 }

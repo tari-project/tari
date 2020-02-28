@@ -34,7 +34,7 @@ use crate::{
         ChainStorageError,
         HistoricalBlock,
     },
-    consensus::{ConsensusConstants, ConsensusManager},
+    consensus::ConsensusManager,
     mempool::Mempool,
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
@@ -149,14 +149,18 @@ where T: BlockchainBackend + 'static
 
                 let transactions = self
                     .mempool
-                    .retrieve(ConsensusConstants::current().get_max_block_transaction_weight())
+                    .retrieve(
+                        self.consensus_manager
+                            .consensus_constants()
+                            .get_max_block_transaction_weight(),
+                    )
                     .map_err(|e| CommsInterfaceError::MempoolError(e.to_string()))?
                     .iter()
                     .map(|tx| (**tx).clone())
                     .collect();
 
                 let block_template = NewBlockTemplate::from(
-                    BlockBuilder::new()
+                    BlockBuilder::new(&self.consensus_manager.consensus_constants())
                         .with_header(header)
                         .with_transactions(transactions)
                         .build(),

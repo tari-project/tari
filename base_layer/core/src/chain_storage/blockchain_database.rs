@@ -199,15 +199,16 @@ macro_rules! fetch {
 /// ```
 /// use tari_core::{
 ///     chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
-///     consensus::ConsensusManager,
+///     consensus::{ConsensusManagerBuilder, Network},
 ///     transactions::types::HashDigest,
 ///     validation::{mocks::MockValidator, Validation},
 /// };
 /// let db_backend = MemoryDatabase::<HashDigest>::default();
 /// let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
 /// let db = MemoryDatabase::<HashDigest>::default();
-/// let rules = ConsensusManager::default();
-/// let mut db = BlockchainDatabase::new(db_backend, &rules).unwrap();
+/// let network = Network::LocalNet;
+/// let rules = ConsensusManagerBuilder::new(network).build();
+/// let mut db = BlockchainDatabase::new(db_backend, rules.clone()).unwrap();
 /// db.set_validators(validators);
 /// // Do stuff with db
 /// ```
@@ -217,21 +218,23 @@ where T: BlockchainBackend
     metadata: Arc<RwLock<ChainMetadata>>,
     db: Arc<T>,
     validators: Option<Validators<T>>,
+    consensus_manager: ConsensusManager<T>,
 }
 
 impl<T> BlockchainDatabase<T>
 where T: BlockchainBackend
 {
     /// Creates a new `BlockchainDatabase` using the provided backend.
-    pub fn new(db: T, consensus_manager: &ConsensusManager<T>) -> Result<Self, ChainStorageError> {
+    pub fn new(db: T, consensus_manager: ConsensusManager<T>) -> Result<Self, ChainStorageError> {
         let metadata = Self::read_metadata(&db)?;
         let blockchain_db = BlockchainDatabase {
             metadata: Arc::new(RwLock::new(metadata)),
             db: Arc::new(db),
             validators: None,
+            consensus_manager,
         };
         if let None = blockchain_db.get_height()? {
-            let genesis_block = consensus_manager.get_genesis_block();
+            let genesis_block = blockchain_db.consensus_manager.get_genesis_block();
             let genesis_block_hash = genesis_block.hash();
             blockchain_db.store_new_block(genesis_block)?;
             blockchain_db.update_metadata(0, genesis_block_hash)?;
@@ -553,7 +556,7 @@ where T: BlockchainBackend
         let (utxo_hashes, deleted_nodes) = utxo_cp.into_parts();
         let inputs = self.fetch_inputs(deleted_nodes)?;
         let (outputs, spent) = self.fetch_outputs(utxo_hashes)?;
-        let block = BlockBuilder::new()
+        let block = BlockBuilder::new(&self.consensus_manager.consensus_constants())
             .with_header(header)
             .add_inputs(inputs)
             .add_outputs(outputs)
@@ -962,6 +965,7 @@ where T: BlockchainBackend
             metadata: self.metadata.clone(),
             db: self.db.clone(),
             validators: self.validators.clone(),
+            consensus_manager: self.consensus_manager.clone(),
         }
     }
 }
