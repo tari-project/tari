@@ -128,8 +128,9 @@ impl OutboundMessaging {
                 Ok(body) => {
                     trace!(
                         target: LOG_TARGET,
-                        "Sending message ({} bytes) on outbound messaging substream",
-                        body.len()
+                        "Sending message ({} bytes) ({:?}) on outbound messaging substream",
+                        body.len(),
+                        out_msg.tag,
                     );
                     if let Err(err) = framed.send(body).await {
                         debug!(

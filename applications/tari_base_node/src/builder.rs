@@ -575,6 +575,7 @@ where
         .add_initializer(TransactionServiceInitializer::new(
             TransactionServiceConfig::default(),
             subscription_factory.clone(),
+            comms.subscribe_messaging_events(),
             TransactionServiceSqliteDatabase::new(connection_pool),
             id.clone(),
             factories,

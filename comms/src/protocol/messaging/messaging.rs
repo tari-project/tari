@@ -60,7 +60,7 @@ pub enum MessagingRequest {
     SendMessage(OutboundMessage),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum MessagingEvent {
     MessageReceived(Box<NodeId>, MessageTag),
     InvalidMessageReceived(Box<NodeId>),

@@ -21,7 +21,7 @@ mod consts;
 mod multiplexing;
 mod noise;
 mod proto;
-mod protocol;
+pub mod protocol;
 
 pub mod backoff;
 pub mod bounded_executor;

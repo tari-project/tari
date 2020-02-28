@@ -124,13 +124,22 @@ where TBackend: TransactionBackend + 'static
                             self.receive_finalized_transaction_event(tx_id).await;
                         },
                         TransactionEvent::TransactionSendDiscoveryComplete(tx_id, result) => {
-                            self.receive_discovery_process_result(tx_id, result);
+                            // If this event result is false we will return that result via the callback as
+                            // no further action will be taken on this send attempt. However if it is true
+                            // then we must wait for a `TransactionSendResult` which
+                            // will tell us the final result of the send
+                            if !result {
+                                self.receive_discovery_process_result(tx_id, result);
+                            }
                         },
                         TransactionEvent::TransactionBroadcast(tx_id) => {
                             self.receive_transaction_broadcast_event(tx_id).await;
                         },
                         TransactionEvent::TransactionMined(tx_id) => {
                             self.receive_transaction_mined_event(tx_id).await;
+                        },
+                        TransactionEvent::TransactionSendResult(tx_id, result) => {
+                            self.receive_discovery_process_result(tx_id, result);
                         },
                         /// Only the above variants are mapped to callbacks
                         _ => (),

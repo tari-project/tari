@@ -180,21 +180,22 @@ fn test_wallet() {
             ))
             .unwrap();
 
-        let received_transaction_reply_count = runtime
-            .block_on(async {
-                collect_stream!(
-                    alice_event_stream.map(|i| (*i).clone()),
-                    take = 1,
-                    timeout = Duration::from_secs(10)
-                )
-            })
-            .iter()
-            .fold(0, |acc, x| match x {
-                TransactionEvent::ReceivedTransactionReply(_) => acc + 1,
-                _ => acc,
-            });
+        let result_stream = runtime.block_on(async {
+            collect_stream!(
+                alice_event_stream.map(|i| (*i).clone()),
+                take = 2,
+                timeout = Duration::from_secs(10)
+            )
+        });
+        let received_transaction_reply_count = result_stream.iter().fold(0, |acc, x| match x {
+            TransactionEvent::ReceivedTransactionReply(_) => acc + 1,
+            _ => acc,
+        });
 
-        assert_eq!(received_transaction_reply_count, 1);
+        assert_eq!(
+            received_transaction_reply_count, 1,
+            "Did not received correct numebr of replies"
+        );
 
         let mut contacts = Vec::new();
         for i in 0..2 {

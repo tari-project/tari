@@ -81,7 +81,7 @@ where
         message: DhtOutboundMessage,
     ) -> Result<(), PipelineError>
     {
-        debug!(target: LOG_TARGET, "Serializing outbound message");
+        debug!(target: LOG_TARGET, "Serializing outbound message {:?}", message.tag);
 
         let DhtOutboundMessage {
             mut dht_header,
@@ -100,13 +100,22 @@ where
 
         // If forwarding the message, the DhtHeader already has a signature that should not change
         if is_forwarded {
-            trace!(target: LOG_TARGET, "Forwarded message. Message will not be signed");
+            trace!(
+                target: LOG_TARGET,
+                "Forwarded message {:?}. Message will not be signed",
+                message.tag
+            );
         } else {
             // Sign the body if the origin public key was previously specified.
             if let Some(origin) = dht_header.origin.as_mut() {
                 let signature = signature::sign(&mut OsRng, node_identity.secret_key().clone(), &body)?;
                 origin.signature = signature.to_binary()?;
-                trace!(target: LOG_TARGET, "Signed message: {}", origin.signature.to_hex());
+                trace!(
+                    target: LOG_TARGET,
+                    "Signed message {:?}: {}",
+                    message.tag,
+                    origin.signature.to_hex()
+                );
             }
         }
 
@@ -115,7 +124,12 @@ where
         let body = Bytes::from(envelope.to_encoded_bytes()?);
 
         next_service
-            .oneshot(OutboundMessage::new(destination_peer.node_id, comms_flags, body))
+            .oneshot(OutboundMessage::with_tag(
+                message.tag,
+                destination_peer.node_id,
+                comms_flags,
+                body,
+            ))
             .await
             .map_err(Into::into)
     }
