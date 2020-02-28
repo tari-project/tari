@@ -465,7 +465,7 @@ where
     async fn handle_message_event(&mut self, message_event: MessagingEvent) -> Result<(), TransactionServiceError> {
         let (message_tag, result) = match message_event {
             MessagingEvent::MessageSent(message_tag) => (message_tag, true),
-            MessagingEvent::SendMessageFailed(outbound_message) => (outbound_message.tag, false),
+            MessagingEvent::SendMessageFailed(outbound_message, _reason) => (outbound_message.tag, false),
             _ => return Ok(()),
         };
         match self.pending_outbound_message_results.remove(&message_tag) {

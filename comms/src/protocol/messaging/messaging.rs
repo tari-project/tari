@@ -33,8 +33,8 @@ use crate::{
     },
     types::CommsSubstream,
 };
-use bitflags::_core::fmt::{Error, Formatter};
 use bytes::Bytes;
+use derive_error::Error;
 use futures::{channel::mpsc, stream::Fuse, AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
 use std::{
@@ -60,21 +60,37 @@ pub enum MessagingRequest {
     SendMessage(OutboundMessage),
 }
 
+/// The reason for dial failure. This enum should contain simple variants which describe the kind of failure that
+/// occurred
+#[derive(Debug, Error, Copy, Clone)]
+pub enum SendFailReason {
+    /// Dial was not attempted because the peer is offline
+    PeerOffline,
+    /// Dial was attempted, but failed
+    PeerDialFailed,
+    /// Outbound message envelope failed to serialize
+    EnvelopeFailedToSerialize,
+    /// Failed to open a messaging substream to peer
+    SubstreamOpenFailed,
+    /// Failed to send on substream channel
+    SubstreamSendFailed,
+}
+
 #[derive(Clone, Debug)]
 pub enum MessagingEvent {
     MessageReceived(Box<NodeId>, MessageTag),
     InvalidMessageReceived(Box<NodeId>),
-    SendMessageFailed(OutboundMessage),
+    SendMessageFailed(OutboundMessage, SendFailReason),
     MessageSent(MessageTag),
 }
 
 impl fmt::Display for MessagingEvent {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use MessagingEvent::*;
         match self {
             MessageReceived(node_id, tag) => write!(f, "MessageReceived({}, {})", node_id.short_str(), tag),
             InvalidMessageReceived(node_id) => write!(f, "InvalidMessageReceived({})", node_id.short_str()),
-            SendMessageFailed(out_msg) => write!(f, "SendMessageFailed({})", out_msg),
+            SendMessageFailed(out_msg, reason) => write!(f, "SendMessageFailed({}, Reason = {})", out_msg, reason),
             MessageSent(tag) => write!(f, "SendMessageSucceeded({})", tag),
         }
     }
@@ -193,16 +209,19 @@ impl MessagingProtocol {
         use MessagingEvent::*;
         trace!(target: LOG_TARGET, "Internal messaging event '{}'", event);
         match event {
-            SendMessageFailed(out_msg) => match self.attempts.entry(out_msg.tag) {
+            SendMessageFailed(out_msg, reason) => match self.attempts.entry(out_msg.tag) {
                 Entry::Occupied(mut entry) => match *entry.get() {
                     n if n >= self.max_attempts => {
                         warn!(
                             target: LOG_TARGET,
-                            "Failed to send message '{}' to peer '{}'.",
+                            "Failed to send message '{}' to peer '{}' because '{}'.",
                             out_msg.tag,
-                            out_msg.peer_node_id.short_str()
+                            out_msg.peer_node_id.short_str(),
+                            reason
                         );
-                        let _ = self.messaging_events_tx.send(Arc::new(SendMessageFailed(out_msg)));
+                        let _ = self
+                            .messaging_events_tx
+                            .send(Arc::new(SendMessageFailed(out_msg, reason)));
                     },
                     n => {
                         *entry.get_mut() = n + 1;
@@ -210,7 +229,9 @@ impl MessagingProtocol {
                 },
                 Entry::Vacant(entry) => {
                     if self.max_attempts == 0 {
-                        let _ = self.messaging_events_tx.send(Arc::new(SendMessageFailed(out_msg)));
+                        let _ = self
+                            .messaging_events_tx
+                            .send(Arc::new(SendMessageFailed(out_msg, reason)));
                     } else {
                         match self.retry_queue_tx.send(out_msg).await {
                             Ok(_) => {

@@ -305,12 +305,12 @@ where
                 "Sending liveness ping to {} monitored nodes",
                 num_nodes,
             );
-            for k in self.state.get_monitored_node_ids() {
+            for node_id in self.state.get_monitored_node_ids() {
                 let msg = PingPongMessage::ping();
-                self.state.add_inflight_ping(msg.nonce, &k);
+                self.state.add_inflight_ping(msg.nonce, &node_id);
                 self.oms_handle
                     .send_direct_node_id(
-                        k,
+                        node_id,
                         OutboundEncryption::None,
                         OutboundDomainMessage::new(TariMessageType::PingPong, msg),
                     )

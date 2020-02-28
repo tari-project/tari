@@ -22,6 +22,7 @@
 
 use super::node_id::deserialize_node_id_from_hex;
 use crate::{
+    consts::PEER_OFFLINE_COOLDOWN_PERIOD,
     net_address::MultiaddressesWithStats,
     peer_manager::{connection_stats::PeerConnectionStats, node_id::NodeId, peer_id::PeerId, PeerFeatures},
     types::CommsPublicKey,
@@ -97,6 +98,16 @@ impl Peer {
 
     pub fn is_persisted(&self) -> bool {
         self.id.is_some()
+    }
+
+    /// Returns true if the last connection attempt has failed within the constant
+    /// [PEER_OFFLINE_COOLDOWN_PERIOD](crate::consts::PEER_OFFLINE_COOLDOWN_PERIOD).
+    pub fn is_offline(&self) -> bool {
+        self.connection_stats.failed_attempts() > 1 &&
+            self.connection_stats
+                .time_since_last_failure()
+                .map(|last_failure| last_failure <= PEER_OFFLINE_COOLDOWN_PERIOD)
+                .unwrap_or(false)
     }
 
     pub(super) fn set_id(&mut self, id: PeerId) {
