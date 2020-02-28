@@ -283,7 +283,10 @@ where
 
         // Only process requests with a request_key that we are expecting.
         if !self.pending_utxo_query_keys.remove(&request_key) {
-            trace!(target: LOG_TARGET, "Ignoring Base Node Repsonse with unexpected key");
+            debug!(
+                target: LOG_TARGET,
+                "Ignoring Base Node Repsonse with unexpected request key"
+            );
             return Ok(());
         }
 
@@ -310,10 +313,9 @@ where
             self.db.invalidate_output(v.clone()).await?;
         }
 
-        trace!(
+        debug!(
             target: LOG_TARGET,
-            "Handled Base Node response for Query {}",
-            request_key
+            "Handled Base Node response for Query {}", request_key
         );
 
         self.event_publisher
@@ -332,7 +334,7 @@ where
     ) -> Result<(), OutputManagerError>
     {
         if self.pending_utxo_query_keys.remove(&query_key) {
-            trace!(target: LOG_TARGET, "UTXO Query {} timed out", query_key);
+            debug!(target: LOG_TARGET, "UTXO Query {} timed out", query_key);
             self.query_unspent_outputs_status(utxo_query_timeout_futures).await?;
 
             self.event_publisher
@@ -381,10 +383,9 @@ where
                     request_key.clone(),
                 );
                 utxo_query_timeout_futures.push(state_timeout.delay().boxed());
-                trace!(
+                debug!(
                     target: LOG_TARGET,
-                    "Output Manager Sync query ({}) sent to Base Node",
-                    request_key
+                    "Output Manager Sync query ({}) sent to Base Node", request_key
                 );
             },
         }
