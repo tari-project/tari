@@ -27,6 +27,7 @@ use crate::{
     transactions::types::HashOutput,
 };
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Error, Formatter};
 
 /// NodeCommsRequestType is used to specify the amount of peers that need to be queried before a request can be
 /// finalized.
@@ -57,4 +58,19 @@ pub enum NodeCommsRequest {
     GetNewBlockTemplate,
     GetNewBlock(NewBlockTemplate),
     GetTargetDifficulty(PowAlgorithm),
+}
+
+impl Display for NodeCommsRequest {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        match self {
+            NodeCommsRequest::GetChainMetadata => f.write_str("GetChainMetadata"),
+            NodeCommsRequest::FetchKernels(v) => f.write_str(&format!("FetchKernels (n={})", v.len())),
+            NodeCommsRequest::FetchHeaders(v) => f.write_str(&format!("FetchHeaders (n={})", v.len())),
+            NodeCommsRequest::FetchUtxos(v) => f.write_str(&format!("FetchUtxos (n={})", v.len())),
+            NodeCommsRequest::FetchBlocks(v) => f.write_str(&format!("FetchBlocks (n={})", v.len())),
+            NodeCommsRequest::GetNewBlockTemplate => f.write_str("GetNewBlockTemplate"),
+            NodeCommsRequest::GetNewBlock(b) => f.write_str(&format!("GetNewBlock (Block Height={}", b.header.height)),
+            NodeCommsRequest::GetTargetDifficulty(algo) => f.write_str(&format!("GetTargetDifficulty ({})", algo)),
+        }
+    }
 }

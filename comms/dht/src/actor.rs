@@ -35,6 +35,7 @@ use crate::{
     utils::hoist_nested_result,
     DhtConfig,
 };
+use bitflags::_core::fmt::Formatter;
 use chrono::{DateTime, Utc};
 use derive_error::Error;
 use futures::{
@@ -47,7 +48,7 @@ use futures::{
     StreamExt,
 };
 use log::*;
-use std::sync::Arc;
+use std::{fmt::Display, sync::Arc};
 use tari_comms::{
     peer_manager::{
         NodeId,
@@ -107,6 +108,17 @@ pub enum DhtRequest {
     MsgHashCacheInsert(Vec<u8>, oneshot::Sender<bool>),
     /// Fetch selected peers according to the broadcast strategy
     SelectPeers(BroadcastStrategy, oneshot::Sender<Vec<Peer>>),
+}
+
+impl Display for DhtRequest {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            DhtRequest::SendJoin => f.write_str("SendJoin"),
+            DhtRequest::SendRequestStoredMessages(d) => f.write_str(&format!("SendRequestStoredMessages ({:?})", d)),
+            DhtRequest::MsgHashCacheInsert(_, _) => f.write_str("MsgHashCacheInsert"),
+            DhtRequest::SelectPeers(s, _) => f.write_str(&format!("SelectPeers (Strategy={})", s)),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -191,7 +203,7 @@ impl<'a> DhtActor<'a> {
         loop {
             futures::select! {
                 request = self.request_rx.select_next_some() => {
-                    debug!(target: LOG_TARGET, "DhtActor received message: {:?}", request);
+                    debug!(target: LOG_TARGET, "DhtActor received message: {}", request);
                     let handler = self.request_handler(request);
                     self.pending_jobs.push(handler);
                 },

@@ -87,10 +87,7 @@ where T: BlockchainBackend + 'static
 
     /// Handle inbound node comms requests from remote nodes and local services.
     pub async fn handle_request(&self, request: &NodeCommsRequest) -> Result<NodeCommsResponse, CommsInterfaceError> {
-        debug!(
-            target: LOG_TARGET,
-            "Node comms {:?} request received from remote peer", request
-        );
+        debug!(target: LOG_TARGET, "Handling remote request: {}", request);
         match request {
             NodeCommsRequest::GetChainMetadata => Ok(NodeCommsResponse::ChainMetadata(
                 async_db::get_metadata(self.blockchain_db.clone()).await?,
