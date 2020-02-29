@@ -94,11 +94,16 @@ fn clean_up(name: &str) {
     std::fs::remove_dir_all(get_path(name)).unwrap();
 }
 
+#[cfg(windows)]
+const LINE_ENDING: &'static str = "\r\n";
+#[cfg(not(windows))]
+const LINE_ENDING: &'static str = "\n";
+
 fn load_users() -> Vec<User> {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/users.csv");
     let f = std::fs::read_to_string(path).unwrap();
-    f.split('\n').map(|s| User::new(s).unwrap()).collect()
+    f.split(LINE_ENDING).map(|s| User::new(s).unwrap()).collect()
 }
 
 fn insert_all_users(name: &str) -> (Vec<User>, LMDBDatabase) {
@@ -117,136 +122,150 @@ fn insert_all_users(name: &str) -> (Vec<User>, LMDBDatabase) {
 
 #[test]
 fn single_thread() {
-    let users = load_users();
-    let env = init("single_thread").unwrap();
-    let db = env.get_handle("users").unwrap();
-    for user in &users {
-        db.insert(&user.id, &user).unwrap();
+    {
+        let users = load_users();
+        let env = init("single_thread").unwrap();
+        let db = env.get_handle("users").unwrap();
+        for user in &users {
+            db.insert(&user.id, &user).unwrap();
+        }
+        for user in users.iter() {
+            let check: User = db.get(&user.id).unwrap().unwrap();
+            assert_eq!(check, *user);
+        }
+        assert_eq!(db.len().unwrap(), 1000);
     }
-    for user in users.iter() {
-        let check: User = db.get(&user.id).unwrap().unwrap();
-        assert_eq!(check, *user);
-    }
-    assert_eq!(db.len().unwrap(), 1000);
-    clean_up("single_thread");
+    clean_up("single_thread"); //In Windows file handles must be released before files can be deleted
 }
 
 #[test]
 fn multi_thread() {
-    let users_arc = Arc::new(load_users());
-    let env = init("multi_thread").unwrap();
-    let mut threads = Vec::new();
-    for i in 0..10 {
+    {
+        let users_arc = Arc::new(load_users());
+        let env = init("multi_thread").unwrap();
+        let mut threads = Vec::new();
+        for i in 0..10 {
+            let db = env.get_handle("users").unwrap();
+            let users = users_arc.clone();
+            threads.push(thread::spawn(move || {
+                for j in 0..100 {
+                    let user = &users[i * 100 + j];
+                    db.insert(&user.id, user).unwrap();
+                }
+            }));
+        }
+
+        for thread in threads {
+            thread.join().unwrap();
+        }
+
+        env.log_info();
         let db = env.get_handle("users").unwrap();
-        let users = users_arc.clone();
-        threads.push(thread::spawn(move || {
-            for j in 0..100 {
-                let user = &users[i * 100 + j];
-                db.insert(&user.id, user).unwrap();
-            }
-        }));
+        for user in users_arc.iter() {
+            let check: User = db.get(&user.id).unwrap().unwrap();
+            assert_eq!(check, *user);
+        }
     }
-
-    for thread in threads {
-        thread.join().unwrap();
-    }
-
-    env.log_info();
-    let db = env.get_handle("users").unwrap();
-    for user in users_arc.iter() {
-        let check: User = db.get(&user.id).unwrap().unwrap();
-        assert_eq!(check, *user);
-    }
-    clean_up("multi_thread");
+    clean_up("multi_thread"); //In Windows file handles must be released before files can be deleted
 }
 
 #[test]
 fn transactions() {
-    let (users, db) = insert_all_users("transactions");
-    // Test the `exists` and value retrieval functions
-    let res = db.with_read_transaction::<_, User>(|txn| {
-        for user in users.iter() {
-            assert!(txn.exists(&user.id).unwrap());
-            let check: User = txn.get(&user.id).unwrap().unwrap();
-            assert_eq!(check, *user);
-        }
-        Ok(None)
-    });
-    assert!(res.unwrap().is_none());
-    clean_up("transactions");
+    {
+        let (users, db) = insert_all_users("transactions");
+         // Test the `exists` and value retrieval functions
+        let res = db.with_read_transaction::<_, User>(|txn| {
+            for user in users.iter() {
+                assert!(txn.exists(&user.id).unwrap());
+                let check: User = txn.get(&user.id).unwrap().unwrap();
+                assert_eq!(check, *user);
+            }
+            Ok(None)
+        });
+        println!("{:?}", res);
+        assert!(res.unwrap().is_none());
+    }
+    clean_up("transactions"); //In Windows file handles must be released before files can be deleted
 }
 
 /// Simultaneous writes in different threads
 #[test]
 fn multi_thread_writes() {
-    let env = init("multi-thread-writes").unwrap();
-    let mut threads = Vec::new();
-    for _ in 0..2 {
+    {
+        let env = init("multi-thread-writes").unwrap();
+        let mut threads = Vec::new();
+        for _ in 0..2 {
+            let db = env.get_handle("users").unwrap();
+            threads.push(thread::spawn(move || {
+                let res = db.with_write_transaction(|mut txn| {
+                    for j in 0..1000 {
+                        txn.insert(&j, &j)?;
+                    }
+                    Ok(())
+                });
+                assert!(res.is_ok());
+            }));
+        }
+        for thread in threads {
+            thread.join().unwrap()
+        }
+        env.log_info();
+
         let db = env.get_handle("users").unwrap();
-        threads.push(thread::spawn(move || {
-            let res = db.with_write_transaction(|mut txn| {
-                for j in 0..1000 {
-                    txn.insert(&j, &j)?;
-                }
-                Ok(())
-            });
-            assert!(res.is_ok());
-        }));
-    }
-    for thread in threads {
-        thread.join().unwrap()
-    }
-    env.log_info();
 
-    let db = env.get_handle("users").unwrap();
-
-    assert_eq!(db.len().unwrap(), 1000);
-    for i in 0..1000 {
-        let value: i32 = db.get(&i).unwrap().unwrap();
-        assert_eq!(i, value);
+        assert_eq!(db.len().unwrap(), 1000);
+        for i in 0..1000 {
+            let value: i32 = db.get(&i).unwrap().unwrap();
+            assert_eq!(i, value);
+        }
     }
-
-    clean_up("multi-thread-writes");
+    clean_up("multi-thread-writes"); //In Windows file handles must be released before files can be deleted
 }
 
 /// Multiple write transactions in a single thread
 #[test]
 fn multi_writes() {
-    let env = init("multi-writes").unwrap();
-    for i in 0..2 {
-        let db = env.get_handle("users").unwrap();
-        let res = db.with_write_transaction(|mut txn| {
-            for j in 0..1000 {
-                let v = i * 1000 + j;
-                txn.insert(&v, &v)?;
-            }
-            db.log_info();
-            Ok(())
-        });
-        assert!(res.is_ok());
+    {
+        let env = init("multi-writes").unwrap();
+        for i in 0..2 {
+            let db = env.get_handle("users").unwrap();
+            let res = db.with_write_transaction(|mut txn| {
+                for j in 0..1000 {
+                    let v = i * 1000 + j;
+                    txn.insert(&v, &v)?;
+                }
+                db.log_info();
+                Ok(())
+            });
+            assert!(res.is_ok());
+        }
+        env.flush().unwrap();
     }
-    env.flush().unwrap();
-    clean_up("multi-writes");
+    clean_up("multi-writes"); //In Windows file handles must be released before files can be deleted
 }
 
 #[test]
 fn pair_iterator() {
-    let (users, db) = insert_all_users("pair_iterator");
-    let res = db.for_each::<u64, User, _>(|pair| {
-        let (key, user) = pair.unwrap();
-        assert_eq!(user.id, key);
-        assert_eq!(users[key as usize - 1], user);
-        IterationResult::Continue
-    });
-    assert!(res.is_ok());
-    clean_up("pair_iterator");
+    {
+        let (users, db) = insert_all_users("pair_iterator");
+        let res = db.for_each::<u64, User, _>(|pair| {
+            let (key, user) = pair.unwrap();
+            assert_eq!(user.id, key);
+            assert_eq!(users[key as usize - 1], user);
+            IterationResult::Continue
+        });
+        assert!(res.is_ok());
+    }
+    clean_up("pair_iterator"); //In Windows file handles must be released before files can be deleted
 }
 
 #[test]
 fn exists_and_delete() {
-    let (_, db) = insert_all_users("delete");
-    assert!(db.contains_key(&525u64).unwrap());
-    db.remove(&525u64).unwrap();
-    assert_eq!(db.contains_key(&525u64).unwrap(), false);
-    clean_up("delete");
+    {
+        let (_, db) = insert_all_users("delete");
+        assert!(db.contains_key(&525u64).unwrap());
+        db.remove(&525u64).unwrap();
+        assert_eq!(db.contains_key(&525u64).unwrap(), false);
+    }
+    clean_up("delete"); //In Windows file handles must be released before files can be deleted
 }
