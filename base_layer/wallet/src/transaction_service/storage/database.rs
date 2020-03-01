@@ -236,8 +236,7 @@ where T: TransactionBackend + 'static
             )))
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
 
         Ok(())
     }
@@ -256,8 +255,17 @@ where T: TransactionBackend + 'static
             )))
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        Ok(())
+    }
+
+    pub async fn remove_pending_outbound_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || {
+            db_clone.write(WriteOperation::Remove(DbKey::PendingOutboundTransaction(tx_id)))
+        })
+        .await
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(())
     }
 
@@ -275,8 +283,7 @@ where T: TransactionBackend + 'static
             )))
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(())
     }
 
@@ -298,8 +305,7 @@ where T: TransactionBackend + 'static
         let db_clone = self.db.clone();
         let result = tokio::task::spawn_blocking(move || fetch!(db_clone, tx_id, PendingOutboundTransaction))
             .await
-            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
-            .and_then(|inner_result| inner_result)?;
+            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(result)
     }
 
@@ -312,8 +318,7 @@ where T: TransactionBackend + 'static
 
         let result = tokio::task::spawn_blocking(move || fetch!(db_clone, tx_id, PendingInboundTransaction))
             .await
-            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
-            .and_then(|inner_result| inner_result)?;
+            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
 
         Ok(result)
     }
@@ -327,8 +332,7 @@ where T: TransactionBackend + 'static
 
         let result = tokio::task::spawn_blocking(move || fetch!(db_clone, tx_id, PendingCoinbaseTransaction))
             .await
-            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
-            .and_then(|inner_result| inner_result)?;
+            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
 
         Ok(result)
     }
@@ -342,8 +346,7 @@ where T: TransactionBackend + 'static
 
         let result = tokio::task::spawn_blocking(move || fetch!(db_clone, tx_id, CompletedTransaction))
             .await
-            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
-            .and_then(|inner_result| inner_result)?;
+            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(result)
     }
 
@@ -364,8 +367,7 @@ where T: TransactionBackend + 'static
             Err(e) => log_error(DbKey::PendingInboundTransactions, e),
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(t)
     }
 
@@ -386,8 +388,7 @@ where T: TransactionBackend + 'static
             Err(e) => log_error(DbKey::PendingOutboundTransactions, e),
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(t)
     }
 
@@ -408,8 +409,7 @@ where T: TransactionBackend + 'static
             Err(e) => log_error(DbKey::PendingCoinbaseTransactions, e),
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(t)
     }
 
@@ -428,8 +428,7 @@ where T: TransactionBackend + 'static
             Err(e) => log_error(DbKey::CompletedTransactions, e),
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(t)
     }
 
@@ -485,8 +484,7 @@ where T: TransactionBackend + 'static
             db_clone.write(WriteOperation::Remove(DbKey::PendingCoinbaseTransaction(tx_id)))
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(())
     }
 
@@ -540,8 +538,7 @@ where T: TransactionBackend + 'static
             )))
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(())
     }
 }

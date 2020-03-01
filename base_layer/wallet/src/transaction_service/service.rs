@@ -54,10 +54,14 @@ use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
     sync::Arc,
-    time::Duration,
 };
 use tari_broadcast_channel::Publisher;
-use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
+use tari_comms::{
+    message::MessageTag,
+    peer_manager::NodeIdentity,
+    protocol::messaging::{MessagingEvent, MessagingEventReceiver},
+    types::CommsPublicKey,
+};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageResponse},
@@ -125,6 +129,7 @@ where TBackend: TransactionBackend + Clone + 'static
     config: TransactionServiceConfig,
     db: TransactionDatabase<TBackend>,
     outbound_message_service: OutboundMessageRequester,
+    message_event_receiver: Option<MessagingEventReceiver>,
     output_manager_service: OutputManagerHandle,
     transaction_stream: Option<TTxStream>,
     transaction_reply_stream: Option<TTxReplyStream>,
@@ -138,6 +143,7 @@ where TBackend: TransactionBackend + Clone + 'static
     node_identity: Arc<NodeIdentity>,
     factories: CryptoFactories,
     base_node_public_key: Option<CommsPublicKey>,
+    pending_outbound_message_results: HashMap<MessageTag, OutboundTransaction>,
 }
 
 impl<TTxStream, TTxReplyStream, TTxFinalizedStream, MReplyStream, BNResponseStream, TBackend>
@@ -164,6 +170,7 @@ where
         base_node_response_stream: BNResponseStream,
         output_manager_service: OutputManagerHandle,
         outbound_message_service: OutboundMessageRequester,
+        message_event_receiver: MessagingEventReceiver,
         event_publisher: Publisher<TransactionEvent>,
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
@@ -173,6 +180,7 @@ where
             config,
             db,
             outbound_message_service,
+            message_event_receiver: Some(message_event_receiver),
             output_manager_service,
             transaction_stream: Some(transaction_stream),
             transaction_reply_stream: Some(transaction_reply_stream),
@@ -184,6 +192,7 @@ where
             node_identity,
             factories,
             base_node_public_key: None,
+            pending_outbound_message_results: HashMap::new(),
         }
     }
 
@@ -225,9 +234,16 @@ where
             .expect("Transaction Service initialized without base_node_response_stream")
             .fuse();
         pin_mut!(base_node_response_stream);
+        let message_event_receiver = self
+            .message_event_receiver
+            .take()
+            .expect("Transaction Service initialized without message_event_subscription")
+            .fuse();
+        pin_mut!(message_event_receiver);
 
-        let mut discovery_process_futures: FuturesUnordered<BoxFuture<'static, Result<TxId, TransactionServiceError>>> =
-            FuturesUnordered::new();
+        let mut discovery_process_futures: FuturesUnordered<
+            BoxFuture<'static, Result<(MessageTag, OutboundTransaction), TransactionServiceError>>,
+        > = FuturesUnordered::new();
 
         let mut broadcast_timeout_futures: FuturesUnordered<BoxFuture<'static, TxId>> = FuturesUnordered::new();
         let mut mined_request_timeout_futures: FuturesUnordered<BoxFuture<'static, TxId>> = FuturesUnordered::new();
@@ -249,7 +265,7 @@ where
                 msg = transaction_stream.select_next_some() => {
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
                     let result  = self.accept_transaction(origin_public_key, inner_msg).await.or_else(|err| {
-                        error!(target: LOG_TARGET, "Failed to handle incoming message: {:?}", err);
+                        error!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {:?} for NodeID: {}", err, self.node_identity.node_id().short_str());
                         Err(err)
                     });
 
@@ -265,7 +281,7 @@ where
                 msg = transaction_reply_stream.select_next_some() => {
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
                     let result = self.accept_recipient_reply(origin_public_key, inner_msg, &mut broadcast_timeout_futures).await.or_else(|err| {
-                        error!(target: LOG_TARGET, "Failed to handle incoming message: {:?}", err);
+                        error!(target: LOG_TARGET, "Failed to handle incoming Transaction Reply message: {:?} for NodeId: {}", err, self.node_identity.node_id().short_str());
                         Err(err)
                     });
 
@@ -281,7 +297,7 @@ where
                 msg = transaction_finalized_stream.select_next_some() => {
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
                     let result = self.accept_finalized_transaction(origin_public_key, inner_msg, &mut broadcast_timeout_futures).await.or_else(|err| {
-                        error!(target: LOG_TARGET, "Failed to handle incoming message: {:?}", err);
+                        error!(target: LOG_TARGET, "Failed to handle incoming Transaction Finalized message: {:?} for NodeID: {}", err , self.node_identity.node_id().short_str());
                         Err(err)
                     });
 
@@ -297,7 +313,7 @@ where
                 msg = mempool_response_stream.select_next_some() => {
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
                     let _ = self.handle_mempool_response(inner_msg, &mut mined_request_timeout_futures).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling mempool service response : {:?}", resp);
+                        error!(target: LOG_TARGET, "Error handling mempool service response: {:?}", resp);
                         Err(resp)
                     });
                 }
@@ -305,16 +321,26 @@ where
                 msg = base_node_response_stream.select_next_some() => {
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
                     let _ = self.handle_base_node_response(inner_msg).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling base node service response : {:?}", resp);
+                        error!(target: LOG_TARGET, "Error handling base node service response: {:?}", resp);
                         Err(resp)
                     });
                 }
                 response = discovery_process_futures.select_next_some() => {
                     match response {
-                        Ok(tx_id) => {
+                        Ok((message_tag, outbound_tx)) => {
+                            self.db
+                                .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx.clone())
+                                .await?;
+                            self.pending_outbound_message_results.insert(message_tag, outbound_tx.clone());
                             let _ = self.event_publisher
-                                .send(TransactionEvent::TransactionSendDiscoveryComplete(tx_id, true))
+                                .send(TransactionEvent::TransactionSendDiscoveryComplete(outbound_tx.tx_id, true))
                                 .await;
+                            info!(
+                                target: LOG_TARGET,
+                                "Discovery process completed for TxId: {} with Message Tag: {} now waiting for MessageSent event",
+                                outbound_tx.tx_id,
+                                message_tag,
+                            );
                         },
                         Err(TransactionServiceError::DiscoveryProcessFailed(tx_id)) => {
                             if let Err(e) = self.output_manager_service.cancel_transaction(tx_id).await {
@@ -328,6 +354,17 @@ where
                         Err(e) => error!(target: LOG_TARGET, "Discovery and Send failed with Error: {:?}", e),
                     }
                 },
+                message_event = message_event_receiver.select_next_some() => {
+                   match message_event {
+                   Ok(event) => {
+                       let _ = self.handle_message_event((*event).clone()).await.or_else(|resp| {
+                            error!(target: LOG_TARGET, "Error handling outbound message event: {:?}", resp);
+                            Err(resp)
+                        });
+                    },
+                    Err(e) => error!(target: LOG_TARGET, "Error handling Outbound Message Event: {:?}", e),
+                   }
+                }
                 tx_id = broadcast_timeout_futures.select_next_some() => {
                     let _ = self.handle_mempool_broadcast_timeout(tx_id, &mut  broadcast_timeout_futures).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling mempool broadcast timeout : {:?}", resp);
@@ -353,7 +390,9 @@ where
     async fn handle_request(
         &mut self,
         request: TransactionServiceRequest,
-        discovery_process_futures: &mut FuturesUnordered<BoxFuture<'static, Result<TxId, TransactionServiceError>>>,
+        discovery_process_futures: &mut FuturesUnordered<
+            BoxFuture<'static, Result<(MessageTag, OutboundTransaction), TransactionServiceError>>,
+        >,
         broadcast_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
         mined_request_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
     ) -> Result<TransactionServiceResponse, TransactionServiceError>
@@ -423,6 +462,44 @@ where
         }
     }
 
+    async fn handle_message_event(&mut self, message_event: MessagingEvent) -> Result<(), TransactionServiceError> {
+        let (message_tag, result) = match message_event {
+            MessagingEvent::MessageSent(message_tag) => (message_tag, true),
+            MessagingEvent::SendMessageFailed(outbound_message) => (outbound_message.tag, false),
+            _ => return Ok(()),
+        };
+        match self.pending_outbound_message_results.remove(&message_tag) {
+            None => (),
+            Some(outbound_tx) => {
+                // If the message was successfully sent then add it to the pending transaction list
+                if result {
+                    info!(
+                        target: LOG_TARGET,
+                        "Pending Outbound Transaction TxId: {:?} was successfully sent with Message Tag: {:?}",
+                        outbound_tx.tx_id,
+                        message_tag
+                    );
+                } else {
+                    error!(
+                        target: LOG_TARGET,
+                        "Pending Outbound Transaction TxId: {:?} with Message Tag {:?} could not be sent",
+                        message_tag,
+                        outbound_tx.tx_id
+                    );
+
+                    self.db.remove_pending_outbound_transaction(outbound_tx.tx_id).await?;
+                }
+
+                let _ = self
+                    .event_publisher
+                    .send(TransactionEvent::TransactionSendResult(outbound_tx.tx_id, result))
+                    .await;
+            },
+        }
+
+        Ok(())
+    }
+
     /// Sends a new transaction to a recipient
     /// # Arguments
     /// 'dest_pubkey': The Comms pubkey of the recipient node
@@ -434,7 +511,9 @@ where
         amount: MicroTari,
         fee_per_gram: MicroTari,
         message: String,
-        discovery_process_futures: &mut FuturesUnordered<BoxFuture<'static, Result<TxId, TransactionServiceError>>>,
+        discovery_process_futures: &mut FuturesUnordered<
+            BoxFuture<'static, Result<(MessageTag, OutboundTransaction), TransactionServiceError>>,
+        >,
     ) -> Result<(), TransactionServiceError>
     {
         let mut sender_protocol = self
@@ -459,13 +538,46 @@ where
             )
             .await?
         {
-            SendMessageResponse::Queued(_) => (),
+            SendMessageResponse::Queued(tags) => match tags.len() {
+                0 => error!(
+                    target: LOG_TARGET,
+                    "Queuing Transaction TX_ID: {} for send was unsuccessful and no message was sent", tx_id
+                ),
+                1 => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Transaction (TxId: {}) Send successfully queued for send with Message Tag: {:?}",
+                        tx_id,
+                        tags[0],
+                    );
+
+                    let outbound_tx = OutboundTransaction {
+                        tx_id,
+                        destination_public_key: dest_pubkey.clone(),
+                        amount,
+                        fee: sender_protocol.get_fee_amount()?,
+                        sender_protocol,
+                        message,
+                        timestamp: Utc::now().naive_utc(),
+                    };
+
+                    self.db
+                        .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx.clone())
+                        .await?;
+
+                    self.pending_outbound_message_results
+                        .insert(tags[0].clone(), outbound_tx);
+                },
+                _ => error!(
+                    target: LOG_TARGET,
+                    "Send process for TX_ID: {} was unsuccessful due to more than 1 MessageTag being returned", tx_id
+                ),
+            },
             SendMessageResponse::Failed => return Err(TransactionServiceError::OutboundSendFailure),
             SendMessageResponse::PendingDiscovery(r) => {
                 // The sending of the message resulted in a long running Discovery process being performed by the Comms
                 // layer. This can take minutes so we will spawn a task to wait for the result and then act
                 // appropriately on it
-                let db_clone = self.db.clone();
                 let tx_id_clone = tx_id;
                 let outbound_tx_clone = OutboundTransaction {
                     tx_id,
@@ -477,28 +589,16 @@ where
                     timestamp: Utc::now().naive_utc(),
                 };
                 let discovery_future = async move {
-                    transaction_send_discovery_process_completion(r, db_clone, tx_id_clone, outbound_tx_clone).await
+                    transaction_send_discovery_process_completion(r, tx_id_clone, outbound_tx_clone).await
                 };
                 discovery_process_futures.push(discovery_future.boxed());
                 return Err(TransactionServiceError::OutboundSendDiscoveryInProgress(tx_id));
             },
         }
 
-        self.db
-            .add_pending_outbound_transaction(tx_id, OutboundTransaction {
-                tx_id,
-                destination_public_key: dest_pubkey.clone(),
-                amount,
-                fee: sender_protocol.get_fee_amount()?,
-                sender_protocol,
-                message,
-                timestamp: Utc::now().naive_utc(),
-            })
-            .await?;
-
         info!(
             target: LOG_TARGET,
-            "Transaction with TX_ID = {} sent to {}", tx_id, dest_pubkey
+            "Transaction with TX_ID = {} queued to be sent to {}", tx_id, dest_pubkey
         );
 
         Ok(())
@@ -983,10 +1083,7 @@ where
                     )
                     .await?;
                 // Start Timeout
-                let state_timeout = StateDelay::new(
-                    Duration::from_secs(self.config.mempool_broadcast_timeout_in_secs),
-                    completed_tx.tx_id,
-                );
+                let state_timeout = StateDelay::new(self.config.mempool_broadcast_timeout.clone(), completed_tx.tx_id);
 
                 broadcast_timeout_futures.push(state_timeout.delay().boxed());
             },
@@ -1054,7 +1151,7 @@ where
             )),
             MempoolResponse::TxStorage(ts) => match ts {
                 TxStorageResponse::NotStored => {
-                    trace!(
+                    debug!(
                         target: LOG_TARGET,
                         "Mempool response received for TxId: {:?} but requested transaction was not found in mempool",
                         tx_id
@@ -1124,10 +1221,8 @@ where
                     )
                     .await?;
                 // Start Timeout
-                let state_timeout = StateDelay::new(
-                    Duration::from_secs(self.config.base_node_mined_timeout_in_secs),
-                    completed_tx.tx_id,
-                );
+                let state_timeout =
+                    StateDelay::new(self.config.base_node_mined_timeout.clone(), completed_tx.tx_id.clone());
 
                 mined_request_timeout_futures.push(state_timeout.delay().boxed());
             },
@@ -1223,10 +1318,9 @@ where
                 }
             }
         } else {
-            trace!(
+            debug!(
                 target: LOG_TARGET,
-                "Base node response received for TxId: {:?} but this transaction is not in the Broadcast state",
-                tx_id
+                "Base node response received for TxId: {:?} but this transaction is not in the Broadcast state", tx_id
             );
         }
 
@@ -1473,31 +1567,36 @@ where
 
 // Asynchronous Tasks
 
-async fn transaction_send_discovery_process_completion<TBackend: TransactionBackend + Clone + 'static>(
+async fn transaction_send_discovery_process_completion(
     response_channel: oneshot::Receiver<SendMessageResponse>,
-    db: TransactionDatabase<TBackend>,
     tx_id: TxId,
     outbound_tx: OutboundTransaction,
-) -> Result<TxId, TransactionServiceError>
+) -> Result<(MessageTag, OutboundTransaction), TransactionServiceError>
 {
-    let mut success = false;
+    let mut message_tag: Option<MessageTag> = None;
     match response_channel.await {
         Ok(response) => match response {
-            SendMessageResponse::Queued(tags) => {
-                if tags.is_empty() {
-                    error!(
-                        target: LOG_TARGET,
-                        "Send Discovery process for TX_ID: {} was unsuccessful and no message was sent", tx_id
-                    );
-                } else {
+            SendMessageResponse::Queued(tags) => match tags.len() {
+                0 => error!(
+                    target: LOG_TARGET,
+                    "Send Discovery process for TX_ID: {} was unsuccessful and no message was sent", tx_id
+                ),
+                1 => {
+                    message_tag = Some(tags[0].clone());
+
                     info!(
                         target: LOG_TARGET,
-                        "Transaction (TxId: {}) Send Discovery process successful? {}",
+                        "Transaction (TxId: {}) Send Discovery process successful with Message Tag: {:?}",
                         tx_id,
-                        tags.len()
+                        message_tag,
                     );
-                    success = true;
-                }
+                },
+                _ => error!(
+                    target: LOG_TARGET,
+                    "Send Discovery process for TX_ID: {} was unsuccessful due to more than 1 MessageTag being \
+                     returned",
+                    tx_id
+                ),
             },
             _ => {
                 error!(
@@ -1514,28 +1613,13 @@ async fn transaction_send_discovery_process_completion<TBackend: TransactionBack
         },
     }
 
-    if success {
+    return if let Some(mt) = message_tag {
         let updated_outbound_tx = OutboundTransaction {
             timestamp: Utc::now().naive_utc(),
-            ..outbound_tx
+            ..outbound_tx.clone()
         };
-        if let Err(_) = db
-            .add_pending_outbound_transaction(tx_id, updated_outbound_tx.clone())
-            .await
-        {
-            success = false;
-        }
-        info!(
-            target: LOG_TARGET,
-            "Transaction with TX_ID = {} sent to {} after Discovery process completed",
-            tx_id,
-            updated_outbound_tx.destination_public_key.clone()
-        );
-    }
-
-    if !success {
-        return Err(TransactionServiceError::DiscoveryProcessFailed(tx_id));
-    }
-
-    Ok(tx_id)
+        Ok((mt, updated_outbound_tx))
+    } else {
+        Err(TransactionServiceError::DiscoveryProcessFailed(tx_id))
+    };
 }

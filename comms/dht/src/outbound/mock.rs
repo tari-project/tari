@@ -31,6 +31,7 @@ use std::{
     sync::{Arc, Condvar, Mutex, RwLock},
     time::Duration,
 };
+use tari_comms::message::MessageTag;
 
 /// Creates a mock outbound request "handler" for testing purposes.
 ///
@@ -143,7 +144,7 @@ impl OutboundServiceMock {
                     let response = self
                         .mock_state
                         .take_next_response()
-                        .or_else(|| Some(SendMessageResponse::Queued(vec![])))
+                        .or_else(|| Some(SendMessageResponse::Queued(vec![MessageTag::new()])))
                         .expect("never none");
 
                     reply_tx.send(response).expect("Reply channel cancelled");

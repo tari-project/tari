@@ -394,7 +394,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     fn invalidate_unspent_output(&self, output: &UnblindedOutput) -> Result<(), OutputManagerStorageError> {
         let conn = self
             .database_connection_pool
-            .clone()
             .get()
             .map_err(|_| OutputManagerStorageError::R2d2Error)?;
 

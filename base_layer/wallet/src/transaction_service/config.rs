@@ -20,17 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 #[derive(Clone)]
 pub struct TransactionServiceConfig {
-    pub mempool_broadcast_timeout_in_secs: u64,
-    pub base_node_mined_timeout_in_secs: u64,
+    pub mempool_broadcast_timeout: Duration,
+    pub base_node_mined_timeout: Duration,
 }
 
 impl Default for TransactionServiceConfig {
     fn default() -> Self {
         Self {
-            mempool_broadcast_timeout_in_secs: 30,
-            base_node_mined_timeout_in_secs: 30,
+            mempool_broadcast_timeout: Duration::from_secs(30),
+            base_node_mined_timeout: Duration::from_secs(30),
         }
     }
 }

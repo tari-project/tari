@@ -172,8 +172,7 @@ where T: OutputManagerBackend + 'static
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::KeyManagerState(state)))
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
 
         Ok(())
     }
@@ -182,8 +181,7 @@ where T: OutputManagerBackend + 'static
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.increment_key_index())
             .await
-            .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
-            .and_then(|inner_result| inner_result)?;
+            .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(())
     }
 
@@ -196,8 +194,7 @@ where T: OutputManagerBackend + 'static
             )))
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
 
         Ok(())
     }
@@ -214,8 +211,7 @@ where T: OutputManagerBackend + 'static
             })
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
 
         let unspent_outputs = tokio::task::spawn_blocking(move || {
             db_clone2.fetch(&DbKey::UnspentOutputs)?.ok_or_else(|| {
@@ -223,8 +219,7 @@ where T: OutputManagerBackend + 'static
             })
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
 
         if let DbValue::UnspentOutputs(uo) = unspent_outputs {
             if let DbValue::AllPendingTransactionOutputs(pto) = pending_txs {
@@ -269,8 +264,7 @@ where T: OutputManagerBackend + 'static
             )))
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
 
         Ok(())
     }
@@ -325,8 +319,7 @@ where T: OutputManagerBackend + 'static
             )))
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(())
     }
 
@@ -379,8 +372,7 @@ where T: OutputManagerBackend + 'static
             Err(e) => log_error(DbKey::UnspentOutputs, e),
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
 
         uo.sort();
         Ok(uo)
@@ -399,8 +391,7 @@ where T: OutputManagerBackend + 'static
             Err(e) => log_error(DbKey::SpentOutputs, e),
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(uo)
     }
 
@@ -421,8 +412,7 @@ where T: OutputManagerBackend + 'static
             Err(e) => log_error(DbKey::AllPendingTransactionOutputs, e),
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(uo)
     }
 
@@ -439,8 +429,7 @@ where T: OutputManagerBackend + 'static
             Err(e) => log_error(DbKey::UnspentOutputs, e),
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(uo)
     }
 
@@ -457,8 +446,7 @@ where T: OutputManagerBackend + 'static
             Err(e) => log_error(DbKey::InvalidOutputs, e),
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(uo)
     }
 

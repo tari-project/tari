@@ -27,6 +27,7 @@ use crate::{
 use derive_error::Error;
 use diesel::result::Error as DieselError;
 use serde_json::Error as SerdeJsonError;
+use tari_comms::peer_manager::node_id::NodeIdError;
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
 use tari_service_framework::reply_channel::TransportChannelError;
@@ -84,6 +85,7 @@ pub enum TransactionServiceError {
     TransactionError(TransactionError),
     #[error(msg_embedded, no_from, non_std)]
     ConversionError(String),
+    NodeIdError(NodeIdError),
 }
 
 #[derive(Debug, Error)]

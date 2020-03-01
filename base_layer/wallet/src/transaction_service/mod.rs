@@ -39,7 +39,7 @@ use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
 use tari_broadcast_channel::bounded;
-use tari_comms::peer_manager::NodeIdentity;
+use tari_comms::{peer_manager::NodeIdentity, protocol::messaging::MessagingEventReceiver};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     base_node::proto::base_node as BaseNodeProto,
@@ -69,6 +69,7 @@ where T: TransactionBackend
 {
     config: TransactionServiceConfig,
     subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
+    message_event_receiver: Option<MessagingEventReceiver>,
     backend: Option<T>,
     node_identity: Arc<NodeIdentity>,
     factories: CryptoFactories,
@@ -80,6 +81,7 @@ where T: TransactionBackend
     pub fn new(
         config: TransactionServiceConfig,
         subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
+        message_event_receiver: MessagingEventReceiver,
         backend: T,
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
@@ -88,6 +90,7 @@ where T: TransactionBackend
         Self {
             config,
             subscription_factory,
+            message_event_receiver: Some(message_event_receiver),
             backend: Some(backend),
             node_identity,
             factories,
@@ -162,6 +165,11 @@ where T: TransactionBackend + Clone + 'static
             .take()
             .expect("Cannot start Transaction Service without providing a backend");
 
+        let message_event_receiver = self
+            .message_event_receiver
+            .take()
+            .expect("Cannot start Transaction Service without providing an Message Event Receiver");
+
         let node_identity = self.node_identity.clone();
         let factories = self.factories.clone();
         let config = self.config.clone();
@@ -187,6 +195,7 @@ where T: TransactionBackend + Clone + 'static
                 base_node_response_stream,
                 output_manager_service,
                 outbound_message_service,
+                message_event_receiver,
                 publisher,
                 node_identity,
                 factories,

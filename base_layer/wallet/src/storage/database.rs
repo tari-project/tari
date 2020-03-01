@@ -106,8 +106,7 @@ where T: WalletBackend + 'static
             Err(e) => log_error(DbKey::Peers, e),
         })
         .await
-        .or_else(|err| Err(WalletStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(WalletStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(c)
     }
 
@@ -121,8 +120,7 @@ where T: WalletBackend + 'static
             )))
         })
         .await
-        .or_else(|err| Err(WalletStorageError::BlockingTaskSpawnError(err.to_string())))
-        .and_then(|inner_result| inner_result)?;
+        .or_else(|err| Err(WalletStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(())
     }
 

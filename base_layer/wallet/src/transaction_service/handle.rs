@@ -91,6 +91,7 @@ pub enum TransactionEvent {
     ReceivedTransaction(TxId),
     ReceivedTransactionReply(TxId),
     ReceivedFinalizedTransaction(TxId),
+    TransactionSendResult(TxId, bool),
     TransactionSendDiscoveryComplete(TxId, bool),
     TransactionBroadcast(TxId),
     TransactionMined(TxId),

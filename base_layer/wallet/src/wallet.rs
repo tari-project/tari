@@ -56,13 +56,14 @@ use tari_comms::{
 use tari_comms_dht::Dht;
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::UnblindedOutput,
+    transaction::{OutputFeatures, UnblindedOutput},
     types::{CryptoFactories, PrivateKey},
 };
 use tari_crypto::{
     common::Blake256,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     signatures::{SchnorrSignature, SchnorrSignatureError},
+    tari_utilities::hex::Hex,
 };
 use tari_p2p::{
     comms_connector::pubsub_connector,
@@ -102,6 +103,7 @@ where
     pub db: WalletDatabase<T>,
     pub runtime: Runtime,
     pub log_handle: Option<LogHandle>,
+    pub factories: CryptoFactories,
     #[cfg(feature = "test_harness")]
     pub transaction_backend: U,
     _u: PhantomData<U>,
@@ -179,9 +181,10 @@ where
             .add_initializer(TransactionServiceInitializer::new(
                 TransactionServiceConfig::default(),
                 subscription_factory.clone(),
+                comms.subscribe_messaging_events(),
                 transaction_backend,
                 comms.node_identity(),
-                factories,
+                factories.clone(),
             ))
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
             .finish();
@@ -216,6 +219,7 @@ where
             db,
             runtime,
             log_handle,
+            factories,
             #[cfg(feature = "test_harness")]
             transaction_backend: transaction_backend_handle,
             _u: PhantomData,
@@ -276,7 +280,7 @@ where
         let unblinded_output = UnblindedOutput::new(amount, spending_key.clone(), None);
 
         self.runtime
-            .block_on(self.output_manager_service.add_output(unblinded_output))?;
+            .block_on(self.output_manager_service.add_output(unblinded_output.clone()))?;
 
         let tx_id = self.runtime.block_on(self.transaction_service.import_utxo(
             amount.clone(),
@@ -284,7 +288,14 @@ where
             message,
         ))?;
 
-        info!(target: LOG_TARGET, "UTXO imported into wallet");
+        info!(
+            target: LOG_TARGET,
+            "UTXO (Commitment: {}) imported into wallet",
+            unblinded_output
+                .as_transaction_input(&self.factories.commitment, OutputFeatures::default())
+                .commitment
+                .to_hex()
+        );
 
         Ok(tx_id)
     }

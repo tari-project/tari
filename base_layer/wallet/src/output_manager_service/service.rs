@@ -310,7 +310,7 @@ where
 
         // If there are any remaining Unspent Outputs we will move them to the invalid collection
         for (_k, v) in output_hashes {
-            self.db.invalidate_output(v.clone()).await?;
+            self.db.invalidate_output(v).await?;
         }
 
         debug!(
@@ -352,7 +352,7 @@ where
         utxo_query_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, u64>>,
     ) -> Result<(), OutputManagerError>
     {
-        match self.base_node_public_key.clone() {
+        match self.base_node_public_key.as_ref() {
             None => return Err(OutputManagerError::NoBaseNodeKeysProvided),
             Some(pk) => {
                 let unspent_outputs: Vec<UnblindedOutput> = self.db.get_unspent_outputs().await?;
@@ -554,7 +554,7 @@ where
     }
 
     /// Confirm that a received or sent transaction and its outputs have been detected on the base chain. The inputs and
-    /// outputs are checked to see that they match what the stored PendingTransaction contians. This will
+    /// outputs are checked to see that they match what the stored PendingTransaction contains. This will
     /// be called by the Transaction Service which monitors the base chain.
     pub async fn confirm_transaction(
         &mut self,
