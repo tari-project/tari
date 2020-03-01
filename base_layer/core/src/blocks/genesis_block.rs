@@ -33,6 +33,11 @@ use crate::transactions::{
     transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionKernel, TransactionOutput},
     types::{Commitment, PrivateKey, PublicKey, Signature},
 };
+use serde::Deserialize;
+use std::{
+    fs::File,
+    io::{BufRead, BufReader, Error, Write},
+};
 use tari_crypto::tari_utilities::{hash::Hashable, hex::*};
 
 // TODO: see issue #1145
@@ -50,7 +55,26 @@ pub fn get_mainnet_gen_header() -> BlockHeader {
     get_mainnet_genesis_block().header
 }
 
+/// This will get the rincewind gen block
 pub fn get_rincewind_genesis_block() -> Block {
+    // lets get the block
+    let mut block = get_rincewind_genesis_block_raw();
+    // Lets load in the rincewind faucet tx's
+    let mut utxos = Vec::new();
+    let file = include_str!("faucets/alphanet_faucet.json");
+    for line in file.lines() {
+        let utxo: TransactionOutput = serde_json::from_str(line).unwrap();
+        utxos.push(utxo);
+    }
+    // fix headers to new mmr roots after adding utxos
+    block.header.output_mr = from_hex("f9bfcc0bfae8f90991ea7cc9a625a411dd757cce088cbf740848570daa43daff").unwrap();
+    block.header.range_proof_mr = from_hex("fbadbae2bf8c7289d77af52edc80490cb476a917abd0afeab8821913791b678f").unwrap();
+    block.header.kernel_mr = from_hex("a40db2278709c3fb0e03044ca0f5090ffca616b708850d1437af4d584e17b97a").unwrap();
+    block.body.add_outputs(&mut utxos);
+    block
+}
+
+pub fn get_rincewind_genesis_block_raw() -> Block {
     let sig = Signature::new(
         PublicKey::from_hex("82f5e603783cfe8b7d50ec1fefb7841398bffcadcb6102dae1f83b533f0aec41").unwrap(),
         PrivateKey::from_hex("05af349cb5618e636021ca66a3fd21067b6f9b159b75b7783985a534726fe509").unwrap(),
@@ -115,4 +139,30 @@ pub fn get_rincewind_block_hash() -> Vec<u8> {
 
 pub fn get_rincewind_gen_header() -> BlockHeader {
     get_rincewind_genesis_block().header
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use tari_crypto::tari_utilities::hex::Hex;
+
+    #[test]
+    fn load_rincewind() {
+        let block = get_rincewind_genesis_block();
+
+        assert_eq!(block.body.outputs().len(), 4001);
+    }
+
+    #[test]
+    fn load_rincewind_mmrs() {
+        let block = get_rincewind_genesis_block();
+        let output_mr = from_hex("f9bfcc0bfae8f90991ea7cc9a625a411dd757cce088cbf740848570daa43daff").unwrap();
+        let range_proof_mr = from_hex("fbadbae2bf8c7289d77af52edc80490cb476a917abd0afeab8821913791b678f").unwrap();
+        let kernel_mr = from_hex("a40db2278709c3fb0e03044ca0f5090ffca616b708850d1437af4d584e17b97a").unwrap();
+
+        assert_eq!(output_mr, block.header.output_mr);
+        assert_eq!(range_proof_mr, block.header.range_proof_mr);
+        assert_eq!(kernel_mr, block.header.kernel_mr);
+    }
 }
