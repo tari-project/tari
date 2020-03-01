@@ -30,6 +30,7 @@ use bitflags::bitflags;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 use tari_crypto::tari_utilities::hex::serialize_to_hex;
 
 bitflags! {
@@ -152,6 +153,17 @@ impl Peer {
     /// Changes the ban flag bit of the peer
     pub fn set_banned(&mut self, ban_flag: bool) {
         self.flags.set(PeerFlags::BANNED, ban_flag);
+    }
+}
+
+/// Display Peer as `[peer_id]: <pubkey>`
+impl Display for Peer {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(&format!(
+            "[{}]: {}",
+            self.id.map(|v| v.to_string()).unwrap_or("NoID".to_string()),
+            self.public_key,
+        ))
     }
 }
 

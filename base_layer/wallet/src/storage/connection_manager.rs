@@ -28,14 +28,13 @@ use diesel::{
 };
 use std::{io, path::Path, time::Duration};
 
+pub type WalletConnection = Pool<ConnectionManager<SqliteConnection>>;
 const DATABASE_CONNECTION_TIMEOUT_MS: u64 = 2000;
 
-pub fn run_migration_and_create_connection_pool(
-    database_path: &str,
-) -> Result<Pool<ConnectionManager<SqliteConnection>>, WalletStorageError> {
-    let db_exists = Path::new(database_path).exists();
+pub fn run_migration_and_create_connection_pool(db_path: &str) -> Result<WalletConnection, WalletStorageError> {
+    let db_exists = Path::new(db_path).exists();
     if !db_exists {
-        let connection = SqliteConnection::establish(database_path)?;
+        let connection = SqliteConnection::establish(db_path)?;
         connection.execute("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 60000;")?;
 
         embed_migrations!("./migrations");
@@ -43,7 +42,7 @@ pub fn run_migration_and_create_connection_pool(
             .map_err(|err| WalletStorageError::DatabaseMigrationError(format!("Database migration failed {}", err)))?;
     }
 
-    let manager = ConnectionManager::<SqliteConnection>::new(database_path);
+    let manager = ConnectionManager::<SqliteConnection>::new(db_path);
     Ok(diesel::r2d2::Pool::builder()
         .connection_timeout(Duration::from_millis(DATABASE_CONNECTION_TIMEOUT_MS))
         .idle_timeout(Some(Duration::from_millis(DATABASE_CONNECTION_TIMEOUT_MS)))

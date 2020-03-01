@@ -32,8 +32,7 @@ mod miner;
 /// Parser module used to control user commands
 mod parser;
 
-use crate::builder::{create_new_base_node_identity, load_identity, BaseNodeContext};
-use futures::stream::StreamExt;
+use crate::builder::{create_new_base_node_identity, load_identity};
 use log::*;
 use parser::Parser;
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
@@ -42,7 +41,7 @@ use std::sync::{
     Arc,
 };
 use tari_common::{load_configuration, GlobalConfig};
-use tokio::{runtime, runtime::Runtime};
+use tokio::runtime::Runtime;
 
 pub const LOG_TARGET: &str = "base_node::app";
 
@@ -139,49 +138,27 @@ fn main_inner() -> Result<(), ExitCodes> {
     };
 
     // Build, node, build!
-    let (comms, node, mut miner, base_node_context) =
-        builder::configure_and_initialize_node(&node_config, node_identity, &mut rt).map_err(|err| {
-            error!(target: LOG_TARGET, "Could not instantiate node instance. {}", err);
-            ExitCodes::UnknownError
-        })?;
-
-    let flag = node.get_flag();
-    // lets run the miner
-    let miner_handle = if node_config.enable_mining {
-        let mut rx = miner.get_utxo_receiver_channel();
-        let mut rx_events = node.get_state_change_event_stream();
-        miner.subscribe_to_state_change(rx_events);
-        let mut wallet_output_handle = base_node_context.wallet_output_service.clone();
-        rt.spawn(async move {
-            while let Some(utxo) = rx.next().await {
-                wallet_output_handle.add_output(utxo).await;
-            }
-        });
-        Some(rt.spawn(async move {
-            debug!(target: LOG_TARGET, "Starting miner");
-            miner.mine().await;
-            debug!(target: LOG_TARGET, "Miner has shutdown");
-        }))
-    } else {
-        None
-    };
-
+    let ctx = rt.block_on(async {
+        builder::configure_and_initialize_node(&node_config, node_identity)
+            .await
+            .map_err(|err| {
+                error!(target: LOG_TARGET, "{}", err);
+                ExitCodes::UnknownError
+            })
+    })?;
     // Run, node, run!
-    let main = async move {
-        node.run().await;
-        debug!(
-            target: LOG_TARGET,
-            "The node has finished all it's work. initiating Comms stack shutdown"
-        );
-        comms.shutdown().await;
-    };
-    let base_node_handle = rt.spawn(main);
-
-    cli_loop(flag, rt.handle().clone(), base_node_context);
-    if let Some(miner) = miner_handle {
-        rt.block_on(miner);
+    let parser = Parser::new(rt.handle().clone(), &ctx);
+    let flag = ctx.interrupt_flag();
+    let base_node_handle = rt.spawn(ctx.run(rt.handle().clone()));
+    info!(
+        target: LOG_TARGET,
+        "Node has been successfully configured and initialized. Starting CLI loop."
+    );
+    cli_loop(parser, flag);
+    match rt.block_on(base_node_handle) {
+        Ok(_) => info!(target: LOG_TARGET, "Node shutdown successfully."),
+        Err(e) => error!(target: LOG_TARGET, "Node has crashed: {}", e),
     }
-    rt.block_on(base_node_handle);
     println!("Goodbye!");
     Ok(())
 }
@@ -205,8 +182,7 @@ fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
         .map_err(|e| format!("There was an error while building the node runtime. {}", e.to_string()))
 }
 
-fn cli_loop(shutdown_flag: Arc<AtomicBool>, executor: runtime::Handle, base_node_context: BaseNodeContext) {
-    let parser = Parser::new(executor, base_node_context, shutdown_flag.clone());
+fn cli_loop(parser: Parser, shutdown_flag: Arc<AtomicBool>) {
     let cli_config = Config::builder()
         .history_ignore_space(true)
         .completion_type(CompletionType::List)

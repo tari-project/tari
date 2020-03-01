@@ -24,4 +24,8 @@ mod inbound_connector;
 mod peer_message;
 mod pubsub;
 
-pub use self::{inbound_connector::InboundDomainConnector, peer_message::PeerMessage, pubsub::pubsub_connector};
+pub use self::{
+    inbound_connector::InboundDomainConnector,
+    peer_message::PeerMessage,
+    pubsub::{pubsub_connector, PubsubDomainConnector, SubscriptionFactory},
+};

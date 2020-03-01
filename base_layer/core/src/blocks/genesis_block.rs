@@ -33,11 +33,6 @@ use crate::transactions::{
     transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionKernel, TransactionOutput},
     types::{Commitment, PrivateKey, PublicKey, Signature},
 };
-use serde::Deserialize;
-use std::{
-    fs::File,
-    io::{BufRead, BufReader, Error, Write},
-};
 use tari_crypto::tari_utilities::{hash::Hashable, hex::*};
 
 // TODO: see issue #1145

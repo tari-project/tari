@@ -102,7 +102,19 @@ impl<B: BlockchainBackend> Miner<B> {
         self.state_change_event_rx = Some(state_change_event_rx);
     }
 
-    /// Async function to mine a block
+    /// Mine blocks asynchronously.
+    ///
+    /// On the first iteration, the thread will loop around until `received_new_block_flag` is true. This flag is set
+    /// to true when either a new block is received from the node, or when the node reaches the `Listening` state
+    /// (see [Miner::mine]).
+    ///
+    /// Then, if the miner hasn't been stopped, it starts the main mining loop:
+    /// 1. We request a new template block from the base node
+    /// 2. We add our Coinbase UTXO to the block
+    /// 3. We send thi sback to the node to calculate the MMR roots
+    /// 4. We iterate on the header nonce until
+    ///     * the target difficulty is reached
+    ///     * or the loop is interrupted because a new block was found in the interim, or the miner is stopped
     async fn mining(&mut self) -> Result<(), MinerError> {
         // Lets make sure its set to mine
         debug!(target: LOG_TARGET, "Start mining thread");
@@ -110,16 +122,17 @@ impl<B: BlockchainBackend> Miner<B> {
             while !self.received_new_block_flag.load(Ordering::Relaxed) {
                 tokio::time::delay_for(Duration::from_millis(100)).await; // wait for new block event
                 if self.kill_flag.load(Ordering::Relaxed) {
+                    debug!(target: LOG_TARGET, "Mining stopped with kill flag.");
                     return Ok(());
                 }
             }
             let flag = self.received_new_block_flag.clone();
             flag.store(false, Ordering::Relaxed);
-            debug!(target: LOG_TARGET, "Miner asking for new block.");
+            debug!(target: LOG_TARGET, "Miner asking for new candidate block to mine.");
             let mut block_template = self.get_block_template().await?;
             let output = self.add_coinbase(&mut block_template)?;
             let mut block = self.get_block(block_template).await?;
-            debug!(target: LOG_TARGET, "Miner got new block.");
+            debug!(target: LOG_TARGET, "Miner got new block to mine.");
             let difficulty = self.get_req_difficulty().await?;
             let new_block_event_flag = self.received_new_block_flag.clone();
             let kill = self.kill_flag.clone();
@@ -142,6 +155,7 @@ impl<B: BlockchainBackend> Miner<B> {
                     .map_err(|e| MinerError::CommunicationError(e.to_string()))?;
             }
         }
+        debug!(target: LOG_TARGET, "Mining thread stopped.");
         Ok(())
     }
 
@@ -187,6 +201,7 @@ impl<B: BlockchainBackend> Miner<B> {
 
     /// function, temp use genesis block as template
     pub async fn get_block_template(&mut self) -> Result<NewBlockTemplate, MinerError> {
+        trace!(target: LOG_TARGET, "Requesting new block template from node.");
         Ok(self
             .node_interface
             .get_new_block_template()
@@ -203,6 +218,10 @@ impl<B: BlockchainBackend> Miner<B> {
 
     /// function, temp use genesis block as template
     pub async fn get_block(&mut self, block: NewBlockTemplate) -> Result<Block, MinerError> {
+        trace!(
+            target: LOG_TARGET,
+            "Asking node to fill in MMR roots for new block candidate"
+        );
         Ok(self
             .node_interface
             .get_new_block(block)
@@ -219,6 +238,7 @@ impl<B: BlockchainBackend> Miner<B> {
 
     /// function to get the required difficulty
     pub async fn get_req_difficulty(&mut self) -> Result<Difficulty, MinerError> {
+        trace!(target: LOG_TARGET, "Requesting target difficulty from node");
         Ok(self
             .node_interface
             .get_target_difficulty(PowAlgorithm::Blake)

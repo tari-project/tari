@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::LOG_TARGET;
-use crate::builder::BaseNodeContext;
+use crate::builder::NodeContainer;
 use log::*;
 use rustyline::{
     completion::Completer,
@@ -43,8 +43,13 @@ use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
+    base_node::LocalNodeCommsInterface,
     tari_utilities::hex::Hex,
     transactions::tari_amount::{uT, MicroTari},
+};
+use tari_wallet::{
+    output_manager_service::handle::OutputManagerHandle,
+    transaction_service::handle::TransactionServiceHandle,
 };
 use tokio::runtime;
 
@@ -64,10 +69,12 @@ pub enum BaseNodeCommand {
 #[derive(Helper, Validator, Highlighter)]
 pub struct Parser {
     executor: runtime::Handle,
-    base_node_context: BaseNodeContext,
     shutdown_flag: Arc<AtomicBool>,
     commands: Vec<String>,
     hinter: HistoryHinter,
+    wallet_output_service: OutputManagerHandle,
+    node_service: LocalNodeCommsInterface,
+    wallet_transaction_service: TransactionServiceHandle,
 }
 
 // This will go through all instructions and look for potential matches
@@ -99,13 +106,15 @@ impl Hinter for Parser {
 
 impl Parser {
     /// creates a new parser struct
-    pub fn new(executor: runtime::Handle, base_node_context: BaseNodeContext, shutdown_flag: Arc<AtomicBool>) -> Self {
+    pub fn new(executor: runtime::Handle, ctx: &NodeContainer) -> Self {
         Parser {
             executor,
-            base_node_context,
-            shutdown_flag,
+            shutdown_flag: ctx.interrupt_flag(),
             commands: BaseNodeCommand::iter().map(|x| x.to_string()).collect(),
             hinter: HistoryHinter {},
+            wallet_output_service: ctx.output_manager(),
+            node_service: ctx.local_node(),
+            wallet_transaction_service: ctx.wallet_transaction_service(),
         }
     }
 
@@ -183,7 +192,7 @@ impl Parser {
 
     // Function to process  the get balance command
     fn process_get_balance(&mut self) {
-        let mut handler = self.base_node_context.wallet_output_service.clone();
+        let mut handler = self.wallet_output_service.clone();
         self.executor.spawn(async move {
             match handler.get_balance().await {
                 Err(e) => {
@@ -198,7 +207,7 @@ impl Parser {
 
     // Function to process  the get chain meta data
     fn process_get_chain_meta(&mut self) {
-        let mut handler = self.base_node_context.node_service.clone();
+        let mut handler = self.node_service.clone();
         self.executor.spawn(async move {
             match handler.get_metadata().await {
                 Err(e) => {
@@ -235,7 +244,7 @@ impl Parser {
         }
         let dest_pubkey = dest_pubkey.unwrap();
         let fee_per_gram = 25 * uT;
-        let mut handler = self.base_node_context.wallet_transaction_service.clone();
+        let mut handler = self.wallet_transaction_service.clone();
         self.executor.spawn(async move {
             match handler
                 .send_transaction(

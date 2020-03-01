@@ -23,22 +23,25 @@
 
 use core::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use tari_broadcast_channel::Subscriber;
 use tari_core::{
-    base_node::LocalNodeCommsInterface,
+    base_node::{states::BaseNodeState, LocalNodeCommsInterface},
     chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
     mining::Miner,
 };
 use tari_service_framework::handles::ServiceHandles;
-use tokio::runtime;
 
-pub fn build_miner<B: BlockchainBackend>(
-    handles: Arc<ServiceHandles>,
+pub fn build_miner<B: BlockchainBackend, H: AsRef<ServiceHandles>>(
+    handles: H,
     stop_flag: Arc<AtomicBool>,
+    event_stream: Subscriber<BaseNodeState>,
     consensus_manager: ConsensusManager<B>,
-    _executor: runtime::Handle,
 ) -> Miner<B>
 {
+    let handles = handles.as_ref();
     let node_local_interface = handles.get_handle::<LocalNodeCommsInterface>().unwrap();
-    Miner::new(stop_flag, consensus_manager, &node_local_interface)
+    let mut miner = Miner::new(stop_flag, consensus_manager, &node_local_interface);
+    miner.subscribe_to_state_change(event_stream);
+    miner
 }
