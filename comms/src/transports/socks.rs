@@ -29,6 +29,9 @@ use crate::{
 use futures::{Future, FutureExt};
 use std::{io, time::Duration};
 
+/// SO_KEEPALIVE setting for the SOCKS TCP connection
+const SOCKS_SO_KEEPALIVE: Duration = Duration::from_millis(1500);
+
 #[derive(Clone, Debug)]
 struct SocksConfig {
     proxy_address: Multiaddr,
@@ -45,7 +48,7 @@ impl SocksTransport {
     pub fn new(proxy_address: Multiaddr, authentication: socks::Authentication) -> Self {
         let mut tcp_transport = TcpTransport::new();
         tcp_transport.set_nodelay(true);
-        tcp_transport.set_keepalive(Some(Duration::from_millis(600)));
+        tcp_transport.set_keepalive(Some(SOCKS_SO_KEEPALIVE));
 
         Self {
             socks_config: SocksConfig {
