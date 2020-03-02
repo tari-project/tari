@@ -201,6 +201,6 @@ mod test {
             assert!(key1_found);
             assert!(key3_found);
         }
-        clean_up_datastore(database_name); //In Windows file handles must be released before files can be deleted
+        clean_up_datastore(database_name); // In Windows file handles must be released before files can be deleted
     }
 }

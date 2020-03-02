@@ -135,7 +135,7 @@ fn single_thread() {
         }
         assert_eq!(db.len().unwrap(), 1000);
     }
-    clean_up("single_thread"); //In Windows file handles must be released before files can be deleted
+    clean_up("single_thread"); // In Windows file handles must be released before files can be deleted
 }
 
 #[test]
@@ -166,14 +166,14 @@ fn multi_thread() {
             assert_eq!(check, *user);
         }
     }
-    clean_up("multi_thread"); //In Windows file handles must be released before files can be deleted
+    clean_up("multi_thread"); // In Windows file handles must be released before files can be deleted
 }
 
 #[test]
 fn transactions() {
     {
         let (users, db) = insert_all_users("transactions");
-         // Test the `exists` and value retrieval functions
+        // Test the `exists` and value retrieval functions
         let res = db.with_read_transaction::<_, User>(|txn| {
             for user in users.iter() {
                 assert!(txn.exists(&user.id).unwrap());
@@ -185,7 +185,7 @@ fn transactions() {
         println!("{:?}", res);
         assert!(res.unwrap().is_none());
     }
-    clean_up("transactions"); //In Windows file handles must be released before files can be deleted
+    clean_up("transactions"); // In Windows file handles must be released before files can be deleted
 }
 
 /// Simultaneous writes in different threads
@@ -219,7 +219,7 @@ fn multi_thread_writes() {
             assert_eq!(i, value);
         }
     }
-    clean_up("multi-thread-writes"); //In Windows file handles must be released before files can be deleted
+    clean_up("multi-thread-writes"); // In Windows file handles must be released before files can be deleted
 }
 
 /// Multiple write transactions in a single thread
@@ -241,7 +241,7 @@ fn multi_writes() {
         }
         env.flush().unwrap();
     }
-    clean_up("multi-writes"); //In Windows file handles must be released before files can be deleted
+    clean_up("multi-writes"); // In Windows file handles must be released before files can be deleted
 }
 
 #[test]
@@ -256,7 +256,7 @@ fn pair_iterator() {
         });
         assert!(res.is_ok());
     }
-    clean_up("pair_iterator"); //In Windows file handles must be released before files can be deleted
+    clean_up("pair_iterator"); // In Windows file handles must be released before files can be deleted
 }
 
 #[test]
@@ -267,5 +267,5 @@ fn exists_and_delete() {
         db.remove(&525u64).unwrap();
         assert_eq!(db.contains_key(&525u64).unwrap(), false);
     }
-    clean_up("delete"); //In Windows file handles must be released before files can be deleted
+    clean_up("delete"); // In Windows file handles must be released before files can be deleted
 }
