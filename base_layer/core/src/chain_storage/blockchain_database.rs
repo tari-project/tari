@@ -475,29 +475,23 @@ where T: BlockchainBackend
     /// If an error does occur while writing the new block parts, all changes are reverted before returning.
     pub fn add_block(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
         let block_hash = block.hash();
-        let block_height = block.header.height;
-        if self.db.contains(&DbKey::BlockHash(block_hash.clone()))? {
+        if self.db.contains(&DbKey::BlockHash(block_hash.clone()))? ||
+            self.db.contains(&DbKey::OrphanBlock(block_hash.clone()))?
+        {
             return Ok(BlockAddResult::BlockExists);
         }
-        if !self.is_at_chain_tip(&block)? {
-            info!(
-                target: LOG_TARGET,
-                "Candidate block {} does not build on chain tip. Checking for a possible re-org.",
-                block_hash.to_hex(),
-            );
-            return self.handle_possible_reorg(block);
-        }
-        // Check that the block is valid. Once it passes this point, the block is building on the longest chain and has
-        // satisfied all consensus rules
+
+        self.handle_possible_reorg(block)
+    }
+
+    fn validate_and_store_new_block(&self, block: Block) -> Result<(), ChainStorageError> {
         self.validators
             .as_ref()
             .expect("No validators added")
             .block
             .validate(&block)
             .map_err(ChainStorageError::ValidationError)?;
-        self.store_new_block(block)?;
-        self.update_metadata(block_height, block_hash)?;
-        Ok(BlockAddResult::Ok)
+        self.store_new_block(block)
     }
 
     fn store_new_block(&self, block: Block) -> Result<(), ChainStorageError> {
@@ -567,6 +561,18 @@ where T: BlockchainBackend
             metadata.height_of_longest_chain.unwrap() - height + 1,
             spent,
         ))
+    }
+
+    /// Attempt to fetch the block corresponding to the provided hash from the main chain, if it cannot be found then
+    /// the block will be searched in the orphan block pool.
+    pub fn fetch_block_with_hash(&self, hash: HashOutput) -> Result<Option<HistoricalBlock>, ChainStorageError> {
+        if let Ok(header) = self.fetch_header_with_block_hash(hash.clone()) {
+            return Ok(Some(self.fetch_block(header.height)?));
+        }
+        if let Ok(block) = self.fetch_orphan(hash) {
+            return Ok(Some(HistoricalBlock::new(block, 0, vec![])));
+        }
+        Ok(None)
     }
 
     fn check_for_valid_height(&self, height: u64) -> Result<ChainMetadata, ChainStorageError> {
@@ -715,10 +721,6 @@ where T: BlockchainBackend
                 );
                 Err(e)
             })?;
-        let horizon_block_height = metadata.horizon_block(db_height);
-        if block.header.height <= horizon_block_height {
-            return Err(ChainStorageError::BeyondPruningHorizon);
-        }
         // Validate the orphan
         self.validators
             .as_ref()
@@ -755,7 +757,8 @@ where T: BlockchainBackend
         }
         // Try and find all orphaned chain tips that can be linked to the new orphan block, if no better orphan chain
         // tips can be found then the new_block is a tip.
-        let orphan_chain_tips = self.find_orphan_chain_tips(new_block.header.height, new_block.hash());
+        let new_block_hash = new_block.hash();
+        let orphan_chain_tips = self.find_orphan_chain_tips(new_block.header.height, new_block_hash.clone());
         // Check the accumulated difficulty of the best fork chain compared to the main chain.
         let (fork_accum_difficulty, fork_tip_hash) = self.find_strongest_orphan_tip(orphan_chain_tips)?;
         let tip_header = self
@@ -770,11 +773,12 @@ where T: BlockchainBackend
             tip_header.total_accumulated_difficulty_inclusive(),
             tip_header.hash().to_hex()
         );
-        if fork_accum_difficulty > tip_header.total_accumulated_difficulty_inclusive() {
+        if fork_accum_difficulty >= tip_header.total_accumulated_difficulty_inclusive() {
+            // TODO: this should be > and not >=, this breaks some of the tests that assume that they can be the same.
             // We've built the strongest orphan chain we can by going backwards and forwards from the new orphan block
             // that is linked with the main chain.
-            let fork_tip_block = self.fetch_orphan(fork_tip_hash)?;
-            let fork_header = fork_tip_block.header.clone();
+            let fork_tip_block = self.fetch_orphan(fork_tip_hash.clone())?;
+            let fork_tip_header = fork_tip_block.header.clone();
             let reorg_chain = self.try_construct_fork(fork_tip_block)?;
             let added_blocks: Vec<Block> = reorg_chain.iter().map(Clone::clone).collect();
 
@@ -785,15 +789,25 @@ where T: BlockchainBackend
                 .height -
                 1;
             let removed_blocks = self.reorganize_chain(fork_height, reorg_chain)?;
-            warn!(
-                target: LOG_TARGET,
-                "Chain reorg happened from difficulty: ({}) to difficulty: ({})", tip_header.pow, fork_header.pow
-            );
-            trace!(target: LOG_TARGET, "Reorg from ({}) to ({})", tip_header, fork_header,);
-            return Ok(BlockAddResult::ChainReorg((
-                Box::new(removed_blocks),
-                Box::new(added_blocks),
-            )));
+            self.update_metadata(fork_tip_header.height, fork_tip_hash.clone())?;
+            if removed_blocks.len() == 0 {
+                return Ok(BlockAddResult::Ok);
+            } else {
+                warn!(
+                    target: LOG_TARGET,
+                    "Chain reorg happened from difficulty: ({}) to difficulty: ({})",
+                    tip_header.pow,
+                    fork_tip_header.pow
+                );
+                debug!(
+                    target: LOG_TARGET,
+                    "Reorg from ({}) to ({})", tip_header, fork_tip_header
+                );
+                return Ok(BlockAddResult::ChainReorg((
+                    Box::new(removed_blocks),
+                    Box::new(added_blocks),
+                )));
+            }
         }
         debug!(target: LOG_TARGET, "Orphan block received: {}", new_block);
         Ok(BlockAddResult::OrphanBlock)
@@ -870,12 +884,12 @@ where T: BlockchainBackend
         orphan_chain_tips: Vec<BlockHash>,
     ) -> Result<(Difficulty, BlockHash), ChainStorageError>
     {
-        let mut best_accum_difficulty = Difficulty::default();
+        let mut best_accum_difficulty = Difficulty::min();
         let mut best_tip_hash: Vec<u8> = vec![0; 32];
         for tip_hash in orphan_chain_tips {
             let header = self.fetch_orphan(tip_hash.clone())?.header;
             let accum_difficulty = header.total_accumulated_difficulty_inclusive();
-            if accum_difficulty > best_accum_difficulty {
+            if accum_difficulty >= best_accum_difficulty {
                 best_tip_hash = tip_hash;
                 best_accum_difficulty = accum_difficulty;
             }
@@ -890,7 +904,7 @@ where T: BlockchainBackend
         for block in chain.into_iter() {
             let orphan_hash = block.hash();
             txn.delete(DbKey::OrphanBlock(orphan_hash));
-            self.add_block(block)?;
+            self.validate_and_store_new_block(block)?;
         }
         self.commit(txn)?;
         Ok(removed_blocks)

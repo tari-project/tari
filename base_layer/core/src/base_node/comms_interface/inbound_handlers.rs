@@ -43,6 +43,7 @@ use log::*;
 use strum_macros::Display;
 use tari_broadcast_channel::Publisher;
 use tari_comms::types::CommsPublicKey;
+use tari_crypto::tari_utilities::hex::Hex;
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
 
@@ -129,6 +130,31 @@ where T: BlockchainBackend + 'static
                             target: LOG_TARGET,
                             "Could not provide requested block {} to peer because: {}",
                             block_num,
+                            e.to_string()
+                        ),
+                    }
+                }
+                Ok(NodeCommsResponse::HistoricalBlocks(blocks))
+            },
+            NodeCommsRequest::FetchBlocksWithHashes(block_hashes) => {
+                let mut blocks = Vec::<HistoricalBlock>::with_capacity(block_hashes.len());
+                for block_hash in block_hashes {
+                    debug!(
+                        target: LOG_TARGET,
+                        "A peer has requested a block with hash {}",
+                        block_hash.to_hex()
+                    );
+                    match async_db::fetch_block_with_hash(self.blockchain_db.clone(), block_hash.clone()).await {
+                        Ok(Some(block)) => blocks.push(block),
+                        Ok(None) => info!(
+                            target: LOG_TARGET,
+                            "Could not provide requested block {} to peer because not stored",
+                            block_hash.to_hex(),
+                        ),
+                        Err(e) => info!(
+                            target: LOG_TARGET,
+                            "Could not provide requested block {} to peer because: {}",
+                            block_hash.to_hex(),
                             e.to_string()
                         ),
                     }

@@ -37,6 +37,7 @@ impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchHeaders(block_heights) => ci::NodeCommsRequest::FetchHeaders(block_heights.heights),
             FetchUtxos(hash_outputs) => ci::NodeCommsRequest::FetchUtxos(hash_outputs.outputs),
             FetchBlocks(block_heights) => ci::NodeCommsRequest::FetchBlocks(block_heights.heights),
+            FetchBlocksWithHashes(block_hashes) => ci::NodeCommsRequest::FetchBlocksWithHashes(block_hashes.outputs),
             GetNewBlockTemplate(_) => ci::NodeCommsRequest::GetNewBlockTemplate,
             GetNewBlock(block_template) => ci::NodeCommsRequest::GetNewBlock(block_template.try_into()?),
             GetTargetDifficulty(pow_algo) => {
@@ -56,6 +57,7 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchHeaders(block_heights) => ProtoNodeCommsRequest::FetchHeaders(block_heights.into()),
             FetchUtxos(hash_outputs) => ProtoNodeCommsRequest::FetchUtxos(hash_outputs.into()),
             FetchBlocks(block_heights) => ProtoNodeCommsRequest::FetchBlocks(block_heights.into()),
+            FetchBlocksWithHashes(block_hashes) => ProtoNodeCommsRequest::FetchBlocksWithHashes(block_hashes.into()),
             GetNewBlockTemplate => ProtoNodeCommsRequest::GetNewBlockTemplate(true),
             GetNewBlock(block_template) => ProtoNodeCommsRequest::GetNewBlock(block_template.into()),
             GetTargetDifficulty(pow_algo) => ProtoNodeCommsRequest::GetTargetDifficulty(pow_algo as u64),
