@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use croaring::Bitmap;
+use rand::{rngs::OsRng, RngCore};
 use tari_core::{
     blocks::{Block, BlockBuilder, BlockHeader, NewBlockTemplate},
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, MemoryDatabase},
@@ -234,7 +235,9 @@ pub fn append_block<B: BlockchainBackend>(
 ) -> Result<Block, ChainStorageError>
 {
     let template = chain_block(prev_block, txns, consensus_constants);
-    let block = db.calculate_mmr_roots(template)?;
+    let mut block = db.calculate_mmr_roots(template)?;
+    block.header.nonce = OsRng.next_u64();
+    find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
     db.add_block(block.clone())?;
     Ok(block)
 }
@@ -348,6 +351,7 @@ pub fn generate_block_with_achieved_difficulty(
 {
     let template = chain_block(&blocks.last().unwrap(), transactions, consensus_constants);
     let mut new_block = db.calculate_mmr_roots(template)?;
+    new_block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut new_block.header, achieved_difficulty);
     let result = db.add_block(new_block.clone());
     if let Ok(BlockAddResult::Ok) = result {

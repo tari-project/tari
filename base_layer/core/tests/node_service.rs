@@ -58,6 +58,7 @@ use tari_core::{
         types::CryptoFactories,
     },
     txn_schema,
+    validation::block_validators::StatelessValidator,
 };
 use tari_crypto::tari_utilities::hash::Hashable;
 use tari_mmr::MmrCacheConfig;
@@ -275,6 +276,66 @@ fn request_and_response_fetch_blocks() {
     });
 }
 
+#[test]
+fn request_and_response_fetch_blocks_with_hashes() {
+    let mut runtime = Runtime::new().unwrap();
+    let factories = CryptoFactories::default();
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let network = Network::LocalNet;
+    let consensus_constants = ConsensusConstantsBuilder::new(network)
+        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .build();
+    let (block0, _) = create_genesis_block(&factories, &consensus_constants);
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants)
+        .with_block(block0.clone())
+        .build();
+    let (mut alice_node, mut bob_node, carol_node, _) = create_network_with_3_base_nodes_with_config(
+        &mut runtime,
+        BaseNodeServiceConfig::default(),
+        MmrCacheConfig { rewind_hist_len: 10 },
+        MempoolServiceConfig::default(),
+        LivenessConfig::default(),
+        consensus_manager.clone(),
+        temp_dir.path().to_str().unwrap(),
+    );
+
+    let mut blocks = vec![block0];
+    let db = &mut bob_node.blockchain_db;
+    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+    let block0_hash = blocks[0].hash();
+    let block1_hash = blocks[1].hash();
+
+    carol_node.blockchain_db.add_block(blocks[1].clone()).unwrap();
+    carol_node.blockchain_db.add_block(blocks[2].clone()).unwrap();
+
+    runtime.block_on(async {
+        let received_blocks = alice_node
+            .outbound_nci
+            .fetch_blocks_with_hashes(vec![block0_hash.clone()])
+            .await
+            .unwrap();
+        assert_eq!(received_blocks.len(), 1);
+        assert_eq!(*received_blocks[0].block(), blocks[0]);
+
+        let received_blocks = alice_node
+            .outbound_nci
+            .fetch_blocks_with_hashes(vec![block0_hash.clone(), block1_hash])
+            .await
+            .unwrap();
+        assert_eq!(received_blocks.len(), 2);
+        assert_ne!(received_blocks[0], received_blocks[1]);
+        assert!((*received_blocks[0].block() == blocks[0]) || (*received_blocks[1].block() == blocks[0]));
+        assert!((*received_blocks[0].block() == blocks[1]) || (*received_blocks[1].block() == blocks[1]));
+
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+        carol_node.comms.shutdown().await;
+    });
+}
+
 pub async fn event_stream_next<TStream>(mut stream: TStream, timeout: Duration) -> Option<TStream::Item>
 where TStream: Stream + FusedStream + Unpin {
     let either = future::select(stream.select_next_some(), tokio::time::delay_for(timeout).fuse()).await;
@@ -405,6 +466,7 @@ fn propagate_and_forward_invalid_block() {
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
+    let stateless_validator = StatelessValidator::new(&rules.consensus_constants());
     let (mut alice_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone(), carol_node_identity.clone()])
@@ -414,11 +476,13 @@ fn propagate_and_forward_invalid_block() {
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![alice_node_identity.clone(), dan_node_identity.clone()])
         .with_consensus_manager(rules)
+        .with_validators(stateless_validator.clone(), stateless_validator.clone())
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
     let (carol_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(carol_node_identity.clone())
         .with_peers(vec![alice_node_identity, dan_node_identity.clone()])
         .with_consensus_manager(rules)
+        .with_validators(stateless_validator.clone(), stateless_validator)
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
     let (dan_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(dan_node_identity)

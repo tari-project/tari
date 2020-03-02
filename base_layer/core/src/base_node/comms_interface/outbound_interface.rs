@@ -153,6 +153,28 @@ impl OutboundNodeCommsInterface {
         }
     }
 
+    /// Fetch the Blocks corresponding to the provided block hashes from remote base nodes. The requested blocks could
+    /// be chain blocks or orphan blocks.
+    pub async fn fetch_blocks_with_hashes(
+        &mut self,
+        block_hashes: Vec<HashOutput>,
+    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError>
+    {
+        if let Some(NodeCommsResponse::HistoricalBlocks(blocks)) = self
+            .request_sender
+            .call((
+                NodeCommsRequest::FetchBlocksWithHashes(block_hashes),
+                NodeCommsRequestType::Single,
+            ))
+            .await??
+            .first()
+        {
+            Ok(blocks.clone())
+        } else {
+            Err(CommsInterfaceError::UnexpectedApiResponse)
+        }
+    }
+
     /// Transmit a block to remote base nodes, excluding the provided peers.
     pub async fn propagate_block(
         &mut self,

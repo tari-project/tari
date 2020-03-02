@@ -43,7 +43,7 @@ impl Starting {
         Ok(())
     }
 
-    pub async fn next_event<B: BlockchainBackend>(&mut self, shared: &BaseNodeStateMachine<B>) -> StateEvent {
+    pub async fn next_event<B: BlockchainBackend + 'static>(&mut self, shared: &BaseNodeStateMachine<B>) -> StateEvent {
         info!(target: LOG_TARGET, "Configuring node.");
         if let Err(err) = self.apply_config() {
             return err.as_fatal("There was an error with the base node configuration.");

@@ -78,5 +78,6 @@ make_async!(calculate_mmr_roots(template: NewBlockTemplate) -> Block);
 
 // make_async!(is_new_best_block(block: &Block) -> bool);
 make_async!(fetch_block(height: u64) -> HistoricalBlock);
+make_async!(fetch_block_with_hash(hash: HashOutput) -> Option<HistoricalBlock>);
 make_async!(rewind_to_height(height: u64) -> Vec<Block>);
 make_async!(fetch_mmr_proof(tree: MmrTree, pos: usize) -> MerkleProof);

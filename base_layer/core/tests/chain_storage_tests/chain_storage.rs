@@ -529,7 +529,7 @@ fn handle_tip_reorg() {
         &mut blocks,
         &mut outputs,
         txs,
-        Difficulty::from(1),
+        Difficulty::from(3),
         &consensus_manager.consensus_constants()
     )
     .is_ok());
@@ -549,7 +549,7 @@ fn handle_tip_reorg() {
         &mut orphan_blocks,
         &mut orphan_outputs,
         txs,
-        Difficulty::from(2),
+        Difficulty::from(7),
         &consensus_manager_fork.consensus_constants()
     )
     .is_ok());
@@ -743,6 +743,31 @@ fn store_and_retrieve_blocks() {
     assert_eq!(*store.fetch_block(1).unwrap().block(), block1);
     assert_eq!(*store.fetch_block(2).unwrap().block(), block2);
     assert_eq!(*store.fetch_block(3).unwrap().block(), block3);
+}
+
+#[test]
+fn store_and_retrieve_chain_and_orphan_blocks_with_hashes() {
+    let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 2 };
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let network = Network::LocalNet;
+    let rules = ConsensusManagerBuilder::new(network).build();
+    let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
+    let mut store = BlockchainDatabase::new(db, rules.clone()).unwrap();
+    store.set_validators(validators);
+
+    let block0 = store.fetch_block(0).unwrap().block().clone();
+    let block1 = append_block(&store, &block0, vec![], &rules.consensus_constants()).unwrap();
+    let orphan = create_orphan_block(10, vec![], &rules.consensus_constants());
+    let mut txn = DbTransaction::new();
+    txn.insert_orphan(orphan.clone());
+    assert!(store.commit(txn).is_ok());
+
+    let hash0 = block0.hash();
+    let hash1 = block1.hash();
+    let hash2 = orphan.hash();
+    assert_eq!(*store.fetch_block_with_hash(hash0).unwrap().unwrap().block(), block0);
+    assert_eq!(*store.fetch_block_with_hash(hash1).unwrap().unwrap().block(), block1);
+    assert_eq!(*store.fetch_block_with_hash(hash2).unwrap().unwrap().block(), orphan);
 }
 
 #[test]
