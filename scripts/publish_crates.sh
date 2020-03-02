@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # NB: The order these are listed in is IMPORTANT! Dependencies must go first
 packages=${@:-'
-infrastructure/tari_util
-infrastructure/derive
-infrastructure/crypto
-infrastructure/storage
+   infrastructure/broadcast_channel
+   infrastructure/derive
+   infrastructure/protobuf_build
+   infrastructure/pubsub
+   infrastructure/shutdown
+   infrastructure/storage
 common
 comms
 base_layer/transactions
