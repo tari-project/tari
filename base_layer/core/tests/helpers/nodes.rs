@@ -294,14 +294,12 @@ pub fn create_network_with_2_base_nodes_with_config(
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
 
-    runtime
-        .block_on(
-            alice_node
-                .comms
-                .connection_manager()
-                .dial_peer(bob_node.node_identity.node_id().clone()),
-        )
-        .unwrap();
+    let _ = runtime.block_on(
+        alice_node
+            .comms
+            .connection_manager()
+            .dial_peer(bob_node.node_identity.node_id().clone()),
+    );
 
     (alice_node, bob_node, consensus_manager)
 }
@@ -383,21 +381,12 @@ pub fn create_network_with_3_base_nodes_with_config(
     runtime.block_on(async {
         // Alice (pre)connects to bob and carol
         let mut conn_man = alice_node.comms.connection_manager();
-        conn_man
-            .dial_peer(bob_node.node_identity.node_id().clone())
-            .await
-            .unwrap();
-        conn_man
-            .dial_peer(carol_node.node_identity.node_id().clone())
-            .await
-            .unwrap();
+        let _ = conn_man.dial_peer(bob_node.node_identity.node_id().clone()).await;
+        let _ = conn_man.dial_peer(carol_node.node_identity.node_id().clone()).await;
 
         // Bob (pre)connects to carol
         let mut conn_man = bob_node.comms.connection_manager();
-        conn_man
-            .dial_peer(carol_node.node_identity.node_id().clone())
-            .await
-            .unwrap();
+        let _ = conn_man.dial_peer(carol_node.node_identity.node_id().clone()).await;
 
         // All node have an existing connection
     });

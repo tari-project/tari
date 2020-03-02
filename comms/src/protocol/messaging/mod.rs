@@ -31,6 +31,7 @@ pub use messaging::{
     MessagingEventSender,
     MessagingProtocol,
     MessagingRequest,
+    SendFailReason,
     MESSAGING_PROTOCOL,
 };
 

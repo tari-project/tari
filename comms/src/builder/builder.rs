@@ -312,7 +312,7 @@ where
             .protocols
             .take()
             .or_else(|| Some(Protocols::new()))
-            .map(move |protocols| protocols.add(&[messaging::MESSAGING_PROTOCOL], messaging_proto_tx))
+            .map(move |protocols| protocols.add([messaging::MESSAGING_PROTOCOL], messaging_proto_tx))
             .expect("cannot fail");
 
         //---------------------------------- ConnectionManager --------------------------------------------//

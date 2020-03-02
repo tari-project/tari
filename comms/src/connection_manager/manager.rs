@@ -291,7 +291,7 @@ where
     async fn handle_request(&mut self, request: ConnectionManagerRequest) {
         use ConnectionManagerRequest::*;
         match request {
-            DialPeer(node_id, reply_tx) => match self.get_active_connection(&node_id) {
+            DialPeer(node_id, is_forced, reply_tx) => match self.get_active_connection(&node_id) {
                 Some(conn) => {
                     debug!(target: LOG_TARGET, "[{}] Found existing active connection", conn);
                     log_if_error_fmt!(
@@ -309,7 +309,7 @@ where
                         self.node_identity.node_id().short_str(),
                         node_id.short_str()
                     );
-                    self.dial_peer(node_id, reply_tx).await
+                    self.dial_peer(node_id, reply_tx, is_forced).await
                 },
             },
             NotifyListening(reply_tx) => match self.listener_address.as_ref() {
@@ -345,21 +345,33 @@ where
                 }
             },
             NewInboundSubstream(node_id, protocol, stream) => {
+                let proto_str = String::from_utf8_lossy(&protocol);
                 debug!(
                     target: LOG_TARGET,
-                    "New inbound substream for peer '{}'",
-                    node_id.short_str()
+                    "New inbound substream for peer '{}' speaking protocol '{}'",
+                    node_id.short_str(),
+                    proto_str
                 );
-                log_if_error!(
-                    target: LOG_TARGET,
-                    self.protocols
-                        .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id, stream))
-                        .await,
-                    "Error sending NewSubstream notification because '{error}'",
-                );
+                if let Err(err) = self
+                    .protocols
+                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id, stream))
+                    .await
+                {
+                    error!(
+                        target: LOG_TARGET,
+                        "Error sending NewSubstream notification for protocol '{}' because '{:?}'", proto_str, err
+                    );
+                }
             },
             PeerConnected(new_conn) => {
                 let node_id = new_conn.peer_node_id().clone();
+
+                if let Err(err) = self.peer_manager.set_last_connect_success(&node_id).await {
+                    error!(
+                        target: LOG_TARGET,
+                        "set_last_connect_success failed because '{:?}'", err
+                    );
+                }
 
                 // If we're dialing this node, let's cancel it
                 self.send_dialer_request(DialerRequest::CancelPendingDial(node_id.clone()))
@@ -382,14 +394,14 @@ where
                                 existing_conn.peer_node_id().short_str()
                             );
 
-                            self.publish_event(ConnectionManagerEvent::PeerConnectWillClose(
+                            self.publish_event(PeerConnectWillClose(
                                 existing_conn.id(),
                                 Box::new(existing_conn.peer_node_id().clone()),
                                 existing_conn.direction(),
                             ));
                             self.delayed_disconnect(existing_conn);
                             self.active_connections.insert(node_id, new_conn.clone());
-                            self.publish_event(ConnectionManagerEvent::PeerConnected(new_conn));
+                            self.publish_event(PeerConnected(new_conn));
                         } else {
                             debug!(
                                 target: LOG_TARGET,
@@ -411,14 +423,20 @@ where
                             new_conn.peer_node_id().short_str()
                         );
                         self.active_connections.insert(node_id, new_conn.clone());
-                        self.publish_event(ConnectionManagerEvent::PeerConnected(new_conn));
+                        self.publish_event(PeerConnected(new_conn));
                     },
                 }
             },
             PeerDisconnected(node_id) => {
                 if self.active_connections.remove(&node_id).is_some() {
-                    self.publish_event(ConnectionManagerEvent::PeerDisconnected(node_id));
+                    self.publish_event(PeerDisconnected(node_id));
                 }
+            },
+            PeerConnectFailed(node_id, err) => {
+                if let Err(err) = self.peer_manager.set_last_connect_failed(&node_id).await {
+                    error!(target: LOG_TARGET, "set_peer_connect_failed failed because '{:?}'", err);
+                }
+                self.publish_event(PeerConnectFailed(node_id, err));
             },
             event => {
                 self.publish_event(event);
@@ -513,10 +531,25 @@ where
         &mut self,
         node_id: NodeId,
         reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
+        force_dial: bool,
     )
     {
         match self.peer_manager.find_by_node_id(&node_id).await {
             Ok(peer) => {
+                if !force_dial && peer.is_offline() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Peer '{}' is offline (i.e. we failed to connect to them recently).",
+                        peer.node_id.short_str()
+                    );
+                    let _ = reply_tx.send(Err(ConnectionManagerError::PeerOffline));
+                    self.publish_event(ConnectionManagerEvent::PeerConnectFailed(
+                        Box::new(peer.node_id),
+                        ConnectionManagerError::PeerOffline,
+                    ));
+                    return;
+                }
+
                 if let Err(err) = self.dialer_tx.try_send(DialerRequest::Dial(Box::new(peer), reply_tx)) {
                     error!(
                         target: LOG_TARGET,

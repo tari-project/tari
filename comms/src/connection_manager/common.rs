@@ -24,7 +24,7 @@ use super::types::ConnectionDirection;
 use crate::{
     connection_manager::error::ConnectionManagerError,
     multiplexing::Yamux,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
+    peer_manager::{AsyncPeerManager, NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     proto::identity::PeerIdentityMsg,
     protocol,
     types::CommsPublicKey,
@@ -74,11 +74,12 @@ pub fn is_valid_base_node_node_id(node_id: &NodeId, public_key: &CommsPublicKey)
 /// 1. Check that the offered addresses are valid
 /// 1. Update or add the peer, returning it's NodeId
 pub fn validate_and_add_peer_from_peer_identity(
-    peer_manager: &PeerManager,
+    peer_manager: &AsyncPeerManager,
     authenticated_public_key: CommsPublicKey,
     peer_identity: PeerIdentityMsg,
 ) -> Result<NodeId, ConnectionManagerError>
 {
+    let peer_manager = peer_manager.inner();
     // Validate the given node id for base nodes
     // TODO: This is technically a domain-level rule
     let peer_node_id =

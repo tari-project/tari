@@ -212,7 +212,7 @@ mod test {
         net_address_with_stats.mark_message_rejected();
         net_address_with_stats.mark_message_rejected();
         assert_eq!(net_address_with_stats.rejected_message_count, 2);
-        assert!(last_seen < net_address_with_stats.last_seen.unwrap());
+        assert!(last_seen <= net_address_with_stats.last_seen.unwrap());
     }
 
     #[test]

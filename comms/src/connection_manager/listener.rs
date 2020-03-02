@@ -238,11 +238,8 @@ where
         );
         trace!(target: LOG_TARGET, "{:?}", peer_identity);
 
-        let peer_node_id = common::validate_and_add_peer_from_peer_identity(
-            peer_manager.inner(),
-            authenticated_public_key,
-            peer_identity,
-        )?;
+        let peer_node_id =
+            common::validate_and_add_peer_from_peer_identity(&peer_manager, authenticated_public_key, peer_identity)?;
 
         debug!(
             target: LOG_TARGET,
