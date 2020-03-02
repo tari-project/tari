@@ -26,8 +26,8 @@ tari_common = {path = "../../common", version= "^0.0"}
 tari_service_framework = { version = "^0.0", path = "../service_framework"}
 tari_p2p = {path = "../../base_layer/p2p", version = "^0.0"}
 tari_comms_dht = { version = "^0.0", path = "../../comms/dht"}
-tari_broadcast_channel = { version="^0.0",  path = "../../infrastructure/broadcast_channel" }
-tari_pubsub = { version = "^0.0", path = "../../infrastructure/pubsub"}
+tari_broadcast_channel = "^0.1"
+tari_pubsub = "^0.1"
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0"}
 tari_mmr = { path = "../../base_layer/mmr", version = "^0.0", optional = true }
 
