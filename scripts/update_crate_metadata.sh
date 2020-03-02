@@ -8,10 +8,8 @@ fi
 
 function update_versions {
     packages=${@:-'
-   infrastructure/broadcast_channel
    infrastructure/derive
    infrastructure/protobuf_build
-   infrastructure/pubsub
    infrastructure/shutdown
    infrastructure/storage
    infrastructure/tari_util
