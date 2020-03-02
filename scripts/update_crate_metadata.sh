@@ -9,7 +9,6 @@ fi
 function update_versions {
     packages=${@:-'
    infrastructure/derive
-   infrastructure/protobuf_build
    infrastructure/shutdown
    infrastructure/storage
    infrastructure/tari_util

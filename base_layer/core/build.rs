@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 fn main() {
-    tari_protobuf_build::ProtoCompiler::new()
+    tari_common::protobuf_build::ProtoCompiler::new()
         .include_paths(&["src/transactions/proto", "src/proto"])
         .proto_paths(&[
             "src/mempool/proto",

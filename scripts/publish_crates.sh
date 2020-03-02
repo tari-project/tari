@@ -2,7 +2,6 @@
 # NB: The order these are listed in is IMPORTANT! Dependencies must go first
 packages=${@:-'
 infrastructure/derive
-infrastructure/protobuf_build
 infrastructure/shutdown
 infrastructure/storage
 common
