@@ -95,9 +95,9 @@ fn clean_up(name: &str) {
 }
 
 #[cfg(windows)]
-const LINE_ENDING: &'static str = "\r\n";
+const LINE_ENDING: &str = "\r\n";
 #[cfg(not(windows))]
-const LINE_ENDING: &'static str = "\n";
+const LINE_ENDING: &str = "\n";
 
 fn load_users() -> Vec<User> {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
