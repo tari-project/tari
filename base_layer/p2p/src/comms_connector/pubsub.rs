@@ -26,22 +26,16 @@ use futures::{channel::mpsc, FutureExt, SinkExt, StreamExt};
 use log::*;
 use std::sync::Arc;
 use tari_pubsub::{pubsub_channel, TopicPayload, TopicSubscriptionFactory};
-use tokio::runtime;
+use tokio::runtime::Handle;
 
 const LOG_TARGET: &str = "comms::middleware::pubsub";
 
 /// Alias for a pubsub-type domain connector
 pub type PubsubDomainConnector = InboundDomainConnector<mpsc::Sender<Arc<PeerMessage>>>;
+pub type SubscriptionFactory = TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>;
 
 /// Connects `InboundDomainConnector` to a `tari_pubsub::TopicPublisher` through a buffered channel
-pub fn pubsub_connector(
-    executor: runtime::Handle,
-    buf_size: usize,
-) -> (
-    PubsubDomainConnector,
-    TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>,
-)
-{
+pub fn pubsub_connector(executor: Handle, buf_size: usize) -> (PubsubDomainConnector, SubscriptionFactory) {
     let (publisher, subscription_factory) = pubsub_channel(buf_size);
     let (sender, receiver) = mpsc::channel(buf_size);
 

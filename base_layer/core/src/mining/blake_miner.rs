@@ -27,9 +27,12 @@ use crate::{
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::{Duration, Instant},
 };
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 pub const LOG_TARGET: &str = "c::m::blake_miner";
@@ -52,15 +55,29 @@ impl CpuBlakePow {
         kill_flag: Arc<AtomicBool>,
     ) -> Option<BlockHeader>
     {
+        let mut start = Instant::now();
         let mut nonce: u64 = OsRng.next_u64();
         let start_nonce = nonce;
+        let mut last_measured_nonce = nonce;
         // We're mining over here!
         let mut difficulty = ProofOfWork::achieved_difficulty(&header);
-        debug!(target: LOG_TARGET, "Mining started for nonce");
-        trace!(target: LOG_TARGET, "Mining for difficulty: {:?}", target_difficulty);
+        info!(target: LOG_TARGET, "Mining started.");
+        debug!(target: LOG_TARGET, "Mining for difficulty: {:?}", target_difficulty);
         while difficulty < target_difficulty {
+            if start.elapsed() >= Duration::from_secs(60) {
+                // nonce might have wrapped around
+                let hashes = if nonce >= last_measured_nonce {
+                    nonce - last_measured_nonce
+                } else {
+                    std::u64::MAX - last_measured_nonce + nonce
+                };
+                let hash_rate = hashes as f64 / start.elapsed().as_micros() as f64;
+                info!(target: LOG_TARGET, "Mining hash rate: {:.6} MH/s", hash_rate);
+                last_measured_nonce = nonce;
+                start = Instant::now();
+            }
             if stop_flag.load(Ordering::Relaxed) || kill_flag.load(Ordering::Relaxed) {
-                debug!(target: LOG_TARGET, "Mining stopped via flag");
+                info!(target: LOG_TARGET, "Mining stopped via flag");
                 return None;
             }
             if nonce == std::u64::MAX {

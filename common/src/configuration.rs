@@ -77,7 +77,7 @@ pub fn install_default_config_file(path: &Path) -> Result<u64, std::io::Error> {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Network {
     MainNet,
-    TestNet,
+    Rincewind,
 }
 
 impl TryFrom<String> for Network {
@@ -85,8 +85,8 @@ impl TryFrom<String> for Network {
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let val = value.to_lowercase();
-        if &val == "testnet" {
-            Ok(Self::TestNet)
+        if &val == "rincewind" {
+            Ok(Self::Rincewind)
         } else if &val == "mainnet" {
             Ok(Self::MainNet)
         } else {
@@ -102,7 +102,7 @@ impl Display for Network {
     fn fmt(&self, f: &mut Formatter) -> FormatResult {
         let msg = match self {
             Self::MainNet => "mainnet",
-            Self::TestNet => "testnet",
+            Self::Rincewind => "rincewind",
         };
         f.write_str(msg)
     }
@@ -131,7 +131,7 @@ impl Display for Network {
 ///     fn extract_configuration(cfg: &Config, network: Network) -> Result<Self, ConfigurationError> {
 ///         let key = match network {
 ///             Network::MainNet => "main.foo",
-///             Network::TestNet => "test.foo",
+///             Network::Rincewind => "test.foo",
 ///         };
 ///         let foo = cfg.get_int(key).map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
 ///         Ok(MyConf { foo })
@@ -517,33 +517,33 @@ pub fn default_config() -> Config {
         .unwrap();
     cfg.set_default("base_node.mainnet.enable_mining", false).unwrap();
 
-    // Testnet base node defaults
-    cfg.set_default("base_node.testnet.db_type", "lmdb").unwrap();
-    cfg.set_default("base_node.testnet.peer_seeds", Vec::<String>::new())
+    // Rincewind base node defaults
+    cfg.set_default("base_node.rincewind.db_type", "lmdb").unwrap();
+    cfg.set_default("base_node.rincewind.peer_seeds", Vec::<String>::new())
         .unwrap();
-    cfg.set_default("base_node.testnet.blocking_threads", 4).unwrap();
-    cfg.set_default("base_node.testnet.core_threads", 4).unwrap();
-    cfg.set_default("base_node.testnet.data_dir", default_subdir("testnet/"))
+    cfg.set_default("base_node.rincewind.blocking_threads", 4).unwrap();
+    cfg.set_default("base_node.rincewind.core_threads", 4).unwrap();
+    cfg.set_default("base_node.rincewind.data_dir", default_subdir("rincewind/"))
         .unwrap();
     cfg.set_default(
-        "base_node.testnet.tor_identity_file",
-        default_subdir("testnet/tor.json"),
+        "base_node.rincewind.tor_identity_file",
+        default_subdir("rincewind/tor.json"),
     )
     .unwrap();
     cfg.set_default(
-        "base_node.testnet.identity_file",
-        default_subdir("testnet/node_id.json"),
+        "base_node.rincewind.identity_file",
+        default_subdir("rincewind/node_id.json"),
     )
     .unwrap();
     cfg.set_default(
-        "base_node.testnet.public_address",
+        "base_node.rincewind.public_address",
         format!("{}/tcp/18141", local_ip_addr),
     )
     .unwrap();
-    cfg.set_default("base_node.testnet.grpc_enabled", false).unwrap();
-    cfg.set_default("base_node.testnet.grpc_address", "tcp://127.0.0.1:18141")
+    cfg.set_default("base_node.rincewind.grpc_enabled", false).unwrap();
+    cfg.set_default("base_node.rincewind.grpc_address", "tcp://127.0.0.1:18141")
         .unwrap();
-    cfg.set_default("base_node.testnet.enable_mining", false).unwrap();
+    cfg.set_default("base_node.rincewind.enable_mining", false).unwrap();
 
     set_transport_defaults(&mut cfg);
 
@@ -569,23 +569,23 @@ fn set_transport_defaults(cfg: &mut Config) {
         .unwrap();
     cfg.set_default("base_node.mainnet.socks5_auth", "none").unwrap();
 
-    // Testnet
-    // Default transport for testnet is tcp
-    cfg.set_default("base_node.testnet.transport", "tcp").unwrap();
-    cfg.set_default("base_node.testnet.tcp_listener_address", "/ip4/0.0.0.0/tcp/18189")
+    // rincewind
+    // Default transport for rincewind is tcp
+    cfg.set_default("base_node.rincewind.transport", "tcp").unwrap();
+    cfg.set_default("base_node.rincewind.tcp_listener_address", "/ip4/0.0.0.0/tcp/18189")
         .unwrap();
 
-    cfg.set_default("base_node.testnet.tor_control_address", "/ip4/127.0.0.1/tcp/9051")
+    cfg.set_default("base_node.rincewind.tor_control_address", "/ip4/127.0.0.1/tcp/9051")
         .unwrap();
-    cfg.set_default("base_node.testnet.tor_control_auth", "none").unwrap();
-    cfg.set_default("base_node.testnet.tor_forward_address", "/ip4/127.0.0.1/tcp/18041")
+    cfg.set_default("base_node.rincewind.tor_control_auth", "none").unwrap();
+    cfg.set_default("base_node.rincewind.tor_forward_address", "/ip4/127.0.0.1/tcp/18041")
         .unwrap();
 
-    cfg.set_default("base_node.testnet.socks5_proxy_address", "/ip4/0.0.0.0/tcp/9150")
+    cfg.set_default("base_node.rincewind.socks5_proxy_address", "/ip4/0.0.0.0/tcp/9150")
         .unwrap();
-    cfg.set_default("base_node.testnet.socks5_listener_address", "/ip4/0.0.0.0/tcp/18199")
+    cfg.set_default("base_node.rincewind.socks5_listener_address", "/ip4/0.0.0.0/tcp/18199")
         .unwrap();
-    cfg.set_default("base_node.testnet.socks5_auth", "none").unwrap();
+    cfg.set_default("base_node.rincewind.socks5_auth", "none").unwrap();
 }
 
 fn get_local_ip() -> Option<Multiaddr> {

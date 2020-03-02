@@ -73,6 +73,22 @@ impl LinearWeightedMovingAverage {
         // k is the sum of weights (1+2+..+n) * target_time
         let k = n * (n + 1) * self.target_time / 2;
         let target = ave_difficulty * k as f64 / weighted_times as f64;
+        trace!(
+            target: LOG_TARGET,
+            "DiffCalc; t={}; bw={}; n={}; ts[0]={}; ts[n]={}; weighted_ts={}; k={}; diff[0]={}; diff[n]={}; \
+             ave_difficulty={}; target={}",
+            self.target_time,
+            self.block_window,
+            n,
+            timestamps[0],
+            timestamps[n as usize],
+            weighted_times,
+            k,
+            self.accumulated_difficulties[0],
+            self.accumulated_difficulties[n as usize],
+            ave_difficulty,
+            target
+        );
         if target > std::u64::MAX as f64 {
             error!(
                 target: LOG_TARGET,
@@ -81,7 +97,7 @@ impl LinearWeightedMovingAverage {
             panic!("Difficulty target has overflowed");
         }
         let target = target.ceil() as u64; // difficulty difference of 1 should not matter much, but difficulty should never be below 1, ceil(0.9) = 1
-        trace!(target: LOG_TARGET, "New difficultly requested: {:?}", target);
+        debug!(target: LOG_TARGET, "New target difficulty: {}", target);
         target.into()
     }
 }
