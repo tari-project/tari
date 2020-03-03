@@ -159,6 +159,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         Ok(_) => info!(target: LOG_TARGET, "Node shutdown successfully."),
         Err(e) => error!(target: LOG_TARGET, "Node has crashed: {}", e),
     }
+
     println!("Goodbye!");
     Ok(())
 }
