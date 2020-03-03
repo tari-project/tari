@@ -39,7 +39,7 @@ use crate::{
 };
 use futures::{channel::mpsc, AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
-use std::sync::Arc;
+use std::{mem, sync::Arc};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::ShutdownSignal;
 use tokio::runtime;
@@ -47,7 +47,7 @@ use tokio::runtime;
 const LOG_TARGET: &str = "comms::connection_manager::listener";
 
 pub struct PeerListener<TTransport> {
-    listen_address: Multiaddr,
+    config: ConnectionManagerConfig,
     executor: runtime::Handle,
     bounded_executor: BoundedExecutor,
     conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
@@ -79,7 +79,6 @@ where
     {
         Self {
             executor: executor.clone(),
-            listen_address: config.listener_address,
             transport,
             noise_config,
             conn_man_notifier,
@@ -89,6 +88,7 @@ where
             listening_address: None,
             our_supported_protocols: supported_protocols,
             bounded_executor: BoundedExecutor::new(executor, config.max_simultaneous_inbound_connects),
+            config,
         }
     }
 
@@ -138,6 +138,7 @@ where
         let mut conn_man_notifier = self.conn_man_notifier.clone();
         let noise_config = self.noise_config.clone();
         let our_supported_protocols = self.our_supported_protocols.clone();
+        let allow_test_addresses = self.config.allow_test_addresses;
 
         // This will block (asynchronously) if we have reached the maximum simultaneous connections, creating
         // back-pressure on nodes connecting to this node
@@ -153,6 +154,7 @@ where
                     socket,
                     peer_addr,
                     our_supported_protocols,
+                    allow_test_addresses,
                 )
                 .await;
 
@@ -203,6 +205,7 @@ where
         socket: TTransport::Output,
         peer_addr: Multiaddr,
         our_supported_protocols: Vec<ProtocolId>,
+        allow_test_addresses: bool,
     ) -> Result<PeerConnection, ConnectionManagerError>
     {
         static CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Inbound;
@@ -238,8 +241,12 @@ where
         );
         trace!(target: LOG_TARGET, "{:?}", peer_identity);
 
-        let peer_node_id =
-            common::validate_and_add_peer_from_peer_identity(&peer_manager, authenticated_public_key, peer_identity)?;
+        let peer_node_id = common::validate_and_add_peer_from_peer_identity(
+            &peer_manager,
+            authenticated_public_key,
+            peer_identity,
+            allow_test_addresses,
+        )?;
 
         debug!(
             target: LOG_TARGET,
@@ -259,9 +266,10 @@ where
         )
     }
 
-    async fn listen(&self) -> Result<(TTransport::Listener, Multiaddr), ConnectionManagerError> {
+    async fn listen(&mut self) -> Result<(TTransport::Listener, Multiaddr), ConnectionManagerError> {
+        let listener_address = mem::replace(&mut self.config.listener_address, Multiaddr::empty());
         self.transport
-            .listen(self.listen_address.clone())
+            .listen(listener_address)
             .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))?
             .await
             .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))

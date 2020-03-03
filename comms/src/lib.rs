@@ -9,6 +9,8 @@
 #![recursion_limit = "512"]
 // Allow `type Future = impl Future`
 #![feature(type_alias_impl_trait)]
+// Required to use `Ip4Addr::is_global`. Stabilisation imminent https://github.com/rust-lang/rust/issues/27709
+#![feature(ip)]
 
 #[macro_use]
 extern crate lazy_static;
@@ -17,6 +19,8 @@ extern crate lazy_static;
 mod macros;
 
 mod connection_manager;
+pub use connection_manager::validate_peer_addresses;
+
 mod consts;
 mod multiplexing;
 mod noise;

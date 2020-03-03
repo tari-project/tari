@@ -94,6 +94,7 @@ fn test_wallet() {
             max_concurrent_inbound_tasks: 100,
             outbound_buffer_size: 100,
             dht: Default::default(),
+            allow_test_addresses: true,
         };
         let comms_config2 = CommsConfig {
             node_identity: Arc::new(bob_identity.clone()),
@@ -105,6 +106,7 @@ fn test_wallet() {
             max_concurrent_inbound_tasks: 100,
             outbound_buffer_size: 100,
             dht: Default::default(),
+            allow_test_addresses: true,
         };
         let config1 = WalletConfig {
             comms_config: comms_config1,
@@ -242,6 +244,7 @@ fn test_import_utxo() {
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
         dht: Default::default(),
+        allow_test_addresses: true,
     };
     let config = WalletConfig {
         comms_config,
@@ -309,6 +312,7 @@ fn test_data_generation() {
             discovery_request_timeout: Duration::from_millis(500),
             ..Default::default()
         },
+        allow_test_addresses: true,
     };
 
     let config = WalletConfig {

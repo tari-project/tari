@@ -96,6 +96,7 @@ impl CommsBuilder<TcpTransport> {
             protocols: None,
             hidden_service: None,
             connection_manager_config: ConnectionManagerConfig::default(),
+
             shutdown: Shutdown::new(),
         }
     }
@@ -124,6 +125,17 @@ where
     /// [OutboundMessagePool]: ../../outbound_message_service/index.html#outbound-message-pool
     pub fn with_node_identity(mut self, node_identity: Arc<NodeIdentity>) -> Self {
         self.node_identity = Some(node_identity);
+        self
+    }
+
+    /// Allow test addresses (memory addresses, local loopback etc). This should only be activated for tests.
+    pub fn allow_test_addresses(mut self) -> Self {
+        #[cfg(not(debug_assertions))]
+        warn!(
+            target: LOG_TARGET,
+            "Test addresses are enabled! This is invalid and potentially insecure when running a production node."
+        );
+        self.connection_manager_config.allow_test_addresses = true;
         self
     }
 

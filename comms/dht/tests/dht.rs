@@ -78,6 +78,7 @@ async fn setup_comms_dht(
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
 
     let comms = CommsBuilder::new()
+        .allow_test_addresses()
         // In this case the listener address and the public address are the same (/memory/...)
         .with_listener_address(node_identity.public_address())
         .with_transport(MemoryTransport)

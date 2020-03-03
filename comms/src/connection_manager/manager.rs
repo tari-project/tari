@@ -112,6 +112,9 @@ pub struct ConnectionManagerConfig {
     pub max_simultaneous_inbound_connects: usize,
     /// The period of time to keep the peer connection around before disconnecting. Default: 3s
     pub disconnect_linger: Duration,
+    /// Set to true to allow peers to send loopback, local-link and other addresses normally not considered valid for
+    /// peer-to-peer comms. Default: false
+    pub allow_test_addresses: bool,
 }
 
 impl Default for ConnectionManagerConfig {
@@ -123,6 +126,11 @@ impl Default for ConnectionManagerConfig {
             max_dial_attempts: 3,
             max_simultaneous_inbound_connects: 20,
             disconnect_linger: Duration::from_secs(3),
+            #[cfg(not(test))]
+            allow_test_addresses: false,
+            // This must always be true for internal crate tests
+            #[cfg(test)]
+            allow_test_addresses: true,
         }
     }
 }
