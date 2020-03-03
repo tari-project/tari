@@ -54,6 +54,8 @@ mod configuration;
 #[macro_use]
 mod logging;
 
+pub mod protobuf_build;
+
 pub mod dir_utils;
 pub use configuration::{
     default_config,

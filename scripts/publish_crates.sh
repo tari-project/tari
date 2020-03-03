@@ -1,19 +1,15 @@
 #!/usr/bin/env bash
 # NB: The order these are listed in is IMPORTANT! Dependencies must go first
 packages=${@:-'
-   infrastructure/broadcast_channel
-   infrastructure/derive
-   infrastructure/protobuf_build
-   infrastructure/pubsub
-   infrastructure/shutdown
-   infrastructure/storage
+infrastructure/derive
+infrastructure/shutdown
+infrastructure/storage
 common
 comms
-base_layer/transactions
+comms/dht
 base_layer/p2p
 base_layer/core
 base_layer/keymanager
-base_layer/mining
 base_layer/mmr
 base_layer/service_framework
 base_layer/wallet

@@ -12,7 +12,6 @@ members = [
     "comms",
     "comms/dht",
     "digital_assets_layer/core",
-    "infrastructure/protobuf_build",
     "infrastructure/shutdown",
     "infrastructure/storage",
     "infrastructure/test_utils",

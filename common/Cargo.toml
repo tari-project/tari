@@ -18,6 +18,8 @@ get_if_addrs = "0.5.3"
 log = "0.4.8"
 log4rs = "0.8.3"
 multiaddr={package="parity-multiaddr", version = "0.7.2"}
+prost-build = "0.6.1"
+sha2 = "0.8.0"
 
 [dev-dependencies]
 tempdir = "0.3.7"

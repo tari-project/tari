@@ -72,4 +72,4 @@ tempdir = "0.3.7"
 tokio-macros = "0.2.4"
 
 [build-dependencies]
-tari_protobuf_build = { version = "^0.0", path="../../infrastructure/protobuf_build"}
+tari_common = { version = "^0.0", path="../../common"}
