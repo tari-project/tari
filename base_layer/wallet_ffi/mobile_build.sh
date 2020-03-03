@@ -12,18 +12,16 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 source build.config
+TARI_REPO_PATH=${TARI_REPO_PATH:-`git rev-parse --show-toplevel`}
 CURRENT_DIR=${TARI_REPO_PATH}/base_layer/wallet_ffi
 cd ${CURRENT_DIR} || exit
-timestamp=$(date +%s)
 mkdir -p logs
 cd logs || exit
-mkdir -p ${timestamp}
-cd ${timestamp} || exit
 mkdir -p ios
 mkdir -p android
 cd ../..
-IOS_LOG_PATH=${CURRENT_DIR}/logs/${timestamp}/ios
-ANDROID_LOG_PATH=${CURRENT_DIR}/logs/${timestamp}/android
+IOS_LOG_PATH=${CURRENT_DIR}/logs/ios
+ANDROID_LOG_PATH=${CURRENT_DIR}/logs/android
 SQLITE_FOLDER=sqlite
 cd ../../..
 
@@ -52,7 +50,7 @@ fi
 DEPENDENCIES=${IOS_WALLET_PATH}
 # PKG_PATH, BUILD_IOS is defined in build.config
 # shellcheck disable=SC2153
-if [ -n "${DEPENDENCIES}" ] && [ -n "${PKG_PATH}" ] && [ "${BUILD_IOS}" -eq 1 ] && [ "${MACHINE}" == "Mac" ]; then
+if [ -n "${DEPENDENCIES}" ] && [ "${BUILD_IOS}" -eq 1 ] && [ "${MACHINE}" == "Mac" ]; then
   echo "${GREEN}Commencing iOS build${NC}"
   echo "${YELLOW}Build logs can be found at ${IOS_LOG_PATH}${NC}"
   echo "\t${CYAN}Configuring Rust${NC}"
@@ -66,7 +64,9 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${PKG_PATH}" ] && [ "${BUILD_IOS}" -eq 1 ] 
   BUILD_ROOT=$PWD
   cd ..
   cd ${CURRENT_DIR} || exit
-  cargo clean
+  if [ "${CARGO_CLEAN}" -eq "1" ]; then
+      cargo clean >> ${IOS_LOG_PATH}/cargo.txt 2>&1
+  fi
   cp wallet.h "${DEPENDENCIES}/MobileWallet/TariLib/"
   export PKG_CONFIG_PATH=${PKG_PATH}
   echo "\t${CYAN}Building Wallet FFI${NC}"
@@ -89,7 +89,7 @@ fi
 DEPENDENCIES=$ANDROID_WALLET_PATH
 # PKG_PATH, BUILD_ANDROID, NDK_PATH is defined in build.config
 # shellcheck disable=SC2153
-if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ -n "${PKG_PATH}" ] && [ "${BUILD_ANDROID}" -eq 1 ]; then
+if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ "${BUILD_ANDROID}" -eq 1 ]; then
   echo "${GREEN}Commencing Android build${NC}"
   echo "${YELLOW}Build logs can be found at ${ANDROID_LOG_PATH}${NC}"
   echo "\t${CYAN}Configuring Rust${NC}"
@@ -231,7 +231,9 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ -n "${PKG_PATH}" ] && [
 
       echo "\t${CYAN}Configuring Cargo${NC}"
       cd ${CURRENT_DIR} || exit
-      cargo clean >> ${ANDROID_LOG_PATH}/cargo.txt 2>&1
+      if [ "${CARGO_CLEAN}" -eq "1" ]; then
+        cargo clean >> ${ANDROID_LOG_PATH}/cargo.txt 2>&1
+      fi
       mkdir -p .cargo
       cd .cargo || exit
       if [ "${MACHINE}" == "Mac" ]; then

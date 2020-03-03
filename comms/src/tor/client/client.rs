@@ -62,6 +62,8 @@ pub enum Authentication {
     None,
     /// A hashed password will be sent to authenticate
     HashedPassword(String),
+    /// Cookie authentication. The contents of the cookie file encoded as hex
+    Cookie(String),
 }
 impl Default for Authentication {
     fn default() -> Self {
@@ -88,6 +90,9 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             Authentication::HashedPassword(passwd) => {
                 self.send_line(format!("AUTHENTICATE \"{}\"", passwd.replace("\"", "\\\"")))
                     .await?;
+            },
+            Authentication::Cookie(cookie) => {
+                self.send_line(format!("AUTHENTICATE {}", cookie)).await?;
             },
         }
 
@@ -294,6 +299,13 @@ mod test {
         let mut req = mock_state.take_requests().await;
         assert_eq!(req.len(), 1);
         assert_eq!(req.remove(0), "AUTHENTICATE \"ab\\\"cde\"");
+
+        tor.authenticate(&Authentication::Cookie("NOTACTUALLYHEXENCODED".to_string()))
+            .await
+            .unwrap();
+        let mut req = mock_state.take_requests().await;
+        assert_eq!(req.len(), 1);
+        assert_eq!(req.remove(0), "AUTHENTICATE NOTACTUALLYHEXENCODED");
     }
 
     #[tokio_macros::test]
