@@ -14,6 +14,7 @@ base_layer/mmr
 base_layer/service_framework
 base_layer/wallet
 base_layer/wallet_ffi
+applications/tari_base_node
 '}
 p_arr=($packages)
 

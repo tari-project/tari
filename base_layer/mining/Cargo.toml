@@ -1,9 +1,0 @@
-[package]
-name = "tari_mining"
-authors = ["The Tari Development Community"]
-description = "Tari cryptocurrency mining support"
-repository = "https://github.com/tari-project/tari"
-version = "0.0.5"
-license = "BSD-3-Clause"
-
-[dependencies]

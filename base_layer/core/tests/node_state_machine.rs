@@ -58,7 +58,7 @@ use tari_test_utils::random::string;
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
-#[test]
+#[ignore]
 fn test_listening_lagging() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
