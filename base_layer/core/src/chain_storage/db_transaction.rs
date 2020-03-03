@@ -29,11 +29,22 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
+use strum_macros::Display;
 use tari_crypto::tari_utilities::{hex::to_hex, Hashable};
 
 #[derive(Debug)]
 pub struct DbTransaction {
     pub operations: Vec<WriteOperation>,
+}
+
+impl Display for DbTransaction {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        fmt.write_str("Db transaction: \n")?;
+        for write_op in &self.operations {
+            fmt.write_str(&format!("{}\n", write_op))?;
+        }
+        Ok(())
+    }
 }
 
 impl Default for DbTransaction {
@@ -157,7 +168,7 @@ impl DbTransaction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Display)]
 pub enum WriteOperation {
     Insert(DbKeyValuePair),
     Delete(DbKey),

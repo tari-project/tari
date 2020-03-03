@@ -200,7 +200,6 @@ where D: Digest + Send + Sync
     // txns have been successfully applied.
     // NOTE: Do not call this without having a lock on self.transaction_write_lock
     fn apply_mmr_txs(&self, tx: &DbTransaction) -> Result<(), ChainStorageError> {
-        trace!(target: LOG_TARGET, "DB apply mmr instruction received: {:?}", tx);
         for op in tx.operations.iter() {
             match op {
                 WriteOperation::Insert(insert) => match insert {
@@ -252,7 +251,6 @@ where D: Digest + Send + Sync
     // Perform the RewindMmr and CreateMmrCheckpoint operations after MMR txns and storage txns have been applied.
     // NOTE: Make sure you have a write lock on transaction_write_lock
     fn commit_mmrs(&self, tx: DbTransaction) -> Result<(), ChainStorageError> {
-        trace!(target: LOG_TARGET, "DB commit instruction received: {:?}", tx);
         for op in tx.operations.into_iter() {
             match op {
                 WriteOperation::RewindMmr(tree, steps_back) => match tree {
@@ -419,7 +417,6 @@ where D: Digest + Send + Sync
     // Perform all the storage txns, excluding any MMR operations. Only when all the txns can successfully be applied is
     // the changes committed to the backend databases.
     fn apply_storage_txs(&self, tx: &DbTransaction) -> Result<(), ChainStorageError> {
-        debug!(target: LOG_TARGET, "DB apply storage instruction received: {:?}", tx);
         let txn = WriteTransaction::new(self.env.clone()).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
         {
             for op in tx.operations.iter() {

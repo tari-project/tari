@@ -71,7 +71,7 @@ impl Display for NodeCommsRequest {
             NodeCommsRequest::FetchBlocks(v) => f.write_str(&format!("FetchBlocks (n={})", v.len())),
             NodeCommsRequest::FetchBlocksWithHashes(v) => f.write_str(&format!("FetchBlocks (n={})", v.len())),
             NodeCommsRequest::GetNewBlockTemplate => f.write_str("GetNewBlockTemplate"),
-            NodeCommsRequest::GetNewBlock(b) => f.write_str(&format!("GetNewBlock (Block Height={}", b.header.height)),
+            NodeCommsRequest::GetNewBlock(b) => f.write_str(&format!("GetNewBlock (Block Height={})", b.header.height)),
             NodeCommsRequest::GetTargetDifficulty(algo) => f.write_str(&format!("GetTargetDifficulty ({})", algo)),
         }
     }

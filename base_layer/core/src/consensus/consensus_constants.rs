@@ -54,6 +54,8 @@ pub struct ConsensusConstants {
     pub(in crate::consensus) emission_decay: f64,
     /// This is the emission curve tail amount
     pub(in crate::consensus) emission_tail: MicroTari,
+    /// This is the initial min difficulty for the difficulty adjustment
+    min_pow_difficulty: u64,
 }
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
 // algorithm count
@@ -120,6 +122,11 @@ impl ConsensusConstants {
         self.median_timestamp_count
     }
 
+    // This is the min initial difficulty that can be requested for the pow
+    pub fn min_pow_difficulty(&self) -> u64 {
+        self.min_pow_difficulty
+    }
+
     pub fn rincewind() -> Self {
         let target_block_interval = 60;
         let difficulty_block_window = 150;
@@ -130,11 +137,12 @@ impl ConsensusConstants {
             target_block_interval,
             difficulty_block_window,
             max_block_transaction_weight: 10000, // TODO: a better weight estimate should be selected
-            pow_algo_count: 2,
+            pow_algo_count: 1,
             median_timestamp_count: 11,
             emission_initial: 5_538_846_115 * uT,
             emission_decay: 0.999_999_560_409_038_5,
             emission_tail: 1 * T,
+            min_pow_difficulty: 3_000_000,
         }
     }
 
@@ -153,6 +161,7 @@ impl ConsensusConstants {
             emission_initial: 10_000_000.into(),
             emission_decay: 0.999,
             emission_tail: 100.into(),
+            min_pow_difficulty: 1,
         }
     }
 
@@ -172,6 +181,7 @@ impl ConsensusConstants {
             emission_initial: 10_000_000.into(),
             emission_decay: 0.999,
             emission_tail: 100.into(),
+            min_pow_difficulty: 500_000_000,
         }
     }
 }

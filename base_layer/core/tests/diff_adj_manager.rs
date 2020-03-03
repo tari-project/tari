@@ -82,6 +82,7 @@ fn calculate_accumulated_difficulty(
     let mut lwma = LinearWeightedMovingAverage::new(
         consensus_constants.get_difficulty_block_window() as usize,
         consensus_constants.get_diff_target_block_interval(),
+        consensus_constants.min_pow_difficulty(),
     );
     for height in heights {
         let header = db.fetch_header(height).unwrap();

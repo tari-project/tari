@@ -59,6 +59,7 @@ where T: BlockchainBackend
     difficulty_block_window: u64,
     diff_target_block_interval: u64,
     median_timestamp_count: usize,
+    min_pow_difficulty: u64,
 }
 
 impl<T> DiffAdjStorage<T>
@@ -71,16 +72,19 @@ where T: BlockchainBackend
             monero_lwma: LinearWeightedMovingAverage::new(
                 consensus_constants.get_difficulty_block_window() as usize,
                 consensus_constants.get_diff_target_block_interval(),
+                consensus_constants.min_pow_difficulty(),
             ),
             blake_lwma: LinearWeightedMovingAverage::new(
                 consensus_constants.get_difficulty_block_window() as usize,
                 consensus_constants.get_diff_target_block_interval(),
+                consensus_constants.min_pow_difficulty(),
             ),
             sync_data: None,
             timestamps: VecDeque::new(),
             difficulty_block_window: consensus_constants.get_difficulty_block_window(),
             median_timestamp_count: consensus_constants.get_median_timestamp_count(),
             diff_target_block_interval: consensus_constants.get_diff_target_block_interval(),
+            min_pow_difficulty: consensus_constants.min_pow_difficulty(),
         }
     }
 
@@ -169,10 +173,16 @@ where T: BlockchainBackend
 
     // Resets the DiffAdjStorage.
     fn reset(&mut self) {
-        self.monero_lwma =
-            LinearWeightedMovingAverage::new(self.difficulty_block_window as usize, self.diff_target_block_interval);
-        self.blake_lwma =
-            LinearWeightedMovingAverage::new(self.difficulty_block_window as usize, self.diff_target_block_interval);
+        self.monero_lwma = LinearWeightedMovingAverage::new(
+            self.difficulty_block_window as usize,
+            self.diff_target_block_interval,
+            self.min_pow_difficulty,
+        );
+        self.blake_lwma = LinearWeightedMovingAverage::new(
+            self.difficulty_block_window as usize,
+            self.diff_target_block_interval,
+            self.min_pow_difficulty,
+        );
         self.sync_data = None;
         self.timestamps = VecDeque::new();
     }

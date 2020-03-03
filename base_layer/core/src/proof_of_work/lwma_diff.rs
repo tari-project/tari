@@ -15,29 +15,30 @@ use std::{cmp, collections::VecDeque};
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 pub const LOG_TARGET: &str = "c::pow::lwma_diff";
 
-const INITIAL_DIFFICULTY: Difficulty = Difficulty::min();
-
 pub struct LinearWeightedMovingAverage {
     timestamps: VecDeque<EpochTime>,
     accumulated_difficulties: VecDeque<Difficulty>,
     block_window: usize,
     target_time: u64,
+    initial_difficulty: u64,
 }
 
 impl LinearWeightedMovingAverage {
-    pub fn new(block_window: usize, target_time: u64) -> LinearWeightedMovingAverage {
+    pub fn new(block_window: usize, target_time: u64, initial_difficulty: u64) -> LinearWeightedMovingAverage {
         LinearWeightedMovingAverage {
             timestamps: VecDeque::with_capacity(block_window + 1),
             accumulated_difficulties: VecDeque::with_capacity(block_window + 1),
             block_window,
             target_time,
+            initial_difficulty,
         }
     }
 
     fn calculate(&self) -> Difficulty {
         let timestamps = &self.timestamps;
         if timestamps.len() <= 1 {
-            return INITIAL_DIFFICULTY;
+            // return INITIAL_DIFFICULTY;
+            return self.initial_difficulty.into();
         }
 
         // Use the array length rather than block_window to include early cases where the no. of pts < block_window
@@ -143,13 +144,13 @@ mod test {
 
     #[test]
     fn lwma_zero_len() {
-        let dif = LinearWeightedMovingAverage::new(90, 120);
+        let dif = LinearWeightedMovingAverage::new(90, 120, 1);
         assert_eq!(dif.get_difficulty(), Difficulty::min());
     }
 
     #[test]
     fn lwma_add_non_increasing_diff() {
-        let mut dif = LinearWeightedMovingAverage::new(90, 120);
+        let mut dif = LinearWeightedMovingAverage::new(90, 120, 1);
         assert!(dif.add(100.into(), 100.into()).is_ok());
         assert!(dif.add(100.into(), 100.into()).is_err());
         assert!(dif.add(100.into(), 50.into()).is_err());
@@ -157,7 +158,7 @@ mod test {
 
     #[test]
     fn lwma_negative_solve_times() {
-        let mut dif = LinearWeightedMovingAverage::new(90, 120);
+        let mut dif = LinearWeightedMovingAverage::new(90, 120, 1);
         let mut timestamp = 60.into();
         let mut cum_diff = Difficulty::from(100);
         let _ = dif.add(timestamp, cum_diff);
@@ -185,7 +186,7 @@ mod test {
 
     #[test]
     fn lwma_limit_difficulty_change() {
-        let mut dif = LinearWeightedMovingAverage::new(5, 60);
+        let mut dif = LinearWeightedMovingAverage::new(5, 60, 1);
         let _ = dif.add(60.into(), 100.into());
         let _ = dif.add(10_000_000.into(), 200.into());
         assert_eq!(dif.get_difficulty(), 17.into());
@@ -201,7 +202,7 @@ mod test {
     // Acum dif: 100, 200, 300, 400, 500, 605, 733, 856, 972,1066,1105,1151,1206,1281,1429
     // Target:     1, 100, 100, 100, 100, 107, 136, 130, 120,  94,  36,  39,  47,  67, 175
     fn lwma_calculate() {
-        let mut dif = LinearWeightedMovingAverage::new(5, 60);
+        let mut dif = LinearWeightedMovingAverage::new(5, 60, 1);
         let _ = dif.add(60.into(), 100.into());
         assert_eq!(dif.get_difficulty(), 1.into());
         let _ = dif.add(120.into(), 200.into());
