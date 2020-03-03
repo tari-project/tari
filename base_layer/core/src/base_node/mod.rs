@@ -32,25 +32,27 @@
 //! More details about the implementation are presented in
 //! [RFC-0111](https://rfc.tari.com/RFC-0111_BaseNodeArchitecture.html).
 
-cfg_if! {
-    if #[cfg(feature = "base_node")] {
-        mod backoff;
-        mod base_node;
+#[cfg(feature = "base_node")]
+mod backoff;
+#[cfg(feature = "base_node")]
+mod base_node;
+#[cfg(feature = "base_node")]
+pub mod chain_metadata_service;
+#[cfg(feature = "base_node")]
+pub mod comms_interface;
+#[cfg(feature = "base_node")]
+pub mod consts;
+#[cfg(feature = "base_node")]
+pub mod service;
+#[cfg(feature = "base_node")]
+pub mod states;
+// Public re-exports
+#[cfg(feature = "base_node")]
+pub use backoff::BackOff;
+#[cfg(feature = "base_node")]
+pub use base_node::{BaseNodeStateMachine, BaseNodeStateMachineConfig};
+#[cfg(feature = "base_node")]
+pub use comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface};
 
-        pub mod comms_interface;
-        pub mod consts;
-        pub mod service;
-        pub mod chain_metadata_service;
-        pub mod states;
-        // Public re-exports
-        pub use backoff::BackOff;
-        pub use base_node::{BaseNodeStateMachine, BaseNodeStateMachineConfig};
-        pub use comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface};
-    }
-}
-
-cfg_if! {
-    if #[cfg(any(feature = "base_node", feature = "base_node_proto"))] {
-        pub mod proto;
-    }
-}
+#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
+pub mod proto;
