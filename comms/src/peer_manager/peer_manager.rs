@@ -80,7 +80,7 @@ impl PeerManager {
     }
 
     /// Set the last connection to this peer as a success
-    pub fn set_success_connection_state(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
+    pub fn set_last_connect_success(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
         let mut storage = self.peer_storage.write()?;
         let mut peer = storage.find_by_node_id(node_id)?;
         peer.connection_stats.set_connection_success();
@@ -88,7 +88,7 @@ impl PeerManager {
     }
 
     /// Set the last connection to this peer as a failure
-    pub fn set_failed_connection_state(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
+    pub fn set_last_connect_failed(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
         let mut storage = self.peer_storage.write()?;
         let mut peer = storage.find_by_node_id(node_id)?;
         peer.connection_stats.set_connection_failed();

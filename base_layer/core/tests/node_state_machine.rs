@@ -58,7 +58,7 @@ use tari_test_utils::random::string;
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
-#[test]
+#[ignore]
 fn test_listening_lagging() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
@@ -307,11 +307,11 @@ fn test_lagging_block_sync() {
         prev_block = append_block(db, &prev_block, vec![], &consensus_manager.consensus_constants()).unwrap();
         alice_node.blockchain_db.add_block(prev_block.clone()).unwrap();
     }
-    for _ in 0..2 {
+    for _ in 0..4 {
         prev_block = append_block(db, &prev_block, vec![], &consensus_manager.consensus_constants()).unwrap();
     }
     assert_eq!(alice_node.blockchain_db.get_height(), Ok(Some(4)));
-    assert_eq!(bob_node.blockchain_db.get_height(), Ok(Some(6)));
+    assert_eq!(bob_node.blockchain_db.get_height(), Ok(Some(8)));
 
     runtime.block_on(async {
         // Lagging state beyond horizon, sync remaining Blocks to tip
@@ -411,5 +411,96 @@ fn test_block_sync_recovery() {
         alice_node.comms.shutdown().await;
         bob_node.comms.shutdown().await;
         carol_node.comms.shutdown().await;
+    });
+}
+
+#[test]
+fn test_forked_block_sync() {
+    let mut runtime = Runtime::new().unwrap();
+    let factories = CryptoFactories::default();
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let network = Network::LocalNet;
+    let consensus_constants = ConsensusConstantsBuilder::new(network)
+        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .build();
+    let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants)
+        .with_block(prev_block.clone())
+        .build();
+    let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
+        &mut runtime,
+        BaseNodeServiceConfig::default(),
+        MmrCacheConfig::default(),
+        MempoolServiceConfig::default(),
+        LivenessConfig::default(),
+        consensus_manager,
+        temp_dir.path().to_str().unwrap(),
+    );
+    let state_machine_config = BaseNodeStateMachineConfig::default();
+    let mut alice_state_machine = BaseNodeStateMachine::new(
+        &alice_node.blockchain_db,
+        &alice_node.outbound_nci,
+        runtime.handle().clone(),
+        alice_node.chain_metadata_handle.get_event_stream(),
+        state_machine_config,
+    );
+    // Shared chain
+    let alice_db = &alice_node.blockchain_db;
+    let bob_db = &bob_node.blockchain_db;
+    for _ in 0..2 {
+        prev_block = append_block(bob_db, &prev_block, vec![], &consensus_manager.consensus_constants()).unwrap();
+        alice_db.add_block(prev_block.clone()).unwrap();
+    }
+
+    assert_eq!(alice_node.blockchain_db.get_height(), Ok(Some(2)));
+    assert_eq!(bob_node.blockchain_db.get_height(), Ok(Some(2)));
+
+    let mut alice_prev_block = prev_block.clone();
+    let mut bob_prev_block = prev_block;
+    // Alice fork
+    for _ in 0..2 {
+        alice_prev_block = append_block(
+            alice_db,
+            &alice_prev_block,
+            vec![],
+            &consensus_manager.consensus_constants(),
+        )
+        .unwrap();
+    }
+    // Bob fork
+    for _ in 0..7 {
+        println!(" ");
+        println!("add block");
+        bob_prev_block = append_block(
+            bob_db,
+            &bob_prev_block,
+            vec![],
+            &consensus_manager.consensus_constants(),
+        )
+        .unwrap();
+    }
+    assert_eq!(alice_node.blockchain_db.get_height(), Ok(Some(4)));
+    assert_eq!(bob_node.blockchain_db.get_height(), Ok(Some(9)));
+
+    runtime.block_on(async {
+        let state_event = BlockSyncInfo {}.next_event(&mut alice_state_machine).await;
+        assert_eq!(state_event, StateEvent::BlocksSynchronized);
+
+        assert_eq!(
+            alice_node.blockchain_db.get_height(),
+            bob_node.blockchain_db.get_height()
+        );
+
+        let bob_tip_height = bob_node.blockchain_db.get_height().unwrap().unwrap();
+        for height in 0..=bob_tip_height {
+            assert_eq!(
+                alice_node.blockchain_db.fetch_block(height),
+                bob_node.blockchain_db.fetch_block(height)
+            );
+        }
+
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
     });
 }

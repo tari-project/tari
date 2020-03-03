@@ -65,7 +65,6 @@ impl AsyncPeerManager {
     }
 
     pub async fn find_by_public_key(&self, public_key: &CommsPublicKey) -> Result<Peer, PeerManagerError> {
-        // TODO: When tokio block_in_place is more stable, this clone may not be necessary
         let public_key = public_key.clone();
         self.blocking_call(move |pm| pm.find_by_public_key(&public_key)).await?
     }
@@ -75,8 +74,22 @@ impl AsyncPeerManager {
         self.blocking_call(move |pm| Ok(pm.exists(&public_key))).await?
     }
 
-    pub fn inner(&self) -> &PeerManager {
-        &self.peer_manager
+    /// Set the last connection to this peer as a success
+    pub async fn set_last_connect_success(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
+        let node_id = node_id.clone();
+        self.blocking_call(move |pm| pm.set_last_connect_success(&node_id))
+            .await?
+    }
+
+    /// Set the last connection to this peer as a failure
+    pub async fn set_last_connect_failed(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
+        let node_id = node_id.clone();
+        self.blocking_call(move |pm| pm.set_last_connect_failed(&node_id))
+            .await?
+    }
+
+    pub fn inner(&self) -> Arc<PeerManager> {
+        self.peer_manager.clone()
     }
 
     /// Updates fields for a peer. Any fields set to Some(xx) will be updated. All None

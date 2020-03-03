@@ -25,10 +25,9 @@ use crate::{
         base_node::BaseNodeStateMachine,
         states::{InitialSync, ListeningInfo, StateEvent},
     },
-    chain_storage::{BlockchainBackend, ChainMetadata, ChainStorageError},
+    chain_storage::{async_db, BlockchainBackend, ChainMetadata, ChainStorageError},
 };
 use log::*;
-use std::collections::VecDeque;
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "c::bn::states::block_sync";
@@ -54,7 +53,11 @@ impl Default for BlockSyncConfig {
 pub struct BlockSyncInfo;
 
 impl BlockSyncInfo {
-    pub async fn next_event<B: BlockchainBackend>(&mut self, shared: &mut BaseNodeStateMachine<B>) -> StateEvent {
+    pub async fn next_event<B: BlockchainBackend + 'static>(
+        &mut self,
+        shared: &mut BaseNodeStateMachine<B>,
+    ) -> StateEvent
+    {
         info!(target: LOG_TARGET, "Synchronizing missing blocks");
 
         match synchronize_blocks(shared).await {
@@ -91,7 +94,9 @@ impl From<InitialSync> for BlockSyncInfo {
     }
 }
 
-async fn network_chain_tip<B: BlockchainBackend>(shared: &mut BaseNodeStateMachine<B>) -> Result<u64, String> {
+async fn network_tip_metadata<B: BlockchainBackend>(
+    shared: &mut BaseNodeStateMachine<B>,
+) -> Result<ChainMetadata, String> {
     let metadata_list = shared.comms.get_metadata().await.map_err(|e| e.to_string())?;
     // TODO: Use heuristics to weed out outliers / dishonest nodes.
     Ok(metadata_list
@@ -102,49 +107,68 @@ async fn network_chain_tip<B: BlockchainBackend>(shared: &mut BaseNodeStateMachi
             } else {
                 best
             }
-        })
-        .height_of_longest_chain
-        .unwrap_or(0))
+        }))
 }
 
-async fn synchronize_blocks<B: BlockchainBackend>(shared: &mut BaseNodeStateMachine<B>) -> Result<StateEvent, String> {
-    let start_height = match shared.db.get_height().map_err(|e| e.to_string())? {
-        Some(height) => height + 1,
-        None => 0u64,
-    };
-    let network_tip_height = network_chain_tip(shared).await?;
-
-    let mut attempts = 0;
-    let mut height_indices = (start_height..=network_tip_height).collect::<VecDeque<u64>>();
-    while !height_indices.is_empty() {
-        if let Some(block_num) = height_indices.pop_front() {
-            debug!(target: LOG_TARGET, "Requesting block {} from peers", block_num,);
+async fn synchronize_blocks<B: BlockchainBackend + 'static>(
+    shared: &mut BaseNodeStateMachine<B>,
+) -> Result<StateEvent, String> {
+    let local_metadata = shared.db.get_metadata().map_err(|e| e.to_string())?;
+    let network_metadata = network_tip_metadata(shared).await?;
+    if let Some(best_block_hash) = network_metadata.best_block {
+        let mut attempts = 0;
+        let mut sync_block_hash = best_block_hash;
+        while local_metadata.height_of_longest_chain.unwrap_or(0) <
+            network_metadata.height_of_longest_chain.unwrap_or(0)
+        {
+            // Check if sync hash is on local chain
+            if async_db::fetch_header_with_block_hash(shared.db.clone(), sync_block_hash.clone())
+                .await
+                .is_ok()
+            {
+                return Ok(StateEvent::BlocksSynchronized);
+            }
+            // Check if blockchain db already has the sync hash block
+            if let Ok(block) = async_db::fetch_orphan(shared.db.clone(), sync_block_hash.clone()).await {
+                attempts = 0;
+                sync_block_hash = block.header.prev_hash;
+                continue;
+            }
 
             // Request the block from a random peer node and add to chain.
-            match shared.comms.fetch_blocks(vec![block_num]).await {
-                Ok(hist_block) => {
-                    debug!(target: LOG_TARGET, "Received {} blocks from peer", hist_block.len());
-                    if let Some(hist_block) = hist_block.first() {
-                        match shared.db.add_block(hist_block.block.clone()) {
-                            Ok(_) => {
-                                attempts = 0;
-                                continue;
-                            },
-                            Err(ChainStorageError::InvalidBlock) => {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Invalid block {} received from peer. Retrying",
-                                    hist_block.block.hash().to_hex(),
-                                );
-                            },
-                            Err(ChainStorageError::ValidationError(_)) => {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Validation on block {} from peer failed. Retrying",
-                                    hist_block.block.hash().to_hex(),
-                                );
-                            },
-                            Err(e) => return Err(e.to_string()),
+            match shared
+                .comms
+                .fetch_blocks_with_hashes(vec![sync_block_hash.clone()])
+                .await
+            {
+                Ok(blocks) => {
+                    debug!(target: LOG_TARGET, "Received {} blocks from peer", blocks.len());
+                    if let Some(hist_block) = blocks.first() {
+                        let block_hash = hist_block.block().hash();
+                        if block_hash == sync_block_hash {
+                            let prev_block_hash = hist_block.block().header.prev_hash.clone();
+                            match shared.db.add_block(hist_block.block().clone()) {
+                                Ok(_) => {
+                                    attempts = 0;
+                                    sync_block_hash = prev_block_hash;
+                                    continue;
+                                },
+                                Err(ChainStorageError::InvalidBlock) => {
+                                    warn!(
+                                        target: LOG_TARGET,
+                                        "Invalid block {} received from peer. Retrying",
+                                        block_hash.to_hex(),
+                                    );
+                                },
+                                Err(ChainStorageError::ValidationError(_)) => {
+                                    warn!(
+                                        target: LOG_TARGET,
+                                        "Validation on block {} from peer failed. Retrying",
+                                        block_hash.to_hex(),
+                                    );
+                                },
+                                Err(e) => return Err(e.to_string()),
+                            }
                         }
                     }
                 },
@@ -155,12 +179,12 @@ async fn synchronize_blocks<B: BlockchainBackend>(shared: &mut BaseNodeStateMach
                     );
                 },
             }
+
             // Attempt again to retrieve the correct block
             attempts += 1;
             if attempts >= shared.config.block_sync_config.max_block_request_retry_attempts {
                 return Ok(StateEvent::MaxRequestAttemptsReached);
             }
-            height_indices.push_front(block_num);
         }
     }
 

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{error::MessagingProtocolError, MessagingEvent, MessagingProtocol, MESSAGING_PROTOCOL};
+use super::{error::MessagingProtocolError, MessagingEvent, MessagingProtocol, SendFailReason, MESSAGING_PROTOCOL};
 use crate::{
     connection_manager::{ConnectionManagerError, ConnectionManagerRequester, NegotiatedSubstream, PeerConnection},
     message::{Envelope, MessageExt, OutboundMessage},
@@ -87,6 +87,17 @@ impl OutboundMessaging {
                     );
                     continue;
                 },
+                Err(err @ ConnectionManagerError::PeerOffline) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "MessagingProtocol failed to dial peer '{}' because '{:?}'",
+                        self.peer_node_id.short_str(),
+                        err
+                    );
+                    self.flush_all_messages_to_failed_event(SendFailReason::PeerOffline)
+                        .await;
+                    break Err(MessagingProtocolError::PeerDialFailed);
+                },
                 Err(err) => {
                     error!(
                         target: LOG_TARGET,
@@ -94,7 +105,8 @@ impl OutboundMessaging {
                         self.peer_node_id.short_str(),
                         err
                     );
-                    self.flush_all_messages_to_failed_event().await;
+                    self.flush_all_messages_to_failed_event(SendFailReason::PeerDialFailed)
+                        .await;
                     break Err(MessagingProtocolError::PeerDialFailed);
                 },
             }
@@ -115,7 +127,8 @@ impl OutboundMessaging {
                     self.peer_node_id.short_str(),
                     err
                 );
-                self.flush_all_messages_to_failed_event().await;
+                self.flush_all_messages_to_failed_event(SendFailReason::SubstreamOpenFailed)
+                    .await;
                 Err(err.into())
             },
         }
@@ -142,10 +155,14 @@ impl OutboundMessaging {
                         );
                         let _ = self
                             .messaging_events_tx
-                            .send(MessagingEvent::SendMessageFailed(out_msg))
+                            .send(MessagingEvent::SendMessageFailed(
+                                out_msg,
+                                SendFailReason::SubstreamSendFailed,
+                            ))
                             .await;
                         // FATAL: Failed to send on the substream
-                        self.flush_all_messages_to_failed_event().await;
+                        self.flush_all_messages_to_failed_event(SendFailReason::SubstreamSendFailed)
+                            .await;
                         return Err(MessagingProtocolError::OutboundSubstreamFailure);
                     }
 
@@ -164,7 +181,10 @@ impl OutboundMessaging {
 
                     let _ = self
                         .messaging_events_tx
-                        .send(MessagingEvent::SendMessageFailed(out_msg))
+                        .send(MessagingEvent::SendMessageFailed(
+                            out_msg,
+                            SendFailReason::EnvelopeFailedToSerialize,
+                        ))
                         .await;
                 },
             }
@@ -173,14 +193,14 @@ impl OutboundMessaging {
         Ok(())
     }
 
-    async fn flush_all_messages_to_failed_event(&mut self) {
+    async fn flush_all_messages_to_failed_event(&mut self, reason: SendFailReason) {
         // Close the request channel so that we can read all the remaining messages and flush them
         // to a failed event
         self.request_rx.close();
         while let Some(out_msg) = self.request_rx.next().await {
             let _ = self
                 .messaging_events_tx
-                .send(MessagingEvent::SendMessageFailed(out_msg))
+                .send(MessagingEvent::SendMessageFailed(out_msg, reason))
                 .await;
         }
     }

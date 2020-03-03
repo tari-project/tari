@@ -138,68 +138,69 @@ mod test {
     #[test]
     fn test_lmdb_kvstore() {
         let database_name = "test_lmdb_kvstore"; // Note: every test should have unique database
-        let datastore = init_datastore(database_name).unwrap();
-        let db = datastore.get_handle(database_name).unwrap();
-        let db = LMDBWrapper::new(Arc::new(db));
-        #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
-        struct Foo {
-            value: String,
-        }
-        let key1 = 1 as u64;
-        let key2 = 2 as u64;
-        let key3 = 3 as u64;
-        let key4 = 4 as u64;
-        let val1 = Foo {
-            value: "one".to_string(),
-        };
-        let val2 = Foo {
-            value: "two".to_string(),
-        };
-        let val3 = Foo {
-            value: "three".to_string(),
-        };
-        db.insert(1, val1.clone()).unwrap();
-        db.insert(2, val2.clone()).unwrap();
-        db.insert(3, val3.clone()).unwrap();
-
-        assert_eq!(db.get(&1).unwrap().unwrap(), val1);
-        assert_eq!(db.get(&2).unwrap().unwrap(), val2);
-        assert_eq!(db.get(&3).unwrap().unwrap(), val3);
-        assert!(db.get(&4).unwrap().is_none());
-        assert_eq!(db.size().unwrap(), 3);
-        assert!(db.exists(&key1).unwrap());
-        assert!(db.exists(&key2).unwrap());
-        assert!(db.exists(&key3).unwrap());
-        assert!(!db.exists(&key4).unwrap());
-
-        db.delete(&key2).unwrap();
-        assert_eq!(db.get(&key1).unwrap().unwrap(), val1);
-        assert!(db.get(&key2).unwrap().is_none());
-        assert_eq!(db.get(&key3).unwrap().unwrap(), val3);
-        assert!(db.get(&key4).unwrap().is_none());
-        assert_eq!(db.size().unwrap(), 2);
-        assert!(db.exists(&key1).unwrap());
-        assert!(!db.exists(&key2).unwrap());
-        assert!(db.exists(&key3).unwrap());
-        assert!(!db.exists(&key4).unwrap());
-
-        // Only Key1 and Key3 should be in key-value database, but order is not known
-        let mut key1_found = false;
-        let mut key3_found = false;
-        let _res = db.for_each(|pair| {
-            let (key, val) = pair.unwrap();
-            if key == key1 {
-                key1_found = true;
-                assert_eq!(val, val1);
-            } else if key == key3 {
-                key3_found = true;
-                assert_eq!(val, val3);
+        {
+            let datastore = init_datastore(database_name).unwrap();
+            let db = datastore.get_handle(database_name).unwrap();
+            let db = LMDBWrapper::new(Arc::new(db));
+            #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+            struct Foo {
+                value: String,
             }
-            IterationResult::Continue
-        });
-        assert!(key1_found);
-        assert!(key3_found);
+            let key1 = 1 as u64;
+            let key2 = 2 as u64;
+            let key3 = 3 as u64;
+            let key4 = 4 as u64;
+            let val1 = Foo {
+                value: "one".to_string(),
+            };
+            let val2 = Foo {
+                value: "two".to_string(),
+            };
+            let val3 = Foo {
+                value: "three".to_string(),
+            };
+            db.insert(1, val1.clone()).unwrap();
+            db.insert(2, val2.clone()).unwrap();
+            db.insert(3, val3.clone()).unwrap();
 
-        clean_up_datastore(database_name);
+            assert_eq!(db.get(&1).unwrap().unwrap(), val1);
+            assert_eq!(db.get(&2).unwrap().unwrap(), val2);
+            assert_eq!(db.get(&3).unwrap().unwrap(), val3);
+            assert!(db.get(&4).unwrap().is_none());
+            assert_eq!(db.size().unwrap(), 3);
+            assert!(db.exists(&key1).unwrap());
+            assert!(db.exists(&key2).unwrap());
+            assert!(db.exists(&key3).unwrap());
+            assert!(!db.exists(&key4).unwrap());
+
+            db.delete(&key2).unwrap();
+            assert_eq!(db.get(&key1).unwrap().unwrap(), val1);
+            assert!(db.get(&key2).unwrap().is_none());
+            assert_eq!(db.get(&key3).unwrap().unwrap(), val3);
+            assert!(db.get(&key4).unwrap().is_none());
+            assert_eq!(db.size().unwrap(), 2);
+            assert!(db.exists(&key1).unwrap());
+            assert!(!db.exists(&key2).unwrap());
+            assert!(db.exists(&key3).unwrap());
+            assert!(!db.exists(&key4).unwrap());
+
+            // Only Key1 and Key3 should be in key-value database, but order is not known
+            let mut key1_found = false;
+            let mut key3_found = false;
+            let _res = db.for_each(|pair| {
+                let (key, val) = pair.unwrap();
+                if key == key1 {
+                    key1_found = true;
+                    assert_eq!(val, val1);
+                } else if key == key3 {
+                    key3_found = true;
+                    assert_eq!(val, val3);
+                }
+                IterationResult::Continue
+            });
+            assert!(key1_found);
+            assert!(key3_found);
+        }
+        clean_up_datastore(database_name); // In Windows file handles must be released before files can be deleted
     }
 }

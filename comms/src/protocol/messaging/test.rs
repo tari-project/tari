@@ -28,11 +28,11 @@ use super::messaging::{
     MESSAGING_PROTOCOL,
 };
 use crate::{
-    message::{InboundMessage, MessageExt, MessageFlags, OutboundMessage},
+    message::{InboundMessage, MessageExt, MessageFlags, MessageTag, OutboundMessage},
     net_address::MultiaddressesWithStats,
-    peer_manager::{AsyncPeerManager, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    peer_manager::{AsyncPeerManager, NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     proto::envelope::Envelope,
-    protocol::{ProtocolEvent, ProtocolNotification},
+    protocol::{messaging::SendFailReason, ProtocolEvent, ProtocolNotification},
     test_utils::{
         create_connection_manager_mock,
         create_peer_connection_mock_pair,
@@ -113,6 +113,18 @@ async fn new_inbound_substream_handling() {
         spawn_messaging_protocol().await;
 
     let expected_node_id = node_id::random();
+    let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+    peer_manager
+        .add_peer(Peer::new(
+            pk.clone(),
+            expected_node_id.clone(),
+            MultiaddressesWithStats::default(),
+            PeerFlags::empty(),
+            PeerFeatures::COMMUNICATION_CLIENT,
+        ))
+        .await
+        .unwrap();
+
     // Create connected memory sockets - we use each end of the connection as if they exist on different nodes
     let (_, muxer_ours, mut muxer_theirs) = transport::build_multiplexed_connections().await;
 
@@ -129,18 +141,7 @@ async fn new_inbound_substream_handling() {
     let stream_theirs = muxer_theirs.incoming_mut().next().await.unwrap().unwrap();
     let mut framed_theirs = MessagingProtocol::framed(stream_theirs);
 
-    let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
     let envelope = Envelope::construct_signed(&sk, &pk, TEST_MSG1, MessageFlags::empty()).unwrap();
-    peer_manager
-        .add_peer(Peer::new(
-            pk,
-            expected_node_id.clone(),
-            MultiaddressesWithStats::default(),
-            PeerFlags::empty(),
-            PeerFeatures::COMMUNICATION_CLIENT,
-        ))
-        .await
-        .unwrap();
 
     framed_theirs
         .send(Bytes::copy_from_slice(&envelope.to_encoded_bytes().unwrap()))
@@ -203,12 +204,60 @@ async fn send_message_dial_failed() {
     request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
 
     let event = event_tx.next().await.unwrap().unwrap();
-    unpack_enum!(MessagingEvent::SendMessageFailed(out_msg) = &*event);
+    unpack_enum!(MessagingEvent::SendMessageFailed(out_msg, reason) = &*event);
+    unpack_enum!(SendFailReason::PeerDialFailed = reason);
     assert_eq!(out_msg.tag, expected_out_msg_tag);
 
     let calls = conn_manager_mock.take_calls().await;
     assert_eq!(calls.len(), 1);
     assert!(calls[0].starts_with("DialPeer"));
+}
+
+#[runtime::test_basic]
+async fn send_message_substream_bulk_failure() {
+    const NUM_MSGS: usize = 10;
+    let (_, node_identity, conn_manager_mock, _, mut request_tx, _, mut event_tx, _shutdown) =
+        spawn_messaging_protocol().await;
+
+    let peer_node_id = node_id::random();
+
+    let (conn1, _, _, peer_conn_mock2) =
+        create_peer_connection_mock_pair(1, node_identity.node_id().clone(), peer_node_id.clone()).await;
+
+    // Add mock peer connection to connection manager mock for node 2
+    conn_manager_mock
+        .add_active_connection(peer_node_id.clone(), conn1)
+        .await;
+
+    async fn send_msg(request_tx: &mut mpsc::Sender<MessagingRequest>, node_id: NodeId) -> MessageTag {
+        let out_msg = OutboundMessage::new(node_id, MessageFlags::NONE, TEST_MSG1);
+        let msg_tag = out_msg.tag;
+        // Send a message to node 2
+        request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
+        msg_tag
+    }
+
+    let mut expected_out_msg_tags = Vec::with_capacity(NUM_MSGS);
+    expected_out_msg_tags.push(send_msg(&mut request_tx, peer_node_id.clone()).await);
+
+    let _ = peer_conn_mock2.next_incoming_substream().await.unwrap();
+    // Close destination peer's channel before receiving the message
+    peer_conn_mock2.disconnect().await;
+
+    for _ in 0..NUM_MSGS - 1 {
+        expected_out_msg_tags.push(send_msg(&mut request_tx, peer_node_id.clone()).await);
+    }
+
+    let event = event_tx.next().await.unwrap().unwrap();
+    unpack_enum!(MessagingEvent::MessageSent(tag) = &*event);
+    assert_eq!(tag, &expected_out_msg_tags.remove(0));
+
+    for _ in 0..NUM_MSGS - 1 {
+        let event = event_tx.next().await.unwrap().unwrap();
+        unpack_enum!(MessagingEvent::SendMessageFailed(out_msg, reason) = &*event);
+        unpack_enum!(SendFailReason::SubstreamSendFailed = reason);
+        assert_eq!(out_msg.tag, expected_out_msg_tags.remove(0));
+    }
 }
 
 #[runtime::test_basic]

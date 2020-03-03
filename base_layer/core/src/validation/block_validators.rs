@@ -41,6 +41,7 @@ use tari_crypto::tari_utilities::hash::Hashable;
 pub const LOG_TARGET: &str = "c::val::block_validators";
 
 /// This validator tests whether a candidate block is internally consistent
+#[derive(Clone)]
 pub struct StatelessValidator {
     consensus_constants: ConsensusConstants,
 }

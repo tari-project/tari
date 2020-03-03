@@ -17,7 +17,7 @@ tokio = "0.2.10"
 libc = "0.2.65"
 rand = "0.7.2"
 chrono = { version = "0.4.6", features = ["serde"]}
-tari_broadcast_channel = { version="^0.0",  path = "../../infrastructure/broadcast_channel" }
+tari_broadcast_channel = "^0.1"
 derive-error = "0.0.4"
 log = "0.4.6"
 

@@ -71,7 +71,7 @@ impl PeerConnectionStats {
 
     /// Returns the date time (UTC) since the last failed connection occurred. None is returned if the
     /// `last_connection_attempt` is not `Failed`
-    pub fn failed_at(&self) -> Option<&NaiveDateTime> {
+    pub fn last_failed_at(&self) -> Option<&NaiveDateTime> {
         match &self.last_connection_attempt {
             LastConnectionAttempt::Failed { failed_at, .. } => Some(failed_at),
             _ => None,
@@ -81,7 +81,7 @@ impl PeerConnectionStats {
     /// Returns the Duration since the last failed connection occurred. None is returned if the
     /// `last_connection_attempt` is not `Failed`
     pub fn time_since_last_failure(&self) -> Option<Duration> {
-        self.failed_at()
+        self.last_failed_at()
             .map(|failed_at| Utc::now().naive_utc() - *failed_at)
             .map(convert_to_std_duration)
     }
@@ -140,14 +140,14 @@ mod test {
     #[test]
     fn peer_connection_stats() {
         let state = PeerConnectionStats::new();
-        assert!(state.failed_at().is_none());
+        assert!(state.last_failed_at().is_none());
         assert_eq!(state.failed_attempts(), 0);
         assert!(state.time_since_last_failure().is_none());
         assert_eq!(state.has_ever_connected(), false);
 
         let mut state = PeerConnectionStats::new();
         state.set_connection_success();
-        assert!(state.failed_at().is_none());
+        assert!(state.last_failed_at().is_none());
         assert_eq!(state.failed_attempts(), 0);
         assert!(state.time_since_last_failure().is_none());
         assert_eq!(state.has_ever_connected(), true);
@@ -156,7 +156,7 @@ mod test {
         state.set_connection_failed();
         state.set_connection_failed();
         state.set_connection_failed();
-        assert!(state.failed_at().is_some());
+        assert!(state.last_failed_at().is_some());
         assert_eq!(state.failed_attempts(), 3);
         assert!(state.time_since_last_failure().unwrap().as_millis() < 100);
 

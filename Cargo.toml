@@ -4,26 +4,15 @@ members = [
     "base_layer/core",
     "base_layer/key_manager",
     "base_layer/mmr",
-    "base_layer/mining",
     "base_layer/p2p",
     "base_layer/service_framework",
     "base_layer/wallet",
     "base_layer/wallet_ffi",
     "comms",
     "comms/dht",
-    "digital_assets_layer/core",
-    "infrastructure/broadcast_channel",
-    "infrastructure/protobuf_build",
-    "infrastructure/pubsub",
     "infrastructure/shutdown",
     "infrastructure/storage",
     "infrastructure/test_utils",
-    #"applications/tari_testnet_miner",
     "applications/tari_base_node",
     "applications/test_faucet",
-    #Needs to be updated to make its calls using an Tokio runtime block_on function.
-    #"ffi"
-    #The wallet gRPC is based on the old Futures and not part of the Testnet scope
-    #"applications/grpc_wallet",
-#    "applications/console_text_messenger",
 ]

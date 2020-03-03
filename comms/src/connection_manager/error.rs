@@ -71,6 +71,8 @@ pub enum ConnectionManagerError {
     IdentityProtocolError(IdentityProtocolError),
     /// The dial was cancelled
     DialCancelled,
+    /// The peer is offline and will not be dialed
+    PeerOffline,
 }
 
 impl From<yamux::ConnectionError> for ConnectionManagerError {

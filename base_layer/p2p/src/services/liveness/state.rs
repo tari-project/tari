@@ -204,7 +204,7 @@ impl LivenessState {
     }
 
     pub fn get_monitored_node_ids(&self) -> Vec<NodeId> {
-        self.nodes_to_monitor.keys().map(|n| (*n).clone()).collect()
+        self.nodes_to_monitor.keys().cloned().collect()
     }
 
     pub fn is_monitored_node_id(&self, node_id: &NodeId) -> bool {

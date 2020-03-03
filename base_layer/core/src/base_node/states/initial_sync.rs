@@ -68,14 +68,22 @@ impl InitialSync {
         }
     }
 
-    pub async fn next_event<B: BlockchainBackend>(&mut self, shared: &mut BaseNodeStateMachine<B>) -> StateEvent {
+    pub async fn next_event<B: BlockchainBackend + 'static>(
+        &mut self,
+        shared: &mut BaseNodeStateMachine<B>,
+    ) -> StateEvent
+    {
         info!(target: LOG_TARGET, "Starting blockchain metadata sync");
         self.sync_metadata(shared).await
     }
 
     /// Fetch the blockchain metadata from our internal database and compare it to data received from peers to decide
     /// on the next phase of the blockchain synchronisation.
-    async fn sync_metadata<B: BlockchainBackend>(&mut self, shared: &mut BaseNodeStateMachine<B>) -> StateEvent {
+    async fn sync_metadata<B: BlockchainBackend + 'static>(
+        &mut self,
+        shared: &mut BaseNodeStateMachine<B>,
+    ) -> StateEvent
+    {
         info!(target: LOG_TARGET, "Loading local blockchain metadata.");
         let ours = match shared.db.get_metadata() {
             Ok(m) => m,

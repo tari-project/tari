@@ -70,6 +70,7 @@ pub fn build_connection_manager(
     executor: runtime::Handle,
     config: TestNodeConfig,
     peer_manager: Arc<PeerManager>,
+    protocols: Protocols<yamux::Stream>,
     shutdown: ShutdownSignal,
 ) -> ConnectionManagerRequester
 {
@@ -88,7 +89,7 @@ pub fn build_connection_manager(
         request_rx,
         config.node_identity,
         peer_manager.into(),
-        Protocols::new(),
+        protocols,
         event_tx,
         shutdown,
     );

@@ -76,7 +76,7 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     event_receiver: Subscriber<BaseNodeState>,
 }
 
-impl<B: BlockchainBackend> BaseNodeStateMachine<B> {
+impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     /// Instantiate a new Base Node.
     pub fn new(
         db: &BlockchainDatabase<B>,

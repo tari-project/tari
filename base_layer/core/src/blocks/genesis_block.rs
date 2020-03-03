@@ -23,7 +23,7 @@
 // This file is used to store the genesis block
 use crate::{
     blocks::{block::Block, BlockHeader},
-    proof_of_work::{PowAlgorithm, ProofOfWork},
+    proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
 };
 
 use crate::transactions::{
@@ -139,8 +139,6 @@ pub fn get_rincewind_gen_header() -> BlockHeader {
 #[cfg(test)]
 mod test {
     use super::*;
-
-    use tari_crypto::tari_utilities::hex::Hex;
 
     #[test]
     fn load_rincewind() {

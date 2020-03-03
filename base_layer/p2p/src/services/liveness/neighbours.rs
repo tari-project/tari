@@ -22,7 +22,7 @@
 
 use chrono::{NaiveDateTime, Utc};
 use std::time::Duration;
-use tari_comms::peer_manager::Peer;
+use tari_comms::peer_manager::{NodeId, Peer};
 
 pub struct Neighbours {
     last_updated: Option<NaiveDateTime>,
@@ -58,5 +58,9 @@ impl Neighbours {
 
     pub fn peers(&self) -> &[Peer] {
         &self.peers
+    }
+
+    pub fn contains(&self, node_id: &NodeId) -> bool {
+        self.peers.iter().map(|p| &p.node_id).any(|n| n == node_id)
     }
 }
