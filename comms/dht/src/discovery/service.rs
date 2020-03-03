@@ -43,6 +43,7 @@ use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     types::CommsPublicKey,
+    validate_peer_addresses,
 };
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_shutdown::ShutdownSignal;
@@ -195,6 +196,9 @@ impl DhtDiscoveryService {
             .into_iter()
             .filter_map(|addr| addr.parse().ok())
             .collect::<Vec<_>>();
+
+        validate_peer_addresses(&addresses, self.config.network.is_localtest())
+            .map_err(|err| DhtDiscoveryError::InvalidPeerMultiaddr(err.to_string()))?;
 
         let peer = self.add_or_update_peer(
             &public_key,

@@ -20,10 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod common;
 mod dial_state;
 mod dialer;
 mod listener;
+
+mod common;
+pub use common::validate_peer_addresses;
 
 mod types;
 pub use types::ConnectionDirection;

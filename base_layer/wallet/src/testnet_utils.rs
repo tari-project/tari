@@ -128,6 +128,7 @@ pub fn create_wallet(
             discovery_request_timeout: Duration::from_millis(500),
             ..Default::default()
         },
+        allow_test_addresses: true,
     };
 
     let config = WalletConfig {

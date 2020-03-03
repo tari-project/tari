@@ -73,6 +73,8 @@ pub enum ConnectionManagerError {
     DialCancelled,
     /// The peer is offline and will not be dialed
     PeerOffline,
+    #[error(msg_embedded, no_from, non_std)]
+    InvalidMultiaddr(String),
 }
 
 impl From<yamux::ConnectionError> for ConnectionManagerError {

@@ -337,6 +337,8 @@ where
         outbound_buffer_size: 100,
         // TODO - make this configurable
         dht: Default::default(),
+        // TODO: This should be false unless testing locally - make this configurable
+        allow_test_addresses: true,
     };
     let (comms, dht) = setup_comms_services(comms_config, publisher).await?;
     // Save final node identity after comms has initialized. This is required because the public_address can be changed

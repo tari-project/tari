@@ -65,6 +65,10 @@ pub struct CommsConfig {
     pub node_identity: Arc<NodeIdentity>,
     /// The type of transport to use
     pub transport_type: TransportType,
+    /// Set to true to allow peers to provide test addresses (loopback, memory etc.). If set to false, memory
+    /// addresses, loopback, local-link (i.e addresses used in local tests) will not be accepted from peers. This
+    /// should always be false for non-test nodes.
+    pub allow_test_addresses: bool,
 }
 
 /// Initialize Tari Comms configured for tests
@@ -98,6 +102,7 @@ where
     //---------------------------------- Comms --------------------------------------------//
 
     let comms = CommsBuilder::new()
+        .allow_test_addresses()
         .with_transport(MemoryTransport)
         .with_listener_address(node_identity.public_address())
         .with_node_identity(node_identity)
@@ -150,7 +155,11 @@ where
     TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
-    let builder = CommsBuilder::new().with_node_identity(config.node_identity.clone());
+    let mut builder = CommsBuilder::new().with_node_identity(config.node_identity.clone());
+
+    if config.allow_test_addresses {
+        builder = builder.allow_test_addresses();
+    }
 
     match &config.transport_type {
         TransportType::Memory { listener_address } => {

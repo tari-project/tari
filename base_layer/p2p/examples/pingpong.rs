@@ -171,6 +171,7 @@ fn main() {
         max_concurrent_inbound_tasks: 10,
         outbound_buffer_size: 10,
         dht: Default::default(),
+        allow_test_addresses: true,
     };
 
     let (comms, dht) = rt.block_on(initialize_comms(comms_config, publisher)).unwrap();

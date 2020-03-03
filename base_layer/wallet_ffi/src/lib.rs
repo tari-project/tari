@@ -1860,6 +1860,9 @@ pub unsafe extern "C" fn comms_config_create(
                         max_concurrent_inbound_tasks: 100,
                         outbound_buffer_size: 100,
                         dht: DhtConfig::default(),
+                        // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
+                        //       docstring for more info.
+                        allow_test_addresses: true,
                     };
 
                     Box::into_raw(Box::new(config))
@@ -3597,6 +3600,7 @@ mod test {
                 secret_key_alice,
                 error_ptr,
             );
+            (*alice_config).allow_test_addresses = true;
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),

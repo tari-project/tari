@@ -22,7 +22,7 @@
 
 use futures::Sink;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
-use std::{error::Error, iter, sync::Arc};
+use std::{error::Error, iter, sync::Arc, time::Duration};
 use tari_comms::{
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
     transports::MemoryTransport,
@@ -54,12 +54,11 @@ use tari_core::{
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::{
     comms_connector::{pubsub_connector, InboundDomainConnector, PeerMessage},
-    initialization::{initialize_comms, CommsConfig},
+    initialization::initialize_local_test_comms,
     services::{
         comms_outbound::CommsOutboundServiceInitializer,
         liveness::{LivenessConfig, LivenessInitializer},
     },
-    transport::TransportType,
 };
 use tari_service_framework::StackBuilder;
 use tokio::runtime::Runtime;
@@ -422,20 +421,9 @@ where
     TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
-    let transport_type = TransportType::Memory {
-        listener_address: node_identity.public_address(),
-    };
-    let comms_config = CommsConfig {
-        node_identity,
-        transport_type,
-        datastore_path: data_path.to_string(),
-        peer_database_name: random_string(8),
-        max_concurrent_inbound_tasks: 10,
-        outbound_buffer_size: 10,
-        dht: Default::default(),
-    };
-
-    let (comms, dht) = initialize_comms(comms_config, publisher).await.unwrap();
+    let (comms, dht) = initialize_local_test_comms(node_identity, publisher, data_path, Duration::from_secs(2 * 60))
+        .await
+        .unwrap();
 
     for p in peers {
         let addr = p.public_address();

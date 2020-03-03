@@ -293,6 +293,7 @@ where
         let conn_man_notifier = self.conn_man_notifier.clone();
         let supported_protocols = self.supported_protocols.clone();
         let noise_config = self.noise_config.clone();
+        let allow_test_addresses = self.config.allow_test_addresses;
 
         let dial_fut = async move {
             let (dial_state, dial_result) =
@@ -319,6 +320,7 @@ where
                         authenticated_public_key,
                         conn_man_notifier,
                         supported_protocols,
+                        allow_test_addresses,
                     );
                     futures::pin_mut!(upgrade_fut);
                     let either = future::select(upgrade_fut, cancel_signal).await;
@@ -361,6 +363,7 @@ where
         authenticated_public_key: CommsPublicKey,
         conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
         our_supported_protocols: Vec<ProtocolId>,
+        allow_test_addresses: bool,
     ) -> Result<PeerConnection, ConnectionManagerError>
     {
         static CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Outbound;
@@ -383,8 +386,12 @@ where
         );
         trace!(target: LOG_TARGET, "{:?}", peer_identity);
 
-        let peer_node_id =
-            common::validate_and_add_peer_from_peer_identity(&peer_manager, authenticated_public_key, peer_identity)?;
+        let peer_node_id = common::validate_and_add_peer_from_peer_identity(
+            &peer_manager,
+            authenticated_public_key,
+            peer_identity,
+            allow_test_addresses,
+        )?;
 
         debug!(
             target: LOG_TARGET,
