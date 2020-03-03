@@ -21,11 +21,20 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod blake_pow;
+mod diff_adj_manager;
 mod difficulty;
 mod error;
-mod pow;
+mod monero_rx;
+mod proof_of_work;
 
-pub use blake_pow::BlakePow;
-pub use difficulty::Difficulty;
-pub use error::PowError;
-pub use pow::ProofOfWork;
+#[cfg(test)]
+pub use blake_pow::test as blake_test;
+
+pub mod lwma_diff;
+
+pub use blake_pow::{blake_difficulty, blake_difficulty_with_hash};
+pub use diff_adj_manager::{DiffAdjManager, DiffAdjManagerError};
+pub use difficulty::{Difficulty, DifficultyAdjustment};
+pub use error::{DifficultyAdjustmentError, PowError};
+pub use monero_rx::monero_difficulty;
+pub use proof_of_work::{PowAlgorithm, ProofOfWork};

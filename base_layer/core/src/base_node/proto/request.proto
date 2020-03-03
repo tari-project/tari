@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+import "block.proto";
+
+package tari.base_node;
+
+// Request type for a received BaseNodeService request.
+message BaseNodeServiceRequest {
+    uint64 request_key = 1;
+    oneof request {
+        // Indicates a GetChainMetadata request. The value of the bool should be ignored.
+        bool get_chain_metadata = 2;
+        // Indicates a FetchKernels request.
+        HashOutputs fetch_kernels = 3;
+        // Indicates a FetchHeaders request.
+        BlockHeights fetch_headers = 4;
+        // Indicates a FetchUtxos request.
+        HashOutputs fetch_utxos = 5;
+        // Indicates a FetchBlocks request.
+        BlockHeights fetch_blocks = 6;
+        // Indicates a FetchBlocksWithHashes request.
+        HashOutputs fetch_blocks_with_hashes = 7;
+        // Indicates a GetNewBlockTemplate request.
+        bool get_new_block_template = 8;
+        // Indicates a GetNewBlock request.
+        tari.core.NewBlockTemplate get_new_block = 9;
+        // Indicates a GetTargetDifficulty request.
+        uint64 get_target_difficulty = 10;
+    }
+}
+
+message BlockHeights {
+    repeated uint64 heights = 1;
+}
+
+message HashOutputs {
+    repeated bytes outputs = 1;
+}

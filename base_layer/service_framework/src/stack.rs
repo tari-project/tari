@@ -20,121 +20,179 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::handles::{ServiceHandles, ServiceHandlesFuture};
-use derive_error::Error;
-use futures::{
-    future::{self, Either},
-    Future,
+use crate::{
+    handles::{handle_notifier_pair, ServiceHandles},
+    initializer::{BoxedServiceInitializer, ServiceInitializationError, ServiceInitializer},
 };
-use std::{hash::Hash, sync::Arc};
-
-#[derive(Debug, Error)]
-pub enum ServiceInitializationError {
-    #[error(msg_embedded, non_std, no_from)]
-    InvariantError(String),
-}
-
-/// Builder trait for creating a service/handle pair.
-/// The `StackBuilder` builds impls of this trait.
-pub trait ServiceInitializer<N> {
-    fn initialize(self: Box<Self>, handles: ServiceHandlesFuture<N>) -> Result<(), ServiceInitializationError>;
-}
-
-/// Implementation of MakeServicePair for any function taking a ServiceHandle and returning a (Handle, Future) pair.
-impl<TFunc, N> ServiceInitializer<N> for TFunc
-where
-    N: Eq + Hash,
-    TFunc: FnOnce(ServiceHandlesFuture<N>) -> Result<(), ServiceInitializationError>,
-{
-    fn initialize(self: Box<Self>, handles: ServiceHandlesFuture<N>) -> Result<(), ServiceInitializationError> {
-        (self)(handles)
-    }
-}
+use futures::future::join_all;
+use std::sync::Arc;
+use tari_shutdown::ShutdownSignal;
+use tokio::runtime;
 
 /// Responsible for building and collecting handles and (usually long-running) service futures.
-/// This can be converted into a future which resolves once all contained service futures are complete
-/// by using the `IntoFuture` implementation.
-pub struct StackBuilder<N> {
-    initializers: Vec<Box<dyn ServiceInitializer<N> + Send>>,
+/// `finish` is an async function which resolves once all the services are initialized, or returns
+/// an error if any one of the services fails to initialize.
+pub struct StackBuilder {
+    initializers: Vec<BoxedServiceInitializer>,
+    executor: runtime::Handle,
+    shutdown_signal: ShutdownSignal,
 }
 
-impl<N> StackBuilder<N>
-where N: Eq + Hash
-{
-    pub fn new() -> Self {
+impl StackBuilder {
+    pub fn new(executor: runtime::Handle, shutdown_signal: ShutdownSignal) -> Self {
         Self {
             initializers: Vec::new(),
+            executor,
+            shutdown_signal,
         }
     }
+}
 
-    pub fn add_initializer(mut self, initializer: impl ServiceInitializer<N> + Send + 'static) -> Self {
-        self.initializers.push(Box::new(initializer));
+impl StackBuilder {
+    /// Add an impl of ServiceInitializer to the stack
+    pub fn add_initializer<I>(self, initializer: I) -> Self
+    where
+        I: ServiceInitializer + Send + 'static,
+        I::Future: Send + 'static,
+    {
+        self.add_initializer_boxed(initializer.boxed())
+    }
+
+    /// Add a ServiceInitializer which has been boxed using `ServiceInitializer::boxed`
+    pub fn add_initializer_boxed(mut self, initializer: BoxedServiceInitializer) -> Self {
+        self.initializers.push(initializer);
         self
     }
 
-    pub fn finish(self) -> impl Future<Item = Arc<ServiceHandles<N>>, Error = ServiceInitializationError> {
-        future::lazy(move || {
-            let handles = ServiceHandlesFuture::new();
+    /// Concurrently initialize the services. Once all service have been initialized, `notify_ready`
+    /// is called, which completes initialization for those services. The resulting service handles are
+    /// returned. If ANY of the services fail to initialize, an error is returned.
+    pub async fn finish(self) -> Result<Arc<ServiceHandles>, ServiceInitializationError> {
+        let (notifier, handles_fut) = handle_notifier_pair();
 
-            for init in self.initializers.into_iter() {
-                if let Err(err) = init.initialize(handles.clone()) {
-                    return Either::B(future::err(err));
-                }
-            }
+        let StackBuilder {
+            executor,
+            shutdown_signal,
+            initializers,
+        } = self;
 
-            handles.notify_ready();
+        // Collect all the initialization futures
+        let init_futures = initializers.into_iter().map(|mut init| {
+            ServiceInitializer::initialize(
+                &mut init,
+                executor.clone(),
+                handles_fut.clone(),
+                shutdown_signal.clone(),
+            )
+        });
 
-            Either::A(handles.map_err(|_| {
-                ServiceInitializationError::InvariantError("ServiceHandlesFuture cannot fail".to_string())
-            }))
-        })
+        // Run all the initializers concurrently and check each Result returning an error
+        // on the first one that failed.
+        for result in join_all(init_futures).await {
+            result?;
+        }
+
+        notifier.notify();
+
+        Ok(handles_fut.into_inner())
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use futures::{future::poll_fn, Async};
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use crate::{handles::ServiceHandlesFuture, initializer::ServiceInitializer};
+    use futures::{executor::block_on, future, Future};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tari_shutdown::Shutdown;
+    use tokio::runtime::Runtime;
+    use tower::service_fn;
+
+    #[test]
+    fn service_defn_simple() {
+        let rt = Runtime::new().unwrap();
+        // This is less of a test and more of a demo of using the short-hand implementation of ServiceInitializer
+        let simple_initializer = |executor: runtime::Handle, _: ServiceHandlesFuture, _: ShutdownSignal| {
+            executor.spawn(future::ready(()));
+            future::ok(())
+        };
+
+        let shutdown = Shutdown::new();
+
+        let handles = block_on(
+            StackBuilder::new(rt.handle().clone(), shutdown.to_signal())
+                .add_initializer(simple_initializer)
+                .finish(),
+        );
+
+        assert!(handles.is_ok());
+    }
+
+    #[derive(Clone)]
+    struct DummyServiceHandle(usize);
+    struct DummyInitializer {
+        state: Arc<AtomicUsize>,
+    }
+
+    impl DummyInitializer {
+        fn new(state: Arc<AtomicUsize>) -> Self {
+            Self { state }
+        }
+    }
+
+    impl ServiceInitializer for DummyInitializer {
+        type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
+
+        fn initialize(
+            &mut self,
+            executor: runtime::Handle,
+            handles_fut: ServiceHandlesFuture,
+            _shutdown: ShutdownSignal,
+        ) -> Self::Future
+        {
+            // Spawn some task on the given runtime::Handle
+            executor.spawn(future::ready(()));
+            // Add a handle
+            handles_fut.register(DummyServiceHandle(123));
+
+            // This demonstrates the chicken and egg problem with services and handles. Specifically,
+            // that we have a service which requires the handles of other services to be able to
+            // create it's own handle. Here we wait for the handles_fut to resolve before continuing
+            // to initialize the service.
+            //
+            // Critically, you should never wait for handles in the initialize method because
+            // handles are only resolved after all initialization methods have completed.
+            executor.spawn(async move {
+                let final_handles = handles_fut.await;
+
+                let handle = final_handles.get_handle::<DummyServiceHandle>().unwrap();
+                assert_eq!(handle.0, 123);
+                // Something which uses the handle
+                service_fn(|_: ()| future::ok::<_, ()>(handle.0));
+            });
+
+            self.state.fetch_add(1, Ordering::AcqRel);
+            future::ready(Ok(()))
+        }
+    }
 
     #[test]
     fn service_stack_new() {
-        let state = Arc::new(AtomicBool::new(false));
-        let state_inner = Arc::clone(&state.clone());
-        let service_initializer = |handles: ServiceHandlesFuture<&'static str>| {
-            handles.insert("test-service", "Fake Handle");
+        let rt = Runtime::new().unwrap();
+        let shared_state = Arc::new(AtomicUsize::new(0));
 
-            let fut = poll_fn(move || {
-                // Test that this futures own handle is available
-                let fake_handle = handles.get_handle::<&str>(&"test-service").unwrap();
-                assert_eq!(fake_handle, "Fake Handle");
-                let not_found = handles.get_handle::<&str>(&"not-found");
-                assert!(not_found.is_none());
+        let shutdown = Shutdown::new();
+        let initializer = DummyInitializer::new(Arc::clone(&shared_state));
 
-                // Any panics above won't fail the test so a marker bool is set
-                // if there are no panics.
-                // catch_unwind could be used but then the UnwindSafe trait bound
-                // needs to be added. TODO: handle panics in service poll functions
-                state_inner.store(true, Ordering::Release);
-                Ok(Async::Ready(()))
-            });
+        let handles = block_on(
+            StackBuilder::new(rt.handle().clone(), shutdown.to_signal())
+                .add_initializer(initializer)
+                .finish(),
+        )
+        .unwrap();
 
-            tokio::spawn(fut);
-            Ok(())
-        };
+        handles.get_handle::<DummyServiceHandle>().unwrap();
 
-        tokio::run(
-            StackBuilder::new()
-                .add_initializer(service_initializer)
-                .finish()
-                .map(|_| ())
-                .or_else(|err| {
-                    panic!("{:?}", err);
-                    #[allow(unreachable_code)]
-                    future::err(())
-                }),
-        );
-
-        assert!(state.load(Ordering::Acquire))
+        assert_eq!(shared_state.load(Ordering::SeqCst), 1);
     }
 }

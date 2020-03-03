@@ -20,20 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::{CryptoRng, Rng};
-use std::{fmt::Debug, thread, time::Duration};
-use tari_core::{
+use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng};
+use std::{fmt::Debug, iter, thread, time::Duration};
+use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-    types::{PrivateKey, PublicKey, COMMITMENT_FACTORY},
+    types::{CommitmentFactory, PrivateKey, PublicKey},
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
 };
-pub fn assert_change<F, T>(func: F, to: T, poll_count: usize)
+
+pub fn assert_change<F, T>(mut func: F, to: T, poll_count: usize)
 where
-    F: Fn() -> T,
+    F: FnMut() -> T,
     T: Eq + Debug,
 {
     let mut i = 0;
@@ -64,7 +65,6 @@ pub struct TestParams {
     pub nonce: PrivateKey,
     pub public_nonce: PublicKey,
 }
-
 impl TestParams {
     pub fn new<R: Rng + CryptoRng>(rng: &mut R) -> TestParams {
         let r = PrivateKey::random(rng);
@@ -77,10 +77,18 @@ impl TestParams {
         }
     }
 }
-
-pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
+pub fn make_input<R: Rng + CryptoRng>(
+    rng: &mut R,
+    val: MicroTari,
+    factory: &CommitmentFactory,
+) -> (TransactionInput, UnblindedOutput)
+{
     let key = PrivateKey::random(rng);
-    let commitment = COMMITMENT_FACTORY.commit_value(&key, val.into());
+    let commitment = factory.commit_value(&key, val.into());
     let input = TransactionInput::new(OutputFeatures::default(), commitment);
     (input, UnblindedOutput::new(val, key, None))
+}
+
+pub fn random_string(len: usize) -> String {
+    iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
 }

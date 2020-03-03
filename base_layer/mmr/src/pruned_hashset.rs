@@ -33,6 +33,7 @@ use std::convert::TryFrom;
 /// MMR with n_0 leaf nodes.
 ///
 /// The awesome thing is that this struct can be dropped into [MerkleMountainRange] as a backend and it. just. works.
+#[derive(Debug)]
 pub struct PrunedHashSet {
     /// The size of the base MMR. Only peaks are available for indices less than this value
     base_offset: usize,
@@ -52,12 +53,12 @@ where
     type Error = MerkleMountainRangeError;
 
     fn try_from(base_mmr: &MerkleMountainRange<D, B>) -> Result<Self, Self::Error> {
-        let base_offset = base_mmr.len();
+        let base_offset = base_mmr.len()?;
         let peak_indices = find_peaks(base_offset);
         let peak_hashes = peak_indices
             .iter()
-            .map(|i| match base_mmr.get_node_hash(*i) {
-                Some(h) => Ok(h.clone()),
+            .map(|i| match base_mmr.get_node_hash(*i)? {
+                Some(h) => Ok(h),
                 None => Err(MerkleMountainRangeError::HashNotFound(*i)),
             })
             .collect::<Result<_, _>>()?;
@@ -75,28 +76,41 @@ impl ArrayLike for PrunedHashSet {
     type Value = Hash;
 
     #[inline(always)]
-    fn len(&self) -> usize {
-        self.base_offset + self.hashes.len()
+    fn len(&self) -> Result<usize, Self::Error> {
+        Ok(self.base_offset + self.hashes.len())
+    }
+
+    fn is_empty(&self) -> Result<bool, Self::Error> {
+        Ok(self.len()? == 0)
     }
 
     fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error> {
         self.hashes.push(item);
-        Ok(self.len() - 1)
+        Ok(self.len()? - 1)
     }
 
-    fn get(&self, index: usize) -> Option<&Self::Value> {
+    fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error> {
         // If the index is from before we started adding hashes, we can return the hash *if and only if* it is a peak
         if index < self.base_offset {
-            return match self.peak_indices.binary_search(&index) {
-                Ok(nth_peak) => Some(&self.peak_hashes[nth_peak]),
+            return Ok(match self.peak_indices.binary_search(&index) {
+                Ok(nth_peak) => Some(self.peak_hashes[nth_peak].clone()),
                 Err(_) => None,
-            };
+            });
         }
-        self.hashes.get(index - self.base_offset)
+        Ok(self.hashes.get(index - self.base_offset)?)
     }
 
-    fn get_or_panic(&self, index: usize) -> &Self::Value {
+    fn get_or_panic(&self, index: usize) -> Self::Value {
         self.get(index)
+            .unwrap()
             .expect("PrunedHashSet only tracks peaks before the offset")
+    }
+
+    fn clear(&mut self) -> Result<(), Self::Error> {
+        self.base_offset = 0;
+        self.peak_indices.clear();
+        self.peak_hashes.clear();
+        self.hashes.clear();
+        Ok(())
     }
 }

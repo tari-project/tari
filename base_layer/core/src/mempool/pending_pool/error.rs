@@ -27,7 +27,8 @@ use derive_error::Error;
 pub enum PendingPoolError {
     /// The HashMap and BTreeMap are out of sync
     StorageOutofSync,
-    /// The Thread Safety has been breached and the data access has become poisoned
-    PoisonedAccess,
+    /// A problem has been encountered with the storage backend.
+    #[error(non_std, no_from)]
+    BackendError(String),
     PriorityError(PriorityError),
 }

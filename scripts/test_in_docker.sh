@@ -2,8 +2,8 @@
 
 # Run the Tari test suite locally inside a suitable docker container
 
-IMAGE=quay.io/tarilabs/rust_tari-build-with-deps:nightly-2019-10-04
-TOOLCHAIN_VERSION=nightly-2019-10-04
+IMAGE=quay.io/tarilabs/rust_tari-build-with-deps:nightly-2020-01-08
+TOOLCHAIN_VERSION=nightly-2020-01-08
 CONTAINER=tari_test
 
 echo "Deleting old container"
@@ -11,18 +11,10 @@ docker rm -f $CONTAINER
 echo "Checking for docker image"
 docker pull $IMAGE
 
-echo "Creating doc
-ker container.."
+echo "Creating docker container.."
 # sleep infinity is used to keep the container alive forever
 docker run -dv`pwd`:/src --name $CONTAINER $IMAGE /bin/sleep infinity
 echo "Container is ready"
-
-#echo "Copying source files..."
-## The simplest and laziest approach to not copying 6+GB of irrelevant files to the container
-#cargo clean
-## We could pull this from git, but this lets you test local changes
-#docker cp . $CONTAINER:/src/
-#echo "Source files copied."
 
 CMD="cd src; cargo build; cargo test"
 

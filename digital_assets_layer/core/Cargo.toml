@@ -1,5 +1,0 @@
-[package]
-name = "da_core"
-version = "0.0.2"
-
-[dependencies]

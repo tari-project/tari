@@ -25,18 +25,23 @@
 /// populate the peer manager in other examples.
 use clap::{App, Arg};
 use rand::{rngs::OsRng, Rng};
-use std::{env::current_dir, fs, net::Ipv4Addr, path::Path};
-use tari_comms::{
-    connection::{net_address::ip::SocketAddress, NetAddress},
-    peer_manager::NodeIdentity,
+use std::{
+    env::current_dir,
+    fs,
+    net::{Ipv4Addr, SocketAddr},
+    path::Path,
 };
-use tari_utilities::message_format::MessageFormat;
+use tari_comms::{
+    multiaddr::Multiaddr,
+    peer_manager::{NodeIdentity, PeerFeatures},
+    utils::multiaddr::socketaddr_to_multiaddr,
+};
+use tari_crypto::tari_utilities::message_format::MessageFormat;
 
-fn random_address() -> NetAddress {
-    let mut rng = OsRng::new().unwrap();
-    let port = rng.gen_range(9000, std::u16::MAX);
-    let socket_addr: SocketAddress = (Ipv4Addr::LOCALHOST, port).into();
-    socket_addr.into()
+fn random_address() -> Multiaddr {
+    let port = OsRng.gen_range(9000, std::u16::MAX);
+    let socket_addr: SocketAddr = (Ipv4Addr::LOCALHOST, port).into();
+    socketaddr_to_multiaddr(&socket_addr)
 }
 
 fn to_abs_path(path: &str) -> String {
@@ -65,9 +70,8 @@ fn main() {
         )
         .get_matches();
 
-    let mut rng = OsRng::new().unwrap();
     let address = random_address();
-    let node_identity = NodeIdentity::random(&mut rng, address).unwrap();
+    let node_identity = NodeIdentity::random(&mut OsRng, address, PeerFeatures::COMMUNICATION_NODE).unwrap();
     let json = node_identity.to_json().unwrap();
     let out_path = to_abs_path(matches.value_of("output").unwrap());
     fs::write(out_path, json).unwrap();

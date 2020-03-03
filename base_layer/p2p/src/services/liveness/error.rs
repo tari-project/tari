@@ -20,17 +20,28 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::services::comms_outbound::CommsOutboundServiceError;
 use derive_error::Error;
 use tari_comms::message::MessageError;
+use tari_comms_dht::{outbound::DhtOutboundError, DhtActorError};
+use tari_service_framework::reply_channel::TransportChannelError;
 
 #[derive(Debug, Error)]
 pub enum LivenessError {
-    CommsOutboundError(CommsOutboundServiceError),
+    DhtOutboundError(DhtOutboundError),
+    DhtActorError(DhtActorError),
     /// Failed to send a pong message
     SendPongFailed,
     /// Failed to send a ping message
     SendPingFailed,
-    // Occurs when a message cannot deserialize into a PingPong message
+    /// Occurs when a message cannot deserialize into a PingPong message
     MessageError(MessageError),
+    /// The Handle repsonse was not what was expected for this request
+    UnexpectedApiResponse,
+    /// An error has occurred reading from the event subscriber stream
+    EventStreamError,
+    TransportChannelError(TransportChannelError),
+    /// Ping pong type was invalid or unrecognised
+    InvalidPingPongType,
+    /// NodeId does not exist
+    NodeIdDoesNotExist,
 }

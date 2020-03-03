@@ -1,5 +1,0 @@
-[package]
-name = "tari_pool_miner"
-version = "0.0.1"
-
-[dependencies]

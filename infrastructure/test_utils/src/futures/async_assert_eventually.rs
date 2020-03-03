@@ -46,7 +46,7 @@ macro_rules! async_assert_eventually {
                     $max_attempts
                 );
             }
-            tokio::timer::delay(Instant::now() + $interval).await;
+            tokio::time::delay_for($interval).await;
             value = $check_expr;
         }
     }};

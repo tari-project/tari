@@ -1,443 +1,586 @@
-//  Copyright 2019 The Tari Project
+// Copyright 2019, The Tari Project
 //
-//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-//  following conditions are met:
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
 //
-//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-//  disclaimer.
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
 //
-//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-//  following disclaimer in the documentation and/or other materials provided with the distribution.
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
 //
-//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-//  products derived from this software without specific prior written permission.
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
 //
-//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{
-    connections::LivePeerConnections,
-    establisher::ConnectionEstablisher,
-    protocol::PeerConnectionProtocol,
-    ConnectionManagerError,
-    EstablishLockResult,
-    PeerConnectionConfig,
-    Result,
+    dialer::{Dialer, DialerRequest},
+    error::ConnectionManagerError,
+    listener::PeerListener,
+    peer_connection::{ConnId, PeerConnection},
+    requester::ConnectionManagerRequest,
+    types::ConnectionDirection,
 };
 use crate::{
-    connection::{
-        zmq::InprocAddress,
-        ConnectionError,
-        CurveEncryption,
-        CurvePublicKey,
-        PeerConnection,
-        PeerConnectionState,
-        ZmqContext,
-    },
-    control_service::messages::RejectReason,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
+    backoff::Backoff,
+    noise::NoiseConfig,
+    peer_manager::{AsyncPeerManager, NodeId, NodeIdentity},
+    protocol::{ProtocolEvent, ProtocolId, Protocols},
+    transports::Transport,
+    types::DEFAULT_LISTENER_ADDRESS,
+};
+use futures::{
+    channel::{mpsc, oneshot},
+    stream::Fuse,
+    AsyncRead,
+    AsyncWrite,
+    SinkExt,
+    StreamExt,
 };
 use log::*;
-use std::{
-    collections::HashMap,
-    result,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
-use tari_utilities::thread_join::thread_join::ThreadJoinWithTimeout;
+use multiaddr::Multiaddr;
+use std::{collections::HashMap, fmt, sync::Arc};
+use tari_shutdown::{Shutdown, ShutdownSignal};
+use time::Duration;
+use tokio::{runtime, sync::broadcast, task, time};
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
 
-pub struct ConnectionManager {
-    node_identity: Arc<NodeIdentity>,
-    connections: LivePeerConnections,
-    establisher: Arc<ConnectionEstablisher>,
-    peer_manager: Arc<PeerManager>,
-    establish_locks: Mutex<HashMap<NodeId, Arc<Mutex<()>>>>,
+const EVENT_CHANNEL_SIZE: usize = 32;
+const ESTABLISHER_CHANNEL_SIZE: usize = 32;
+
+#[derive(Debug)]
+pub enum ConnectionManagerEvent {
+    // Peer connection
+    PeerConnected(PeerConnection),
+    PeerDisconnected(Box<NodeId>),
+    PeerConnectFailed(Box<NodeId>, ConnectionManagerError),
+    PeerConnectWillClose(ConnId, Box<NodeId>, ConnectionDirection),
+    PeerInboundConnectFailed(ConnectionManagerError),
+
+    // Listener
+    Listening(Multiaddr),
+    ListenFailed(ConnectionManagerError),
+
+    // Substreams
+    NewInboundSubstream(Box<NodeId>, ProtocolId, yamux::Stream),
 }
 
-impl ConnectionManager {
-    /// Create a new connection manager
+impl fmt::Display for ConnectionManagerEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        use ConnectionManagerEvent::*;
+        match self {
+            PeerConnected(conn) => write!(f, "PeerConnected({})", conn),
+            PeerDisconnected(node_id) => write!(f, "PeerDisconnected({})", node_id.short_str()),
+            PeerConnectFailed(node_id, err) => write!(f, "PeerConnectFailed({}, {:?})", node_id.short_str(), err),
+            PeerConnectWillClose(id, node_id, direction) => write!(
+                f,
+                "PeerConnectWillClose({}, {}, {})",
+                id,
+                node_id.short_str(),
+                direction
+            ),
+            PeerInboundConnectFailed(err) => write!(f, "PeerInboundConnectFailed({:?})", err),
+            Listening(addr) => write!(f, "Listening({})", addr),
+            ListenFailed(err) => write!(f, "ListenFailed({:?})", err),
+            NewInboundSubstream(node_id, protocol, _) => write!(
+                f,
+                "NewInboundSubstream({}, {}, Stream)",
+                node_id.short_str(),
+                String::from_utf8_lossy(protocol)
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ConnectionManagerConfig {
+    /// The address to listen on for incoming connections. This address must be supported by the transport.
+    /// Default: DEFAULT_LISTENER_ADDRESS constant
+    pub listener_address: Multiaddr,
+    /// The number of dial attempts to make before giving up. Default: 3
+    pub max_dial_attempts: usize,
+    /// The maximum number of connection tasks that will be spawned at the same time. Once this limit is reached, peers
+    /// attempting to connect will have to wait for another connection attempt to complete. Default: 20
+    pub max_simultaneous_inbound_connects: usize,
+    /// The period of time to keep the peer connection around before disconnecting. Default: 3s
+    pub disconnect_linger: Duration,
+}
+
+impl Default for ConnectionManagerConfig {
+    fn default() -> Self {
+        Self {
+            listener_address: DEFAULT_LISTENER_ADDRESS
+                .parse()
+                .expect("DEFAULT_LISTENER_ADDRESS is malformed"),
+            max_dial_attempts: 3,
+            max_simultaneous_inbound_connects: 20,
+            disconnect_linger: Duration::from_secs(3),
+        }
+    }
+}
+
+pub struct ConnectionManager<TTransport, TBackoff> {
+    executor: runtime::Handle,
+    config: ConnectionManagerConfig,
+    request_rx: Fuse<mpsc::Receiver<ConnectionManagerRequest>>,
+    internal_event_rx: Fuse<mpsc::Receiver<ConnectionManagerEvent>>,
+    dialer_tx: mpsc::Sender<DialerRequest>,
+    dialer: Option<Dialer<TTransport, TBackoff>>,
+    listener: Option<PeerListener<TTransport>>,
+    peer_manager: AsyncPeerManager,
+    node_identity: Arc<NodeIdentity>,
+    active_connections: HashMap<NodeId, PeerConnection>,
+    shutdown_signal: Option<ShutdownSignal>,
+    protocols: Protocols<yamux::Stream>,
+    listener_address: Option<Multiaddr>,
+    listening_notifiers: Vec<oneshot::Sender<Multiaddr>>,
+    connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
+    complete_trigger: Shutdown,
+}
+
+impl<TTransport, TBackoff> ConnectionManager<TTransport, TBackoff>
+where
+    TTransport: Transport + Unpin + Send + Sync + Clone + 'static,
+    TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
+    TBackoff: Backoff + Send + Sync + 'static,
+{
     pub fn new(
-        zmq_context: ZmqContext,
+        config: ConnectionManagerConfig,
+        executor: runtime::Handle,
+        transport: TTransport,
+        noise_config: NoiseConfig,
+        backoff: TBackoff,
+        request_rx: mpsc::Receiver<ConnectionManagerRequest>,
         node_identity: Arc<NodeIdentity>,
-        peer_manager: Arc<PeerManager>,
-        config: PeerConnectionConfig,
+        peer_manager: AsyncPeerManager,
+        protocols: Protocols<yamux::Stream>,
+        connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
+        shutdown_signal: ShutdownSignal,
     ) -> Self
     {
+        let (internal_event_tx, internal_event_rx) = mpsc::channel(EVENT_CHANNEL_SIZE);
+
+        let (establisher_tx, establisher_rx) = mpsc::channel(ESTABLISHER_CHANNEL_SIZE);
+
+        let supported_protocols = protocols.get_supported_protocols();
+
+        let listener = PeerListener::new(
+            executor.clone(),
+            config.clone(),
+            transport.clone(),
+            noise_config.clone(),
+            internal_event_tx.clone(),
+            peer_manager.clone(),
+            Arc::clone(&node_identity),
+            supported_protocols.clone(),
+            shutdown_signal.clone(),
+        );
+
+        let dialer = Dialer::new(
+            executor.clone(),
+            config.clone(),
+            Arc::clone(&node_identity),
+            peer_manager.clone(),
+            transport,
+            noise_config,
+            backoff,
+            establisher_rx,
+            internal_event_tx,
+            supported_protocols,
+            shutdown_signal.clone(),
+        );
+
         Self {
-            connections: LivePeerConnections::with_max_connections(config.max_connections),
-            establisher: Arc::new(ConnectionEstablisher::new(
-                zmq_context,
-                Arc::clone(&node_identity),
-                config,
-                Arc::clone(&peer_manager),
-            )),
+            executor,
+            config,
+            shutdown_signal: Some(shutdown_signal),
+            request_rx: request_rx.fuse(),
             node_identity,
             peer_manager,
-            establish_locks: Mutex::new(HashMap::new()),
+            protocols,
+            internal_event_rx: internal_event_rx.fuse(),
+            dialer_tx: establisher_tx,
+            dialer: Some(dialer),
+            listener: Some(listener),
+            active_connections: Default::default(),
+            listener_address: None,
+            listening_notifiers: Vec::new(),
+            connection_manager_events_tx,
+            complete_trigger: Shutdown::new(),
         }
     }
 
-    /// Attempt to establish a connection to a given NodeId. If the connection exists
-    /// the existing connection is returned.
-    pub fn establish_connection_to_node_id(&self, node_id: &NodeId) -> Result<Arc<PeerConnection>> {
-        match self.peer_manager.find_with_node_id(node_id) {
-            Ok(peer) => self.establish_connection_to_peer(&peer),
-            Err(err) => Err(ConnectionManagerError::PeerManagerError(err)),
+    pub fn complete_signal(&self) -> ShutdownSignal {
+        self.complete_trigger.to_signal()
+    }
+
+    pub async fn run(mut self) {
+        let mut shutdown = self
+            .shutdown_signal
+            .take()
+            .expect("ConnectionManager initialized without a shutdown");
+
+        self.run_listener();
+        self.run_dialer();
+
+        debug!(target: LOG_TARGET, "Connection manager started");
+        loop {
+            futures::select! {
+                event = self.internal_event_rx.select_next_some() => {
+                    self.handle_event(event).await;
+                },
+
+                request = self.request_rx.select_next_some() => {
+                    self.handle_request(request).await;
+                },
+
+                _ = shutdown => {
+                    info!(target: LOG_TARGET, "ConnectionManager is shutting down because it received the shutdown signal");
+                    self.disconnect_all().await;
+                    break;
+                }
+            }
         }
     }
 
-    /// Attempt to establish a connection to a given peer. If the connection exists
-    /// the existing connection is returned.
-    pub fn establish_connection_to_peer(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
-        self.with_establish_lock(&peer.node_id, || self.attempt_connection_to_peer(peer))
+    async fn disconnect_all(&mut self) {
+        let mut node_ids = Vec::with_capacity(self.active_connections.len());
+        for (node_id, mut conn) in self.active_connections.drain() {
+            if log_if_error!(
+                target: LOG_TARGET,
+                conn.disconnect_silent().await,
+                "Failed to disconnect because '{error}'",
+            )
+            .is_some()
+            {
+                node_ids.push(node_id);
+            }
+        }
+
+        for node_id in node_ids {
+            self.publish_event(ConnectionManagerEvent::PeerDisconnected(Box::new(node_id)));
+        }
     }
 
-    fn attempt_connection_to_peer(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
-        let maybe_conn = self.connections.get_connection(&peer.node_id);
-        let peer_conn = match maybe_conn {
-            Some(conn) => {
-                let state = conn.get_state();
+    fn run_listener(&mut self) {
+        let listener = self
+            .listener
+            .take()
+            .expect("ConnnectionManager initialized without a Listener");
 
-                match state {
-                    PeerConnectionState::Initial |
-                    PeerConnectionState::Disconnected |
-                    PeerConnectionState::Shutdown => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Peer connection state is '{}'. Attempting to reestablish connection to peer.", state
-                        );
-                        // Ignore not found error when dropping
-                        let _ = self.connections.shutdown_connection(&peer.node_id);
-                        self.initiate_peer_connection(peer)?
-                    },
-                    PeerConnectionState::Failed(err) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Peer connection for NodeId={} in failed state. Error({:?}) Attempting to reestablish.",
-                            peer.node_id,
-                            err
-                        );
-                        // Ignore not found error when dropping
-                        self.connections.shutdown_connection(&peer.node_id)?;
-                        self.initiate_peer_connection(peer)?
-                    },
-                    // Already have an active connection, just return it
-                    PeerConnectionState::Listening(Some(address)) => {
+        self.executor.spawn(listener.run());
+    }
+
+    fn run_dialer(&mut self) {
+        let dialer = self
+            .dialer
+            .take()
+            .expect("ConnnectionManager initialized without an Establisher");
+
+        self.executor.spawn(dialer.run());
+    }
+
+    async fn handle_request(&mut self, request: ConnectionManagerRequest) {
+        use ConnectionManagerRequest::*;
+        match request {
+            DialPeer(node_id, is_forced, reply_tx) => match self.get_active_connection(&node_id) {
+                Some(conn) => {
+                    debug!(target: LOG_TARGET, "[{}] Found existing active connection", conn);
+                    log_if_error_fmt!(
+                        target: LOG_TARGET,
+                        reply_tx.send(Ok(conn.clone())),
+                        "Failed to send reply for dial request for peer '{}'",
+                        node_id.short_str()
+                    );
+                },
+                None => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "[ThisNode={}] Existing peer connection NOT found. Attempting to establish a new connection \
+                         to peer '{}'.",
+                        self.node_identity.node_id().short_str(),
+                        node_id.short_str()
+                    );
+                    self.dial_peer(node_id, reply_tx, is_forced).await
+                },
+            },
+            NotifyListening(reply_tx) => match self.listener_address.as_ref() {
+                Some(addr) => {
+                    let _ = reply_tx.send(addr.clone());
+                },
+                None => {
+                    self.listening_notifiers.push(reply_tx);
+                },
+            },
+            GetActiveConnection(node_id, reply_tx) => {
+                let _ = reply_tx.send(self.active_connections.get(&node_id).map(Clone::clone));
+            },
+        }
+    }
+
+    async fn handle_event(&mut self, event: ConnectionManagerEvent) {
+        use ConnectionManagerEvent::*;
+
+        trace!(
+            target: LOG_TARGET,
+            "[ThisNode = {}] Received internal event '{}'",
+            self.node_identity.node_id().short_str(),
+            event
+        );
+
+        match event {
+            Listening(addr) => {
+                self.listener_address = Some(addr.clone());
+                self.publish_event(ConnectionManagerEvent::Listening(addr.clone()));
+                for notifier in self.listening_notifiers.drain(..) {
+                    let _ = notifier.send(addr.clone());
+                }
+            },
+            NewInboundSubstream(node_id, protocol, stream) => {
+                let proto_str = String::from_utf8_lossy(&protocol);
+                debug!(
+                    target: LOG_TARGET,
+                    "New inbound substream for peer '{}' speaking protocol '{}'",
+                    node_id.short_str(),
+                    proto_str
+                );
+                if let Err(err) = self
+                    .protocols
+                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id, stream))
+                    .await
+                {
+                    error!(
+                        target: LOG_TARGET,
+                        "Error sending NewSubstream notification for protocol '{}' because '{:?}'", proto_str, err
+                    );
+                }
+            },
+            PeerConnected(new_conn) => {
+                let node_id = new_conn.peer_node_id().clone();
+
+                if let Err(err) = self.peer_manager.set_last_connect_success(&node_id).await {
+                    error!(
+                        target: LOG_TARGET,
+                        "set_last_connect_success failed because '{:?}'", err
+                    );
+                }
+
+                // If we're dialing this node, let's cancel it
+                self.send_dialer_request(DialerRequest::CancelPendingDial(node_id.clone()))
+                    .await;
+
+                match self.active_connections.remove(&node_id) {
+                    Some(existing_conn) => {
                         debug!(
                             target: LOG_TARGET,
-                            "Waiting for NodeId={} to connect at {}...", peer.node_id, address
+                            "Existing {} peer connection found for peer '{}'",
+                            existing_conn.direction(),
+                            existing_conn.peer_node_id()
                         );
-                        return Ok(conn);
+
+                        if self.tie_break_existing_connection(&existing_conn, &new_conn) {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Disconnecting existing {} connection to peer '{}' because of simultaneous dial",
+                                existing_conn.direction(),
+                                existing_conn.peer_node_id().short_str()
+                            );
+
+                            self.publish_event(PeerConnectWillClose(
+                                existing_conn.id(),
+                                Box::new(existing_conn.peer_node_id().clone()),
+                                existing_conn.direction(),
+                            ));
+                            self.delayed_disconnect(existing_conn);
+                            self.active_connections.insert(node_id, new_conn.clone());
+                            self.publish_event(PeerConnected(new_conn));
+                        } else {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Disconnecting new {} connection to peer '{}' because of
+                         simultaneous dial",
+                                new_conn.direction(),
+                                new_conn.peer_node_id().short_str()
+                            );
+
+                            self.delayed_disconnect(new_conn);
+                            self.active_connections.insert(node_id, existing_conn);
+                        }
                     },
-                    PeerConnectionState::Listening(None) => {
+                    None => {
                         debug!(
                             target: LOG_TARGET,
-                            "Listening on non-tcp socket for NodeId={}...", peer.node_id
+                            "Adding new {} peer connection for peer '{}'",
+                            new_conn.direction(),
+                            new_conn.peer_node_id().short_str()
                         );
-                        return Ok(conn);
-                    },
-                    PeerConnectionState::Connecting => {
-                        debug!(target: LOG_TARGET, "Still connecting to {}...", peer.node_id);
-                        return Ok(conn);
-                    },
-                    PeerConnectionState::Connected(Some(address)) => {
-                        debug!("Connection already established to {}.", address);
-                        return Ok(conn);
-                    },
-                    PeerConnectionState::Connected(None) => {
-                        debug!("Connection already established to non-TCP socket");
-                        return Ok(conn);
+                        self.active_connections.insert(node_id, new_conn.clone());
+                        self.publish_event(PeerConnected(new_conn));
                     },
                 }
             },
-            None => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Peer connection does not exist for NodeId={}", peer.node_id
-                );
-
-                self.initiate_peer_connection(peer)?
+            PeerDisconnected(node_id) => {
+                if self.active_connections.remove(&node_id).is_some() {
+                    self.publish_event(PeerDisconnected(node_id));
+                }
             },
-        };
-
-        Ok(peer_conn.clone())
-    }
-
-    /// Establish an inbound connection for the given peer and pass it (and it's `CurvePublicKey`) to a callback.
-    /// That callback will determine whether the connection should be added to the live connection list. This
-    /// enables you to for instance, implement a connection protocol which decides if the connection manager
-    /// ultimately accepts the peer connection.
-    ///
-    /// ## Arguments
-    ///
-    /// - `peer`: &Peer - Create an inbound connection for this peer
-    /// - `with_connection`: This callback is called with the new connection. If `Ok(Some(connection))` is returned, the
-    ///   connection is added to the live connection list, otherwise it is discarded
-    pub(crate) fn with_new_inbound_connection<E>(
-        &self,
-        peer: &Peer,
-        with_connection: impl FnOnce(Arc<PeerConnection>, CurvePublicKey) -> result::Result<Option<Arc<PeerConnection>>, E>,
-    ) -> Result<()>
-    where
-        E: Into<ConnectionManagerError>,
-    {
-        // If we have reached the maximum connections, we won't allow new connections to be requested
-        if self.connections.has_reached_max_active_connections() {
-            return Err(ConnectionManagerError::MaxConnectionsReached);
-        }
-
-        let (secret_key, public_key) = CurveEncryption::generate_keypair()?;
-
-        let (conn, join_handle) = self
-            .establisher
-            .establish_inbound_peer_connection(peer.node_id.clone().into(), secret_key)?;
-
-        match with_connection(conn, public_key).map_err(Into::into)? {
-            Some(conn) => {
-                self.connections
-                    .add_connection(peer.node_id.clone(), conn, join_handle)?;
+            PeerConnectFailed(node_id, err) => {
+                if let Err(err) = self.peer_manager.set_last_connect_failed(&node_id).await {
+                    error!(target: LOG_TARGET, "set_peer_connect_failed failed because '{:?}'", err);
+                }
+                self.publish_event(PeerConnectFailed(node_id, err));
             },
-            None => {},
+            event => {
+                self.publish_event(event);
+            },
         }
 
-        Ok(())
+        trace!(
+            target: LOG_TARGET,
+            "[ThisNode={}] {} active connection(s)",
+            self.node_identity.node_id().short_str(),
+            self.active_connections.len()
+        );
     }
 
-    /// Sends shutdown signals to all PeerConnections
-    pub fn shutdown(self) -> Vec<std::result::Result<(), ConnectionError>> {
-        self.connections.shutdown_joined()
-    }
-
-    /// Try to acquire an establish lock for the node ID. If a lock exists for the Node ID,
-    /// then return `EstablishLockResult::Collision` is returned.
-    pub fn try_acquire_establish_lock<T>(&self, node_id: &NodeId, func: impl FnOnce() -> T) -> EstablishLockResult<T> {
-        if acquire_lock!(self.establish_locks).contains_key(node_id) {
-            EstablishLockResult::Collision
-        } else {
-            self.with_establish_lock(node_id, || {
-                let res = func();
-                EstablishLockResult::Ok(res)
-            })
+    #[inline]
+    async fn send_dialer_request(&mut self, req: DialerRequest) {
+        if let Err(err) = self.dialer_tx.send(req).await {
+            error!(target: LOG_TARGET, "Unable to send DialerRequest because '{}'", err);
         }
     }
 
-    /// Lock a critical section for the given node id during connection establishment
-    pub fn with_establish_lock<T>(&self, node_id: &NodeId, func: impl FnOnce() -> T) -> T {
-        // Return the lock for the given node id. If no lock exists create a new one and return it.
-        let nid_lock = {
-            let mut establish_locks = acquire_lock!(self.establish_locks);
-            match establish_locks.get(node_id) {
-                Some(lock) => lock.clone(),
-                None => {
-                    let new_lock = Arc::new(Mutex::new(()));
-                    establish_locks.insert(node_id.clone(), new_lock.clone());
-                    new_lock
+    /// Two connections to the same peer have been created. This function deterministically determines which peer
+    /// connection to close. It does this by comparing our NodeId to that of the peer. This rule enables both sides to
+    /// agree which connection to disconnect
+    ///
+    /// Returns true if the existing connection should close, otherwise false if the new connection should be closed.
+    fn tie_break_existing_connection(&self, existing_conn: &PeerConnection, new_conn: &PeerConnection) -> bool {
+        debug_assert_eq!(existing_conn.peer_node_id(), new_conn.peer_node_id());
+        let peer_node_id = existing_conn.peer_node_id();
+        let our_node_id = self.node_identity.node_id();
+
+        use ConnectionDirection::*;
+        match (existing_conn.direction(), new_conn.direction()) {
+            // They connected to us twice for some reason. Drop the existing (older) connection
+            (Inbound, Inbound) => true,
+            // They connected to us at the same time we connected to them
+            (Inbound, Outbound) => peer_node_id > our_node_id,
+            // We connected to them at the same time as they connected to us
+            (Outbound, Inbound) => our_node_id > peer_node_id,
+            // We connected to them twice for some reason. Drop the newer connection.
+            (Outbound, Outbound) => false,
+        }
+    }
+
+    /// A 'gentle' disconnect starts by firing a `PeerConnectWillClose` event, waiting (lingering) for a period of time
+    /// and then disconnecting. This gives other components time to conclude their work before the connection is
+    /// closed.
+    fn delayed_disconnect(&mut self, mut conn: PeerConnection) -> task::JoinHandle<()> {
+        let linger = self.config.disconnect_linger;
+        debug!(
+            target: LOG_TARGET,
+            "{} connection for peer '{}' will close after {}ms",
+            conn.direction(),
+            conn.peer_node_id(),
+            linger.as_millis()
+        );
+
+        self.executor.spawn(async move {
+            debug!(
+                target: LOG_TARGET,
+                "Waiting for linger period ({}ms) to expire...",
+                linger.as_millis()
+            );
+            time::delay_for(linger).await;
+
+            match conn.disconnect_silent().await {
+                Ok(_) => {},
+                Err(err) => {
+                    error!(target: LOG_TARGET, "Failed to disconnect because '{:?}'", err);
                 },
             }
-        };
+        })
+    }
 
-        // Lock the lock for the NodeId
-        let _nid_lock_guard = acquire_lock!(nid_lock);
-        let ret = func();
-        // Remove establish lock once done to release memory. This is safe because the function has already
-        // established the connection, so any subsequent calls will return the existing connection.
-        {
-            let mut establish_locks = acquire_lock!(self.establish_locks);
-            establish_locks.remove(node_id);
+    fn publish_event(&self, event: ConnectionManagerEvent) {
+        let event = Arc::new(event);
+        if self.connection_manager_events_tx.send(event.clone()).is_err() {
+            trace!(
+                target: LOG_TARGET,
+                "Didn't send event '{}' because there are no subscribers",
+                event
+            );
         }
-        ret
     }
 
-    /// Get the peer manager
-    pub(crate) fn peer_manager(&self) -> &PeerManager {
-        &self.peer_manager
+    #[inline]
+    fn get_active_connection(&self, node_id: &NodeId) -> Option<&PeerConnection> {
+        self.active_connections.get(node_id)
     }
 
-    /// Shutdown a given peer's [PeerConnection] and return it if one exists,
-    /// otherwise None is returned.
-    ///
-    /// [PeerConnection]: ../../connection/peer_connection/index.html
-    pub(crate) fn shutdown_connection_for_peer(&self, peer: &Peer) -> Result<Option<Arc<PeerConnection>>> {
-        match self.connections.shutdown_connection(&peer.node_id) {
-            Ok((conn, handle)) => {
-                handle
-                    .timeout_join(Duration::from_millis(3000))
-                    .map_err(ConnectionManagerError::PeerConnectionThreadError)?;
-                Ok(Some(conn))
+    async fn dial_peer(
+        &mut self,
+        node_id: NodeId,
+        reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
+        force_dial: bool,
+    )
+    {
+        match self.peer_manager.find_by_node_id(&node_id).await {
+            Ok(peer) => {
+                if !force_dial && peer.is_offline() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Peer '{}' is offline (i.e. we failed to connect to them recently).",
+                        peer.node_id.short_str()
+                    );
+                    let _ = reply_tx.send(Err(ConnectionManagerError::PeerOffline));
+                    self.publish_event(ConnectionManagerEvent::PeerConnectFailed(
+                        Box::new(peer.node_id),
+                        ConnectionManagerError::PeerOffline,
+                    ));
+                    return;
+                }
+
+                if let Err(err) = self.dialer_tx.try_send(DialerRequest::Dial(Box::new(peer), reply_tx)) {
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to send request to establisher because '{}'", err
+                    );
+                    // TODO: If the channel is full - we'll fail to dial. This function should block until the dial
+                    //       request channel has cleared
+
+                    match err.into_inner() {
+                        DialerRequest::Dial(_, reply_tx) => {
+                            log_if_error_fmt!(
+                                target: LOG_TARGET,
+                                reply_tx.send(Err(ConnectionManagerError::EstablisherChannelError)),
+                                "Failed to send dial peer result for peer '{}'",
+                                node_id.short_str()
+                            );
+                        },
+                        _ => {},
+                    }
+                }
             },
-            Err(ConnectionManagerError::PeerConnectionNotFound) => Ok(None),
-            Err(err) => Err(err),
-        }
-    }
-
-    /// Return a connection for a peer if one exists, otherwise None is returned
-    pub(crate) fn get_connection(&self, peer: &Peer) -> Option<Arc<PeerConnection>> {
-        self.connections.get_connection(&peer.node_id)
-    }
-
-    /// Return the number of _active_ peer connections currently managed by this instance
-    pub fn get_active_connection_count(&self) -> usize {
-        self.connections.get_active_connection_count()
-    }
-
-    pub fn get_message_sink_address(&self) -> &InprocAddress {
-        &self.establisher.get_config().message_sink_address
-    }
-
-    fn initiate_peer_connection(&self, peer: &Peer) -> Result<Arc<PeerConnection>> {
-        let protocol = PeerConnectionProtocol::new(&self.node_identity, &self.establisher);
-        self.peer_manager
-            .reset_connection_attempts(&peer.node_id)
-            .map_err(ConnectionManagerError::PeerManagerError)?;
-
-        protocol
-            .negotiate_peer_connection(peer)
-            .and_then(|(new_conn, join_handle)| {
-                let config = self.establisher.get_config();
-                debug!(
+            Err(err) => {
+                error!(target: LOG_TARGET, "Failed to fetch peer to dial because '{}'", err);
+                log_if_error_fmt!(
+                    level: warn,
                     target: LOG_TARGET,
-                    "[{:?}] Waiting {}s for peer connection acceptance from remote peer ",
-                    new_conn.get_address(),
-                    config.peer_connection_establish_timeout.as_secs(),
+                    reply_tx.send(Err(ConnectionManagerError::PeerManagerError(err))),
+                    "Failed to send error reply when dialing peer '{}'",
+                    node_id.short_str()
                 );
-
-                // Wait for peer connection to transition to connected state before continuing
-                new_conn
-                    .wait_connected_or_failure(&config.peer_connection_establish_timeout)
-                    .or_else(|err| {
-                        info!(
-                            target: LOG_TARGET,
-                            "Peer did not accept the connection within {:?} [NodeId={}] : {:?}",
-                            config.peer_connection_establish_timeout,
-                            peer.node_id,
-                            err,
-                        );
-                        Err(ConnectionManagerError::ConnectionError(err))
-                    })?;
-                debug!(
-                    target: LOG_TARGET,
-                    "[{:?}] Connection established. Adding to active peer connections.",
-                    new_conn.get_address(),
-                );
-
-                self.connections
-                    .add_connection(peer.node_id.clone(), Arc::clone(&new_conn), join_handle)?;
-
-                Ok(new_conn)
-            })
-            .or_else(|err| match err {
-                ConnectionManagerError::ConnectionRejected(reason) => self.handle_connection_rejection(peer, reason),
-                _ => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Failed to establish peer connection to NodeId={}", peer.node_id
-                    );
-                    warn!(
-                        target: LOG_TARGET,
-                        "Failed connection error for NodeId={}: {:?}", peer.node_id, err
-                    );
-                    Err(err)
-                },
-            })
-    }
-
-    /// The peer is telling us that we already have a connection. This can occur if the connection has been made
-    /// by the remote peer while attempting to connect to it. Let's look for a connection and if we have one
-    fn handle_connection_rejection(&self, peer: &Peer, reason: RejectReason) -> Result<Arc<PeerConnection>> {
-        match reason {
-            RejectReason::ExistingConnection => self
-                .connections
-                .get_active_connection(&peer.node_id)
-                .ok_or(ConnectionManagerError::PeerConnectionNotFound),
-            _ => Err(ConnectionManagerError::ConnectionRejected(reason)),
+            },
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::{
-        connection::{InprocAddress, NetAddress, ZmqContext},
-        peer_manager::PeerFlags,
-        types::CommsPublicKey,
-    };
-    use rand::rngs::OsRng;
-    use std::{thread, time::Duration};
-    use tari_crypto::keys::PublicKey;
-    use tari_storage::HMapDatabase;
-
-    fn setup() -> (ZmqContext, Arc<NodeIdentity>, Arc<PeerManager>) {
-        let context = ZmqContext::new();
-        let node_identity = Arc::new(NodeIdentity::random_for_test(None));
-
-        let peer_manager = Arc::new(PeerManager::new(HMapDatabase::new()).unwrap());
-
-        (context, node_identity, peer_manager)
-    }
-
-    fn create_peer(address: NetAddress) -> Peer {
-        let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng::new().unwrap());
-        let node_id = NodeId::from_key(&pk).unwrap();
-        Peer::new(pk, node_id, address.into(), PeerFlags::empty())
-    }
-
-    #[test]
-    fn get_active_connection_count() {
-        let (context, node_identity, peer_manager) = setup();
-        let manager = ConnectionManager::new(context, node_identity, peer_manager, PeerConnectionConfig {
-            peer_connection_establish_timeout: Duration::from_secs(5),
-            max_message_size: 1024,
-            host: "127.0.0.1".parse().unwrap(),
-            max_connect_retries: 3,
-            max_connections: 10,
-            message_sink_address: InprocAddress::random(),
-            socks_proxy_address: None,
-        });
-
-        assert_eq!(manager.get_active_connection_count(), 0);
-    }
-
-    #[test]
-    fn shutdown_connection_for_peer() {
-        let (context, node_identity, peer_manager) = setup();
-        let manager = ConnectionManager::new(context, node_identity, peer_manager, PeerConnectionConfig {
-            peer_connection_establish_timeout: Duration::from_secs(5),
-            max_message_size: 1024,
-            host: "127.0.0.1".parse().unwrap(),
-            max_connect_retries: 3,
-            max_connections: 10,
-            message_sink_address: InprocAddress::random(),
-            socks_proxy_address: None,
-        });
-
-        assert_eq!(manager.get_active_connection_count(), 0);
-
-        let address = "127.0.0.1:43456".parse::<NetAddress>().unwrap();
-        let peer = create_peer(address.clone());
-
-        assert!(manager.shutdown_connection_for_peer(&peer).unwrap().is_none());
-
-        let (peer_conn, rx) = PeerConnection::new_with_connecting_state_for_test();
-        let peer_conn = Arc::new(peer_conn);
-        let join_handle = thread::spawn(|| Ok(()));
-        manager
-            .connections
-            .add_connection(peer.node_id.clone(), peer_conn, join_handle)
-            .unwrap();
-
-        match manager.shutdown_connection_for_peer(&peer).unwrap() {
-            Some(_) => {},
-            None => panic!("shutdown_connection_for_peer did not return active peer connection"),
-        }
-
-        drop(rx);
     }
 }

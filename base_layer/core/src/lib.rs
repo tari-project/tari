@@ -20,33 +20,44 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// Needed to make futures::select! work
+#![recursion_limit = "1024"]
+// Used to eliminate the need for boxing futures in many cases.
+// Tracking issue: https://github.com/rust-lang/rust/issues/63063
+#![feature(type_alias_impl_trait)]
+// Enable usage of Vec::shrink_to
+#![feature(shrink_to)]
+
 #[macro_use]
 extern crate bitflags;
 #[macro_use]
-extern crate lazy_static;
+extern crate cfg_if;
 
-#[cfg(test)]
-pub mod test_utils;
+cfg_if! {
+    if #[cfg(feature = "base_node")] {
+        pub mod blocks;
+        pub mod chain_storage;
+        pub mod consensus;
+        pub mod helpers;
+        pub mod mining;
+        pub mod proof_of_work;
+        pub mod validation;
+    }
+}
 
-pub mod blocks;
-pub mod bullet_rangeproofs;
-pub mod consts;
-pub mod fee;
+cfg_if! {
+    if #[cfg(any(feature = "base_node", feature = "base_node_proto"))] {
+        pub mod base_node;
+        pub mod proto;
+    }
+}
+
+#[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod mempool;
-pub mod proof_of_work;
-#[allow(clippy::op_ref)]
-pub mod transaction;
-pub mod transaction_protocol;
-pub mod types;
 
-pub mod consensus;
-pub mod emission;
-pub mod tari_amount;
+#[cfg(feature = "transactions")]
+pub mod transactions;
 
-mod base_node;
-// mod blockchain; TODO refactoring
-
-pub mod chain_storage;
-
-// Re-export commonly used structs
-pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
+// Re-export the crypto crate to make exposing traits etc easier for clients of this crate
+pub use crypto::tari_utilities;
+pub use tari_crypto as crypto;

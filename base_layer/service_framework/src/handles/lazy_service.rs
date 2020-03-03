@@ -20,7 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{Future, Poll};
+use futures::{ready, task::Context, Future, FutureExt};
+use std::task::Poll;
 use tower_service::Service;
 
 /// LazyService state
@@ -33,10 +34,11 @@ enum State<S> {
 ///
 /// Implements the `tower_service::Service` trait. The `poll_ready` function will poll
 /// the given future. Once that future is ready, the resulting value is passed into the
-/// given function which must return a service. Subsequent calls to `poll_ready` and `call`
-/// are delegated to that service.
+/// given `service_fn` function which must return a service. Subsequent calls to
+/// `poll_ready` and `call` are delegated to that service.
 ///
-/// This is used by the `lazy_service` combinator in `ServiceHandlesFuture`.
+/// This is instantiated by the `lazy_service` combinator in `ServiceHandlesFuture`.
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct LazyService<TFn, F, S> {
     future: F,
     service_fn: Option<TFn>,
@@ -54,21 +56,21 @@ impl<TFn, F, S> LazyService<TFn, F, S> {
     }
 }
 
-impl<TFn, F, S, T, TReq> Service<TReq> for LazyService<TFn, F, S>
+impl<TFn, F, S, TReq> Service<TReq> for LazyService<TFn, F, S>
 where
-    F: Future<Item = T, Error = S::Error>,
-    TFn: FnOnce(F::Item) -> S,
+    F: Future + Unpin,
+    TFn: FnOnce(F::Output) -> S,
     S: Service<TReq>,
 {
     type Error = S::Error;
     type Future = S::Future;
     type Response = S::Response;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         loop {
             match self.state {
                 State::Pending => {
-                    let item = try_ready!(self.future.poll());
+                    let item = ready!(self.future.poll_unpin(cx));
                     let service_fn = self
                         .service_fn
                         .take()
@@ -76,7 +78,7 @@ where
                     self.state = State::Ready((service_fn)(item));
                 },
                 State::Ready(ref mut service) => {
-                    return service.poll_ready();
+                    return service.poll_ready(cx);
                 },
             }
         }
@@ -93,22 +95,23 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use futures::{
-        future::{self, poll_fn},
-        Async,
+    use futures::future::{self, poll_fn};
+    use futures_test::task::panic_context;
+    use std::{
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
+        task::Poll,
     };
-    use std::sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    };
-    use tower_util::service_fn;
+    use tower::service_fn;
 
-    fn mock_fut(flag: Arc<AtomicBool>) -> impl Future<Item = (), Error = ()> {
-        poll_fn::<_, (), _>(move || {
+    fn mock_fut(flag: Arc<AtomicBool>) -> impl Future<Output = ()> {
+        poll_fn::<_, _>(move |_: &mut Context<'_>| {
             if flag.load(Ordering::SeqCst) {
-                Ok(().into())
+                ().into()
             } else {
-                Ok(Async::NotReady)
+                Poll::Pending
             }
         })
     }
@@ -118,33 +121,43 @@ mod test {
         let flag = Arc::new(AtomicBool::new(false));
         let fut = mock_fut(flag.clone());
 
-        let mut service = LazyService::new(fut, |_: ()| service_fn(|_: ()| future::ok::<_, ()>(())));
+        let mut cx = panic_context();
 
-        assert!(service.poll_ready().unwrap().is_not_ready());
+        let mut service = LazyService::new(fut, |_: ()| service_fn(|num: u8| future::ok::<_, ()>(num)));
+
+        assert!(service.poll_ready(&mut cx).is_pending());
 
         flag.store(true, Ordering::SeqCst);
 
-        assert!(service.poll_ready().unwrap().is_ready());
+        match service.poll_ready(&mut cx) {
+            Poll::Ready(Ok(_)) => {},
+            _ => panic!("Unexpected poll result"),
+        }
     }
 
     #[test]
     fn call_after_ready() {
         let flag = Arc::new(AtomicBool::new(true));
         let fut = mock_fut(flag.clone());
-        let mut service = LazyService::new(fut, |_: ()| service_fn(|_: ()| future::ok::<_, ()>(())));
+        let mut service = LazyService::new(fut, |_: ()| service_fn(|num: u8| future::ok::<_, ()>(num)));
 
-        assert!(service.poll_ready().unwrap().is_ready());
-        let mut fut = service.call(());
-        assert!(fut.poll().unwrap().is_ready());
+        let mut cx = panic_context();
+
+        assert!(service.poll_ready(&mut cx).is_ready());
+        let mut fut = service.call(123);
+        assert!(fut.poll_unpin(&mut cx).is_ready());
     }
 
     #[test]
     #[should_panic]
-    fn call_before_ready() {
+    fn call_before_ready_should_panic() {
         let flag = Arc::new(AtomicBool::new(false));
         let fut = mock_fut(flag.clone());
-        let mut service = LazyService::new(fut, |_: ()| service_fn(|_: ()| future::ok::<_, ()>(())));
-        assert!(service.poll_ready().unwrap().is_not_ready());
-        let _ = service.call(());
+        let mut service = LazyService::new(fut, |_: ()| service_fn(|num: u8| future::ok::<_, ()>(num)));
+
+        let mut cx = panic_context();
+
+        assert!(service.poll_ready(&mut cx).is_pending());
+        let _ = service.call(123);
     }
 }

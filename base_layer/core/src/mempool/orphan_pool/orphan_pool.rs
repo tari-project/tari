@@ -21,12 +21,18 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    consts::{MEMPOOL_ORPHAN_POOL_CACHE_TTL, MEMPOOL_ORPHAN_POOL_STORAGE_CAPACITY},
-    transaction::{Transaction, TransactionInput},
-    types::Signature,
+    chain_storage::BlockchainBackend,
+    mempool::{
+        consts::{MEMPOOL_ORPHAN_POOL_CACHE_TTL, MEMPOOL_ORPHAN_POOL_STORAGE_CAPACITY},
+        orphan_pool::{error::OrphanPoolError, orphan_pool_storage::OrphanPoolStorage},
+    },
+    transactions::{transaction::Transaction, types::Signature},
+    validation::Validator,
 };
-use std::{sync::Arc, time::Duration};
-use ttl_cache::TtlCache;
+use std::{
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
 /// Configuration for the OrphanPool
 #[derive(Clone, Copy)]
@@ -49,192 +55,205 @@ impl Default for OrphanPoolConfig {
 /// The Orphan Pool contains all the received transactions that attempt to spend UTXOs that don't exist. These UTXOs
 /// might exist in the future if these transactions are from a series or set of transactions that need to be processed
 /// in a specific order. Some of these transactions might still be constrained by pending time-locks.
-pub struct OrphanPool {
-    config: OrphanPoolConfig,
-    txs_by_signature: TtlCache<Signature, Arc<Transaction>>,
+pub struct OrphanPool<T>
+where T: BlockchainBackend
+{
+    pool_storage: Arc<RwLock<OrphanPoolStorage<T>>>,
 }
 
-impl OrphanPool {
+impl<T> OrphanPool<T>
+where T: BlockchainBackend
+{
     /// Create a new OrphanPool with the specified configuration
-    pub fn new(config: OrphanPoolConfig) -> Self {
+    pub fn new(config: OrphanPoolConfig, validator: Validator<Transaction, T>) -> Self {
         Self {
-            config,
-            txs_by_signature: TtlCache::new(config.storage_capacity),
+            pool_storage: Arc::new(RwLock::new(OrphanPoolStorage::new(config, validator))),
         }
     }
 
     /// Insert a new transaction into the OrphanPool. Orphaned transactions will have a limited Time-to-live and will be
     /// discarded if the UTXOs they require are not created before the Time-to-live threshold is reached.
-    pub fn insert(&mut self, tx: Transaction) {
-        let tx_key = tx.body.kernels[0].excess_sig.clone();
-        let _ = self.txs_by_signature.insert(tx_key, Arc::new(tx), self.config.tx_ttl);
+    pub fn insert(&self, transaction: Arc<Transaction>) -> Result<(), OrphanPoolError> {
+        self.pool_storage
+            .write()
+            .map_err(|e| OrphanPoolError::BackendError(e.to_string()))?
+            .insert(transaction);
+        Ok(())
     }
 
+    #[cfg(test)]
     /// Insert a set of new transactions into the OrphanPool
-    pub fn insert_txs(&mut self, txs: Vec<Transaction>) {
-        for tx in txs.into_iter() {
-            self.insert(tx);
-        }
+    pub fn insert_txs(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), OrphanPoolError> {
+        self.pool_storage
+            .write()
+            .map_err(|e| OrphanPoolError::BackendError(e.to_string()))?
+            .insert_txs(transactions);
+        Ok(())
     }
 
     /// Check if a transaction is stored in the OrphanPool
-    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> bool {
-        self.txs_by_signature.contains_key(excess_sig)
+    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> Result<bool, OrphanPoolError> {
+        Ok(self
+            .pool_storage
+            .read()
+            .map_err(|e| OrphanPoolError::BackendError(e.to_string()))?
+            .has_tx_with_excess_sig(excess_sig))
     }
 
     /// Check if the required UTXOs have been created and if the status of any of the transactions in the OrphanPool has
     /// changed. Remove valid transactions and valid transactions with time-locks from the OrphanPool.
-    // TODO: A reference to the UTXO set should not be passed in like this, but rather a handle or stream to the Chain
-    // (BlockchainDatabase or BlockchainService) should be provided to the OrphanPool during creation allowing a
-    // Chain call to be used to query the current block_height and UTXO set
     pub fn scan_for_and_remove_unorphaned_txs(
-        &mut self,
-        block_height: u64,
-        utxos: &[TransactionInput],
-    ) -> (Vec<Arc<Transaction>>, Vec<Arc<Transaction>>)
-    {
-        let mut removed_tx_keys: Vec<Signature> = Vec::new();
-        let mut removed_timelocked_tx_keys: Vec<Signature> = Vec::new();
-        for (tx_key, tx) in self.txs_by_signature.iter() {
-            if tx.body.inputs.iter().all(|input| utxos.contains(input)) {
-                if tx.body.kernels[0].lock_height <= block_height {
-                    removed_tx_keys.push(tx_key.clone());
-                } else {
-                    removed_timelocked_tx_keys.push(tx_key.clone());
-                }
-            }
-        }
-
-        let mut removed_txs: Vec<Arc<Transaction>> = Vec::with_capacity(removed_tx_keys.len());
-        removed_tx_keys.iter().for_each(|tx_key| {
-            if let Some(tx) = self.txs_by_signature.remove(&tx_key) {
-                removed_txs.push(tx);
-            }
-        });
-
-        let mut removed_timelocked_txs: Vec<Arc<Transaction>> = Vec::with_capacity(removed_timelocked_tx_keys.len());
-        removed_timelocked_tx_keys.iter().for_each(|tx_key| {
-            if let Some(tx) = self.txs_by_signature.remove(&tx_key) {
-                removed_timelocked_txs.push(tx);
-            }
-        });
-
-        (removed_txs, removed_timelocked_txs)
+        &self,
+    ) -> Result<(Vec<Arc<Transaction>>, Vec<Arc<Transaction>>), OrphanPoolError> {
+        self.pool_storage
+            .write()
+            .map_err(|e| OrphanPoolError::BackendError(e.to_string()))?
+            .scan_for_and_remove_unorphaned_txs()
     }
 
     /// Returns the total number of orphaned transactions stored in the OrphanPool
-    pub fn len(&mut self) -> usize {
-        let mut count = 0;
-        self.txs_by_signature.iter().for_each(|_| count += 1);
-        (count)
+    pub fn len(&self) -> Result<usize, OrphanPoolError> {
+        Ok(self
+            .pool_storage
+            .write()
+            .map_err(|e| OrphanPoolError::BackendError(e.to_string()))?
+            .len())
+    }
+
+    /// Returns all transaction stored in the OrphanPool.
+    pub fn snapshot(&self) -> Result<Vec<Arc<Transaction>>, OrphanPoolError> {
+        Ok(self
+            .pool_storage
+            .write()
+            .map_err(|e| OrphanPoolError::BackendError(e.to_string()))?
+            .snapshot())
+    }
+
+    /// Returns the total weight of all transactions stored in the pool.
+    pub fn calculate_weight(&self) -> Result<u64, OrphanPoolError> {
+        Ok(self
+            .pool_storage
+            .write()
+            .map_err(|e| OrphanPoolError::BackendError(e.to_string()))?
+            .calculate_weight())
+    }
+}
+
+impl<T> Clone for OrphanPool<T>
+where T: BlockchainBackend
+{
+    fn clone(&self) -> Self {
+        OrphanPool {
+            pool_storage: self.pool_storage.clone(),
+        }
     }
 }
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use crate::{
-        tari_amount::MicroTari,
-        test_utils::builders::{create_test_block, create_test_tx, extract_outputs_as_inputs},
-        transaction::TransactionInput,
+        consensus::{ConsensusManagerBuilder, Network},
+        helpers::create_mem_db,
+        mempool::orphan_pool::{OrphanPool, OrphanPoolConfig},
+        transactions::tari_amount::MicroTari,
+        tx,
+        validation::transaction_validators::TxInputAndMaturityValidator,
     };
-    use std::{thread, time::Duration};
+    use std::{sync::Arc, thread, time::Duration};
 
     #[test]
     fn test_insert_rlu_and_ttl() {
-        let tx1 = create_test_tx(MicroTari(10_000), MicroTari(500), 4000, 2, 1);
-        let tx2 = create_test_tx(MicroTari(10_000), MicroTari(300), 3000, 2, 1);
-        let tx3 = create_test_tx(MicroTari(10_000), MicroTari(100), 2500, 2, 1);
-        let tx4 = create_test_tx(MicroTari(10_000), MicroTari(200), 1000, 2, 1);
-        let tx5 = create_test_tx(MicroTari(10_000), MicroTari(500), 2000, 2, 1);
-        let tx6 = create_test_tx(MicroTari(10_000), MicroTari(600), 5500, 2, 1);
-
-        let mut orphan_pool = OrphanPool::new(OrphanPoolConfig {
-            storage_capacity: 3,
-            tx_ttl: Duration::from_millis(50),
-        });
-        orphan_pool.insert_txs(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone()]);
+        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(500), lock: 4000, inputs: 2, outputs: 1).0);
+        let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(300), lock: 3000, inputs: 2, outputs: 1).0);
+        let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(100), lock: 2500, inputs: 2, outputs: 1).0);
+        let tx4 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(200), lock: 1000, inputs: 2, outputs: 1).0);
+        let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(500), lock: 2000, inputs: 2, outputs: 1).0);
+        let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(600), lock: 5500, inputs: 2, outputs: 1).0);
+        let network = Network::LocalNet;
+        let consensus_manager = ConsensusManagerBuilder::new(network).build();
+        let store = create_mem_db(consensus_manager);
+        let mempool_validator = Box::new(TxInputAndMaturityValidator::new(store.clone()));
+        let orphan_pool = OrphanPool::new(
+            OrphanPoolConfig {
+                storage_capacity: 3,
+                tx_ttl: Duration::from_millis(50),
+            },
+            mempool_validator,
+        );
+        orphan_pool
+            .insert_txs(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone()])
+            .unwrap();
         // Check that oldest utx was removed to make room for new incoming transaction
-        assert!(!orphan_pool.has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig));
-        assert!(orphan_pool.has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig));
-        assert!(orphan_pool.has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig));
-        assert!(orphan_pool.has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig));
+        assert_eq!(
+            orphan_pool
+                .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
+                .unwrap(),
+            false
+        );
+        assert_eq!(
+            orphan_pool
+                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
+                .unwrap(),
+            true
+        );
+        assert_eq!(
+            orphan_pool
+                .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
+                .unwrap(),
+            true
+        );
+        assert_eq!(
+            orphan_pool
+                .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
+                .unwrap(),
+            true
+        );
+
+        let snapshot_txs = orphan_pool.snapshot().unwrap();
+        assert_eq!(snapshot_txs.len(), 3);
+        assert!(snapshot_txs.contains(&tx2));
+        assert!(snapshot_txs.contains(&tx3));
+        assert!(snapshot_txs.contains(&tx4));
 
         // Check that transactions that have been in the pool for longer than their Time-to-live have been removed
         thread::sleep(Duration::from_millis(51));
-        orphan_pool.insert_txs(vec![tx5.clone(), tx6.clone()]);
+        orphan_pool.insert_txs(vec![tx5.clone(), tx6.clone()]).unwrap();
+        assert_eq!(orphan_pool.len().unwrap(), 2);
         assert_eq!(
-            orphan_pool.has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig),
+            orphan_pool
+                .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
+                .unwrap(),
             false
         );
         assert_eq!(
-            orphan_pool.has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig),
+            orphan_pool
+                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
+                .unwrap(),
             false
         );
         assert_eq!(
-            orphan_pool.has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig),
+            orphan_pool
+                .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
+                .unwrap(),
             false
         );
         assert_eq!(
-            orphan_pool.has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig),
+            orphan_pool
+                .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
+                .unwrap(),
             false
         );
         assert_eq!(
-            orphan_pool.has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig),
+            orphan_pool
+                .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
+                .unwrap(),
             true
         );
         assert_eq!(
-            orphan_pool.has_tx_with_excess_sig(&tx6.body.kernels[0].excess_sig),
+            orphan_pool
+                .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
+                .unwrap(),
             true
         );
-        assert_eq!(orphan_pool.len(), 2);
-    }
-
-    #[test]
-    fn remove_remove_valid() {
-        let tx1 = create_test_tx(MicroTari(10_000), MicroTari(500), 1100, 2, 1);
-        let tx2 = create_test_tx(MicroTari(10_000), MicroTari(300), 1700, 2, 1);
-        let tx3 = create_test_tx(MicroTari(10_000), MicroTari(100), 2500, 1, 1);
-        let mut tx4 = create_test_tx(MicroTari(10_000), MicroTari(200), 3100, 2, 1);
-        let mut tx5 = create_test_tx(MicroTari(10_000), MicroTari(500), 4500, 2, 1);
-        let tx6 = create_test_tx(MicroTari(10_000), MicroTari(600), 5200, 2, 1);
-        // Publishing of tx1 and tx2 will create the UTXOs required by tx4 and tx5
-        tx4.body.inputs.clear();
-        tx1.body
-            .outputs
-            .iter()
-            .for_each(|output| tx4.body.inputs.push(TransactionInput::from(output.clone())));
-
-        tx5.body.inputs.clear();
-        tx2.body
-            .outputs
-            .iter()
-            .for_each(|output| tx5.body.inputs.push(TransactionInput::from(output.clone())));
-
-        let mut orphan_pool = OrphanPool::new(OrphanPoolConfig::default());
-        orphan_pool.insert_txs(vec![tx3.clone(), tx4.clone(), tx5.clone()]);
-
-        let published_block = create_test_block(3000, vec![tx6.clone()]);
-        let mut utxos = Vec::new();
-        extract_outputs_as_inputs(&mut utxos, &published_block);
-        let (txs, timelocked_txs) =
-            orphan_pool.scan_for_and_remove_unorphaned_txs(published_block.header.height, &utxos);
-        assert_eq!(orphan_pool.len(), 3);
-        assert_eq!(txs.len(), 0);
-        assert_eq!(timelocked_txs.len(), 0);
-        assert!(orphan_pool.has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig));
-        assert!(orphan_pool.has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig));
-        assert!(orphan_pool.has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig));
-
-        let published_block = create_test_block(3500, vec![tx1.clone(), tx2.clone()]);
-        extract_outputs_as_inputs(&mut utxos, &published_block);
-        let (txs, timelocked_txs) =
-            orphan_pool.scan_for_and_remove_unorphaned_txs(published_block.header.height, &utxos);
-        assert_eq!(orphan_pool.len(), 1);
-        assert_eq!(txs.len(), 1);
-        assert_eq!(timelocked_txs.len(), 1);
-        assert!(orphan_pool.has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig));
-        assert!(txs.iter().any(|tx| **tx == tx4));
-        assert!(timelocked_txs.iter().any(|tx| **tx == tx5));
     }
 }

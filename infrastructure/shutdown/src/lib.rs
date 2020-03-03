@@ -93,6 +93,12 @@ impl Drop for Shutdown {
     }
 }
 
+impl Default for Shutdown {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -115,7 +121,6 @@ mod test {
         // Shutdown::trigger is idempotent
         shutdown.trigger().unwrap();
         assert_eq!(shutdown.is_triggered(), true);
-        rt.shutdown_on_idle();
     }
 
     #[test]
@@ -129,7 +134,6 @@ mod test {
             signal.await.unwrap();
         });
         shutdown.trigger().unwrap();
-        rt.shutdown_on_idle();
     }
 
     #[test]
@@ -143,7 +147,6 @@ mod test {
             signal.await.unwrap();
         });
         drop(shutdown);
-        rt.shutdown_on_idle();
     }
 
     #[test]
@@ -161,6 +164,5 @@ mod test {
         });
         shutdown.trigger().unwrap();
         assert_eq!(spy.load(Ordering::SeqCst), true);
-        rt.shutdown_on_idle();
     }
 }

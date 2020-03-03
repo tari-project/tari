@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package tari.p2p.message_type;
+
+// A tari message type is an immutable 32-bit signed integer indicating the type of message being received or sent
+// over the network.
+enum TariMessageType {
+    TariMessageTypeNone = 0;
+
+    // -- NetMessages --
+
+    TariMessageTypePingPong = 1;
+
+    // -- Blockchain messages --
+
+    TariMessageTypeNewTransaction = 65;
+    TariMessageTypeNewBlock = 66;
+    TariMessageTypeSenderPartialTransaction = 67;
+    TariMessageTypeReceiverPartialTransactionReply = 68;
+    TariMessageTypeBaseNodeRequest = 69;
+    TariMessageTypeBaseNodeResponse = 70;
+    TariMessageTypeMempoolRequest= 71;
+    TariMessageTypeMempoolResponse = 72;
+    TariMessageTypeTransactionFinalized = 73;
+    // -- DAN Messages --
+
+    // -- Extended --
+
+    TariMessageTypeText = 225;
+    TariMessageTypeTextAck = 226;
+}

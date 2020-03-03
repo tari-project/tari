@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package tari.dht.message_header;
+
+message MessageHeader {
+    // Indicates a type of message. This can be any enum type
+    int32 message_type = 1;
+    uint64 nonce = 2;
+}

@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+mod error;
 mod reorg_pool;
+mod reorg_pool_storage;
 
 // Public re-exports
+pub use error::ReorgPoolError;
 pub use reorg_pool::{ReorgPool, ReorgPoolConfig};
+pub use reorg_pool_storage::ReorgPoolStorage;

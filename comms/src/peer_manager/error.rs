@@ -20,34 +20,34 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
-use crate::{connection::NetAddressError, peer_manager::node_id::NodeIdError};
 use derive_error::Error;
+use std::sync::PoisonError;
 use tari_storage::KeyValStoreError;
-use tari_utilities::message_format::MessageFormatError;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub enum PeerManagerError {
-    /// The requested peer does not exist or could not be located
+    /// The requested peer does not exist
     PeerNotFoundError,
-    /// The Thread Safety has been breached and the data access has become poisoned
-    PoisonedAccess,
-    // A problem occurred during the serialization of the keys or data
-    SerializationError(MessageFormatError),
-    /// A problem occurred converting the serialized data into peers
-    DeserializationError,
-    /// The index doesn't relate to an existing peer
-    IndexOutOfBounds,
-    /// The requested operation can only be performed if the PeerManager is linked to a DataStore
-    DatastoreUndefined,
-    /// An empty response was received from the Datastore
-    EmptyDatastoreQuery,
-    // A NetAddressError occurred
-    NetAddressError(NetAddressError),
     /// The peer has been banned
     BannedPeer,
-    /// Problem initializing the RNG
-    RngError,
     // An problem has been encountered with the database
     DatabaseError(KeyValStoreError),
-    NodeIdError(NodeIdError),
+    /// Failed to spawn blocking task
+    BlockingTaskSpawnError,
+}
+
+impl PeerManagerError {
+    /// Returns true if this error indicates that the peer is not found, otherwise false
+    pub fn is_peer_not_found(&self) -> bool {
+        match self {
+            PeerManagerError::PeerNotFoundError => true,
+            _ => false,
+        }
+    }
+}
+
+impl<T> From<PoisonError<T>> for PeerManagerError {
+    fn from(_: PoisonError<T>) -> Self {
+        PeerManagerError::DatabaseError(KeyValStoreError::PoisonedAccess)
+    }
 }

@@ -20,44 +20,208 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tari_message::TariMessageType;
-use derive_error::Error;
-use std::{net::IpAddr, sync::Arc};
-use tari_comms::{
-    builder::{CommsBuilderError, CommsServices, CommsServicesError},
-    connection::{net_address::ip::SocketAddress, NetAddress},
-    connection_manager::PeerConnectionConfig,
-    control_service::ControlServiceConfig,
-    peer_manager::{node_identity::NodeIdentityError, NodeIdentity},
-    types::{CommsPublicKey, CommsSecretKey},
-    CommsBuilder,
+use crate::{
+    comms_connector::{InboundDomainConnector, PeerMessage},
+    transport::{TorConfig, TransportType},
 };
+use derive_error::Error;
+use futures::{channel::mpsc, AsyncRead, AsyncWrite, Sink};
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use std::{error::Error, iter, sync::Arc, time::Duration};
+use tari_comms::{
+    backoff::ConstantBackoff,
+    peer_manager::NodeIdentity,
+    pipeline,
+    tor,
+    transports::{MemoryTransport, SocksTransport, TcpTransport, Transport},
+    CommsBuilder,
+    CommsBuilderError,
+    CommsNode,
+};
+use tari_comms_dht::{Dht, DhtBuilder, DhtConfig};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+use tower::ServiceBuilder;
 
 #[derive(Debug, Error)]
 pub enum CommsInitializationError {
-    NodeIdentityError(NodeIdentityError),
     CommsBuilderError(CommsBuilderError),
-    CommsServicesError(CommsServicesError),
+    HiddenServiceBuilderError(tor::HiddenServiceBuilderError),
 }
 
+/// Configuration for a comms node
 #[derive(Clone)]
 pub struct CommsConfig {
-    pub control_service: ControlServiceConfig,
-    pub socks_proxy_address: Option<SocketAddress>,
-    pub host: IpAddr,
-    pub public_key: CommsPublicKey,
-    pub secret_key: CommsSecretKey,
-    pub public_address: NetAddress,
+    /// Path to the LMDB data files.
     pub datastore_path: String,
+    /// Name to use for the peer database
     pub peer_database_name: String,
+    /// The maximum number of concurrent Inbound tasks allowed before back-pressure is applied to peers
+    pub max_concurrent_inbound_tasks: usize,
+    /// The size of the buffer (channel) which holds pending outbound message requests
+    pub outbound_buffer_size: usize,
+    /// Configuration for DHT
+    pub dht: DhtConfig,
+    /// The identity of this node on the network
+    pub node_identity: Arc<NodeIdentity>,
+    /// The type of transport to use
+    pub transport_type: TransportType,
 }
 
-pub fn initialize_comms(config: CommsConfig) -> Result<Arc<CommsServices<TariMessageType>>, CommsInitializationError> {
-    let node_identity = NodeIdentity::new(config.secret_key, config.public_key, config.public_address)
-        .map_err(CommsInitializationError::NodeIdentityError)?;
+/// Initialize Tari Comms configured for tests
+pub async fn initialize_local_test_comms<TSink>(
+    node_identity: Arc<NodeIdentity>,
+    connector: InboundDomainConnector<TSink>,
+    data_path: &str,
+    discovery_request_timeout: Duration,
+) -> Result<(CommsNode, Dht), CommsInitializationError>
+where
+    TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
+    TSink::Error: Error + Send + Sync,
+{
+    let peer_database_name = {
+        let mut rng = thread_rng();
+        iter::repeat(())
+            .map(|_| rng.sample(Alphanumeric))
+            .take(8)
+            .collect::<String>()
+    };
+    let datastore = LMDBBuilder::new()
+        .set_path(data_path)
+        .set_environment_size(10)
+        .set_max_number_of_databases(1)
+        .add_database(&peer_database_name, lmdb_zero::db::CREATE)
+        .build()
+        .unwrap();
+    let peer_database = datastore.get_handle(&peer_database_name).unwrap();
+    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
-    let _ = std::fs::create_dir(&config.datastore_path).unwrap_or_default();
+    //---------------------------------- Comms --------------------------------------------//
+
+    let comms = CommsBuilder::new()
+        .with_transport(MemoryTransport)
+        .with_listener_address(node_identity.public_address())
+        .with_node_identity(node_identity)
+        .with_peer_storage(peer_database)
+        .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
+        .build()?;
+
+    // Create outbound channel
+    let (outbound_tx, outbound_rx) = mpsc::channel(10);
+
+    let dht = DhtBuilder::new(
+        comms.node_identity(),
+        comms.peer_manager(),
+        outbound_tx,
+        comms.shutdown_signal(),
+    )
+    .local_test()
+    .with_discovery_timeout(discovery_request_timeout)
+    .finish();
+
+    let dht_outbound_layer = dht.outbound_middleware_layer();
+
+    let comms = comms
+        .with_messaging_pipeline(
+            pipeline::Builder::new()
+                .outbound_buffer_size(10)
+                .with_outbound_pipeline(outbound_rx, |sink| {
+                    ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
+                })
+                .max_concurrent_inbound_tasks(10)
+                .with_inbound_pipeline(
+                    ServiceBuilder::new()
+                        .layer(dht.inbound_middleware_layer())
+                        .service(connector),
+                )
+                .finish(),
+        )
+        .spawn()
+        .await?;
+
+    Ok((comms, dht))
+}
+
+/// Initialize Tari Comms
+pub async fn initialize_comms<TSink>(
+    config: CommsConfig,
+    connector: InboundDomainConnector<TSink>,
+) -> Result<(CommsNode, Dht), CommsInitializationError>
+where
+    TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
+    TSink::Error: Error + Send + Sync,
+{
+    let builder = CommsBuilder::new().with_node_identity(config.node_identity.clone());
+
+    match &config.transport_type {
+        TransportType::Memory { listener_address } => {
+            let comms = builder
+                .with_transport(MemoryTransport)
+                .with_listener_address(listener_address.clone());
+            configure_comms_and_dht(comms, config, connector).await
+        },
+        TransportType::Tcp { listener_address } => {
+            let comms = builder
+                .with_transport(TcpTransport::default())
+                .with_listener_address(listener_address.clone());
+            configure_comms_and_dht(comms, config, connector).await
+        },
+        TransportType::Tor(tor_config) => {
+            let hidden_service = initialize_hidden_service(tor_config.clone()).await?;
+            let comms = builder.configure_from_hidden_service(hidden_service);
+
+            let (comms, dht) = configure_comms_and_dht(comms, config, connector).await?;
+            // Set the public address to the onion address that comms is using
+            comms
+                .node_identity()
+                .set_public_address(
+                    comms
+                        .hidden_service()
+                        .expect("hidden_service is must be set because a tor hidden service is set")
+                        .get_onion_address()
+                        .clone(),
+                )
+                .expect("Poisoned NodeIdentity");
+            Ok((comms, dht))
+        },
+        TransportType::Socks {
+            proxy_address,
+            listener_address,
+            authentication,
+        } => {
+            let comms = builder
+                .with_transport(SocksTransport::new(proxy_address.clone(), authentication.clone()))
+                .with_listener_address(listener_address.clone());
+            configure_comms_and_dht(comms, config, connector).await
+        },
+    }
+}
+
+async fn initialize_hidden_service(config: TorConfig) -> Result<tor::HiddenService, tor::HiddenServiceBuilderError> {
+    let mut builder = tor::HiddenServiceBuilder::new()
+        .with_hs_flags(tor::HsFlags::DETACH)
+        .with_port_mapping(config.port_mapping)
+        .with_socks_authentication(config.socks_auth)
+        .with_control_server_auth(config.control_server_auth)
+        .with_control_server_address(config.control_server_addr);
+
+    if let Some(identity) = config.identity {
+        builder = builder.with_tor_identity(*identity);
+    }
+
+    builder.finish().await
+}
+
+async fn configure_comms_and_dht<TTransport, TSink>(
+    builder: CommsBuilder<TTransport>,
+    config: CommsConfig,
+    connector: InboundDomainConnector<TSink>,
+) -> Result<(CommsNode, Dht), CommsInitializationError>
+where
+    TTransport: Transport + Unpin + Send + Sync + Clone + 'static,
+    TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
+    TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
+    TSink::Error: Error + Send + Sync,
+{
     let datastore = LMDBBuilder::new()
         .set_path(&config.datastore_path)
         .set_environment_size(10)
@@ -68,22 +232,39 @@ pub fn initialize_comms(config: CommsConfig) -> Result<Arc<CommsServices<TariMes
     let peer_database = datastore.get_handle(&config.peer_database_name).unwrap();
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
-    let builder = CommsBuilder::new()
-        .with_node_identity(node_identity)
-        .with_peer_storage(peer_database)
-        .configure_control_service(config.control_service)
-        .configure_peer_connections(PeerConnectionConfig {
-            socks_proxy_address: config.socks_proxy_address,
-            host: config.host,
-            ..Default::default()
-        });
+    let comms = builder.with_peer_storage(peer_database).build()?;
 
-    let comms = builder
-        .build()
-        .map_err(CommsInitializationError::CommsBuilderError)?
-        .start()
-        .map(Arc::new)
-        .map_err(CommsInitializationError::CommsServicesError)?;
+    // Create outbound channel
+    let (outbound_tx, outbound_rx) = mpsc::channel(config.outbound_buffer_size);
 
-    Ok(comms)
+    let dht = DhtBuilder::new(
+        comms.node_identity(),
+        comms.peer_manager(),
+        outbound_tx,
+        comms.shutdown_signal(),
+    )
+    .with_config(config.dht)
+    .finish();
+
+    let dht_outbound_layer = dht.outbound_middleware_layer();
+
+    let comms = comms
+        .with_messaging_pipeline(
+            pipeline::Builder::new()
+                .outbound_buffer_size(config.outbound_buffer_size)
+                .with_outbound_pipeline(outbound_rx, |sink| {
+                    ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
+                })
+                .max_concurrent_inbound_tasks(config.max_concurrent_inbound_tasks)
+                .with_inbound_pipeline(
+                    ServiceBuilder::new()
+                        .layer(dht.inbound_middleware_layer())
+                        .service(connector),
+                )
+                .finish(),
+        )
+        .spawn()
+        .await?;
+
+    Ok((comms, dht))
 }

@@ -20,11 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub(crate) mod aggregated_body;
 mod block;
 pub(crate) mod blockheader;
+mod new_block_template;
+mod new_blockheader_template;
 
 pub mod genesis_block;
 
 pub use block::{Block, BlockBuilder, BlockValidationError};
-pub use blockheader::BlockHeader;
+pub use blockheader::{BlockHash, BlockHeader, BlockHeaderValidationError};
+pub use new_block_template::NewBlockTemplate;
+pub use new_blockheader_template::NewBlockHeaderTemplate;

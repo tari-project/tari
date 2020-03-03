@@ -26,14 +26,16 @@ use crate::{
         pending_pool::{PendingPoolConfig, PendingPoolError},
         priority::{FeePriority, TimelockPriority, TimelockedTransaction},
     },
-    transaction::Transaction,
-    types::Signature,
+    transactions::{transaction::Transaction, types::Signature},
 };
+use log::*;
 use std::{
     collections::{BTreeMap, HashMap},
     convert::TryFrom,
     sync::Arc,
 };
+
+pub const LOG_TARGET: &str = "c::mp::pending_pool::pending_pool_storage";
 
 /// PendingPool makes use of PendingPoolStorage to provide thread safe access to its Hashmap and BTreeMaps.
 /// The txs_by_signature HashMap is used to find a transaction using its excess_sig, this functionality is used to match
@@ -72,6 +74,12 @@ impl PendingPoolStorage {
             .map(|(p, s)| (p.clone(), s.clone()))
         {
             if let Some(removed_tx) = self.txs_by_signature.remove(&tx_key) {
+                trace!(
+                    target: LOG_TARGET,
+                    "Removing tx from pending pool: {:?}, {:?}",
+                    removed_tx.fee_priority,
+                    removed_tx.timelock_priority
+                );
                 self.txs_by_fee_priority.remove(&removed_tx.fee_priority);
                 self.txs_by_timelock_priority.remove(&removed_tx.timelock_priority);
             }
@@ -80,10 +88,11 @@ impl PendingPoolStorage {
 
     /// Insert a new transaction into the PendingPoolStorage. Low priority transactions will be removed to make space
     /// for higher priority transactions.
-    pub fn insert(&mut self, tx: Transaction) -> Result<(), PendingPoolError> {
-        let tx_key = tx.body.kernels[0].excess_sig.clone();
+    pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<(), PendingPoolError> {
+        let tx_key = tx.body.kernels()[0].excess_sig.clone();
         if !self.txs_by_signature.contains_key(&tx_key) {
-            let prioritized_tx = TimelockedTransaction::try_from(tx)?;
+            trace!(target: LOG_TARGET, "Inserting tx into pending pool: {:?}", tx_key,);
+            let prioritized_tx = TimelockedTransaction::try_from((*tx).clone())?;
             if self.txs_by_signature.len() >= self.config.storage_capacity {
                 if prioritized_tx.fee_priority < *self.lowest_fee_priority() {
                     return Ok(());
@@ -101,7 +110,7 @@ impl PendingPoolStorage {
     }
 
     /// Insert a set of new transactions into the PendingPoolStorage
-    pub fn insert_txs(&mut self, txs: Vec<Transaction>) -> Result<(), PendingPoolError> {
+    pub fn insert_txs(&mut self, txs: Vec<Arc<Transaction>>) -> Result<(), PendingPoolError> {
         for tx in txs.into_iter() {
             self.insert(tx)?;
         }
@@ -119,8 +128,8 @@ impl PendingPoolStorage {
     fn discard_double_spends(&mut self, published_block: &Block) {
         let mut removed_tx_keys: Vec<Signature> = Vec::new();
         for (tx_key, ptx) in self.txs_by_signature.iter() {
-            for input in &ptx.transaction.body.inputs {
-                if published_block.body.inputs.contains(input) {
+            for input in ptx.transaction.body.inputs() {
+                if published_block.body.inputs().contains(input) {
                     self.txs_by_fee_priority.remove(&ptx.fee_priority);
                     self.txs_by_timelock_priority.remove(&ptx.timelock_priority);
                     removed_tx_keys.push(tx_key.clone());
@@ -129,6 +138,7 @@ impl PendingPoolStorage {
         }
 
         for tx_key in &removed_tx_keys {
+            trace!(target: LOG_TARGET, "Removed double spends: {:?}", tx_key);
             self.txs_by_signature.remove(&tx_key);
         }
     }
@@ -148,10 +158,7 @@ impl PendingPoolStorage {
                 .txs_by_signature
                 .get(tx_key)
                 .ok_or(PendingPoolError::StorageOutofSync)?
-                .transaction
-                .body
-                .kernels[0]
-                .lock_height >
+                .max_timelock_height >
                 published_block.header.height
             {
                 break;
@@ -165,6 +172,7 @@ impl PendingPoolStorage {
         }
 
         for tx_key in &removed_tx_keys {
+            trace!(target: LOG_TARGET, "Removed unlocked and double spends: {:?}", tx_key);
             self.txs_by_timelock_priority.remove(&tx_key);
         }
 
@@ -174,6 +182,21 @@ impl PendingPoolStorage {
     /// Returns the total number of unconfirmed transactions stored in the PendingPoolStorage
     pub fn len(&self) -> usize {
         self.txs_by_signature.len()
+    }
+
+    /// Returns all transaction stored in the PendingPoolStorage.
+    pub fn snapshot(&self) -> Vec<Arc<Transaction>> {
+        self.txs_by_signature
+            .iter()
+            .map(|(_, ptx)| ptx.transaction.clone())
+            .collect()
+    }
+
+    /// Returns the total weight of all transactions stored in the pool.
+    pub fn calculate_weight(&self) -> u64 {
+        self.txs_by_signature
+            .iter()
+            .fold(0, |weight, (_, ptx)| weight + ptx.transaction.calculate_weight())
     }
 
     #[cfg(test)]

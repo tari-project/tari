@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+import "types.proto";
+
+package tari.mempool;
+
+// Request type for a received MempoolService request.
+message MempoolServiceRequest {
+    uint64 request_key = 1;
+    oneof request {
+        // Indicates a GetStats request. The value of the bool should be ignored.
+        bool get_stats = 2;
+        // Indicates a GetTxStateWithExcessSig request.
+        tari.types.Signature get_tx_state_with_excess_sig = 3;
+    }
+}

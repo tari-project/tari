@@ -23,8 +23,8 @@
 use blake2::Blake2b;
 use digest::Digest;
 use std::string::ToString;
+use tari_crypto::tari_utilities::hex::Hex;
 use tari_mmr::MerkleMountainRange;
-use tari_utilities::hex::Hex;
 
 pub fn hash_values() -> Vec<String> {
     let mut hashvalues = Vec::new();
@@ -92,9 +92,9 @@ fn create_mmr() -> MerkleMountainRange<Blake2b, Vec<Vec<u8>>> {
 fn check_mmr_hashes() {
     let mmr = create_mmr();
     let hashes = hash_values();
-    assert_eq!(mmr.len(), 42);
+    assert_eq!(mmr.len(), Ok(42));
     for i in 0..42 {
-        let hash = mmr.get_node_hash(i).unwrap();
+        let hash = mmr.get_node_hash(i).unwrap().unwrap();
         assert_eq!(hash.to_hex(), hashes[i]);
     }
 }

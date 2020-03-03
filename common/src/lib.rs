@@ -54,18 +54,24 @@ mod configuration;
 #[macro_use]
 mod logging;
 
+pub mod protobuf_build;
+
 pub mod dir_utils;
 pub use configuration::{
     default_config,
     install_default_config_file,
     load_configuration,
+    CommsTransport,
+    ConfigExtractor,
     ConfigurationError,
     DatabaseType,
     GlobalConfig,
     Network,
+    SocksAuthentication,
+    TorControlAuthentication,
 };
 pub use logging::initialize_logging;
-
+use std::io;
 pub const DEFAULT_CONFIG: &str = "config.toml";
 pub const DEFAULT_LOG_CONFIG: &str = "log4rs.yml";
 
@@ -92,23 +98,46 @@ pub fn bootstrap_config_from_cli(matches: &ArgMatches) -> ConfigBootstrap {
     let config = matches
         .value_of("config")
         .map(PathBuf::from)
-        .unwrap_or(dir_utils::default_path(DEFAULT_CONFIG));
+        .unwrap_or_else(|| dir_utils::default_path(DEFAULT_CONFIG));
     let log_config = matches.value_of("log_config").map(PathBuf::from);
     let log_config = logging::get_log_configuration_path(log_config);
 
-    if !config.exists() && matches.is_present("init") {
-        println!("Installing new config file at {}", config.to_str().unwrap_or("[??]"));
-        install_configuration(&config, configuration::install_default_config_file);
+    if !config.exists() {
+        let install = if !matches.is_present("init") {
+            prompt("Config file does not exist. Would you like to create a new one (Y/n)?")
+        } else {
+            true
+        };
+
+        if install {
+            println!("Installing new config file at {}", config.to_str().unwrap_or("[??]"));
+            install_configuration(&config, configuration::install_default_config_file);
+        }
     }
 
-    if !log_config.exists() && matches.is_present("init") {
-        println!(
-            "Installing new logfile configuration at {}",
-            log_config.to_str().unwrap_or("[??]")
-        );
-        install_configuration(&log_config, logging::install_default_logfile_config);
+    if !log_config.exists() {
+        let install = if !matches.is_present("init") {
+            prompt("Logging configuration file does not exist. Would you like to create a new one (Y/n)?")
+        } else {
+            true
+        };
+        if install {
+            println!(
+                "Installing new logfile configuration at {}",
+                log_config.to_str().unwrap_or("[??]")
+            );
+            install_configuration(&log_config, logging::install_default_logfile_config);
+        }
     }
     ConfigBootstrap { config, log_config }
+}
+
+fn prompt(question: &str) -> bool {
+    println!("{}", question);
+    let mut input = "".to_string();
+    io::stdin().read_line(&mut input).unwrap();
+    let input = input.trim().to_lowercase();
+    input == "y" || input.len() == 0
 }
 
 pub fn install_configuration<F>(path: &Path, installer: F)

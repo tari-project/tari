@@ -22,12 +22,13 @@
 
 use derive_error::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Clone)]
 pub enum MerkleMountainRangeError {
     // The next position was not a leaf node as expected
     CorruptDataStructure,
-    // Failed to add a new hash to the backend
-    BackendPushError,
+    // A problem has been encountered with the backend
+    #[error(non_std, no_from)]
+    BackendError(String),
     // The Merkle tree is not internally consistent. A parent hash isn't equal to the hash of its children
     InvalidMerkleTree,
     // The tree has reached its maximum size
@@ -37,4 +38,6 @@ pub enum MerkleMountainRangeError {
     HashNotFound(usize),
     // A request was out of range
     OutOfRange,
+    // Conflicting or invalid configuration parameters provided.
+    InvalidConfig,
 }

@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+import "transaction_metadata.proto";
+
+package tari.transaction_protocol;
+
+message SingleRoundSenderData {
+    // The transaction id for the recipient
+    uint64 tx_id = 1;
+    // The amount, in µT, being sent to the recipient
+    uint64 amount = 2;
+    // The offset public excess for this transaction
+    bytes public_excess = 3;
+    // The sender's public nonce
+    bytes public_nonce = 4;
+    // The transaction metadata
+    TransactionMetadata metadata = 5;
+    // Plain text message to receiver
+    string message = 6;
+}
+
+message TransactionSenderMessage {
+    oneof message {
+        bool None = 1;
+        SingleRoundSenderData single = 2;
+
+        // TODO: Three round types
+
+        bool Multiple = 3;
+    }
+}

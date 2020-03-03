@@ -20,49 +20,81 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Duration};
+use futures::Sink;
+use std::{error::Error, sync::Arc, time::Duration};
 use tari_comms::{
-    builder::CommsServices,
-    connection_manager::PeerConnectionConfig,
-    control_service::ControlServiceConfig,
-    peer_manager::{NodeIdentity, Peer},
-    CommsBuilder,
+    multiaddr::Multiaddr,
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    transports::MemoryTransport,
+    types::CommsPublicKey,
+    CommsNode,
 };
-use tari_p2p::tari_message::TariMessageType;
-use tari_storage::{lmdb_store::LMDBDatabase, LMDBWrapper};
-pub fn setup_comms_services(
-    node_identity: NodeIdentity,
-    peers: Vec<NodeIdentity>,
-    peer_database: LMDBDatabase,
-) -> CommsServices<TariMessageType>
+use tari_comms_dht::{
+    envelope::{DhtMessageHeader, Network},
+    Dht,
+};
+use tari_p2p::{
+    comms_connector::{InboundDomainConnector, PeerMessage},
+    domain_message::DomainMessage,
+    initialization::initialize_local_test_comms,
+};
+
+pub fn get_next_memory_address() -> Multiaddr {
+    let port = MemoryTransport::acquire_next_memsocket_port();
+    format!("/memory/{}", port).parse().unwrap()
+}
+
+pub async fn setup_comms_services<TSink>(
+    node_identity: Arc<NodeIdentity>,
+    peers: Vec<Arc<NodeIdentity>>,
+    publisher: InboundDomainConnector<TSink>,
+    database_path: String,
+    discovery_request_timeout: Duration,
+) -> (CommsNode, Dht)
+where
+    TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
+    TSink::Error: Error + Send + Sync,
 {
-    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
-    let comms = CommsBuilder::new()
-        .with_node_identity(node_identity.clone())
-        .with_peer_storage(peer_database)
-        .configure_peer_connections(PeerConnectionConfig {
-            host: "127.0.0.1".parse().unwrap(),
-            ..Default::default()
-        })
-        .configure_control_service(ControlServiceConfig {
-            socks_proxy_address: None,
-            listener_address: node_identity.control_service_address().unwrap(),
-            requested_connection_timeout: Duration::from_millis(5000),
-        })
-        .build()
-        .unwrap()
-        .start()
+    let (comms, dht) = initialize_local_test_comms(node_identity, publisher, &database_path, discovery_request_timeout)
+        .await
         .unwrap();
 
     for p in peers {
+        let addr = p.public_address();
         comms
-            .peer_manager()
-            .add_peer(
-                Peer::from_public_key_and_address(p.identity.public_key.clone(), p.control_service_address().unwrap())
-                    .unwrap(),
-            )
+            .async_peer_manager()
+            .add_peer(Peer::new(
+                p.public_key().clone(),
+                p.node_id().clone(),
+                addr.into(),
+                PeerFlags::empty(),
+                PeerFeatures::COMMUNICATION_NODE,
+            ))
+            .await
             .unwrap();
     }
 
-    comms
+    (comms, dht)
+}
+
+pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainMessage<T> {
+    let peer_source = Peer::new(
+        public_key.clone(),
+        NodeId::from_key(public_key).unwrap(),
+        Vec::<Multiaddr>::new().into(),
+        PeerFlags::empty(),
+        PeerFeatures::COMMUNICATION_NODE,
+    );
+    DomainMessage {
+        dht_header: DhtMessageHeader {
+            origin: None,
+            version: Default::default(),
+            message_type: Default::default(),
+            flags: Default::default(),
+            network: Network::LocalTest,
+            destination: Default::default(),
+        },
+        source_peer: peer_source,
+        inner,
+    }
 }

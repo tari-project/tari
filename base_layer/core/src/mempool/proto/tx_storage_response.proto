@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+import "google/protobuf/wrappers.proto";
+
+package tari.mempool;
+
+enum TxStorageResponse {
+    TxStorageResponseNone = 0;
+    TxStorageResponseUnconfirmedPool = 1;
+    TxStorageResponseOrphanPool = 2;
+    TxStorageResponsePendingPool = 3;
+    TxStorageResponseReorgPool = 4;
+    TxStorageResponseNotStored = 5;
+}

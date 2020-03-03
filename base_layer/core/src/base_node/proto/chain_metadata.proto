@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+import "google/protobuf/wrappers.proto";
+
+package tari.base_node;
+
+message ChainMetadata {
+    // The current chain height, or the block number of the longest valid chain, or `None` if there is no chain
+    google.protobuf.UInt64Value height_of_longest_chain = 1;
+    // The block hash of the current tip of the longest valid chain, or `None` for an empty chain
+    google.protobuf.BytesValue best_block = 2;
+    // The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
+    // tracked (i.e. the database is in full archival mode).
+    uint64 pruning_horizon = 4;
+}

@@ -22,10 +22,11 @@
 
 use crate::{
     blocks::Block,
-    consts::{MEMPOOL_UNCONFIRMED_POOL_STORAGE_CAPACITY, MEMPOOL_UNCONFIRMED_POOL_WEIGHT_TRANSACTION_SKIP_COUNT},
-    mempool::unconfirmed_pool::{UnconfirmedPoolError, UnconfirmedPoolStorage},
-    transaction::Transaction,
-    types::Signature,
+    mempool::{
+        consts::{MEMPOOL_UNCONFIRMED_POOL_STORAGE_CAPACITY, MEMPOOL_UNCONFIRMED_POOL_WEIGHT_TRANSACTION_SKIP_COUNT},
+        unconfirmed_pool::{UnconfirmedPoolError, UnconfirmedPoolStorage},
+    },
+    transactions::{transaction::Transaction, types::Signature},
 };
 use std::sync::{Arc, RwLock};
 
@@ -51,32 +52,32 @@ impl Default for UnconfirmedPoolConfig {
 /// The Unconfirmed Transaction Pool consists of all unconfirmed transactions that are ready to be included in a block
 /// and they are prioritised according to the priority metric.
 pub struct UnconfirmedPool {
-    pool_storage: RwLock<UnconfirmedPoolStorage>,
+    pool_storage: Arc<RwLock<UnconfirmedPoolStorage>>,
 }
 
 impl UnconfirmedPool {
     /// Create a new UnconfirmedPool with the specified configuration
     pub fn new(config: UnconfirmedPoolConfig) -> Self {
         Self {
-            pool_storage: RwLock::new(UnconfirmedPoolStorage::new(config)),
+            pool_storage: Arc::new(RwLock::new(UnconfirmedPoolStorage::new(config))),
         }
     }
 
     /// Insert a new transaction into the UnconfirmedPool. Low priority transactions will be removed to make space for
     /// higher priority transactions. The lowest priority transactions will be removed when the maximum capacity is
     /// reached and the new transaction has a higher priority than the currently stored lowest priority transaction.
-    pub fn insert(&mut self, transaction: Transaction) -> Result<(), UnconfirmedPoolError> {
+    pub fn insert(&self, transaction: Arc<Transaction>) -> Result<(), UnconfirmedPoolError> {
         self.pool_storage
             .write()
-            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
             .insert(transaction)
     }
 
     ///  Insert a set of new transactions into the UnconfirmedPool
-    pub fn insert_txs(&mut self, transactions: Vec<Transaction>) -> Result<(), UnconfirmedPoolError> {
+    pub fn insert_txs(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), UnconfirmedPoolError> {
         self.pool_storage
             .write()
-            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
             .insert_txs(transactions)
     }
 
@@ -85,7 +86,7 @@ impl UnconfirmedPool {
         Ok(self
             .pool_storage
             .read()
-            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
             .has_tx_with_excess_sig(excess_sig))
     }
 
@@ -93,20 +94,21 @@ impl UnconfirmedPool {
     pub fn highest_priority_txs(&self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError> {
         self.pool_storage
             .read()
-            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
             .highest_priority_txs(total_weight)
     }
 
-    /// Remove all published transactions from the UnconfirmedPool and discard all double spend transactions
+    /// Remove all published transactions from the UnconfirmedPool and discard all double spend transactions.
+    /// Returns a list of all transactions that were removed the unconfirmed pool as a result of appearing in the block.
     pub fn remove_published_and_discard_double_spends(
-        &mut self,
+        &self,
         published_block: &Block,
     ) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError>
     {
         Ok(self
             .pool_storage
             .write()
-            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
             .remove_published_and_discard_double_spends(published_block))
     }
 
@@ -115,8 +117,26 @@ impl UnconfirmedPool {
         Ok(self
             .pool_storage
             .read()
-            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
             .len())
+    }
+
+    /// Returns all transaction stored in the UnconfirmedPool.
+    pub fn snapshot(&self) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError> {
+        Ok(self
+            .pool_storage
+            .read()
+            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
+            .snapshot())
+    }
+
+    /// Returns the total weight of all transactions stored in the pool.
+    pub fn calculate_weight(&self) -> Result<u64, UnconfirmedPoolError> {
+        Ok(self
+            .pool_storage
+            .read()
+            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
+            .calculate_weight())
     }
 
     #[cfg(test)]
@@ -125,28 +145,33 @@ impl UnconfirmedPool {
         Ok(self
             .pool_storage
             .read()
-            .map_err(|_| UnconfirmedPoolError::PoisonedAccess)?
+            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
             .check_status())
+    }
+}
+
+impl Clone for UnconfirmedPool {
+    fn clone(&self) -> Self {
+        UnconfirmedPool {
+            pool_storage: self.pool_storage.clone(),
+        }
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        tari_amount::MicroTari,
-        test_utils::builders::{create_test_block, create_test_tx},
-    };
+    use crate::{consensus::Network, helpers::create_orphan_block, transactions::tari_amount::MicroTari, tx};
 
     #[test]
     fn test_insert_and_retrieve_highest_priority_txs() {
-        let tx1 = create_test_tx(MicroTari(5_000), MicroTari(500), 0, 2, 1);
-        let tx2 = create_test_tx(MicroTari(5_000), MicroTari(100), 0, 4, 1);
-        let tx3 = create_test_tx(MicroTari(5_000), MicroTari(1000), 0, 5, 1);
-        let tx4 = create_test_tx(MicroTari(5_000), MicroTari(200), 0, 3, 1);
-        let tx5 = create_test_tx(MicroTari(5_000), MicroTari(500), 0, 5, 1);
+        let tx1 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(50), inputs: 2, outputs: 1).0);
+        let tx2 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(20), inputs: 4, outputs: 1).0);
+        let tx3 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(100), inputs: 5, outputs: 1).0);
+        let tx4 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(30), inputs: 3, outputs: 1).0);
+        let tx5 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(50), inputs: 5, outputs: 1).0);
 
-        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+        let unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 4,
             weight_tx_skip_count: 3,
         });
@@ -156,31 +181,31 @@ mod test {
         // Check that lowest priority tx was removed to make room for new incoming transactions
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
@@ -188,9 +213,9 @@ mod test {
         let desired_weight = tx1.calculate_weight() + tx3.calculate_weight() + tx4.calculate_weight();
         let selected_txs = unconfirmed_pool.highest_priority_txs(desired_weight).unwrap();
         assert_eq!(selected_txs.len(), 3);
-        assert_eq!(selected_txs[0].body.kernels[0].fee, MicroTari(1000));
-        assert_eq!(selected_txs[1].body.kernels[0].fee, MicroTari(500));
-        assert_eq!(selected_txs[2].body.kernels[0].fee, MicroTari(200));
+        assert!(selected_txs.contains(&tx1));
+        assert!(selected_txs.contains(&tx3));
+        assert!(selected_txs.contains(&tx4));
         // Note that transaction tx5 could not be included as its weight was to big to fit into the remaining allocated
         // space, the second best transaction was then included
 
@@ -199,14 +224,16 @@ mod test {
 
     #[test]
     fn test_remove_published_txs() {
-        let tx1 = create_test_tx(MicroTari(10_000), MicroTari(500), 0, 2, 1);
-        let tx2 = create_test_tx(MicroTari(10_000), MicroTari(100), 0, 3, 1);
-        let tx3 = create_test_tx(MicroTari(10_000), MicroTari(1000), 0, 2, 1);
-        let tx4 = create_test_tx(MicroTari(10_000), MicroTari(200), 0, 4, 1);
-        let tx5 = create_test_tx(MicroTari(10_000), MicroTari(500), 0, 3, 1);
-        let tx6 = create_test_tx(MicroTari(10_000), MicroTari(750), 0, 2, 1);
+        let network = Network::LocalNet;
+        let consensus_constants = network.create_consensus_constants();
+        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), inputs:2, outputs: 1).0);
+        let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(20), inputs:3, outputs: 1).0);
+        let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(100), inputs:2, outputs: 1).0);
+        let tx4 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(30), inputs:4, outputs: 1).0);
+        let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), inputs:3, outputs: 1).0);
+        let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(75), inputs:2, outputs: 1).0);
 
-        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+        let unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 10,
             weight_tx_skip_count: 3,
         });
@@ -216,42 +243,54 @@ mod test {
         // utx6 should not be added to unconfirmed_pool as it is an unknown transactions that was included in the block
         // by another node
 
-        let published_block = create_test_block(0, vec![tx1.clone(), tx3.clone(), tx5.clone()]);
+        let snapshot_txs = unconfirmed_pool.snapshot().unwrap();
+        assert_eq!(snapshot_txs.len(), 5);
+        assert!(snapshot_txs.contains(&tx1));
+        assert!(snapshot_txs.contains(&tx2));
+        assert!(snapshot_txs.contains(&tx3));
+        assert!(snapshot_txs.contains(&tx4));
+        assert!(snapshot_txs.contains(&tx5));
+
+        let published_block = create_orphan_block(
+            0,
+            vec![(*tx1).clone(), (*tx3).clone(), (*tx5).clone()],
+            &consensus_constants,
+        );
         let _ = unconfirmed_pool.remove_published_and_discard_double_spends(&published_block);
 
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx6.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
@@ -261,17 +300,21 @@ mod test {
 
     #[test]
     fn test_discard_double_spend_txs() {
-        let tx1 = create_test_tx(MicroTari(5_000), MicroTari(500), 0, 2, 1);
-        let tx2 = create_test_tx(MicroTari(5_000), MicroTari(100), 0, 3, 1);
-        let tx3 = create_test_tx(MicroTari(5_000), MicroTari(1000), 0, 2, 1);
-        let tx4 = create_test_tx(MicroTari(5_000), MicroTari(200), 0, 2, 1);
-        let mut tx5 = create_test_tx(MicroTari(5_000), MicroTari(500), 0, 3, 1);
-        let mut tx6 = create_test_tx(MicroTari(5_000), MicroTari(750), 0, 2, 1);
+        let network = Network::LocalNet;
+        let consensus_constants = network.create_consensus_constants();
+        let tx1 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(50), inputs:2, outputs:1).0);
+        let tx2 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(20), inputs:3, outputs:1).0);
+        let tx3 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(100), inputs:2, outputs:1).0);
+        let tx4 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(30), inputs:2, outputs:1).0);
+        let mut tx5 = tx!(MicroTari(5_000), fee:MicroTari(50), inputs:3, outputs:1).0;
+        let mut tx6 = tx!(MicroTari(5_000), fee:MicroTari(75), inputs: 2, outputs: 1).0;
         // tx1 and tx5 have a shared input. Also, tx3 and tx6 have a shared input
-        tx5.body.inputs[0] = tx1.body.inputs[0].clone();
-        tx6.body.inputs[1] = tx3.body.inputs[1].clone();
+        tx5.body.inputs_mut()[0] = tx1.body.inputs()[0].clone();
+        tx6.body.inputs_mut()[1] = tx3.body.inputs()[1].clone();
+        let tx5 = Arc::new(tx5);
+        let tx6 = Arc::new(tx6);
 
-        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+        let unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 10,
             weight_tx_skip_count: 3,
         });
@@ -287,7 +330,11 @@ mod test {
             .unwrap();
 
         // The publishing of tx1 and tx3 will be double-spends and orphan tx5 and tx6
-        let published_block = create_test_block(0, vec![tx1.clone(), tx2.clone(), tx3.clone()]);
+        let published_block = create_orphan_block(
+            0,
+            vec![(*tx1).clone(), (*tx2).clone(), (*tx3).clone()],
+            &consensus_constants,
+        );
 
         let _ = unconfirmed_pool
             .remove_published_and_discard_double_spends(&published_block)
@@ -295,37 +342,37 @@ mod test {
 
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             unconfirmed_pool
-                .has_tx_with_excess_sig(&tx6.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );

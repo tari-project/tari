@@ -20,6 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// Required to use futures::select! macro
+#![recursion_limit = "256"]
+
 /// A basic ncurses UI that sends ping and receives pong messages to a single peer using the `tari_p2p` library.
 /// Press 'p' to send a ping.
 
@@ -30,40 +33,46 @@ use clap::{App, Arg};
 use cursive::{
     view::Identifiable,
     views::{Dialog, TextView},
+    CbFunc,
     Cursive,
+};
+use futures::{
+    channel::mpsc,
+    stream::{FusedStream, StreamExt},
+    Stream,
 };
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::{
     fs,
     iter,
-    sync::{
-        mpsc::{channel, RecvTimeoutError},
-        Arc,
-        RwLock,
-    },
-    thread,
-    time::Duration,
+    sync::{Arc, RwLock},
 };
 use tari_comms::{
-    control_service::ControlServiceConfig,
-    peer_manager::{NodeIdentity, Peer, PeerFlags, PeerNodeIdentity},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags},
+    tor,
 };
+use tari_crypto::tari_utilities::message_format::MessageFormat;
 use tari_p2p::{
+    comms_connector::pubsub_connector,
     initialization::{initialize_comms, CommsConfig},
-    ping_pong::{PingPongService, PingPongServiceApi},
-    sync_services::{ServiceError, ServiceExecutor, ServiceRegistry},
+    services::{
+        comms_outbound::CommsOutboundServiceInitializer,
+        liveness::{LivenessConfig, LivenessEvent, LivenessHandle, LivenessInitializer},
+    },
+    transport::{TorConfig, TransportType},
 };
-use tari_utilities::message_format::MessageFormat;
+use tari_service_framework::StackBuilder;
+use tari_shutdown::ShutdownSignal;
 use tempdir::TempDir;
+use tokio::runtime::Runtime;
 
-fn load_identity(path: &str) -> NodeIdentity {
+fn load_file<T: MessageFormat>(path: &str) -> T {
     let contents = fs::read_to_string(path).unwrap();
-    NodeIdentity::from_json(contents.as_str()).unwrap()
+    T::from_json(contents.as_str()).unwrap()
 }
 
 pub fn random_string(len: usize) -> String {
-    let mut rng = OsRng::new().unwrap();
-    iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(len).collect()
+    iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
 }
 
 fn main() {
@@ -82,8 +91,8 @@ fn main() {
         .arg(
             Arg::with_name("peer-identity")
                 .value_name("FILE")
-                .long("peer-identity")
-                .short("p")
+                .long("remote-identity")
+                .short("r")
                 .help("The relative path of the node identity file of the other node")
                 .takes_value(true)
                 .required(true),
@@ -97,64 +106,139 @@ fn main() {
                 .takes_value(true)
                 .default_value("base_layer/p2p/examples/example-log-config.yml"),
         )
+        .arg(
+            Arg::with_name("enable-tor")
+                .long("enable-tor")
+                .help("Set to enable tor"),
+        )
+        .arg(
+            Arg::with_name("tor-identity")
+                .long("tor-identity")
+                .help("Path to the file containing the onion address and private key")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("tor-control-address")
+                .value_name("TORADDR")
+                .long("tor-control-addr")
+                .short("t")
+                .help("Address of the control server")
+                .takes_value(true)
+                .default_value("/ip4/127.0.0.1/tcp/9051"),
+        )
         .get_matches();
+
+    let mut rt = Runtime::new().expect("Failed to initialize tokio runtime");
 
     log4rs::init_file(matches.value_of("log-config").unwrap(), Default::default()).unwrap();
 
-    let node_identity = load_identity(matches.value_of("node-identity").unwrap());
-    let peer_identity = load_identity(matches.value_of("peer-identity").unwrap());
+    let node_identity = Arc::new(load_file::<NodeIdentity>(matches.value_of("node-identity").unwrap()));
+    let peer_identity = load_file::<NodeIdentity>(matches.value_of("peer-identity").unwrap());
+    let tor_control_server_addr = matches.value_of("tor-control-address").unwrap();
+    let is_tor_enabled = matches.is_present("enable-tor");
 
-    let comms_config = CommsConfig {
-        public_key: node_identity.identity.public_key.clone(),
-        host: "0.0.0.0".parse().unwrap(),
-        socks_proxy_address: None,
-        control_service: ControlServiceConfig {
-            listener_address: node_identity.control_service_address().unwrap(),
-            socks_proxy_address: None,
-            requested_connection_timeout: Duration::from_millis(2000),
-        },
-        secret_key: node_identity.secret_key.clone(),
-        public_address: node_identity.control_service_address().unwrap(),
-        datastore_path: TempDir::new(random_string(8).as_str())
-            .unwrap()
-            .path()
-            .to_str()
-            .unwrap()
-            .to_string(),
-        peer_database_name: random_string(8),
+    let tor_identity = if is_tor_enabled {
+        Some(load_file::<tor::TorIdentity>(matches.value_of("tor-identity").unwrap()))
+    } else {
+        None
     };
 
-    let pingpong_service = PingPongService::new();
-    let pingpong = pingpong_service.get_api();
-    let services = ServiceRegistry::new().register(pingpong_service);
+    let datastore_path = TempDir::new(random_string(8).as_str()).unwrap();
 
-    let comms = initialize_comms(comms_config).unwrap();
+    let (publisher, subscription_factory) = pubsub_connector(rt.handle().clone(), 100);
+    let subscription_factory = Arc::new(subscription_factory);
+
+    let transport_type = if is_tor_enabled {
+        let tor_identity = tor_identity.unwrap();
+        TransportType::Tor(TorConfig {
+            control_server_addr: tor_control_server_addr.parse().expect("Invalid tor-control-addr value"),
+            control_server_auth: Default::default(),
+            port_mapping: tor_identity.onion_port.into(),
+            identity: Some(Box::new(tor_identity)),
+            socks_auth: Default::default(),
+        })
+    } else {
+        TransportType::Tcp {
+            listener_address: node_identity.public_address(),
+        }
+    };
+
+    let comms_config = CommsConfig {
+        transport_type,
+        node_identity,
+        datastore_path: datastore_path.path().to_str().unwrap().to_string(),
+        peer_database_name: random_string(8),
+        max_concurrent_inbound_tasks: 10,
+        outbound_buffer_size: 10,
+        dht: Default::default(),
+    };
+
+    let (comms, dht) = rt.block_on(initialize_comms(comms_config, publisher)).unwrap();
+
+    println!("Comms listening on {}", comms.listening_address());
+
     let peer = Peer::new(
-        peer_identity.identity.public_key.clone(),
-        peer_identity.identity.node_id.clone(),
-        peer_identity.control_service_address().unwrap().into(),
+        peer_identity.public_key().clone(),
+        peer_identity.node_id().clone(),
+        peer_identity.public_address().into(),
         PeerFlags::empty(),
+        peer_identity.features().clone(),
     );
     comms.peer_manager().add_peer(peer).unwrap();
+    let shutdown_signal = comms.shutdown_signal();
 
-    let services = ServiceExecutor::execute(&comms, services);
+    let handles = rt
+        .block_on(
+            StackBuilder::new(rt.handle().clone(), comms.shutdown_signal())
+                .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
+                .add_initializer(LivenessInitializer::new(
+                    LivenessConfig {
+                        auto_ping_interval: None, // Some(Duration::from_secs(5)),
+                        enable_auto_stored_message_request: false,
+                        enable_auto_join: true,
+                        ..Default::default()
+                    },
+                    Arc::clone(&subscription_factory),
+                    dht.dht_requester(),
+                ))
+                .finish(),
+        )
+        .expect("Service initialization failed");
 
-    run_ui(services, peer_identity.identity, pingpong);
+    let mut app = setup_ui();
 
-    let comms = Arc::try_unwrap(comms)
-        .map_err(|_| ServiceError::CommsServiceOwnershipError)
-        .unwrap();
+    // Updates the UI when pings/pongs are received
+    let ui_update_signal = app.cb_sink().clone();
+    let liveness_handle = handles.get_handle::<LivenessHandle>().unwrap();
+    rt.spawn(update_ui(
+        ui_update_signal,
+        liveness_handle.clone(),
+        shutdown_signal.clone(),
+    ));
 
-    comms.shutdown().unwrap();
+    // Send pings when 'p' is pressed
+    let (mut send_ping_tx, send_ping_rx) = mpsc::channel(10);
+    app.add_global_callback('p', move |_| {
+        let _ = send_ping_tx.start_send(());
+    });
+
+    let ui_update_signal = app.cb_sink().clone();
+    let node_to_ping = peer_identity.node_id().clone();
+    rt.spawn(send_ping_on_trigger(
+        send_ping_rx.fuse(),
+        ui_update_signal,
+        liveness_handle,
+        node_to_ping,
+        shutdown_signal.clone(),
+    ));
+
+    app.add_global_callback('q', |s| s.quit());
+    app.run();
+
+    rt.block_on(comms.shutdown());
 }
 
-lazy_static! {
-    /// Used to keep track of the counts displayed in the UI
-    /// (sent ping count, recv ping count, recv pong count)
-    static ref COUNTER_STATE: Arc<RwLock<(usize, usize, usize)>> = Arc::new(RwLock::new((0, 0, 0)));
-}
-
-fn run_ui(services: ServiceExecutor, peer_identity: PeerNodeIdentity, pingpong_api: Arc<PingPongServiceApi>) {
+fn setup_ui() -> Cursive {
     let mut app = Cursive::default();
 
     app.add_layer(
@@ -163,54 +247,117 @@ fn run_ui(services: ServiceExecutor, peer_identity: PeerNodeIdentity, pingpong_a
             .button("Quit", |s| s.quit()),
     );
 
-    let update_sink = app.cb_sink().clone();
-
-    let inner_api = pingpong_api.clone();
-    let (shutdown_tx, shutdown_rx) = channel();
-    let app_handle = thread::spawn(move || loop {
-        {
-            let mut lock = COUNTER_STATE.write().unwrap();
-            *lock = (
-                lock.0,
-                pingpong_api.ping_count().unwrap(),
-                pingpong_api.pong_count().unwrap(),
-            );
-        }
-        update_sink.send(Box::new(update_count)).unwrap();
-        match shutdown_rx.recv_timeout(Duration::from_millis(100)) {
-            Ok(_) => break,
-            Err(RecvTimeoutError::Timeout) => {},
-            Err(RecvTimeoutError::Disconnected) => break,
-        }
-    });
-
-    let ping_update_cb = app.cb_sink().clone();
-
-    let pk_to_ping = peer_identity.public_key.clone();
-    app.add_global_callback('p', move |_| {
-        inner_api.ping(pk_to_ping.clone()).unwrap();
-        {
-            let mut lock = COUNTER_STATE.write().unwrap();
-            *lock = (lock.0 + 1, lock.1, lock.2);
-        }
-        ping_update_cb.send(Box::new(update_count)).unwrap();
-    });
-    app.add_global_callback('q', |s| s.quit());
-
-    app.run();
-
-    shutdown_tx.send(()).unwrap();
-    services.shutdown().unwrap();
-    services.join_timeout(Duration::from_millis(1000)).unwrap();
-    app_handle.join().unwrap();
+    app
 }
 
+#[derive(Default)]
+struct UiState {
+    num_pings_sent: usize,
+    num_pings_recv: usize,
+    num_pongs_recv: usize,
+    avg_latency: u32,
+}
+
+lazy_static! {
+    /// Used to keep track of the counts displayed in the UI
+    /// (sent ping count, recv ping count, recv pong count)
+    static ref UI_STATE: Arc<RwLock<UiState>> = Arc::new(Default::default());
+}
+type CursiveSignal = crossbeam_channel::Sender<Box<dyn CbFunc>>;
+
+async fn update_ui(update_sink: CursiveSignal, mut liveness_handle: LivenessHandle, mut shutdown: ShutdownSignal) {
+    let mut event_stream = liveness_handle.get_event_stream_fused();
+    let ping_count = liveness_handle.get_ping_count().await.unwrap_or(0);
+    let pong_count = liveness_handle.get_pong_count().await.unwrap_or(0);
+
+    {
+        let mut lock = UI_STATE.write().unwrap();
+        *lock = UiState {
+            num_pings_sent: lock.num_pings_sent,
+            num_pings_recv: ping_count,
+            num_pongs_recv: pong_count,
+            avg_latency: 0,
+        };
+    }
+    let _ = update_sink.send(Box::new(update_count));
+
+    loop {
+        ::futures::select! {
+            event = event_stream.select_next_some() => {
+                match &*event {
+                    LivenessEvent::ReceivedPing => {
+                        {
+                            let mut lock = UI_STATE.write().unwrap();
+                             *lock = UiState {
+                                num_pings_sent: lock.num_pings_sent,
+                                num_pings_recv: lock.num_pings_recv + 1,
+                                num_pongs_recv: lock.num_pongs_recv,
+                                avg_latency: lock.avg_latency,
+                            };
+                        }
+
+                        let _ = update_sink.send(Box::new(update_count));
+                    },
+                    LivenessEvent::ReceivedPong(event) => {
+                        {
+                            let mut lock = UI_STATE.write().unwrap();
+                            *lock = UiState {
+                                num_pings_sent: lock.num_pings_sent,
+                                num_pings_recv: lock.num_pings_recv,
+                                num_pongs_recv: lock.num_pongs_recv + 1,
+                                avg_latency: event.latency.unwrap_or(0),
+                            };
+                        }
+
+                        let _ = update_sink.send(Box::new(update_count));
+                    },
+                    _ => {},
+                }
+
+            },
+            _ = shutdown =>  {
+                log::debug!("Ping pong example UI exiting");
+                break;
+            }
+        }
+    }
+}
+async fn send_ping_on_trigger(
+    mut send_ping_trigger: impl Stream<Item = ()> + FusedStream + Unpin,
+    update_signal: CursiveSignal,
+    mut liveness_handle: LivenessHandle,
+    node_to_ping: NodeId,
+    mut shutdown: ShutdownSignal,
+)
+{
+    loop {
+        futures::select! {
+            _ = send_ping_trigger.next() => {
+                liveness_handle.send_ping(node_to_ping.clone()).await.unwrap();
+
+                {
+                    let mut lock = UI_STATE.write().unwrap();
+                    *lock = UiState {
+                        num_pings_sent: lock.num_pings_sent + 1,
+                        num_pings_recv: lock.num_pings_recv,
+                        num_pongs_recv: lock.num_pongs_recv,
+                        avg_latency: lock.avg_latency,
+                    };
+                }
+                update_signal.send(Box::new(update_count)).unwrap();
+            },
+            _ = shutdown => {
+                break;
+            }
+        }
+    }
+}
 fn update_count(s: &mut Cursive) {
     s.call_on_id("counter", move |view: &mut TextView| {
-        let lock = COUNTER_STATE.read().unwrap();
+        let lock = UI_STATE.read().unwrap();
         view.set_content(format!(
-            "Pings sent: {}\nPings Received: {}\nPongs Received: {}\n\n(p) Send ping (q) Quit",
-            lock.0, lock.1, lock.2
+            "Pings sent: {}\nPings Received: {}\nPongs Received: {}\nAvg. Latency: {}ms\n\n(p) Send ping (q) Quit",
+            lock.num_pings_sent, lock.num_pings_recv, lock.num_pongs_recv, lock.avg_latency
         ));
     });
     s.set_autorefresh(true);

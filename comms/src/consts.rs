@@ -22,13 +22,13 @@
 
 use std::time::Duration;
 
-/// The maximum number of messages that can be stored using the MessageCache of the DHT
-pub const DHT_MSG_CACHE_STORAGE_CAPACITY: usize = 1000;
-/// The time-to-live duration used by the MessageCache for tracking received and handled messages
-pub const DHT_MSG_CACHE_TTL: Duration = Duration::from_secs(300);
-/// The number of neighbouring nodes that a received message will be forwarded to
-pub const DHT_FORWARD_NODE_COUNT: usize = 8;
+/// The maximum number of peers to return from the flood_identities method in peer manager
+pub const PEER_MANAGER_MAX_FLOOD_PEERS: usize = 1000;
 
-/// The default length of the underlying pub/sub buffer using to publish comms messages.
-/// This const is used in the CommsBuilder.
-pub const COMMS_BUILDER_IMS_DEFAULT_PUB_SUB_BUFFER_LENGTH: usize = 100;
+/// The amount of time to consider a peer to be offline (i.e. dial to peer will fail without trying) after a failed
+/// connection attempt
+pub const PEER_OFFLINE_COOLDOWN_PERIOD: Duration = Duration::from_secs(60);
+
+/// The envelope version. This should be increased any time a change is made to the
+/// envelope proto files.
+pub const ENVELOPE_VERSION: u32 = 0;

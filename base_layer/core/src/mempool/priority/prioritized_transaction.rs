@@ -20,11 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{mempool::priority::PriorityError, transaction::Transaction};
+use crate::{mempool::priority::PriorityError, transactions::transaction::Transaction};
 use std::{convert::TryFrom, sync::Arc};
-use tari_utilities::message_format::MessageFormat;
+use tari_crypto::tari_utilities::message_format::MessageFormat;
 
-/// Create a unique unspent transaction priority based on the transaction fee, age of the oldest input UTXO and the
+/// Create a unique unspent transaction priority based on the transaction fee, maturity of the oldest input UTXO and the
 /// excess_sig. The excess_sig is included to ensure the the priority key unique so it can be used with a BTreeMap.
 /// Normally, duplicate keys will be overwritten in a BTreeMap.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -33,10 +33,15 @@ pub struct FeePriority(Vec<u8>);
 impl FeePriority {
     pub fn try_from(transaction: &Transaction) -> Result<Self, PriorityError> {
         let fee_per_byte = (transaction.calculate_ave_fee_per_gram() * 1000.0) as usize; // Include 3 decimal places before flooring
-        let mut priority = fee_per_byte.to_binary()?;
-        priority.reverse(); // Fee needs to be in Big-endian for sorting with BtreeMap to work correctly
-                            // TODO: Add oldest input UTXO age
-        priority.append(&mut transaction.body.kernels[0].to_binary()?);
+        let mut fee_priority = fee_per_byte.to_binary()?;
+        fee_priority.reverse(); // Requires Big-endian for BtreeMap sorting
+
+        let mut maturity_priority = (std::u64::MAX - transaction.min_input_maturity()).to_binary()?;
+        maturity_priority.reverse(); // Requires Big-endian for BtreeMap sorting
+
+        let mut priority = fee_priority;
+        priority.append(&mut maturity_priority);
+        priority.append(&mut transaction.body.kernels()[0].excess_sig.to_binary()?);
         Ok(Self(priority))
     }
 }

@@ -24,10 +24,25 @@ macro_rules! acquire_lock {
     ($e:expr, $m:ident) => {
         match $e.$m() {
             Ok(lock) => lock,
-            Err(poisoned) => poisoned.into_inner(),
+            Err(poisoned) => {
+                log::warn!(target: "wallet", "Lock has been POISONED and will be silently recovered");
+                poisoned.into_inner()
+            },
         }
     };
     ($e:expr) => {
         acquire_lock!($e, lock)
+    };
+}
+
+macro_rules! acquire_write_lock {
+    ($e:expr) => {
+        acquire_lock!($e, write)
+    };
+}
+
+macro_rules! acquire_read_lock {
+    ($e:expr) => {
+        acquire_lock!($e, read)
     };
 }

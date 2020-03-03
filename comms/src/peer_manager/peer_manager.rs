@@ -21,14 +21,20 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connection::net_address::NetAddress,
-    outbound_message_service::broadcast_strategy::BroadcastStrategy,
-    peer_manager::{node_id::NodeId, node_identity::PeerNodeIdentity, peer::Peer, peer_storage::PeerStorage},
+    peer_manager::{
+        connection_stats::PeerConnectionStats,
+        node_id::NodeId,
+        peer::{Peer, PeerFlags},
+        peer_id::PeerId,
+        peer_storage::PeerStorage,
+        PeerFeatures,
+        PeerManagerError,
+        PeerQuery,
+    },
     types::{CommsDatabase, CommsPublicKey},
 };
-
-use crate::peer_manager::{peer::PeerFlags, PeerManagerError};
-use std::{sync::RwLock, time::Duration};
+use multiaddr::Multiaddr;
+use std::sync::RwLock;
 
 /// The PeerManager consist of a routing table of previously discovered peers.
 /// It also provides functionality to add, find and delete peers. A subset of peers can also be requested from the
@@ -41,130 +47,124 @@ impl PeerManager {
     /// Constructs a new empty PeerManager
     pub fn new(database: CommsDatabase) -> Result<PeerManager, PeerManagerError> {
         Ok(Self {
-            peer_storage: RwLock::new(PeerStorage::new(database)?),
+            peer_storage: RwLock::new(PeerStorage::new_indexed(database)?),
         })
     }
 
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exist, the stored version will be replaced with the newly provided peer.
-    pub fn add_peer(&self, peer: Peer) -> Result<(), PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .add_peer(peer)
+    pub fn add_peer(&self, peer: Peer) -> Result<PeerId, PeerManagerError> {
+        self.peer_storage.write()?.add_peer(peer)
     }
 
+    /// Updates fields for a peer. Any fields set to Some(xx) will be updated. All None
+    /// fields will remain the same.
     pub fn update_peer(
         &self,
         public_key: &CommsPublicKey,
         node_id: Option<NodeId>,
-        net_addresses: Option<Vec<NetAddress>>,
+        net_addresses: Option<Vec<Multiaddr>>,
         flags: Option<PeerFlags>,
+        peer_features: Option<PeerFeatures>,
+        connection_stats: Option<PeerConnectionStats>,
     ) -> Result<(), PeerManagerError>
     {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .update_peer(public_key, node_id, net_addresses, flags)
+        self.peer_storage.write()?.update_peer(
+            public_key,
+            node_id,
+            net_addresses,
+            flags,
+            peer_features,
+            connection_stats,
+        )
+    }
+
+    /// Set the last connection to this peer as a success
+    pub fn set_last_connect_success(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
+        let mut storage = self.peer_storage.write()?;
+        let mut peer = storage.find_by_node_id(node_id)?;
+        peer.connection_stats.set_connection_success();
+        storage.update_peer(&peer.public_key, None, None, None, None, Some(peer.connection_stats))
+    }
+
+    /// Set the last connection to this peer as a failure
+    pub fn set_last_connect_failed(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
+        let mut storage = self.peer_storage.write()?;
+        let mut peer = storage.find_by_node_id(node_id)?;
+        peer.connection_stats.set_connection_failed();
+        storage.update_peer(&peer.public_key, None, None, None, None, Some(peer.connection_stats))
     }
 
     /// The peer with the specified public_key will be removed from the PeerManager
     pub fn delete_peer(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .delete_peer(node_id)
+        self.peer_storage.write()?.delete_peer(node_id)
+    }
+
+    /// Performs the given [PeerQuery].
+    ///
+    /// [PeerQuery]: crate::peer_manager::peer_query::PeerQuery
+    pub fn perform_query(&self, peer_query: PeerQuery) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_storage.read()?.perform_query(peer_query)
     }
 
     /// Find the peer with the provided NodeID
-    pub fn find_with_node_id(&self, node_id: &NodeId) -> Result<Peer, PeerManagerError> {
-        self.peer_storage
-            .read()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .find_with_node_id(node_id)
+    pub fn find_by_node_id(&self, node_id: &NodeId) -> Result<Peer, PeerManagerError> {
+        self.peer_storage.read()?.find_by_node_id(node_id)
     }
 
     /// Find the peer with the provided PublicKey
-    pub fn find_with_public_key(&self, public_key: &CommsPublicKey) -> Result<Peer, PeerManagerError> {
-        self.peer_storage
-            .read()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .find_with_public_key(public_key)
-    }
-
-    /// Find the peer with the provided NetAddress
-    pub fn find_with_net_address(&self, net_address: &NetAddress) -> Result<Peer, PeerManagerError> {
-        self.peer_storage
-            .read()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .find_with_net_address(net_address)
+    pub fn find_by_public_key(&self, public_key: &CommsPublicKey) -> Result<Peer, PeerManagerError> {
+        self.peer_storage.read()?.find_by_public_key(public_key)
     }
 
     /// Check if a peer exist using the specified public_key
-    pub fn exists(&self, public_key: &CommsPublicKey) -> Result<bool, PeerManagerError> {
-        Ok(self
-            .peer_storage
-            .read()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .exists(public_key))
+    pub fn exists(&self, public_key: &CommsPublicKey) -> bool {
+        acquire_read_lock!(self.peer_storage).exists(public_key)
     }
 
     /// Check if a peer exist using the specified node_id
-    pub fn exists_node_id(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
-        Ok(self
-            .peer_storage
-            .read()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .exists_node_id(node_id))
+    pub fn exists_node_id(&self, node_id: &NodeId) -> bool {
+        acquire_read_lock!(self.peer_storage).exists_node_id(node_id)
     }
 
-    /// Request a sub-set of peers based on the provided BroadcastStrategy
-    pub fn get_broadcast_identities(
-        &self,
-        broadcast_strategy: BroadcastStrategy,
-    ) -> Result<Vec<PeerNodeIdentity>, PeerManagerError>
-    {
-        match broadcast_strategy {
-            BroadcastStrategy::DirectNodeId(node_id) => {
-                // Send to a particular peer matching the given node ID
-                self.peer_storage
-                    .read()
-                    .map_err(|_| PeerManagerError::PoisonedAccess)?
-                    .direct_identity_node_id(&node_id)
-            },
-            BroadcastStrategy::DirectPublicKey(public_key) => {
-                // Send to a particular peer matching the given node ID
-                self.peer_storage
-                    .read()
-                    .map_err(|_| PeerManagerError::PoisonedAccess)?
-                    .direct_identity_public_key(&public_key)
-            },
-            BroadcastStrategy::Flood => {
-                // Send to all known Communication Node peers
-                self.peer_storage
-                    .read()
-                    .map_err(|_| PeerManagerError::PoisonedAccess)?
-                    .flood_identities()
-            },
-            BroadcastStrategy::Closest(closest_request) => {
-                // Send to all n nearest neighbour Communication Nodes
-                self.peer_storage
-                    .read()
-                    .map_err(|_| PeerManagerError::PoisonedAccess)?
-                    .closest_identities(
-                        &closest_request.node_id,
-                        closest_request.n,
-                        &closest_request.excluded_peers,
-                    )
-            },
-            BroadcastStrategy::Random(n) => {
-                // Send to a random set of peers of size n that are Communication Nodes
-                self.peer_storage
-                    .write()
-                    .map_err(|_| PeerManagerError::PoisonedAccess)?
-                    .random_identities(n)
-            },
+    /// Get a peer matching the given node ID
+    pub fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
+        match self.peer_storage.read()?.direct_identity_node_id(&node_id) {
+            Ok(peer) => Ok(Some(peer)),
+            Err(PeerManagerError::PeerNotFoundError) | Err(PeerManagerError::BannedPeer) => Ok(None),
+            Err(err) => Err(err),
         }
+    }
+
+    /// Get a peer matching the given public key
+    pub fn direct_identity_public_key(&self, public_key: &CommsPublicKey) -> Result<Option<Peer>, PeerManagerError> {
+        match self.peer_storage.read()?.direct_identity_public_key(&public_key) {
+            Ok(peer) => Ok(Some(peer)),
+            Err(PeerManagerError::PeerNotFoundError) | Err(PeerManagerError::BannedPeer) => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Fetch all peers (except banned ones)
+    pub fn flood_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_storage.read()?.flood_peers()
+    }
+
+    /// Fetch n nearest neighbour Communication Nodes
+    pub fn closest_peers(
+        &self,
+        node_id: &NodeId,
+        n: usize,
+        excluded_peers: &[CommsPublicKey],
+    ) -> Result<Vec<Peer>, PeerManagerError>
+    {
+        self.peer_storage.read()?.closest_peers(node_id, n, excluded_peers)
+    }
+
+    /// Fetch n random peers
+    pub fn random_peers(&self, n: usize) -> Result<Vec<Peer>, PeerManagerError> {
+        // Send to a random set of peers of size n that are Communication Nodes
+        self.peer_storage.read()?.random_peers(n)
     }
 
     /// Check if a specific node_id is in the network region of the N nearest neighbours of the region specified by
@@ -176,89 +176,17 @@ impl PeerManager {
         n: usize,
     ) -> Result<bool, PeerManagerError>
     {
-        self.peer_storage
-            .read()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .in_network_region(node_id, region_node_id, n)
+        self.peer_storage.read()?.in_network_region(node_id, region_node_id, n)
     }
 
     /// Thread safe access to peer - Changes the ban flag bit of the peer
     pub fn set_banned(&self, node_id: &NodeId, ban_flag: bool) -> Result<(), PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .set_banned(node_id, ban_flag)
+        self.peer_storage.write()?.set_banned(node_id, ban_flag)
     }
 
     /// Thread safe access to peer - Adds a new net address to the peer if it doesn't yet exist
-    pub fn add_net_address(&self, node_id: &NodeId, net_address: &NetAddress) -> Result<(), PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .add_net_address(node_id, net_address)
-    }
-
-    /// Thread safe access to peer - Finds and returns the highest priority net address until all connection attempts
-    /// for each net address have been reached
-    pub fn get_best_net_address(&self, node_id: &NodeId) -> Result<NetAddress, PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .get_best_net_address(node_id)
-    }
-
-    /// Thread safe access to peer - The average connection latency of the provided net address will be updated to
-    /// include the current measured latency sample
-    pub fn update_latency(
-        &self,
-        net_address: &NetAddress,
-        latency_measurement: Duration,
-    ) -> Result<(), PeerManagerError>
-    {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .update_latency(net_address, latency_measurement)
-    }
-
-    /// Thread safe access to peer - Mark that a message was received from the specified net address
-    pub fn mark_message_received(&self, net_address: &NetAddress) -> Result<(), PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .mark_message_received(net_address)
-    }
-
-    /// Thread safe access to peer - Mark that a rejected message was received from the specified net address
-    pub fn mark_message_rejected(&self, net_address: &NetAddress) -> Result<(), PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .mark_message_rejected(net_address)
-    }
-
-    /// Thread safe access to peer - Mark that a successful connection was established with the specified net address
-    pub fn mark_successful_connection_attempt(&self, net_address: &NetAddress) -> Result<(), PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .mark_successful_connection_attempt(net_address)
-    }
-
-    /// Thread safe access to peer - Mark that a connection could not be established with the specified net address
-    pub fn mark_failed_connection_attempt(&self, net_address: &NetAddress) -> Result<(), PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .mark_failed_connection_attempt(net_address)
-    }
-
-    /// Thread safe access to peer - Reset all connection attempts on all net addresses for peer
-    pub fn reset_connection_attempts(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        self.peer_storage
-            .write()
-            .map_err(|_| PeerManagerError::PoisonedAccess)?
-            .reset_connection_attempts(node_id)
+    pub fn add_net_address(&self, node_id: &NodeId, net_address: &Multiaddr) -> Result<(), PeerManagerError> {
+        self.peer_storage.write()?.add_net_address(node_id, net_address)
     }
 }
 
@@ -266,22 +194,28 @@ impl PeerManager {
 mod test {
     use super::*;
     use crate::{
-        connection::net_address::{net_addresses::NetAddressesWithStats, NetAddress},
-        outbound_message_service::broadcast_strategy::ClosestRequest,
+        net_address::MultiaddressesWithStats,
         peer_manager::{
             node_id::NodeId,
             peer::{Peer, PeerFlags},
+            PeerFeatures,
         },
     };
-    use rand::OsRng;
+    use rand::rngs::OsRng;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::HMapDatabase;
+    use tari_storage::HashmapDatabase;
 
-    fn create_test_peer(rng: &mut OsRng, ban_flag: bool) -> Peer {
-        let (_sk, pk) = RistrettoPublicKey::random_keypair(rng);
+    fn create_test_peer(ban_flag: bool) -> Peer {
+        let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let node_id = NodeId::from_key(&pk).unwrap();
-        let net_addresses = NetAddressesWithStats::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());
-        let mut peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default());
+        let net_addresses = MultiaddressesWithStats::from("/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap());
+        let mut peer = Peer::new(
+            pk,
+            node_id,
+            net_addresses,
+            PeerFlags::default(),
+            PeerFeatures::MESSAGE_PROPAGATION,
+        );
         peer.set_banned(ban_flag);
         peer
     }
@@ -289,39 +223,40 @@ mod test {
     #[test]
     fn test_get_broadcast_identities() {
         // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HMapDatabase::new()).unwrap();
+        let peer_manager = PeerManager::new(HashmapDatabase::new()).unwrap();
         let mut test_peers: Vec<Peer> = Vec::new();
         // Create 20 peers were the 1st and last one is bad
-        let mut rng = rand::OsRng::new().unwrap();
-        test_peers.push(create_test_peer(&mut rng, true));
+        let _rng = rand::rngs::OsRng;
+        test_peers.push(create_test_peer(true));
         assert!(peer_manager.add_peer(test_peers[test_peers.len() - 1].clone()).is_ok());
         for _i in 0..18 {
-            test_peers.push(create_test_peer(&mut rng, false));
+            test_peers.push(create_test_peer(false));
             assert!(peer_manager.add_peer(test_peers[test_peers.len() - 1].clone()).is_ok());
         }
-        test_peers.push(create_test_peer(&mut rng, true));
+        test_peers.push(create_test_peer(true));
         assert!(peer_manager.add_peer(test_peers[test_peers.len() - 1].clone()).is_ok());
 
         // Test Valid Direct
-        let identities = peer_manager
-            .get_broadcast_identities(BroadcastStrategy::DirectNodeId(test_peers[2].node_id.clone()))
+        let selected_peers = peer_manager
+            .direct_identity_node_id(&test_peers[2].node_id)
+            .unwrap()
             .unwrap();
-        assert_eq!(identities.len(), 1);
-        assert_eq!(identities[0].node_id, test_peers[2].node_id);
-        assert_eq!(identities[0].public_key, test_peers[2].public_key);
+        assert_eq!(selected_peers.node_id, test_peers[2].node_id);
+        assert_eq!(selected_peers.public_key, test_peers[2].public_key);
         // Test Invalid Direct
-        let unmanaged_peer = create_test_peer(&mut rng, false);
+        let unmanaged_peer = create_test_peer(false);
         assert!(peer_manager
-            .get_broadcast_identities(BroadcastStrategy::DirectNodeId(unmanaged_peer.node_id.clone()))
-            .is_err());
+            .direct_identity_node_id(&unmanaged_peer.node_id)
+            .unwrap()
+            .is_none());
 
         // Test Flood
-        let identities = peer_manager.get_broadcast_identities(BroadcastStrategy::Flood).unwrap();
-        assert_eq!(identities.len(), 18);
-        for peer_identity in &identities {
+        let selected_peers = peer_manager.flood_peers().unwrap();
+        assert_eq!(selected_peers.len(), 18);
+        for peer_identity in &selected_peers {
             assert_eq!(
                 peer_manager
-                    .find_with_node_id(&peer_identity.node_id)
+                    .find_by_node_id(&peer_identity.node_id)
                     .unwrap()
                     .is_banned(),
                 false
@@ -329,18 +264,14 @@ mod test {
         }
 
         // Test Closest - No exclusions
-        let identities = peer_manager
-            .get_broadcast_identities(BroadcastStrategy::Closest(ClosestRequest {
-                n: 3,
-                node_id: unmanaged_peer.node_id.clone(),
-                excluded_peers: Vec::new(),
-            }))
+        let selected_peers = peer_manager
+            .closest_peers(&unmanaged_peer.node_id, 3, &Vec::new())
             .unwrap();
-        assert_eq!(identities.len(), 3);
+        assert_eq!(selected_peers.len(), 3);
         // Remove current identity nodes from test peers
         let mut unused_peers: Vec<Peer> = Vec::new();
         for peer in &test_peers {
-            if !identities
+            if !selected_peers
                 .iter()
                 .any(|peer_identity| peer.node_id == peer_identity.node_id || peer.is_banned())
             {
@@ -348,7 +279,7 @@ mod test {
             }
         }
         // Check that none of the remaining unused peers have smaller distances compared to the selected peers
-        for peer_identity in &identities {
+        for peer_identity in &selected_peers {
             let selected_dist = unmanaged_peer.node_id.distance(&peer_identity.node_id);
             for unused_peer in &unused_peers {
                 let unused_dist = unmanaged_peer.node_id.distance(&unused_peer.node_id);
@@ -358,28 +289,23 @@ mod test {
 
         // Test Closest - With an exclusion
         let excluded_peers = vec![
-            identities[0].public_key.clone(), // ,identities[1].public_key.clone()
+            selected_peers[0].public_key.clone(), // ,selected_peers[1].public_key.clone()
         ];
-        let identities = peer_manager
-            .get_broadcast_identities(BroadcastStrategy::Closest(ClosestRequest {
-                n: 3,
-                node_id: unmanaged_peer.node_id.clone(),
-                excluded_peers: excluded_peers.clone(),
-            }))
+        let selected_peers = peer_manager
+            .closest_peers(&unmanaged_peer.node_id, 3, &excluded_peers)
             .unwrap();
-        println!("identities.len()={:?}", identities.len());
-        assert_eq!(identities.len(), 3);
+        assert_eq!(selected_peers.len(), 3);
         // Remove current identity nodes from test peers
         let mut unused_peers: Vec<Peer> = Vec::new();
         for peer in &test_peers {
-            if !identities.iter().any(|peer_identity| {
+            if !selected_peers.iter().any(|peer_identity| {
                 peer.node_id == peer_identity.node_id || peer.is_banned() || excluded_peers.contains(&peer.public_key)
             }) {
                 unused_peers.push(peer.clone());
             }
         }
         // Check that none of the remaining unused peers have smaller distances compared to the selected peers
-        for peer_identity in &identities {
+        for peer_identity in &selected_peers {
             let selected_dist = unmanaged_peer.node_id.distance(&peer_identity.node_id);
             for unused_peer in &unused_peers {
                 let unused_dist = unmanaged_peer.node_id.distance(&unused_peer.node_id);
@@ -389,25 +315,21 @@ mod test {
         }
 
         // Test Random
-        let identities1 = peer_manager
-            .get_broadcast_identities(BroadcastStrategy::Random(10))
-            .unwrap();
-        let identities2 = peer_manager
-            .get_broadcast_identities(BroadcastStrategy::Random(10))
-            .unwrap();
+        let identities1 = peer_manager.random_peers(10).unwrap();
+        let identities2 = peer_manager.random_peers(10).unwrap();
         assert_ne!(identities1, identities2);
     }
 
     #[test]
     fn test_in_network_region() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let _rng = rand::rngs::OsRng;
         // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HMapDatabase::new()).unwrap();
-        let network_region_node_id = create_test_peer(&mut rng, false).node_id;
+        let peer_manager = PeerManager::new(HashmapDatabase::new()).unwrap();
+        let network_region_node_id = create_test_peer(false).node_id;
         // Create peers
         let mut test_peers: Vec<Peer> = Vec::new();
         for _ in 0..10 {
-            test_peers.push(create_test_peer(&mut rng, false));
+            test_peers.push(create_test_peer(false));
             assert!(peer_manager.add_peer(test_peers[test_peers.len() - 1].clone()).is_ok());
         }
         test_peers[0].set_banned(true);
@@ -416,11 +338,7 @@ mod test {
         // Get nearest neighbours
         let n = 5;
         let nearest_identities = peer_manager
-            .get_broadcast_identities(BroadcastStrategy::Closest(ClosestRequest {
-                n,
-                node_id: network_region_node_id.clone(),
-                excluded_peers: Vec::new(),
-            }))
+            .closest_peers(&network_region_node_id, n, &Vec::new())
             .unwrap();
 
         for peer in &test_peers {
@@ -437,53 +355,5 @@ mod test {
                     .unwrap());
             }
         }
-    }
-
-    #[test]
-    fn test_peer_reset_connection_attempts() {
-        // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HMapDatabase::new()).unwrap();
-        let mut rng = rand::OsRng::new().unwrap();
-        let peer = create_test_peer(&mut rng, false);
-        peer_manager.add_peer(peer.clone()).unwrap();
-
-        peer_manager
-            .mark_failed_connection_attempt(&peer.addresses.addresses[0].clone().as_net_address())
-            .unwrap();
-        peer_manager
-            .mark_failed_connection_attempt(&peer.addresses.addresses[0].clone().as_net_address())
-            .unwrap();
-        assert_eq!(
-            peer_manager
-                .find_with_node_id(&peer.node_id.clone())
-                .unwrap()
-                .addresses
-                .addresses[0]
-                .connection_attempts,
-            2
-        );
-        peer_manager.reset_connection_attempts(&peer.node_id.clone()).unwrap();
-        assert_eq!(
-            peer_manager
-                .find_with_node_id(&peer.node_id.clone())
-                .unwrap()
-                .addresses
-                .addresses[0]
-                .connection_attempts,
-            0
-        );
-    }
-
-    #[test]
-    fn test_adding_and_searching_by_net_address() {
-        // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HMapDatabase::new()).unwrap();
-        let mut rng = rand::OsRng::new().unwrap();
-        let peer = create_test_peer(&mut rng, false);
-        peer_manager.add_peer(peer.clone()).unwrap();
-        // Test NetAddress adding and searching
-        let net_address = NetAddress::from("1.2.3.4:7000".parse::<NetAddress>().unwrap());
-        assert!(peer_manager.add_net_address(&peer.node_id, &net_address).is_ok());
-        assert!(peer_manager.find_with_net_address(&net_address).is_ok());
     }
 }

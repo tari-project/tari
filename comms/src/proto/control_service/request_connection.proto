@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package tari.comms.control_service;
+
+message RequestConnectionMessage {
+    string control_service_address = 1;
+    bytes node_id = 2;
+    uint64 features = 3;
+}
+
+// Represents the reason for a peer connection request being rejected
+enum RejectReason {
+    // No reject reason given
+    RejectReasonNone = 0;
+    // Peer already has an existing active peer connection
+    RejectReasonExistingConnection = 1;
+    // A connection collision has been detected, foreign node should abandon the connection attempt
+    RejectReasonCollisionDetected = 2;
+}
+
+// Represents an outcome for the request to establish a new [PeerConnection].
+//
+// [PeerConnection]: ../../connection/peer_connection/index.html
+message RequestConnectionOutcome {
+    // True if the connection is accepted, otherwise false
+    bool accepted = 1;
+    // The zeroMQ Curve public key to use for the peer connection
+    bytes curve_public_key = 2;
+    /// The address of the open port to connect to
+    string address = 3;
+    /// If this connection was not accepted, the rejection reason is given
+    RejectReason reject_reason = 4;
+    /// The identity to use when connecting
+    bytes identity = 5;
+}

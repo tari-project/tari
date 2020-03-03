@@ -30,18 +30,18 @@ lazy_static! {
     static ref PORT_COUNTER: Mutex<u16> = Mutex::new(PORT_RANGE.start);
 }
 
-/// Maintains a counter of ports within a range (40000..48000), returning them in
-/// sequence. Port numbers will wrap back to 40000 once the upper bound is exceeded.
+/// Maintains a counter of ports within a range (20000..30000), returning them in
+/// sequence. Port numbers will wrap back to 20000 once the upper bound is exceeded.
+/// This range is chosen because OS-assigned ports are not typically in this range.
 pub fn get_next_local_port() -> u16 {
     let mut lock = match PORT_COUNTER.lock() {
         Ok(guard) => guard,
         Err(_) => panic!("Poisoned PORT_COUNTER"),
     };
-    let port = {
+    {
         *lock = cmp::max((*lock + 1) % PORT_RANGE.end, PORT_RANGE.start);
         *lock
-    };
-    port
+    }
 }
 
 /// Returns a local address with the next port in specified range.

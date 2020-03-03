@@ -20,14 +20,48 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod error;
-mod mempool;
-mod orphan_pool;
-mod pending_pool;
-mod priority;
-mod reorg_pool;
-mod unconfirmed_pool;
+cfg_if! {
+    if #[cfg(feature = "base_node")] {
+        mod config;
+        mod consts;
+        mod error;
+        mod mempool;
+        mod orphan_pool;
+        mod pending_pool;
+        mod priority;
+        mod reorg_pool;
+        mod unconfirmed_pool;
+        // Public re-exports
+        pub use self::config::{MempoolConfig, MempoolServiceConfig};
+        pub use error::MempoolError;
+        pub use mempool::{Mempool, MempoolValidators};
+        pub use service::{MempoolServiceError, MempoolServiceInitializer, OutboundMempoolServiceInterface};
+    }
+}
 
-// Public re-exports
-pub use error::MempoolError;
-pub use mempool::Mempool;
+cfg_if! {
+    if #[cfg(any(feature = "base_node", feature = "mempool_proto"))] {
+        pub mod proto;
+        pub mod service;
+     }
+}
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct StatsResponse {
+    pub total_txs: usize,
+    pub unconfirmed_txs: usize,
+    pub orphan_txs: usize,
+    pub timelocked_txs: usize,
+    pub published_txs: usize,
+    pub total_weight: u64,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub enum TxStorageResponse {
+    UnconfirmedPool,
+    OrphanPool,
+    PendingPool,
+    ReorgPool,
+    NotStored,
+}

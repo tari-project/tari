@@ -1,7 +1,42 @@
 version: 2.1
 
 defaults:
-  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2019-10-04
+  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2020-01-08
+
+commands:
+  test:
+    description: Run the tests
+    parameters:
+      release:
+        description: Set this to true to compile in release mode.
+        type: boolean
+        default: false
+    steps:
+      - run:
+          name: Calculate dependencies
+          command: |
+            rustc --version >rust-version
+            test -e Cargo.lock || cargo generate-lockfile
+      - restore_cache:
+          keys:
+            - v6-cargo-cache-{{arch}}-{{checksum "rust-version"}}-<<parameters.release>>-{{checksum "Cargo.lock"}}
+      - run:
+          name: Build the project
+          command: cargo build --all --all-features --jobs=3 <<#parameters.release>>--release<</parameters.release>>
+      - run:
+          name: Cargo fmt (ignored in release mode)
+          command: |
+            TOOLCHAIN=$(cat rust-toolchain)
+            <<#parameters.release>>#<</parameters.release>> rustup component add --toolchain $TOOLCHAIN rustfmt
+            <<#parameters.release>>#<</parameters.release>> cargo fmt --all -- --check
+      - run:
+          name: Run tests
+          command: cargo test --workspace --all-features --jobs=3 <<#parameters.release>>--release<</parameters.release>>
+      - save_cache:
+          paths:
+            - /usr/local/cargo/registry
+            - target
+          key: v6-cargo-cache-{{arch}}-{{checksum "rust-version"}}-<<parameters.release>>-{{checksum "Cargo.lock"}}
 
 jobs:
   test-docs:
@@ -9,10 +44,6 @@ jobs:
       - image: *rust_image
     steps:
       - checkout
-      - run:
-          command: |
-            git submodule update --init --recursive
-          name: Init git submodule
       - run:
           name: RFC documentation
           command: |
@@ -24,15 +55,29 @@ jobs:
           root: .
           paths: book
 
+  test-tari-debug:
+    docker:
+      - image: *rust_image
+    resource_class: medium
+    steps:
+      - checkout
+      - test:
+          release: false
+
+  test-tari-release:
+    docker:
+      - image: *rust_image
+    resource_class: medium
+    steps:
+      - checkout
+      - test:
+          release: true
+
   deploy-docs:
     docker:
       - image: quay.io/tarilabs/git-ssh-client:0.2-alpine
     steps:
       - checkout
-      - run:
-          command: |
-            git submodule update --init --recursive
-          name: Init git submodule
       - attach_workspace:
           at: .
       - add_ssh_keys:
@@ -70,26 +115,7 @@ jobs:
 
             echo "Published."
 
-  test-tari:
-    docker:
-      - image: *rust_image
-    resource_class: medium
-    steps:
-      - checkout
-      - run:
-          command: |
-            git submodule update --init --recursive
-          name: Init git submodule
-      - run:
-          name: Tari source code
-          command: |
-            TOOLCHAIN=$(cat rust-toolchain)
-            NUM_JOBS=2
-            rustup component add --toolchain $TOOLCHAIN rustfmt
-            cargo build --jobs=$NUM_JOBS --all-features
-            cargo fmt --all -- --check
-            cargo test --workspace --all-features --jobs=$NUM_JOBS
-            cargo test --workspace --all-features --release --jobs=$NUM_JOBS
+
 
 workflows:
   version: 2
@@ -99,14 +125,17 @@ workflows:
           filters:
             branches:
               ignore: gh-pages
-      - test-tari:
-          filters:
-            branches:
-              ignore: gh-pages
       - deploy-docs:
           requires:
             - test-docs
           filters:
             branches:
               only: development
-
+      - test-tari-debug:
+          filters:
+            branches:
+              ignore: gh-pages
+      - test-tari-release:
+          filters:
+            branches:
+              ignore: gh-pages

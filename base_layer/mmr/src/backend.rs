@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::error::MerkleMountainRangeError;
+use std::cmp::min;
 
 /// A trait describing generic array-like behaviour, without imposing any specific details on how this is actually done.
 pub trait ArrayLike {
@@ -28,17 +29,23 @@ pub trait ArrayLike {
     type Error: std::error::Error;
 
     /// Returns the number of hashes stored in the backend
-    fn len(&self) -> usize;
+    fn len(&self) -> Result<usize, Self::Error>;
+
+    /// Returns if empty
+    fn is_empty(&self) -> Result<bool, Self::Error>;
 
     /// Store a new item and return the index of the stored item
     fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error>;
 
     /// Return the item at the given index
-    fn get(&self, index: usize) -> Option<&Self::Value>;
+    fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error>;
 
     /// Return the item at the given index. Use this if you *know* that the index is valid. Requesting a hash for an
     /// invalid index may cause the a panic
-    fn get_or_panic(&self, index: usize) -> &Self::Value;
+    fn get_or_panic(&self, index: usize) -> Self::Value;
+
+    /// Remove all stored items from the the backend.
+    fn clear(&mut self) -> Result<(), Self::Error>;
 }
 
 pub trait ArrayLikeExt {
@@ -47,17 +54,24 @@ pub trait ArrayLikeExt {
     /// Shortens the array, keeping the first len elements and dropping the rest.
     fn truncate(&mut self, _len: usize) -> Result<(), MerkleMountainRangeError>;
 
+    /// Shift the array, by discarding the first n elements from the front.
+    fn shift(&mut self, n: usize) -> Result<(), MerkleMountainRangeError>;
+
     /// Execute the given closure for each value in the array
     fn for_each<F>(&self, f: F) -> Result<(), MerkleMountainRangeError>
-    where F: FnMut(Result<&Self::Value, MerkleMountainRangeError>);
+    where F: FnMut(Result<Self::Value, MerkleMountainRangeError>);
 }
 
-impl<T> ArrayLike for Vec<T> {
+impl<T: Clone> ArrayLike for Vec<T> {
     type Error = MerkleMountainRangeError;
     type Value = T;
 
-    fn len(&self) -> usize {
-        Vec::len(self)
+    fn len(&self) -> Result<usize, Self::Error> {
+        Ok(Vec::len(self))
+    }
+
+    fn is_empty(&self) -> Result<bool, Self::Error> {
+        Ok(Vec::is_empty(self))
     }
 
     fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error> {
@@ -65,16 +79,21 @@ impl<T> ArrayLike for Vec<T> {
         Ok(self.len() - 1)
     }
 
-    fn get(&self, index: usize) -> Option<&Self::Value> {
-        (self as &[Self::Value]).get(index)
+    fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error> {
+        Ok((self as &[Self::Value]).get(index).map(Clone::clone))
     }
 
-    fn get_or_panic(&self, index: usize) -> &Self::Value {
-        &self[index]
+    fn get_or_panic(&self, index: usize) -> Self::Value {
+        self[index].clone()
+    }
+
+    fn clear(&mut self) -> Result<(), Self::Error> {
+        Vec::clear(self);
+        Ok(())
     }
 }
 
-impl<T> ArrayLikeExt for Vec<T> {
+impl<T: Clone> ArrayLikeExt for Vec<T> {
     type Value = T;
 
     fn truncate(&mut self, len: usize) -> Result<(), MerkleMountainRangeError> {
@@ -82,9 +101,15 @@ impl<T> ArrayLikeExt for Vec<T> {
         Ok(())
     }
 
+    fn shift(&mut self, n: usize) -> Result<(), MerkleMountainRangeError> {
+        let drain_n = min(n, self.len());
+        self.drain(0..drain_n);
+        Ok(())
+    }
+
     fn for_each<F>(&self, f: F) -> Result<(), MerkleMountainRangeError>
-    where F: FnMut(Result<&Self::Value, MerkleMountainRangeError>) {
-        self.iter().map(|v| Ok(v)).for_each(f);
+    where F: FnMut(Result<Self::Value, MerkleMountainRangeError>) {
+        self.iter().map(|v| Ok(v.clone())).for_each(f);
         Ok(())
     }
 }

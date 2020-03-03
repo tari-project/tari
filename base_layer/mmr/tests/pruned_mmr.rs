@@ -20,17 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[allow(dead_code)]
 mod support;
 
-use support::{create_mmr, int_to_hash};
-use tari_mmr::pruned_mmr::prune_mmr;
+use rand::{
+    distributions::{Distribution, Uniform},
+    Rng,
+};
+use support::{create_mmr, create_mutable_mmr, int_to_hash};
+use tari_mmr::{
+    functions::{calculate_mmr_root, calculate_pruned_mmr_root, prune_mmr},
+    Hash,
+};
 
 #[test]
 fn pruned_mmr_empty() {
     let mmr = create_mmr(0);
     let root = mmr.get_merkle_root();
     let pruned = prune_mmr(&mmr).expect("Could not create empty pruned MMR");
-    assert!(pruned.is_empty());
+    assert_eq!(pruned.is_empty(), Ok(true));
     assert_eq!(pruned.get_merkle_root(), root);
 }
 
@@ -50,7 +58,62 @@ fn pruned_mmrs() {
         assert!(pruned.push(&int_to_hash(*size + 1)).is_ok());
         assert_eq!(pruned.get_merkle_root(), mmr2.get_merkle_root());
         // But you can only get recent hashes
-        assert!(pruned.get_leaf_hash(*size / 2).is_none());
-        assert_eq!(pruned.get_leaf_hash(*size).unwrap(), &new_hash)
+        assert_eq!(pruned.get_leaf_hash(*size / 2), Ok(None));
+        assert_eq!(pruned.get_leaf_hash(*size), Ok(Some(new_hash)))
     }
+}
+
+fn get_changes() -> (usize, Vec<Hash>, Vec<u32>) {
+    let mut rng = rand::thread_rng();
+    let src_size: usize = rng.gen_range(25, 150);
+    let addition_length = rng.gen_range(1, 100);
+    let additions: Vec<Hash> = Uniform::from(1..1000)
+        .sample_iter(rng)
+        .take(addition_length)
+        .map(int_to_hash)
+        .collect();
+    let deletions: Vec<u32> = Uniform::from(0..src_size)
+        .sample_iter(rng)
+        .take(src_size / 5)
+        .map(|v| v as u32)
+        .collect();
+    (src_size, additions, deletions)
+}
+
+/// Create a random-sized MMR. Add a random number of additions and deletions; and check the new root against the
+/// result of `calculate_pruned_mmr_root`
+#[test]
+pub fn calculate_pruned_mmr_roots() {
+    let (src_size, additions, deletions) = get_changes();
+    let mut src = create_mutable_mmr(src_size);
+    let src_root = src.get_merkle_root().expect("Did not get source root");
+    let root =
+        calculate_pruned_mmr_root(&src, additions.clone(), deletions.clone()).expect("Did not calculate new root");
+    assert_ne!(src_root, root);
+    // Double check
+    additions.iter().for_each(|h| {
+        src.push(h).unwrap();
+    });
+    deletions.iter().for_each(|i| {
+        src.delete(*i);
+    });
+    let new_root = src.get_merkle_root().expect("Did not calculate new root");
+    assert_eq!(root, new_root);
+}
+
+/// Create a random-sized MMR. Add a random number of additions; and check the new root against the
+/// result of `calculate_mmr_root`
+#[test]
+pub fn calculate_mmr_roots() {
+    let (src_size, additions, _) = get_changes();
+    let mut src = create_mmr(src_size);
+    let src_root = src.get_merkle_root().expect("Did not get source root");
+    let root = calculate_mmr_root(&src, additions.clone()).expect("Did not calculate new root");
+    assert_ne!(src_root, root);
+    // Double check
+    additions.iter().for_each(|h| {
+        src.push(h).unwrap();
+    });
+    let new_root = src.get_merkle_root().expect("Did not calculate new root");
+    assert_eq!(root, new_root);
 }

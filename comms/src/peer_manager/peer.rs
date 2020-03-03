@@ -21,20 +21,18 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::node_id::deserialize_node_id_from_hex;
-use bitflags::*;
-use chrono::prelude::*;
-use serde::{Deserialize, Serialize};
-use tari_utilities::hex::serialize_to_hex;
-
 use crate::{
-    connection::{
-        net_address::{net_addresses::NetAddressesWithStats, NetAddressWithStats},
-        NetAddress,
-    },
-    peer_manager::{node_id::NodeId, PeerManagerError},
+    consts::PEER_OFFLINE_COOLDOWN_PERIOD,
+    net_address::MultiaddressesWithStats,
+    peer_manager::{connection_stats::PeerConnectionStats, node_id::NodeId, peer_id::PeerId, PeerFeatures},
     types::CommsPublicKey,
 };
-// TODO reputation metric?
+use bitflags::bitflags;
+use chrono::{DateTime, NaiveDateTime, Utc};
+use multiaddr::Multiaddr;
+use serde::{Deserialize, Serialize};
+use std::fmt::Display;
+use tari_crypto::tari_utilities::hex::serialize_to_hex;
 
 bitflags! {
     #[derive(Default, Deserialize, Serialize)]
@@ -43,17 +41,27 @@ bitflags! {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeerIdentity {
+    pub node_id: NodeId,
+    pub public_key: CommsPublicKey,
+}
+
 /// A Peer represents a communication peer that is identified by a Public Key and NodeId. The Peer struct maintains a
 /// collection of the NetAddressesWithStats that this Peer can be reached by. The struct also maintains a set of flags
 /// describing the status of the Peer.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Peer {
+    id: Option<PeerId>,
     pub public_key: CommsPublicKey,
     #[serde(serialize_with = "serialize_to_hex")]
     #[serde(deserialize_with = "deserialize_node_id_from_hex")]
     pub node_id: NodeId,
-    pub addresses: NetAddressesWithStats,
+    pub addresses: MultiaddressesWithStats,
     pub flags: PeerFlags,
+    pub features: PeerFeatures,
+    pub connection_stats: PeerConnectionStats,
+    pub added_at: NaiveDateTime,
 }
 
 impl Peer {
@@ -61,40 +69,64 @@ impl Peer {
     pub fn new(
         public_key: CommsPublicKey,
         node_id: NodeId,
-        addresses: NetAddressesWithStats,
+        addresses: MultiaddressesWithStats,
         flags: PeerFlags,
+        features: PeerFeatures,
     ) -> Peer
     {
         Peer {
+            id: None,
             public_key,
             node_id,
             addresses,
             flags,
+            features,
+            connection_stats: Default::default(),
+            added_at: Utc::now().naive_utc(),
         }
     }
 
-    /// Constructs a new peer
-    pub fn from_public_key_and_address(
-        public_key: CommsPublicKey,
-        net_address: NetAddress,
-    ) -> Result<Peer, PeerManagerError>
-    {
-        let node_id = NodeId::from_key(&public_key)?;
-        let addresses = NetAddressesWithStats::new(vec![NetAddressWithStats::new(net_address.clone())]);
+    /// Returns the peers local id if this peer is persisted.
+    ///
+    /// This method panics if the peer does not have a PeerId, and therefore is not persisted.
+    /// If the caller should be sure that the peer is persisted before calling this function.
+    /// This can be checked by using `Peer::is_persisted`.
+    #[inline]
+    pub fn id(&self) -> PeerId {
+        self.id.expect("call to Peer::id() when peer is not persisted")
+    }
 
-        Ok(Peer {
-            public_key,
-            node_id,
-            addresses,
-            flags: PeerFlags::empty(),
-        })
+    pub fn is_persisted(&self) -> bool {
+        self.id.is_some()
+    }
+
+    /// Returns true if the last connection attempt has failed within the constant
+    /// [PEER_OFFLINE_COOLDOWN_PERIOD](crate::consts::PEER_OFFLINE_COOLDOWN_PERIOD).
+    pub fn is_offline(&self) -> bool {
+        self.connection_stats.failed_attempts() > 1 &&
+            self.connection_stats
+                .time_since_last_failure()
+                .map(|last_failure| last_failure <= PEER_OFFLINE_COOLDOWN_PERIOD)
+                .unwrap_or(false)
+    }
+
+    pub(super) fn set_id(&mut self, id: PeerId) {
+        debug_assert!(self.id.is_none());
+        self.id = Some(id);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_id_for_test(&mut self, id: PeerId) {
+        self.id = Some(id);
     }
 
     pub fn update(
         &mut self,
         node_id: Option<NodeId>,
-        net_addresses: Option<Vec<NetAddress>>,
+        net_addresses: Option<Vec<Multiaddr>>,
         flags: Option<PeerFlags>,
+        features: Option<PeerFeatures>,
+        connection_stats: Option<PeerConnectionStats>,
     )
     {
         if let Some(new_node_id) = node_id {
@@ -106,11 +138,22 @@ impl Peer {
         if let Some(new_flags) = flags {
             self.flags = new_flags
         };
+        if let Some(new_features) = features {
+            self.features = new_features;
+        }
+        if let Some(connection_stats) = connection_stats {
+            self.connection_stats = connection_stats;
+        }
     }
 
     /// Provides that date time of the last successful interaction with the peer
     pub fn last_seen(&self) -> Option<DateTime<Utc>> {
         self.addresses.last_seen()
+    }
+
+    /// Returns true if this peer has the given feature, otherwise false
+    pub fn has_features(&self, features: PeerFeatures) -> bool {
+        self.features.contains(features)
     }
 
     /// Returns the ban status of the peer
@@ -124,25 +167,35 @@ impl Peer {
     }
 }
 
+/// Display Peer as `[peer_id]: <pubkey>`
+impl Display for Peer {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(&format!(
+            "[{}]: {}",
+            self.id.map(|v| v.to_string()).unwrap_or("NoID".to_string()),
+            self.public_key,
+        ))
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        connection::{net_address::net_addresses::NetAddressesWithStats, NetAddress},
-        peer_manager::node_id::NodeId,
-        types::CommsPublicKey,
-    };
+    use crate::{net_address::MultiaddressesWithStats, peer_manager::NodeId, types::CommsPublicKey};
     use serde_json::Value;
-    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_utilities::{hex::Hex, message_format::MessageFormat};
+    use tari_crypto::{
+        keys::PublicKey,
+        ristretto::RistrettoPublicKey,
+        tari_utilities::{hex::Hex, message_format::MessageFormat},
+    };
 
     #[test]
     fn test_is_and_set_banned() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::rngs::OsRng;
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
-        let addresses = NetAddressesWithStats::from("123.0.0.123:8000".parse::<NetAddress>().unwrap());
-        let mut peer: Peer = Peer::new(pk, node_id, addresses, PeerFlags::default());
+        let addresses = MultiaddressesWithStats::from("/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap());
+        let mut peer: Peer = Peer::new(pk, node_id, addresses, PeerFlags::default(), PeerFeatures::empty());
         assert_eq!(peer.is_banned(), false);
         peer.set_banned(true);
         assert_eq!(peer.is_banned(), true);
@@ -152,26 +205,29 @@ mod test {
 
     #[test]
     fn test_update() {
-        let mut rng = rand::OsRng::new().unwrap();
+        let mut rng = rand::rngs::OsRng;
         let (_sk, public_key1) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&public_key1).unwrap();
-        let net_address1 = "124.0.0.124:7000".parse::<NetAddress>().unwrap();
+        let net_address1 = "/ip4/124.0.0.124/tcp/7000".parse::<Multiaddr>().unwrap();
         let mut peer: Peer = Peer::new(
             public_key1.clone(),
             node_id,
-            NetAddressesWithStats::from(net_address1.clone()),
+            MultiaddressesWithStats::from(net_address1.clone()),
             PeerFlags::default(),
+            PeerFeatures::empty(),
         );
 
         let (_sk, public_key2) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id2 = NodeId::from_key(&public_key2).unwrap();
-        let net_address2 = "125.0.0.125:8000".parse::<NetAddress>().unwrap();
-        let net_address3 = "126.0.0.126:9000".parse::<NetAddress>().unwrap();
+        let net_address2 = "/ip4/125.0.0.125/tcp/8000".parse::<Multiaddr>().unwrap();
+        let net_address3 = "/ip4/126.0.0.126/tcp/9000".parse::<Multiaddr>().unwrap();
 
         peer.update(
             Some(node_id2.clone()),
             Some(vec![net_address2.clone(), net_address3.clone()]),
             Some(PeerFlags::BANNED),
+            Some(PeerFeatures::MESSAGE_PROPAGATION),
+            Some(PeerConnectionStats::new()),
         );
 
         assert_eq!(peer.public_key, public_key1);
@@ -180,31 +236,33 @@ mod test {
             .addresses
             .addresses
             .iter()
-            .any(|net_address_with_stats| net_address_with_stats.net_address == net_address1));
+            .any(|net_address_with_stats| net_address_with_stats.address == net_address1));
         assert!(peer
             .addresses
             .addresses
             .iter()
-            .any(|net_address_with_stats| net_address_with_stats.net_address == net_address2));
+            .any(|net_address_with_stats| net_address_with_stats.address == net_address2));
         assert!(peer
             .addresses
             .addresses
             .iter()
-            .any(|net_address_with_stats| net_address_with_stats.net_address == net_address3));
+            .any(|net_address_with_stats| net_address_with_stats.address == net_address3));
         assert_eq!(peer.flags, PeerFlags::BANNED);
+        assert_eq!(peer.has_features(PeerFeatures::MESSAGE_PROPAGATION), true);
     }
 
     #[test]
     fn json_ser_der() {
         let expected_pk_hex = "02622ace8f7303a31cafc63f8fc48fdc16e1c8c8d234b2f0d6685282a9076031";
-        let expected_nodeid_hex = "5f517508fdaeef0aeae7b577336731dfb6fe60bbbde363a5712100109b5d0f69";
+        let expected_nodeid_hex = "c1a7552e5d9e9b257c4008b965";
         let pk = CommsPublicKey::from_hex(expected_pk_hex).unwrap();
         let node_id = NodeId::from_key(&pk).unwrap();
         let peer = Peer::new(
             pk,
             node_id,
-            "127.0.0.1:9000".parse::<NetAddress>().unwrap().into(),
+            "/ip4/127.0.0.1/tcp/9000".parse::<Multiaddr>().unwrap().into(),
             PeerFlags::empty(),
+            PeerFeatures::empty(),
         );
 
         let json = peer.to_json().unwrap();

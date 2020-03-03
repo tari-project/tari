@@ -20,10 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::proof_of_work::error::DifficultyAdjustmentError;
 use bitflags::_core::ops::Div;
 use newtype_ops::newtype_ops;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 /// Minimum difficulty, enforced in diff retargetting
 /// avoids getting stuck when trying to increase difficulty subject to dampening
@@ -35,14 +37,26 @@ pub struct Difficulty(u64);
 
 impl Difficulty {
     /// Difficulty of MIN_DIFFICULTY
-    pub fn min() -> Difficulty {
+    pub const fn min() -> Difficulty {
         Difficulty(MIN_DIFFICULTY)
+    }
+
+    /// Return the difficulty as a u64
+    pub fn as_u64(self) -> u64 {
+        self.0
+    }
+
+    pub fn checked_sub(self, other: Difficulty) -> Option<Difficulty> {
+        match self.0.checked_sub(other.0) {
+            None => None,
+            Some(v) => Some(Difficulty(v)),
+        }
     }
 }
 
 impl Default for Difficulty {
     fn default() -> Self {
-        Difficulty(0)
+        Difficulty::min()
     }
 }
 
@@ -75,6 +89,21 @@ impl From<u64> for Difficulty {
     }
 }
 
+/// General difficulty adjustment algorithm trait. The key method is `get_difficulty`, which returns the target
+/// difficulty given a set of historical achieved difficulties; supplied through the `add` method.
+pub trait DifficultyAdjustment {
+    /// Adds the latest block timestamp (in seconds) and total accumulated difficulty. If the new data point violates
+    /// some difficulty criteria, then `add` returns an error with the type of failure indicated
+    fn add(
+        &mut self,
+        timestamp: EpochTime,
+        accumulated_difficulty: Difficulty,
+    ) -> Result<(), DifficultyAdjustmentError>;
+
+    /// Return the calculated target difficulty for the next block.
+    fn get_difficulty(&self) -> Difficulty;
+}
+
 #[cfg(test)]
 mod test {
     use crate::proof_of_work::difficulty::Difficulty;
@@ -85,7 +114,7 @@ mod test {
             Difficulty::from(1_000) + Difficulty::from(8_000),
             Difficulty::from(9_000)
         );
-        assert_eq!(Difficulty::default() + Difficulty::from(42), Difficulty::from(42));
+        assert_eq!(Difficulty::default() + Difficulty::from(42), Difficulty::from(43));
         assert_eq!(&Difficulty::from(15) + &Difficulty::from(5), Difficulty::from(20));
     }
 }

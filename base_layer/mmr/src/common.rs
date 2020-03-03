@@ -19,7 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
+
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
@@ -28,12 +28,12 @@ use digest::Digest;
 
 const ALL_ONES: usize = std::usize::MAX;
 
-/// Returns the MMR index of the nth leaf node
-pub fn leaf_index(n: usize) -> usize {
-    if n == 0 {
+/// Returns the MMR node index derived from the leaf index.
+pub fn node_index(leaf_index: usize) -> usize {
+    if leaf_index == 0 {
         return 0;
     }
-    2 * n - n.count_ones() as usize
+    2 * leaf_index - leaf_index.count_ones() as usize
 }
 
 /// Is this position a leaf in the MMR?
@@ -191,15 +191,15 @@ mod test {
     use super::*;
 
     #[test]
-    fn leaf_indices() {
-        assert_eq!(leaf_index(0), 0);
-        assert_eq!(leaf_index(1), 1);
-        assert_eq!(leaf_index(2), 3);
-        assert_eq!(leaf_index(3), 4);
-        assert_eq!(leaf_index(5), 8);
-        assert_eq!(leaf_index(6), 10);
-        assert_eq!(leaf_index(7), 11);
-        assert_eq!(leaf_index(8), 15);
+    fn leaf_to_node_indices() {
+        assert_eq!(node_index(0), 0);
+        assert_eq!(node_index(1), 1);
+        assert_eq!(node_index(2), 3);
+        assert_eq!(node_index(3), 4);
+        assert_eq!(node_index(5), 8);
+        assert_eq!(node_index(6), 10);
+        assert_eq!(node_index(7), 11);
+        assert_eq!(node_index(8), 15);
     }
 
     #[test]
@@ -306,10 +306,10 @@ mod test {
             (16382, 16381),
             (32766, 32765),
             (65534, 65533),
-            (131070, 131069),
-            (262142, 262141),
-            (524286, 524285),
-            (1048574, 1048573),
+            (131_070, 131_069),
+            (262_142, 262_141),
+            (524_286, 524_285),
+            (1_048_574, 1_048_573),
         ]);
     }
 }

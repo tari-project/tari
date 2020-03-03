@@ -20,20 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// mod initialization;
 pub mod comms_outbound;
-mod domain_deserializer;
 pub mod liveness;
-mod service_name;
-
-use tari_service_framework::handles;
-
-pub use self::service_name::ServiceName;
-
-/// ServiceHandles collection
-pub type ServiceHandles = handles::ServiceHandles<ServiceName>;
-/// ServiceHandles future.
-///
-/// This future wraps a ServiceHandles collection and will resolve to the handles
-/// collection once `notify_ready` is called.
-pub type ServiceHandlesFuture = handles::ServiceHandlesFuture<ServiceName>;
+pub mod utils;

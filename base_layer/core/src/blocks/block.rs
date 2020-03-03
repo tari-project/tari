@@ -23,23 +23,34 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 use crate::{
-    blocks::{aggregated_body::AggregateBody, BlockHeader},
-    consensus::ConsensusRules,
-    proof_of_work::PowError,
-    tari_amount::*,
-    transaction::*,
-    types::{Commitment, TariProofOfWork, COMMITMENT_FACTORY, PROVER},
+    blocks::BlockHeader,
+    consensus::ConsensusConstants,
+    proof_of_work::ProofOfWork,
+    transactions::{
+        aggregated_body::AggregateBody,
+        tari_amount::MicroTari,
+        transaction::{
+            OutputFlags,
+            Transaction,
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
+    },
 };
 use derive_error::Error;
+use log::*;
 use serde::{Deserialize, Serialize};
-use tari_utilities::Hashable;
+use std::fmt::{Display, Formatter};
+use tari_crypto::tari_utilities::Hashable;
+
+pub const LOG_TARGET: &str = "c::bl::block";
 
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum BlockValidationError {
     // A transaction in the block failed to validate
     TransactionError(TransactionError),
-    // Invalid Proof of work for the block
-    ProofOfWorkError(PowError),
     // Invalid kernel in block
     InvalidKernel,
     // Invalid input in block
@@ -48,6 +59,10 @@ pub enum BlockValidationError {
     InputMaturity,
     // Invalid coinbase maturity in block or more than one coinbase
     InvalidCoinbase,
+    // Mismatched MMR roots
+    MismatchedMmrRoots,
+    // The block contains transactions that should have been cut through.
+    NoCutThrough,
 }
 
 /// A Tari block. Blocks are linked together into a blockchain.
@@ -58,55 +73,39 @@ pub struct Block {
 }
 
 impl Block {
-    /// This function will check the block to ensure that all UTXO's are validly constructed and that all signatures are
-    /// valid. It does _not_ check that the inputs exist in the current UTXO set;
-    /// nor does it check that the PoW is the largest accumulated PoW value.
-    pub fn check_internal_consistency(&self, rules: &ConsensusRules) -> Result<(), BlockValidationError> {
-        let block_reward = rules.emission_schedule().block_reward(self.header.height);
-        let offset = &self.header.total_kernel_offset;
-        let total_coinbase = self.calculate_coinbase_and_fees(block_reward);
-        self.body
-            .validate_internal_consistency(&offset, total_coinbase, &PROVER, &COMMITMENT_FACTORY)?;
-        self.check_stxo_rules()?;
-        self.check_utxo_rules(rules)?;
-        self.check_pow()
-    }
-
-    // create a total_coinbase offset containing all fees for the validation
-    fn calculate_coinbase_and_fees(&self, block_reward: MicroTari) -> MicroTari {
-        let mut coinbase = block_reward;
-        for kernel in &self.body.kernels {
-            coinbase += kernel.fee;
-        }
-        coinbase
-    }
-
-    pub fn check_pow(&self) -> Result<(), BlockValidationError> {
-        Ok(())
+    /// This function will calculate the total fees contained in a block
+    pub fn calculate_fees(&self) -> MicroTari {
+        self.body.kernels().iter().fold(0.into(), |sum, x| sum + x.fee)
     }
 
     /// This function will check spent kernel rules like tx lock height etc
     pub fn check_kernel_rules(&self) -> Result<(), BlockValidationError> {
-        for kernel in &self.body.kernels {
+        for kernel in self.body.kernels() {
             if kernel.lock_height > self.header.height {
+                debug!(target: LOG_TARGET, "Kernel lock height was not reached: {}", kernel);
                 return Err(BlockValidationError::InvalidKernel);
             }
         }
         Ok(())
     }
 
-    /// This function will check all new utxo to ensure that feature flags where set
-    pub fn check_utxo_rules(&self, current_rules: &ConsensusRules) -> Result<(), BlockValidationError> {
+    /// Run through the outputs of the block and check that
+    /// 1. There is exactly ONE coinbase output
+    /// 1. The output's maturity is correctly set
+    /// NOTE this does not check the coinbase amount
+    pub fn check_coinbase_output(&self, consensus_constants: &ConsensusConstants) -> Result<(), BlockValidationError> {
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase
-        for utxo in &self.body.outputs {
+        for utxo in self.body.outputs() {
             if utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT) {
                 coinbase_counter += 1;
-                if utxo.features.maturity < (self.header.height + current_rules.coinbase_lock_height()) {
+                if utxo.features.maturity < (self.header.height + consensus_constants.coinbase_lock_height()) {
+                    debug!(target: LOG_TARGET, "Coinbase found with maturity set to low");
                     return Err(BlockValidationError::InvalidCoinbase);
                 }
             }
         }
         if coinbase_counter != 1 {
+            debug!(target: LOG_TARGET, "More then one coinbase found in block");
             return Err(BlockValidationError::InvalidCoinbase);
         }
         Ok(())
@@ -114,8 +113,12 @@ impl Block {
 
     /// This function will check all stxo to ensure that feature flags where followed
     pub fn check_stxo_rules(&self) -> Result<(), BlockValidationError> {
-        for input in &self.body.inputs {
+        for input in self.body.inputs() {
             if input.features.maturity > self.header.height {
+                debug!(
+                    target: LOG_TARGET,
+                    "Input found that has not yet matured to spending height: {}", input
+                );
                 return Err(BlockValidationError::InputMaturity);
             }
         }
@@ -131,22 +134,34 @@ impl Block {
         Vec<TransactionOutput>,
         Vec<TransactionKernel>,
     ) {
-        (self.header, self.body.inputs, self.body.outputs, self.body.kernels)
+        let (i, o, k) = self.body.dissolve();
+        (self.header, i, o, k)
     }
 }
 
+impl Display for Block {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        fmt.write_str("----------------- Block -----------------\n")?;
+        fmt.write_str("--- Header ---\n")?;
+        fmt.write_str(&format!("{}\n", self.header))?;
+        fmt.write_str("---  Body  ---\n")?;
+        fmt.write_str(&format!("{}\n", self.body))
+    }
+}
+
+#[derive(Default)]
 pub struct BlockBuilder {
-    pub header: BlockHeader,
-    pub inputs: Vec<TransactionInput>,
-    pub outputs: Vec<TransactionOutput>,
-    pub kernels: Vec<TransactionKernel>,
-    pub total_fee: MicroTari,
+    header: BlockHeader,
+    inputs: Vec<TransactionInput>,
+    outputs: Vec<TransactionOutput>,
+    kernels: Vec<TransactionKernel>,
+    total_fee: MicroTari,
 }
 
 impl BlockBuilder {
-    pub fn new() -> BlockBuilder {
+    pub fn new(consensus_constants: &ConsensusConstants) -> BlockBuilder {
         BlockBuilder {
-            header: BlockHeader::new(ConsensusRules::current().blockchain_version()),
+            header: BlockHeader::new(consensus_constants.blockchain_version()),
             inputs: Vec::new(),
             outputs: Vec::new(),
             kernels: Vec::new(),
@@ -185,9 +200,10 @@ impl BlockBuilder {
     pub fn with_transactions(mut self, txs: Vec<Transaction>) -> Self {
         let iter = txs.into_iter();
         for tx in iter {
-            self = self.add_inputs(tx.body.inputs);
-            self = self.add_outputs(tx.body.outputs);
-            self = self.add_kernels(tx.body.kernels);
+            let (inputs, outputs, kernels) = tx.body.dissolve();
+            self = self.add_inputs(inputs);
+            self = self.add_outputs(outputs);
+            self = self.add_kernels(kernels);
             self.header.total_kernel_offset = self.header.total_kernel_offset + tx.offset;
         }
         self
@@ -195,9 +211,10 @@ impl BlockBuilder {
 
     /// This functions add the provided transactions to the block
     pub fn add_transaction(mut self, tx: Transaction) -> Self {
-        self = self.add_inputs(tx.body.inputs);
-        self = self.add_outputs(tx.body.outputs);
-        self = self.add_kernels(tx.body.kernels);
+        let (inputs, outputs, kernels) = tx.body.dissolve();
+        self = self.add_inputs(inputs);
+        self = self.add_outputs(outputs);
+        self = self.add_kernels(kernels);
         self.header.total_kernel_offset = &self.header.total_kernel_offset + &tx.offset;
         self
     }
@@ -209,34 +226,29 @@ impl BlockBuilder {
         self
     }
 
+    /// Add the provided ProofOfWork metadata to the block
+    pub fn with_pow(mut self, pow: ProofOfWork) -> Self {
+        self.header.pow = pow;
+        self
+    }
+
     /// This will finish construction of the block and create the block
     pub fn build(self) -> Block {
         let mut block = Block {
             header: self.header,
             body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
         };
+        block.body.do_cut_through();
         block.body.sort();
         block
     }
-
-    /// Add the provided ProofOfWork to the block
-    pub fn with_pow(self, _pow: TariProofOfWork) -> Self {
-        // TODO
-        self
-    }
-}
-
-/// This struct holds the result of calculating the sum of the kernels in a Transaction
-/// and returns the summed commitments and the total fees
-pub struct KernelSum {
-    pub sum: Commitment,
-    pub fees: MicroTari,
 }
 
 impl Hashable for Block {
     /// The block hash is just the header hash, since the inputs, outputs and range proofs are captured by their
     /// respective MMR roots in the header itself.
     fn hash(&self) -> Vec<u8> {
+        // Note. If this changes, there will be a bug in chain_database::add_block_modifying_header
         self.header.hash()
     }
 }

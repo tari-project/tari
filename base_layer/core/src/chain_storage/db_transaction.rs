@@ -19,15 +19,17 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
 
 use crate::{
     blocks::{blockheader::BlockHash, Block, BlockHeader},
-    transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-    types::HashOutput,
+    transactions::{
+        transaction::{TransactionInput, TransactionKernel, TransactionOutput},
+        types::HashOutput,
+    },
 };
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
-use tari_utilities::{hex::to_hex, Hashable};
+use tari_crypto::tari_utilities::{hex::to_hex, Hashable};
 
 #[derive(Debug)]
 pub struct DbTransaction {
@@ -60,9 +62,9 @@ impl DbTransaction {
     }
 
     /// Inserts a transaction kernel into the current transaction.
-    pub fn insert_kernel(&mut self, kernel: TransactionKernel) {
+    pub fn insert_kernel(&mut self, kernel: TransactionKernel, update_mmr: bool) {
         let hash = kernel.hash();
-        self.insert(DbKeyValuePair::TransactionKernel(hash, Box::new(kernel)));
+        self.insert(DbKeyValuePair::TransactionKernel(hash, Box::new(kernel), update_mmr));
     }
 
     /// Inserts a block header into the current transaction.
@@ -71,10 +73,16 @@ impl DbTransaction {
         self.insert(DbKeyValuePair::BlockHeader(height, Box::new(header)));
     }
 
-    /// Adds a UTXO into the current transaction.
-    pub fn insert_utxo(&mut self, utxo: TransactionOutput) {
+    /// Adds a UTXO into the current transaction and update the TXO MMR.
+    pub fn insert_utxo(&mut self, utxo: TransactionOutput, update_mmr: bool) {
         let hash = utxo.hash();
-        self.insert(DbKeyValuePair::UnspentOutput(hash, Box::new(utxo)));
+        self.insert(DbKeyValuePair::UnspentOutput(hash, Box::new(utxo), update_mmr));
+    }
+
+    /// Adds a UTXO into the current transaction and update the TXO MMR. This is a test only function used to ensure we
+    /// block duplicate entries. This function does not calculate the hash function but accepts one as a variable.
+    pub fn insert_utxo_with_hash(&mut self, hash: Vec<u8>, utxo: TransactionOutput, update_mmr: bool) {
+        self.insert(DbKeyValuePair::UnspentOutput(hash, Box::new(utxo), update_mmr));
     }
 
     /// Stores an orphan block. No checks are made as to whether this is actually an orphan. That responsibility lies
@@ -84,10 +92,19 @@ impl DbTransaction {
         self.insert(DbKeyValuePair::OrphanBlock(hash, Box::new(orphan)));
     }
 
-    /// Moves a UTXO. If the UTXO is not in the UTXO set, the transaction will fail with an `UnspendableOutput` error.
-    pub fn move_utxo(&mut self, utxo_hash: HashOutput) {
+    /// Moves a UTXO to the STXO set and mark it as spent on the MRR. If the UTXO is not in the UTXO set, the
+    /// transaction will fail with an `UnspendableOutput` error.
+    pub fn spend_utxo(&mut self, utxo_hash: HashOutput) {
         self.operations
             .push(WriteOperation::Spend(DbKey::UnspentOutput(utxo_hash)));
+    }
+
+    /// Moves a STXO to the UTXO set.  If the STXO is not in the STXO set, the transaction will fail with an
+    /// `UnspendError`.
+    // TODO: unspend_utxo in memory_db doesn't unmark the node in the roaring bitmap.0
+    pub fn unspend_stxo(&mut self, stxo_hash: HashOutput) {
+        self.operations
+            .push(WriteOperation::UnSpend(DbKey::SpentOutput(stxo_hash)));
     }
 
     /// Moves the given set of transaction inputs from the UTXO set to the STXO set. All the inputs *must* currently
@@ -95,7 +112,7 @@ impl DbTransaction {
     pub fn spend_inputs(&mut self, inputs: &[TransactionInput]) {
         for input in inputs {
             let input_hash = input.hash();
-            self.move_utxo(input_hash);
+            self.spend_utxo(input_hash);
         }
     }
 
@@ -103,7 +120,10 @@ impl DbTransaction {
     /// the database.
     pub fn commit_block(&mut self) {
         self.operations
-            .push(WriteOperation::Insert(DbKeyValuePair::CommitBlock));
+            .push(WriteOperation::CreateMmrCheckpoint(MmrTree::Kernel));
+        self.operations.push(WriteOperation::CreateMmrCheckpoint(MmrTree::Utxo));
+        self.operations
+            .push(WriteOperation::CreateMmrCheckpoint(MmrTree::RangeProof));
     }
 
     /// Set the horizon beyond which we cannot be guaranteed provide detailed blockchain information anymore.
@@ -118,13 +138,22 @@ impl DbTransaction {
         )));
     }
 
-    /// Rewind the blockchain state to the block height given.
-    ///
-    /// The operation will fail if
-    /// * The block height is in the future
-    /// * The block height is before pruning horizon
-    pub fn rewind_to_height(&mut self, _height: u64) {
-        unimplemented!()
+    /// Rewinds the Kernel MMR state by the given number of Checkpoints.
+    pub fn rewind_kernel_mmr(&mut self, steps_back: usize) {
+        self.operations
+            .push(WriteOperation::RewindMmr(MmrTree::Kernel, steps_back));
+    }
+
+    /// Rewinds the UTXO MMR state by the given number of Checkpoints.
+    pub fn rewind_utxo_mmr(&mut self, steps_back: usize) {
+        self.operations
+            .push(WriteOperation::RewindMmr(MmrTree::Utxo, steps_back));
+    }
+
+    /// Rewinds the RangeProof MMR state by the given number of Checkpoints.
+    pub fn rewind_rp_mmr(&mut self, steps_back: usize) {
+        self.operations
+            .push(WriteOperation::RewindMmr(MmrTree::RangeProof, steps_back));
     }
 }
 
@@ -135,28 +164,27 @@ pub enum WriteOperation {
     Spend(DbKey),
     UnSpend(DbKey),
     CreateMmrCheckpoint(MmrTree),
+    RewindMmr(MmrTree, usize),
 }
 
+/// A list of key-value pairs that are required for each insert operation
 #[derive(Debug)]
 pub enum DbKeyValuePair {
     Metadata(MetadataKey, MetadataValue),
     BlockHeader(u64, Box<BlockHeader>),
-    UnspentOutput(HashOutput, Box<TransactionOutput>),
-    SpentOutput(HashOutput, Box<TransactionOutput>),
-    TransactionKernel(HashOutput, Box<TransactionKernel>),
+    UnspentOutput(HashOutput, Box<TransactionOutput>, bool),
+    TransactionKernel(HashOutput, Box<TransactionKernel>, bool),
     OrphanBlock(HashOutput, Box<Block>),
-    CommitBlock,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum MmrTree {
     Utxo,
     Kernel,
     RangeProof,
-    Header,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MetadataKey {
     ChainHeight,
     BestBlock,
@@ -164,7 +192,7 @@ pub enum MetadataKey {
     PruningHorizon,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum MetadataValue {
     ChainHeight(Option<u64>),
     BestBlock(Option<BlockHash>),
@@ -172,7 +200,7 @@ pub enum MetadataValue {
     PruningHorizon(u64),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DbKey {
     Metadata(MetadataKey),
     BlockHeader(u64),
@@ -234,7 +262,6 @@ impl Display for MmrTree {
             MmrTree::RangeProof => f.write_str("Range Proof"),
             MmrTree::Utxo => f.write_str("UTXO"),
             MmrTree::Kernel => f.write_str("Kernel"),
-            MmrTree::Header => f.write_str("Block header"),
         }
     }
 }

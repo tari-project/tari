@@ -55,7 +55,7 @@ pub fn initialize_logging(config_file: &Path) -> bool {
         "Initializing logging according to {:?}",
         config_file.to_str().unwrap_or("[??]")
     );
-    if let Err(e) = log4rs::init_file(config_file.clone(), Default::default()) {
+    if let Err(e) = log4rs::init_file(config_file, Default::default()) {
         println!("We couldn't load a logging configuration file. {}", e.to_string());
         return false;
     }

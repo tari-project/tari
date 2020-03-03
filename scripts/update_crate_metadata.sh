@@ -8,19 +8,21 @@ fi
 
 function update_versions {
     packages=${@:-'
-   infrastructure/crypto
    infrastructure/derive
+   infrastructure/shutdown
    infrastructure/storage
-   infrastructure/tari_util
+   infrastructure/test_utils
    base_layer/core
    base_layer/keymanager
-   base_layer/mining
    base_layer/mmr
    base_layer/p2p
    base_layer/service_framework
    base_layer/wallet
+   base_layer/wallet_ffi
    common
    comms
+   comms/dht
+   applications/tari_base_node
 '}
 
   p_arr=($packages)

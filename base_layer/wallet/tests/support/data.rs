@@ -21,28 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::path::PathBuf;
-use tari_storage::lmdb_store::{LMDBBuilder, LMDBError, LMDBStore};
 
 pub fn get_path(name: Option<&str>) -> String {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/data");
     path.push(name.unwrap_or(""));
     path.to_str().unwrap().to_string()
-}
-
-pub fn init_datastore(name: &str) -> Result<LMDBStore, LMDBError> {
-    let path = get_path(Some(name));
-    let _ = std::fs::create_dir(&path).unwrap_or_default();
-    LMDBBuilder::new()
-        .set_path(&path)
-        .set_environment_size(10)
-        .set_max_number_of_databases(1)
-        .add_database(name, lmdb_zero::db::CREATE)
-        .build()
-}
-
-pub fn clean_up_datastore(name: &str) {
-    std::fs::remove_dir_all(get_path(Some(name))).unwrap();
 }
 
 pub fn clean_up_sql_database(name: &str) {

@@ -1,0 +1,36 @@
+[package]
+name = "tari_base_node"
+authors = ["The Tari Development Community"]
+description = "The tari full base node implementation"
+repository = "https://github.com/tari-project/tari"
+license = "BSD-3-Clause"
+version = "0.0.9"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tari_common = {path = "../../common", version= "^0.0"}
+tari_comms = { version = "^0.0", path = "../../comms"}
+tari_comms_dht = { version = "^0.0", path = "../../comms/dht"}
+tari_core = {path = "../../base_layer/core", version= "^0.0"}
+tari_p2p = {path = "../../base_layer/p2p", version= "^0.0"}
+tari_service_framework = { version = "^0.0", path = "../../base_layer/service_framework"}
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0" }
+tari_mmr = { path = "../../base_layer/mmr", version = "^0.0" }
+tari_wallet = { path = "../../base_layer/wallet", version = "^0.0" }
+tari_broadcast_channel = "^0.1"
+
+clap = "2.33.0"
+config = { version = "0.9.3" }
+dirs = "2.0.2"
+futures = { version = "^0.3.1", default-features = false, features = ["alloc"]}
+log = { version = "0.4.8", features = ["std"] }
+log4rs = { version = "0.8.3", features = ["toml_format"] }
+rand = "0.7.2"
+serde_json = "1.0"
+tokio = { version="0.2.10", features = ["signal"] }
+rustyline = "6.0"
+rustyline-derive = "0.3"
+strum = "0.17.1"
+strum_macros = "0.17.1"

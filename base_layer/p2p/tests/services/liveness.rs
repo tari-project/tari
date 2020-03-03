@@ -20,77 +20,169 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::TestCommsOutboundInitializer;
-use futures::Sink;
+use crate::support::comms_and_services::setup_comms_services;
 use rand::rngs::OsRng;
-use std::{
-    sync::{mpsc, Arc},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 use tari_comms::{
-    message::{DomainMessageContext, Message, MessageHeader},
-    peer_manager::{NodeId, PeerNodeIdentity},
-    pub_sub_channel::{pubsub_channel, TopicPayload},
-    types::CommsPublicKey,
+    peer_manager::{NodeIdentity, PeerFeatures},
+    transports::MemoryTransport,
+    CommsNode,
 };
-use tari_crypto::keys::PublicKey;
+use tari_comms_dht::Dht;
 use tari_p2p::{
-    executor::StackBuilder,
+    comms_connector::pubsub_connector,
     services::{
-        comms_outbound::CommsOutboundRequest,
-        liveness::{LivenessHandle, LivenessInitializer, LivenessRequest, LivenessResponse, PingPong},
-        ServiceName,
+        comms_outbound::CommsOutboundServiceInitializer,
+        liveness::{LivenessConfig, LivenessEvent, LivenessHandle, LivenessInitializer},
     },
-    tari_message::{NetMessage, TariMessageType},
 };
-use tari_utilities::message_format::MessageFormat;
-use tokio::runtime::Runtime;
-use tower_service::Service;
+use tari_service_framework::StackBuilder;
+use tari_test_utils::{collect_stream, random::string};
+use tempdir::TempDir;
+use tokio::runtime;
 
-fn create_domain_message<T: MessageFormat>(message_type: TariMessageType, inner_msg: T) -> DomainMessageContext {
-    let mut rng = OsRng::new().unwrap();
-    let (_, pk) = CommsPublicKey::random_keypair(&mut rng);
-    let peer_source = PeerNodeIdentity::new(NodeId::from_key(&pk).unwrap(), pk.clone());
-    let header = MessageHeader::new(message_type).unwrap();
-    let msg = Message::from_message_format(header, inner_msg).unwrap();
-    DomainMessageContext::new(peer_source, pk, msg)
+pub async fn setup_liveness_service(
+    node_identity: Arc<NodeIdentity>,
+    peers: Vec<Arc<NodeIdentity>>,
+    data_path: &str,
+) -> (LivenessHandle, CommsNode, Dht)
+{
+    let rt_handle = runtime::Handle::current();
+    let (publisher, subscription_factory) = pubsub_connector(rt_handle.clone(), 100);
+    let subscription_factory = Arc::new(subscription_factory);
+    let (comms, dht) = setup_comms_services(node_identity.clone(), peers, publisher, data_path).await;
+
+    let handles = StackBuilder::new(rt_handle.clone(), comms.shutdown_signal())
+        .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
+        .add_initializer(LivenessInitializer::new(
+            LivenessConfig {
+                enable_auto_join: false,
+                enable_auto_stored_message_request: false,
+                auto_ping_interval: None,
+                refresh_neighbours_interval: Duration::from_secs(60),
+            },
+            Arc::clone(&subscription_factory),
+            dht.dht_requester(),
+        ))
+        .finish()
+        .await
+        .expect("Service initialization failed");
+
+    let liveness_handle = handles.get_handle::<LivenessHandle>().unwrap();
+
+    (liveness_handle, comms, dht)
 }
 
-/// Receive a Ping message and query the PingCount
-#[test]
-fn send_ping_query_count() {
-    let mut rt = Runtime::new().unwrap();
-    let (mut publisher, subscriber) = pubsub_channel(2);
-    let (tx, rx) = mpsc::channel();
+fn make_node_identity() -> Arc<NodeIdentity> {
+    let next_port = MemoryTransport::acquire_next_memsocket_port();
+    Arc::new(
+        NodeIdentity::random(
+            &mut OsRng,
+            format!("/memory/{}", next_port).parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        )
+        .unwrap(),
+    )
+}
 
-    // Setup the stack
-    let stack = StackBuilder::new()
-        .add_initializer(LivenessInitializer::from_inbound_message_subscriber(Arc::new(
-            subscriber,
-        )))
-        .add_initializer(TestCommsOutboundInitializer::new(tx));
-    let handles = rt.block_on(stack.finish()).unwrap();
+#[tokio_macros::test_basic]
+async fn end_to_end() {
+    let node_1_identity = make_node_identity();
+    let node_2_identity = make_node_identity();
 
-    // Publish a Ping message
-    let msg = create_domain_message(TariMessageType::new(NetMessage::PingPong), PingPong::Ping);
-    let payload = TopicPayload::new(TariMessageType::new(NetMessage::PingPong), msg);
-    assert!(publisher.start_send(payload).unwrap().is_ready());
+    let alice_temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut liveness1, comms_1, _dht_1) = setup_liveness_service(
+        node_1_identity.clone(),
+        vec![node_2_identity.clone()],
+        alice_temp_dir.path().to_str().unwrap(),
+    )
+    .await;
+    let bob_temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut liveness2, comms_2, _dht_2) = setup_liveness_service(
+        node_2_identity.clone(),
+        vec![node_1_identity.clone()],
+        bob_temp_dir.path().to_str().unwrap(),
+    )
+    .await;
 
-    // Check that the CommsOutbound service received a SendMsg request
-    let outbound_req = rx.recv_timeout(Duration::from_millis(100)).unwrap();
-    match outbound_req {
-        CommsOutboundRequest::SendMsg { .. } => {},
-        _ => panic!("Unexpected request sent to comms outbound service"),
+    for _ in 0..5 {
+        liveness2.send_ping(node_1_identity.node_id().clone()).await.unwrap();
     }
 
-    // Query the ping count using the Liveness service handle
-    let mut liveness_handle = handles.get_handle::<LivenessHandle>(ServiceName::Liveness).unwrap();
-    let resp = rt
-        .block_on(liveness_handle.call(LivenessRequest::GetPingCount))
-        .unwrap();
-
-    match resp.unwrap() {
-        LivenessResponse::Count(n) => assert_eq!(n, 1),
-        _ => panic!("unexpected response from liveness service"),
+    for _ in 0..4 {
+        liveness1.send_ping(node_2_identity.node_id().clone()).await.unwrap();
     }
+
+    for _ in 0..5 {
+        liveness2.send_ping(node_1_identity.node_id().clone()).await.unwrap();
+    }
+
+    for _ in 0..4 {
+        liveness1.send_ping(node_2_identity.node_id().clone()).await.unwrap();
+    }
+
+    let events = collect_stream!(
+        liveness1.get_event_stream_fused(),
+        take = 18,
+        timeout = Duration::from_secs(20),
+    );
+
+    let ping_count = events
+        .iter()
+        .filter(|event| match ***event {
+            LivenessEvent::ReceivedPing => true,
+            _ => false,
+        })
+        .count();
+
+    assert_eq!(ping_count, 10);
+
+    let pong_count = events
+        .iter()
+        .filter(|event| match ***event {
+            LivenessEvent::ReceivedPong(_) => true,
+            _ => false,
+        })
+        .count();
+
+    assert_eq!(pong_count, 8);
+
+    let events = collect_stream!(
+        liveness2.get_event_stream_fused(),
+        take = 18,
+        timeout = Duration::from_secs(10),
+    );
+
+    let ping_count = events
+        .iter()
+        .filter(|event| match ***event {
+            LivenessEvent::ReceivedPing => true,
+            _ => false,
+        })
+        .count();
+
+    assert_eq!(ping_count, 8);
+
+    let pong_count = events
+        .iter()
+        .filter(|event| match ***event {
+            LivenessEvent::ReceivedPong(_) => true,
+            _ => false,
+        })
+        .count();
+
+    assert_eq!(pong_count, 10);
+
+    let pingcount1 = liveness1.get_ping_count().await.unwrap();
+    let pongcount1 = liveness1.get_pong_count().await.unwrap();
+    let pingcount2 = liveness2.get_ping_count().await.unwrap();
+    let pongcount2 = liveness2.get_pong_count().await.unwrap();
+
+    assert_eq!(pingcount1, 10);
+    assert_eq!(pongcount1, 8);
+    assert_eq!(pingcount2, 8);
+    assert_eq!(pongcount2, 10);
+
+    comms_1.shutdown().await;
+    comms_2.shutdown().await;
 }

@@ -22,22 +22,22 @@
 
 use crate::{
     mempool::priority::{FeePriority, PriorityError},
-    transaction::Transaction,
+    transactions::transaction::Transaction,
 };
 use std::{convert::TryFrom, sync::Arc};
-use tari_utilities::message_format::MessageFormat;
+use tari_crypto::tari_utilities::message_format::MessageFormat;
 
-/// Create a unique transaction priority based on the lock_height and the excess_sig, allowing transactions to be sorted
-/// according to their time-lock expiry. The excess_sig is included to ensure the priority key is unique so it can be
-/// used with a BTreeMap.
+/// Create a unique transaction priority based on the maximum time-lock (lock_height or input UTXO maturity) and the
+/// excess_sig, allowing transactions to be sorted according to their time-lock expiry. The excess_sig is included to
+/// ensure the priority key is unique so it can be used with a BTreeMap.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct TimelockPriority(Vec<u8>);
 
 impl TimelockPriority {
     pub fn try_from(transaction: &Transaction) -> Result<Self, PriorityError> {
-        let mut priority = transaction.body.kernels[0].lock_height.to_binary()?;
-        priority.reverse(); // Timelock needs to be in Big-endian for sorting with BtreeMap to work correctly
-        priority.append(&mut transaction.body.kernels[0].to_binary()?);
+        let mut priority = transaction.min_spendable_height().to_binary()?;
+        priority.reverse(); // Requires Big-endian for BtreeMap sorting
+        priority.append(&mut transaction.body.kernels()[0].excess_sig.to_binary()?);
         Ok(Self(priority))
     }
 }
@@ -54,6 +54,7 @@ pub struct TimelockedTransaction {
     pub transaction: Arc<Transaction>,
     pub fee_priority: FeePriority,
     pub timelock_priority: TimelockPriority,
+    pub max_timelock_height: u64,
 }
 
 impl TryFrom<Transaction> for TimelockedTransaction {
@@ -63,6 +64,10 @@ impl TryFrom<Transaction> for TimelockedTransaction {
         Ok(Self {
             fee_priority: FeePriority::try_from(&transaction)?,
             timelock_priority: TimelockPriority::try_from(&transaction)?,
+            max_timelock_height: match transaction.min_spendable_height() {
+                0 => 0,
+                v => v - 1,
+            },
             transaction: Arc::new(transaction),
         })
     }

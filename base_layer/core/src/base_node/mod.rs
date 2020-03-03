@@ -32,10 +32,25 @@
 //! More details about the implementation are presented in
 //! [RFC-0111](https://rfc.tari.com/RFC-0111_BaseNodeArchitecture.html).
 
-mod base_node;
-// mod block_validation_service;
-// mod synchronisation_service;
-// mod transaction_validation_service;
+cfg_if! {
+    if #[cfg(feature = "base_node")] {
+        mod backoff;
+        mod base_node;
 
-// Public re-exports
-pub use base_node::BaseNode;
+        pub mod comms_interface;
+        pub mod consts;
+        pub mod service;
+        pub mod chain_metadata_service;
+        pub mod states;
+        // Public re-exports
+        pub use backoff::BackOff;
+        pub use base_node::{BaseNodeStateMachine, BaseNodeStateMachineConfig};
+        pub use comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface};
+    }
+}
+
+cfg_if! {
+    if #[cfg(any(feature = "base_node", feature = "base_node_proto"))] {
+        pub mod proto;
+    }
+}

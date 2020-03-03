@@ -20,20 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// Needed to make futures::select! work
+#![recursion_limit = "256"]
 // Used to eliminate the need for boxing futures in many cases.
 // Tracking issue: https://github.com/rust-lang/rust/issues/63063
 #![feature(type_alias_impl_trait)]
 
+#[cfg(test)]
 #[macro_use]
-mod macros;
-mod consts;
+mod test_utils;
 
-// TODO Put these back in after Futures Comms stack refactor
-// pub mod saf_service;
-// pub mod dht_service;
+pub mod comms_connector;
+pub mod domain_message;
 pub mod initialization;
 pub mod peer;
-pub mod ping_pong;
+pub mod proto;
 pub mod services;
-pub mod sync_services;
 pub mod tari_message;
+pub mod transport;

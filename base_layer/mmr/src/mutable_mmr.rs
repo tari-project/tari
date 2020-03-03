@@ -22,8 +22,9 @@
 
 use crate::{
     backend::ArrayLike,
-    common::{leaf_index, n_leaves},
+    common::{n_leaves, node_index},
     error::MerkleMountainRangeError,
+    mutable_mmr_leaf_nodes::MutableMmrLeafNodes,
     Hash,
     MerkleMountainRange,
 };
@@ -37,6 +38,7 @@ use digest::Digest;
 ///
 /// The `MutableMmr` API maps nearly 1:1 to that of MerkleMountainRange so that you should be able to use it as a
 /// drop-in replacement for the latter in most cases.
+#[derive(Debug)]
 pub struct MutableMmr<D, B>
 where
     D: Digest,
@@ -56,13 +58,17 @@ where
     B: ArrayLike<Value = Hash>,
 {
     /// Create a new mutable MMR using the backend provided
-    pub fn new(mmr_backend: B) -> MutableMmr<D, B> {
+    pub fn new(mmr_backend: B, deleted: Bitmap) -> MutableMmr<D, B> {
         let mmr = MerkleMountainRange::new(mmr_backend);
-        MutableMmr {
-            mmr,
-            deleted: Bitmap::create(),
-            size: 0,
-        }
+        MutableMmr { mmr, deleted, size: 0 }
+    }
+
+    /// Clear the MutableMmr and assign the MMR state from the set of leaf_hashes and deleted nodes given in `state`.
+    pub fn assign(&mut self, state: MutableMmrLeafNodes) -> Result<(), MerkleMountainRangeError> {
+        self.mmr.assign(state.leaf_hashes)?;
+        self.deleted = state.deleted;
+        self.size = self.mmr.get_leaf_count()? as u32;
+        Ok(())
     }
 
     /// Return the number of leaf nodes in the `MutableMmr` that have not been marked as deleted.
@@ -76,45 +82,65 @@ where
     }
 
     /// Returns true if the the MMR contains no nodes, OR all nodes have been marked for deletion
-    pub fn is_empty(&self) -> bool {
-        self.mmr.is_empty() || self.deleted.cardinality() == self.size as u64
+    pub fn is_empty(&self) -> Result<bool, MerkleMountainRangeError> {
+        Ok(self.mmr.is_empty()? || self.deleted.cardinality() == self.size as u64)
     }
 
     /// This function returns the hash of the leaf index provided, indexed from 0. If the hash does not exist, or if it
     /// has been marked for deletion, `None` is returned.
-    pub fn get_leaf_hash(&self, leaf_node_index: u32) -> Option<&Hash> {
-        if self.deleted.contains(leaf_node_index) {
-            return None;
+    pub fn get_leaf_hash(&self, leaf_index: u32) -> Result<Option<Hash>, MerkleMountainRangeError> {
+        if self.deleted.contains(leaf_index) {
+            return Ok(None);
         }
-        self.mmr.get_node_hash(leaf_index(leaf_node_index as usize))
+        self.mmr.get_node_hash(node_index(leaf_index as usize))
     }
 
     /// Returns the hash of the leaf index provided, as well as its deletion status. The node has been marked for
     /// deletion if the boolean value is true.
-    pub fn get_leaf_status(&self, leaf_node_index: u32) -> (Option<&Hash>, bool) {
-        let hash = self.mmr.get_node_hash(leaf_index(leaf_node_index as usize));
-        let deleted = self.deleted.contains(leaf_node_index);
-        (hash, deleted)
+    pub fn get_leaf_status(&self, leaf_index: u32) -> Result<(Option<Hash>, bool), MerkleMountainRangeError> {
+        let hash = self.mmr.get_node_hash(node_index(leaf_index as usize))?;
+        let deleted = self.deleted.contains(leaf_index);
+        Ok((hash, deleted))
+    }
+
+    /// Returns the number of leave nodes in the MMR.
+    pub fn get_leaf_count(&self) -> usize {
+        self.size as usize
     }
 
     /// Returns a merkle(ish) root for this merkle set.
     ///
     /// The root is calculated by concatenating the MMR merkle root with the compressed serialisation of the bitmap
     /// and then hashing the result.
-    pub fn get_merkle_root(&self) -> Hash {
+    pub fn get_merkle_root(&self) -> Result<Hash, MerkleMountainRangeError> {
         // Note that two MutableMmrs could both return true for `is_empty()`, but have different merkle roots by
         // virtue of the fact that the underlying MMRs could be different, but all elements are marked as deleted in
         // both sets.
-        let mmr_root = self.mmr.get_merkle_root();
+        let mmr_root = self.mmr.get_merkle_root()?;
         let mut hasher = D::new();
         hasher.input(&mmr_root);
-        self.hash_deleted(hasher).result().to_vec()
+        Ok(self.hash_deleted(hasher).result().to_vec())
+    }
+
+    /// Returns only the MMR merkle root without the compressed serialisation of the bitmap
+    pub fn get_mmr_only_root(&self) -> Result<Hash, MerkleMountainRangeError> {
+        self.mmr.get_merkle_root()
+    }
+
+    /// See [MerkleMountainRange::find_node_index]
+    pub fn find_node_index(&self, hash: &Hash) -> Result<Option<usize>, MerkleMountainRangeError> {
+        self.mmr.find_node_index(hash)
+    }
+
+    /// See [MerkleMountainRange::find_leaf_index]
+    pub fn find_leaf_index(&self, hash: &Hash) -> Result<Option<usize>, MerkleMountainRangeError> {
+        self.mmr.find_leaf_index(hash)
     }
 
     /// Push a new element into the MMR. Computes new related peaks at the same time if applicable.
     /// Returns the new number of leaf nodes (regardless of deleted state) in the mutable MMR
     pub fn push(&mut self, hash: &Hash) -> Result<usize, MerkleMountainRangeError> {
-        if self.size >= std::u32::MAX {
+        if self.size == std::u32::MAX {
             return Err(MerkleMountainRangeError::MaximumSizeReached);
         }
         let result = self.mmr.push(hash);
@@ -143,11 +169,11 @@ where
     /// # Return
     /// The function returns true if a node was actually marked for deletion. If the index is out of bounds, or was
     /// already deleted, the function returns false.
-    pub fn delete_and_compress(&mut self, leaf_node_index: u32, compress: bool) -> bool {
-        if (leaf_node_index >= self.size) || self.deleted.contains(leaf_node_index) {
+    pub fn delete_and_compress(&mut self, leaf_index: u32, compress: bool) -> bool {
+        if (leaf_index >= self.size) || self.deleted.contains(leaf_index) {
             return false;
         }
-        self.deleted.add(leaf_node_index);
+        self.deleted.add(leaf_index);
         // The serialization is different in compressed vs. uncompressed form, but the merkle root must be 100%
         // deterministic based on input, so just be consistent an use the compressed form all the time.
         if compress {
@@ -157,8 +183,8 @@ where
     }
 
     /// Mark a node for completion, and compress the roaring bitmap. See [delete_and_compress] for details.
-    pub fn delete(&mut self, leaf_node_index: u32) -> bool {
-        self.delete_and_compress(leaf_node_index, true)
+    pub fn delete(&mut self, leaf_index: u32) -> bool {
+        self.delete_and_compress(leaf_index, true)
     }
 
     /// Compress the roaring bitmap mapping deleted nodes. You never have to call this method unless you have been
@@ -182,6 +208,52 @@ where
         hasher.input(&bitmap_ser);
         hasher
     }
+
+    // Returns a bitmap with only the deleted nodes for the specified region in the MMR.
+    fn get_sub_bitmap(&self, leaf_index: usize, count: usize) -> Result<Bitmap, MerkleMountainRangeError> {
+        let mut deleted = self.deleted.clone();
+        if leaf_index > 0 {
+            deleted.remove_range_closed(0..(leaf_index - 1) as u32)
+        }
+        let leaf_count = self.mmr.get_leaf_count()?;
+        if leaf_count > 1 {
+            let last_index = leaf_index + count - 1;
+            if last_index < leaf_count - 1 {
+                deleted.remove_range_closed((last_index + 1) as u32..leaf_count as u32);
+            }
+        }
+        Ok(deleted)
+    }
+
+    /// Returns the state of the MMR that consists of the leaf hashes and the deleted nodes.
+    pub fn to_leaf_nodes(
+        &self,
+        leaf_index: usize,
+        count: usize,
+    ) -> Result<MutableMmrLeafNodes, MerkleMountainRangeError>
+    {
+        Ok(MutableMmrLeafNodes {
+            leaf_hashes: self.mmr.get_leaf_hashes(leaf_index, count)?,
+            deleted: self.get_sub_bitmap(leaf_index, count)?,
+        })
+    }
+
+    /// Expose the MerkleMountainRange for verifying proofs
+    pub fn mmr(&self) -> &MerkleMountainRange<D, B> {
+        &self.mmr
+    }
+
+    /// Return a reference to the bitmap of deleted nodes
+    pub fn deleted(&self) -> &Bitmap {
+        &self.deleted
+    }
+
+    pub fn clear(&mut self) -> Result<(), MerkleMountainRangeError> {
+        self.mmr.clear()?;
+        self.deleted = Bitmap::create();
+        self.size = 0;
+        Ok(())
+    }
 }
 
 impl<D, B, B2> PartialEq<MutableMmr<D, B2>> for MutableMmr<D, B>
@@ -191,7 +263,7 @@ where
     B2: ArrayLike<Value = Hash>,
 {
     fn eq(&self, other: &MutableMmr<D, B2>) -> bool {
-        (self.get_merkle_root() == other.get_merkle_root())
+        self.get_merkle_root() == other.get_merkle_root()
     }
 }
 
@@ -201,7 +273,7 @@ where
     B: ArrayLike<Value = Hash>,
 {
     fn from(mmr: MerkleMountainRange<D, B>) -> Self {
-        let size = n_leaves(mmr.len()) as u32;
+        let size = n_leaves(mmr.len().unwrap()) as u32; // TODO: fix unwrap
         MutableMmr {
             mmr,
             deleted: Bitmap::create(),

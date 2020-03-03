@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package tari.types;
+
+// Define the data type that is used to store results of `HashDigest`
+message HashOutput {
+    bytes data = 1;
+}
+
+// Commitment wrapper
+message Commitment {
+    bytes data = 1;
+}
+
+// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
+// employed by redefining this type.
+message Signature {
+    bytes public_nonce = 1;
+    bytes signature = 2;
+}
+
+// BlindingFactor wrapper
+message BlindingFactor {
+    bytes data = 1;
+}

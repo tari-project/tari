@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package tari.p2p.liveness;
+
+enum PingPong {
+    PingPongPing = 0;
+    PingPongPong = 1;
+}
+
+
+// A ping or pong message
+message PingPongMessage {
+    // Indicates if this message is a ping or pong
+    PingPong ping_pong = 1;
+    // The nonce of the ping. Pong messages MUST use the nonce from a corresponding ping
+    uint64 nonce = 2;
+    // Metadata attached to the message. The int32 key SHOULD always be one of the keys in `MetadataKey`.
+    map<int32, bytes> metadata = 3;
+}
+
+// This enum represents all the possible metadata keys that can be used with a ping/pong message.
+// MetadataKey may be extended as the need arises.
+//
+// _NOTE: Key values should NEVER be re-used_
+enum MetadataKey {
+    // The default key. This should never be used as it represents the absence of a key.
+    MetadataKeyNone = 0;
+    // The value for this key contains chain metadata
+    MetadataKeyChainMetadata = 1;
+}

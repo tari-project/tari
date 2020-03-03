@@ -1,8 +1,0 @@
-[submodule "comms/rust-multiaddr"]
-	path = comms/rust-multiaddr
-	url = https://github.com/tari-project/rust-multiaddr.git
-	branch = tari
-[submodule "comms/yamux"]
-	path = comms/yamux
-	url = https://github.com/tari-project/yamux.git
-	branch = futures-alpha

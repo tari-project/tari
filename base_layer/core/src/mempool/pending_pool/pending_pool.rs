@@ -22,10 +22,11 @@
 
 use crate::{
     blocks::Block,
-    consts::MEMPOOL_PENDING_POOL_STORAGE_CAPACITY,
-    mempool::pending_pool::{PendingPoolError, PendingPoolStorage},
-    transaction::Transaction,
-    types::Signature,
+    mempool::{
+        consts::MEMPOOL_PENDING_POOL_STORAGE_CAPACITY,
+        pending_pool::{PendingPoolError, PendingPoolStorage},
+    },
+    transactions::{transaction::Transaction, types::Signature},
 };
 use std::sync::{Arc, RwLock};
 
@@ -47,32 +48,32 @@ impl Default for PendingPoolConfig {
 /// The Pending Pool contains all transactions that are restricted by time-locks. Once the time-locks have expired then
 /// the transactions can be moved to the Unconfirmed Transaction Pool for inclusion in future blocks.
 pub struct PendingPool {
-    pool_storage: RwLock<PendingPoolStorage>,
+    pool_storage: Arc<RwLock<PendingPoolStorage>>,
 }
 
 impl PendingPool {
     /// Create a new PendingPool with the specified configuration.
     pub fn new(config: PendingPoolConfig) -> Self {
         Self {
-            pool_storage: RwLock::new(PendingPoolStorage::new(config)),
+            pool_storage: Arc::new(RwLock::new(PendingPoolStorage::new(config))),
         }
     }
 
     /// Insert a new transaction into the PendingPool. Low priority transactions will be removed to make space for
     /// higher priority transactions. The lowest priority transactions will be removed when the maximum capacity is
     /// reached and the new transaction has a higher priority than the currently stored lowest priority transaction.
-    pub fn insert(&mut self, transaction: Transaction) -> Result<(), PendingPoolError> {
+    pub fn insert(&self, transaction: Arc<Transaction>) -> Result<(), PendingPoolError> {
         self.pool_storage
             .write()
-            .map_err(|_| PendingPoolError::PoisonedAccess)?
+            .map_err(|e| PendingPoolError::BackendError(e.to_string()))?
             .insert(transaction)
     }
 
     /// Insert a set of new transactions into the PendingPool.
-    pub fn insert_txs(&mut self, transactions: Vec<Transaction>) -> Result<(), PendingPoolError> {
+    pub fn insert_txs(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), PendingPoolError> {
         self.pool_storage
             .write()
-            .map_err(|_| PendingPoolError::PoisonedAccess)?
+            .map_err(|e| PendingPoolError::BackendError(e.to_string()))?
             .insert_txs(transactions)
     }
 
@@ -81,20 +82,20 @@ impl PendingPool {
         Ok(self
             .pool_storage
             .read()
-            .map_err(|_| PendingPoolError::PoisonedAccess)?
+            .map_err(|e| PendingPoolError::BackendError(e.to_string()))?
             .has_tx_with_excess_sig(excess_sig))
     }
 
     /// Remove transactions with expired time-locks so that they can be move to the UnconfirmedPool. Double spend
     /// transactions are also removed.
     pub fn remove_unlocked_and_discard_double_spends(
-        &mut self,
+        &self,
         published_block: &Block,
     ) -> Result<Vec<Arc<Transaction>>, PendingPoolError>
     {
         self.pool_storage
             .write()
-            .map_err(|_| PendingPoolError::PoisonedAccess)?
+            .map_err(|e| PendingPoolError::BackendError(e.to_string()))?
             .remove_unlocked_and_discard_double_spends(published_block)
     }
 
@@ -103,8 +104,26 @@ impl PendingPool {
         Ok(self
             .pool_storage
             .read()
-            .map_err(|_| PendingPoolError::PoisonedAccess)?
+            .map_err(|e| PendingPoolError::BackendError(e.to_string()))?
             .len())
+    }
+
+    /// Returns all transaction stored in the PendingPool.
+    pub fn snapshot(&self) -> Result<Vec<Arc<Transaction>>, PendingPoolError> {
+        Ok(self
+            .pool_storage
+            .read()
+            .map_err(|e| PendingPoolError::BackendError(e.to_string()))?
+            .snapshot())
+    }
+
+    /// Returns the total weight of all transactions stored in the pool.
+    pub fn calculate_weight(&self) -> Result<u64, PendingPoolError> {
+        Ok(self
+            .pool_storage
+            .read()
+            .map_err(|e| PendingPoolError::BackendError(e.to_string()))?
+            .calculate_weight())
     }
 
     #[cfg(test)]
@@ -113,29 +132,40 @@ impl PendingPool {
         Ok(self
             .pool_storage
             .read()
-            .map_err(|_| PendingPoolError::PoisonedAccess)?
+            .map_err(|e| PendingPoolError::BackendError(e.to_string()))?
             .check_status())
+    }
+}
+
+impl Clone for PendingPool {
+    fn clone(&self) -> Self {
+        PendingPool {
+            pool_storage: self.pool_storage.clone(),
+        }
     }
 }
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use crate::{
-        tari_amount::MicroTari,
-        test_utils::builders::{create_test_block, create_test_tx},
+        consensus::Network,
+        helpers::create_orphan_block,
+        mempool::pending_pool::{PendingPool, PendingPoolConfig},
+        transactions::tari_amount::MicroTari,
+        tx,
     };
+    use std::sync::Arc;
 
     #[test]
     fn test_insert_and_lru() {
-        let tx1 = create_test_tx(MicroTari(10_000), MicroTari(500), 500, 2, 1);
-        let tx2 = create_test_tx(MicroTari(10_000), MicroTari(100), 2150, 1, 2);
-        let tx3 = create_test_tx(MicroTari(10_000), MicroTari(1000), 1000, 2, 1);
-        let tx4 = create_test_tx(MicroTari(10_000), MicroTari(200), 2450, 2, 2);
-        let tx5 = create_test_tx(MicroTari(10_000), MicroTari(500), 1000, 3, 3);
-        let tx6 = create_test_tx(MicroTari(10_000), MicroTari(750), 1850, 2, 2);
+        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), lock: 500, inputs: 2, outputs: 1).0);
+        let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(20), lock: 2150, inputs: 1, outputs: 2).0);
+        let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(100), lock: 1000, inputs: 2, outputs: 1).0);
+        let tx4 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(30), lock: 2450, inputs: 2, outputs: 2).0);
+        let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), lock: 1000, inputs: 3, outputs: 3).0);
+        let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(75), lock: 1850, inputs: 2, outputs: 2).0);
 
-        let mut pending_pool = PendingPool::new(PendingPoolConfig { storage_capacity: 3 });
+        let pending_pool = PendingPool::new(PendingPoolConfig { storage_capacity: 3 });
         pending_pool
             .insert_txs(vec![
                 tx1.clone(),
@@ -150,37 +180,37 @@ mod test {
         assert_eq!(pending_pool.len().unwrap(), 3);
         assert_eq!(
             pending_pool
-                .has_tx_with_excess_sig(&tx1.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             pending_pool
-                .has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             pending_pool
-                .has_tx_with_excess_sig(&tx3.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             pending_pool
-                .has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             pending_pool
-                .has_tx_with_excess_sig(&tx5.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
                 .unwrap(),
             false
         );
         assert_eq!(
             pending_pool
-                .has_tx_with_excess_sig(&tx6.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
@@ -190,14 +220,22 @@ mod test {
 
     #[test]
     fn test_remove_unlocked_and_discard_double_spends() {
-        let tx1 = create_test_tx(MicroTari(10_000), MicroTari(500), 500, 2, 1);
-        let tx2 = create_test_tx(MicroTari(10_000), MicroTari(100), 2150, 1, 2);
-        let tx3 = create_test_tx(MicroTari(10_000), MicroTari(1000), 1000, 2, 1);
-        let tx4 = create_test_tx(MicroTari(10_000), MicroTari(200), 2450, 2, 2);
-        let tx5 = create_test_tx(MicroTari(10_000), MicroTari(500), 1000, 3, 3);
-        let tx6 = create_test_tx(MicroTari(10_000), MicroTari(750), 1450, 2, 2);
+        let network = Network::LocalNet;
+        let consensus_constants = network.create_consensus_constants();
+        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), lock: 500, inputs: 2, outputs: 1).0);
+        let tx2 =
+            Arc::new(tx!(MicroTari(10_000), fee: MicroTari(20), lock: 0, inputs: 1, maturity: 2150, outputs: 2).0);
+        let tx3 = Arc::new(
+            tx!(MicroTari(10_000), fee: MicroTari(100), lock: 0, inputs: 2, maturity: 1000, outputs:
+        1)
+            .0,
+        );
+        let tx4 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(30), lock: 2450, inputs: 2, outputs: 2).0);
+        let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), lock: 1000, inputs: 3, outputs: 3).0);
+        let tx6 =
+            Arc::new(tx!(MicroTari(10_000), fee: MicroTari(75), lock: 1450, inputs: 2, maturity: 1400, outputs: 2).0);
 
-        let mut pending_pool = PendingPool::new(PendingPoolConfig { storage_capacity: 10 });
+        let pending_pool = PendingPool::new(PendingPoolConfig { storage_capacity: 10 });
         pending_pool
             .insert_txs(vec![
                 tx1.clone(),
@@ -210,7 +248,16 @@ mod test {
             .unwrap();
         assert_eq!(pending_pool.len().unwrap(), 6);
 
-        let published_block = create_test_block(1500, vec![tx6.clone()]);
+        let snapshot_txs = pending_pool.snapshot().unwrap();
+        assert_eq!(snapshot_txs.len(), 6);
+        assert!(snapshot_txs.contains(&tx1));
+        assert!(snapshot_txs.contains(&tx2));
+        assert!(snapshot_txs.contains(&tx3));
+        assert!(snapshot_txs.contains(&tx4));
+        assert!(snapshot_txs.contains(&tx5));
+        assert!(snapshot_txs.contains(&tx6));
+
+        let published_block = create_orphan_block(1500, vec![(*tx6).clone()], &consensus_constants);
         let unlocked_txs = pending_pool
             .remove_unlocked_and_discard_double_spends(&published_block)
             .unwrap();
@@ -218,21 +265,21 @@ mod test {
         assert_eq!(pending_pool.len().unwrap(), 2);
         assert_eq!(
             pending_pool
-                .has_tx_with_excess_sig(&tx2.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
         assert_eq!(
             pending_pool
-                .has_tx_with_excess_sig(&tx4.body.kernels[0].excess_sig)
+                .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
                 .unwrap(),
             true
         );
 
         assert_eq!(unlocked_txs.len(), 3);
-        assert!(unlocked_txs.iter().any(|tx| **tx == tx1));
-        assert!(unlocked_txs.iter().any(|tx| **tx == tx3));
-        assert!(unlocked_txs.iter().any(|tx| **tx == tx5));
+        assert!(unlocked_txs.contains(&tx1));
+        assert!(unlocked_txs.contains(&tx3));
+        assert!(unlocked_txs.contains(&tx5));
 
         assert!(pending_pool.check_status().unwrap());
     }
