@@ -4,14 +4,15 @@ packages=${@:-'
 infrastructure/derive
 infrastructure/shutdown
 infrastructure/storage
+infrastructure/test_utils
 common
 comms
 comms/dht
 base_layer/p2p
-base_layer/core
-base_layer/keymanager
 base_layer/mmr
 base_layer/service_framework
+base_layer/core
+base_layer/key_manager
 base_layer/wallet
 base_layer/wallet_ffi
 applications/tari_base_node
@@ -23,6 +24,7 @@ function build_package {
     for p in "${list[@]}"; do
       echo "************************  Building $path/$p package ************************"
       cargo publish --manifest-path=./${p}/Cargo.toml
+      sleep 5 # Wait for crates.io to register any dependent packages
     done
     echo "************************  $path packages built ************************"
 

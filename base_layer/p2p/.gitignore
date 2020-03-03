@@ -1,2 +1,0 @@
-# Ignore generated protos
-src/proto/tari.*.rs

@@ -1,6 +1,7 @@
 [package]
 name = "tari_p2p"
-version = "0.0.5"
+version = "0.0.9"
+authors = ["The Tari Development community"]
 description = "Tari base layer-specific peer-to-peer communication features"
 repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"

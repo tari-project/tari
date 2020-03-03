@@ -1,8 +1,10 @@
 [package]
 name = "tari_test_utils"
-version = "0.0.2"
+description = "Utility functions used in Tari test functions"
+version = "0.0.9"
 authors = ["The Tari Development Community"]
 edition = "2018"
+license = "BSD-3-Clause"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

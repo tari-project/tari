@@ -1,7 +1,10 @@
 [package]
 name = "tari_base_node"
-version = "0.0.1"
 authors = ["The Tari Development Community"]
+description = "The tari full base node implementation"
+repository = "https://github.com/tari-project/tari"
+license = "BSD-3-Clause"
+version = "0.0.9"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

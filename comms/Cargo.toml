@@ -1,11 +1,12 @@
 [package]
 name = "tari_comms"
 description = "A peer-to-peer messaging system"
+authors = ["The Tari Development Community"]
 repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.0.5"
+version = "0.0.9"
 edition = "2018"
 
 [dependencies]
@@ -38,7 +39,7 @@ tower= "0.3.1"
 yamux = {version="0.4.3"}
 
 [dev-dependencies]
-tari_test_utils = {path="../infrastructure/test_utils"}
+tari_test_utils = {version="0.0.9", path="../infrastructure/test_utils"}
 
 env_logger = "0.7.0"
 serde_json = "1.0.39"
