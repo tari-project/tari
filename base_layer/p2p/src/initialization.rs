@@ -26,6 +26,7 @@ use crate::{
 };
 use derive_error::Error;
 use futures::{channel::mpsc, AsyncRead, AsyncWrite, Sink};
+use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::{error::Error, iter, sync::Arc, time::Duration};
 use tari_comms::{
@@ -41,6 +42,8 @@ use tari_comms::{
 use tari_comms_dht::{Dht, DhtBuilder, DhtConfig};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tower::ServiceBuilder;
+
+const LOG_TARGET: &str = "b::p2p::initialization";
 
 #[derive(Debug, Error)]
 pub enum CommsInitializationError {
@@ -163,29 +166,42 @@ where
 
     match &config.transport_type {
         TransportType::Memory { listener_address } => {
+            debug!(target: LOG_TARGET, "Building in-memory comms stack");
             let comms = builder
                 .with_transport(MemoryTransport)
                 .with_listener_address(listener_address.clone());
             configure_comms_and_dht(comms, config, connector).await
         },
         TransportType::Tcp { listener_address } => {
+            debug!(target: LOG_TARGET, "Building TCP comms stack");
             let comms = builder
                 .with_transport(TcpTransport::default())
                 .with_listener_address(listener_address.clone());
             configure_comms_and_dht(comms, config, connector).await
         },
         TransportType::Tor(tor_config) => {
+            debug!(
+                target: LOG_TARGET,
+                "Building TOR comms stack with configuration: {:?}", tor_config
+            );
             let hidden_service = initialize_hidden_service(tor_config.clone()).await?;
+            debug!(
+                target: LOG_TARGET,
+                "Created hidden service {}",
+                hidden_service.get_onion_address()
+            );
             let comms = builder.configure_from_hidden_service(hidden_service);
+            debug!(target: LOG_TARGET, "Comms stack configured");
 
             let (comms, dht) = configure_comms_and_dht(comms, config, connector).await?;
+            debug!(target: LOG_TARGET, "DHT configured");
             // Set the public address to the onion address that comms is using
             comms
                 .node_identity()
                 .set_public_address(
                     comms
                         .hidden_service()
-                        .expect("hidden_service is must be set because a tor hidden service is set")
+                        .expect("hidden_service must be set because a tor hidden service is set")
                         .get_onion_address()
                         .clone(),
                 )
@@ -197,6 +213,7 @@ where
             listener_address,
             authentication,
         } => {
+            debug!(target: LOG_TARGET, "Building SOCKS5 comms stack");
             let comms = builder
                 .with_transport(SocksTransport::new(proxy_address.clone(), authentication.clone()))
                 .with_listener_address(listener_address.clone());
