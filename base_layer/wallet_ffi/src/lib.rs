@@ -137,11 +137,10 @@ use tari_comms_dht::DhtConfig;
 use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
 use tari_crypto::{
     keys::{PublicKey, SecretKey},
-    tari_utilities::{hex::Hex, ByteArray},
+    tari_utilities::ByteArray,
 };
-
 use tari_p2p::transport::{TorConfig, TransportType};
-use tari_utilities::message_format::MessageFormat;
+use tari_utilities::{hex, hex::Hex, message_format::MessageFormat};
 use tari_wallet::{
     contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
     error::WalletError,
@@ -1628,7 +1627,7 @@ pub unsafe extern "C" fn transport_tcp_create(
 ///
 /// ## Arguments
 /// `control_server_address` - The pointer to a char array
-/// `tor_password` - The pointer to a char array containing the tor password, can be null
+/// `tor_cookie` - The pointer to a ByteVector containing the contents of the tor cookie file, can be null
 /// `tor_identity` - The pointer to a ByteVector containing the tor identity, can be null.
 /// `tor_port` - The tor port
 /// `socks_username` - The pointer to a char array containing the socks username, can be null
@@ -1641,7 +1640,7 @@ pub unsafe extern "C" fn transport_tcp_create(
 #[no_mangle]
 pub unsafe extern "C" fn transport_tor_create(
     control_server_address: *const c_char,
-    tor_password: *const c_char,
+    tor_cookie: *const ByteVector,
     tor_identity: *const ByteVector,
     tor_port: c_ushort,
     socks_username: *const c_char,
@@ -1671,9 +1670,9 @@ pub unsafe extern "C" fn transport_tor_create(
     }
 
     let mut tor_authentication = tor::Authentication::None;
-    if !tor_password.is_null() {
-        let tor_password_str = CStr::from_ptr(tor_password).to_str().unwrap().to_owned();
-        tor_authentication = tor::Authentication::HashedPassword(tor_password_str);
+    if !tor_cookie.is_null() {
+        let cookie_hex = hex::to_hex((*tor_cookie).0.as_slice());
+        tor_authentication = tor::Authentication::Cookie(cookie_hex);
     }
 
     let mut identity = None;

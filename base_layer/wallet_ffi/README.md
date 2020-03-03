@@ -85,21 +85,22 @@ Which will present you with the file contents as follows
 ```text
 BUILD_ANDROID=1
 BUILD_IOS=1
+CARGO_CLEAN=1
 SQLITE_SOURCE=https://www.sqlite.org/snapshot/sqlite-snapshot-201911192122.tar.gz
-NDK_PATH=/Users/user/Desktop/android-ndk-r20
-PKG_PATH=/usr/local/Cellar/zeromq/4.3.2/lib/pkgconfig
-
-ANDROID_WALLET_PATH=/Users/user/Desktop/wallet-android
-IOS_WALLET_PATH=/Users/user/Desktop/wallet-ios
-TARI_REPO_PATH=/Users/user/Desktop/tari-main
+NDK_PATH=$HOME/android-ndk-r20
+PKG_PATH=
+ANDROID_WALLET_PATH=$HOME/wallet-android
+IOS_WALLET_PATH=$HOME/wallet-ios
+TARI_REPO_PATH=$HOME/tari-main
 ```
 The following changes need to be made to the file
 1. ```NDK_PATH``` needs to be changed to the directory of the Android NDK Bundle.
-2. ```ANDROID_WALLET``` needs to be changed to the path of the Android-Wallet repository
-3. ```IOS_WALLET_PATH``` needs to be changed to the path of the Wallet-iOS repository
-4. ```TARI_REPO_PATH``` needs to be changed to the path of the Tari repository
-5. ```BUILD_ANDROID``` can be set to ```0``` to disable Android library build
-6. ```BUILD_IOS``` can be set to ```0``` to disable iOS library build
+1. ```ANDROID_WALLET``` needs to be changed to the path of the Android-Wallet repository
+1. ```IOS_WALLET_PATH``` needs to be changed to the path of the Wallet-iOS repository
+1. ```CARGO_CLEAN``` if set to 1, the cargo clean command will be run before the build
+1. ```TARI_REPO_PATH``` needs to be changed to the path of the Tari repository (Optional - defaults to current repo)
+1. ```BUILD_ANDROID``` can be set to ```0``` to disable Android library build
+1. ```BUILD_IOS``` can be set to ```0``` to disable iOS library build
 
 Save the file and rename it to ```build.config```
 
