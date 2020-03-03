@@ -58,7 +58,7 @@ use tari_core::{
         Validators,
     },
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network as NetworkType},
-    mempool::{Mempool, MempoolConfig, MempoolValidators},
+    mempool::{Mempool, MempoolConfig, MempoolServiceConfig, MempoolServiceInitializer, MempoolValidators},
     mining::Miner,
     proof_of_work::DiffAdjManager,
     tari_utilities::{hex::Hex, message_format::MessageFormat},
@@ -365,12 +365,37 @@ where
     )
     .await;
     debug!(target: LOG_TARGET, "Base node service registration complete.");
+
     let outbound_interface = handles
         .get_handle::<OutboundNodeCommsInterface>()
-        .expect("Problem getting node interface handle");
+        .expect("Problem getting node interface handle.");
     let chain_metadata_service = handles
         .get_handle::<ChainMetadataHandle>()
-        .expect("Problem getting chain metadata interface handle");
+        .expect("Problem getting chain metadata interface handle.");
+
+    // TODO: The local base node public key should be provided to the Transaction service and Output manager service,
+    // but this will require the local base node to be in the peer manager. This is a temporary fix where a random peer
+    // base node is provided.
+    if let Some(base_node_peer) = comms
+        .peer_manager()
+        .random_peers(1)
+        .expect("No peers in peer manager.")
+        .first()
+    {
+        handles
+            .get_handle::<TransactionServiceHandle>()
+            .expect("Problem getting transaction service handle.")
+            .set_base_node_public_key(base_node_peer.public_key.clone())
+            .await
+            .expect("Problem setting local base node public key for transaction service.");
+        handles
+            .get_handle::<OutputManagerHandle>()
+            .expect("Problem getting output manager service handle.")
+            .set_base_node_public_key(base_node_peer.public_key.clone())
+            .await
+            .expect("Problem setting local base node public key for output manager service.");
+    }
+
     debug!(target: LOG_TARGET, "Creating base node state machine.");
     let node = BaseNodeStateMachine::new(
         &db,
@@ -598,6 +623,7 @@ where
     B: BlockchainBackend + 'static,
 {
     let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
+    let mempool_config = MempoolServiceConfig::default(); // TODO - make this configurable
     let subscription_factory = Arc::new(subscription_factory);
     let handle = runtime::Handle::current().clone();
     StackBuilder::new(handle, comms.shutdown_signal())
@@ -605,9 +631,14 @@ where
         .add_initializer(BaseNodeServiceInitializer::new(
             subscription_factory.clone(),
             db,
-            mempool,
+            mempool.clone(),
             consensus_manager,
             node_config,
+        ))
+        .add_initializer(MempoolServiceInitializer::new(
+            subscription_factory.clone(),
+            mempool,
+            mempool_config,
         ))
         .add_initializer(OutputManagerServiceInitializer::new(
             OutputManagerServiceConfig::default(),
