@@ -20,31 +20,38 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-cfg_if! {
-    if #[cfg(feature = "base_node")] {
-        mod config;
-        mod consts;
-        mod error;
-        mod mempool;
-        mod orphan_pool;
-        mod pending_pool;
-        mod priority;
-        mod reorg_pool;
-        mod unconfirmed_pool;
-        // Public re-exports
-        pub use self::config::{MempoolConfig, MempoolServiceConfig};
-        pub use error::MempoolError;
-        pub use mempool::{Mempool, MempoolValidators};
-        pub use service::{MempoolServiceError, MempoolServiceInitializer, OutboundMempoolServiceInterface};
-    }
-}
+#[cfg(feature = "base_node")]
+mod config;
+#[cfg(feature = "base_node")]
+mod consts;
+#[cfg(feature = "base_node")]
+mod error;
+#[cfg(feature = "base_node")]
+mod mempool;
+#[cfg(feature = "base_node")]
+mod orphan_pool;
+#[cfg(feature = "base_node")]
+mod pending_pool;
+#[cfg(feature = "base_node")]
+mod priority;
+#[cfg(feature = "base_node")]
+mod reorg_pool;
+#[cfg(feature = "base_node")]
+mod unconfirmed_pool;
+// Public re-exports
+#[cfg(feature = "base_node")]
+pub use self::config::{MempoolConfig, MempoolServiceConfig};
+#[cfg(feature = "base_node")]
+pub use error::MempoolError;
+#[cfg(feature = "base_node")]
+pub use mempool::{Mempool, MempoolValidators};
+#[cfg(feature = "base_node")]
+pub use service::{MempoolServiceError, MempoolServiceInitializer, OutboundMempoolServiceInterface};
 
-cfg_if! {
-    if #[cfg(any(feature = "base_node", feature = "mempool_proto"))] {
-        pub mod proto;
-        pub mod service;
-     }
-}
+#[cfg(any(feature = "base_node", feature = "mempool_proto"))]
+pub mod proto;
+#[cfg(any(feature = "base_node", feature = "mempool_proto"))]
+pub mod service;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]

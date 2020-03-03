@@ -27,9 +27,7 @@ pub mod core {
     include!(concat!(env!("OUT_DIR"), "/", "tari.core.rs"));
 }
 
-cfg_if! {
-    if #[cfg(feature = "base_node")] {
-        mod block;
-        pub mod utils;
-    }
-}
+#[cfg(feature = "base_node")]
+mod block;
+#[cfg(feature = "base_node")]
+pub mod utils;

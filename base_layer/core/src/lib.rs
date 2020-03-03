@@ -30,27 +30,26 @@
 
 #[macro_use]
 extern crate bitflags;
-#[macro_use]
-extern crate cfg_if;
 
-cfg_if! {
-    if #[cfg(feature = "base_node")] {
-        pub mod blocks;
-        pub mod chain_storage;
-        pub mod consensus;
-        pub mod helpers;
-        pub mod mining;
-        pub mod proof_of_work;
-        pub mod validation;
-    }
-}
+#[cfg(feature = "base_node")]
+pub mod blocks;
+#[cfg(feature = "base_node")]
+pub mod chain_storage;
+#[cfg(feature = "base_node")]
+pub mod consensus;
+#[cfg(feature = "base_node")]
+pub mod helpers;
+#[cfg(feature = "base_node")]
+pub mod mining;
+#[cfg(feature = "base_node")]
+pub mod proof_of_work;
+#[cfg(feature = "base_node")]
+pub mod validation;
 
-cfg_if! {
-    if #[cfg(any(feature = "base_node", feature = "base_node_proto"))] {
-        pub mod base_node;
-        pub mod proto;
-    }
-}
+#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
+pub mod base_node;
+#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
+pub mod proto;
 
 #[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod mempool;

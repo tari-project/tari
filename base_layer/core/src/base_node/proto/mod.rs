@@ -27,12 +27,13 @@ use crate::proto::core;
 // Required for `super::types` used in generated files
 use crate::transactions::proto::types;
 
-cfg_if! {
-    if #[cfg(feature = "base_node")] {
-        pub mod chain_metadata;
-        pub mod mmr_tree;
-        pub mod request;
-        pub mod response;
-        pub use base_node::{BaseNodeServiceRequest, BaseNodeServiceResponse, ChainMetadata};
-    }
-}
+#[cfg(feature = "base_node")]
+pub mod chain_metadata;
+#[cfg(feature = "base_node")]
+pub mod mmr_tree;
+#[cfg(feature = "base_node")]
+pub mod request;
+#[cfg(feature = "base_node")]
+pub mod response;
+#[cfg(feature = "base_node")]
+pub use base_node::{BaseNodeServiceRequest, BaseNodeServiceResponse, ChainMetadata};
