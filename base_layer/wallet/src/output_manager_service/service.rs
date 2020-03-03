@@ -713,10 +713,10 @@ pub struct Balance {
 
 impl fmt::Display for Balance {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "You current balance is:")?;
-        write!(f, "Available balance: {}", self.available_balance)?;
-        write!(f, "Pending incoming balance: {}", self.pending_incoming_balance)?;
-        write!(f, "Pending outgoing balance: {}", self.pending_outgoing_balance)?;
+        write!(f, "You current balance is:\n")?;
+        write!(f, "Available balance: {} \n", self.available_balance)?;
+        write!(f, "Pending incoming balance: {}\n", self.pending_incoming_balance)?;
+        write!(f, "Pending outgoing balance: {}\n", self.pending_outgoing_balance)?;
         Ok(())
     }
 }

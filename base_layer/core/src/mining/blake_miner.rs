@@ -93,6 +93,7 @@ impl CpuBlakePow {
         }
 
         debug!(target: LOG_TARGET, "Miner found nonce: {}", nonce);
+        trace!(target: LOG_TARGET, "Mined achieved difficulty: {}", difficulty);
         Some(header)
     }
 }
