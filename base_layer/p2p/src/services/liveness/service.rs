@@ -168,7 +168,7 @@ where
             PingPong::Pong => {
                 let maybe_latency = self.state.record_pong(inner_msg.nonce);
                 trace!(target: LOG_TARGET, "Recorded latency: {:?}", maybe_latency);
-                let is_neighbour = self.neighbours.peers().contains(&msg.source_peer);
+                let is_neighbour = self.neighbours.contains(&msg.source_peer.node_id);
                 let is_monitored = self.state.is_monitored_node_id(&msg.source_peer.node_id);
                 let pong_event = PongEvent::new(
                     msg.source_peer.node_id.clone(),
