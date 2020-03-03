@@ -11,6 +11,7 @@ function update_versions {
    infrastructure/derive
    infrastructure/shutdown
    infrastructure/storage
+   infrastructure/test_utils
    base_layer/core
    base_layer/keymanager
    base_layer/mmr
@@ -22,7 +23,6 @@ function update_versions {
    comms
    comms/dht
    applications/tari_base_node
-   applications/test_faucet
 '}
 
   p_arr=($packages)

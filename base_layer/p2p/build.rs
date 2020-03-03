@@ -26,4 +26,6 @@ fn main() {
         .out_dir("src/proto")
         .compile()
         .unwrap();
+    println!("cargo:rerun-if-changed=src/proto/liveness.proto");
+    println!("cargo:rerun-if-changed=src/proto/message_type.proto");
 }

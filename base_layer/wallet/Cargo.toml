@@ -1,6 +1,9 @@
 [package]
 name = "tari_wallet"
-version = "0.0.5"
+authors = ["The Tari Development Community"]
+description = "Tari cryptocurrency wallet library"
+license = "BSD-3-Clause"
+version = "0.0.9"
 edition = "2018"
 
 [features]

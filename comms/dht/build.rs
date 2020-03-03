@@ -26,4 +26,8 @@ fn main() {
         .out_dir("src/proto")
         .compile()
         .unwrap();
+    println!("cargo:rerun-if-changed=src/proto/dht.proto");
+    println!("cargo:rerun-if-changed=src/proto/envelope.proto");
+    println!("cargo:rerun-if-changed=src/proto/message_header.proto");
+    println!("cargo:rerun-if-changed=src/proto/store_forward.proto");
 }

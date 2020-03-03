@@ -1,6 +1,9 @@
 [package]
 name = "tari_wallet_ffi"
-version = "0.0.5"
+authors = ["The Tari Development Community"]
+description = "Tari cryptocurrency wallet C FFI bindings"
+license = "BSD-3-Clause"
+version = "0.0.9"
 edition = "2018"
 
 [dependencies]
