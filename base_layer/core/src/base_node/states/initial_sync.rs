@@ -137,7 +137,7 @@ impl InitialSync {
         // TODO: Use heuristics to weed out outliers / dishonest nodes.
         // Right now, we a simple strategy of returning the max height
         let result = data.into_iter().fold(ChainMetadata::default(), |best, current| {
-            if current.height_of_longest_chain.unwrap_or(0) >= best.height_of_longest_chain.unwrap_or(0) {
+            if current.accumulated_difficulty.unwrap_or(0.into()) >= best.accumulated_difficulty.unwrap_or(0.into()) {
                 current
             } else {
                 best
