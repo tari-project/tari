@@ -47,9 +47,12 @@ pub enum InterfaceError {
     AllocationError,
     /// An error because the supplied position was out of range
     PositionInvalidError,
-    /// An error has occured when trying to create the tokio runtime
+    /// An error has occurred when trying to create the tokio runtime
     #[error(non_std, no_from)]
     TokioError(String),
+    /// An error has occurred when attempting to deserialize input data
+    #[error(non_std, no_from)]
+    DeserializationError(String),
 }
 
 /// This struct is meant to hold an error for use by FFI client applications. The error has an integer code and string
@@ -78,6 +81,10 @@ impl From<InterfaceError> for LibWalletError {
             },
             InterfaceError::TokioError(_) => Self {
                 code: 4,
+                message: format!("{:?}", v),
+            },
+            InterfaceError::DeserializationError(_) => Self {
+                code: 5,
                 message: format!("{:?}", v),
             },
         }
