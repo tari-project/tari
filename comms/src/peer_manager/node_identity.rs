@@ -143,8 +143,8 @@ impl NodeIdentity {
     }
 
     #[inline]
-    pub fn features(&self) -> &PeerFeatures {
-        &self.features
+    pub fn features(&self) -> PeerFeatures {
+        self.features
     }
 
     #[inline]
@@ -158,9 +158,9 @@ impl NodeIdentity {
         Peer::new(
             self.public_key().clone(),
             self.node_id().clone(),
-            self.public_address().clone().into(),
+            self.public_address().into(),
             PeerFlags::empty(),
-            self.features().clone(),
+            self.features(),
             &[],
         )
     }

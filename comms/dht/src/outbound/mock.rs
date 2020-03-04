@@ -43,6 +43,7 @@ pub fn create_outbound_service_mock(size: usize) -> (OutboundMessageRequester, O
 
 #[derive(Clone, Default)]
 pub struct OutboundServiceMockState {
+    #[allow(clippy::type_complexity)]
     calls: Arc<Mutex<Vec<(FinalSendMessageParams, Vec<u8>)>>>,
     next_response: Arc<RwLock<Option<SendMessageResponse>>>,
     call_count_cond_var: Arc<Condvar>,

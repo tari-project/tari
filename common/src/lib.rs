@@ -137,7 +137,7 @@ fn prompt(question: &str) -> bool {
     let mut input = "".to_string();
     io::stdin().read_line(&mut input).unwrap();
     let input = input.trim().to_lowercase();
-    input == "y" || input.len() == 0
+    input == "y" || input.is_empty()
 }
 
 pub fn install_configuration<F>(path: &Path, installer: F)

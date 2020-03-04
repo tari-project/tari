@@ -69,6 +69,7 @@ pub struct LivenessService<THandleStream, TPingStream> {
 }
 
 impl<THandleStream, TPingStream> LivenessService<THandleStream, TPingStream> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: LivenessConfig,
         request_rx: THandleStream,

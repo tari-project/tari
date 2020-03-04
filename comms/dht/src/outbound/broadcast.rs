@@ -373,6 +373,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn generate_send_messages(
         &mut self,
         selected_peers: Vec<Peer>,

@@ -117,6 +117,7 @@ pub struct MessagingProtocol {
 }
 
 impl MessagingProtocol {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         executor: runtime::Handle,
         connection_manager_requester: ConnectionManagerRequester,

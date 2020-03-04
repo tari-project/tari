@@ -47,7 +47,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             buf: {
                 let mut buf = BytesMut::with_capacity(BUF_CAPACITY);
                 buf.resize(BUF_CAPACITY, 0);
-                buf.into()
+                buf
             },
         }
     }
@@ -119,14 +119,14 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         // Len can never overrun the buffer because the buffer len is u8::MAX + 1 and the length delimiter
         // is a u8. If that changes, then len should be checked here
         let len = u8::from_be_bytes([self.buf[0]]) as usize;
-        self.socket.read_exact(&mut self.buf[1..len + 1]).await?;
+        self.socket.read_exact(&mut self.buf[1..=len]).await?;
         trace!(
             target: LOG_TARGET,
             "Read frame '{}' ({} byte(s))",
-            String::from_utf8_lossy(&self.buf[1..len + 1]),
+            String::from_utf8_lossy(&self.buf[1..=len]),
             len
         );
-        Ok(Bytes::copy_from_slice(&self.buf[1..len + 1]))
+        Ok(Bytes::copy_from_slice(&self.buf[1..=len]))
     }
 
     async fn write_frame_flush(&mut self, protocol: &ProtocolId) -> Result<(), ProtocolError> {

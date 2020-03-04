@@ -41,6 +41,7 @@ pub struct TcpTransport {
     recv_buffer_size: Option<usize>,
     send_buffer_size: Option<usize>,
     ttl: Option<u32>,
+    #[allow(clippy::option_option)]
     keepalive: Option<Option<Duration>>,
     nodelay: Option<bool>,
 }

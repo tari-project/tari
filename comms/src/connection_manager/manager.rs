@@ -160,6 +160,7 @@ where
     TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
     TBackoff: Backoff + Send + Sync + 'static,
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: ConnectionManagerConfig,
         executor: runtime::Handle,
@@ -566,16 +567,13 @@ where
                     // TODO: If the channel is full - we'll fail to dial. This function should block until the dial
                     //       request channel has cleared
 
-                    match err.into_inner() {
-                        DialerRequest::Dial(_, reply_tx) => {
-                            log_if_error_fmt!(
-                                target: LOG_TARGET,
-                                reply_tx.send(Err(ConnectionManagerError::EstablisherChannelError)),
-                                "Failed to send dial peer result for peer '{}'",
-                                node_id.short_str()
-                            );
-                        },
-                        _ => {},
+                    if let DialerRequest::Dial(_, reply_tx) = err.into_inner() {
+                        log_if_error_fmt!(
+                            target: LOG_TARGET,
+                            reply_tx.send(Err(ConnectionManagerError::EstablisherChannelError)),
+                            "Failed to send dial peer result for peer '{}'",
+                            node_id.short_str()
+                        );
                     }
                 }
             },

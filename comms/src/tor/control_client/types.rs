@@ -34,7 +34,7 @@ pub enum KeyType {
 }
 
 impl KeyType {
-    pub fn as_tor_repr(&self) -> &'static str {
+    pub fn as_tor_repr(self) -> &'static str {
         match self {
             KeyType::New => "NEW",
             KeyType::Rsa1024 => "RSA1024",

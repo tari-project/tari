@@ -202,8 +202,7 @@ where
                     comms
                         .hidden_service()
                         .expect("hidden_service must be set because a tor hidden service is set")
-                        .get_onion_address()
-                        .clone(),
+                        .get_onion_address(),
                 )
                 .expect("Poisoned NodeIdentity");
             Ok((comms, dht))

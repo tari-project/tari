@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tor::client::{
+use crate::tor::control_client::{
     commands::TorCommand,
     error::TorClientError,
     parsers,
@@ -98,7 +98,7 @@ impl TorCommand for AddOnion<'_> {
         s.push(':');
         s.push_str(self.key_blob.as_tor_repr());
 
-        if self.flags.len() > 0 {
+        if !self.flags.is_empty() {
             let flags = self.flags.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",");
             s.push_str(&format!(" Flags={}", flags));
         }

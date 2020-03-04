@@ -65,6 +65,7 @@ where
     TTransport: Transport,
     TTransport::Output: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         executor: runtime::Handle,
         config: ConnectionManagerConfig,
@@ -196,6 +197,7 @@ where
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn perform_socket_upgrade_procedure(
         executor: runtime::Handle,
         node_identity: Arc<NodeIdentity>,

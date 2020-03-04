@@ -23,7 +23,7 @@
 use crate::{proto::liveness::MetadataKey, services::liveness::error::LivenessError};
 use chrono::{NaiveDateTime, Utc};
 use std::{
-    collections::HashMap,
+    collections::{hash_map::RandomState, HashMap},
     sync::atomic::{AtomicUsize, Ordering},
     time::Duration,
 };
@@ -58,7 +58,7 @@ impl From<HashMap<i32, Vec<u8>>> for Metadata {
     }
 }
 
-impl From<Metadata> for HashMap<i32, Vec<u8>> {
+impl From<Metadata> for HashMap<i32, Vec<u8>, RandomState> {
     fn from(metadata: Metadata) -> Self {
         metadata.inner
     }
@@ -141,7 +141,7 @@ impl LivenessState {
     /// Adds a ping to the inflight ping list, while noting the current time that a ping was sent.
     pub fn add_inflight_ping(&mut self, nonce: u64, node_id: &NodeId) {
         let now = Utc::now().naive_utc();
-        self.inflight_pings.insert(nonce, ((*node_id).clone(), now.clone()));
+        self.inflight_pings.insert(nonce, ((*node_id).clone(), now));
         if let Some(ns) = self.nodes_to_monitor.get_mut(node_id) {
             ns.last_ping_sent = Some(now);
         }

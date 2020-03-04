@@ -23,7 +23,7 @@
 // This file is used to store the genesis block
 use crate::{
     blocks::{block::Block, BlockHeader},
-    proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
+    proof_of_work::{PowAlgorithm, ProofOfWork},
 };
 
 use crate::transactions::{

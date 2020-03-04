@@ -124,11 +124,15 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             Authentication::Password(username, password) => {
                 let username_len = username.as_bytes().len();
                 if username_len < 1 || username_len > 255 {
-                    Err(SocksError::InvalidAuthValues("username length should between 1 to 255"))?
+                    return Err(SocksError::InvalidAuthValues(
+                        "username length should between 1 to 255".to_string(),
+                    ));
                 }
                 let password_len = password.as_bytes().len();
                 if password_len < 1 || password_len > 255 {
-                    Err(SocksError::InvalidAuthValues("password length should between 1 to 255"))?
+                    return Err(SocksError::InvalidAuthValues(
+                        "password length should between 1 to 255".to_string(),
+                    ));
                 }
             },
         }
@@ -224,17 +228,20 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             return Err(SocksError::InvalidReservedByte);
         }
 
-        match self.buf[1] {
-            0x00 => {}, // succeeded
-            0x01 => Err(SocksError::GeneralSocksServerFailure)?,
-            0x02 => Err(SocksError::ConnectionNotAllowedByRuleset)?,
-            0x03 => Err(SocksError::NetworkUnreachable)?,
-            0x04 => Err(SocksError::HostUnreachable)?,
-            0x05 => Err(SocksError::ConnectionRefused)?,
-            0x06 => Err(SocksError::TtlExpired)?,
-            0x07 => Err(SocksError::CommandNotSupported)?,
-            0x08 => Err(SocksError::AddressTypeNotSupported)?,
-            _ => Err(SocksError::UnknownAuthMethod)?,
+        let auth_byte = self.buf[1];
+        if auth_byte != 0x00 {
+            return match self.buf[1] {
+                0x00 => unreachable!(),
+                0x01 => Err(SocksError::GeneralSocksServerFailure),
+                0x02 => Err(SocksError::ConnectionNotAllowedByRuleset),
+                0x03 => Err(SocksError::NetworkUnreachable),
+                0x04 => Err(SocksError::HostUnreachable),
+                0x05 => Err(SocksError::ConnectionRefused),
+                0x06 => Err(SocksError::TtlExpired),
+                0x07 => Err(SocksError::CommandNotSupported),
+                0x08 => Err(SocksError::AddressTypeNotSupported),
+                _ => Err(SocksError::UnknownAuthMethod),
+            };
         }
 
         match self.buf[3] {
@@ -252,7 +259,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 self.ptr += self.read().await?;
                 self.len += self.buf[4] as usize + 2;
             },
-            _ => Err(SocksError::UnknownAddressType)?,
+            _ => return Err(SocksError::UnknownAddressType),
         }
 
         self.ptr += self.read().await?;
@@ -395,12 +402,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
     fn extract_onion_address(p: Protocol<'_>) -> Result<(String, u16)> {
         let onion_addr = p.to_string();
-        let mut parts = onion_addr
-            .split('/')
-            .skip(2)
-            .next()
-            .expect("already checked")
-            .split(':');
+        let mut parts = onion_addr.split('/').nth(2).expect("already checked").split(':');
         let domain = format!("{}.onion", parts.next().expect("already checked"),);
         let port = parts
             .next()
@@ -417,7 +419,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
     async fn write(&mut self) -> Result<()> {
         self.socket
-            .write_all(&mut self.buf[self.ptr..self.len])
+            .write_all(&self.buf[self.ptr..self.len])
             .await
             .map_err(Into::into)
     }

@@ -217,7 +217,7 @@ impl OutboundMessaging {
             self.node_identity.secret_key(),
             self.node_identity.public_key(),
             body.clone(),
-            flags.clone(),
+            *flags,
         )?;
         let body = envelope.to_encoded_bytes()?;
 
