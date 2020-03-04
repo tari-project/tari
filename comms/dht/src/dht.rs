@@ -161,8 +161,7 @@ impl Dht {
         let saf_storage = Arc::new(store_forward::SafStorage::new(
             self.config.saf_msg_cache_storage_capacity,
         ));
-
-        ServiceBuilder::new()
+        let builder = ServiceBuilder::new()
             .layer(inbound::DeserializeLayer::new())
             .layer(inbound::ValidateLayer::new(
                 self.config.network,
@@ -174,7 +173,12 @@ impl Dht {
             .layer(store_forward::ForwardLayer::new(
                 Arc::clone(&self.peer_manager),
                 self.outbound_requester(),
-            ))
+            ));
+
+        // FIXME: The store and forward layers are excluded for Windows builds due to an unresolved stack overflow
+        // (#1416)
+        #[cfg(not(target_os = "windows"))]
+        let builder = builder
             .layer(store_forward::StoreLayer::new(
                 self.config.clone(),
                 Arc::clone(&self.peer_manager),
@@ -188,15 +192,16 @@ impl Dht {
                 Arc::clone(&self.node_identity),
                 Arc::clone(&self.peer_manager),
                 self.outbound_requester(),
-            ))
-            .layer(inbound::DhtHandlerLayer::new(
-                self.config.clone(),
-                Arc::clone(&self.node_identity),
-                Arc::clone(&self.peer_manager),
-                self.discovery_service_requester(),
-                self.outbound_requester(),
-            ))
-            .into_inner()
+            ));
+
+        let builder = builder.layer(inbound::DhtHandlerLayer::new(
+            self.config.clone(),
+            Arc::clone(&self.node_identity),
+            Arc::clone(&self.peer_manager),
+            self.discovery_service_requester(),
+            self.outbound_requester(),
+        ));
+        builder.into_inner()
     }
 
     /// Returns an the full DHT stack as a `tower::layer::Layer`. This can be composed with
@@ -363,6 +368,8 @@ mod test {
         assert_eq!(msg, b"secret");
     }
 
+    // FIXME: This test is excluded for Windows builds due to an unresolved stack overflow issue (#1416)
+    #[cfg(not(target_os = "windows"))]
     #[tokio_macros::test_basic]
     async fn stack_forward() {
         let node_identity = make_node_identity();
