@@ -211,7 +211,7 @@ where
             Err(err) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Failed to dialed peer '{}' because '{:?}'", peer_id_short_str, err
+                    "Failed to dial peer '{}' because '{:?}'", peer_id_short_str, err
                 );
                 self.notify_connection_manager(ConnectionManagerEvent::PeerConnectFailed(
                     Box::new(node_id.clone()),
@@ -460,7 +460,7 @@ where
                 },
                 // Delayed dial was cancelled
                 _ = cancel_signal => {
-                    debug!(target: LOG_TARGET, "[Attempt {}] Connecting to peer '{}'...", current_state.num_attempts(), current_state.peer.node_id.short_str());
+                    debug!(target: LOG_TARGET, "[Attempt {}] Connecting to peer '{}'... cancelled", current_state.num_attempts(), current_state.peer.node_id.short_str());
                     break (current_state, Err(ConnectionManagerError::DialCancelled));
                 }
             }
