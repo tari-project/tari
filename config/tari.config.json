@@ -1,0 +1,122 @@
+{
+  "__internal": {
+    "configMode": {
+      "name": "Mode",
+      "description": {
+        "simple": "The most common config options",
+        "advanced": "All available options"
+      },
+      "default": "simple",
+      "values": [
+        "simple",
+        "advanced"
+      ]
+    },
+    "platform": {
+      "name": "Platform",
+      "description": {
+        "Windows": "Windows",
+        "Linux": "GNU/Linux",
+        "Mac OS": "Mac OS X"
+      },
+      "default": null,
+      "values": [
+        "Windows",
+        "Linux",
+        "Mac OS"
+      ]
+    }
+  },
+  "top": {
+    "section" : "The Tari Network Configuration File",
+    "description": "This file carries all the configuration options for running Tari-related nodes and infrastructure in one single file.\nAs you'll notice, almost all configuration options are commented out. This is because they are either not needed, are for advanced users that know what they want to tweak, or are already set at their default values.  If things are working fine, then there's no need to change anything here. Each major section is clearly marked so that you can quickly find the section you're looking for.\n A note about Logging - The logger is initialised before the configuration file is loaded. For this reason, logging is not configured here, but in `~/.tari/log4rs.yml` (*nix / OsX) or `%HOME%/.tari/log4rs.yml` (Windows) by default, or the location specified in the TARI_LOGFILE environment variable."
+  },
+  "common": {
+    "section": "Common settings",
+    "description": "Settings common to all applications",
+    "base_path" : {
+      "name": "Common Tari data path",
+      "description": "By default all Tari-related data-- the blockchain database, wallet information and peer information is stored in $BASE. If you wish to use another location, you can set this parameter.",
+      "default": "$BASE",
+      "type": "path"
+    },
+    "message_cache_size": {
+      "name": "Message cache size",
+      "description": "Tari is a 100% peer-to-peer network, so there are no servers to hold messages for you while you're offline.\nInstead, we rely on our peers to hold messages for us while we're offline. This settings sets maximum size of the  message cache that for holding our peers' messages, in MB.",
+      "type": "number",
+      "default": 10,
+      "min": 0,
+      "max": 1000
+    },
+    "message_cache_ttl": {
+      "name": "Message cache TTL",
+      "description": "When storing messages for peers, hold onto them for at most this long before discarding them. The default is 1440 minutes = or 24 hrs.",
+      "type": "number",
+      "default": 1440,
+      "min": 2,
+      "max": 518400
+    },
+    "peer_database": {
+      "name": "Peer database location",
+      "default": "$BASE/peers",
+      "type": "path"
+    },
+    "blacklist_ban_period": {
+      "name": "Blacklist period",
+      "description": "If peer nodes spam you with messages, or are otherwise badly behaved, they will be added to your blacklist and banned. You can set a time limit to release that ban (in minutes), or otherwise ban them for life (-1). The default is to ban them for 10 days.",
+      "type": "number",
+      "default": 1440
+    }
+  },
+  "wallet": {
+    "section": "Wallet Configuration Options",
+    "description": "",
+    "wallet_file": {
+      "name": "Wallet path",
+      "description": "The folder to store your local key data and transaction history. DO NOT EVER DELETE THIS FILE unless you\n  a) have backed up your seed phrase and\n  b) know what you are doing!",
+      "default": "$BASE/wallet/wallet.dat",
+      "type": "path"
+    }
+  },
+  "base_node": {
+    "section": "Base Node Configuration Options",
+    "description": "If you are not running a Tari Base node, you can simply leave everything in this section commented out. Base nodes help maintain the security of the Tari token and are the surest way to preserve your privacy and be 100% sure that no-one is cheating you out of your money.",
+    "network": {
+      "name": "Network",
+      "default": "mainnet",
+      "description": {
+        "mainnet": "The main Tari network",
+        "rincewind": "The Tari test network (Edition One)"
+      },
+      "values": [
+        "mainnet",
+        "rincewind"
+      ],
+      "simple": true,
+      "type": "string"
+    },
+    "base_path": {
+      "name": "Base Path",
+      "description": "Blockchain and settings will be stored in {}.",
+      "default": "$BASE",
+      "type": "path",
+      "simple": true
+    }
+  },
+  "base_node.rincewind": {
+    "section": "Rincewind Node (testnet one)",
+    "description": "Rincewind is the first Tari test net. This network is for testing purposes only, but we encourage everyone to come and play onn it and try and break things.\nCoins on this network **have no value**, and the network may be restarted without prior notice.",
+    "condition": "settings.base_node.network == 'rincewind'",
+    "db_type": {
+      "name": "Database backend",
+      "description": {
+        "lmdb": "Use the LMDB backend. Recommended for almost all use cases.",
+        "memory": "Use the non-persistent memory backend. For testing only."
+      },
+      "default": "lmdb",
+      "values": ["lmdb", "memory"],
+      "simple": true,
+      "type": "string"
+    }
+  }
+}

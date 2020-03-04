@@ -104,7 +104,9 @@ pub fn bootstrap_config_from_cli(matches: &ArgMatches) -> ConfigBootstrap {
 
     if !config.exists() {
         let install = if !matches.is_present("init") {
-            prompt("Config file does not exist. Would you like to create a new one (Y/n)?")
+            prompt("Config file does not exist. We can create a default one for you now, or you can say 'no' here, \
+            and generate a customised one at https://config.tari.com.\n\
+            Would you like to try the default configuration (Y/n)?")
         } else {
             true
         };
