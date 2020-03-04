@@ -448,6 +448,14 @@ impl SenderTransactionProtocol {
             state: SenderState::CollectingSingleSignature(Box::new(raw_data)),
         })
     }
+
+    /// Create an empty SenderTransactionProtocol that can be used as a placeholder in data structures that do not
+    /// require a well formed version
+    pub fn new_placeholder() -> Self {
+        SenderTransactionProtocol {
+            state: SenderState::Failed(TPE::IncompleteStateError("This is a placeholder protocol".to_string())),
+        }
+    }
 }
 
 pub fn calculate_tx_id<D: Digest>(pub_nonce: &PublicKey, index: usize) -> u64 {

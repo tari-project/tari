@@ -193,6 +193,33 @@ pub enum WriteOperation {
     Remove(DbKey),
 }
 
+impl From<CompletedTransaction> for InboundTransaction {
+    fn from(ct: CompletedTransaction) -> Self {
+        Self {
+            tx_id: ct.tx_id,
+            source_public_key: ct.source_public_key,
+            amount: ct.amount,
+            receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
+            message: ct.message,
+            timestamp: ct.timestamp,
+        }
+    }
+}
+
+impl From<CompletedTransaction> for OutboundTransaction {
+    fn from(ct: CompletedTransaction) -> Self {
+        Self {
+            tx_id: ct.tx_id,
+            destination_public_key: ct.destination_public_key,
+            amount: ct.amount,
+            fee: ct.fee,
+            sender_protocol: SenderTransactionProtocol::new_placeholder(),
+            message: ct.message,
+            timestamp: ct.timestamp,
+        }
+    }
+}
+
 // Private macro that pulls out all the boiler plate of extracting a DB query result from its variants
 macro_rules! fetch {
     ($db:ident, $key_val:expr, $key_var:ident) => {{
