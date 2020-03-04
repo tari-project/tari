@@ -123,10 +123,7 @@ impl Parser {
         let commands: Vec<&str> = command_str.split(' ').collect();
         let command = BaseNodeCommand::from_str(commands[0]);
         if command.is_err() {
-            println!(
-                "{} is not a valid command, please enter a valid command",
-                command_str
-            );
+            println!("{} is not a valid command, please enter a valid command", command_str);
             println!("Enter help or press tab for available commands");
             return;
         }
