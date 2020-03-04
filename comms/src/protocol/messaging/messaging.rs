@@ -47,7 +47,7 @@ use tokio::{runtime, sync::broadcast};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 const LOG_TARGET: &str = "comms::protocol::messaging";
-pub const MESSAGING_PROTOCOL: Bytes = Bytes::from_static(b"/tari/messaging/0.1.0");
+pub static MESSAGING_PROTOCOL: Bytes = Bytes::from_static(b"/tari/messaging/0.1.0");
 /// The size of the buffered channel used for _each_ peer's message queue
 const MESSAGE_QUEUE_BUF_SIZE: usize = 20;
 

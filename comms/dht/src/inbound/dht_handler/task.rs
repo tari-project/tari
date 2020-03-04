@@ -126,6 +126,7 @@ where
                 None,
                 Some(peer_features),
                 None,
+                None,
             )?;
         } else {
             peer_manager.add_peer(Peer::new(
@@ -134,6 +135,7 @@ where
                 net_addresses.into(),
                 PeerFlags::default(),
                 peer_features,
+                &[],
             ))?;
         }
 

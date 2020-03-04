@@ -121,6 +121,7 @@ async fn new_inbound_substream_handling() {
             MultiaddressesWithStats::default(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
+            &[],
         ))
         .await
         .unwrap();
@@ -132,7 +133,7 @@ async fn new_inbound_substream_handling() {
     let stream_ours = muxer_ours.get_yamux_control().open_stream().await.unwrap();
     proto_tx
         .send(ProtocolNotification::new(
-            MESSAGING_PROTOCOL.into(),
+            MESSAGING_PROTOCOL.clone(),
             ProtocolEvent::NewInboundSubstream(Box::new(expected_node_id.clone()), stream_ours),
         ))
         .await

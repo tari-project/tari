@@ -499,6 +499,7 @@ mod test {
             Vec::<Multiaddr>::new().into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
+            &[],
         );
         DomainMessage {
             dht_header: DhtMessageHeader::new(

@@ -16,7 +16,7 @@ tari_shutdown = { version="^0.0",  path = "../infrastructure/shutdown" }
 
 bitflags = "1.0.4"
 blake2 = "0.8.1"
-bytes = "0.5.x"
+bytes = { version = "0.5.x", features=["serde"] }
 chrono = { version = "0.4.6", features = ["serde"] }
 clear_on_drop = "0.2.3"
 data-encoding = "2.2.0"

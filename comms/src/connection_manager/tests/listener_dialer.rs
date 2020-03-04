@@ -145,6 +145,7 @@ async fn smoke() {
         vec![address].into(),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
+        &[],
     );
     peer.set_id_for_test(1);
 

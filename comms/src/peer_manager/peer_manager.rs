@@ -31,6 +31,7 @@ use crate::{
         PeerManagerError,
         PeerQuery,
     },
+    protocol::ProtocolId,
     types::{CommsDatabase, CommsPublicKey},
 };
 use multiaddr::Multiaddr;
@@ -67,6 +68,7 @@ impl PeerManager {
         flags: Option<PeerFlags>,
         peer_features: Option<PeerFeatures>,
         connection_stats: Option<PeerConnectionStats>,
+        supported_protocols: Option<Vec<ProtocolId>>,
     ) -> Result<(), PeerManagerError>
     {
         self.peer_storage.write()?.update_peer(
@@ -76,6 +78,7 @@ impl PeerManager {
             flags,
             peer_features,
             connection_stats,
+            supported_protocols,
         )
     }
 
@@ -84,7 +87,15 @@ impl PeerManager {
         let mut storage = self.peer_storage.write()?;
         let mut peer = storage.find_by_node_id(node_id)?;
         peer.connection_stats.set_connection_success();
-        storage.update_peer(&peer.public_key, None, None, None, None, Some(peer.connection_stats))
+        storage.update_peer(
+            &peer.public_key,
+            None,
+            None,
+            None,
+            None,
+            Some(peer.connection_stats),
+            None,
+        )
     }
 
     /// Set the last connection to this peer as a failure
@@ -92,7 +103,15 @@ impl PeerManager {
         let mut storage = self.peer_storage.write()?;
         let mut peer = storage.find_by_node_id(node_id)?;
         peer.connection_stats.set_connection_failed();
-        storage.update_peer(&peer.public_key, None, None, None, None, Some(peer.connection_stats))
+        storage.update_peer(
+            &peer.public_key,
+            None,
+            None,
+            None,
+            None,
+            Some(peer.connection_stats),
+            None,
+        )
     }
 
     /// The peer with the specified public_key will be removed from the PeerManager
@@ -215,6 +234,7 @@ mod test {
             net_addresses,
             PeerFlags::default(),
             PeerFeatures::MESSAGE_PROPAGATION,
+            &[],
         );
         peer.set_banned(ban_flag);
         peer

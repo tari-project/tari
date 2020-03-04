@@ -377,7 +377,13 @@ where
             "Starting peer identity exchange for peer with public key '{}'",
             authenticated_public_key
         );
-        let peer_identity = common::perform_identity_exchange(&mut muxer, &node_identity, CONNECTION_DIRECTION).await?;
+        let peer_identity = common::perform_identity_exchange(
+            &mut muxer,
+            &node_identity,
+            CONNECTION_DIRECTION,
+            &our_supported_protocols,
+        )
+        .await?;
 
         debug!(
             target: LOG_TARGET,

@@ -565,6 +565,7 @@ mod test {
                     MultiaddressesWithStats::new(vec![]),
                     PeerFlags::empty(),
                     PeerFeatures::COMMUNICATION_CLIENT,
+                    &[],
                 ))
                 .unwrap();
             let (out_tx, _) = mpsc::channel(1);

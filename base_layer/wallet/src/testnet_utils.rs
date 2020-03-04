@@ -43,7 +43,7 @@ use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng, RngCore};
 use std::{iter, sync::Arc, thread, time::Duration};
 use tari_comms::{
     multiaddr::Multiaddr,
-    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    peer_manager::{NodeIdentity, PeerFeatures},
     transports::MemoryTransport,
     types::{CommsPublicKey, CommsSecretKey},
 };
@@ -267,22 +267,10 @@ pub fn generate_wallet_test_data<
     }
     info!(target: LOG_TARGET, "Bob Wallet created");
 
-    let alice_peer = Peer::new(
-        wallet_alice.comms.node_identity().public_key().clone(),
-        wallet_alice.comms.node_identity().node_id().clone(),
-        vec![wallet_alice.comms.listening_address().clone()].into(),
-        PeerFlags::empty(),
-        PeerFeatures::COMMUNICATION_NODE,
-    );
+    let alice_peer = wallet_alice.comms.node_identity().to_peer();
 
     wallet.comms.peer_manager().add_peer(alice_peer.clone())?;
-    let bob_peer = Peer::new(
-        wallet_bob.comms.node_identity().public_key().clone(),
-        wallet_bob.comms.node_identity().node_id().clone(),
-        vec![wallet_bob.comms.listening_address().clone()].into(),
-        PeerFlags::empty(),
-        PeerFeatures::COMMUNICATION_NODE,
-    );
+    let bob_peer = wallet_bob.comms.node_identity().to_peer();
 
     wallet.comms.peer_manager().add_peer(bob_peer.clone())?;
 

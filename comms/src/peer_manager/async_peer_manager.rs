@@ -32,6 +32,7 @@ use crate::{
         PeerManager,
         PeerManagerError,
     },
+    protocol::ProtocolId,
     types::CommsPublicKey,
 };
 use std::sync::Arc;
@@ -102,6 +103,7 @@ impl AsyncPeerManager {
         flags: Option<PeerFlags>,
         peer_features: Option<PeerFeatures>,
         connection_stats: Option<PeerConnectionStats>,
+        supported_protocols: Option<Vec<ProtocolId>>,
     ) -> Result<(), PeerManagerError>
     {
         // TODO: When tokio block_in_place is more stable, this clone may not be necessary
@@ -114,6 +116,7 @@ impl AsyncPeerManager {
                 flags,
                 peer_features,
                 connection_stats,
+                supported_protocols,
             )
         })
         .await?
@@ -156,6 +159,7 @@ mod test {
             Default::default(),
             Default::default(),
             Default::default(),
+            &[],
         ))
         .await
         .unwrap();
@@ -165,7 +169,7 @@ mod test {
         let (_, pk2) = CommsPublicKey::random_keypair(&mut OsRng);
         let node_id2 = NodeId::from_key(&pk2).unwrap();
 
-        pm.update_peer(&pk, Some(node_id2.clone()), None, None, None, None)
+        pm.update_peer(&pk, Some(node_id2.clone()), None, None, None, None, None)
             .await
             .unwrap();
 

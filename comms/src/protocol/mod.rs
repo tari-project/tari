@@ -21,9 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod error;
+pub use error::ProtocolError;
+
 mod identity;
+pub use identity::{identity_exchange, IdentityProtocolError, IDENTITY_PROTOCOL};
+
 mod negotiation;
+pub use negotiation::ProtocolNegotiation;
+
 mod protocols;
+pub use protocols::{ProtocolEvent, ProtocolNotification, Protocols};
 
 pub mod messaging;
 
@@ -31,7 +38,7 @@ pub mod messaging;
 /// This is atomically reference counted, so clones are shallow and cheap
 pub type ProtocolId = bytes::Bytes;
 
-pub use error::ProtocolError;
-pub use identity::{identity_exchange, IdentityProtocolError};
-pub use negotiation::ProtocolNegotiation;
-pub use protocols::{ProtocolEvent, ProtocolNotification, Protocols};
+/// The protocols offered by comms. These will be added to the list of protocols supported by this node.
+pub fn comms_protocols() -> [ProtocolId; 1] {
+    [messaging::MESSAGING_PROTOCOL.clone()]
+}

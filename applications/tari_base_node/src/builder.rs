@@ -481,6 +481,7 @@ fn assign_peers(seeds: &[String]) -> Vec<Peer> {
             addr.into(),
             PeerFlags::default(),
             PeerFeatures::COMMUNICATION_NODE,
+            &[],
         );
         result.push(peer);
     }
