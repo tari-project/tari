@@ -208,8 +208,9 @@ impl ChainMetadataService {
             .get(MetadataKey::ChainMetadata)
             .ok_or_else(|| ChainMetadataSyncError::NoChainMetadata)?;
 
-        debug!(target: LOG_TARGET, "Received chain metadata from NodeId '{}'", node_id);
         let chain_metadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?.into();
+        debug!(target: LOG_TARGET, "Received chain metadata from NodeId '{}'", node_id);
+        trace!(target: LOG_TARGET, "{}", chain_metadata);
 
         if let Some(pos) = self
             .peer_chain_metadata
