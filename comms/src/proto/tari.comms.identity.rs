@@ -6,4 +6,6 @@ pub struct PeerIdentityMsg {
     pub addresses: ::std::vec::Vec<std::string::String>,
     #[prost(uint64, tag = "3")]
     pub features: u64,
+    #[prost(bytes, repeated, tag = "4")]
+    pub supported_protocols: ::std::vec::Vec<std::vec::Vec<u8>>,
 }

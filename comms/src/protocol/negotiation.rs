@@ -54,9 +54,12 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
     /// Negotiate a protocol to speak. Since this node is initiating this interation, send each protocol this node
     /// wishes to speak until the destination node agrees.
-    pub async fn negotiate_protocol_outbound<T>(&mut self, selected_protocols: T) -> Result<ProtocolId, ProtocolError>
-    where T: AsRef<[ProtocolId]> {
-        for protocol in selected_protocols.as_ref() {
+    pub async fn negotiate_protocol_outbound(
+        &mut self,
+        selected_protocols: &[ProtocolId],
+    ) -> Result<ProtocolId, ProtocolError>
+    {
+        for protocol in selected_protocols {
             self.write_frame_flush(protocol).await?;
 
             let proto = self.read_frame().await?;
@@ -79,8 +82,11 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
     /// Negotiate a protocol to speak. Since this node is the responder, first we wait for a protocol to be sent and see
     /// if it is in the supported protocol list.
-    pub async fn negotiate_protocol_inbound<T>(&mut self, supported_protocols: T) -> Result<ProtocolId, ProtocolError>
-    where T: AsRef<[ProtocolId]> {
+    pub async fn negotiate_protocol_inbound(
+        &mut self,
+        supported_protocols: &[ProtocolId],
+    ) -> Result<ProtocolId, ProtocolError>
+    {
         for _ in 0..MAX_ROUNDS_ALLOWED {
             let proto = self.read_frame().await?;
 
@@ -165,8 +171,8 @@ mod test {
             .collect::<Vec<_>>();
 
         let (in_proto, out_proto) = future::join(
-            negotiate_in.negotiate_protocol_inbound(supported_protocols),
-            negotiate_out.negotiate_protocol_outbound(selected_protocols),
+            negotiate_in.negotiate_protocol_inbound(&supported_protocols),
+            negotiate_out.negotiate_protocol_outbound(&selected_protocols),
         )
         .await;
 
@@ -190,8 +196,8 @@ mod test {
             .collect::<Vec<_>>();
 
         let (in_proto, out_proto) = future::join(
-            negotiate_in.negotiate_protocol_inbound(supported_protocols),
-            negotiate_out.negotiate_protocol_outbound(selected_protocols),
+            negotiate_in.negotiate_protocol_inbound(&supported_protocols),
+            negotiate_out.negotiate_protocol_outbound(&selected_protocols),
         )
         .await;
 

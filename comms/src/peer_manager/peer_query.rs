@@ -213,6 +213,7 @@ mod test {
             net_addresses,
             PeerFlags::default(),
             PeerFeatures::MESSAGE_PROPAGATION,
+            &[],
         );
         peer.set_banned(ban_flag);
         peer

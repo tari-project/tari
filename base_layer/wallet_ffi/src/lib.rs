@@ -1681,7 +1681,7 @@ pub unsafe extern "C" fn transport_tor_create(
     let mut identity = None;
     if !tor_identity.is_null() {
         let bytes = (*tor_identity).0.as_slice();
-        identity = Some(Box::new(tor::TorIdentity::from_binary(bytes.clone()).unwrap()));
+        identity = Some(Box::new(tor::TorIdentity::from_binary(bytes).unwrap()));
     }
 
     let tor_config = TorConfig {

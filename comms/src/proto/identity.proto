@@ -6,4 +6,5 @@ message PeerIdentityMsg {
     bytes node_id = 1;
     repeated string addresses = 2;
     uint64 features = 3;
+    repeated bytes supported_protocols = 4;
 }

@@ -25,13 +25,13 @@ mod consts;
 mod multiplexing;
 mod noise;
 mod proto;
-pub mod protocol;
 
 pub mod backoff;
 pub mod bounded_executor;
 pub mod compat;
 pub mod memsocket;
 pub mod peer_manager;
+pub mod protocol;
 #[macro_use]
 pub mod message;
 pub mod net_address;

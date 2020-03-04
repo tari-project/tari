@@ -244,6 +244,7 @@ where
             vec![address].into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
+            &[],
         );
 
         let existing_peers = self.runtime.block_on(self.db.get_peers())?;

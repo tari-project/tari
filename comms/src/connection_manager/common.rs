@@ -28,6 +28,7 @@ use crate::{
     peer_manager::{AsyncPeerManager, NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     proto::identity::PeerIdentityMsg,
     protocol,
+    protocol::ProtocolId,
     types::CommsPublicKey,
 };
 use futures::StreamExt;
@@ -36,10 +37,11 @@ use tari_crypto::tari_utilities::ByteArray;
 
 const LOG_TARGET: &str = "comms::connection_manager::common";
 
-pub async fn perform_identity_exchange(
+pub async fn perform_identity_exchange<'p, P: IntoIterator<Item = &'p ProtocolId>>(
     muxer: &mut Yamux,
     node_identity: &NodeIdentity,
     direction: ConnectionDirection,
+    our_supported_protocols: P,
 ) -> Result<PeerIdentityMsg, ConnectionManagerError>
 {
     let mut control = muxer.get_yamux_control();
@@ -54,7 +56,7 @@ pub async fn perform_identity_exchange(
 
     debug!(target: LOG_TARGET, "{} substream opened to peer", direction);
 
-    let peer_identity = protocol::identity_exchange(node_identity, direction, stream).await?;
+    let peer_identity = protocol::identity_exchange(node_identity, direction, our_supported_protocols, stream).await?;
     Ok(peer_identity)
 }
 
@@ -114,6 +116,12 @@ pub fn validate_and_add_peer_from_peer_identity(
         return Err(ConnectionManagerError::PeerIdentityNoValidAddresses);
     }
 
+    let supported_protocols = peer_identity
+        .supported_protocols
+        .into_iter()
+        .map(bytes::Bytes::from)
+        .collect::<Vec<_>>();
+
     // Add or update the peer
     match maybe_peer {
         Some(peer) => {
@@ -131,6 +139,7 @@ pub fn validate_and_add_peer_from_peer_identity(
                 None,
                 Some(PeerFeatures::from_bits_truncate(peer_identity.features)),
                 Some(conn_stats),
+                Some(supported_protocols),
             )?;
         },
         None => {
@@ -145,6 +154,7 @@ pub fn validate_and_add_peer_from_peer_identity(
                 addresses.into(),
                 PeerFlags::empty(),
                 PeerFeatures::from_bits_truncate(peer_identity.features),
+                &supported_protocols,
             );
             new_peer.connection_stats.set_connection_success();
             peer_manager.add_peer(new_peer)?;

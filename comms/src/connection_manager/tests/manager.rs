@@ -111,7 +111,7 @@ async fn dial_success() {
         shutdown.to_signal(),
     );
 
-    let public_address1 = conn_man1.wait_until_listening().await.unwrap();
+    conn_man1.wait_until_listening().await.unwrap();
 
     let peer_manager2 = build_peer_manager();
     let mut conn_man2 = build_connection_manager(
@@ -134,22 +134,15 @@ async fn dial_success() {
             vec![public_address2].into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
-        ))
-        .unwrap();
-
-    peer_manager2
-        .add_peer(Peer::new(
-            node_identity1.public_key().clone(),
-            node_identity1.node_id().clone(),
-            vec![public_address1].into(),
-            PeerFlags::empty(),
-            PeerFeatures::COMMUNICATION_CLIENT,
+            &[],
         ))
         .unwrap();
 
     // Dial at the same time
     let mut conn_out = conn_man1.dial_peer(node_identity2.node_id().clone()).await.unwrap();
     assert_eq!(conn_out.peer_node_id(), node_identity2.node_id());
+    let peer2 = peer_manager1.find_by_node_id(conn_out.peer_node_id()).unwrap();
+    assert_eq!(peer2.supported_protocols, &[TEST_PROTO]);
 
     let event = subscription2.next().await.unwrap().unwrap();
     unpack_enum!(ConnectionManagerEvent::Listening(_addr) = &*event);
@@ -157,6 +150,9 @@ async fn dial_success() {
     let event = subscription2.next().await.unwrap().unwrap();
     unpack_enum!(ConnectionManagerEvent::PeerConnected(conn_in) = &*event);
     assert_eq!(conn_in.peer_node_id(), node_identity1.node_id());
+
+    let peer1 = peer_manager2.find_by_node_id(node_identity1.node_id()).unwrap();
+    assert_eq!(peer1.supported_protocols(), &[TEST_PROTO]);
 
     let err = conn_out.open_substream("/tari/invalid").await.unwrap_err();
     unpack_enum!(PeerConnectionError::ProtocolError(_err) = err);
@@ -216,6 +212,7 @@ async fn dial_offline_peer() {
         vec![public_address].into(),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_CLIENT,
+        &[],
     );
 
     peer.connection_stats.set_connection_failed();
@@ -279,6 +276,7 @@ async fn simultaneous_dial_events() {
             vec![public_address2].into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
+            &[],
         ))
         .unwrap();
 
@@ -289,6 +287,7 @@ async fn simultaneous_dial_events() {
             vec![public_address1].into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
+            &[],
         ))
         .unwrap();
 

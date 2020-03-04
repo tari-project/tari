@@ -151,16 +151,17 @@ impl NodeIdentity {
     pub fn has_peer_features(&self, peer_features: PeerFeatures) -> bool {
         self.features().contains(peer_features)
     }
-}
 
-impl From<NodeIdentity> for Peer {
-    fn from(node_identity: NodeIdentity) -> Peer {
+    /// Returns a Peer with the same public key, node id, public address and features as represented in this
+    /// NodeIdentity. PeerFlags and supported_protocols are empty.
+    pub fn to_peer(&self) -> Peer {
         Peer::new(
-            node_identity.public_key,
-            node_identity.node_id,
-            node_identity.public_address.read().unwrap().clone().into(),
+            self.public_key().clone(),
+            self.node_id().clone(),
+            self.public_address().clone().into(),
             PeerFlags::empty(),
-            node_identity.features,
+            self.features().clone(),
+            &[],
         )
     }
 }

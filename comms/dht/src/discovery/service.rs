@@ -224,7 +224,7 @@ impl DhtDiscoveryService {
         if expected_node_id == node_id {
             Ok(expected_node_id)
         } else {
-            // TODO: Misbehaviour
+            // TODO: Misbehaviour #banheuristic
             Err(DhtDiscoveryError::InvalidNodeId)
         }
     }
@@ -246,6 +246,7 @@ impl DhtDiscoveryService {
                 None,
                 Some(peer_features),
                 None,
+                None,
             )?;
         } else {
             peer_manager.add_peer(Peer::new(
@@ -254,6 +255,10 @@ impl DhtDiscoveryService {
                 net_addresses.into(),
                 PeerFlags::default(),
                 peer_features,
+                // We don't know which protocols the peer supports. This is ok because:
+                // 1) supported protocols are considered "extra" information and are not needed for p2p comms, and
+                // 2) when a connection is established with this node, supported protocols information is obtained
+                &[],
             ))?;
         }
 

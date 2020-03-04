@@ -37,6 +37,7 @@ use crate::{
     noise::NoiseConfig,
     peer_manager::{AsyncPeerManager, NodeIdentity, PeerManager, PeerManagerError},
     pipeline,
+    protocol,
     protocol::{messaging, messaging::MessagingProtocol, ProtocolNotification, Protocols},
     tor,
     transports::{SocksTransport, TcpTransport, Transport},
@@ -324,7 +325,7 @@ where
             .protocols
             .take()
             .or_else(|| Some(Protocols::new()))
-            .map(move |protocols| protocols.add([messaging::MESSAGING_PROTOCOL], messaging_proto_tx))
+            .map(move |protocols| protocols.add(protocol::comms_protocols(), messaging_proto_tx))
             .expect("cannot fail");
 
         //---------------------------------- ConnectionManager --------------------------------------------//

@@ -48,7 +48,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 use tari_comms::{
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags},
+    peer_manager::{NodeId, NodeIdentity},
     tor,
 };
 use tari_crypto::tari_utilities::message_format::MessageFormat;
@@ -178,14 +178,7 @@ fn main() {
 
     println!("Comms listening on {}", comms.listening_address());
 
-    let peer = Peer::new(
-        peer_identity.public_key().clone(),
-        peer_identity.node_id().clone(),
-        peer_identity.public_address().into(),
-        PeerFlags::empty(),
-        peer_identity.features().clone(),
-    );
-    comms.peer_manager().add_peer(peer).unwrap();
+    comms.peer_manager().add_peer(peer_identity.to_peer()).unwrap();
     let shutdown_signal = comms.shutdown_signal();
 
     let handles = rt

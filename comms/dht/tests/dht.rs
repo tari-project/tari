@@ -135,7 +135,7 @@ async fn dht_join_propagation() {
     let (tx, ims_rx_A) = mpsc::channel(1);
     let (node_A_comms, node_A_dht) = setup_comms_dht(
         node_A_identity.clone(),
-        create_peer_storage(vec![node_B_identity.clone().into()]),
+        create_peer_storage(vec![node_B_identity.to_peer()]),
         tx,
     )
     .await;
@@ -143,7 +143,7 @@ async fn dht_join_propagation() {
     let (tx, ims_rx_B) = mpsc::channel(1);
     let (node_B_comms, node_B_dht) = setup_comms_dht(
         node_B_identity.clone(),
-        create_peer_storage(vec![node_A_identity.clone().into(), node_C_identity.clone().into()]),
+        create_peer_storage(vec![node_A_identity.to_peer(), node_C_identity.to_peer()]),
         tx,
     )
     .await;
@@ -151,7 +151,7 @@ async fn dht_join_propagation() {
     let (tx, ims_rx_C) = mpsc::channel(1);
     let (node_C_comms, node_C_dht) = setup_comms_dht(
         node_C_identity.clone(),
-        create_peer_storage(vec![node_B_identity.clone().into()]),
+        create_peer_storage(vec![node_B_identity.to_peer()]),
         tx,
     )
     .await;
@@ -219,7 +219,7 @@ async fn dht_discover_propagation() {
     let (tx, ims_rx_A) = mpsc::channel(1);
     let (node_A_comms, node_A_dht) = setup_comms_dht(
         node_A_identity.clone(),
-        create_peer_storage(vec![node_B_identity.clone().into()]),
+        create_peer_storage(vec![node_B_identity.to_peer()]),
         tx,
     )
     .await;
@@ -227,7 +227,7 @@ async fn dht_discover_propagation() {
     let (tx, ims_rx_B) = mpsc::channel(1);
     let (node_B_comms, node_B_dht) = setup_comms_dht(
         node_B_identity.clone(),
-        create_peer_storage(vec![node_C_identity.clone().into()]),
+        create_peer_storage(vec![node_C_identity.to_peer()]),
         tx,
     )
     .await;
@@ -235,7 +235,7 @@ async fn dht_discover_propagation() {
     let (tx, ims_rx_C) = mpsc::channel(1);
     let (node_C_comms, node_C_dht) = setup_comms_dht(
         node_C_identity.clone(),
-        create_peer_storage(vec![node_D_identity.clone().into()]),
+        create_peer_storage(vec![node_D_identity.to_peer()]),
         tx,
     )
     .await;

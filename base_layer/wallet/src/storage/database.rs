@@ -215,6 +215,7 @@ mod test {
                 "/ip4/1.2.3.4/tcp/9000".parse::<Multiaddr>().unwrap().into(),
                 PeerFlags::empty(),
                 PeerFeatures::COMMUNICATION_NODE,
+                &[],
             );
 
             peers.push(peer);

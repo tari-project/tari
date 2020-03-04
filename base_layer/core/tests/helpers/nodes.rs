@@ -24,7 +24,7 @@ use futures::Sink;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::{error::Error, iter, sync::Arc, time::Duration};
 use tari_comms::{
-    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    peer_manager::{NodeIdentity, PeerFeatures},
     transports::MemoryTransport,
     CommsNode,
 };
@@ -426,18 +426,7 @@ where
         .unwrap();
 
     for p in peers {
-        let addr = p.public_address();
-        comms
-            .async_peer_manager()
-            .add_peer(Peer::new(
-                p.public_key().clone(),
-                p.node_id().clone(),
-                addr.into(),
-                PeerFlags::empty(),
-                p.features().clone(),
-            ))
-            .await
-            .unwrap();
+        comms.async_peer_manager().add_peer(p.to_peer()).await.unwrap();
     }
 
     (comms, dht)

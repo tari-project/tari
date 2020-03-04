@@ -56,6 +56,7 @@ fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
         net_address.into(),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
+        &[],
     )
 }
 

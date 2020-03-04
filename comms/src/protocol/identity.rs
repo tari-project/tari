@@ -35,16 +35,18 @@ use std::io;
 use tari_crypto::tari_utilities::ByteArray;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
-const IDENTITY_PROTOCOL: &[u8] = b"/tari/identity/1.0.0";
+pub static IDENTITY_PROTOCOL: ProtocolId = ProtocolId::from_static(b"/tari/identity/1.0.0");
 const LOG_TARGET: &str = "comms::protocol::identity";
 
-pub async fn identity_exchange<TSocket>(
+pub async fn identity_exchange<'p, TSocket, P>(
     node_identity: &NodeIdentity,
     direction: ConnectionDirection,
+    our_supported_protocols: P,
     mut socket: TSocket,
 ) -> Result<PeerIdentityMsg, IdentityProtocolError>
 where
     TSocket: AsyncRead + AsyncWrite + Unpin,
+    P: IntoIterator<Item = &'p ProtocolId>,
 {
     // Negotiate the identity protocol
     let mut negotiation = ProtocolNegotiation::new(&mut socket);
@@ -56,7 +58,7 @@ where
                 node_identity.node_id().short_str()
             );
             negotiation
-                .negotiate_protocol_outbound(&[ProtocolId::from_static(IDENTITY_PROTOCOL)])
+                .negotiate_protocol_outbound(&[IDENTITY_PROTOCOL.clone()])
                 .await?
         },
         ConnectionDirection::Inbound => {
@@ -66,7 +68,7 @@ where
                 node_identity.node_id().short_str()
             );
             negotiation
-                .negotiate_protocol_inbound(&[ProtocolId::from_static(IDENTITY_PROTOCOL)])
+                .negotiate_protocol_inbound(&[IDENTITY_PROTOCOL.clone()])
                 .await?
         },
     };
@@ -76,11 +78,14 @@ where
     // Create length-delimited frame codec
     let mut framed = Framed::new(IoCompat::new(socket), LengthDelimitedCodec::new());
 
+    let supported_protocols = our_supported_protocols.into_iter().map(|p| p.to_vec()).collect();
+
     // Send this node's identity
     let msg_bytes = PeerIdentityMsg {
         node_id: node_identity.node_id().to_vec(),
         addresses: vec![node_identity.public_address().to_string()],
         features: node_identity.features().bits(),
+        supported_protocols,
     }
     .to_encoded_bytes()
     .map_err(|_| IdentityProtocolError::ProtobufEncodingError)?;
@@ -156,8 +161,8 @@ mod test {
         let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_CLIENT);
 
         let (result1, result2) = future::join(
-            super::identity_exchange(&node_identity1, ConnectionDirection::Inbound, in_sock),
-            super::identity_exchange(&node_identity2, ConnectionDirection::Outbound, out_sock),
+            super::identity_exchange(&node_identity1, ConnectionDirection::Inbound, &[], in_sock),
+            super::identity_exchange(&node_identity2, ConnectionDirection::Outbound, &[], out_sock),
         )
         .await;
 
