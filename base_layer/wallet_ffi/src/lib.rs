@@ -155,7 +155,10 @@ use tari_wallet::{
         mine_transaction,
         receive_test_transaction,
     },
-    transaction_service::storage::{database::TransactionDatabase, sqlite_db::TransactionServiceSqliteDatabase},
+    transaction_service::storage::{
+        database::{InboundTransaction, OutboundTransaction, TransactionDatabase, TransactionStatus},
+        sqlite_db::TransactionServiceSqliteDatabase,
+    },
     util::emoji::EmojiId,
     wallet::WalletConfig,
 };
@@ -2786,7 +2789,15 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
         .block_on((*wallet).transaction_service.get_completed_transactions());
     match completed_transactions {
         Ok(completed_transactions) => {
-            for (_id, tx) in &completed_transactions {
+            // The frontend specification calls for completed transactions that have not yet been mined to be
+            // classified as Pending Transactions. In order to support this logic without impacting the practical
+            // definitions and storage of a MimbleWimble CompletedTransaction we will remove CompletedTransactions with
+            // the Completed and Broadcast states from the list returned by this FFI function
+            for tx in completed_transactions
+                .values()
+                .filter(|ct| ct.status != TransactionStatus::Completed)
+                .filter(|ct| ct.status != TransactionStatus::Broadcast)
+            {
                 completed.push(tx.clone());
             }
             Box::into_raw(Box::new(TariCompletedTransactions(completed)))
@@ -2800,6 +2811,8 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
 }
 
 /// Get the TariPendingInboundTransactions from a TariWallet
+///
+/// Currently a CompletedTransaction with the Status of Completed and Broadcast is considered Pending by the frontend
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
@@ -2827,11 +2840,31 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
     let pending_transactions = (*wallet)
         .runtime
         .block_on((*wallet).transaction_service.get_pending_inbound_transactions());
+
     match pending_transactions {
         Ok(pending_transactions) => {
             for (_id, tx) in &pending_transactions {
                 pending.push(tx.clone());
             }
+
+            if let Ok(completed_txs) = (*wallet)
+                .runtime
+                .block_on((*wallet).transaction_service.get_completed_transactions())
+            {
+                // The frontend specification calls for completed transactions that have not yet been mined to be
+                // classified as Pending Transactions. In order to support this logic without impacting the practical
+                // definitions and storage of a MimbleWimble CompletedTransaction we will add those transaction to the
+                // list here in the FFI interface
+                let my_public_key = (*wallet).comms.node_identity().public_key().clone();
+                for ct in completed_txs
+                    .values()
+                    .filter(|ct| ct.status == TransactionStatus::Completed || ct.status == TransactionStatus::Broadcast)
+                    .filter(|ct| ct.destination_public_key == my_public_key)
+                {
+                    pending.push(InboundTransaction::from(ct.clone()));
+                }
+            }
+
             Box::into_raw(Box::new(TariPendingInboundTransactions(pending)))
         },
         Err(e) => {
@@ -2843,6 +2876,8 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
 }
 
 /// Get the TariPendingOutboundTransactions from a TariWallet
+///
+/// Currently a CompletedTransaction with the Status of Completed and Broadcast is considered Pending by the frontend
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
@@ -2874,6 +2909,23 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
         Ok(pending_transactions) => {
             for (_id, tx) in &pending_transactions {
                 pending.push(tx.clone());
+            }
+            if let Ok(completed_txs) = (*wallet)
+                .runtime
+                .block_on((*wallet).transaction_service.get_completed_transactions())
+            {
+                // The frontend specification calls for completed transactions that have not yet been mined to be
+                // classified as Pending Transactions. In order to support this logic without impacting the practical
+                // definitions and storage of a MimbleWimble CompletedTransaction we will add those transaction to the
+                // list here in the FFI interface
+                let my_public_key = (*wallet).comms.node_identity().public_key().clone();
+                for ct in completed_txs
+                    .values()
+                    .filter(|ct| ct.status == TransactionStatus::Completed || ct.status == TransactionStatus::Broadcast)
+                    .filter(|ct| ct.source_public_key == my_public_key)
+                {
+                    pending.push(OutboundTransaction::from(ct.clone()));
+                }
             }
             Box::into_raw(Box::new(TariPendingOutboundTransactions(pending)))
         },
@@ -3696,6 +3748,10 @@ mod test {
 
             assert_eq!(inbound_transactions.len(), 0);
 
+            // `wallet_test_generate_data(...)` creates 5 completed inbound tx which should appear in this list
+            let ffi_inbound_txs = wallet_get_pending_inbound_transactions(&mut (*alice_wallet), error_ptr);
+            assert_eq!(pending_inbound_transactions_get_length(ffi_inbound_txs, error_ptr), 5);
+
             wallet_test_receive_transaction(alice_wallet, error_ptr);
 
             let inbound_transactions: std::collections::HashMap<
@@ -3707,6 +3763,13 @@ mod test {
                 .unwrap();
 
             assert_eq!(inbound_transactions.len(), 1);
+
+            let ffi_inbound_txs = wallet_get_pending_inbound_transactions(&mut (*alice_wallet), error_ptr);
+            assert_eq!(pending_inbound_transactions_get_length(ffi_inbound_txs, error_ptr), 6);
+
+            // `wallet_test_generate_data(...)` creates 9 completed outbound transactions that are not mined
+            let ffi_outbound_txs = wallet_get_pending_outbound_transactions(&mut (*alice_wallet), error_ptr);
+            assert_eq!(pending_outbound_transactions_get_length(ffi_outbound_txs, error_ptr), 9);
 
             let completed_transactions: std::collections::HashMap<
                 u64,
@@ -3734,6 +3797,10 @@ mod test {
 
             assert_eq!(num_completed_tx_pre + 1, completed_transactions.len());
 
+            // At this stage there is only 1 Mined transaction created by the `wallet_test_generate_data(...)` function
+            let ffi_completed_txs = wallet_get_completed_transactions(&mut (*alice_wallet), error_ptr);
+            assert_eq!(completed_transactions_get_length(ffi_completed_txs, error_ptr), 1);
+
             // TODO: Test transaction collection and transaction methods
             let completed_transactions: std::collections::HashMap<
                 u64,
@@ -3749,6 +3816,10 @@ mod test {
                     wallet_test_mine_transaction(alice_wallet, tx_ptr, error_ptr);
                 }
             }
+
+            // Now all completed transactions are mined as should be returned
+            let ffi_completed_txs = wallet_get_completed_transactions(&mut (*alice_wallet), error_ptr);
+            assert_eq!(completed_transactions_get_length(ffi_completed_txs, error_ptr), 15);
 
             let contacts = wallet_get_contacts(alice_wallet, error_ptr);
             assert_eq!(contacts_get_length(contacts, error_ptr), 4);
