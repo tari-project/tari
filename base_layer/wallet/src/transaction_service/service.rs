@@ -1055,6 +1055,10 @@ where
         match self.base_node_public_key.clone() {
             None => return Err(TransactionServiceError::NoBaseNodeKeysProvided),
             Some(pk) => {
+                info!(
+                    target: LOG_TARGET,
+                    "Attempting to Broadcast TxId: {} to Mempool", completed_tx.tx_id
+                );
                 // Broadcast Transaction
                 self.outbound_message_service
                     .send_direct(
@@ -1207,6 +1211,11 @@ where
                 for o in completed_tx.transaction.body.outputs() {
                     hashes.push(o.hash());
                 }
+
+                info!(
+                    target: LOG_TARGET,
+                    "Sending Transaction Mined? request for TxId: {} to Base Node", tx_id
+                );
 
                 let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
                 let service_request = BaseNodeProto::BaseNodeServiceRequest {
