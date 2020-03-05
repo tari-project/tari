@@ -41,7 +41,7 @@ use std::{
 };
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_comms::types::CommsPublicKey;
+use tari_comms::{peer_manager::PeerManager, types::CommsPublicKey};
 use tari_core::{
     base_node::LocalNodeCommsInterface,
     tari_utilities::hex::Hex,
@@ -61,6 +61,7 @@ pub enum BaseNodeCommand {
     GetBalance,
     SendTari,
     GetChainMetadata,
+    GetPeers,
     Quit,
     Exit,
 }
@@ -69,6 +70,7 @@ pub enum BaseNodeCommand {
 #[derive(Helper, Validator, Highlighter)]
 pub struct Parser {
     executor: runtime::Handle,
+    peer_manager: Arc<PeerManager>,
     shutdown_flag: Arc<AtomicBool>,
     commands: Vec<String>,
     hinter: HistoryHinter,
@@ -109,6 +111,7 @@ impl Parser {
     pub fn new(executor: runtime::Handle, ctx: &NodeContainer) -> Self {
         Parser {
             executor,
+            peer_manager: ctx.peer_manager(),
             shutdown_flag: ctx.interrupt_flag(),
             commands: BaseNodeCommand::iter().map(|x| x.to_string()).collect(),
             hinter: HistoryHinter {},
@@ -143,17 +146,20 @@ impl Parser {
                 println!("{}", joined);
             },
             BaseNodeCommand::GetBalance => {
-                println!("This command gets your balance");
+                println!("Gets your balance");
             },
             BaseNodeCommand::SendTari => {
-                println!("This command sends an amount of Tari to a address call this command via:");
+                println!("Sends an amount of Tari to a address call this command via:");
                 println!("send_tari [amount of tari to send] [public key to send to]");
             },
             BaseNodeCommand::GetChainMetadata => {
-                println!("This command gets your base node chain meta data");
+                println!("Gets your base node chain meta data");
+            },
+            BaseNodeCommand::GetPeers => {
+                println!("Lists the peers that this node is connected to");
             },
             BaseNodeCommand::Exit | BaseNodeCommand::Quit => {
-                println!("This command exits the base node");
+                println!("Exits the base node");
             },
         }
     }
@@ -174,6 +180,9 @@ impl Parser {
             },
             BaseNodeCommand::GetChainMetadata => {
                 self.process_get_chain_meta();
+            },
+            BaseNodeCommand::GetPeers => {
+                self.process_get_peers();
             },
             BaseNodeCommand::Exit | BaseNodeCommand::Quit => {
                 println!("quit received");
@@ -219,6 +228,21 @@ impl Parser {
                 Ok(data) => println!("Current meta data is is: {}", data),
             };
         });
+    }
+
+    fn process_get_peers(&self) {
+        let peers = match self.peer_manager.flood_peers() {
+            Ok(p) => p,
+            Err(e) => {
+                error!(target: LOG_TARGET, "Could not read peers: {}", e.to_string());
+                return;
+            },
+        };
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&peers)
+                .unwrap_or_else(|e| format!("Error serializing peer: {}", e.to_string()))
+        );
     }
 
     // Function to process  the send transaction function

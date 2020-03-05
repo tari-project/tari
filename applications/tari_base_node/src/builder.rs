@@ -32,7 +32,7 @@ use std::{
 use tari_common::{CommsTransport, DatabaseType, GlobalConfig, Network, SocksAuthentication, TorControlAuthentication};
 use tari_comms::{
     multiaddr::Multiaddr,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     socks,
     tor,
     tor::TorIdentity,
@@ -139,6 +139,10 @@ impl NodeContainer {
     /// with the comms service
     pub fn local_node(&self) -> LocalNodeCommsInterface {
         using_backend!(self, ctx, ctx.local_node())
+    }
+
+    pub fn peer_manager(&self) -> Arc<PeerManager> {
+        using_backend!(self, ctx, ctx.comms.peer_manager())
     }
 
     /// Returns a handle to the wallet transaction service. This function panics if it has not been registered

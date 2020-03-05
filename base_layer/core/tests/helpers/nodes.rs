@@ -249,9 +249,21 @@ pub fn create_network_with_2_base_nodes(
         .start(runtime, data_path);
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity)
-        .with_peers(vec![alice_node_identity])
+        // Alice will call Bob, otherwise Bob may connect
+        // first and result in a DialCancelled
+        // .with_peers(vec![alice_node_identity])
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
+
+    // Wait for peers to connect
+    runtime
+        .block_on(
+            alice_node
+                .comms
+                .connection_manager()
+                .dial_peer(bob_node.node_identity.node_id().clone()),
+        )
+        .unwrap();
 
     (alice_node, bob_node, consensus_manager)
 }
@@ -285,7 +297,9 @@ pub fn create_network_with_2_base_nodes_with_config(
         .start(runtime, data_path);
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity)
-        .with_peers(vec![alice_node_identity])
+        // Alice will call Bob, otherwise Bob may connect
+        // first and result in a DialCancelled
+        // .with_peers(vec![alice_node_identity])
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
@@ -293,12 +307,15 @@ pub fn create_network_with_2_base_nodes_with_config(
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
 
-    let _ = runtime.block_on(
-        alice_node
-            .comms
-            .connection_manager()
-            .dial_peer(bob_node.node_identity.node_id().clone()),
-    );
+    // Wait for peers to connect
+    runtime
+        .block_on(
+            alice_node
+                .comms
+                .connection_manager()
+                .dial_peer(bob_node.node_identity.node_id().clone()),
+        )
+        .unwrap();
 
     (alice_node, bob_node, consensus_manager)
 }
@@ -360,7 +377,7 @@ pub fn create_network_with_3_base_nodes_with_config(
         .start(runtime, data_path);
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity.clone())
-        .with_peers(vec![alice_node_identity.clone(), carol_node_identity.clone()])
+        .with_peers(vec![carol_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
@@ -369,7 +386,6 @@ pub fn create_network_with_3_base_nodes_with_config(
         .start(runtime, data_path);
     let (carol_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(carol_node_identity.clone())
-        .with_peers(vec![alice_node_identity, bob_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
