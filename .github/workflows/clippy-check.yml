@@ -11,7 +11,7 @@ jobs:
           components: clippy
           override: true
       - name: Install dependencies
-        run: apt install libncurses5 libncurses5-dev
+        run: sudo apt install libncurses5 libncurses5-dev openssl libssl-dev pkg-config libsqlite3-0 libsqlite3-dev clang git cmake libc++-dev libc++abi-dev
       - uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
