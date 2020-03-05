@@ -514,7 +514,7 @@ pub struct Handshake<TSocket> {
 impl<TSocket> Handshake<TSocket> {
     pub fn new(socket: TSocket, state: HandshakeState) -> Self {
         Self {
-            socket: NoiseSocket::new(socket, state.into()),
+            socket: NoiseSocket::new(socket, Box::new(state).into()),
         }
     }
 }
@@ -573,8 +573,8 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
 #[derive(Debug)]
 enum NoiseState {
-    HandshakeState(HandshakeState),
-    TransportState(TransportState),
+    HandshakeState(Box<HandshakeState>),
+    TransportState(Box<TransportState>),
 }
 
 macro_rules! proxy_state_method {
@@ -607,20 +607,20 @@ impl NoiseState {
 
     pub fn into_transport_mode(self) -> Result<Self, snow::Error> {
         match self {
-            NoiseState::HandshakeState(state) => Ok(NoiseState::TransportState(state.into_transport_mode()?)),
+            NoiseState::HandshakeState(state) => Ok(NoiseState::TransportState(Box::new(state.into_transport_mode()?))),
             _ => Err(snow::Error::State(StateProblem::HandshakeAlreadyFinished)),
         }
     }
 }
 
-impl From<HandshakeState> for NoiseState {
-    fn from(state: HandshakeState) -> Self {
+impl From<Box<HandshakeState>> for NoiseState {
+    fn from(state: Box<HandshakeState>) -> Self {
         NoiseState::HandshakeState(state)
     }
 }
 
-impl From<TransportState> for NoiseState {
-    fn from(state: TransportState) -> Self {
+impl From<Box<TransportState>> for NoiseState {
+    fn from(state: Box<TransportState>) -> Self {
         NoiseState::TransportState(state)
     }
 }
@@ -650,8 +650,8 @@ mod test {
 
         let (dialer_socket, listener_socket) = MemorySocket::new_pair();
         let (dialer, listener) = (
-            NoiseSocket::new(dialer_socket, dialer_session.into()),
-            NoiseSocket::new(listener_socket, listener_session.into()),
+            NoiseSocket::new(dialer_socket, Box::new(dialer_session).into()),
+            NoiseSocket::new(listener_socket, Box::new(listener_session).into()),
         );
 
         Ok((

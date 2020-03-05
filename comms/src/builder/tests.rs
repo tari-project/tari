@@ -22,7 +22,7 @@
 
 use crate::{
     backoff::ConstantBackoff,
-    builder::builder::{CommsBuilder, CommsNode},
+    builder::CommsBuilder,
     connection_manager::ConnectionManagerEvent,
     memsocket,
     message::{InboundMessage, OutboundMessage},
@@ -34,6 +34,7 @@ use crate::{
     test_utils::node_identity::build_node_identity,
     transports::MemoryTransport,
     types::CommsSubstream,
+    CommsNode,
 };
 use bytes::Bytes;
 use futures::{channel::mpsc, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};

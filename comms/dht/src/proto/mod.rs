@@ -37,21 +37,21 @@ pub mod message_header;
 //---------------------------------- Network impl --------------------------------------------//
 
 impl envelope::Network {
-    pub fn is_mainnet(&self) -> bool {
+    pub fn is_mainnet(self) -> bool {
         match self {
             Network::MainNet => true,
             _ => false,
         }
     }
 
-    pub fn is_testnet(&self) -> bool {
+    pub fn is_testnet(self) -> bool {
         match self {
             Network::TestNet => true,
             _ => false,
         }
     }
 
-    pub fn is_localtest(&self) -> bool {
+    pub fn is_localtest(self) -> bool {
         match self {
             Network::LocalTest => true,
             _ => false,

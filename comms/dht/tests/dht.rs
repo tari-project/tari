@@ -190,7 +190,7 @@ async fn dht_join_propagation() {
         .find_by_public_key(node_C_node_identity.public_key())
         .await
         .unwrap();
-    assert_eq!(&node_C_peer.features, node_C_node_identity.features());
+    assert_eq!(node_C_peer.features, node_C_node_identity.features());
 
     // Make sure these variables only drop after the test is done
     drop(ims_rx_A);

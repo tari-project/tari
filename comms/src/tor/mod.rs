@@ -30,8 +30,16 @@
 //! The [hidden_service](crate::tor::hidden_service) module contains code which sets up hidden services required for
 //! `tari_comms` to function over Tor.
 
-mod client;
-pub use client::{Authentication, KeyBlob, KeyType, PortMapping, PrivateKey, TorClientError, TorControlPortClient};
+mod control_client;
+pub use control_client::{
+    Authentication,
+    KeyBlob,
+    KeyType,
+    PortMapping,
+    PrivateKey,
+    TorClientError,
+    TorControlPortClient,
+};
 
 mod hidden_service;
 pub use hidden_service::{HiddenService, HiddenServiceBuilder, HiddenServiceBuilderError, HsFlags, TorIdentity};

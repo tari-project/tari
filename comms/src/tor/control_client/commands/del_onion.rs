@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,43 +20,46 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp, ops::Range, sync::Mutex};
+use crate::tor::control_client::{commands::TorCommand, error::TorClientError, response::ResponseLine};
 
-const PORT_RANGE: Range<u16> = 20000..30000;
-const LOCAL_ADDRESS: &str = "127.0.0.1";
-
-lazy_static! {
-    /// Shared counter of ports which have been used
-    static ref PORT_COUNTER: Mutex<u16> = Mutex::new(PORT_RANGE.start);
+/// The DEL_ONION command.
+///
+/// This instructs Tor to delete a hidden service.
+pub struct DelOnion<'a> {
+    service_id: &'a str,
 }
 
-/// Maintains a counter of ports within a range (20000..30000), returning them in
-/// sequence. Port numbers will wrap back to 20000 once the upper bound is exceeded.
-/// This range is chosen because OS-assigned ports are not typically in this range.
-pub fn get_next_local_port() -> u16 {
-    let mut lock = match PORT_COUNTER.lock() {
-        Ok(guard) => guard,
-        Err(_) => panic!("Poisoned PORT_COUNTER"),
-    };
-    {
-        *lock = cmp::max((*lock + 1) % PORT_RANGE.end, PORT_RANGE.start);
-        *lock
+impl<'a> DelOnion<'a> {
+    pub fn new(service_id: &'a str) -> Self {
+        Self { service_id }
     }
 }
 
-/// Returns a local address with the next port in specified range.
-pub fn get_next_local_address() -> String {
-    format!("/ip4/{}/tcp/{}", LOCAL_ADDRESS, get_next_local_port())
+impl<'a> TorCommand for DelOnion<'a> {
+    type Error = TorClientError;
+    type Output = ();
+
+    fn to_command_string(&self) -> Result<String, Self::Error> {
+        Ok(format!("DEL_ONION {}", self.service_id))
+    }
+
+    fn parse_responses(&self, mut responses: Vec<ResponseLine<'_>>) -> Result<Self::Output, Self::Error> {
+        let last_response = responses.pop().ok_or_else(|| TorClientError::UnexpectedEof)?;
+        if let Some(err) = last_response.err() {
+            return Err(TorClientError::TorCommandFailed(err.into_owned()));
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::address::get_next_local_address;
+    use super::*;
 
     #[test]
-    fn test_get_next_local_address() {
-        let address1 = get_next_local_address();
-        let address2 = get_next_local_address();
-        assert_ne!(address1, address2);
+    fn to_command_string() {
+        let command = DelOnion::new("some-random-key");
+        assert_eq!(command.to_command_string().unwrap(), "DEL_ONION some-random-key");
     }
 }

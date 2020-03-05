@@ -22,10 +22,10 @@
 
 mod error;
 mod inbound;
-mod messaging;
 mod outbound;
+mod protocol;
 
-pub use messaging::{
+pub use protocol::{
     MessagingEvent,
     MessagingEventReceiver,
     MessagingEventSender,

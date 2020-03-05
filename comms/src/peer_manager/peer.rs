@@ -200,7 +200,7 @@ impl Display for Peer {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.write_str(&format!(
             "[{}]: {}",
-            self.id.map(|v| v.to_string()).unwrap_or("NoID".to_string()),
+            self.id.map(|v| v.to_string()).unwrap_or_else(|| "NoId".to_string()),
             self.public_key,
         ))
     }

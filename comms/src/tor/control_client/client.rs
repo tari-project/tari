@@ -111,7 +111,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     pub async fn get_info<'a>(&mut self, key_name: &'a str) -> Result<Cow<'a, str>, TorClientError> {
         let command = commands::get_info(key_name);
         let mut response = self.request_response(command).await?;
-        if response.len() == 0 {
+        if response.is_empty() {
             return Err(TorClientError::ServerNoResponse);
         }
         Ok(response.remove(0))
@@ -183,7 +183,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     where T::Error: Into<TorClientError> {
         self.send_line(command.to_command_string().map_err(Into::into)?).await?;
         let responses = self.recv_next_responses().await?;
-        if responses.len() == 0 {
+        if responses.is_empty() {
             return Err(TorClientError::ServerNoResponse);
         }
         let response = command.parse_responses(responses).map_err(Into::into)?;
@@ -258,7 +258,7 @@ mod test {
     use super::*;
     use crate::{
         memsocket::MemorySocket,
-        tor::client::{test_server, test_server::canned_responses, types::PrivateKey},
+        tor::control_client::{test_server, test_server::canned_responses, types::PrivateKey},
     };
     use futures::future;
     use std::net::SocketAddr;

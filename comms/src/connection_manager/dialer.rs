@@ -92,6 +92,7 @@ where
     TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
     TBackoff: Backoff + Send + Sync + 'static,
 {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         executor: runtime::Handle,
         config: ConnectionManagerConfig,
@@ -270,10 +271,7 @@ where
     )
     {
         if self.is_pending_dial(&peer.node_id) {
-            let entry = self
-                .pending_dial_requests
-                .entry(peer.node_id.clone())
-                .or_insert(Vec::new());
+            let entry = self.pending_dial_requests.entry(peer.node_id).or_insert_with(Vec::new);
             entry.push(reply_tx);
             return;
         }
@@ -354,6 +352,7 @@ where
         Ok(authenticated_public_key)
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn perform_socket_upgrade_procedure(
         executor: runtime::Handle,
         peer_manager: AsyncPeerManager,

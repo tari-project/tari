@@ -21,9 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{TestFactory, TestFactoryError};
-use multiaddr::{Multiaddr, Protocol};
+use crate::transports::MemoryTransport;
+use multiaddr::Multiaddr;
 use std::iter::repeat_with;
-use tari_test_utils::address::get_next_local_port;
 
 pub fn create_many(n: usize) -> NetAddressesFactory {
     NetAddressesFactory::default().with_count(n)
@@ -64,7 +64,6 @@ impl TestFactory for NetAddressesFactory {
 #[derive(Clone)]
 pub struct NetAddressFactory {
     port: Option<u16>,
-    host: Option<String>,
     is_use_os_port: bool,
 }
 
@@ -72,7 +71,6 @@ impl Default for NetAddressFactory {
     fn default() -> Self {
         Self {
             port: None,
-            host: None,
             is_use_os_port: false,
         }
     }
@@ -80,8 +78,6 @@ impl Default for NetAddressFactory {
 
 impl NetAddressFactory {
     factory_setter!(with_port, port, Option<u16>);
-
-    factory_setter!(with_host, host, Option<String>);
 
     pub fn use_os_port(mut self) -> Self {
         self.is_use_os_port = true;
@@ -93,19 +89,16 @@ impl TestFactory for NetAddressFactory {
     type Object = Multiaddr;
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
-        let mut addr = format!("/ip4/{}", self.host.unwrap_or("127.0.0.1".to_string()))
-            .parse::<Multiaddr>()
-            .map_err(TestFactoryError::build_failed())?;
-
-        let is_use_os_port = self.is_use_os_port;
-        addr.push(Protocol::Tcp(self.port.unwrap_or_else(|| {
-            if is_use_os_port {
+        let port = self.port.unwrap_or_else(|| {
+            if self.is_use_os_port {
                 0
             } else {
-                get_next_local_port()
+                MemoryTransport::acquire_next_memsocket_port().get()
             }
-        })));
+        });
 
-        Ok(addr)
+        format!("/memory/{}", port)
+            .parse()
+            .map_err(TestFactoryError::build_failed())
     }
 }

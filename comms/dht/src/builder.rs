@@ -108,7 +108,7 @@ impl DhtBuilder {
     pub fn finish(self) -> Dht {
         Dht::new(
             self.config,
-            self.executor.unwrap_or(runtime::Handle::current()),
+            self.executor.unwrap_or_else(runtime::Handle::current),
             self.node_identity,
             self.peer_manager,
             self.outbound_tx,

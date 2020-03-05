@@ -60,6 +60,7 @@ impl PeerManager {
 
     /// Updates fields for a peer. Any fields set to Some(xx) will be updated. All None
     /// fields will remain the same.
+    #[allow(clippy::too_many_arguments)]
     pub fn update_peer(
         &self,
         public_key: &CommsPublicKey,

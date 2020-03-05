@@ -112,7 +112,7 @@ pub fn validate_and_add_peer_from_peer_identity(
     // TODO: #banheuristic
     validate_peer_addresses(&addresses, allow_test_addrs)?;
 
-    if addresses.len() == 0 {
+    if addresses.is_empty() {
         return Err(ConnectionManagerError::PeerIdentityNoValidAddresses);
     }
 

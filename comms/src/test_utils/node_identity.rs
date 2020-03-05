@@ -20,13 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::peer_manager::{NodeIdentity, PeerFeatures};
+use crate::{
+    peer_manager::{NodeIdentity, PeerFeatures},
+    transports::MemoryTransport,
+};
 use rand::rngs::OsRng;
 use std::sync::Arc;
-use tari_test_utils::address::get_next_local_address;
 
 pub fn build_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
-    let public_addr = get_next_local_address().parse().unwrap();
+    let public_addr = format!("/memory/{}", MemoryTransport::acquire_next_memsocket_port())
+        .parse()
+        .unwrap();
     Arc::new(NodeIdentity::random(&mut OsRng, public_addr, features).unwrap())
 }
 

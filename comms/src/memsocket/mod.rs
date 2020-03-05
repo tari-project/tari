@@ -419,7 +419,7 @@ impl AsyncRead for MemorySocket {
 
             match self.current_buffer {
                 // We have data to copy to buf
-                Some(ref mut current_buffer) if current_buffer.len() > 0 => {
+                Some(ref mut current_buffer) if !current_buffer.is_empty() => {
                     let bytes_to_read = ::std::cmp::min(buf.len() - bytes_read, current_buffer.len());
                     debug_assert!(bytes_to_read > 0);
 

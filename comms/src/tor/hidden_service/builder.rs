@@ -24,7 +24,7 @@ use crate::{
     multiaddr::Multiaddr,
     socks,
     tor::{
-        client::commands::{AddOnionFlag, AddOnionResponse},
+        control_client::commands::{AddOnionFlag, AddOnionResponse},
         Authentication,
         HiddenService,
         PortMapping,
