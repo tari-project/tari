@@ -29,8 +29,6 @@ use crate::{
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
 };
-// use bitflags::_core::sync::atomic::AtomicBool;
-// use futures_util::sink::SinkExt;
 use futures::SinkExt;
 use log::*;
 use std::sync::{
