@@ -141,7 +141,7 @@ fn prompt(question: &str) -> bool {
 }
 
 pub fn install_configuration<F>(path: &Path, installer: F)
-where F: Fn(&Path) -> Result<u64, std::io::Error> {
+where F: Fn(&Path) -> Result<(), std::io::Error> {
     if let Err(e) = installer(path) {
         println!(
             "We could not install a new configuration file in {}: {}",

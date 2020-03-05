@@ -27,9 +27,9 @@ use log::*;
 use multiaddr::{Multiaddr, Protocol};
 use std::{
     convert::TryFrom,
-    env,
     error::Error,
     fmt::{Display, Formatter, Result as FormatResult},
+    fs,
     net::IpAddr,
     num::NonZeroU16,
     path::{Path, PathBuf},
@@ -66,11 +66,9 @@ pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, String>
 }
 
 /// Installs a new configuration file template, copied from `tari_config_sample.toml` to the given path.
-/// When bundled as a binary, the config sample file must be bundled in `./config`.
-pub fn install_default_config_file(path: &Path) -> Result<u64, std::io::Error> {
-    let mut source = env::current_dir()?;
-    source.push(Path::new("config/tari_config_sample.toml"));
-    std::fs::copy(source, path)
+pub fn install_default_config_file(path: &Path) -> Result<(), std::io::Error> {
+    let source = include_str!("../../config/tari_config_sample.toml");
+    fs::write(path, source)
 }
 
 //---------------------------------------------       Network type        ------------------------------------------//
