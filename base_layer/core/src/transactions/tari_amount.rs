@@ -81,7 +81,11 @@ impl MicroTari {
 
 impl Display for MicroTari {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        f.write_fmt(format_args!("{} µT", self.0))
+        if *self < 1 * T {
+            write!(f, "{} µT", self.0)
+        } else {
+            Tari::from(*self).fmt(f)
+        }
     }
 }
 
@@ -131,7 +135,7 @@ newtype_ops! { [Tari] {mul div rem} {:=} Self f64 }
 
 impl Display for Tari {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        f.write_fmt(format_args!("{:0.6} T", self.0))
+        write!(f, "{:0.6} T", self.0)
     }
 }
 
@@ -176,6 +180,8 @@ mod test {
     fn micro_tari_display() {
         let s = format!("{}", MicroTari::from(1234));
         assert_eq!(s, "1234 µT");
+        let s = format!("{}", MicroTari::from(1_000_000));
+        assert_eq!(s, "1.000000 T");
     }
 
     #[test]
