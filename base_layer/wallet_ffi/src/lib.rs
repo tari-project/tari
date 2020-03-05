@@ -1988,6 +1988,7 @@ pub unsafe extern "C" fn wallet_create(
                     comms_config: (*config).clone(),
                     logging_path: logging_path_string,
                     factories,
+                    transaction_service_config: None,
                 },
                 runtime,
                 wallet_backend,

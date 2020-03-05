@@ -32,6 +32,7 @@ use helpers::{
         create_genesis_block_with_utxos,
         generate_block,
     },
+    event_stream::event_stream_next,
     nodes::{
         create_network_with_2_base_nodes_with_config,
         create_network_with_3_base_nodes,
@@ -334,16 +335,6 @@ fn request_and_response_fetch_blocks_with_hashes() {
         bob_node.comms.shutdown().await;
         carol_node.comms.shutdown().await;
     });
-}
-
-pub async fn event_stream_next<TStream>(mut stream: TStream, timeout: Duration) -> Option<TStream::Item>
-where TStream: Stream + FusedStream + Unpin {
-    let either = future::select(stream.select_next_some(), tokio::time::delay_for(timeout).fuse()).await;
-
-    match either {
-        Either::Left((v, _)) => Some(v),
-        Either::Right(_) => None,
-    }
 }
 
 #[test]

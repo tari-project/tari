@@ -135,6 +135,7 @@ pub fn create_wallet(
         comms_config,
         logging_path: None,
         factories,
+        transaction_service_config: None,
     };
 
     Wallet::new(

@@ -83,6 +83,7 @@ pub struct WalletConfig {
     pub comms_config: CommsConfig,
     pub logging_path: Option<String>,
     pub factories: CryptoFactories,
+    pub transaction_service_config: Option<TransactionServiceConfig>,
 }
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
@@ -179,7 +180,9 @@ where
                 factories.clone(),
             ))
             .add_initializer(TransactionServiceInitializer::new(
-                TransactionServiceConfig::default(),
+                config
+                    .transaction_service_config
+                    .unwrap_or(TransactionServiceConfig::default()),
                 subscription_factory.clone(),
                 comms.subscribe_messaging_events(),
                 transaction_backend,
@@ -248,11 +251,11 @@ where
         );
 
         let existing_peers = self.runtime.block_on(self.db.get_peers())?;
-        self.runtime.block_on(self.db.save_peer(peer.clone()))?;
         // Remove any peers in db to only persist a single peer at a time.
         for p in existing_peers {
             let _ = self.runtime.block_on(self.db.remove_peer(p.public_key.clone()))?;
         }
+        self.runtime.block_on(self.db.save_peer(peer.clone()))?;
 
         self.comms.peer_manager().add_peer(peer.clone())?;
         self.runtime.block_on(
