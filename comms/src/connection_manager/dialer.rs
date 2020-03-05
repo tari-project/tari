@@ -460,7 +460,7 @@ where
                 },
                 // Delayed dial was cancelled
                 _ = cancel_signal => {
-                    debug!(target: LOG_TARGET, "[Attempt {}] Connecting to peer '{}'... cancelled", current_state.num_attempts(), current_state.peer.node_id.short_str());
+                    debug!(target: LOG_TARGET, "[Attempt {}] Connection attempt cancelled for peer '{}'", current_state.num_attempts(), current_state.peer.node_id.short_str());
                     break (current_state, Err(ConnectionManagerError::DialCancelled));
                 }
             }
