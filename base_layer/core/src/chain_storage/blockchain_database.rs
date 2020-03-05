@@ -29,7 +29,7 @@ use crate::{
         HistoricalBlock,
     },
     consensus::ConsensusManager,
-    proof_of_work::Difficulty,
+    proof_of_work::{Difficulty, ProofOfWork},
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::{BlindingFactor, Commitment, CommitmentFactory, HashOutput},
@@ -236,8 +236,14 @@ where T: BlockchainBackend
         if let None = blockchain_db.get_height()? {
             let genesis_block = blockchain_db.consensus_manager.get_genesis_block();
             let genesis_block_hash = genesis_block.hash();
+            let mut pow = genesis_block.header.pow.clone();
+            pow.add_difficulty(
+                &genesis_block.header.pow,
+                ProofOfWork::achieved_difficulty(&genesis_block.header),
+            );
+            let pow = pow.total_accumulated_difficulty();
             blockchain_db.store_new_block(genesis_block)?;
-            blockchain_db.update_metadata(0, genesis_block_hash)?;
+            blockchain_db.update_metadata(0, genesis_block_hash, pow)?;
         }
         Ok(blockchain_db)
     }
@@ -252,13 +258,14 @@ where T: BlockchainBackend
     fn read_metadata(db: &T) -> Result<ChainMetadata, ChainStorageError> {
         let height = fetch!(meta db, ChainHeight, None);
         let hash = fetch!(meta db, BestBlock, None);
-        let _work = fetch!(meta db, AccumulatedWork, 0);
+        let accumulated_difficulty = fetch!(meta db, AccumulatedWork, None);
         // Set a default of 2880 blocks (2 days with 1min blocks)
         let horizon = fetch!(meta db, PruningHorizon, 2880);
         Ok(ChainMetadata {
             height_of_longest_chain: height,
             best_block: hash,
             pruning_horizon: horizon,
+            accumulated_difficulty,
         })
     }
 
@@ -304,7 +311,13 @@ where T: BlockchainBackend
         })
     }
 
-    fn update_metadata(&self, new_height: u64, new_hash: Vec<u8>) -> Result<(), ChainStorageError> {
+    fn update_metadata(
+        &self,
+        new_height: u64,
+        new_hash: Vec<u8>,
+        accumulated_difficulty: Difficulty,
+    ) -> Result<(), ChainStorageError>
+    {
         let mut db = self.metadata.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -316,6 +329,7 @@ where T: BlockchainBackend
         })?;
         db.height_of_longest_chain = Some(new_height);
         db.best_block = Some(new_hash);
+        db.accumulated_difficulty = Some(accumulated_difficulty);
 
         let mut txn = DbTransaction::new();
         txn.insert(DbKeyValuePair::Metadata(
@@ -325,6 +339,10 @@ where T: BlockchainBackend
         txn.insert(DbKeyValuePair::Metadata(
             MetadataKey::BestBlock,
             MetadataValue::BestBlock(db.best_block.clone()),
+        ));
+        txn.insert(DbKeyValuePair::Metadata(
+            MetadataKey::AccumulatedWork,
+            MetadataValue::AccumulatedWork(db.accumulated_difficulty.clone()),
         ));
         self.commit(txn)
     }
@@ -339,19 +357,17 @@ where T: BlockchainBackend
         Ok(metadata.height_of_longest_chain)
     }
 
+    /// Return the geometric mean of the proof of work of the longest chain.
+    /// The proof of work is returned as the geometric mean of all difficulties
+    pub fn get_accumulated_difficulty(&self) -> Result<Option<Difficulty>, ChainStorageError> {
+        let metadata = self.access_metadata()?;
+        Ok(metadata.accumulated_difficulty)
+    }
+
     /// Returns a copy of the current blockchain database metadata
     pub fn get_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
         let db = self.access_metadata()?;
         Ok(db.clone())
-    }
-
-    /// Returns the total accumulated work/difficulty of the longest chain.
-    ///
-    /// This method will only fail if there's a fairly serious synchronisation problem on the database. You can try
-    /// calling [BlockchainDatabase::try_recover_metadata] in that case to re-sync the metadata; or else
-    /// just exit the program.
-    pub fn get_total_work(&self) -> Result<Difficulty, ChainStorageError> {
-        unimplemented!()
     }
 
     /// Returns the transaction kernel with the given hash.
@@ -475,6 +491,7 @@ where T: BlockchainBackend
     /// If an error does occur while writing the new block parts, all changes are reverted before returning.
     pub fn add_block(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
         let block_hash = block.hash();
+        let block_height = block.header.height;
         if self.db.contains(&DbKey::BlockHash(block_hash.clone()))? ||
             self.db.contains(&DbKey::OrphanBlock(block_hash.clone()))?
         {
@@ -702,7 +719,12 @@ where T: BlockchainBackend
         self.commit(txn)?;
 
         let last_block = self.fetch_block(height)?.block().clone();
-        self.update_metadata(height, last_block.hash())?;
+        let pow = ProofOfWork::new_from_difficulty(
+            &last_block.header.pow,
+            ProofOfWork::achieved_difficulty(&last_block.header),
+        );
+        let pow = pow.total_accumulated_difficulty();
+        self.update_metadata(height, last_block.hash(), pow)?;
 
         Ok(removed_blocks)
     }
@@ -781,6 +803,11 @@ where T: BlockchainBackend
             let fork_tip_header = fork_tip_block.header.clone();
             let reorg_chain = self.try_construct_fork(fork_tip_block)?;
             let added_blocks: Vec<Block> = reorg_chain.iter().map(Clone::clone).collect();
+            let pow = ProofOfWork::new_from_difficulty(
+                &fork_tip_header.pow,
+                ProofOfWork::achieved_difficulty(&fork_tip_header),
+            );
+            let pow = pow.total_accumulated_difficulty();
 
             let fork_height = reorg_chain
                 .front()
@@ -789,7 +816,7 @@ where T: BlockchainBackend
                 .height -
                 1;
             let removed_blocks = self.reorganize_chain(fork_height, reorg_chain)?;
-            self.update_metadata(fork_tip_header.height, fork_tip_hash.clone())?;
+            self.update_metadata(fork_tip_header.height, fork_tip_hash.clone(), pow)?;
             if removed_blocks.len() == 0 {
                 return Ok(BlockAddResult::Ok);
             } else {

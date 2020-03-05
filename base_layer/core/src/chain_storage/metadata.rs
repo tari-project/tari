@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::blocks::blockheader::BlockHash;
+use crate::{blocks::blockheader::BlockHash, proof_of_work::Difficulty};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use tari_crypto::tari_utilities::hex::Hex;
@@ -34,14 +34,17 @@ pub struct ChainMetadata {
     /// The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
     /// tracked (i.e. the database is in full archival mode).
     pub pruning_horizon: u64,
+    /// The geamotric mean of the proof of work of the longest chain, none if the chain is empty
+    pub accumulated_difficulty: Option<Difficulty>,
 }
 
 impl ChainMetadata {
-    pub fn new(height: u64, hash: BlockHash, horizon: u64) -> ChainMetadata {
+    pub fn new(height: u64, hash: BlockHash, horizon: u64, accumulated_difficulty: Difficulty) -> ChainMetadata {
         ChainMetadata {
             height_of_longest_chain: Some(height),
             best_block: Some(hash),
             pruning_horizon: horizon,
+            accumulated_difficulty: Some(accumulated_difficulty),
         }
     }
 
@@ -71,6 +74,7 @@ impl Default for ChainMetadata {
             height_of_longest_chain: None,
             best_block: None,
             pruning_horizon: 2880,
+            accumulated_difficulty: None,
         }
     }
 }
@@ -83,7 +87,12 @@ impl Display for ChainMetadata {
             .clone()
             .map(|b| b.to_hex())
             .unwrap_or_else(|| "Empty Database".into());
+        let accumulated_difficulty = self.accumulated_difficulty.unwrap_or(0.into());
         fmt.write_str(&format!("Height of longest chain : {}\n", height))?;
+        fmt.write_str(&format!(
+            "Geometric mean of longest chain : {}\n",
+            accumulated_difficulty
+        ))?;
         fmt.write_str(&format!("Best_block : {}\n", best_block))?;
         fmt.write_str(&format!("Pruning horizon : {}\n", self.pruning_horizon))
     }
