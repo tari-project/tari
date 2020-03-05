@@ -10,6 +10,8 @@ jobs:
           toolchain: nightly
           components: clippy
           override: true
+      - name: Install dependencies
+        run: apt install libncurses5 libncurses5-dev
       - uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
