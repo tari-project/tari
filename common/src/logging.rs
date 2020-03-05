@@ -23,6 +23,7 @@
 
 use std::{
     env,
+    fs,
     path::{Path, PathBuf},
 };
 
@@ -63,11 +64,9 @@ pub fn initialize_logging(config_file: &Path) -> bool {
 }
 
 /// Installs a new default logfile configuration, copied from `log4rs-sample.yml` to the given path.
-/// When bundled as a binary, the config sample file must be bundled in `common/config`.
-pub fn install_default_logfile_config(path: &Path) -> Result<u64, std::io::Error> {
-    let mut source = env::current_dir()?;
-    source.push(Path::new("common/logging/log4rs-sample.yml"));
-    std::fs::copy(source, path)
+pub fn install_default_logfile_config(path: &Path) -> Result<(), std::io::Error> {
+    let source = include_str!("../logging/log4rs-sample.yml");
+    fs::write(path, source)
 }
 
 /// Log an error if an `Err` is returned from the `$expr`. If the given expression is `Ok(v)`,
