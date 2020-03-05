@@ -113,11 +113,13 @@ fn test_wallet() {
             comms_config: comms_config1,
             logging_path: None,
             factories: factories.clone(),
+            transaction_service_config: None,
         };
         let config2 = WalletConfig {
             comms_config: comms_config2,
             logging_path: None,
             factories: factories.clone(),
+            transaction_service_config: None,
         };
         let runtime_node1 = Runtime::new().unwrap();
         let runtime_node2 = Runtime::new().unwrap();
@@ -251,6 +253,7 @@ fn test_import_utxo() {
         comms_config,
         logging_path: None,
         factories: factories.clone(),
+        transaction_service_config: None,
     };
     let runtime_node = Runtime::new().unwrap();
     let mut alice_wallet = Wallet::new(
@@ -320,6 +323,7 @@ fn test_data_generation() {
         comms_config,
         factories,
         logging_path: None,
+        transaction_service_config: None,
     };
 
     let transaction_backend = TransactionMemoryDatabase::new();

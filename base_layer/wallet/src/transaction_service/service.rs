@@ -321,7 +321,7 @@ where
                 msg = base_node_response_stream.select_next_some() => {
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
                     let _ = self.handle_base_node_response(inner_msg).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling base node service response: {:?}", resp);
+                        error!(target: LOG_TARGET, "Error handling base node service response: {:?} for NodeID: {}", resp, self.node_identity.node_id().short_str());
                         Err(resp)
                     });
                 }
@@ -1168,6 +1168,10 @@ where
                     let completed_tx = self.db.get_completed_transaction(response.request_key.clone()).await?;
                     // If this transaction is still in the Completed State it should be upgraded to the Broadcast state
                     if completed_tx.status == TransactionStatus::Completed {
+                        info!(
+                            target: LOG_TARGET,
+                            "Completed Transaction with TxId: {} detected as Broadcast to Base Node Mempool", tx_id
+                        );
                         self.db.broadcast_completed_transaction(tx_id.clone()).await?;
                         // Start monitoring the base node to see if this Tx has been mined
                         self.send_transaction_mined_request(tx_id.clone(), mined_request_timeout_futures)
@@ -1177,11 +1181,6 @@ where
                             .send(TransactionEvent::TransactionBroadcast(tx_id))
                             .await
                             .map_err(|_| TransactionServiceError::EventStreamError)?;
-
-                        info!(
-                            target: LOG_TARGET,
-                            "Completed Transaction with TxId: {} detected as Broadcast to Base Node Mempool", tx_id
-                        );
                     }
 
                     Ok(())
@@ -1280,7 +1279,16 @@ where
             _ => Err(TransactionServiceError::InvalidStateError),
         }?;
 
-        let completed_tx = self.db.get_completed_transaction(tx_id.clone()).await?;
+        let completed_tx = match self.db.get_completed_transaction(tx_id.clone()).await {
+            Ok(tx) => tx,
+            Err(_) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Base Node Response received with unexpected key {:?}", tx_id
+                );
+                return Ok(());
+            },
+        };
         // If this transaction is still in the Broadcast State it should be upgraded to the Mined state
         if completed_tx.status == TransactionStatus::Broadcast {
             // Confirm that all outputs were reported as mined for the transaction

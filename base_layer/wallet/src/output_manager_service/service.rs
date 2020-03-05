@@ -510,7 +510,7 @@ where
 
         for uo in outputs.iter() {
             builder.with_input(
-                uo.as_transaction_input(&self.factories.commitment, OutputFeatures::default()),
+                uo.as_transaction_input(&self.factories.commitment, uo.clone().features),
                 uo.clone(),
             );
         }
