@@ -6,11 +6,8 @@
 
 #### Linux
 ```
-sudo apt-get install git
-sudo apt install curl
+sudo apt-get install git curl build-essential cmake clang pkg-config libssl-dev libsqlite3-dev sqlite3
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-sudo apt install build-essential cmake clang
-sudo apt-get install pkg-config libssl-dev libsqlite3-dev sqlite3
 
 ```
 ### From source
