@@ -89,6 +89,12 @@ impl From<u64> for Difficulty {
     }
 }
 
+impl From<Difficulty> for u64 {
+    fn from(value: Difficulty) -> Self {
+        value.0
+    }
+}
+
 /// General difficulty adjustment algorithm trait. The key method is `get_difficulty`, which returns the target
 /// difficulty given a set of historical achieved difficulties; supplied through the `add` method.
 pub trait DifficultyAdjustment {

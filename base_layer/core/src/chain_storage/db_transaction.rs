@@ -22,6 +22,7 @@
 
 use crate::{
     blocks::{blockheader::BlockHash, Block, BlockHeader},
+    proof_of_work::Difficulty,
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::HashOutput,
@@ -207,7 +208,7 @@ pub enum MetadataKey {
 pub enum MetadataValue {
     ChainHeight(Option<u64>),
     BestBlock(Option<BlockHash>),
-    AccumulatedWork(u64),
+    AccumulatedWork(Option<Difficulty>),
     PruningHorizon(u64),
 }
 

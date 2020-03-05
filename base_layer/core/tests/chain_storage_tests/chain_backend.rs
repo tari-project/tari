@@ -287,7 +287,7 @@ fn insert_fetch_metadata<T: BlockchainBackend>(db: T) {
     ));
     txn.insert(DbKeyValuePair::Metadata(
         MetadataKey::AccumulatedWork,
-        MetadataValue::AccumulatedWork(accumulated_work),
+        MetadataValue::AccumulatedWork(Some(accumulated_work.into())),
     ));
     txn.insert(DbKeyValuePair::Metadata(
         MetadataKey::PruningHorizon,
@@ -309,7 +309,7 @@ fn insert_fetch_metadata<T: BlockchainBackend>(db: T) {
     if let Some(DbValue::Metadata(MetadataValue::AccumulatedWork(retrieved_accumulated_work))) =
         db.fetch(&DbKey::Metadata(MetadataKey::AccumulatedWork)).unwrap()
     {
-        assert_eq!(retrieved_accumulated_work, accumulated_work);
+        assert_eq!(retrieved_accumulated_work, Some(accumulated_work.into()));
     } else {
         assert!(false);
     }

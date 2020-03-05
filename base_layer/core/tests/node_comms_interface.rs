@@ -87,8 +87,8 @@ fn outbound_get_metadata() {
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
-        let metadata1 = ChainMetadata::new(5, vec![0u8], 3);
-        let metadata2 = ChainMetadata::new(6, vec![1u8], 4);
+        let metadata1 = ChainMetadata::new(5, vec![0u8], 3, 5.into());
+        let metadata2 = ChainMetadata::new(6, vec![1u8], 4, 6.into());
         let metadata_response: Vec<NodeCommsResponse> = vec![
             NodeCommsResponse::ChainMetadata(metadata1.clone()),
             NodeCommsResponse::ChainMetadata(metadata2.clone()),
