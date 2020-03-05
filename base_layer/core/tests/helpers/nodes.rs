@@ -256,7 +256,7 @@ pub fn create_network_with_2_base_nodes(
         .start(runtime, data_path);
 
     // Wait for peers to connect
-    let res = runtime
+    runtime
         .block_on(
             alice_node
                 .comms
