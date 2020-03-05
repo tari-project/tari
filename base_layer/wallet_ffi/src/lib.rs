@@ -132,6 +132,7 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     socks,
     tor,
+    tor::TorIdentity,
 };
 use tari_comms_dht::DhtConfig;
 use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
@@ -139,8 +140,15 @@ use tari_crypto::{
     keys::{PublicKey, SecretKey},
     tari_utilities::ByteArray,
 };
-use tari_p2p::transport::{TorConfig, TransportType};
-use tari_utilities::{hex, hex::Hex, message_format::MessageFormat};
+use tari_p2p::{
+    initialization::CommsInitializationError,
+    transport::{TorConfig, TransportType},
+};
+use tari_utilities::{
+    hex,
+    hex::Hex,
+    message_format::{MessageFormat, MessageFormatError},
+};
 use tari_wallet::{
     contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
     error::WalletError,
@@ -1658,7 +1666,7 @@ pub unsafe extern "C" fn transport_tor_create(
     if !control_server_address.is_null() {
         control_address_str = CStr::from_ptr(control_server_address).to_str().unwrap().to_owned();
     } else {
-        error = LibWalletError::from(InterfaceError::NullError("control_address".to_string())).code;
+        error = LibWalletError::from(InterfaceError::NullError("control_server_address".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
@@ -1681,7 +1689,20 @@ pub unsafe extern "C" fn transport_tor_create(
     let mut identity = None;
     if !tor_identity.is_null() {
         let bytes = (*tor_identity).0.as_slice();
-        identity = Some(Box::new(tor::TorIdentity::from_binary(bytes).unwrap()));
+        match tor::TorIdentity::from_binary(bytes) {
+            Ok(ident) => {
+                identity = Some(Box::new(ident));
+            },
+            Err(err) => {
+                error = LibWalletError::from(InterfaceError::DeserializationError(format!(
+                    "Failed to deserialize tor identity: {}",
+                    err
+                )))
+                .code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        }
     }
 
     let tor_config = TorConfig {
