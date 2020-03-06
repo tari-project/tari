@@ -453,7 +453,10 @@ where B: BlockchainBackend + 'static
                     Err(CommsInterfaceError::RequestTimedOut)
                 };
                 let _ = reply_tx.send(reply_msg.or_else(|resp| {
-                    error!(target: LOG_TARGET, "Failed to send outbound request from Base Node");
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to send outbound request (request key: {}) from Base Node: {:?}", &request_key, resp
+                    );
                     Err(resp)
                 }));
             }
