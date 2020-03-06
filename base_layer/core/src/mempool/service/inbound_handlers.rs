@@ -26,6 +26,7 @@ use crate::{
     mempool::{
         service::{MempoolRequest, MempoolResponse, MempoolServiceError, OutboundMempoolServiceInterface},
         Mempool,
+        TxStorageResponse,
     },
     transactions::transaction::Transaction,
 };
@@ -71,14 +72,15 @@ where T: BlockchainBackend
         source_peer: Option<CommsPublicKey>,
     ) -> Result<(), MempoolServiceError>
     {
-        self.mempool.insert(Arc::new(tx.clone()))?;
-        let exclude_list = if let Some(peer) = source_peer {
-            vec![peer]
-        } else {
-            Vec::new()
-        };
-        self.outbound_nmi.propagate_tx(tx.clone(), exclude_list).await?;
-
+        if self.mempool.has_tx_with_excess_sig(&tx.body.kernels()[0].excess_sig)? == TxStorageResponse::NotStored {
+            self.mempool.insert(Arc::new(tx.clone()))?;
+            let exclude_list = if let Some(peer) = source_peer {
+                vec![peer]
+            } else {
+                Vec::new()
+            };
+            self.outbound_nmi.propagate_tx(tx.clone(), exclude_list).await?;
+        }
         Ok(())
     }
 
