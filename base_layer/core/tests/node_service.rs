@@ -23,7 +23,7 @@
 #[allow(dead_code)]
 mod helpers;
 
-use futures::{future, future::Either, join, stream::FusedStream, FutureExt, Stream, StreamExt};
+use futures::join;
 use helpers::{
     block_builders::{
         append_block,
@@ -34,6 +34,7 @@ use helpers::{
     },
     event_stream::event_stream_next,
     nodes::{
+        create_network_with_2_base_nodes,
         create_network_with_2_base_nodes_with_config,
         create_network_with_3_base_nodes,
         create_network_with_3_base_nodes_with_config,
@@ -145,6 +146,45 @@ fn request_and_response_fetch_headers() {
         alice_node.comms.shutdown().await;
         bob_node.comms.shutdown().await;
         carol_node.comms.shutdown().await;
+    });
+}
+
+#[test]
+fn request_and_response_fetch_headers_with_hashes() {
+    let mut runtime = Runtime::new().unwrap();
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut alice_node, bob_node, _consensus_manager) =
+        create_network_with_2_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
+
+    let mut header1 = BlockHeader::new(0);
+    header1.height = 1;
+    let header2 = BlockHeader::from_previous(&header1);
+    let hash1 = header1.hash();
+    let hash2 = header2.hash();
+    let mut txn = DbTransaction::new();
+    txn.insert_header(header1.clone());
+    txn.insert_header(header2.clone());
+    assert!(bob_node.blockchain_db.commit(txn).is_ok());
+
+    runtime.block_on(async {
+        let received_headers = alice_node
+            .outbound_nci
+            .fetch_headers_with_hashes(vec![hash1.clone()])
+            .await
+            .unwrap();
+        assert_eq!(received_headers.len(), 1);
+        assert!(received_headers.contains(&header1));
+
+        let received_headers = alice_node
+            .outbound_nci
+            .fetch_headers_with_hashes(vec![hash1, hash2])
+            .await
+            .unwrap();
+        assert_eq!(received_headers.len(), 2);
+        assert!(received_headers.contains(&header1) && (received_headers.contains(&header2)));
+
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
     });
 }
 

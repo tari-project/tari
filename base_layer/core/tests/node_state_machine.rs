@@ -58,7 +58,7 @@ use tari_test_utils::random::string;
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
-#[ignore]
+#[test]
 fn test_listening_lagging() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
@@ -111,8 +111,10 @@ fn test_listening_lagging() {
         bob_local_nci.submit_block(prev_block.clone()).await.unwrap();
         assert_eq!(bob_db.get_height(), Ok(Some(2)));
 
-        let state_event = ListeningInfo.next_event(&mut alice_state_machine).await;
-        assert_eq!(state_event, StateEvent::FallenBehind(Lagging(2)));
+        assert_eq!(
+            ListeningInfo.next_event(&mut alice_state_machine).await,
+            StateEvent::FallenBehind(Lagging)
+        );
 
         alice_node.comms.shutdown().await;
         bob_node.comms.shutdown().await;
@@ -470,8 +472,6 @@ fn test_forked_block_sync() {
     }
     // Bob fork
     for _ in 0..7 {
-        println!(" ");
-        println!("add block");
         bob_prev_block = append_block(
             bob_db,
             &bob_prev_block,

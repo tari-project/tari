@@ -91,8 +91,8 @@ pub enum StateEvent {
 /// blocks to catch up, or we are `UpToDate`.
 #[derive(Debug, PartialEq)]
 pub enum SyncStatus {
-    // We are behind the chain tip. The usize parameter gives the network's chain height.
-    Lagging(u64),
+    // We are behind the chain tip.
+    Lagging,
     UpToDate,
 }
 

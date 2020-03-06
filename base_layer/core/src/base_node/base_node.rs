@@ -103,11 +103,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         use crate::base_node::states::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
         match (state, event) {
             (Starting(s), Initialized) => InitialSync(s.into()),
-            (InitialSync(s), MetadataSynced(Lagging(_))) => BlockSync(s.into()),
+            (InitialSync(s), MetadataSynced(Lagging)) => BlockSync(s.into()),
             (InitialSync(_s), MetadataSynced(UpToDate)) => Listening(ListeningInfo),
             (BlockSync(_s), BlocksSynchronized) => Listening(ListeningInfo),
             (BlockSync(s), MaxRequestAttemptsReached) => InitialSync(s.into()),
-            (Listening(s), FallenBehind(Lagging(_))) => BlockSync(s.into()),
+            (Listening(s), FallenBehind(Lagging)) => BlockSync(s.into()),
             (Listening(s), NetworkSilence) => InitialSync(s.into()),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
             (_, UserQuit) => Shutdown(states::Shutdown::with_reason("Shutdown initiated by user".to_string())),

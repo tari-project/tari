@@ -491,7 +491,6 @@ where T: BlockchainBackend
     /// If an error does occur while writing the new block parts, all changes are reverted before returning.
     pub fn add_block(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
         let block_hash = block.hash();
-        let block_height = block.header.height;
         if self.db.contains(&DbKey::BlockHash(block_hash.clone()))? ||
             self.db.contains(&DbKey::OrphanBlock(block_hash.clone()))?
         {

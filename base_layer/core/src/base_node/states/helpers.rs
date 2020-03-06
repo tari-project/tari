@@ -27,7 +27,7 @@ use log::*;
 /// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
 pub fn determine_sync_mode(local: ChainMetadata, network: ChainMetadata, log_target: &str) -> SyncStatus {
     use crate::base_node::states::SyncStatus::*;
-    match network.height_of_longest_chain {
+    match network.accumulated_difficulty {
         None => {
             info!(
                 target: log_target,
@@ -36,17 +36,20 @@ pub fn determine_sync_mode(local: ChainMetadata, network: ChainMetadata, log_tar
             );
             UpToDate
         },
-        Some(network_tip) => {
-            let local_tip = local.height_of_longest_chain.unwrap_or(0);
-            if local_tip < network_tip {
+        Some(network_tip_accum_difficulty) => {
+            let local_tip_accum_difficulty = local.accumulated_difficulty.unwrap_or(0.into());
+            if local_tip_accum_difficulty < network_tip_accum_difficulty {
                 info!(
                     target: log_target,
-                    "Our local blockchain history is a little behind that of the network. We're at block #{}, and the \
-                     chain tip is at #{}",
-                    local_tip,
-                    network_tip
+                    "Our local blockchain accumilated difficulty is a little behind that of the network. We're at \
+                     block #{} with accumulated difficulty #{}, and the chain tip is at #{} with accumulated \
+                     difficulty #{}",
+                    local.height_of_longest_chain.unwrap_or(0),
+                    local_tip_accum_difficulty,
+                    network.height_of_longest_chain.unwrap_or(0),
+                    network_tip_accum_difficulty,
                 );
-                Lagging(network_tip)
+                Lagging
             } else {
                 UpToDate
             }

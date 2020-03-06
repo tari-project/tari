@@ -14,18 +14,20 @@ message BaseNodeServiceRequest {
         HashOutputs fetch_kernels = 3;
         // Indicates a FetchHeaders request.
         BlockHeights fetch_headers = 4;
+        // Indicates a FetchHeadersWithHashes request.
+        HashOutputs fetch_headers_with_hashes = 5;
         // Indicates a FetchUtxos request.
-        HashOutputs fetch_utxos = 5;
+        HashOutputs fetch_utxos = 6;
         // Indicates a FetchBlocks request.
-        BlockHeights fetch_blocks = 6;
+        BlockHeights fetch_blocks = 7;
         // Indicates a FetchBlocksWithHashes request.
-        HashOutputs fetch_blocks_with_hashes = 7;
+        HashOutputs fetch_blocks_with_hashes = 8;
         // Indicates a GetNewBlockTemplate request.
-        bool get_new_block_template = 8;
+        bool get_new_block_template = 9;
         // Indicates a GetNewBlock request.
-        tari.core.NewBlockTemplate get_new_block = 9;
+        tari.core.NewBlockTemplate get_new_block = 10;
         // Indicates a GetTargetDifficulty request.
-        uint64 get_target_difficulty = 10;
+        uint64 get_target_difficulty = 11;
     }
 }
 
