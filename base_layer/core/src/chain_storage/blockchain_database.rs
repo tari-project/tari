@@ -505,7 +505,7 @@ where T: BlockchainBackend
             .as_ref()
             .expect("No validators added")
             .block
-            .validate(&block)
+            .validate(&block, &self)
             .map_err(ChainStorageError::ValidationError)?;
         self.store_new_block(block)
     }
@@ -747,7 +747,7 @@ where T: BlockchainBackend
             .as_ref()
             .expect("No validators added")
             .orphan
-            .validate(&block)
+            .validate(&block, &self)
             .map_err(ChainStorageError::ValidationError)?;
         self.insert_orphan(block.clone())?;
         info!(

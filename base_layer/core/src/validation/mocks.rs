@@ -22,6 +22,7 @@
 
 use super::Validation;
 use crate::{chain_storage::BlockchainBackend, validation::error::ValidationError};
+use crate::chain_storage::BlockchainDatabase;
 
 pub struct MockValidator {
     result: bool,
@@ -33,8 +34,8 @@ impl MockValidator {
     }
 }
 
-impl<T, B: BlockchainBackend> Validation<T, B> for MockValidator {
-    fn validate(&self, _item: &T) -> Result<(), ValidationError> {
+impl<T,B:BlockchainBackend> Validation<T, B> for MockValidator {
+    fn validate(&self, _item: &T, _: &BlockchainDatabase<B>) -> Result<(), ValidationError> {
         if self.result {
             Ok(())
         } else {

@@ -33,6 +33,7 @@ use std::{
     sync::{Arc, RwLock},
     time::Duration,
 };
+use crate::chain_storage::BlockchainDatabase;
 
 /// Configuration for the OrphanPool
 #[derive(Clone, Copy)]
@@ -65,9 +66,9 @@ impl<T> OrphanPool<T>
 where T: BlockchainBackend
 {
     /// Create a new OrphanPool with the specified configuration
-    pub fn new(config: OrphanPoolConfig, validator: Validator<Transaction, T>) -> Self {
+    pub fn new(config: OrphanPoolConfig, validator: Validator<Transaction, T>, db: BlockchainDatabase<T>) -> Self {
         Self {
-            pool_storage: Arc::new(RwLock::new(OrphanPoolStorage::new(config, validator))),
+            pool_storage: Arc::new(RwLock::new(OrphanPoolStorage::new(config, validator, db))),
         }
     }
 

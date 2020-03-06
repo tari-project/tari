@@ -59,7 +59,7 @@ impl<B: BlockchainBackend> Validation<Block, B> for StatelessValidator {
     /// 1. Is there precisely one Coinbase output and is it correctly defined?
     /// 1. Is the accounting correct?
     /// 1. Are all inputs allowed to be spent (Are the feature flags satisfied)
-    fn validate(&self, block: &Block) -> Result<(), ValidationError> {
+    fn validate(&self, block: &Block, _: &BlockchainDatabase<B>) -> Result<(), ValidationError> {
         check_coinbase_output(block, &self.consensus_constants)?;
         // Check that the inputs are are allowed to be spent
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
@@ -70,25 +70,20 @@ impl<B: BlockchainBackend> Validation<Block, B> for StatelessValidator {
 
 /// This block checks whether a block satisfies *all* consensus rules. If a block passes this validator, it is the
 /// next block on the blockchain.
-pub struct FullConsensusValidator<B: BlockchainBackend> {
+pub struct FullConsensusValidator<B>
+where B:BlockchainBackend {
     rules: ConsensusManager<B>,
     factories: CryptoFactories,
-    db: BlockchainDatabase<B>,
 }
 
-impl<B: BlockchainBackend> FullConsensusValidator<B>
-where B: BlockchainBackend
+impl<B:BlockchainBackend> FullConsensusValidator<B>
 {
-    pub fn new(rules: ConsensusManager<B>, factories: CryptoFactories, db: BlockchainDatabase<B>) -> Self {
-        Self { rules, factories, db }
-    }
-
-    fn db(&self) -> Result<BlockchainDatabase<B>, ValidationError> {
-        Ok(self.db.clone())
+    pub fn new(rules: ConsensusManager<B>, factories: CryptoFactories) -> Self {
+        Self { rules, factories }
     }
 }
 
-impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator<B> {
+impl<B:BlockchainBackend> Validation<Block,B> for FullConsensusValidator<B >{
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Does the block satisfy the stateless checks?
     /// 1. Are all inputs currently in the UTXO set?
@@ -96,15 +91,15 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator<B> {
     /// 1. Is the block header timestamp greater than the median timestamp?
     /// 1. Is the Proof of Work valid?
     /// 1. Is the achieved difficulty of this block >= the target difficulty for this block?
-    fn validate(&self, block: &Block) -> Result<(), ValidationError> {
+    fn validate(&self, block: &Block, db: &BlockchainDatabase<B>) -> Result<(), ValidationError> {
         check_coinbase_output(block, &self.rules.consensus_constants())?;
         check_cut_through(block)?;
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
         check_accounting_balance(block, self.rules.clone(), &self.factories)?;
-        check_inputs_are_utxos(block, self.db()?)?;
+        check_inputs_are_utxos(block, db)?;
         check_timestamp_ftl(&block.header, &self.rules)?;
-        check_median_timestamp_at_chain_tip(&block.header, self.db()?, self.rules.clone())?;
-        check_achieved_difficulty_at_chain_tip(&block.header, self.db()?, self.rules.clone())?; // Update function signature once diff adjuster is complete
+        check_median_timestamp_at_chain_tip(&block.header, db,self.rules.clone())?;
+        check_achieved_difficulty_at_chain_tip(&block.header, db, self.rules.clone())?; // Update function signature once diff adjuster is complete
         Ok(())
     }
 }
@@ -133,7 +128,7 @@ fn check_coinbase_output(block: &Block, consensus_constants: &ConsensusConstants
 /// This function checks that all inputs in the blocks are valid UTXO's to be spend
 fn check_inputs_are_utxos<B: BlockchainBackend>(
     block: &Block,
-    db: BlockchainDatabase<B>,
+    db: &BlockchainDatabase<B>,
 ) -> Result<(), ValidationError>
 {
     for utxo in block.body.inputs() {
