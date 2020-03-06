@@ -279,7 +279,9 @@ where B: BlockchainBackend
                     let _ = reply_tx.send(Ok(response).or_else(|resp| {
                         error!(
                             target: LOG_TARGET,
-                            "Failed to send outbound request from Mempool service"
+                            "Failed to send outbound request (request key:{})  from Mempool service: {:?}",
+                            &request_key,
+                            resp
                         );
                         Err(resp)
                     }));
