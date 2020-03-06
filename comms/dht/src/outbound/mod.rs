@@ -23,7 +23,7 @@
 mod broadcast;
 mod encryption;
 mod error;
-mod message;
+pub(crate) mod message;
 mod message_params;
 mod requester;
 mod serialize;

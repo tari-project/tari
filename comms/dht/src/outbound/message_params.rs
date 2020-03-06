@@ -26,6 +26,7 @@ use crate::{
     outbound::OutboundEncryption,
     proto::envelope::DhtMessageType,
 };
+use std::{fmt, fmt::Display};
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 
 /// Configuration for outbound messages.
@@ -74,6 +75,16 @@ impl Default for FinalSendMessageParams {
             is_discovery_enabled: true,
             dht_header: None,
         }
+    }
+}
+
+impl Display for FinalSendMessageParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "BroadcastStrategy: {}, Destination: {}",
+            self.broadcast_strategy, self.destination
+        )
     }
 }
 

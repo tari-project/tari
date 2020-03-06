@@ -177,7 +177,7 @@ where
                 msg = base_node_response_stream.select_next_some() => {
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
                     let result = self.handle_base_node_response(inner_msg).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling base node service response : {:?}", resp);
+                        error!(target: LOG_TARGET, "Error handling base node service response from {}: {:?}", origin_public_key, resp);
                         Err(resp)
                     });
 
@@ -275,10 +275,13 @@ where
         response: BaseNodeProto::BaseNodeServiceResponse,
     ) -> Result<(), OutputManagerError>
     {
-        let request_key = response.request_key.clone();
+        let request_key = response.request_key;
         let response = match response.response {
             Some(BaseNodeResponseProto::TransactionOutputs(outputs)) => Ok(outputs.outputs),
-            _ => Err(OutputManagerError::InvalidResponseError),
+            _ => Err(OutputManagerError::InvalidResponseError(format!(
+                "Could not parse response with request key: {}",
+                request_key
+            ))),
         }?;
 
         // Only process requests with a request_key that we are expecting.

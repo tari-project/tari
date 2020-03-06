@@ -139,6 +139,16 @@ impl DhtMessageHeader {
     }
 }
 
+impl Display for DhtMessageHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "DhtMessageHeader (Dest:{}, Origin:{:?}, Type:{:?}, Network:{:?}, Flags:{:?})",
+            self.destination, self.origin, self.message_type, self.network, self.flags
+        )
+    }
+}
+
 impl TryFrom<DhtHeader> for DhtMessageHeader {
     type Error = DhtMessageError;
 
