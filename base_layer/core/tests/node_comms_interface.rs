@@ -72,10 +72,8 @@ fn new_mempool() -> (
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_mem_db(consensus_manager);
-    let mempool_validator = MempoolValidators::new(
-        TxInputAndMaturityValidator::new(store.clone()),
-        TxInputAndMaturityValidator::new(store.clone()),
-    );
+    let mempool_validator =
+        MempoolValidators::new(TxInputAndMaturityValidator::new(), TxInputAndMaturityValidator::new());
     let mempool = Mempool::new(store.clone(), MempoolConfig::default(), mempool_validator);
     (mempool, store)
 }

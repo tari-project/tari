@@ -40,7 +40,7 @@ impl StatelessTxValidator {
     }
 }
 
-impl<B:BlockchainBackend> Validation<Transaction,B> for StatelessTxValidator {
+impl<B: BlockchainBackend> Validation<Transaction, B> for StatelessTxValidator {
     fn validate(&self, tx: &Transaction, _: &BlockchainDatabase<B>) -> Result<(), ValidationError> {
         verify_tx(tx, &self.factories)?;
         Ok(())
@@ -54,19 +54,17 @@ pub struct FullTxValidator {
     factories: CryptoFactories,
 }
 
-impl FullTxValidator
-{
+impl FullTxValidator {
     pub fn new(factories: CryptoFactories) -> Self {
-        Self { factories}
+        Self { factories }
     }
 }
 
-impl<B:BlockchainBackend> Validation<Transaction,B> for FullTxValidator {
+impl<B: BlockchainBackend> Validation<Transaction, B> for FullTxValidator {
     fn validate(&self, tx: &Transaction, db: &BlockchainDatabase<B>) -> Result<(), ValidationError> {
         verify_tx(tx, &self.factories)?;
         verify_inputs(tx, db)?;
-        let height =
-            db
+        let height = db
             .get_height()
             .map_err(|e| ValidationError::CustomError(e.to_string()))?
             .unwrap_or(0);
@@ -77,17 +75,15 @@ impl<B:BlockchainBackend> Validation<Transaction,B> for FullTxValidator {
 
 /// This validator assumes that the transaction was already validated and it will skip this step. It will only check, in
 /// order,: All inputs exist in the backend, All timelocks (kernel lock heights and output maturities) have passed
-pub struct TxInputAndMaturityValidator {
-}
+pub struct TxInputAndMaturityValidator {}
 
-impl TxInputAndMaturityValidator
-{
+impl TxInputAndMaturityValidator {
     pub fn new() -> Self {
-        Self {  }
+        Self {}
     }
 }
 
-impl<B:BlockchainBackend> Validation<Transaction,B> for TxInputAndMaturityValidator {
+impl<B: BlockchainBackend> Validation<Transaction, B> for TxInputAndMaturityValidator {
     fn validate(&self, tx: &Transaction, db: &BlockchainDatabase<B>) -> Result<(), ValidationError> {
         verify_inputs(tx, db)?;
         let height = db
@@ -107,17 +103,15 @@ impl<B:BlockchainBackend> Validation<Transaction,B> for TxInputAndMaturityValida
 }
 
 /// This validator will only check that inputs exists in the backend.
-pub struct InputTxValidator {
-}
+pub struct InputTxValidator {}
 
-impl InputTxValidator
-{
+impl InputTxValidator {
     pub fn new() -> Self {
-        Self {  }
+        Self {}
     }
 }
 
-impl<B:BlockchainBackend> Validation<Transaction,B> for InputTxValidator {
+impl<B: BlockchainBackend> Validation<Transaction, B> for InputTxValidator {
     fn validate(&self, tx: &Transaction, db: &BlockchainDatabase<B>) -> Result<(), ValidationError> {
         verify_inputs(tx, db)?;
         Ok(())
@@ -125,17 +119,15 @@ impl<B:BlockchainBackend> Validation<Transaction,B> for InputTxValidator {
 }
 
 /// This validator will only check timelocks, it will check that kernel lock heights and output maturities have passed.
-pub struct TimeLockTxValidator {
-}
+pub struct TimeLockTxValidator {}
 
-impl TimeLockTxValidator
-{
+impl TimeLockTxValidator {
     pub fn new() -> Self {
-        Self { }
+        Self {}
     }
 }
 
-impl<B:BlockchainBackend> Validation<Transaction,B> for TimeLockTxValidator {
+impl<B: BlockchainBackend> Validation<Transaction, B> for TimeLockTxValidator {
     fn validate(&self, tx: &Transaction, db: &BlockchainDatabase<B>) -> Result<(), ValidationError> {
         let height = db
             .get_height()
