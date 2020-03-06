@@ -344,7 +344,10 @@ where B: BlockchainBackend + 'static
                 } = waiting_request;
                 if let Some(reply_tx) = reply_tx.take() {
                     let _ = reply_tx.send(Ok(received_responses).or_else(|resp| {
-                        error!(target: LOG_TARGET, "Failed to send outbound request from Base Node");
+                        error!(
+                            target: LOG_TARGET,
+                            "Failed to send outbound request from Base Node, handle incoming response"
+                        );
                         Err(resp)
                     }));
                 }
@@ -453,7 +456,10 @@ where B: BlockchainBackend + 'static
                     Err(CommsInterfaceError::RequestTimedOut)
                 };
                 let _ = reply_tx.send(reply_msg.or_else(|resp| {
-                    error!(target: LOG_TARGET, "Failed to send outbound request from Base Node");
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to send outbound request from Base Node, handle request timeout"
+                    );
                     Err(resp)
                 }));
             }
