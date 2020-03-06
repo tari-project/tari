@@ -94,8 +94,8 @@ impl ListeningInfo {
                                     return FatalError(msg);
                                 },
                             };
-                            if let SyncStatus::Lagging(h)=determine_sync_mode(local,network.clone(),LOG_TARGET) {
-                                return StateEvent::FallenBehind(SyncStatus::Lagging(h));
+                            if let SyncStatus::Lagging=determine_sync_mode(local,network.clone(),LOG_TARGET) {
+                                return StateEvent::FallenBehind(SyncStatus::Lagging);
                             }
                         }
                         last_event_time=Instant::now();

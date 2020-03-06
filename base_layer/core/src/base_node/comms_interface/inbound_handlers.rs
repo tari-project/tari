@@ -111,6 +111,17 @@ where T: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::BlockHeaders(block_headers))
             },
+            NodeCommsRequest::FetchHeadersWithHashes(block_hashes) => {
+                let mut block_headers = Vec::<BlockHeader>::new();
+                for block_hash in block_hashes {
+                    if let Ok(block_header) =
+                        async_db::fetch_header_with_block_hash(self.blockchain_db.clone(), block_hash.clone()).await
+                    {
+                        block_headers.push(block_header);
+                    }
+                }
+                Ok(NodeCommsResponse::BlockHeaders(block_headers))
+            },
             NodeCommsRequest::FetchUtxos(utxo_hashes) => {
                 let mut utxos = Vec::<TransactionOutput>::new();
                 for hash in utxo_hashes {
