@@ -318,13 +318,13 @@ where
     let mut db = BlockchainDatabase::new(backend, rules.clone()).map_err(|e| e.to_string())?;
     let factories = CryptoFactories::default();
     let validators = Validators::new(
-        FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
+        FullConsensusValidator::new(rules.clone(), factories.clone()),
         StatelessValidator::new(&rules.consensus_constants()),
     );
     db.set_validators(validators);
     let mempool_validator = MempoolValidators::new(
-        FullTxValidator::new(factories.clone(), db.clone()),
-        TxInputAndMaturityValidator::new(db.clone()),
+        FullTxValidator::new(factories.clone()),
+        TxInputAndMaturityValidator::new(),
     );
     let mempool = Mempool::new(db.clone(), MempoolConfig::default(), mempool_validator);
     let diff_adj_manager = DiffAdjManager::new(db.clone(), &rules.consensus_constants()).map_err(|e| e.to_string())?;
