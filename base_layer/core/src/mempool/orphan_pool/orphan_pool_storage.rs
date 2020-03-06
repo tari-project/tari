@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::BlockchainBackend,
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
     mempool::orphan_pool::{error::OrphanPoolError, orphan_pool::OrphanPoolConfig},
     transactions::{transaction::Transaction, types::Signature},
     validation::{ValidationError, Validator},
@@ -29,7 +29,6 @@ use crate::{
 use log::*;
 use std::sync::Arc;
 use ttl_cache::TtlCache;
-use crate::chain_storage::BlockchainDatabase;
 
 pub const LOG_TARGET: &str = "c::mp::orphan_pool::orphan_pool_storage";
 
@@ -43,7 +42,7 @@ where T: BlockchainBackend
     config: OrphanPoolConfig,
     txs_by_signature: TtlCache<Signature, Arc<Transaction>>,
     validator: Validator<Transaction, T>,
-    db: BlockchainDatabase<T>
+    db: BlockchainDatabase<T>,
 }
 
 impl<T> OrphanPoolStorage<T>
@@ -55,7 +54,7 @@ where T: BlockchainBackend
             config,
             txs_by_signature: TtlCache::new(config.storage_capacity),
             validator,
-            db
+            db,
         }
     }
 
