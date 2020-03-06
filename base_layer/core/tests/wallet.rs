@@ -56,7 +56,7 @@ use tari_core::{
 };
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::{initialization::CommsConfig, services::liveness::LivenessConfig, transport::TransportType};
-use tari_test_utils::{async_assert_eventually, collect_stream};
+use tari_test_utils::async_assert_eventually;
 use tari_wallet::{
     contacts_service::storage::memory_db::ContactsServiceMemoryDatabase,
     output_manager_service::storage::memory_db::OutputManagerMemoryDatabase,
@@ -138,7 +138,7 @@ fn wallet_base_node_integration_test() {
         logging_path: None,
         factories: factories.clone(),
         transaction_service_config: Some(TransactionServiceConfig {
-            mempool_broadcast_timeout: Duration::from_secs(1),
+            mempool_broadcast_timeout: Duration::from_secs(10),
             base_node_mined_timeout: Duration::from_secs(1),
         }),
     };
@@ -251,24 +251,25 @@ fn wallet_base_node_integration_test() {
         ))
         .unwrap();
 
-    let result_stream = runtime.block_on(async {
-        collect_stream!(
-            alice_wallet
-                .transaction_service
-                .get_event_stream_fused()
-                .map(|i| (*i).clone()),
-            take = 6,
-            timeout = Duration::from_secs(20)
-        )
+    let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream_fused();
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let mut broadcast = false;
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                    if let TransactionEvent::TransactionBroadcast(_e) = (*event).clone() {
+                        broadcast = true;
+                        break;
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert!(broadcast, "Transaction has not been broadcast before timeout");
     });
-    assert!(result_stream
-        .iter()
-        .find(|i| if let TransactionEvent::TransactionBroadcast(_) = i {
-            true
-        } else {
-            false
-        })
-        .is_some());
 
     let transactions = runtime
         .block_on(alice_wallet.transaction_service.get_completed_transactions())
@@ -347,7 +348,7 @@ fn wallet_base_node_integration_test() {
                 },
             }
         }
-        assert!(mined, "Transaction has not mined before timeout");
+        assert!(mined, "Transaction has not been mined before timeout");
     });
 
     alice_wallet.shutdown();
