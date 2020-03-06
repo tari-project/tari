@@ -2,17 +2,46 @@
 
 set -e
 
+SOCKSPORT=${SOCKSPORT:-9050}
+CONTROLPORT=${CONTROLPORT:-127.0.0.1:9051}
+
+function display_center() {
+    columns="$(tput cols)"
+    echo "$1" | while IFS= read -r line; do
+        printf "%*s\n" $(( (${#line} + columns) / 2)) "$line"
+    done
+}
+
+function banner() {
+  columns="$(tput cols)"
+  for (( c=1; c<=$columns; c++ )); do
+      echo -n "—"
+  done
+
+  display_center " ✨  $1 ✨ "
+  for (( c=1; c<=$columns; c++ )); do
+      echo -n "—"
+  done
+
+  echo
+}
+
+function run_tor() {
+  echo
+  banner "Running Tor"
+
+  tor --allow-missing-torrc --ignore-missing-torrc \
+     --clientonly 1 \
+     --socksport $SOCKSPORT \
+     --controlport $CONTROLPORT\
+     --log "notice stdout" \
+     --clientuseipv6 1
+}
+
 if hash tor 2>/dev/null; then
-  echo "Tor is already installed. To reinstall remove tor and run this script."
+  run_tor
   exit
 fi
-
-function tor_installed_success() {
-   echo
-   echo "Tor installed."
-   echo "You may want to run the tor proxy with the following command:"
-   echo 'tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport 127.0.0.1:9060 --log "notice stdout" --clientuseipv6 1'
-}
 
 function install_tor_linux_apt() {
   if [ "$EUID" -ne 0 ]; then
@@ -21,7 +50,7 @@ function install_tor_linux_apt() {
   fi
 
   RELEASE=`lsb_release -c -s`
-  echo "Installing tor for $(lsb_release -i -s) $RELEASE using apt..."
+  banner "Installing tor for $(lsb_release -i -s) $RELEASE..."
 
    if [ "$RELEASE" != "cosmic" ]; then
    cat > /etc/apt/sources.list.d/tor-stable.list <<- EOF
@@ -38,14 +67,28 @@ EOF
    systemctl disable tor.service
    kill `ps -e | grep tor | cut -d " " -f1` 2>/dev/null || true
 
-   tor_installed_success
+   run_tor
 }
 
 function install_tor_mac() {
-  echo "Installing tor for Mac using homebrew..."
-  brew install tor 1>&2
+  banner "Installing Tor for Mac"
 
-  tor_installed_success
+  if !xcode-select -p 1>&2 2>/dev/null; then
+    echo "XCode not installed. Installing..."
+    xcode-select --install 1>&2
+    echo "XCode successfully installed"
+  fi
+
+  if !hash brew 2> /dev/null; then
+    echo "Homebrew not installed. Installing..."
+    bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
+    echo "Homebrew successfully installed"
+  fi
+
+  brew install tor 1>&2
+  echo "Tor successfully installed"
+
+  run_tor
 }
 
 case "$(uname -s)" in
