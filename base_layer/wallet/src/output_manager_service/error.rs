@@ -60,7 +60,8 @@ pub enum OutputManagerError {
     /// Invalid config provided to Output Manager
     InvalidConfig,
     /// The response received from another service is an incorrect variant
-    InvalidResponseError,
+    #[error(msg_embedded, no_from, non_std)]
+    InvalidResponseError(String),
     /// No Base Node public key has been provided for this service to use for contacting a base node
     NoBaseNodeKeysProvided,
     /// An error occured sending an event out on the event stream

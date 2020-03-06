@@ -26,6 +26,7 @@ use crate::{
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
     inbound,
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
+    logging_middleware::MessageLoggingLayer,
     outbound,
     outbound::DhtOutboundRequest,
     proto::envelope::DhtMessageType,
@@ -170,6 +171,7 @@ impl Dht {
             ))
             .layer(inbound::DedupLayer::new(self.dht_requester()))
             .layer(tower_filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
+            .layer(MessageLoggingLayer::new())
             .layer(inbound::DecryptionLayer::new(Arc::clone(&self.node_identity)))
             .layer(store_forward::ForwardLayer::new(
                 Arc::clone(&self.peer_manager),
@@ -224,6 +226,7 @@ impl Dht {
                 self.discovery_service_requester(),
                 self.config.network,
             ))
+            .layer(MessageLoggingLayer::new())
             .layer(outbound::EncryptionLayer::new(Arc::clone(&self.node_identity)))
             .layer(outbound::SerializeLayer::new(Arc::clone(&self.node_identity)))
             .into_inner()

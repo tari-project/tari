@@ -21,8 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{consts::DHT_ENVELOPE_HEADER_VERSION, envelope::DhtMessageHeader};
-use std::sync::Arc;
+use std::{
+    fmt::{Display, Error, Formatter},
+    sync::Arc,
+};
 use tari_comms::{message::EnvelopeBody, peer_manager::Peer, types::CommsPublicKey};
+use tari_crypto::tari_utilities::hex::Hex;
 
 #[derive(Debug, Clone)]
 pub struct DhtInboundMessage {
@@ -39,6 +43,19 @@ impl DhtInboundMessage {
             source_peer,
             body,
         }
+    }
+}
+
+impl Display for DhtInboundMessage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(
+            f,
+            "DhtInboundMessage (v{}, Peer:{}, Header:{}, Body:{})",
+            self.version,
+            self.source_peer,
+            self.dht_header,
+            self.body.to_hex()
+        )
     }
 }
 

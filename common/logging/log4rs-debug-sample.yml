@@ -23,6 +23,18 @@ appenders:
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{M}#{L}] [{t}] {l:5} {m} (({T}:{I})){n}"
 
+  message_logs:
+    kind: file
+    path: "data/node_1/messages.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+
+  requests:
+    kind: file
+    path: "data/node_1/requests.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+
   # An appender named "base_layer" that writes to a file with a custom pattern encoder
   base_layer:
     kind: file
@@ -50,3 +62,13 @@ loggers:
     appenders:
       - network
     additive: false
+
+  comms::middleware::message_logging:
+    level: trace
+    appenders:
+      - message_logs
+
+  comms::dht::outbound::requester:
+    level: trace
+    appenders:
+      - requests

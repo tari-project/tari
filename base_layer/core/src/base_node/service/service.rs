@@ -344,7 +344,10 @@ where B: BlockchainBackend + 'static
                 } = waiting_request;
                 if let Some(reply_tx) = reply_tx.take() {
                     let _ = reply_tx.send(Ok(received_responses).or_else(|resp| {
-                        error!(target: LOG_TARGET, "Failed to send outbound request from Base Node");
+                        warn!(
+                            target: LOG_TARGET,
+                            "Failed to send outbound request from Base Node: {}", resp
+                        );
                         Err(resp)
                     }));
                 }

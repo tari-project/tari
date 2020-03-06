@@ -20,8 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
 use tari_comms::{peer_manager::Peer, types::CommsPublicKey};
 use tari_comms_dht::{domain_message::MessageHeader, envelope::DhtMessageHeader};
+
+const LOG_TARGET: &str = "comms::dht::requests::inbound";
 
 /// A domain-level message
 pub struct PeerMessage {
@@ -55,6 +58,16 @@ impl PeerMessage {
 
     pub fn decode_message<T>(&self) -> Result<T, prost::DecodeError>
     where T: prost::Message + Default {
-        T::decode(self.body.as_slice())
+        let msg = T::decode(self.body.as_slice())?;
+        if cfg!(debug_assertions) {
+            trace!(
+                target: LOG_TARGET,
+                "Inbound message: Peer:{}, DhtHeader:{},  {:?}",
+                self.source_peer,
+                self.dht_header,
+                msg
+            );
+        }
+        Ok(msg)
     }
 }

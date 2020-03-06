@@ -321,7 +321,7 @@ where
                 msg = base_node_response_stream.select_next_some() => {
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
                     let _ = self.handle_base_node_response(inner_msg).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling base node service response: {:?} for NodeID: {}", resp, self.node_identity.node_id().short_str());
+                        error!(target: LOG_TARGET, "Error handling base node service response from {}: {:?} for NodeID: {}", origin_public_key, resp, self.node_identity.node_id().short_str());
                         Err(resp)
                     });
                 }
