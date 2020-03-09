@@ -38,6 +38,7 @@ pub fn print_banner() {
 pub struct Arguments {
     pub bootstrap: ConfigBootstrap,
     pub create_id: bool,
+    pub init: bool,
 }
 
 /// Parse the command-line args and populate the minimal bootstrap config object
@@ -55,6 +56,11 @@ pub fn parse_cli_args() -> Arguments {
 
     let bootstrap = bootstrap_config_from_cli(&matches);
     let create_id = matches.is_present("create_id");
+    let init = matches.is_present("init");
 
-    Arguments { bootstrap, create_id }
+    Arguments {
+        bootstrap,
+        create_id,
+        init,
+    }
 }
