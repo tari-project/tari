@@ -26,8 +26,7 @@ pub struct UnspentOutput {
 impl UnspentOutput{
     pub fn insert(output: TransactionOutput, conn: &PgConnection) -> Result<(), PostgresChainStorageError> {
         let hash = output.hash();
-        MerkleCheckpoint::add_node(MmrTree::Utxo, &hash, conn)?;
-        MerkleCheckpoint::add_node(MmrTree::RangeProof, &output.proof().hash(), conn)?;
+
         let row :UnspentOutput = output.try_into()?;
 
         diesel::insert_into(unspent_outputs::table).values(&row).execute(conn).map_err(|err|

@@ -113,4 +113,16 @@ impl BlockchainBackend for MockBackend {
     fn fetch_last_header(&self) -> Result<Option<BlockHeader>, ChainStorageError> {
         unimplemented!()
     }
+
+    fn range_proof_checkpoints_len(&self) -> Result<usize, ChainStorageError> {
+        unimplemented!()
+    }
+
+    fn get_range_proof_checkpoints(&self, cp_index: usize) -> Result<Option<MerkleCheckPoint>, ChainStorageError> {
+        unimplemented!()
+    }
+
+    fn curr_range_proof_checkpoint_get_added_position(&self, hash: &HashOutput) -> Result<Option<usize>, ChainStorageError> {
+        unimplemented!()
+    }
 }

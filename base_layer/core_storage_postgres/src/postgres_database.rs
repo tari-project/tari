@@ -21,6 +21,7 @@ use tari_core::{
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof};
 use log::*;
 use std::convert::TryInto;
+use tari_crypto::tari_utilities::Hashable;
 
 
 const LOG_TARGET: &str = "base_layer::core::storage::postgres";
@@ -45,7 +46,17 @@ impl PostgresDatabase {
                 Metadata::update(value, conn)?;
             },
             DbKeyValuePair::BlockHeader(_, block_header) => { models::BlockHeader::insert(&*block_header, conn)?},
-            DbKeyValuePair::UnspentOutput(hash, transaction_output, update_mmr) => { models::UnspentOutput::insert(*transaction_output, conn)?},
+            DbKeyValuePair::UnspentOutput(hash, output, update_mmr) => {
+
+                if update_mmr {
+                    models::MerkleCheckpoint::add_node(MmrTree::Utxo, &hash, conn)?;
+                    models::MerkleCheckpoint::add_node(MmrTree::RangeProof, &output.proof().hash(), conn)?;
+                }
+                // TODO: Not sure if we need to have the range proof in a different db
+                models::UnspentOutput::insert(*output, conn)?;
+
+            },
+
 
             DbKeyValuePair::TransactionKernel(_, _, _) => { unimplemented!() },
             DbKeyValuePair::OrphanBlock(_, _) => { unimplemented!() },
@@ -183,6 +194,18 @@ impl BlockchainBackend for PostgresDatabase {
     }
 
     fn fetch_last_header(&self) -> Result<Option<BlockHeader>, ChainStorageError> {
+        unimplemented!()
+    }
+
+    fn range_proof_checkpoints_len(&self) -> Result<usize, ChainStorageError> {
+        unimplemented!()
+    }
+
+    fn get_range_proof_checkpoints(&self, cp_index: usize) -> Result<Option<MerkleCheckPoint>, ChainStorageError> {
+        unimplemented!()
+    }
+
+    fn curr_range_proof_checkpoint_get_added_position(&self, hash: &HashOutput) -> Result<Option<usize>, ChainStorageError> {
         unimplemented!()
     }
 }

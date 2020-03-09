@@ -68,6 +68,7 @@ use tari_mmr::{
     MmrCacheConfig,
 };
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBStore};
+use tari_crypto::tari_utilities::hex::Hex;
 
 type DatabaseRef = Arc<Database<'static>>;
 
@@ -432,9 +433,12 @@ where D: Digest + Send + Sync
                         },
                         DbKeyValuePair::UnspentOutput(k, v, _) => {
                             let proof_hash = v.proof().hash();
-                            if let Some(index) = self.find_range_proof_leaf_index(proof_hash)? {
+                            if let Some(index) = self.find_range_proof_leaf_index(&proof_hash)? {
                                 lmdb_insert(&txn, &self.utxos_db, &k, &v)?;
                                 lmdb_insert(&txn, &self.txos_hash_to_index_db, &k, &index)?;
+                            }
+                            else {
+                                warn!(target:LOG_TARGET, "Could not find range proof leaf index:{}", proof_hash.to_hex());
                             }
                         },
                         DbKeyValuePair::TransactionKernel(k, v, _) => {
@@ -509,42 +513,6 @@ where D: Digest + Send + Sync
         txn.commit().map_err(|e| ChainStorageError::AccessError(e.to_string()))
     }
 
-    // Returns the leaf index of the hash. If the hash is in the newly added hashes it returns the future MMR index for
-    // that hash, this index is only valid if the change history is Committed.
-    fn find_range_proof_leaf_index(&self, hash: HashOutput) -> Result<Option<usize>, ChainStorageError> {
-        let mut accum_leaf_index = 0;
-        for cp_index in 0..self
-            .range_proof_checkpoints
-            .read()
-            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-            .len()
-            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-        {
-            if let Some(cp) = self
-                .range_proof_checkpoints
-                .read()
-                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-                .get(cp_index)
-                .map_err(|e| ChainStorageError::AccessError(format!("Checkpoint error: {}", e.to_string())))?
-            {
-                if let Some(leaf_index) = cp.nodes_added().iter().position(|h| *h == hash) {
-                    return Ok(Some(accum_leaf_index + leaf_index));
-                }
-                accum_leaf_index += cp.nodes_added().len();
-            }
-        }
-        if let Some(leaf_index) = self
-            .curr_range_proof_checkpoint
-            .read()
-            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-            .nodes_added()
-            .iter()
-            .position(|h| *h == hash)
-        {
-            return Ok(Some(accum_leaf_index + leaf_index));
-        }
-        Ok(None)
-    }
 
     // Construct a pruned mmr for the specified MMR tree based on the checkpoint state and new additions and deletions.
     fn get_pruned_mmr(&self, tree: &MmrTree) -> Result<PrunedMutableMmr<D>, ChainStorageError> {
@@ -867,6 +835,34 @@ where D: Digest + Send + Sync
         } else {
             Ok(None)
         }
+    }
+
+    fn range_proof_checkpoints_len(&self) -> Result<usize, ChainStorageError> {
+        self.range_proof_checkpoints
+            .read()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+            .len()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))
+    }
+
+    fn get_range_proof_checkpoints(&self, cp_index: usize) -> Result<Option<MerkleCheckPoint>, ChainStorageError> {
+        self
+            .range_proof_checkpoints
+            .read()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+            .get(cp_index)
+            .map_err(|e| ChainStorageError::AccessError(format!("Checkpoint error: {}", e.to_string())))
+
+    }
+
+    fn curr_range_proof_checkpoint_get_added_position(&self, hash: &HashOutput) -> Result<Option<usize>, ChainStorageError> {
+        Ok(self
+            .curr_range_proof_checkpoint
+            .read()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+            .nodes_added()
+            .iter()
+            .position(|h| h == hash))
     }
 }
 
