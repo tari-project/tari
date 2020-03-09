@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::proto::envelope::Network;
+use std::fmt;
 
 #[path = "tari.dht.envelope.rs"]
 pub mod envelope;
@@ -56,5 +57,13 @@ impl envelope::Network {
             Network::LocalTest => true,
             _ => false,
         }
+    }
+}
+
+//---------------------------------- RejectMessage --------------------------------------------//
+
+impl fmt::Display for dht::RejectMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "RejectMessage(Reason = {})", self.reason)
     }
 }
