@@ -170,7 +170,7 @@ impl Dht {
             ))
             .layer(inbound::DedupLayer::new(self.dht_requester()))
             .layer(tower_filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
-            .layer(MessageLoggingLayer::new())
+            .layer(MessageLoggingLayer::new("Inbound message: "))
             .layer(inbound::DecryptionLayer::new(Arc::clone(&self.node_identity)))
             .layer(store_forward::ForwardLayer::new(
                 Arc::clone(&self.peer_manager),
@@ -231,7 +231,7 @@ impl Dht {
                 self.discovery_service_requester(),
                 self.config.network,
             ))
-            .layer(MessageLoggingLayer::new())
+            .layer(MessageLoggingLayer::new("Outbound message: "))
             .layer(outbound::EncryptionLayer::new(Arc::clone(&self.node_identity)))
             .layer(outbound::SerializeLayer::new(Arc::clone(&self.node_identity)))
             .into_inner()

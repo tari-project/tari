@@ -27,7 +27,7 @@ use crate::{
     inbound::{error::DhtInboundError, message::DecryptedDhtMessage},
     outbound::{OutboundMessageRequester, SendMessageParams},
     proto::{
-        dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage},
+        dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage, RejectMessage},
         envelope::DhtMessageType,
     },
     PipelineError,
@@ -256,10 +256,19 @@ where
     }
 
     async fn handle_message_reject(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
+        let body = message
+            .decryption_result
+            .expect("already checked that this message decrypted successfully");
+
+        let reject_msg = body
+            .decode_part::<RejectMessage>(0)?
+            .ok_or_else(|| DhtInboundError::InvalidMessageBody)?;
+
         trace!(
             target: LOG_TARGET,
-            "Received Message reject from {}",
-            message.source_peer.public_key
+            "Received {} from '{}'",
+            message.source_peer.node_id.short_str(),
+            reject_msg,
         );
 
         // TODO: Perhaps we'll need some way to let the larger system know that the message was explicitly rejected
