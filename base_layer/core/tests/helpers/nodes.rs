@@ -61,6 +61,7 @@ use tari_p2p::{
     },
 };
 use tari_service_framework::StackBuilder;
+use tari_test_utils::async_assert_eventually;
 use tokio::runtime::Runtime;
 
 /// The NodeInterfaces is used as a container for providing access to all the services and interfaces of a single node.
@@ -256,14 +257,22 @@ pub fn create_network_with_2_base_nodes(
         .start(runtime, data_path);
 
     // Wait for peers to connect
-    runtime
-        .block_on(
-            alice_node
+    runtime.block_on(async {
+        let _ = alice_node
+            .comms
+            .connection_manager()
+            .dial_peer(bob_node.node_identity.node_id().clone())
+            .await;
+        async_assert_eventually!(
+            bob_node
                 .comms
-                .connection_manager()
-                .dial_peer(bob_node.node_identity.node_id().clone()),
-        )
-        .unwrap();
+                .peer_manager()
+                .exists(alice_node.node_identity.public_key()),
+            expect = true,
+            max_attempts = 20,
+            interval = Duration::from_millis(1000)
+        );
+    });
 
     (alice_node, bob_node, consensus_manager)
 }
@@ -308,14 +317,22 @@ pub fn create_network_with_2_base_nodes_with_config(
         .start(runtime, data_path);
 
     // Wait for peers to connect
-    runtime
-        .block_on(
-            alice_node
+    runtime.block_on(async {
+        let _ = alice_node
+            .comms
+            .connection_manager()
+            .dial_peer(bob_node.node_identity.node_id().clone())
+            .await;
+        async_assert_eventually!(
+            bob_node
                 .comms
-                .connection_manager()
-                .dial_peer(bob_node.node_identity.node_id().clone()),
-        )
-        .unwrap();
+                .peer_manager()
+                .exists(alice_node.node_identity.public_key()),
+            expect = true,
+            max_attempts = 20,
+            interval = Duration::from_millis(1000)
+        );
+    });
 
     (alice_node, bob_node, consensus_manager)
 }
@@ -403,7 +420,34 @@ pub fn create_network_with_3_base_nodes_with_config(
         let mut conn_man = bob_node.comms.connection_manager();
         let _ = conn_man.dial_peer(carol_node.node_identity.node_id().clone()).await;
 
-        // All node have an existing connection
+        // All nodes have an existing connection
+        async_assert_eventually!(
+            bob_node
+                .comms
+                .peer_manager()
+                .exists(alice_node.node_identity.public_key()),
+            expect = true,
+            max_attempts = 20,
+            interval = Duration::from_millis(1000)
+        );
+        async_assert_eventually!(
+            carol_node
+                .comms
+                .peer_manager()
+                .exists(alice_node.node_identity.public_key()),
+            expect = true,
+            max_attempts = 20,
+            interval = Duration::from_millis(1000)
+        );
+        async_assert_eventually!(
+            carol_node
+                .comms
+                .peer_manager()
+                .exists(bob_node.node_identity.public_key()),
+            expect = true,
+            max_attempts = 20,
+            interval = Duration::from_millis(1000)
+        );
     });
 
     (alice_node, bob_node, carol_node, consensus_manager)
