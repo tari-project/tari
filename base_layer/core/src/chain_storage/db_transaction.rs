@@ -22,6 +22,7 @@
 
 use crate::{
     blocks::{blockheader::BlockHash, Block, BlockHeader},
+    chain_storage::db_transaction::DbKey::Metadata,
     proof_of_work::Difficulty,
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
@@ -210,6 +211,17 @@ pub enum MetadataValue {
     BestBlock(Option<BlockHash>),
     AccumulatedWork(Option<Difficulty>),
     PruningHorizon(u64),
+}
+
+impl From<MetadataValue> for MetadataKey {
+    fn from(m: MetadataValue) -> Self {
+        return match m {
+            MetadataValue::ChainHeight(_) => MetadataKey::ChainHeight,
+            MetadataValue::BestBlock(_) => MetadataKey::BestBlock,
+            MetadataValue::AccumulatedWork(_) => MetadataKey::AccumulatedWork,
+            MetadataValue::PruningHorizon(_) => MetadataKey::PruningHorizon,
+        };
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

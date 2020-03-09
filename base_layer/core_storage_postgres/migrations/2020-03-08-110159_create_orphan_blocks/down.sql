@@ -1,0 +1,1 @@
+drop table orphan_blocks;

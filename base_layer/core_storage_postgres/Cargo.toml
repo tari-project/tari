@@ -1,0 +1,18 @@
+[package]
+name = "tari_core_storage_postgres"
+version = "0.1.0"
+authors = ["Mike Berry <mikethetike@tari.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tari_core ={path="../core"}
+tari_mmr = { path = "../../base_layer/mmr"}
+tari_crypto = { version = "^0.3" }
+
+chrono = { version = "0.4.11", features = ["serde"] }
+digest = "0.8.0"
+diesel={version="1.4.3", features=["postgres", "numeric", "chrono"]}
+derive-error = "0.0.4"
+log = "0.4"

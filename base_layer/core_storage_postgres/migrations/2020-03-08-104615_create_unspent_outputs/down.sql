@@ -1,0 +1,1 @@
+drop table unspent_outputs;

@@ -2,6 +2,7 @@
 
 members = [
     "base_layer/core",
+    "base_layer/core_storage_postgres",
     "base_layer/key_manager",
     "base_layer/mmr",
     "base_layer/p2p",
