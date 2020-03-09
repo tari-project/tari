@@ -282,7 +282,7 @@ fn wallet_base_node_integration_test() {
         let tx_excess_sig = tx.transaction.body.kernels()[0].excess_sig.clone();
         runtime.block_on(async {
             async_assert_eventually!(
-                base_node.mempool.has_tx_with_excess_sig(&tx_excess_sig).unwrap(),
+                base_node.mempool.has_tx_with_excess_sig(tx_excess_sig.clone()).unwrap(),
                 expect = TxStorageResponse::UnconfirmedPool,
                 max_attempts = 20,
                 interval = Duration::from_millis(1000)

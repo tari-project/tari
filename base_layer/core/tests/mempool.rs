@@ -120,36 +120,36 @@ fn test_insert_and_process_published_block() {
     mempool.insert(tx2.clone()).unwrap();
     mempool.insert(tx3.clone()).unwrap();
     mempool.insert(tx5.clone()).unwrap();
-    mempool.process_published_block(&blocks[1]).unwrap();
+    mempool.process_published_block(blocks[1].clone()).unwrap();
 
     assert_eq!(
         mempool
-            .has_tx_with_excess_sig(&orphan.body.kernels()[0].excess_sig)
+            .has_tx_with_excess_sig(orphan.body.kernels()[0].excess_sig.clone())
             .unwrap(),
         TxStorageResponse::OrphanPool
     );
     assert_eq!(
         mempool
-            .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
+            .has_tx_with_excess_sig(tx2.body.kernels()[0].excess_sig.clone())
             .unwrap(),
         TxStorageResponse::UnconfirmedPool
     );
     assert_eq!(
         mempool
-            .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
+            .has_tx_with_excess_sig(tx3.body.kernels()[0].excess_sig.clone())
             .unwrap(),
         TxStorageResponse::PendingPool
     );
 
     assert_eq!(
         mempool
-            .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
+            .has_tx_with_excess_sig(tx5.body.kernels()[0].excess_sig.clone())
             .unwrap(),
         TxStorageResponse::PendingPool
     );
     assert_eq!(
         mempool
-            .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
+            .has_tx_with_excess_sig(tx6.body.kernels()[0].excess_sig.clone())
             .unwrap(),
         TxStorageResponse::NotStored
     );
@@ -177,35 +177,35 @@ fn test_insert_and_process_published_block() {
         &consensus_manager.consensus_constants(),
     )
     .unwrap();
-    mempool.process_published_block(&blocks[2]).unwrap();
+    mempool.process_published_block(blocks[2].clone()).unwrap();
 
     assert_eq!(
         mempool
-            .has_tx_with_excess_sig(&orphan.body.kernels()[0].excess_sig)
+            .has_tx_with_excess_sig(orphan.body.kernels()[0].excess_sig.clone())
             .unwrap(),
         TxStorageResponse::OrphanPool
     );
     assert_eq!(
         mempool
-            .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
+            .has_tx_with_excess_sig(tx2.body.kernels()[0].excess_sig.clone())
             .unwrap(),
         TxStorageResponse::ReorgPool
     );
     assert_eq!(
         mempool
-            .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
+            .has_tx_with_excess_sig(tx3.body.kernels()[0].excess_sig.clone())
             .unwrap(),
         TxStorageResponse::PendingPool
     );
     assert_eq!(
         mempool
-            .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
+            .has_tx_with_excess_sig(tx5.body.kernels()[0].excess_sig.clone())
             .unwrap(),
         TxStorageResponse::UnconfirmedPool
     );
     assert_eq!(
         mempool
-            .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
+            .has_tx_with_excess_sig(tx6.body.kernels()[0].excess_sig.clone())
             .unwrap(),
         TxStorageResponse::NotStored
     );
@@ -247,7 +247,7 @@ fn test_retrieve() {
         &consensus_manager.consensus_constants(),
     )
     .unwrap();
-    mempool.process_published_block(&blocks[1]).unwrap();
+    mempool.process_published_block(blocks[1].clone()).unwrap();
     // 1-Block, 8 UTXOs, empty mempool
     let txs = vec![
         txn_schema!(from: vec![outputs[1][0].clone()], to: vec![], fee: 30*uT),
@@ -297,7 +297,7 @@ fn test_retrieve() {
     .unwrap();
     println!("{}", blocks[2]);
     outputs.push(utxos);
-    mempool.process_published_block(&blocks[2]).unwrap();
+    mempool.process_published_block(blocks[2].clone()).unwrap();
     // 2-blocks, 2 unconfirmed txs in mempool, 0 time locked (tx5 time-lock will expire)
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 3);
@@ -348,7 +348,7 @@ fn test_reorg() {
         &consensus_manager.consensus_constants(),
     )
     .unwrap();
-    mempool.process_published_block(&blocks[1]).unwrap();
+    mempool.process_published_block(blocks[1].clone()).unwrap();
 
     // "Mine" block 2
     let schemas = vec![
@@ -365,7 +365,7 @@ fn test_reorg() {
     assert_eq!(stats.unconfirmed_txs, 3);
     let txns2 = txns2.iter().map(|t| t.deref().clone()).collect();
     generate_block(&mut db, &mut blocks, txns2, &consensus_manager.consensus_constants()).unwrap();
-    mempool.process_published_block(&blocks[2]).unwrap();
+    mempool.process_published_block(blocks[2].clone()).unwrap();
 
     // "Mine" block 3
     let schemas = vec![
@@ -387,7 +387,7 @@ fn test_reorg() {
         &consensus_manager.consensus_constants(),
     )
     .unwrap();
-    mempool.process_published_block(&blocks[3]).unwrap();
+    mempool.process_published_block(blocks[3].clone()).unwrap();
 
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 0);
@@ -467,8 +467,8 @@ fn test_orphaned_mempool_transactions() {
     assert_eq!(stats.orphan_txs, 2);
     store.add_block(blocks[1].clone()).unwrap();
     store.add_block(blocks[2].clone()).unwrap();
-    mempool.process_published_block(&blocks[1]).unwrap();
-    mempool.process_published_block(&blocks[2]).unwrap();
+    mempool.process_published_block(blocks[1].clone()).unwrap();
+    mempool.process_published_block(blocks[2].clone()).unwrap();
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.total_txs, 3);
     assert_eq!(stats.unconfirmed_txs, 1);
@@ -663,25 +663,34 @@ fn receive_and_propagate_transaction() {
             .unwrap();
 
         async_assert_eventually!(
-            bob_node.mempool.has_tx_with_excess_sig(&tx_excess_sig).unwrap(),
+            bob_node.mempool.has_tx_with_excess_sig(tx_excess_sig.clone()).unwrap(),
             expect = TxStorageResponse::PendingPool,
             max_attempts = 20,
             interval = Duration::from_millis(1000)
         );
         async_assert_eventually!(
-            bob_node.mempool.has_tx_with_excess_sig(&orphan_excess_sig).unwrap(),
+            bob_node
+                .mempool
+                .has_tx_with_excess_sig(orphan_excess_sig.clone())
+                .unwrap(),
             expect = TxStorageResponse::OrphanPool,
             max_attempts = 10,
             interval = Duration::from_millis(1000)
         );
         async_assert_eventually!(
-            carol_node.mempool.has_tx_with_excess_sig(&tx_excess_sig).unwrap(),
+            carol_node
+                .mempool
+                .has_tx_with_excess_sig(tx_excess_sig.clone())
+                .unwrap(),
             expect = TxStorageResponse::PendingPool,
             max_attempts = 10,
             interval = Duration::from_millis(1000)
         );
         async_assert_eventually!(
-            carol_node.mempool.has_tx_with_excess_sig(&orphan_excess_sig).unwrap(),
+            carol_node
+                .mempool
+                .has_tx_with_excess_sig(orphan_excess_sig.clone())
+                .unwrap(),
             expect = TxStorageResponse::OrphanPool,
             max_attempts = 10,
             interval = Duration::from_millis(1000)
@@ -814,7 +823,7 @@ fn block_event_and_reorg_event_handling() {
         // Add Block1 - tx1 will be moved to the ReorgPool.
         assert!(bob.local_nci.submit_block(block1.clone()).await.is_ok());
         async_assert_eventually!(
-            alice.mempool.has_tx_with_excess_sig(&tx1_excess_sig).unwrap(),
+            alice.mempool.has_tx_with_excess_sig(tx1_excess_sig.clone()).unwrap(),
             expect = TxStorageResponse::ReorgPool,
             max_attempts = 20,
             interval = Duration::from_millis(1000)
@@ -823,34 +832,34 @@ fn block_event_and_reorg_event_handling() {
         // Add Block2a - tx4 and tx5 will be discarded as double spends.
         assert!(bob.local_nci.submit_block(block2a.clone()).await.is_ok());
         async_assert_eventually!(
-            alice.mempool.has_tx_with_excess_sig(&tx2_excess_sig).unwrap(),
+            alice.mempool.has_tx_with_excess_sig(tx2_excess_sig.clone()).unwrap(),
             expect = TxStorageResponse::ReorgPool,
             max_attempts = 20,
             interval = Duration::from_millis(1000)
         );
         assert_eq!(
-            alice.mempool.has_tx_with_excess_sig(&tx3_excess_sig).unwrap(),
+            alice.mempool.has_tx_with_excess_sig(tx3_excess_sig.clone()).unwrap(),
             TxStorageResponse::ReorgPool
         );
         assert_eq!(
-            alice.mempool.has_tx_with_excess_sig(&tx4_excess_sig).unwrap(),
+            alice.mempool.has_tx_with_excess_sig(tx4_excess_sig.clone()).unwrap(),
             TxStorageResponse::NotStored
         );
         assert_eq!(
-            alice.mempool.has_tx_with_excess_sig(&tx5_excess_sig).unwrap(),
+            alice.mempool.has_tx_with_excess_sig(tx5_excess_sig.clone()).unwrap(),
             TxStorageResponse::NotStored
         );
 
         // Re-org chain by adding Block2b - tx2 and tx3 will be discarded as double spends.
         assert!(bob.local_nci.submit_block(block2b.clone()).await.is_ok());
         async_assert_eventually!(
-            alice.mempool.has_tx_with_excess_sig(&tx2_excess_sig).unwrap(),
+            alice.mempool.has_tx_with_excess_sig(tx2_excess_sig.clone()).unwrap(),
             expect = TxStorageResponse::NotStored,
             max_attempts = 20,
             interval = Duration::from_millis(1000)
         );
         assert_eq!(
-            alice.mempool.has_tx_with_excess_sig(&tx3_excess_sig).unwrap(),
+            alice.mempool.has_tx_with_excess_sig(tx3_excess_sig.clone()).unwrap(),
             TxStorageResponse::NotStored
         );
 

@@ -92,7 +92,10 @@ fn mining() {
             .await
             .unwrap();
         async_assert_eventually!(
-            alice_node.mempool.has_tx_with_excess_sig(&tx1_excess_sig).unwrap(),
+            alice_node
+                .mempool
+                .has_tx_with_excess_sig(tx1_excess_sig.clone())
+                .unwrap(),
             expect = TxStorageResponse::UnconfirmedPool,
             max_attempts = 20,
             interval = Duration::from_millis(1000)
@@ -135,7 +138,7 @@ fn mining() {
         }
         assert!(found_tx_outputs == tx1.body.outputs().len());
         assert_eq!(
-            alice_node.mempool.has_tx_with_excess_sig(&tx1_excess_sig).unwrap(),
+            alice_node.mempool.has_tx_with_excess_sig(tx1_excess_sig).unwrap(),
             TxStorageResponse::ReorgPool
         );
 

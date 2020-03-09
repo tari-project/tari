@@ -107,7 +107,7 @@ where T: BlockchainBackend
         Ok(())
     }
 
-    /// Insert a set of new transactions into the UTxPool.
+    // Insert a set of new transactions into the UTxPool.
     fn insert_txs(&self, txs: Vec<Arc<Transaction>>) -> Result<(), MempoolError> {
         for tx in txs {
             self.insert(tx)?;
@@ -116,18 +116,18 @@ where T: BlockchainBackend
     }
 
     /// Update the Mempool based on the received published block.
-    pub fn process_published_block(&self, published_block: &Block) -> Result<(), MempoolError> {
+    pub fn process_published_block(&self, published_block: Block) -> Result<(), MempoolError> {
         trace!(target: LOG_TARGET, "Mempool processing new block: {}", published_block);
         // Move published txs to ReOrgPool and discard double spends
         self.reorg_pool.insert_txs(
             self.unconfirmed_pool
-                .remove_published_and_discard_double_spends(published_block)?,
+                .remove_published_and_discard_double_spends(&published_block)?,
         )?;
 
         // Move txs with valid input UTXOs and expired time-locks to UnconfirmedPool and discard double spends
         self.unconfirmed_pool.insert_txs(
             self.pending_pool
-                .remove_unlocked_and_discard_double_spends(published_block)?,
+                .remove_unlocked_and_discard_double_spends(&published_block)?,
         )?;
 
         // Move txs with recently expired time-locks that have input UTXOs that have recently become valid to the
@@ -140,8 +140,8 @@ where T: BlockchainBackend
         Ok(())
     }
 
-    /// Update the Mempool based on the received set of published blocks.
-    pub fn process_published_blocks(&self, published_blocks: &[Block]) -> Result<(), MempoolError> {
+    // Update the Mempool based on the received set of published blocks.
+    fn process_published_blocks(&self, published_blocks: Vec<Block>) -> Result<(), MempoolError> {
         for published_block in published_blocks {
             self.process_published_block(published_block)?;
         }
@@ -167,7 +167,7 @@ where T: BlockchainBackend
             self.reorg_pool
                 .remove_reorged_txs_and_discard_double_spends(removed_blocks, &new_blocks)?,
         )?;
-        self.process_published_blocks(&new_blocks)?;
+        self.process_published_blocks(new_blocks)?;
         Ok(())
     }
 
@@ -186,14 +186,14 @@ where T: BlockchainBackend
     }
 
     /// Check if the specified transaction is stored in the Mempool.
-    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> Result<TxStorageResponse, MempoolError> {
-        if self.unconfirmed_pool.has_tx_with_excess_sig(excess_sig)? {
+    pub fn has_tx_with_excess_sig(&self, excess_sig: Signature) -> Result<TxStorageResponse, MempoolError> {
+        if self.unconfirmed_pool.has_tx_with_excess_sig(&excess_sig)? {
             Ok(TxStorageResponse::UnconfirmedPool)
-        } else if self.orphan_pool.has_tx_with_excess_sig(excess_sig)? {
+        } else if self.orphan_pool.has_tx_with_excess_sig(&excess_sig)? {
             Ok(TxStorageResponse::OrphanPool)
-        } else if self.pending_pool.has_tx_with_excess_sig(excess_sig)? {
+        } else if self.pending_pool.has_tx_with_excess_sig(&excess_sig)? {
             Ok(TxStorageResponse::PendingPool)
-        } else if self.reorg_pool.has_tx_with_excess_sig(excess_sig)? {
+        } else if self.reorg_pool.has_tx_with_excess_sig(&excess_sig)? {
             Ok(TxStorageResponse::ReorgPool)
         } else {
             Ok(TxStorageResponse::NotStored)

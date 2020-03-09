@@ -35,7 +35,7 @@ use crate::{
         HistoricalBlock,
     },
     consensus::ConsensusManager,
-    mempool::Mempool,
+    mempool::{async_mempool, Mempool},
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 use futures::SinkExt;
@@ -50,8 +50,8 @@ const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
 /// Events that can be published on the Validated Block Event Stream
 #[derive(Debug, Clone, Display)]
 pub enum BlockEvent {
-    Verified((Block, BlockAddResult)),
-    Invalid((Block, ChainStorageError)),
+    Verified((Box<Block>, BlockAddResult)),
+    Invalid((Box<Block>, ChainStorageError)),
 }
 
 /// The InboundNodeCommsInterface is used to handle all received inbound requests from remote nodes.
@@ -181,17 +181,17 @@ where T: BlockchainBackend + 'static
                     async_db::fetch_header_with_block_hash(self.blockchain_db.clone(), best_block_hash).await?;
                 let header = BlockHeader::from_previous(&best_block_header);
 
-                let transactions = self
-                    .mempool
-                    .retrieve(
-                        self.consensus_manager
-                            .consensus_constants()
-                            .get_max_block_transaction_weight(),
-                    )
-                    .map_err(|e| CommsInterfaceError::MempoolError(e.to_string()))?
-                    .iter()
-                    .map(|tx| (**tx).clone())
-                    .collect();
+                let transactions = async_mempool::retrieve(
+                    self.mempool.clone(),
+                    self.consensus_manager
+                        .consensus_constants()
+                        .get_max_block_transaction_weight(),
+                )
+                .await
+                .map_err(|e| CommsInterfaceError::MempoolError(e.to_string()))?
+                .iter()
+                .map(|tx| (**tx).clone())
+                .collect();
 
                 let block_template = NewBlockTemplate::from(
                     BlockBuilder::new(&self.consensus_manager.consensus_constants())
@@ -224,16 +224,16 @@ where T: BlockchainBackend + 'static
             "Block received from remote peer or local services: {:?}", source_peer
         );
         trace!(target: LOG_TARGET, "Block: {}", block);
-        let add_block_result = self.blockchain_db.add_block(block.clone());
+        let add_block_result = async_db::add_block(self.blockchain_db.clone(), block.clone()).await;
         // Create block event on block event stream
         let block_event = match add_block_result.clone() {
             Ok(block_add_result) => {
                 debug!(target: LOG_TARGET, "Block event created: {:?}", block_add_result);
-                BlockEvent::Verified((block.clone(), block_add_result))
+                BlockEvent::Verified((Box::new(block.clone()), block_add_result))
             },
             Err(e) => {
                 error!(target: LOG_TARGET, "Block validation failed: {:?}", e);
-                BlockEvent::Invalid((block.clone(), e))
+                BlockEvent::Invalid((Box::new(block.clone()), e))
             },
         };
         self.event_publisher
@@ -249,7 +249,7 @@ where T: BlockchainBackend + 'static
                 BlockAddResult::ChainReorg(_) => true,
             };
             if propagate {
-                let exclude_peers = source_peer.map_or_else(|| vec![], |comms_public_key| vec![comms_public_key]);
+                let exclude_peers = source_peer.into_iter().collect();
                 self.outbound_nci.propagate_block(block.clone(), exclude_peers).await?;
             }
         }

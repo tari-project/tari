@@ -101,7 +101,7 @@ where
 
 /// The Mempool Service is responsible for handling inbound requests and responses and for sending new requests to the
 /// Mempools of remote Base nodes.
-pub struct MempoolService<B: BlockchainBackend> {
+pub struct MempoolService<B: BlockchainBackend + 'static> {
     executor: runtime::Handle,
     outbound_message_service: OutboundMessageRequester,
     inbound_handlers: MempoolInboundHandlers<B>,
@@ -112,7 +112,7 @@ pub struct MempoolService<B: BlockchainBackend> {
 }
 
 impl<B> MempoolService<B>
-where B: BlockchainBackend
+where B: BlockchainBackend + 'static
 {
     pub fn new(
         executor: runtime::Handle,
