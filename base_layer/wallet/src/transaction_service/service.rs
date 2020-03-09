@@ -1213,7 +1213,9 @@ where
 
                 info!(
                     target: LOG_TARGET,
-                    "Sending Transaction Mined? request for TxId: {} to Base Node", tx_id
+                    "Sending Transaction Mined? request for TxId: {} to Base Node with {} outputs",
+                    tx_id,
+                    hashes.len(),
                 );
 
                 let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
@@ -1293,11 +1295,13 @@ where
         if completed_tx.status == TransactionStatus::Broadcast {
             // Confirm that all outputs were reported as mined for the transaction
             if response.len() != completed_tx.transaction.body.outputs().len() {
-                error!(
+                info!(
                     target: LOG_TARGET,
-                    "Base node response received for TxId: {:?} but the response contains a different number of \
-                     outputs than stored transaction",
-                    tx_id
+                    "Base node response received for TxId: {:?} with {} outputs but expected {} outputs, Tx not mined \
+                     yet",
+                    tx_id,
+                    response.len(),
+                    completed_tx.transaction.body.outputs().len(),
                 );
             } else {
                 let mut check = true;
