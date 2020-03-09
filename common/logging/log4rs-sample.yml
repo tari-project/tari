@@ -8,7 +8,7 @@
 #  See https://docs.rs/log4rs/0.8.3/log4rs/encode/pattern/index.html for deciphering the log pattern. The log format
 #  used in this sample configuration prints messages as:
 #  timestamp [target] LEVEL message
-
+refresh_rate: 30 seconds
 appenders:
   # An appender named "stdout" that writes to stdout
   stdout:
@@ -18,15 +18,52 @@ appenders:
 
   # An appender named "network" that writes to a file with a custom pattern encoder
   network:
-    kind: file
+    kind: rolling_file
     path: "log/network.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "log/network.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 
   # An appender named "base_layer" that writes to a file with a custom pattern encoder
   base_layer:
-    kind: file
+    kind: rolling_file
     path: "log/base_layer.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "log/base_layer.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+
+       # An appender named "base_layer" that writes to a file with a custom pattern encoder
+  other:
+    kind: rolling_file
+    path: "log/other.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "log/other.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 
@@ -46,7 +83,31 @@ loggers:
 
   # Route log events sent to the "comms" logger to the "network" appender
   comms:
-    level: info
+    level: trace
     appenders:
       - network
+    additive: false
+  # Route log events sent to the "p2p" logger to the "network" appender
+  p2p:
+    level: trace
+    appenders:
+      - network
+    additive: false
+ # Route log events sent to the "mio" logger to the "other" appender
+  mio:
+    level: trace
+    appenders:
+      - network
+    additive: false
+  # Route log events sent to the "rustyline" logger to the "other" appender
+  rustyline:
+    level: trace
+    appenders:
+      - other
+    additive: false
+  # Route log events sent to the "tokio_util" logger to the "other" appender
+  tokio_util:
+    level: trace
+    appenders:
+      - other
     additive: false

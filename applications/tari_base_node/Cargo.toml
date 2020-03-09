@@ -26,7 +26,7 @@ config = { version = "0.9.3" }
 dirs = "2.0.2"
 futures = { version = "^0.3.1", default-features = false, features = ["alloc"]}
 log = { version = "0.4.8", features = ["std"] }
-log4rs = { version = "0.8.3", features = ["toml_format"] }
+log4rs = { version = "0.8.3", features = ["toml_format", "rolling_file_appender", "compound_policy", "size_trigger", "fixed_window_roller"] }
 rand = "0.7.2"
 serde_json = "1.0"
 tokio = { version="0.2.10", features = ["signal"] }
