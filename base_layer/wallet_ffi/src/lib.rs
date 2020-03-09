@@ -132,7 +132,6 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     socks,
     tor,
-    tor::TorIdentity,
 };
 use tari_comms_dht::DhtConfig;
 use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
@@ -140,15 +139,8 @@ use tari_crypto::{
     keys::{PublicKey, SecretKey},
     tari_utilities::ByteArray,
 };
-use tari_p2p::{
-    initialization::CommsInitializationError,
-    transport::{TorConfig, TransportType},
-};
-use tari_utilities::{
-    hex,
-    hex::Hex,
-    message_format::{MessageFormat, MessageFormatError},
-};
+use tari_p2p::transport::{TorConfig, TransportType};
+use tari_utilities::{hex, hex::Hex, message_format::MessageFormat};
 use tari_wallet::{
     contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
     error::WalletError,
@@ -188,8 +180,8 @@ pub type TariContact = tari_wallet::contacts_service::storage::database::Contact
 pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::database::CompletedTransaction;
 pub struct TariCompletedTransactions(Vec<TariCompletedTransaction>);
 pub type TariPendingInboundTransaction = tari_wallet::transaction_service::storage::database::InboundTransaction;
-pub struct TariPendingInboundTransactions(Vec<TariPendingInboundTransaction>);
 pub type TariPendingOutboundTransaction = tari_wallet::transaction_service::storage::database::OutboundTransaction;
+pub struct TariPendingInboundTransactions(Vec<TariPendingInboundTransaction>);
 pub struct TariPendingOutboundTransactions(Vec<TariPendingOutboundTransaction>);
 #[derive(Debug, PartialEq)]
 pub struct ByteVector(Vec<c_uchar>); // declared like this so that it can be exposed to external header
@@ -1120,9 +1112,11 @@ pub unsafe extern "C" fn completed_transaction_get_source_public_key(
 /// | Value | Interpretation |
 /// |---|---|
 /// |  -1 | TxNullError |
-/// |   0 | Completed |
-/// |   1 | Broadcast |
-/// |   2 | Mined |
+/// |   0 | Completed   |
+/// |   1 | Broadcast   |
+/// |   2 | Mined       |
+/// |   3 | Imported    |
+/// |   4 | Pending     |
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_status(
     transaction: *mut TariCompletedTransaction,
@@ -1285,7 +1279,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_transaction_id(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (*transaction).tx_id as c_ulonglong
+    (*transaction).tx_id.clone() as c_ulonglong
 }
 
 /// Gets the destination TariPublicKey of a TariPendingOutboundTransaction
@@ -1337,7 +1331,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_amount(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    c_ulonglong::from((*transaction).amount)
+    c_ulonglong::from((*transaction).amount.clone())
 }
 
 /// Gets the fee of a TariPendingOutboundTransaction
@@ -1362,7 +1356,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_fee(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    c_ulonglong::from((*transaction).fee)
+    c_ulonglong::from((*transaction).fee.clone())
 }
 
 /// Gets the timestamp of a TariPendingOutboundTransaction
@@ -1420,6 +1414,40 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_message(
     result.into_raw()
 }
 
+/// Gets the status of a TariPendingOutboundTransaction
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariPendingOutboundTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_int` - Returns the status which corresponds to:
+/// | Value | Interpretation |
+/// |---|---|
+/// |  -1 | TxNullError |
+/// |   0 | Completed   |
+/// |   1 | Broadcast   |
+/// |   2 | Mined       |
+/// |   3 | Imported    |
+/// |   4 | Pending     |
+#[no_mangle]
+pub unsafe extern "C" fn pending_outbound_transaction_get_status(
+    transaction: *mut TariPendingOutboundTransaction,
+    error_out: *mut c_int,
+) -> c_int
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return -1;
+    }
+    let status = (*transaction).status.clone();
+    status as c_int
+}
+
 /// Frees memory for a TariPendingOutboundTransaction
 ///
 /// ## Arguments
@@ -1460,7 +1488,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_transaction_id(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (*transaction).tx_id as c_ulonglong
+    (*transaction).tx_id.clone() as c_ulonglong
 }
 
 /// Gets the source TariPublicKey of a TariPendingInboundTransaction
@@ -1512,7 +1540,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_amount(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    c_ulonglong::from((*transaction).amount)
+    c_ulonglong::from((*transaction).amount.clone())
 }
 
 /// Gets the timestamp of a TariPendingInboundTransaction
@@ -1568,6 +1596,40 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_message(
 
     result = CString::new(message).unwrap();
     result.into_raw()
+}
+
+/// Gets the status of a TariPendingInboundTransaction
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariPendingInboundTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_int` - Returns the status which corresponds to:
+/// | Value | Interpretation |
+/// |---|---|
+/// |  -1 | TxNullError |
+/// |   0 | Completed   |
+/// |   1 | Broadcast   |
+/// |   2 | Mined       |
+/// |   3 | Imported    |
+/// |   4 | Pending     |
+#[no_mangle]
+pub unsafe extern "C" fn pending_inbound_transaction_get_status(
+    transaction: *mut TariPendingInboundTransaction,
+    error_out: *mut c_int,
+) -> c_int
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return -1;
+    }
+    let status = (*transaction).status.clone();
+    status as c_int
 }
 
 /// Frees memory for a TariPendingInboundTransaction
@@ -3789,9 +3851,29 @@ mod test {
             let ffi_inbound_txs = wallet_get_pending_inbound_transactions(&mut (*alice_wallet), error_ptr);
             assert_eq!(pending_inbound_transactions_get_length(ffi_inbound_txs, error_ptr), 6);
 
+            let mut found_pending = false;
+            for i in 0..pending_inbound_transactions_get_length(ffi_inbound_txs, error_ptr) {
+                let pending_tx = pending_inbound_transactions_get_at(ffi_inbound_txs, i, error_ptr);
+                let status = pending_inbound_transaction_get_status(pending_tx, error_ptr);
+                if status == 4 {
+                    found_pending = true;
+                }
+            }
+            assert!(found_pending, "At least 1 transaction should be in the Pending state");
+
             // `wallet_test_generate_data(...)` creates 9 completed outbound transactions that are not mined
             let ffi_outbound_txs = wallet_get_pending_outbound_transactions(&mut (*alice_wallet), error_ptr);
             assert_eq!(pending_outbound_transactions_get_length(ffi_outbound_txs, error_ptr), 9);
+
+            let mut found_broadcast = false;
+            for i in 0..pending_outbound_transactions_get_length(ffi_outbound_txs, error_ptr) {
+                let pending_tx = pending_outbound_transactions_get_at(ffi_outbound_txs, i, error_ptr);
+                let status = pending_outbound_transaction_get_status(pending_tx, error_ptr);
+                if status == 1 {
+                    found_broadcast = true;
+                }
+            }
+            assert!(found_pending, "At least 1 transaction should be in the Broadcast state");
 
             let completed_transactions: std::collections::HashMap<
                 u64,

@@ -200,9 +200,11 @@ const char *completed_transaction_get_message(struct TariCompletedTransaction *t
 // | Value | Interpretation |
 // |---|---|
 // |  -1 | TxNullError |
-// |   0 | Completed |
-// |   1 | Broadcast |
-// |   2 | Mined |
+// |   0 | Completed   |
+// |   1 | Broadcast   |
+// |   2 | Mined       |
+// |   3 | Imported    |
+// |   4 | Pending     |
 int completed_transaction_get_status(struct TariCompletedTransaction *transaction,int* error_out);
 
 // Gets the TransactionID of a TariCompletedTransaction
@@ -245,6 +247,17 @@ const char *pending_outbound_transaction_get_message(struct TariPendingOutboundT
 // Gets the timestamp of a TariPendingOutboundTransaction
 unsigned long long pending_outbound_transaction_get_timestamp(struct TariPendingOutboundTransaction *transaction,int* error_out);
 
+// Gets the status of a TariPendingOutboundTransaction
+// | Value | Interpretation |
+// |---|---|
+// |  -1 | TxNullError |
+// |   0 | Completed   |
+// |   1 | Broadcast   |
+// |   2 | Mined       |
+// |   3 | Imported    |
+// |   4 | Pending     |
+int pending_outbound_transaction_get_status(struct TariPendingOutboundTransaction *transaction,int* error_out);
+
 // Frees memory for a TariPendingOutboundTactions
 void pending_outbound_transaction_destroy(struct TariPendingOutboundTransaction *transaction);
 
@@ -275,6 +288,17 @@ unsigned long long pending_inbound_transaction_get_amount(struct TariPendingInbo
 
 // Gets the timestamp of a TariPendingInboundTransaction
 unsigned long long pending_inbound_transaction_get_timestamp(struct TariPendingInboundTransaction *transaction,int* error_out);
+
+// Gets the status of a TariPendingInboundTransaction
+// | Value | Interpretation |
+// |---|---|
+// |  -1 | TxNullError |
+// |   0 | Completed   |
+// |   1 | Broadcast   |
+// |   2 | Mined       |
+// |   3 | Imported    |
+// |   4 | Pending     |
+int pending_Inbound_transaction_get_status(struct TariPendingInboundTransaction *transaction,int* error_out);
 
 // Frees memory for a TariPendingInboundTransaction
 void pending_inbound_transaction_destroy(struct TariPendingInboundTransaction *transaction);

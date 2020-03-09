@@ -541,6 +541,7 @@ impl TryFrom<InboundTransactionSql> for InboundTransaction {
                 .map_err(|_| TransactionStorageError::ConversionError)?,
             amount: MicroTari::from(i.amount as u64),
             receiver_protocol: serde_json::from_str(&i.receiver_protocol)?,
+            status: TransactionStatus::Pending,
             message: i.message,
             timestamp: i.timestamp,
         })
@@ -632,6 +633,7 @@ impl TryFrom<OutboundTransactionSql> for OutboundTransaction {
             amount: MicroTari::from(i.amount as u64),
             fee: MicroTari::from(i.fee as u64),
             sender_protocol: serde_json::from_str(&i.sender_protocol)?,
+            status: TransactionStatus::Pending,
             message: i.message,
             timestamp: i.timestamp,
         })
@@ -938,6 +940,7 @@ mod test {
             amount,
             fee: stp.clone().get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
+            status: TransactionStatus::Pending,
             message: "Yo!".to_string(),
             timestamp: Utc::now().naive_utc(),
         };
@@ -948,6 +951,8 @@ mod test {
             amount,
             fee: stp.clone().get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
+            status: TransactionStatus::Pending,
+
             message: "Hey!".to_string(),
             timestamp: Utc::now().naive_utc(),
         })
@@ -983,6 +988,7 @@ mod test {
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             receiver_protocol: rtp.clone(),
+            status: TransactionStatus::Pending,
             message: "Yo!".to_string(),
             timestamp: Utc::now().naive_utc(),
         };
@@ -991,6 +997,7 @@ mod test {
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             receiver_protocol: rtp.clone(),
+            status: TransactionStatus::Pending,
             message: "Hey!".to_string(),
             timestamp: Utc::now().naive_utc(),
         };

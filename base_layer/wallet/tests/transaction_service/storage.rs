@@ -88,6 +88,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             amount: amounts[i].clone(),
             fee: stp.clone().get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
+            status: TransactionStatus::Pending,
             message: messages[i].clone(),
             timestamp: Utc::now().naive_utc(),
         });
@@ -135,6 +136,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount: amounts[i].clone(),
             receiver_protocol: rtp.clone(),
+            status: TransactionStatus::Pending,
             message: messages[i].clone(),
             timestamp: Utc::now().naive_utc(),
         });
