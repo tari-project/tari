@@ -132,7 +132,6 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     socks,
     tor,
-    tor::TorIdentity,
 };
 use tari_comms_dht::DhtConfig;
 use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
@@ -140,15 +139,8 @@ use tari_crypto::{
     keys::{PublicKey, SecretKey},
     tari_utilities::ByteArray,
 };
-use tari_p2p::{
-    initialization::CommsInitializationError,
-    transport::{TorConfig, TransportType},
-};
-use tari_utilities::{
-    hex,
-    hex::Hex,
-    message_format::{MessageFormat, MessageFormatError},
-};
+use tari_p2p::transport::{TorConfig, TransportType};
+use tari_utilities::{hex, hex::Hex, message_format::MessageFormat};
 use tari_wallet::{
     contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
     error::WalletError,

@@ -24,6 +24,7 @@ use crate::{
     base_node::comms_interface::BlockEvent,
     chain_storage::{BlockAddResult, BlockchainBackend},
     mempool::{
+        async_mempool,
         service::{MempoolRequest, MempoolResponse, MempoolServiceError, OutboundMempoolServiceInterface},
         Mempool,
         TxStorageResponse,
@@ -39,14 +40,14 @@ pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
 /// The MempoolInboundHandlers is used to handle all received inbound mempool requests and transactions from remote
 /// nodes.
 pub struct MempoolInboundHandlers<T>
-where T: BlockchainBackend
+where T: BlockchainBackend + 'static
 {
     mempool: Mempool<T>,
     outbound_nmi: OutboundMempoolServiceInterface,
 }
 
 impl<T> MempoolInboundHandlers<T>
-where T: BlockchainBackend
+where T: BlockchainBackend + 'static
 {
     /// Construct the MempoolInboundHandlers.
     pub fn new(mempool: Mempool<T>, outbound_nmi: OutboundMempoolServiceInterface) -> Self {
@@ -55,12 +56,13 @@ where T: BlockchainBackend
 
     /// Handle inbound Mempool service requests from remote nodes and local services.
     pub async fn handle_request(&self, request: &MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
-        // TODO: make mempool calls async
         debug!(target: LOG_TARGET, "request received for mempool: {:?}", request);
         match request {
-            MempoolRequest::GetStats => Ok(MempoolResponse::Stats(self.mempool.stats()?)),
+            MempoolRequest::GetStats => Ok(MempoolResponse::Stats(
+                async_mempool::stats(self.mempool.clone()).await?,
+            )),
             MempoolRequest::GetTxStateWithExcessSig(excess_sig) => Ok(MempoolResponse::TxStorage(
-                self.mempool.has_tx_with_excess_sig(excess_sig)?,
+                async_mempool::has_tx_with_excess_sig(self.mempool.clone(), excess_sig.clone()).await?,
             )),
         }
     }
@@ -72,14 +74,12 @@ where T: BlockchainBackend
         source_peer: Option<CommsPublicKey>,
     ) -> Result<(), MempoolServiceError>
     {
-        if self.mempool.has_tx_with_excess_sig(&tx.body.kernels()[0].excess_sig)? == TxStorageResponse::NotStored {
-            self.mempool.insert(Arc::new(tx.clone()))?;
-            let exclude_list = if let Some(peer) = source_peer {
-                vec![peer]
-            } else {
-                Vec::new()
-            };
-            self.outbound_nmi.propagate_tx(tx.clone(), exclude_list).await?;
+        if async_mempool::has_tx_with_excess_sig(self.mempool.clone(), tx.body.kernels()[0].excess_sig.clone()).await? ==
+            TxStorageResponse::NotStored
+        {
+            async_mempool::insert(self.mempool.clone(), Arc::new(tx.clone())).await?;
+            let exclude_peers = source_peer.into_iter().collect();
+            self.outbound_nmi.propagate_tx(tx.clone(), exclude_peers).await?;
         }
         Ok(())
     }
@@ -88,11 +88,11 @@ where T: BlockchainBackend
     pub async fn handle_block_event(&mut self, block_event: &BlockEvent) -> Result<(), MempoolServiceError> {
         match block_event {
             BlockEvent::Verified((block, BlockAddResult::Ok)) => {
-                self.mempool.process_published_block(block)?;
+                async_mempool::process_published_block(self.mempool.clone(), *block.clone()).await?;
             },
             BlockEvent::Verified((_, BlockAddResult::ChainReorg((removed_blocks, added_blocks)))) => {
-                self.mempool
-                    .process_reorg(removed_blocks.to_vec(), added_blocks.to_vec())?;
+                async_mempool::process_reorg(self.mempool.clone(), removed_blocks.to_vec(), added_blocks.to_vec())
+                    .await?;
             },
             BlockEvent::Verified(_) | BlockEvent::Invalid(_) => {},
         }

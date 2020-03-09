@@ -43,4 +43,6 @@ pub enum MempoolError {
     /// The Blockchain height is undefined
     ChainHeightUndefined,
     ValidationError,
+    #[error(msg_embedded, non_std, no_from)]
+    BlockingTaskSpawnError(String),
 }
