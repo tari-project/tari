@@ -99,6 +99,8 @@ pub enum TransactionStatus {
     Mined,
     /// This transaction was generated as part of importing a spendable UTXO
     Imported,
+    /// This transaction is still being negotiated by the parties
+    Pending,
 }
 
 impl TryFrom<i32> for TransactionStatus {
@@ -110,8 +112,15 @@ impl TryFrom<i32> for TransactionStatus {
             1 => Ok(TransactionStatus::Broadcast),
             2 => Ok(TransactionStatus::Mined),
             3 => Ok(TransactionStatus::Imported),
+            4 => Ok(TransactionStatus::Pending),
             _ => Err(TransactionStorageError::ConversionError),
         }
+    }
+}
+
+impl Default for TransactionStatus {
+    fn default() -> Self {
+        TransactionStatus::Pending
     }
 }
 
@@ -121,6 +130,7 @@ pub struct InboundTransaction {
     pub source_public_key: CommsPublicKey,
     pub amount: MicroTari,
     pub receiver_protocol: ReceiverTransactionProtocol,
+    pub status: TransactionStatus,
     pub message: String,
     pub timestamp: NaiveDateTime,
 }
@@ -132,6 +142,7 @@ pub struct OutboundTransaction {
     pub amount: MicroTari,
     pub fee: MicroTari,
     pub sender_protocol: SenderTransactionProtocol,
+    pub status: TransactionStatus,
     pub message: String,
     pub timestamp: NaiveDateTime,
 }
@@ -200,6 +211,7 @@ impl From<CompletedTransaction> for InboundTransaction {
             source_public_key: ct.source_public_key,
             amount: ct.amount,
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
+            status: ct.status,
             message: ct.message,
             timestamp: ct.timestamp,
         }
@@ -214,6 +226,7 @@ impl From<CompletedTransaction> for OutboundTransaction {
             amount: ct.amount,
             fee: ct.fee,
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
+            status: ct.status,
             message: ct.message,
             timestamp: ct.timestamp,
         }

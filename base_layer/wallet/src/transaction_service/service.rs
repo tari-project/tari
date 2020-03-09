@@ -557,6 +557,7 @@ where
                         amount,
                         fee: sender_protocol.get_fee_amount()?,
                         sender_protocol,
+                        status: TransactionStatus::Pending,
                         message,
                         timestamp: Utc::now().naive_utc(),
                     };
@@ -585,6 +586,7 @@ where
                     amount,
                     fee: sender_protocol.get_fee_amount()?,
                     sender_protocol: sender_protocol.clone(),
+                    status: TransactionStatus::Pending,
                     message: message.clone(),
                     timestamp: Utc::now().naive_utc(),
                 };
@@ -742,6 +744,7 @@ where
                 source_public_key: source_pubkey.clone(),
                 amount,
                 receiver_protocol: rtp.clone(),
+                status: TransactionStatus::Pending,
                 message: data.message,
                 timestamp: Utc::now().naive_utc(),
             };
@@ -1537,6 +1540,7 @@ where
             source_public_key,
             amount,
             receiver_protocol: rtp,
+            status: TransactionStatus::Pending,
             message: "".to_string(),
             timestamp: Utc::now().naive_utc(),
         };
