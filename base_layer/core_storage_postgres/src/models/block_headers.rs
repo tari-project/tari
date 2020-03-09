@@ -42,7 +42,8 @@ impl BlockHeader {
 
     pub fn insert(block_header: &blocks::BlockHeader, conn: &PgConnection) -> Result<(), PostgresChainStorageError>{
         let row:BlockHeader = block_header.try_into()?;
-        diesel::insert_into(block_headers::table).values(row).execute(conn)?;
+        diesel::insert_into(block_headers::table).values(row).execute(conn).map_err(|err|
+        PostgresChainStorageError::InsertError(format!("Could not insert block header:{}", err))) ?;
         Ok(())
     }
 }

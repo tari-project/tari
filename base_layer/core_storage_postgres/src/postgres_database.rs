@@ -45,7 +45,7 @@ impl PostgresDatabase {
                 Metadata::update(value, conn)?;
             },
             DbKeyValuePair::BlockHeader(_, block_header) => { models::BlockHeader::insert(&*block_header, conn)?},
-            DbKeyValuePair::UnspentOutput(hash, transaction_output, update_mmr) => { )},
+            DbKeyValuePair::UnspentOutput(hash, transaction_output, update_mmr) => { models::UnspentOutput::insert(*transaction_output, conn)?},
 
             DbKeyValuePair::TransactionKernel(_, _, _) => { unimplemented!() },
             DbKeyValuePair::OrphanBlock(_, _) => { unimplemented!() },
