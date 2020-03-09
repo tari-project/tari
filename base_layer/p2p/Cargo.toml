@@ -11,7 +11,6 @@ edition = "2018"
 
 [features]
 test-mocks = []
-pingpong-example = ["cursive"]
 
 [dependencies]
 tari_broadcast_channel = "^0.1"
@@ -26,7 +25,6 @@ tari_utilities = "^0.1"
 
 bytes = "0.4.12"
 chrono = {version = "0.4.6", features = ["serde"]}
-cursive = {version = "0.12.0", optional = true}
 derive-error = "0.0.4"
 futures = {version = "^0.3.1"}
 lmdb-zero = "0.4.4"
@@ -38,7 +36,7 @@ serde_derive = "1.0.90"
 tokio = {version="0.2.10", features=["blocking"]}
 tower = "0.3.0-alpha.2"
 tower-service = { version="0.3.0-alpha.2" }
-
+ 
 [dev-dependencies]
 tari_test_utils = { version = "^0.0", path="../../infrastructure/test_utils" }
 
@@ -58,9 +56,8 @@ version ="0.8.3"
 features = ["console_appender", "file_appender", "file", "yaml_format"]
 default-features = false
 
+[target.'cfg(not(windows))'.dev-dependencies.cursive]
+version = "0.12.0"
+
 [build-dependencies]
 tari_common = { version = "^0.0", path="../../common"}
-
-[[example]]
-name = "pingpong"
-required-features = ["pingpong-example"]
