@@ -114,3 +114,13 @@ sh mobile_build.sh
 
 The relevant libraries will then be built and placed in the appropriate directories of the Wallet-iOS and Wallet-Android repositories. 
 
+# Setup (Windows)
+
+## Test
+
+1. Download SQL Lite (https://www.sqlite.org/index.html - 64bit) and unzip
+2. `sqlite3.dll` must be accessible via the session path
+
+## Build
+
+ToDo -  Android only

@@ -21,7 +21,15 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use std::{net::Ipv4Addr, path::PathBuf, str::FromStr, sync::Arc, thread};
+use std::{
+    fs::File,
+    io::{BufRead, BufReader},
+    net::Ipv4Addr,
+    path::PathBuf,
+    str::FromStr,
+    sync::Arc,
+    thread,
+};
 use tari_storage::{
     lmdb_store::{db, LMDBBuilder, LMDBDatabase, LMDBError, LMDBStore},
     IterationResult,
@@ -94,16 +102,15 @@ fn clean_up(name: &str) {
     std::fs::remove_dir_all(get_path(name)).unwrap();
 }
 
-#[cfg(windows)]
-const LINE_ENDING: &str = "\r\n";
-#[cfg(not(windows))]
-const LINE_ENDING: &str = "\n";
-
 fn load_users() -> Vec<User> {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/users.csv");
-    let f = std::fs::read_to_string(path).unwrap();
-    f.split(LINE_ENDING).map(|s| User::new(s).unwrap()).collect()
+    let file = File::open(path).unwrap();
+    BufReader::new(file)
+        .lines() // `BufReader::lines` is platform agnostic, recognises both `\r\n` and `\n`
+        .map(|result| result.unwrap())
+        .map(|s| User::new(&s).unwrap())
+        .collect()
 }
 
 fn insert_all_users(name: &str) -> (Vec<User>, LMDBDatabase) {
