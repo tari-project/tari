@@ -7,8 +7,8 @@ create table block_headers (
     output_mmr text not null,
     range_proof_mmr text not null,
     kernel_mmr text not null,
-    total_kernel_offset numeric not null,
-    nonce numeric not null,
+    total_kernel_offset text not null,
+    nonce bigint not null,
     proof_of_work jsonb not null,
     created_at timestamp not null default current_timestamp,
     updated_at timestamp not null default current_timestamp

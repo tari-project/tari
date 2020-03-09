@@ -1,4 +1,4 @@
-use crate::{error::PostgresChainStorageError, models, models::metadata::Metadata};
+use crate::{error::PostgresChainStorageError, models, models::Metadata};
 use diesel::{result::Error, Connection, PgConnection};
 use digest::Digest;
 use tari_core::{
@@ -20,6 +20,7 @@ use tari_core::{
 };
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof};
 use log::*;
+use std::convert::TryInto;
 
 
 const LOG_TARGET: &str = "base_layer::core::storage::postgres";
@@ -43,10 +44,11 @@ impl PostgresDatabase {
             DbKeyValuePair::Metadata(key, value) => {
                 Metadata::update(value, conn)?;
             },
-            DbKeyValuePair::BlockHeader(_, _) => {},
-            DbKeyValuePair::UnspentOutput(_, _, _) => {},
-            DbKeyValuePair::TransactionKernel(_, _, _) => {},
-            DbKeyValuePair::OrphanBlock(_, _) => {},
+            DbKeyValuePair::BlockHeader(_, block_header) => { models::BlockHeader::insert(&*block_header, conn)?},
+            DbKeyValuePair::UnspentOutput(hash, transaction_output, update_mmr) => { )},
+
+            DbKeyValuePair::TransactionKernel(_, _, _) => { unimplemented!() },
+            DbKeyValuePair::OrphanBlock(_, _) => { unimplemented!() },
         };
 
         Ok(())
@@ -65,7 +67,7 @@ impl PostgresDatabase {
     }
 
     fn create_mmr_checkpoint(&self, conn: &PgConnection, mmr_tree: MmrTree) -> Result<(), PostgresChainStorageError> {
-        models::merkle_checkpoints::MerkleCheckpoint::save_current(mmr_tree, conn)
+        models::MerkleCheckpoint::save_current(mmr_tree, conn)
     }
 
     fn rewind_mmr(&self, mmr_tree: MmrTree, height: usize) -> Result<(), PostgresChainStorageError> {
@@ -78,7 +80,7 @@ impl BlockchainBackend for PostgresDatabase {
         let conn = self.get_conn()?;
         conn.transaction::<(), PostgresChainStorageError, _>(|| {
             for operation in tx.operations {
-                debug!(target: LOG_TARGET, "Executing write operation:{}", operation);
+                debug!(target: LOG_TARGET, "Executing write operation:{:?}", operation);
                 match operation {
                     WriteOperation::Insert(record) => self.insert(&conn, record)?,
                     WriteOperation::Delete(key) => self.delete(key)?,
@@ -97,10 +99,16 @@ impl BlockchainBackend for PostgresDatabase {
 
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
         let conn = self.get_conn()?;
+        debug!(target: LOG_TARGET, "Fetching:{:?}", key);
+
         match key {
             DbKey::Metadata(key) => Ok(Some(DbValue::Metadata(Metadata::fetch(key, &conn)?))),
             DbKey::BlockHeader(_) => unimplemented!(),
-            DbKey::BlockHash(_) => unimplemented!(),
+            DbKey::BlockHash(key) => Ok(
+                match models::BlockHeader::fetch_by_hash(key, &conn)? {
+                    Some(bh) => Some(bh.try_into()?),
+                    None => None
+                }),
             DbKey::UnspentOutput(_) => unimplemented!(),
             DbKey::SpentOutput(_) => unimplemented!(),
             DbKey::TransactionKernel(_) => unimplemented!(),

@@ -2,6 +2,7 @@ use derive_error::Error;
 use diesel::{result::Error as DieselError, ConnectionError};
 use tari_core::chain_storage::ChainStorageError;
 use tari_crypto::tari_utilities::hex::HexError;
+use serde_json::error::Error as SerdeJsonError;
 
 #[derive(Debug, Error)]
 pub enum PostgresChainStorageError {
@@ -13,6 +14,7 @@ pub enum PostgresChainStorageError {
     DieselError(DieselError),
     HexError(HexError),
     ConnectionError(ConnectionError),
+    SerializationError(SerdeJsonError)
 }
 
 impl From<PostgresChainStorageError> for ChainStorageError {

@@ -6,4 +6,3 @@ pub mod postgres_database;
 mod schema;
 
 mod error;
-mod types;

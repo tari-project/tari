@@ -1,4 +1,4 @@
-use crate::{error::PostgresChainStorageError, schema::metadata, types::BlockHash};
+use crate::{error::PostgresChainStorageError, schema::metadata};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use std::fs::metadata;
@@ -7,6 +7,7 @@ use tari_core::{
     proof_of_work::Difficulty,
 };
 use tari_crypto::tari_utilities::hex::Hex;
+use tari_core::blocks::BlockHash;
 
 #[derive(Queryable)]
 pub struct Metadata {
