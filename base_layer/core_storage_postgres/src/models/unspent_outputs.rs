@@ -30,7 +30,9 @@ impl UnspentOutput{
         MerkleCheckpoint::add_node(MmrTree::RangeProof, &output.proof().hash(), conn)?;
         let row :UnspentOutput = output.try_into()?;
 
-        diesel::insert_into(unspent_outputs::table).values(&row).execute(conn)?;
+        diesel::insert_into(unspent_outputs::table).values(&row).execute(conn).map_err(|err|
+                                                                                           PostgresChainStorageError::InsertError(format!(
+                                                                                               "Could not insert unspent output:{}", err)))?;
 
         Ok(())
     }

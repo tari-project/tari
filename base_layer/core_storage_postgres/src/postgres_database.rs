@@ -78,9 +78,9 @@ impl PostgresDatabase {
 impl BlockchainBackend for PostgresDatabase {
     fn write(&self, tx: DbTransaction) -> Result<(), ChainStorageError> {
         let conn = self.get_conn()?;
-        conn.transaction::<(), PostgresChainStorageError, _>(|| {
+        // conn.transaction::<(), PostgresChainStorageError, _>(|| {
             for operation in tx.operations {
-                debug!(target: LOG_TARGET, "Executing write operation:{:?}", operation);
+                debug!(target: LOG_TARGET, "Executing write operation:{}", operation);
                 match operation {
                     WriteOperation::Insert(record) => self.insert(&conn, record)?,
                     WriteOperation::Delete(key) => self.delete(key)?,
@@ -92,9 +92,9 @@ impl BlockchainBackend for PostgresDatabase {
             }
 
             Ok(())
-        })?;
+        // })?;
 
-        Ok(())
+        // Ok(())
     }
 
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {

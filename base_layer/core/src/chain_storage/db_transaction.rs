@@ -30,7 +30,7 @@ use crate::{
     },
 };
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Error, Formatter};
+use std::fmt::{self,Display, Error, Formatter};
 use strum_macros::Display;
 use tari_crypto::tari_utilities::{hex::to_hex, Hashable};
 
@@ -170,7 +170,7 @@ impl DbTransaction {
     }
 }
 
-#[derive(Debug, Display)]
+#[derive(Debug)]
 pub enum WriteOperation {
     Insert(DbKeyValuePair),
     Delete(DbKey),
@@ -180,8 +180,21 @@ pub enum WriteOperation {
     RewindMmr(MmrTree, usize),
 }
 
+impl Display for WriteOperation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            WriteOperation::Insert(key_value_pair) => write!(f, "Insert:{}", key_value_pair),
+            WriteOperation::Delete(key) => write!(f, "Delete:{}", key),
+            WriteOperation::Spend(key) => write!(f, "Spend: {}", key),
+            WriteOperation::UnSpend(key) => write!(f, "Unspend: {}", key),
+            WriteOperation::CreateMmrCheckpoint(mmr) => write!(f, "Create Checkpoint:{}", mmr),
+            WriteOperation::RewindMmr(mmr, height) => write!(f, "Rewind MMR:{} to:{}", mmr, height),
+        }
+    }
+}
+
 /// A list of key-value pairs that are required for each insert operation
-#[derive(Debug)]
+#[derive(Debug, Display)]
 pub enum DbKeyValuePair {
     Metadata(MetadataKey, MetadataValue),
     BlockHeader(u64, Box<BlockHeader>),
@@ -190,7 +203,7 @@ pub enum DbKeyValuePair {
     OrphanBlock(HashOutput, Box<Block>),
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum MmrTree {
     Utxo,
     Kernel,
