@@ -22,5 +22,8 @@ pub use wallet::Wallet;
 extern crate diesel;
 #[macro_use]
 extern crate diesel_migrations;
+#[macro_use]
+extern crate lazy_static;
+
 pub mod schema;
 // pub mod text_message_service;

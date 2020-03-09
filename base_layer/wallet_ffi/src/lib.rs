@@ -3516,8 +3516,8 @@ mod test {
             assert_eq!(public_key_length, 32);
             assert_ne!((*private_bytes), (*public_bytes));
             let emoji = public_key_to_emoji_node_id(public_key, error_ptr) as *mut c_char;
-            let emoji_str = CStr::from_ptr(emoji).to_str().unwrap().to_owned();
-            assert_eq!(EmojiId::is_valid(&emoji_str, &(*public_key)), true);
+            let emoji_str = CStr::from_ptr(emoji).to_str().unwrap();
+            assert!(EmojiId::is_valid(emoji_str));
             private_key_destroy(private_key);
             public_key_destroy(public_key);
             byte_vector_destroy(public_bytes);
