@@ -93,23 +93,29 @@ where T: ContactsBackend + 'static
         request: ContactsServiceRequest,
     ) -> Result<ContactsServiceResponse, ContactsServiceError>
     {
-        Ok(match request {
+        match request {
             ContactsServiceRequest::GetContact(pk) => {
-                self.db.get_contact(pk).await.map(ContactsServiceResponse::Contact)?
+                Ok(self.db.get_contact(pk).await.map(ContactsServiceResponse::Contact)?)
             },
-            ContactsServiceRequest::UpsertContact(c) => self
-                .db
-                .upsert_contact(c)
-                .await
-                .map(|_| ContactsServiceResponse::ContactSaved)?,
-            ContactsServiceRequest::RemoveContact(pk) => self
-                .db
-                .remove_contact(pk)
-                .await
-                .map(ContactsServiceResponse::ContactRemoved)?,
+            ContactsServiceRequest::UpsertContact(c) => {
+                self.db.upsert_contact(c.clone()).await?;
+                info!(
+                    target: LOG_TARGET,
+                    "Contact Saved: \nAlias: {}\nPubKey: {} ", c.alias, c.public_key
+                );
+                Ok(ContactsServiceResponse::ContactSaved)
+            },
+            ContactsServiceRequest::RemoveContact(pk) => {
+                let result = self.db.remove_contact(pk).await?;
+                info!(
+                    target: LOG_TARGET,
+                    "Contact Removed: \nAlias: {}\nPubKey: {} ", result.alias, result.public_key
+                );
+                Ok(ContactsServiceResponse::ContactRemoved(result))
+            },
             ContactsServiceRequest::GetContacts => {
-                self.db.get_contacts().await.map(ContactsServiceResponse::Contacts)?
+                Ok(self.db.get_contacts().await.map(ContactsServiceResponse::Contacts)?)
             },
-        })
+        }
     }
 }

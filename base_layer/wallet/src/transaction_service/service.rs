@@ -590,10 +590,20 @@ where
                     message: message.clone(),
                     timestamp: Utc::now().naive_utc(),
                 };
+
+                info!(
+                    target: LOG_TARGET,
+                    "Send Transaction request for TxID: {:?} to recipient with public_key {} requires that a \
+                     Discovery Process be conducted",
+                    tx_id,
+                    dest_pubkey
+                );
+
                 let discovery_future = async move {
                     transaction_send_discovery_process_completion(r, tx_id_clone, outbound_tx_clone).await
                 };
                 discovery_process_futures.push(discovery_future.boxed());
+
                 return Err(TransactionServiceError::OutboundSendDiscoveryInProgress(tx_id));
             },
         }
