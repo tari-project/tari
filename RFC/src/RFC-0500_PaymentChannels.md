@@ -88,5 +88,3 @@ are what those users would expect in an honestly run side chain.
 
 However, if the side-chain is run as a standard mimblewimble process, any third party running a full node and that
 access to the opening and closing channel balances, can in fact verify that the committee has operated honestly.
-
-More discussion and technical details for the Clacks can be found in the [white paper](https://tarilabs.com/the-clacks).
