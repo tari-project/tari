@@ -207,6 +207,7 @@ where B: BlockchainBackend + 'static
                 // Outbound request messages from the OutboundNodeCommsInterface
                 outbound_request_context = outbound_request_stream.select_next_some() => {
                     let ((request,request_type), reply_tx) = outbound_request_context.split();
+
                     let _ = self.handle_outbound_request(reply_tx,request,request_type).await.or_else(|err| {
                         error!(target: LOG_TARGET, "Failed to handle outbound request message: {:?}", err);
                         Err(err)
@@ -220,7 +221,7 @@ where B: BlockchainBackend + 'static
                         error!(target: LOG_TARGET, "Failed to handle outbound block message {:?}",err);
                         Err(err)
                     });
-                },
+                }
 
                 // Incoming request messages from the Comms layer
                 domain_msg = inbound_request_stream.select_next_some() => {

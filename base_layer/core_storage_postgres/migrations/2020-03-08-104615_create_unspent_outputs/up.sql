@@ -8,4 +8,4 @@ create table unspent_outputs(
     updated_at timestamp not null default current_timestamp
 );
 
-select diesel_manage_updated_at('unspent_outputs');
+-- select diesel_manage_updated_at('unspent_outputs');

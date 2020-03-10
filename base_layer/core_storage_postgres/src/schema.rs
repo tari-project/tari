@@ -55,12 +55,13 @@ table! {
     transaction_kernels (hash) {
         hash -> Text,
         features -> Int4,
-        fee -> Numeric,
-        lock_height -> Numeric,
+        fee -> Int8,
+        lock_height -> Int8,
         meta_info -> Nullable<Text>,
-        linked_kernal -> Nullable<Text>,
+        linked_kernel -> Nullable<Text>,
         excess -> Text,
-        excess_sig -> Bytea,
+        excess_sig_nonce -> Bytea,
+        excess_sig_sig -> Bytea,
         created_at -> Timestamp,
         updated_at -> Timestamp,
     }

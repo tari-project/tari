@@ -56,9 +56,12 @@ impl PostgresDatabase {
                 models::UnspentOutput::insert(*output, conn)?;
 
             },
-
-
-            DbKeyValuePair::TransactionKernel(_, _, _) => { unimplemented!() },
+            DbKeyValuePair::TransactionKernel(hash, kernel, update_mmr) => {
+                if update_mmr {
+                    models::MerkleCheckpoint::add_node(MmrTree::Kernel, &hash, conn)?;
+                }
+                models::TransactionKernel::insert(hash, *kernel, conn)?;
+            },
             DbKeyValuePair::OrphanBlock(_, _) => { unimplemented!() },
         };
 
@@ -123,7 +126,10 @@ impl BlockchainBackend for PostgresDatabase {
             DbKey::UnspentOutput(_) => unimplemented!(),
             DbKey::SpentOutput(_) => unimplemented!(),
             DbKey::TransactionKernel(_) => unimplemented!(),
-            DbKey::OrphanBlock(_) => unimplemented!(),
+            DbKey::OrphanBlock(hash) => Ok(match models::OrphanBlock::fetch(hash, &conn)? {
+                Some(b)=> Some(b.try_into()?),
+                None=> None
+            }),
         }
     }
 
