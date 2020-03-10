@@ -30,9 +30,12 @@ use crate::{
         TxId,
     },
     storage::{database::WalletBackend, memory_db::WalletMemoryDatabase},
-    transaction_service::storage::{
-        database::{CompletedTransaction, TransactionBackend, TransactionStatus},
-        memory_db::TransactionMemoryDatabase,
+    transaction_service::{
+        handle::TransactionEvent,
+        storage::{
+            database::{CompletedTransaction, TransactionBackend, TransactionStatus},
+            memory_db::TransactionMemoryDatabase,
+        },
     },
     wallet::WalletConfig,
     Wallet,
@@ -270,10 +273,10 @@ pub fn generate_wallet_test_data<
 
     let alice_peer = wallet_alice.comms.node_identity().to_peer();
 
-    wallet.comms.peer_manager().add_peer(alice_peer.clone())?;
+    wallet.comms.peer_manager().add_peer(alice_peer)?;
     let bob_peer = wallet_bob.comms.node_identity().to_peer();
 
-    wallet.comms.peer_manager().add_peer(bob_peer.clone())?;
+    wallet.comms.peer_manager().add_peer(bob_peer)?;
 
     wallet
         .runtime
@@ -302,6 +305,7 @@ pub fn generate_wallet_test_data<
         MicroTari::from(100),
         messages[message_index].clone(),
     ))?;
+
     message_index = (message_index + 1) % messages.len();
     wallet.runtime.block_on(wallet.transaction_service.send_transaction(
         contacts[0].public_key.clone(),
@@ -310,6 +314,23 @@ pub fn generate_wallet_test_data<
         messages[message_index].clone(),
     ))?;
     message_index = (message_index + 1) % messages.len();
+
+    // Grab the first 2 outbound tx_ids for later
+    let mut outbound_tx_ids = Vec::new();
+    let wallet_event_stream = wallet.transaction_service.get_event_stream_fused();
+    let wallet_stream = wallet.runtime.block_on(async {
+        collect_stream!(
+            wallet_event_stream.map(|i| (*i).clone()),
+            take = 4,
+            timeout = Duration::from_secs(60)
+        )
+    });
+    for v in wallet_stream {
+        if let TransactionEvent::TransactionSendResult(tx_id, _) = v {
+            outbound_tx_ids.push(tx_id);
+        }
+    }
+    assert_eq!(outbound_tx_ids.len(), 2);
 
     wallet.runtime.block_on(wallet.transaction_service.send_transaction(
         contacts[0].public_key.clone(),
@@ -485,11 +506,10 @@ pub fn generate_wallet_test_data<
     let _wallet_stream = wallet.runtime.block_on(async {
         collect_stream!(
             wallet_event_stream.map(|i| (*i).clone()),
-            take = 20,
-            timeout = Duration::from_secs(60)
+            take = 30,
+            timeout = Duration::from_secs(120)
         )
     });
-
     let txs = wallet
         .runtime
         .block_on(wallet.transaction_service.get_completed_transactions())
@@ -575,28 +595,30 @@ pub fn generate_wallet_test_data<
         timestamp_index = (timestamp_index + 1) % timestamps.len();
     }
 
-    let mut keys = Vec::new();
-
-    for k in txs.keys().take(2) {
-        keys.push(k);
-    }
-
     // Broadcast a tx
     wallet
         .runtime
-        .block_on(wallet.transaction_service.test_broadcast_transaction(keys[0].clone()))
+        .block_on(
+            wallet
+                .transaction_service
+                .test_broadcast_transaction(outbound_tx_ids[0].clone()),
+        )
         .unwrap();
 
     // Mine a tx
     wallet
         .runtime
-        .block_on(wallet.transaction_service.test_mine_transaction(keys[1].clone()))
+        .block_on(
+            wallet
+                .transaction_service
+                .test_mine_transaction(outbound_tx_ids[1].clone()),
+        )
         .unwrap();
 
     thread::sleep(Duration::from_millis(1000));
 
-    let _ = wallet_alice.shutdown();
-    let _ = wallet_bob.shutdown();
+    wallet_alice.shutdown();
+    wallet_bob.shutdown();
 
     let _ = std::fs::remove_dir_all(&alice_temp_dir);
     let _ = std::fs::remove_dir_all(&bob_temp_dir);
