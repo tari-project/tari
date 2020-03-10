@@ -152,3 +152,48 @@ where F: Fn(&Path) -> Result<(), std::io::Error> {
         )
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::{bootstrap_config_from_cli, dir_utils, load_configuration, DEFAULT_CONFIG, DEFAULT_LOG_CONFIG};
+    use clap::clap_app;
+
+    #[test]
+    fn test_bootstrap_config_from_cli_and_load_configuration() {
+        // Cleanup old test files and folder if exist
+        if std::path::Path::new(&dir_utils::default_subdir("")).exists() {
+            std::fs::remove_dir_all(&dir_utils::default_subdir(""));
+        }
+        // Create test folder
+        dir_utils::create_data_directory();
+
+        // Create command line test data
+        let matches = clap_app!(myapp =>
+            (version: "0.0.9")
+            (author: "The Tari Community")
+            (about: "The reference Tari cryptocurrency base node implementation")
+            (@arg config: -c --config +takes_value "A path to the configuration file to use (config.toml)")
+            (@arg log_config: -l --log_config +takes_value "A path to the logfile configuration (log4rs.yml))")
+            (@arg init: --init "Create a default configuration file if it doesn't exist")
+            (@arg create_id: --create_id "Create and save new node identity if one doesn't exist ")
+        )
+        .get_matches_from(vec!["", "--init", "--create_id"]);
+
+        // Load bootstrap
+        let bootstrap = bootstrap_config_from_cli(&matches);
+        let config_exists = std::path::Path::new(&bootstrap.config).exists();
+        let log_config_exists = std::path::Path::new(&bootstrap.log_config).exists();
+        // Load and apply configuration file
+        let cfg = load_configuration(&bootstrap);
+
+        // Cleanup test data
+        if std::path::Path::new(&dir_utils::default_subdir("")).exists() {
+            std::fs::remove_dir_all(&dir_utils::default_subdir(""));
+        }
+
+        // Assert results
+        assert!(config_exists);
+        assert!(log_config_exists);
+        assert!(&cfg.is_ok());
+    }
+}

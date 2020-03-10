@@ -124,13 +124,29 @@ macro_rules! log_if_error_fmt {
 
 #[cfg(test)]
 mod test {
-    use crate::logging::get_log_configuration_path;
+    #[cfg(target_os = "windows")]
+    pub const PATH_SEPARATOR: &str = "\\";
+    #[cfg(not(target_os = "windows"))]
+    pub const PATH_SEPARATOR: &str = "/";
+
+    use crate::{dir_utils, logging::get_log_configuration_path};
     use std::{env, path::PathBuf};
 
     #[test]
     fn get_log_configuration_path_cli() {
         let path = get_log_configuration_path(Some(PathBuf::from("~/my-tari")));
         assert_eq!(path.to_str().unwrap(), "~/my-tari");
+    }
+
+    #[test]
+    fn get_log_configuration_path_default() {
+        let path = get_log_configuration_path(Some(PathBuf::from(
+            &dir_utils::default_subdir("").trim_end_matches(PATH_SEPARATOR),
+        )));
+        assert_eq!(
+            path.to_str().unwrap(),
+            dir_utils::default_subdir("").trim_end_matches(PATH_SEPARATOR)
+        );
     }
 
     #[test]
