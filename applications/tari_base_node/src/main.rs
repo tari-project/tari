@@ -128,15 +128,6 @@ fn main_inner() -> Result<(), ExitCodes> {
         },
     };
 
-    // Exit if create_id or init arguments were run
-    if arguments.create_id {
-        info!(target: LOG_TARGET, "Completed create_id, exiting");
-        return Ok(());
-    } else if arguments.init {
-        info!(target: LOG_TARGET, "Completed init, exiting");
-        return Ok(());
-    }
-
     // Set up the Tokio runtime
     let mut rt = match setup_runtime(&node_config) {
         Ok(rt) => rt,
@@ -155,6 +146,16 @@ fn main_inner() -> Result<(), ExitCodes> {
                 ExitCodes::UnknownError
             })
     })?;
+
+    // Exit if create_id or init arguments were run
+    if arguments.create_id {
+        info!(target: LOG_TARGET, "Completed create_id, exiting");
+        return Ok(());
+    } else if arguments.init {
+        info!(target: LOG_TARGET, "Completed init, exiting");
+        return Ok(());
+    }
+
     // Run, node, run!
     let parser = Parser::new(rt.handle().clone(), &ctx);
     let flag = ctx.interrupt_flag();
