@@ -225,6 +225,7 @@ async fn initialize_hidden_service(config: TorConfig) -> Result<tor::HiddenServi
     let mut builder = tor::HiddenServiceBuilder::new()
         .with_hs_flags(tor::HsFlags::DETACH)
         .with_port_mapping(config.port_mapping)
+        .with_socks_address_override(config.socks_address_override)
         .with_socks_authentication(config.socks_auth)
         .with_control_server_auth(config.control_server_auth)
         .with_control_server_address(config.control_server_addr);

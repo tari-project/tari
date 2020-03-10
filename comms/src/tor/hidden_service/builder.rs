@@ -70,6 +70,7 @@ bitflags! {
 pub struct HiddenServiceBuilder {
     identity: Option<TorIdentity>,
     port_mapping: Option<PortMapping>,
+    socks_addr_override: Option<Multiaddr>,
     control_server_addr: Option<Multiaddr>,
     control_server_auth: Authentication,
     socks_auth: socks::Authentication,
@@ -99,6 +100,13 @@ impl HiddenServiceBuilder {
     /// Configuration flags for the hidden service
     setter!(with_hs_flags, hs_flags, HsFlags);
 
+    /// The address of the SOCKS5 server. If an address is None, the hidden service builder will use the SOCKS
+    /// listener address as given by the tor control port.
+    pub fn with_socks_address_override(mut self, socks_addr_override: Option<Multiaddr>) -> Self {
+        self.socks_addr_override = socks_addr_override;
+        self
+    }
+
     /// Set the PortMapping to use when creating this hidden service. A PortMapping maps a Tor port to a proxied address
     /// (usually local). An error will result if this is not provided.
     pub fn with_port_mapping<P: Into<PortMapping>>(mut self, port_mapping: P) -> Self {
@@ -127,13 +135,29 @@ impl HiddenServiceBuilder {
         let mut client = TorControlPortClient::connect(control_server_addr).await?;
         client.authenticate(&self.control_server_auth).await?;
 
-        // Get configured SOCK5 address from Tor
-        let socks_addr = client
-            .get_info("net/listeners/socks")
-            .await?
-            .parse::<SocketAddr>()
-            .map(|addr| socketaddr_to_multiaddr(&addr))
-            .map_err(|_| HiddenServiceBuilderError::FailedToParseSocksAddress)?;
+        let socks_addr = match self.socks_addr_override {
+            Some(addr) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Using SOCKS override '{}' for tor SOCKS proxy", addr
+                );
+                addr
+            },
+            None => {
+                // Get configured SOCK5 address from Tor
+                let socks_addrs = client.get_info("net/listeners/socks").await?;
+
+                socks_addrs
+                    .iter()
+                    .map(|addr| addr.parse::<SocketAddr>())
+                    .filter_map(Result::ok)
+                    .map(|addr| socketaddr_to_multiaddr(&addr))
+                    .next()
+                    .ok_or_else(|| HiddenServiceBuilderError::FailedToParseSocksAddress)?
+            },
+        };
+
+        debug!(target: LOG_TARGET, "Tor SOCKS address is '{}'", socks_addr);
 
         let proxied_addr = socketaddr_to_multiaddr(proxied_port_mapping.proxied_address());
 
@@ -195,16 +219,16 @@ impl HiddenServiceBuilder {
             Err(TorClientError::OnionAddressCollision) => {
                 debug!(target: LOG_TARGET, "Onion address is already registered.");
 
-                let detached_str = client.get_info("onions/detached").await?;
+                let detached = client.get_info("onions/detached").await?;
                 debug!(
                     target: LOG_TARGET,
                     "Comparing active detached service IDs '{}' to expected service id '{}'",
-                    detached_str.replace('\n', ", "),
+                    detached.join(", "),
                     identity.service_id
                 );
-                let mut detached = detached_str.split('\n');
+                // let mut detached = detached_str.split('\n');
 
-                if detached.all(|svc_id| svc_id != identity.service_id) {
+                if detached.iter().all(|svc_id| **svc_id != identity.service_id) {
                     return Err(HiddenServiceBuilderError::InvalidDetachedServiceId);
                 }
 

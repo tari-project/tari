@@ -1892,6 +1892,7 @@ pub unsafe extern "C" fn transport_tor_create(
         control_server_auth: tor_authentication,
         identity,
         port_mapping: tor::PortMapping::from_port(tor_port),
+        socks_address_override: None,
         socks_auth: authentication,
     };
     let transport = TariTransportType::Tor(tor_config);

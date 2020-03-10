@@ -50,6 +50,8 @@ pub struct TorConfig {
     pub identity: Option<Box<tor::TorIdentity>>,
     /// The onion -> local address mapping to use.
     pub port_mapping: tor::PortMapping,
+    /// If Some, this address is used as the SOCKS5 server. If None, the address is obtained from the tor control port.
+    pub socks_address_override: Option<Multiaddr>,
     /// Authentication for the Tor SOCKS5 proxy
     pub socks_auth: socks::Authentication,
 }

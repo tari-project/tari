@@ -24,12 +24,14 @@
 /// The value is moved into the function and returned out.
 macro_rules! setter {
  ($func:ident, $name: ident, Option<$type: ty>) => {
+        #[allow(unused_doc_comments)]
         pub fn $func(mut self, val: $type) -> Self {
             self.$name = Some(val);
             self
         }
     };
  ($func:ident, $name: ident, $type: ty) => {
+        #[allow(unused_doc_comments)]
         pub fn $func(mut self, val: $type) -> Self {
             self.$name = val;
             self
@@ -42,6 +44,7 @@ macro_rules! setter {
 macro_rules! setter_mut {
     ($func:ident, $name: ident, Option<$type: ty>) => {
         #[allow(dead_code)]
+        #[allow(unused_doc_comments)]
         pub fn $func(&mut self, val: $type) -> &mut Self {
             self.$name = Some(val);
             self
@@ -49,6 +52,7 @@ macro_rules! setter_mut {
     };
     ($func:ident, $name: ident, $type: ty) => {
         #[allow(dead_code)]
+        #[allow(unused_doc_comments)]
         pub fn $func(&mut self, val: $type) -> &mut Self {
             self.$name = val;
             self

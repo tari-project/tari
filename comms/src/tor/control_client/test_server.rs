@@ -104,7 +104,10 @@ pub mod canned_responses {
         "250 HiddenServicePort=8082 127.0.0.1:9001",
     ];
 
-    pub const GET_INFO_NET_LISTENERS_OK: &[&str] = &["250-net/listeners/socks=\"127.0.0.1:9050\"", "250 OK"];
+    pub const GET_INFO_NET_LISTENERS_OK: &[&str] = &[
+        "250-net/listeners/socks=\"127.0.0.1:9050\" \"unix:/run/tor/socks\"",
+        "250 OK",
+    ];
 
     pub const GET_INFO_ONIONS_DETACHED_OK: &[&str] = &[
         "250+onions/detached=",

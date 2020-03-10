@@ -86,7 +86,8 @@ impl<'a, 'b> TorCommand for KeyValueCommand<'a, 'b> {
         Ok(responses
             .iter()
             .filter_map(|r| r.as_ref().ok())
-            .map(|(_, value)| Cow::from(value.clone().into_owned()))
+            .map(|(_, values)| values.iter().map(|value| Cow::from(value.clone().into_owned())))
+            .flatten()
             .collect())
     }
 }
@@ -103,10 +104,4 @@ mod test {
         let command = KeyValueCommand::new("GETINFO", &["net/listeners/socks"]);
         assert_eq!(command.to_command_string().unwrap(), "GETINFO net/listeners/socks");
     }
-
-    // #[test]
-    // fn parse_responses() {
-    //     let command = KeyValueCommand::new("", &[]);
-    //     command.parse_responses(vec!)
-    // }
 }

@@ -102,19 +102,21 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     }
 
     /// The GETCONF command. Returns configuration keys matching the `conf_name`.
+    #[allow(clippy::needless_lifetimes)]
     pub async fn get_conf<'a>(&mut self, conf_name: &'a str) -> Result<Vec<Cow<'a, str>>, TorClientError> {
         let command = commands::get_conf(conf_name);
         self.request_response(command).await
     }
 
     /// The GETINFO command. Returns configuration keys matching the `conf_name`.
-    pub async fn get_info<'a>(&mut self, key_name: &'a str) -> Result<Cow<'a, str>, TorClientError> {
+    #[allow(clippy::needless_lifetimes)]
+    pub async fn get_info<'a>(&mut self, key_name: &'a str) -> Result<Vec<Cow<'a, str>>, TorClientError> {
         let command = commands::get_info(key_name);
-        let mut response = self.request_response(command).await?;
+        let response = self.request_response(command).await?;
         if response.is_empty() {
             return Err(TorClientError::ServerNoResponse);
         }
-        Ok(response.remove(0))
+        Ok(response)
     }
 
     /// The ADD_ONION command, used to create onion hidden services.
@@ -341,8 +343,8 @@ mod test {
             .set_canned_response(canned_responses::GET_INFO_NET_LISTENERS_OK)
             .await;
 
-        let value = tor.get_info("net/listeners/socks").await.unwrap();
-        assert_eq!(value, "127.0.0.1:9050");
+        let values = tor.get_info("net/listeners/socks").await.unwrap();
+        assert_eq!(values, &["127.0.0.1:9050", "unix:/run/tor/socks"]);
     }
 
     #[tokio_macros::test]
@@ -353,8 +355,8 @@ mod test {
             .set_canned_response(canned_responses::GET_INFO_ONIONS_DETACHED_OK)
             .await;
 
-        let value = tor.get_info("onions/detached").await.unwrap();
-        assert_eq!(value.split('\n').collect::<Vec<_>>(), [
+        let values = tor.get_info("onions/detached").await.unwrap();
+        assert_eq!(values, [
             "mochz2xppfziim5olr5f6q27poc4vfob2xxxxxxxxxxxxxxxxxxxxxxx",
             "nhqdqym6j35rk7tdou4cdj4gjjqagimutxxxxxxxxxxxxxxxxxxxxxxx"
         ]);
