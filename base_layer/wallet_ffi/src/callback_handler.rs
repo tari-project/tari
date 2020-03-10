@@ -160,10 +160,9 @@ where TBackend: TransactionBackend + 'static
     async fn receive_transaction_event(&mut self, tx_id: TxId) {
         match self.db.get_pending_inbound_transaction(tx_id).await {
             Ok(tx) => {
-                trace!(
+                debug!(
                     target: LOG_TARGET,
-                    "Calling Received Transaction callback function for TxId: {}",
-                    tx_id
+                    "Calling Received Transaction callback function for TxId: {}", tx_id
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
@@ -180,10 +179,9 @@ where TBackend: TransactionBackend + 'static
     async fn receive_transaction_reply_event(&mut self, tx_id: TxId) {
         match self.db.get_completed_transaction(tx_id).await {
             Ok(tx) => {
-                trace!(
+                debug!(
                     target: LOG_TARGET,
-                    "Calling Received Transaction Reply callback function for TxId: {}",
-                    tx_id
+                    "Calling Received Transaction Reply callback function for TxId: {}", tx_id
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
@@ -197,10 +195,9 @@ where TBackend: TransactionBackend + 'static
     async fn receive_finalized_transaction_event(&mut self, tx_id: TxId) {
         match self.db.get_completed_transaction(tx_id).await {
             Ok(tx) => {
-                trace!(
+                debug!(
                     target: LOG_TARGET,
-                    "Calling Received Finalized Transaction callback function for TxId: {}",
-                    tx_id
+                    "Calling Received Finalized Transaction callback function for TxId: {}", tx_id
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
@@ -212,11 +209,9 @@ where TBackend: TransactionBackend + 'static
     }
 
     fn receive_discovery_process_result(&mut self, tx_id: TxId, result: bool) {
-        trace!(
+        debug!(
             target: LOG_TARGET,
-            "Calling Discovery Process Completed callback function for TxId: {} with result {}",
-            tx_id,
-            result
+            "Calling Discovery Process Completed callback function for TxId: {} with result {}", tx_id, result
         );
         unsafe {
             (self.callback_discovery_process_complete)(tx_id, result);
@@ -226,10 +221,9 @@ where TBackend: TransactionBackend + 'static
     async fn receive_transaction_broadcast_event(&mut self, tx_id: TxId) {
         match self.db.get_completed_transaction(tx_id).await {
             Ok(tx) => {
-                trace!(
+                debug!(
                     target: LOG_TARGET,
-                    "Calling Received Transaction Broadcast callback function for TxId: {}",
-                    tx_id
+                    "Calling Received Transaction Broadcast callback function for TxId: {}", tx_id
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
@@ -243,10 +237,9 @@ where TBackend: TransactionBackend + 'static
     async fn receive_transaction_mined_event(&mut self, tx_id: TxId) {
         match self.db.get_completed_transaction(tx_id).await {
             Ok(tx) => {
-                trace!(
+                debug!(
                     target: LOG_TARGET,
-                    "Calling Received Transaction Mined callback function for TxId: {}",
-                    tx_id
+                    "Calling Received Transaction Mined callback function for TxId: {}", tx_id
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
