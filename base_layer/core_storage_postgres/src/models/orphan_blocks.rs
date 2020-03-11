@@ -1,5 +1,5 @@
 use crate::{
-    error::{FetchError, HashesDontMatchError, InsertError, PostgresChainStorageError, QueryError},
+    error::{DeleteError, FetchError, HashesDontMatchError, InsertError, PostgresChainStorageError, QueryError},
     schema::*,
 };
 use chrono::{NaiveDateTime, Utc};
@@ -61,9 +61,17 @@ impl OrphanBlock {
         Ok(())
     }
 
+    pub fn delete(hash: &HashOutput, conn: &PgConnection) -> Result<(), PostgresChainStorageError> {
+        diesel::delete(orphan_blocks::table.filter(orphan_blocks::hash.eq(hash.to_hex())))
+            .execute(conn)
+            .context(DeleteError {
+                key: hash.to_hex(),
+                entity: "orphan block",
+            })?;
+        Ok(())
+    }
+
     pub fn find_all(conn: &PgConnection) -> Result<Vec<(HashOutput, blocks::Block)>, PostgresChainStorageError> {
-
-
         let orphans: Vec<OrphanBlock> = orphan_blocks::table
             .order_by(orphan_blocks::created_at.desc())
             .load(conn)
@@ -73,11 +81,7 @@ impl OrphanBlock {
 
         let mut result = vec![];
         for orphan in orphans {
-            result.push((
-                HashOutput::from_hex(&orphan.hash)?,
-                orphan.try_into()?,
-
-            ));
+            result.push((HashOutput::from_hex(&orphan.hash)?, orphan.try_into()?));
         }
 
         Ok(result)

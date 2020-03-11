@@ -43,14 +43,15 @@ impl PostgresDatabase {
             DbKeyValuePair::Metadata(key, value) => {
                 Metadata::update(value, conn)?;
             },
-            DbKeyValuePair::BlockHeader(_, block_header) => models::BlockHeader::insert(&*block_header, conn)?,
+            DbKeyValuePair::BlockHeader(_, block_header) => {
+                models::BlockHeader::insert_if_not_exists(&*block_header, conn)?
+            },
             DbKeyValuePair::UnspentOutput(hash, output, update_mmr) => {
-                if update_mmr {
+                // TODO: Not sure if we need to have the range proof in a different db
+                if models::UnspentOutput::insert_if_not_exists(&*output, conn)? && update_mmr {
                     models::MerkleCheckpoint::add_node(MmrTree::Utxo, &hash, conn)?;
                     models::MerkleCheckpoint::add_node(MmrTree::RangeProof, &output.proof().hash(), conn)?;
                 }
-                // TODO: Not sure if we need to have the range proof in a different db
-                models::UnspentOutput::insert(*output, conn)?;
             },
             DbKeyValuePair::TransactionKernel(hash, kernel, update_mmr) => {
                 if update_mmr {
@@ -65,7 +66,34 @@ impl PostgresDatabase {
     }
 
     fn delete(&self, key: DbKey) -> Result<(), PostgresChainStorageError> {
-        unimplemented!()
+        let conn = self.get_conn()?;
+        match key {
+            DbKey::Metadata(_) => unimplemented!(),
+            DbKey::BlockHeader(height) => models::BlockHeader::delete_at_height(height as i64, &conn),
+            DbKey::BlockHash(hash) => {
+                unimplemented!()
+                // let result: Option<u64> = lmdb_get(&self.env, &self.block_hashes_db, &hash)?;
+                // if let Some(k) = result {
+                //     lmdb_delete(&txn, &self.block_hashes_db, &hash)?;
+                //     lmdb_delete(&txn, &self.headers_db, &k)?;
+                // }
+            },
+            DbKey::UnspentOutput(k) => {
+                unimplemented!()
+                // lmdb_delete(&txn, &self.utxos_db, &k)?;
+                // lmdb_delete(&txn, &self.txos_hash_to_index_db, &k)?;
+            },
+            DbKey::SpentOutput(k) => {
+                unimplemented!()
+                // lmdb_delete(&txn, &self.stxos_db, &k)?;
+                // lmdb_delete(&txn, &self.txos_hash_to_index_db, &k)?;
+            },
+            DbKey::TransactionKernel(k) => {
+                unimplemented!()
+                // lmdb_delete(&txn, &self.kernels_db, &k)?;
+            },
+            DbKey::OrphanBlock(hash) => models::OrphanBlock::delete(&hash, &conn),
+        }
     }
 
     fn spend(&self, key: DbKey) -> Result<(), PostgresChainStorageError> {
@@ -88,23 +116,23 @@ impl PostgresDatabase {
 impl BlockchainBackend for PostgresDatabase {
     fn write(&self, tx: DbTransaction) -> Result<(), ChainStorageError> {
         let conn = self.get_conn()?;
-        // conn.transaction::<(), PostgresChainStorageError, _>(|| {
-        for operation in tx.operations {
-            debug!(target: LOG_TARGET, "Executing write operation:{}", operation);
-            match operation {
-                WriteOperation::Insert(record) => self.insert(&conn, record)?,
-                WriteOperation::Delete(key) => self.delete(key)?,
-                WriteOperation::Spend(key) => self.spend(key)?,
-                WriteOperation::UnSpend(key) => self.unspend(key)?,
-                WriteOperation::CreateMmrCheckpoint(mmr) => self.create_mmr_checkpoint(&conn, mmr)?,
-                WriteOperation::RewindMmr(mmr, height) => self.rewind_mmr(mmr, height)?,
-            };
-        }
+        conn.transaction::<(), PostgresChainStorageError, _>(|| {
+            for operation in tx.operations {
+                debug!(target: LOG_TARGET, "Executing write operation:{}", operation);
+                match operation {
+                    WriteOperation::Insert(record) => self.insert(&conn, record)?,
+                    WriteOperation::Delete(key) => self.delete(key)?,
+                    WriteOperation::Spend(key) => self.spend(key)?,
+                    WriteOperation::UnSpend(key) => self.unspend(key)?,
+                    WriteOperation::CreateMmrCheckpoint(mmr) => self.create_mmr_checkpoint(&conn, mmr)?,
+                    WriteOperation::RewindMmr(mmr, height) => self.rewind_mmr(mmr, height)?,
+                };
+            }
+
+            Ok(())
+        })?;
 
         Ok(())
-        // })?;
-
-        // Ok(())
     }
 
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
@@ -113,7 +141,10 @@ impl BlockchainBackend for PostgresDatabase {
 
         match key {
             DbKey::Metadata(key) => Ok(Some(DbValue::Metadata(Metadata::fetch(key, &conn)?))),
-            DbKey::BlockHeader(_) => unimplemented!(),
+            DbKey::BlockHeader(height) => Ok(match models::BlockHeader::fetch_by_height(*height as i64, &conn)? {
+                Some(bh) => Some(bh.try_into_db_block_header()?),
+                None => None,
+            }),
             DbKey::BlockHash(key) => Ok(match models::BlockHeader::fetch_by_hash(key, &conn)? {
                 Some(bh) => Some(bh.try_into_db_block_hash()?),
                 None => None,
@@ -202,7 +233,11 @@ impl BlockchainBackend for PostgresDatabase {
     }
 
     fn fetch_last_header(&self) -> Result<Option<BlockHeader>, ChainStorageError> {
-        unimplemented!()
+        let conn = self.get_conn()?;
+        match models::BlockHeader::fetch_tip(&conn)? {
+            Some(header) => Ok(Some(header.try_into()?)),
+            None => Ok(None),
+        }
     }
 
     fn range_proof_checkpoints_len(&self) -> Result<usize, ChainStorageError> {

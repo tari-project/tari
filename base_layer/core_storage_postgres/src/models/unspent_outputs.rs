@@ -5,6 +5,7 @@ use crate::{
 };
 use chrono::{NaiveDateTime, Utc};
 use diesel::prelude::*;
+use log::*;
 use snafu::ResultExt;
 use std::convert::{TryFrom, TryInto};
 use tari_core::{
@@ -16,6 +17,8 @@ use tari_core::{
     },
 };
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray, Hashable};
+
+const LOG_TARGET: &str = "base_layer::core::storage::postgres:unspent_outputs";
 
 #[derive(Queryable, Identifiable, Insertable)]
 #[table_name = "unspent_outputs"]
@@ -31,8 +34,22 @@ pub struct UnspentOutput {
 }
 
 impl UnspentOutput {
-    pub fn insert(output: TransactionOutput, conn: &PgConnection) -> Result<(), PostgresChainStorageError> {
+    pub fn insert_if_not_exists(
+        output: &TransactionOutput,
+        conn: &PgConnection,
+    ) -> Result<bool, PostgresChainStorageError>
+    {
         let hash = output.hash();
+
+        if UnspentOutput::fetch(&hash, conn)?.is_some() {
+            warn!(
+                target: LOG_TARGET,
+                "Tried to insert unspent output with hash:{} but it already exists",
+                hash.to_hex()
+            );
+
+            return Ok(false);
+        }
 
         let row: UnspentOutput = output.try_into()?;
         if row.hash != hash.to_hex() {
@@ -52,7 +69,7 @@ impl UnspentOutput {
                 entity: "unspent output",
             })?;
 
-        Ok(())
+        Ok(true)
     }
 
     pub fn fetch(hash: &HashOutput, conn: &PgConnection) -> Result<Option<UnspentOutput>, PostgresChainStorageError> {
@@ -68,17 +85,17 @@ impl UnspentOutput {
     }
 }
 
-impl TryFrom<TransactionOutput> for UnspentOutput {
+impl TryFrom<&TransactionOutput> for UnspentOutput {
     type Error = PostgresChainStorageError;
 
-    fn try_from(value: TransactionOutput) -> Result<Self, Self::Error> {
+    fn try_from(value: &TransactionOutput) -> Result<Self, Self::Error> {
         Ok(Self {
             hash: value.hash().to_hex(),
 
             features_flags: value.features.flags.bits() as i16,
             features_maturity: value.features.maturity as i64,
             commitment: value.commitment.to_hex(),
-            proof: value.proof.0,
+            proof: value.proof.0.clone(),
             created_at: Utc::now().naive_utc(),
             updated_at: Utc::now().naive_utc(),
         })

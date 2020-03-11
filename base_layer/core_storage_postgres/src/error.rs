@@ -26,6 +26,12 @@ pub enum PostgresChainStorageError {
         entity: String,
         source: DieselError,
     },
+    #[snafu(display("Could not delete {} with key `{}`:{}", entity, key, source))]
+    DeleteError {
+        key: String,
+        entity: String,
+        source: DieselError,
+    },
     #[snafu(display("Could not execute query{}:{}", query, source))]
     QueryError { query: String, source: DieselError },
     #[snafu(display("Could not fetch MMR checkpoint `{}`:{}", mmr_tree, source))]
