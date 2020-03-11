@@ -122,7 +122,11 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
-    fn curr_range_proof_checkpoint_get_added_position(&self, hash: &HashOutput) -> Result<Option<usize>, ChainStorageError> {
+    fn curr_range_proof_checkpoint_get_added_position(
+        &self,
+        hash: &HashOutput,
+    ) -> Result<Option<usize>, ChainStorageError>
+    {
         unimplemented!()
     }
 }

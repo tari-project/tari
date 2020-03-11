@@ -37,11 +37,12 @@ use crate::{
 };
 use croaring::Bitmap;
 use digest::Digest;
+use log::*;
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-use tari_crypto::tari_utilities::hash::Hashable;
+use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 use tari_mmr::{
     functions::{prune_mutable_mmr, PrunedMutableMmr},
     ArrayLike,
@@ -52,8 +53,6 @@ use tari_mmr::{
     MmrCache,
     MmrCacheConfig,
 };
-use log::*;
-use tari_crypto::tari_utilities::hex::Hex;
 
 pub const LOG_TARGET: &str = "c::cs::memory_db::memory_db";
 
@@ -175,9 +174,12 @@ where D: Digest + Send + Sync
                         if let Some(index) = self.find_range_proof_leaf_index(&proof_hash)? {
                             let v = MerkleNode { index, value: *v };
                             db.utxos.insert(k, v);
-                        }
-                        else {
-                            warn!(target:LOG_TARGET, "Could not find range proof leaf index:{}", proof_hash.to_hex());
+                        } else {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Could not find range proof leaf index:{}",
+                                proof_hash.to_hex()
+                            );
                         }
                     },
                     DbKeyValuePair::TransactionKernel(k, v, update_mmr) => {
@@ -471,11 +473,15 @@ where D: Digest + Send + Sync
             .range_proof_checkpoints
             .get(cp_index)
             .map_err(|e| ChainStorageError::AccessError(format!("Checkpoint error: {}", e.to_string())))
-
     }
 
-    fn curr_range_proof_checkpoint_get_added_position(&self, hash: &HashOutput) -> Result<Option<usize>, ChainStorageError> {
-        Ok(self.db_access()?
+    fn curr_range_proof_checkpoint_get_added_position(
+        &self,
+        hash: &HashOutput,
+    ) -> Result<Option<usize>, ChainStorageError>
+    {
+        Ok(self
+            .db_access()?
             .curr_range_proof_checkpoint
             .nodes_added()
             .iter()
@@ -549,7 +555,6 @@ fn unspend_stxo<D: Digest>(db: &mut RwLockWriteGuard<InnerDatabase<D>>, hash: Ha
         },
     }
 }
-
 
 // Construct a pruned mmr for the specified MMR tree based on the checkpoint state and new additions and deletions.
 fn get_pruned_mmr<D: Digest>(

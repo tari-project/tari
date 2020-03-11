@@ -1,9 +1,12 @@
-use crate::{error::PostgresChainStorageError, schema::*};
+use crate::{
+    error::{MmrFetchError, MmrSaveError, PostgresChainStorageError},
+    schema::*,
+};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
-use tari_core::chain_storage::MmrTree;
+use snafu::ResultExt;
 use std::default::Default;
-use tari_core::blocks::BlockHash;
+use tari_core::{blocks::BlockHash, chain_storage::MmrTree};
 use tari_crypto::tari_utilities::hex::Hex;
 
 #[derive(Queryable, Identifiable)]
@@ -30,42 +33,58 @@ pub struct NewMerkleCheckpoint {
 }
 
 impl MerkleCheckpoint {
-
-    pub fn fetch_or_create_current(mmr_tree: MmrTree, conn: &PgConnection) -> Result<MerkleCheckpoint, PostgresChainStorageError>{
-        let row: Option<MerkleCheckpoint> = merkle_checkpoints::table.filter(merkle_checkpoints::mmr_tree.eq(mmr_tree.to_string()))
+    pub fn fetch_or_create_current(
+        mmr_tree: MmrTree,
+        conn: &PgConnection,
+    ) -> Result<MerkleCheckpoint, PostgresChainStorageError>
+    {
+        let row: Option<MerkleCheckpoint> = merkle_checkpoints::table
+            .filter(merkle_checkpoints::mmr_tree.eq(mmr_tree.to_string()))
             .filter(merkle_checkpoints::is_current.eq(true))
-            .get_result(conn).optional()
-            .map_err(|err| PostgresChainStorageError::FetchError(
-                format!("Could not fetch MMR checkpoint:{}", mmr_tree)))?;
+            .get_result(conn)
+            .optional()
+            .context(MmrFetchError { mmr_tree })?;
 
         match row {
             Some(r) => Ok(r),
-            None => MerkleCheckpoint::create(mmr_tree, true, conn)
+            None => MerkleCheckpoint::create(mmr_tree, true, conn),
         }
     }
 
     pub fn add_node(mmr_tree: MmrTree, hash: &Vec<u8>, conn: &PgConnection) -> Result<(), PostgresChainStorageError> {
         let mut checkpoint = MerkleCheckpoint::fetch_or_create_current(mmr_tree, conn)?;
         checkpoint.nodes_added.push(hash.to_hex());
-        diesel::update(merkle_checkpoints::table.filter(merkle_checkpoints::id.eq(checkpoint.id))).set(
-            merkle_checkpoints::nodes_added.eq(checkpoint.nodes_added)).execute(conn)
-            .map_err(|err| PostgresChainStorageError::UpdateError(
-                format!("Could not update MMR checkpoint:{}:{}", mmr_tree, err)))?;
+        diesel::update(merkle_checkpoints::table.filter(merkle_checkpoints::id.eq(checkpoint.id)))
+            .set(merkle_checkpoints::nodes_added.eq(checkpoint.nodes_added))
+            .execute(conn)
+            .context(MmrSaveError {
+                mmr_tree,
+                action: "update".to_string(),
+            })?;
         Ok(())
     }
 
-    pub fn create(mmr: MmrTree, is_current: bool, conn: &PgConnection) -> Result<MerkleCheckpoint, PostgresChainStorageError> {
+    pub fn create(
+        mmr_tree: MmrTree,
+        is_current: bool,
+        conn: &PgConnection,
+    ) -> Result<MerkleCheckpoint, PostgresChainStorageError>
+    {
         let new_row = NewMerkleCheckpoint {
-            mmr_tree: mmr.to_string(),
+            mmr_tree: mmr_tree.to_string(),
             is_current,
             ..Default::default()
         };
 
-        diesel::insert_into(merkle_checkpoints::table)
+        let result = diesel::insert_into(merkle_checkpoints::table)
             .values(new_row)
-            .get_result(conn).map_err(|err| PostgresChainStorageError::InsertError(
-            format!("Could not create MMR checkpoint:{}", mmr)
-        ))
+            .get_result(conn)
+            .context(MmrSaveError {
+                mmr_tree,
+                action: "insert".to_string(),
+            })?;
+
+        Ok(result)
     }
 
     pub fn save_current(mmr_tree: MmrTree, conn: &PgConnection) -> Result<(), PostgresChainStorageError> {
@@ -75,8 +94,9 @@ impl MerkleCheckpoint {
             .set((merkle_checkpoints::is_current.eq(false)))
             .get_result(conn)
             .optional()
-            .map_err(|err| {
-                PostgresChainStorageError::UpdateError(format!("Could not create merkle checkpoint:{}", err))
+            .context(MmrSaveError {
+                mmr_tree,
+                action: "update".to_string(),
             })?;
 
         let rank;

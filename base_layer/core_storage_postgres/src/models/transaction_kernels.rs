@@ -1,15 +1,15 @@
+use crate::{
+    error::{HashesDontMatchError, InsertError, PostgresChainStorageError},
+    schema::*,
+};
 use chrono::{NaiveDateTime, Utc};
-use crate::error::PostgresChainStorageError;
 use diesel::prelude::*;
-use tari_core::transactions::types::HashOutput;
-use crate::schema::*;
-use tari_core::transactions::transaction;
-use tari_crypto::tari_utilities::Hashable;
-use tari_crypto::tari_utilities::hex::Hex;
-use tari_crypto::tari_utilities::ByteArray;
+use snafu::ResultExt;
+use tari_core::transactions::{transaction, types::HashOutput};
+use tari_crypto::tari_utilities::{hex::Hex, ByteArray, Hashable};
 
 #[derive(Queryable, Identifiable, Insertable)]
-#[table_name="transaction_kernels"]
+#[table_name = "transaction_kernels"]
 #[primary_key(hash)]
 pub struct TransactionKernel {
     pub hash: String,
@@ -26,19 +26,29 @@ pub struct TransactionKernel {
 }
 
 impl TransactionKernel {
-    pub fn insert(hash: HashOutput, kernel: transaction::TransactionKernel, conn: &PgConnection) -> Result<(),
-        PostgresChainStorageError> {
-
+    pub fn insert(
+        hash: HashOutput,
+        kernel: transaction::TransactionKernel,
+        conn: &PgConnection,
+    ) -> Result<(), PostgresChainStorageError>
+    {
         let row: TransactionKernel = kernel.into();
         if row.hash != hash.to_hex() {
-            return Err(
-                PostgresChainStorageError::InsertError(format!("Found two different hashes when saving kernel:{} != {}", &row.hash, &hash.to_hex())));
+            return HashesDontMatchError {
+                entity: "transaction kernel",
+                expected_hash: hash.to_hex(),
+                actual_hash: row.hash.clone(),
+            }
+            .fail();
         }
 
-        diesel::insert_into(transaction_kernels::table).values(row)
-            .execute(conn).map_err(|err| PostgresChainStorageError::InsertError(
-            format!("Could not insert transaction kernel '{}':{}", hash.to_hex(), err)
-        ))?;
+        diesel::insert_into(transaction_kernels::table)
+            .values(row)
+            .execute(conn)
+            .context(InsertError {
+                key: hash.to_hex(),
+                entity: "transaction kernel".to_string(),
+            })?;
 
         Ok(())
     }
@@ -57,7 +67,7 @@ impl From<transaction::TransactionKernel> for TransactionKernel {
             excess_sig_nonce: value.excess_sig.get_public_nonce().to_vec(),
             excess_sig_sig: value.excess_sig.get_signature().to_vec(),
             created_at: Utc::now().naive_utc(),
-            updated_at: Utc::now().naive_utc()
+            updated_at: Utc::now().naive_utc(),
         }
     }
 }

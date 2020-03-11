@@ -1,6 +1,6 @@
 create table unspent_outputs(
     hash text not null primary key,
-    features_flags int not null,
+    features_flags smallint not null,
     features_maturity bigint not null,
     commitment text not null,
     proof bytea not null,

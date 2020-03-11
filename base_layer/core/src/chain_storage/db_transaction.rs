@@ -30,7 +30,7 @@ use crate::{
     },
 };
 use serde::{Deserialize, Serialize};
-use std::fmt::{self,Display, Error, Formatter};
+use std::fmt::{self, Display, Error, Formatter};
 use strum_macros::Display;
 use tari_crypto::tari_utilities::{hex::to_hex, Hashable};
 
@@ -210,7 +210,7 @@ pub enum MmrTree {
     RangeProof,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Display, Clone, PartialEq)]
 pub enum MetadataKey {
     ChainHeight,
     BestBlock,

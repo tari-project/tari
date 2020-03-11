@@ -56,7 +56,7 @@ use std::{
     path::Path,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-use tari_crypto::tari_utilities::hash::Hashable;
+use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 use tari_mmr::{
     functions::{prune_mutable_mmr, PrunedMutableMmr},
     ArrayLike,
@@ -68,7 +68,6 @@ use tari_mmr::{
     MmrCacheConfig,
 };
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBStore};
-use tari_crypto::tari_utilities::hex::Hex;
 
 type DatabaseRef = Arc<Database<'static>>;
 
@@ -436,9 +435,12 @@ where D: Digest + Send + Sync
                             if let Some(index) = self.find_range_proof_leaf_index(&proof_hash)? {
                                 lmdb_insert(&txn, &self.utxos_db, &k, &v)?;
                                 lmdb_insert(&txn, &self.txos_hash_to_index_db, &k, &index)?;
-                            }
-                            else {
-                                warn!(target:LOG_TARGET, "Could not find range proof leaf index:{}", proof_hash.to_hex());
+                            } else {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Could not find range proof leaf index:{}",
+                                    proof_hash.to_hex()
+                                );
                             }
                         },
                         DbKeyValuePair::TransactionKernel(k, v, _) => {
@@ -512,7 +514,6 @@ where D: Digest + Send + Sync
         }
         txn.commit().map_err(|e| ChainStorageError::AccessError(e.to_string()))
     }
-
 
     // Construct a pruned mmr for the specified MMR tree based on the checkpoint state and new additions and deletions.
     fn get_pruned_mmr(&self, tree: &MmrTree) -> Result<PrunedMutableMmr<D>, ChainStorageError> {
@@ -801,7 +802,7 @@ where D: Digest + Send + Sync
     fn for_each_orphan<F>(&self, f: F) -> Result<(), ChainStorageError>
     where F: FnMut(Result<(HashOutput, Block), ChainStorageError>) {
         let _lock = self.lock_for_read()?;
-        lmdb_for_each::<F, HashOutput, Block>(&self.env, &self.orphans_db, f)
+        lmdb_for_each::<_, HashOutput, Block>(&self.env, &self.orphans_db, f)
     }
 
     /// Iterate over all the stored transaction kernels and execute the function `f` for each kernel.
@@ -846,16 +847,18 @@ where D: Digest + Send + Sync
     }
 
     fn get_range_proof_checkpoints(&self, cp_index: usize) -> Result<Option<MerkleCheckPoint>, ChainStorageError> {
-        self
-            .range_proof_checkpoints
+        self.range_proof_checkpoints
             .read()
             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
             .get(cp_index)
             .map_err(|e| ChainStorageError::AccessError(format!("Checkpoint error: {}", e.to_string())))
-
     }
 
-    fn curr_range_proof_checkpoint_get_added_position(&self, hash: &HashOutput) -> Result<Option<usize>, ChainStorageError> {
+    fn curr_range_proof_checkpoint_get_added_position(
+        &self,
+        hash: &HashOutput,
+    ) -> Result<Option<usize>, ChainStorageError>
+    {
         Ok(self
             .curr_range_proof_checkpoint
             .read()

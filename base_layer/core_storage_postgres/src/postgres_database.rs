@@ -1,6 +1,8 @@
 use crate::{error::PostgresChainStorageError, models, models::Metadata};
 use diesel::{result::Error, Connection, PgConnection};
 use digest::Digest;
+use log::*;
+use std::convert::TryInto;
 use tari_core::{
     blocks::{Block, BlockHeader},
     chain_storage::{
@@ -18,14 +20,10 @@ use tari_core::{
         types::HashOutput,
     },
 };
-use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof};
-use log::*;
-use std::convert::TryInto;
 use tari_crypto::tari_utilities::Hashable;
-
+use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof};
 
 const LOG_TARGET: &str = "base_layer::core::storage::postgres";
-
 
 pub fn create_postgres_database(database_url: String) -> PostgresDatabase {
     PostgresDatabase { database_url }
@@ -45,16 +43,14 @@ impl PostgresDatabase {
             DbKeyValuePair::Metadata(key, value) => {
                 Metadata::update(value, conn)?;
             },
-            DbKeyValuePair::BlockHeader(_, block_header) => { models::BlockHeader::insert(&*block_header, conn)?},
+            DbKeyValuePair::BlockHeader(_, block_header) => models::BlockHeader::insert(&*block_header, conn)?,
             DbKeyValuePair::UnspentOutput(hash, output, update_mmr) => {
-
                 if update_mmr {
                     models::MerkleCheckpoint::add_node(MmrTree::Utxo, &hash, conn)?;
                     models::MerkleCheckpoint::add_node(MmrTree::RangeProof, &output.proof().hash(), conn)?;
                 }
                 // TODO: Not sure if we need to have the range proof in a different db
                 models::UnspentOutput::insert(*output, conn)?;
-
             },
             DbKeyValuePair::TransactionKernel(hash, kernel, update_mmr) => {
                 if update_mmr {
@@ -62,7 +58,7 @@ impl PostgresDatabase {
                 }
                 models::TransactionKernel::insert(hash, *kernel, conn)?;
             },
-            DbKeyValuePair::OrphanBlock(_, _) => { unimplemented!() },
+            DbKeyValuePair::OrphanBlock(hash, block) => models::OrphanBlock::insert(&hash, &*block, conn)?,
         };
 
         Ok(())
@@ -93,19 +89,19 @@ impl BlockchainBackend for PostgresDatabase {
     fn write(&self, tx: DbTransaction) -> Result<(), ChainStorageError> {
         let conn = self.get_conn()?;
         // conn.transaction::<(), PostgresChainStorageError, _>(|| {
-            for operation in tx.operations {
-                debug!(target: LOG_TARGET, "Executing write operation:{}", operation);
-                match operation {
-                    WriteOperation::Insert(record) => self.insert(&conn, record)?,
-                    WriteOperation::Delete(key) => self.delete(key)?,
-                    WriteOperation::Spend(key) => self.spend(key)?,
-                    WriteOperation::UnSpend(key) => self.unspend(key)?,
-                    WriteOperation::CreateMmrCheckpoint(mmr) => self.create_mmr_checkpoint(&conn, mmr)?,
-                    WriteOperation::RewindMmr(mmr, height) => self.rewind_mmr(mmr, height)?,
-                };
-            }
+        for operation in tx.operations {
+            debug!(target: LOG_TARGET, "Executing write operation:{}", operation);
+            match operation {
+                WriteOperation::Insert(record) => self.insert(&conn, record)?,
+                WriteOperation::Delete(key) => self.delete(key)?,
+                WriteOperation::Spend(key) => self.spend(key)?,
+                WriteOperation::UnSpend(key) => self.unspend(key)?,
+                WriteOperation::CreateMmrCheckpoint(mmr) => self.create_mmr_checkpoint(&conn, mmr)?,
+                WriteOperation::RewindMmr(mmr, height) => self.rewind_mmr(mmr, height)?,
+            };
+        }
 
-            Ok(())
+        Ok(())
         // })?;
 
         // Ok(())
@@ -118,23 +114,25 @@ impl BlockchainBackend for PostgresDatabase {
         match key {
             DbKey::Metadata(key) => Ok(Some(DbValue::Metadata(Metadata::fetch(key, &conn)?))),
             DbKey::BlockHeader(_) => unimplemented!(),
-            DbKey::BlockHash(key) => Ok(
-                match models::BlockHeader::fetch_by_hash(key, &conn)? {
-                    Some(bh) => Some(bh.try_into()?),
-                    None => None
-                }),
-            DbKey::UnspentOutput(_) => unimplemented!(),
+            DbKey::BlockHash(key) => Ok(match models::BlockHeader::fetch_by_hash(key, &conn)? {
+                Some(bh) => Some(bh.try_into_db_block_hash()?),
+                None => None,
+            }),
+            DbKey::UnspentOutput(hash) => Ok(match models::UnspentOutput::fetch(hash, &conn)? {
+                Some(out) => Some(out.try_into()?),
+                None => None,
+            }),
             DbKey::SpentOutput(_) => unimplemented!(),
             DbKey::TransactionKernel(_) => unimplemented!(),
             DbKey::OrphanBlock(hash) => Ok(match models::OrphanBlock::fetch(hash, &conn)? {
-                Some(b)=> Some(b.try_into()?),
-                None=> None
+                Some(b) => Some(b.try_into()?),
+                None => None,
             }),
         }
     }
 
     fn contains(&self, key: &DbKey) -> Result<bool, ChainStorageError> {
-        unimplemented!()
+        self.fetch(key).map(|s| s.is_some())
     }
 
     fn fetch_mmr_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError> {
@@ -167,12 +165,16 @@ impl BlockchainBackend for PostgresDatabase {
         unimplemented!()
     }
 
-    fn for_each_orphan<F>(&self, f: F) -> Result<(), ChainStorageError>
+    fn for_each_orphan<F>(&self, mut f: F) -> Result<(), ChainStorageError>
     where
         Self: Sized,
         F: FnMut(Result<(HashOutput, Block), ChainStorageError>),
     {
-        unimplemented!()
+        let conn = self.get_conn()?;
+        for orphan in models::OrphanBlock::find_all(&conn)? {
+            f(Ok(orphan));
+        }
+        Ok(())
     }
 
     fn for_each_kernel<F>(&self, f: F) -> Result<(), ChainStorageError>
@@ -211,7 +213,11 @@ impl BlockchainBackend for PostgresDatabase {
         unimplemented!()
     }
 
-    fn curr_range_proof_checkpoint_get_added_position(&self, hash: &HashOutput) -> Result<Option<usize>, ChainStorageError> {
+    fn curr_range_proof_checkpoint_get_added_position(
+        &self,
+        hash: &HashOutput,
+    ) -> Result<Option<usize>, ChainStorageError>
+    {
         unimplemented!()
     }
 }

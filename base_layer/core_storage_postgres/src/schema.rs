@@ -70,7 +70,7 @@ table! {
 table! {
     unspent_outputs (hash) {
         hash -> Text,
-        features_flags -> Int4,
+        features_flags -> Int2,
         features_maturity -> Int8,
         commitment -> Text,
         proof -> Bytea,
