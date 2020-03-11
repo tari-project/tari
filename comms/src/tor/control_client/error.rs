@@ -43,6 +43,8 @@ pub enum TorClientError {
     InvalidServiceId,
     /// Onion address is exists
     OnionAddressCollision,
+    /// Response returned an no value for key
+    KeyValueNoValue,
 }
 
 impl From<LinesCodecError> for TorClientError {

@@ -232,6 +232,7 @@ pub enum CommsTransport {
     TorHiddenService {
         /// The address of the control server
         control_server_address: Multiaddr,
+        socks_address_override: Option<Multiaddr>,
         /// The address used to receive proxied traffic from the tor proxy to the Tari node. This port must be
         /// available
         forward_address: Multiaddr,
@@ -423,9 +424,19 @@ fn network_transport_config(cfg: &Config, network: &str) -> Result<CommsTranspor
                 .get::<NonZeroU16>(&key)
                 .map_err(|err| ConfigurationError::new(&key, &err.to_string()))?;
 
+            let key = config_string(network, "tor_socks_address_override");
+            let socks_address_override = match get_conf_str(&key).ok() {
+                Some(addr) => Some(
+                    addr.parse::<Multiaddr>()
+                        .map_err(|err| ConfigurationError::new(&key, &err.to_string()))?,
+                ),
+                None => None,
+            };
+
             Ok(CommsTransport::TorHiddenService {
                 control_server_address,
                 auth,
+                socks_address_override,
                 forward_address,
                 onion_port,
             })
@@ -560,6 +571,7 @@ fn set_transport_defaults(cfg: &mut Config) {
     cfg.set_default("base_node.mainnet.tor_control_auth", "none").unwrap();
     cfg.set_default("base_node.mainnet.tor_forward_address", "/ip4/127.0.0.1/tcp/18141")
         .unwrap();
+    cfg.set_default("base_node.mainnet.tor_onion_port", "18141").unwrap();
 
     cfg.set_default("base_node.mainnet.socks5_proxy_address", "/ip4/0.0.0.0/tcp/9050")
         .unwrap();
@@ -578,6 +590,7 @@ fn set_transport_defaults(cfg: &mut Config) {
     cfg.set_default("base_node.rincewind.tor_control_auth", "none").unwrap();
     cfg.set_default("base_node.rincewind.tor_forward_address", "/ip4/127.0.0.1/tcp/18041")
         .unwrap();
+    cfg.set_default("base_node.rincewind.tor_onion_port", "18141").unwrap();
 
     cfg.set_default("base_node.rincewind.socks5_proxy_address", "/ip4/0.0.0.0/tcp/9150")
         .unwrap();

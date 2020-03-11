@@ -129,7 +129,11 @@ impl TorCommand for AddOnion<'_> {
         let mut private_key = None;
 
         for response in responses {
-            let (key, value) = parsers::key_value(&response.value)?;
+            let (key, values) = parsers::key_value(&response.value)?;
+            let value = values
+                .into_iter()
+                .next()
+                .ok_or_else(|| TorClientError::KeyValueNoValue)?;
             match &*key {
                 "ServiceID" => {
                     service_id = Some(value.into_owned());

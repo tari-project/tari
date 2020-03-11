@@ -162,6 +162,7 @@ mod pingpong {
             TransportType::Tor(TorConfig {
                 control_server_addr: tor_control_server_addr.parse().expect("Invalid tor-control-addr value"),
                 control_server_auth: Default::default(),
+                socks_address_override: None,
                 port_mapping: tor_identity.onion_port.into(),
                 identity: Some(Box::new(tor_identity)),
                 socks_auth: Default::default(),

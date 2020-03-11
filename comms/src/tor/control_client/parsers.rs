@@ -67,9 +67,29 @@ pub fn response_line(line: &str) -> Result<ResponseLine<'_>, ParseError> {
     })
 }
 
-pub fn key_value(line: &str) -> Result<(Cow<'_, str>, Cow<'_, str>), ParseError> {
+pub fn key_value(line: &str) -> Result<(Cow<'_, str>, Vec<Cow<'_, str>>), ParseError> {
     let (rest, identifier) = take_while1(|ch| ch != '=')(line)?;
     let (rest, _) = chr('=')(rest)?;
-    let rest = rest.trim_matches('"').trim();
-    Ok((identifier.into(), rest.into()))
+
+    let lines = rest.split('\n').collect::<Vec<_>>();
+    let parts = lines
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .map(|line| {
+            // TODO: this doesnt correctly handle responses with inner quotes i.e "Hello\" world"
+            line.split('"').filter(|part| !part.trim().is_empty()).map(Cow::from)
+        })
+        .flatten()
+        .collect();
+    Ok((identifier.trim().into(), parts))
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn key_value() {
+        let (key, values) = super::key_value("greeting=\"hello\" \"world 🌎\"").unwrap();
+        assert_eq!(key, "greeting");
+        assert_eq!(values, &["hello", "world 🌎"]);
+    }
 }

@@ -242,11 +242,13 @@ pub fn load_identity(path: &Path) -> Result<NodeIdentity, String> {
 }
 
 /// Create a new node id and save it to disk
-pub fn create_new_base_node_identity(public_addr: Multiaddr) -> Result<NodeIdentity, String> {
+pub fn create_new_base_node_identity<P: AsRef<Path>>(path: P, public_addr: Multiaddr) -> Result<NodeIdentity, String> {
     let private_key = PrivateKey::random(&mut OsRng);
     let features = PeerFeatures::COMMUNICATION_NODE;
-    NodeIdentity::new(private_key, public_addr, features)
-        .map_err(|e| format!("We were unable to construct a node identity. {}", e.to_string()))
+    let node_identity = NodeIdentity::new(private_key, public_addr, features)
+        .map_err(|e| format!("We were unable to construct a node identity. {}", e.to_string()))?;
+    save_as_json(path, &node_identity)?;
+    Ok(node_identity)
 }
 
 pub fn load_from_json<P: AsRef<Path>, T: MessageFormat>(path: P) -> Result<T, String> {
@@ -330,7 +332,7 @@ where
     let diff_adj_manager = DiffAdjManager::new(db.clone(), &rules.consensus_constants()).map_err(|e| e.to_string())?;
     rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
     create_peer_db_folder(&config.peer_db_path)?;
-    let handle = runtime::Handle::current().clone();
+    let handle = runtime::Handle::current();
     let (publisher, subscription_factory) = pubsub_connector(handle, 100);
     let comms_config = CommsConfig {
         node_identity: id.clone(),
@@ -348,15 +350,15 @@ where
     // Save final node identity after comms has initialized. This is required because the public_address can be changed
     // by comms during initialization when using tor.
     save_as_json(&config.identity_file, &*comms.node_identity())
-        .map_err(|e| format!("Failed to save node identity: {}", e))?;
+        .map_err(|e| format!("Failed to save node identity: {:?}", e))?;
     if let Some(hs) = comms.hidden_service() {
         save_as_json(&config.tor_identity_file, &hs.get_tor_identity())
-            .map_err(|e| format!("Failed to save tor identity: {}", e))?;
+            .map_err(|e| format!("Failed to save tor identity: {:?}", e))?;
     }
     add_peers_to_comms(&comms, assign_peers(&config.peer_seeds))?;
     create_wallet_folder(&config.wallet_file)?;
     let wallet_conn = run_migration_and_create_connection_pool(&config.wallet_file)
-        .map_err(|e| format!("Could not create wallet: {}", e))?;
+        .map_err(|e| format!("Could not create wallet: {:?}", e))?;
     debug!(target: LOG_TARGET, "Registering base node services");
     let handles = register_services(
         id.clone(),
@@ -406,7 +408,7 @@ where
     let node = BaseNodeStateMachine::new(
         &db,
         &outbound_interface,
-        runtime::Handle::current().clone(),
+        runtime::Handle::current(),
         chain_metadata_service.get_event_stream(),
         BaseNodeStateMachineConfig::default(),
     );
@@ -497,6 +499,7 @@ fn setup_transport_type(config: &GlobalConfig) -> TransportType {
         CommsTransport::Tcp { listener_address } => TransportType::Tcp { listener_address },
         CommsTransport::TorHiddenService {
             control_server_address,
+            socks_address_override,
             forward_address,
             auth,
             onion_port,
@@ -525,14 +528,13 @@ fn setup_transport_type(config: &GlobalConfig) -> TransportType {
                 control_server_auth: {
                     match auth {
                         TorControlAuthentication::None => tor::Authentication::None,
-                        TorControlAuthentication::Password(password) => {
-                            tor::Authentication::HashedPassword(password.clone())
-                        },
+                        TorControlAuthentication::Password(password) => tor::Authentication::HashedPassword(password),
                     }
                 },
                 identity: identity.map(Box::new),
                 port_mapping: (onion_port, forward_addr).into(),
                 // TODO: make configurable
+                socks_address_override,
                 socks_auth: socks::Authentication::None,
             })
         },
@@ -600,7 +602,7 @@ async fn setup_comms_services(
 {
     initialize_comms(config, publisher)
         .await
-        .map_err(|e| format!("Could not create comms layer: {}", e))
+        .map_err(|e| format!("Could not create comms layer: {:?}", e))
 }
 
 fn add_peers_to_comms(comms: &CommsNode, peers: Vec<Peer>) -> Result<(), String> {
@@ -632,7 +634,7 @@ where
     let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
     let mempool_config = MempoolServiceConfig::default(); // TODO - make this configurable
     let subscription_factory = Arc::new(subscription_factory);
-    let handle = runtime::Handle::current().clone();
+    let handle = runtime::Handle::current();
     StackBuilder::new(handle, comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(BaseNodeServiceInitializer::new(

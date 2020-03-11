@@ -110,32 +110,24 @@ fn main_inner() -> Result<(), ExitCodes> {
                 return Err(ExitCodes::ConfigError);
             }
             debug!(target: LOG_TARGET, "Node id not found. {}. Creating new ID", e);
-            match create_new_base_node_identity(node_config.public_address.clone()) {
+            match create_new_base_node_identity(&node_config.identity_file, node_config.public_address.clone()) {
                 Ok(id) => {
                     info!(
                         target: LOG_TARGET,
-                        "New node identity [{}] with public key {} has been created.",
+                        "New node identity [{}] with public key {} has been created at {}.",
                         id.node_id(),
-                        id.public_key()
+                        id.public_key(),
+                        node_config.identity_file.as_path().to_string_lossy(),
                     );
                     id
                 },
                 Err(e) => {
-                    error!(target: LOG_TARGET, "Could not create new node id. {}.", e);
+                    error!(target: LOG_TARGET, "Could not create new node id. {:?}.", e);
                     return Err(ExitCodes::ConfigError);
                 },
             }
         },
     };
-
-    // Exit if create_id or init arguments were run
-    if arguments.create_id {
-        info!(target: LOG_TARGET, "Completed create_id, exiting");
-        return Ok(());
-    } else if arguments.init {
-        info!(target: LOG_TARGET, "Completed init, exiting");
-        return Ok(());
-    }
 
     // Set up the Tokio runtime
     let mut rt = match setup_runtime(&node_config) {
@@ -155,6 +147,20 @@ fn main_inner() -> Result<(), ExitCodes> {
                 ExitCodes::UnknownError
             })
     })?;
+
+    // Exit if create_id or init arguments were run
+    if arguments.create_id {
+        info!(
+            target: LOG_TARGET,
+            "Node ID created at '{}'. Done.",
+            node_config.identity_file.to_string_lossy()
+        );
+        return Ok(());
+    } else if arguments.init {
+        info!(target: LOG_TARGET, "Default configuration created. Done.");
+        return Ok(());
+    }
+
     // Run, node, run!
     let parser = Parser::new(rt.handle().clone(), &ctx);
     let flag = ctx.interrupt_flag();
