@@ -93,6 +93,12 @@ loggers:
     appenders:
       - network
     additive: false
+    # Route log events sent to the "p2p" logger to the "network" appender
+  yamux:
+    level: trace
+    appenders:
+      - network
+    additive: false
  # Route log events sent to the "mio" logger to the "other" appender
   mio:
     level: trace
