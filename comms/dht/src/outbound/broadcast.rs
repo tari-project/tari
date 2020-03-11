@@ -25,7 +25,7 @@ use crate::{
     actor::DhtRequester,
     broadcast_strategy::BroadcastStrategy,
     discovery::DhtDiscoveryRequester,
-    envelope::{DhtMessageHeader, DhtMessageOrigin, NodeDestination},
+    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageOrigin, NodeDestination},
     outbound::{
         message::{DhtOutboundMessage, OutboundEncryption},
         message_params::FinalSendMessageParams,
@@ -222,6 +222,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             broadcast_strategy,
             destination,
             dht_message_type,
+            dht_message_flags,
             encryption,
             is_discovery_enabled,
             force_origin,
@@ -290,6 +291,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         dht_message_type,
                         encryption,
                         dht_header,
+                        dht_message_flags,
                         force_origin,
                         body,
                     )
@@ -329,7 +331,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
     async fn initiate_peer_discovery(
         &mut self,
-        dest_public_key: CommsPublicKey,
+        dest_public_key: Box<CommsPublicKey>,
     ) -> Result<Option<Peer>, DhtOutboundError>
     {
         trace!(
@@ -340,12 +342,20 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
         // TODO: This works because we know that all non-DAN node IDs are/should be derived from the public key.
         //       Once the DAN launches, this may not be the case and we'll need to query the blockchain for the node id
-        let derived_node_id = NodeId::from_key(&dest_public_key).ok();
+        let derived_node_id = NodeId::from_key(&*dest_public_key).ok();
+
+        // TODO: Target a general region instead of the actual destination node id
+        let regional_destination = derived_node_id
+            .as_ref()
+            .map(Clone::clone)
+            .map(Box::new)
+            .map(NodeDestination::NodeId)
+            .unwrap_or_else(|| NodeDestination::Unknown);
 
         // Peer not found, let's try and discover it
         match self
             .dht_discovery_requester
-            .discover_peer(dest_public_key, derived_node_id, NodeDestination::Unknown)
+            .discover_peer(dest_public_key, derived_node_id, regional_destination)
             .await
         {
             // Peer found!
@@ -381,11 +391,12 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         dht_message_type: DhtMessageType,
         encryption: OutboundEncryption,
         custom_header: Option<DhtMessageHeader>,
+        extra_flags: DhtMessageFlags,
         force_origin: bool,
         body: Vec<u8>,
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
     {
-        let dht_flags = encryption.flags();
+        let dht_flags = encryption.flags() | extra_flags;
 
         // Create a DHT header
         let dht_header = custom_header

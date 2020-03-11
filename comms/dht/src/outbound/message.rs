@@ -39,7 +39,7 @@ pub enum OutboundEncryption {
     /// Message should not be encrypted
     None,
     /// Message should be encrypted using a shared secret derived from the given public key
-    EncryptFor(CommsPublicKey),
+    EncryptFor(Box<CommsPublicKey>),
     // TODO: Remove this option as it is redundant (message encryption only needed for forwarded private messages)
     /// Message should be encrypted using a shared secret derived from the destination peer's
     /// public key. Each message sent according to the broadcast strategy will be encrypted for
@@ -178,13 +178,15 @@ impl fmt::Display for DhtOutboundMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "DhtOutboundMessage: (Tag:{}, Peer:{}, Header:{}, Flags:{:?}, Encryption:{}, Body:{})",
-            self.tag,
-            &self.destination_peer,
-            &self.dht_header,
+            "\n---- DhtOutboundMessage ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {} \nFlags: \
+             {:?}\nEncryption: {}\n{}\n----",
+            self.body.len(),
+            self.dht_header.message_type,
+            self.destination_peer,
+            self.dht_header,
             self.comms_flags,
             self.encryption,
-            self.body.to_hex()
+            self.tag
         )
     }
 }

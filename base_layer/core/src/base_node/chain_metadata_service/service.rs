@@ -132,6 +132,11 @@ impl ChainMetadataService {
             // Received a pong, check if our neighbour sent it and it contains ChainMetadata
             LivenessEvent::ReceivedPong(event) => {
                 if event.is_neighbour {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Received pong from neighbouring node '{}'.",
+                        event.node_id
+                    );
                     self.collect_chain_state_from_pong(&event.node_id, &event.metadata)?;
 
                     // All peers have responded in this round, send the chain metadata to the base node service

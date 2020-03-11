@@ -252,7 +252,7 @@ async fn simultaneous_dial_events() {
         shutdown.to_signal(),
     );
 
-    let subscription1 = conn_man1.get_event_subscription();
+    let mut subscription1 = conn_man1.get_event_subscription();
     let public_address1 = conn_man1.wait_until_listening().await.unwrap();
 
     let peer_manager2 = build_peer_manager();

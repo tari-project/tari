@@ -365,10 +365,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         Some(&dht_header.destination)
             .filter(|destination| match destination {
                 NodeDestination::Unknown => true,
-                NodeDestination::PublicKey(pk) => node_identity.public_key() == pk,
+                NodeDestination::PublicKey(pk) => node_identity.public_key() == &**pk,
                 NodeDestination::NodeId(node_id) => {
                     // Pass this check if the node id equals ours or is in this node's region
-                    if node_identity.node_id() == node_id {
+                    if node_identity.node_id() == &**node_id {
                         return true;
                     }
 

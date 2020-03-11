@@ -224,7 +224,7 @@ impl Display for BlockHeader {
         );
         fmt.write_str(&msg)?;
         fmt.write_str(&format!(
-            "Total offset: {}\nNonce: {}\nProof of work: {}",
+            "Total offset: {}\nNonce: {}\nProof of work:\n{}",
             self.total_kernel_offset.to_hex(),
             self.nonce,
             self.pow

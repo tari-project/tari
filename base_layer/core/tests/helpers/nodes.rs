@@ -57,7 +57,7 @@ use tari_p2p::{
     initialization::initialize_local_test_comms,
     services::{
         comms_outbound::CommsOutboundServiceInitializer,
-        liveness::{LivenessConfig, LivenessInitializer},
+        liveness::{LivenessConfig, LivenessHandle, LivenessInitializer},
     },
 };
 use tari_service_framework::StackBuilder;
@@ -74,6 +74,7 @@ pub struct NodeInterfaces {
     pub blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
     pub mempool: Mempool<MemoryDatabase<HashDigest>>,
     pub chain_metadata_handle: ChainMetadataHandle,
+    pub liveness_handle: LivenessHandle,
     pub comms: CommsNode,
 }
 
@@ -198,20 +199,27 @@ impl BaseNodeBuilder {
             DiffAdjManager::new(blockchain_db.clone(), &consensus_manager.consensus_constants()).unwrap();
         consensus_manager.set_diff_manager(diff_adj_manager).unwrap();
         let node_identity = self.node_identity.unwrap_or(random_node_identity());
-        let (outbound_nci, local_nci, outbound_mp_interface, outbound_message_service, chain_metadata_handle, comms) =
-            setup_base_node_services(
-                runtime,
-                node_identity.clone(),
-                self.peers.unwrap_or(Vec::new()),
-                blockchain_db.clone(),
-                mempool.clone(),
-                consensus_manager.clone(),
-                self.base_node_service_config
-                    .unwrap_or(BaseNodeServiceConfig::default()),
-                self.mempool_service_config.unwrap_or(MempoolServiceConfig::default()),
-                self.liveness_service_config.unwrap_or(LivenessConfig::default()),
-                data_path,
-            );
+        let (
+            outbound_nci,
+            local_nci,
+            outbound_mp_interface,
+            outbound_message_service,
+            chain_metadata_handle,
+            liveness_handle,
+            comms,
+        ) = setup_base_node_services(
+            runtime,
+            node_identity.clone(),
+            self.peers.unwrap_or(Vec::new()),
+            blockchain_db.clone(),
+            mempool.clone(),
+            consensus_manager.clone(),
+            self.base_node_service_config
+                .unwrap_or(BaseNodeServiceConfig::default()),
+            self.mempool_service_config.unwrap_or(MempoolServiceConfig::default()),
+            self.liveness_service_config.unwrap_or(LivenessConfig::default()),
+            data_path,
+        );
 
         (
             NodeInterfaces {
@@ -223,6 +231,7 @@ impl BaseNodeBuilder {
                 blockchain_db,
                 mempool,
                 chain_metadata_handle,
+                liveness_handle,
                 comms,
             },
             consensus_manager,
@@ -510,6 +519,7 @@ fn setup_base_node_services(
     OutboundMempoolServiceInterface,
     OutboundMessageRequester,
     ChainMetadataHandle,
+    LivenessHandle,
     CommsNode,
 )
 {
@@ -546,6 +556,7 @@ fn setup_base_node_services(
         handles.get_handle::<OutboundMempoolServiceInterface>().unwrap(),
         handles.get_handle::<OutboundMessageRequester>().unwrap(),
         handles.get_handle::<ChainMetadataHandle>().unwrap(),
+        handles.get_handle::<LivenessHandle>().unwrap(),
         comms,
     )
 }

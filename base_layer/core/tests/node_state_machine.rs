@@ -56,7 +56,7 @@ use tari_mmr::MmrCacheConfig;
 use tari_p2p::services::liveness::LivenessConfig;
 use tari_test_utils::random::string;
 use tempdir::TempDir;
-use tokio::runtime::Runtime;
+use tokio::{runtime::Runtime, time};
 
 #[test]
 fn test_listening_lagging() {
@@ -67,7 +67,7 @@ fn test_listening_lagging() {
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
         .build();
-    let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
+    let (prev_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
         .with_block(prev_block.clone())
@@ -94,12 +94,21 @@ fn test_listening_lagging() {
         BaseNodeStateMachineConfig::default(),
     );
 
+    let await_event_task = runtime.spawn(async move { ListeningInfo.next_event(&mut alice_state_machine).await });
+
     runtime.block_on(async move {
         let bob_db = bob_node.blockchain_db;
         let mut bob_local_nci = bob_node.local_nci;
 
         // Bob Block 1 - no block event
-        prev_block = append_block(&bob_db, &prev_block, vec![], &consensus_manager.consensus_constants()).unwrap();
+        let prev_block = append_block(
+            &bob_db,
+            &prev_block,
+            vec![],
+            &consensus_manager.consensus_constants(),
+            3.into(),
+        )
+        .unwrap();
         // Bob Block 2 - with block event and liveness service metadata update
         let prev_block = bob_db
             .calculate_mmr_roots(chain_block(
@@ -108,13 +117,15 @@ fn test_listening_lagging() {
                 &consensus_manager.consensus_constants(),
             ))
             .unwrap();
-        bob_local_nci.submit_block(prev_block.clone()).await.unwrap();
+        bob_local_nci.submit_block(prev_block).await.unwrap();
         assert_eq!(bob_db.get_height(), Ok(Some(2)));
 
-        assert_eq!(
-            ListeningInfo.next_event(&mut alice_state_machine).await,
-            StateEvent::FallenBehind(Lagging)
-        );
+        let next_event = time::timeout(Duration::from_secs(10), await_event_task)
+            .await
+            .expect("Alice did not emit `StateEvent::FallenBehind` within 10 seconds")
+            .unwrap();
+
+        assert_eq!(next_event, StateEvent::FallenBehind(Lagging));
 
         alice_node.comms.shutdown().await;
         bob_node.comms.shutdown().await;
@@ -158,16 +169,21 @@ fn test_event_channel() {
     );
     let rx = alice_state_machine.get_state_change_event_stream();
 
-    runtime.spawn(async move {
-        alice_state_machine.run().await;
-    });
+    runtime.spawn(alice_state_machine.run());
 
     runtime.block_on(async {
         let bob_db = bob_node.blockchain_db;
         let mut bob_local_nci = bob_node.local_nci;
 
         // Bob Block 1 - no block event
-        prev_block = append_block(&bob_db, &prev_block, vec![], &consensus_manager.consensus_constants()).unwrap();
+        prev_block = append_block(
+            &bob_db,
+            &prev_block,
+            vec![],
+            &consensus_manager.consensus_constants(),
+            1.into(),
+        )
+        .unwrap();
         // Bob Block 2 - with block event and liveness service metadata update
         let prev_block = bob_db
             .calculate_mmr_roots(chain_block(
@@ -254,7 +270,14 @@ fn test_block_sync() {
         let adb = &alice_node.blockchain_db;
         let db = &bob_node.blockchain_db;
         for _ in 1..6 {
-            prev_block = append_block(db, &prev_block, vec![], &consensus_manager.consensus_constants()).unwrap();
+            prev_block = append_block(
+                db,
+                &prev_block,
+                vec![],
+                &consensus_manager.consensus_constants(),
+                1.into(),
+            )
+            .unwrap();
         }
 
         // Sync Blocks from genesis block to tip
@@ -306,11 +329,25 @@ fn test_lagging_block_sync() {
 
     let db = &bob_node.blockchain_db;
     for _ in 0..4 {
-        prev_block = append_block(db, &prev_block, vec![], &consensus_manager.consensus_constants()).unwrap();
+        prev_block = append_block(
+            db,
+            &prev_block,
+            vec![],
+            &consensus_manager.consensus_constants(),
+            1.into(),
+        )
+        .unwrap();
         alice_node.blockchain_db.add_block(prev_block.clone()).unwrap();
     }
     for _ in 0..4 {
-        prev_block = append_block(db, &prev_block, vec![], &consensus_manager.consensus_constants()).unwrap();
+        prev_block = append_block(
+            db,
+            &prev_block,
+            vec![],
+            &consensus_manager.consensus_constants(),
+            1.into(),
+        )
+        .unwrap();
     }
     assert_eq!(alice_node.blockchain_db.get_height(), Ok(Some(4)));
     assert_eq!(bob_node.blockchain_db.get_height(), Ok(Some(8)));
@@ -389,10 +426,24 @@ fn test_block_sync_recovery() {
         let bob_db = &bob_node.blockchain_db;
         let carol_db = &carol_node.blockchain_db;
         // Bob and Carol is ahead of Alice and Bob is ahead of Carol
-        prev_block = append_block(bob_db, &prev_block, vec![], &consensus_manager.consensus_constants()).unwrap();
+        prev_block = append_block(
+            bob_db,
+            &prev_block,
+            vec![],
+            &consensus_manager.consensus_constants(),
+            1.into(),
+        )
+        .unwrap();
         carol_db.add_block(prev_block.clone()).unwrap();
         for _ in 0..2 {
-            prev_block = append_block(bob_db, &prev_block, vec![], &consensus_manager.consensus_constants()).unwrap();
+            prev_block = append_block(
+                bob_db,
+                &prev_block,
+                vec![],
+                &consensus_manager.consensus_constants(),
+                1.into(),
+            )
+            .unwrap();
         }
 
         // Sync Blocks from genesis block to tip. Alice will notice that the chain tip is equivalent to Bobs tip and
@@ -451,7 +502,14 @@ fn test_forked_block_sync() {
     let alice_db = &alice_node.blockchain_db;
     let bob_db = &bob_node.blockchain_db;
     for _ in 0..2 {
-        prev_block = append_block(bob_db, &prev_block, vec![], &consensus_manager.consensus_constants()).unwrap();
+        prev_block = append_block(
+            bob_db,
+            &prev_block,
+            vec![],
+            &consensus_manager.consensus_constants(),
+            1.into(),
+        )
+        .unwrap();
         alice_db.add_block(prev_block.clone()).unwrap();
     }
 
@@ -467,6 +525,7 @@ fn test_forked_block_sync() {
             &alice_prev_block,
             vec![],
             &consensus_manager.consensus_constants(),
+            1.into(),
         )
         .unwrap();
     }
@@ -477,6 +536,7 @@ fn test_forked_block_sync() {
             &bob_prev_block,
             vec![],
             &consensus_manager.consensus_constants(),
+            1.into(),
         )
         .unwrap();
     }

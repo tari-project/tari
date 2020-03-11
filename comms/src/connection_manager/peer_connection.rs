@@ -41,7 +41,10 @@ use log::*;
 use multiaddr::Multiaddr;
 use std::{
     fmt,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 use tari_shutdown::Shutdown;
 use tokio::runtime;
@@ -101,7 +104,7 @@ pub type ConnId = usize;
 #[derive(Clone, Debug)]
 pub struct PeerConnection {
     id: ConnId,
-    peer_node_id: NodeId,
+    peer_node_id: Arc<NodeId>,
     request_tx: mpsc::Sender<PeerConnectionRequest>,
     address: Multiaddr,
     direction: ConnectionDirection,
@@ -119,7 +122,7 @@ impl PeerConnection {
         Self {
             id,
             request_tx,
-            peer_node_id,
+            peer_node_id: Arc::new(peer_node_id),
             address,
             direction,
         }
@@ -135,6 +138,10 @@ impl PeerConnection {
 
     pub fn id(&self) -> ConnId {
         self.id
+    }
+
+    pub fn is_connected(&self) -> bool {
+        !self.request_tx.is_closed()
     }
 
     pub async fn open_substream<P: Into<ProtocolId>>(
@@ -245,7 +252,7 @@ impl PeerConnectionActor {
                             self.disconnect(false).await;
                         },
                         None => {
-                            warn!(target: LOG_TARGET, "[{}] Peer '{}' closed the connection", self, self.peer_node_id.short_str());
+                            debug!(target: LOG_TARGET, "[{}] Peer '{}' closed the connection", self, self.peer_node_id.short_str());
                             self.disconnect(false).await;
                         },
                     }

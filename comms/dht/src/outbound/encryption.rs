@@ -102,7 +102,7 @@ where
         match &message.encryption {
             OutboundEncryption::EncryptFor(public_key) => {
                 debug!(target: LOG_TARGET, "Encrypting message for {}", public_key);
-                let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), public_key);
+                let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), &**public_key);
                 message.body = crypt::encrypt(&shared_secret, &message.body)?;
             },
             OutboundEncryption::EncryptForPeer => {

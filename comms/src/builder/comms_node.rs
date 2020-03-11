@@ -142,6 +142,22 @@ where
             hidden_service,
         } = self;
 
+        info!(target: LOG_TARGET, "Hello from comms!");
+        info!(
+            target: LOG_TARGET,
+            "Your node's public key is '{}'",
+            node_identity.public_key()
+        );
+        info!(
+            target: LOG_TARGET,
+            "Your nodes network ID is '{}'",
+            node_identity.node_id()
+        );
+        info!(
+            target: LOG_TARGET,
+            "Your nodes public address is '{}'",
+            node_identity.public_address()
+        );
         let messaging_pipeline = messaging_pipeline.ok_or(CommsBuilderError::MessagingPiplineNotProvided)?;
 
         let events_stream = connection_manager_event_tx.subscribe();

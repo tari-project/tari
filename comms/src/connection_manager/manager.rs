@@ -263,14 +263,22 @@ where
     async fn disconnect_all(&mut self) {
         let mut node_ids = Vec::with_capacity(self.active_connections.len());
         for (node_id, mut conn) in self.active_connections.drain() {
-            if log_if_error!(
-                target: LOG_TARGET,
-                conn.disconnect_silent().await,
-                "Failed to disconnect because '{error}'",
-            )
-            .is_some()
-            {
-                node_ids.push(node_id);
+            if !conn.is_connected() {
+                continue;
+            }
+
+            match conn.disconnect_silent().await {
+                Ok(_) => {
+                    node_ids.push(node_id);
+                },
+                Err(err) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "In disconnect_all: Error when disconnecting peer '{}' because '{:?}'",
+                        node_id.short_str(),
+                        err
+                    );
+                },
             }
         }
 
@@ -383,8 +391,8 @@ where
                 }
 
                 // If we're dialing this node, let's cancel it
-                self.send_dialer_request(DialerRequest::CancelPendingDial(node_id.clone()))
-                    .await;
+                // self.send_dialer_request(DialerRequest::CancelPendingDial(node_id.clone()))
+                //     .await;
 
                 match self.active_connections.remove(&node_id) {
                     Some(existing_conn) => {
@@ -510,12 +518,13 @@ where
                 linger.as_millis()
             );
             time::delay_for(linger).await;
-
-            match conn.disconnect_silent().await {
-                Ok(_) => {},
-                Err(err) => {
-                    error!(target: LOG_TARGET, "Failed to disconnect because '{:?}'", err);
-                },
+            if conn.is_connected() {
+                match conn.disconnect_silent().await {
+                    Ok(_) => {},
+                    Err(err) => {
+                        error!(target: LOG_TARGET, "Failed to disconnect because '{:?}'", err);
+                    },
+                }
             }
         })
     }

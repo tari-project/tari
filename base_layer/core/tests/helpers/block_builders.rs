@@ -232,12 +232,13 @@ pub fn append_block<B: BlockchainBackend>(
     prev_block: &Block,
     txns: Vec<Transaction>,
     consensus_constants: &ConsensusConstants,
+    achieved_difficulty: Difficulty,
 ) -> Result<Block, ChainStorageError>
 {
     let template = chain_block(prev_block, txns, consensus_constants);
     let mut block = db.calculate_mmr_roots(template)?;
     block.header.nonce = OsRng.next_u64();
-    find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
+    find_header_with_achieved_difficulty(&mut block.header, achieved_difficulty);
     db.add_block(block.clone())?;
     Ok(block)
 }

@@ -35,7 +35,6 @@ use crate::{
     utils::hoist_nested_result,
     DhtConfig,
 };
-use bitflags::_core::fmt::Formatter;
 use chrono::{DateTime, Utc};
 use derive_error::Error;
 use futures::{
@@ -48,7 +47,7 @@ use futures::{
     StreamExt,
 };
 use log::*;
-use std::{fmt::Display, sync::Arc};
+use std::{fmt, fmt::Display, sync::Arc};
 use tari_comms::{
     peer_manager::{
         NodeId,
@@ -111,7 +110,7 @@ pub enum DhtRequest {
 }
 
 impl Display for DhtRequest {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             DhtRequest::SendJoin => f.write_str("SendJoin"),
             DhtRequest::SendRequestStoredMessages(d) => f.write_str(&format!("SendRequestStoredMessages ({:?})", d)),
@@ -303,7 +302,12 @@ impl<'a> DhtActor<'a> {
         outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .closest(node_identity.node_id().clone(), num_neighbouring_nodes, Vec::new())
+                    .closest(
+                        node_identity.node_id().clone(),
+                        num_neighbouring_nodes,
+                        Vec::new(),
+                        PeerFeatures::MESSAGE_PROPAGATION,
+                    )
                     .with_dht_message_type(DhtMessageType::Join)
                     .force_origin()
                     .finish(),
@@ -325,7 +329,12 @@ impl<'a> DhtActor<'a> {
         outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .closest(node_identity.node_id().clone(), num_neighbouring_nodes, Vec::new())
+                    .closest(
+                        node_identity.node_id().clone(),
+                        num_neighbouring_nodes,
+                        Vec::new(),
+                        PeerFeatures::MESSAGE_PROPAGATION,
+                    )
                     .with_dht_message_type(DhtMessageType::SafRequestMessages)
                     .finish(),
                 maybe_since.map(StoredMessagesRequest::since).unwrap_or_default(),
@@ -369,13 +378,14 @@ impl<'a> DhtActor<'a> {
                 &closest_request.node_id,
                 closest_request.n,
                 &closest_request.excluded_peers,
+                |_| true,
             ),
             Random(n) => {
                 // Send to a random set of peers of size n that are Communication Nodes
                 peer_manager.random_peers(n).map_err(Into::into)
             },
             // TODO: This is a common and expensive search - values here should be cached
-            Neighbours(exclude) => {
+            Neighbours(exclude, features) => {
                 // Send to a random set of peers of size n that are Communication Nodes
                 Self::select_closest_peers(
                     &config,
@@ -383,18 +393,22 @@ impl<'a> DhtActor<'a> {
                     node_identity.node_id(),
                     config.num_neighbouring_nodes,
                     &*exclude,
+                    |peer| peer.has_features(features),
                 )
             },
         }
     }
 
-    fn select_closest_peers(
+    fn select_closest_peers<F>(
         config: &DhtConfig,
         peer_manager: Arc<PeerManager>,
         node_id: &NodeId,
         n: usize,
         excluded_peers: &[CommsPublicKey],
+        mut filter_predicate: F,
     ) -> Result<Vec<Peer>, DhtActorError>
+    where
+        F: FnMut(&Peer) -> bool,
     {
         // TODO: This query is expensive. We can probably cache a list of neighbouring peers which are online
         // Fetch to all n nearest neighbour Communication Nodes
@@ -406,7 +420,7 @@ impl<'a> DhtActor<'a> {
         let mut connect_ineligable_count = 0;
         let mut banned_count = 0;
         let mut excluded_count = 0;
-        let mut not_propagation_node_count = 0;
+        let mut filtered_out_node_count = 0;
         let query = PeerQuery::new()
             .select_where(|peer| {
                 trace!(target: LOG_TARGET, "Considering peer for broadcast: {}", peer.node_id);
@@ -418,13 +432,13 @@ impl<'a> DhtActor<'a> {
                     return false;
                 }
 
-                if !peer.has_features(PeerFeatures::MESSAGE_PROPAGATION) {
+                if !filter_predicate(&peer) {
                     trace!(
                         target: LOG_TARGET,
-                        "[{}] does NOT have the message propagation feature",
+                        "[{}] does NOT match the filter predicate",
                         peer.node_id
                     );
-                    not_propagation_node_count += 1;
+                    filtered_out_node_count += 1;
                     return false;
                 }
 
@@ -457,20 +471,31 @@ impl<'a> DhtActor<'a> {
                 true
             })
             .sort_by(PeerQuerySortBy::DistanceFrom(&node_id))
-            .limit(n);
+            .until(|peers| {
+                // We have at least num_neighbouring_nodes nodes that have the `MESSAGE_PROPAGATION` feature.
+                // Because nodes without this feature do not propagate messages, we need to ensure that the message
+                // is sent to enough nodes with this feature
+                peers.len() >= n &&
+                    peers
+                        .iter()
+                        .filter(|p| p.features.contains(PeerFeatures::MESSAGE_PROPAGATION))
+                        .count() >=
+                        n
+            });
 
         let peers = peer_manager.perform_query(query)?;
-        let total = banned_count + connect_ineligable_count + excluded_count;
-        if total > 0 {
+        let total_excluded = banned_count + connect_ineligable_count + excluded_count + filtered_out_node_count;
+        if total_excluded > 0 {
             debug!(
                 target: LOG_TARGET,
                 "\n====================================\n Closest Peer Selection\n\n {num_peers} peer(s) selected\n \
-                 {total} peer(s) were excluded \n {banned} banned\n {not_propagation_node} not communication node\n \
-                 {not_connectable} are not connectable\n {excluded} excluded\n====================================\n",
+                 {total} peer(s) were not selected \n\n {banned} banned\n {filtered_out} not communication node\n \
+                 {not_connectable} are not connectable\n {excluded} explicitly excluded \
+                 \n====================================\n",
                 num_peers = peers.len(),
-                total = total,
+                total = total_excluded,
                 banned = banned_count,
-                not_propagation_node = not_propagation_node_count,
+                filtered_out = filtered_out_node_count,
                 not_connectable = connect_ineligable_count,
                 excluded = excluded_count
             );
@@ -489,116 +514,129 @@ mod test {
         peer_manager::{PeerFeatures, PeerFlags},
     };
     use tari_shutdown::Shutdown;
-    use tari_test_utils::runtime;
+    use tokio::runtime;
 
-    #[test]
-    fn send_join_request() {
-        runtime::test_async(|rt| {
-            let node_identity = make_node_identity();
-            let peer_manager = make_peer_manager();
-            let (out_tx, mut out_rx) = mpsc::channel(1);
-            let (actor_tx, actor_rx) = mpsc::channel(1);
-            let mut requester = DhtRequester::new(actor_tx);
-            let outbound_requester = OutboundMessageRequester::new(out_tx);
-            let shutdown = Shutdown::new();
-            let actor = DhtActor::new(
-                Default::default(),
-                node_identity,
-                peer_manager,
-                outbound_requester,
-                actor_rx,
-                shutdown.to_signal(),
-            );
+    #[tokio_macros::test_basic]
+    async fn send_join_request() {
+        let node_identity = make_node_identity();
+        let peer_manager = make_peer_manager();
+        let (out_tx, mut out_rx) = mpsc::channel(1);
+        let (actor_tx, actor_rx) = mpsc::channel(1);
+        let mut requester = DhtRequester::new(actor_tx);
+        let outbound_requester = OutboundMessageRequester::new(out_tx);
+        let shutdown = Shutdown::new();
+        let actor = DhtActor::new(
+            Default::default(),
+            node_identity,
+            peer_manager,
+            outbound_requester,
+            actor_rx,
+            shutdown.to_signal(),
+        );
 
-            rt.spawn(actor.run());
+        runtime::Handle::current().spawn(actor.run());
 
-            rt.block_on(async move {
-                requester.send_join().await.unwrap();
-                let (params, _) = unwrap_oms_send_msg!(out_rx.next().await.unwrap());
-                assert_eq!(params.dht_message_type, DhtMessageType::Join);
-            });
-        });
+        requester.send_join().await.unwrap();
+        let (params, _) = unwrap_oms_send_msg!(out_rx.next().await.unwrap());
+        assert_eq!(params.dht_message_type, DhtMessageType::Join);
     }
 
-    #[test]
-    fn insert_message_signature() {
-        runtime::test_async(|rt| {
-            let node_identity = make_node_identity();
-            let peer_manager = make_peer_manager();
-            let (out_tx, _) = mpsc::channel(1);
-            let (actor_tx, actor_rx) = mpsc::channel(1);
-            let mut requester = DhtRequester::new(actor_tx);
-            let outbound_requester = OutboundMessageRequester::new(out_tx);
-            let shutdown = Shutdown::new();
-            let actor = DhtActor::new(
-                Default::default(),
-                node_identity,
-                peer_manager,
-                outbound_requester,
-                actor_rx,
-                shutdown.to_signal(),
-            );
+    #[tokio_macros::test_basic]
+    async fn insert_message_signature() {
+        let node_identity = make_node_identity();
+        let peer_manager = make_peer_manager();
+        let (out_tx, _) = mpsc::channel(1);
+        let (actor_tx, actor_rx) = mpsc::channel(1);
+        let mut requester = DhtRequester::new(actor_tx);
+        let outbound_requester = OutboundMessageRequester::new(out_tx);
+        let shutdown = Shutdown::new();
+        let actor = DhtActor::new(
+            Default::default(),
+            node_identity,
+            peer_manager,
+            outbound_requester,
+            actor_rx,
+            shutdown.to_signal(),
+        );
 
-            rt.spawn(actor.run());
+        runtime::Handle::current().spawn(actor.run());
 
-            rt.block_on(async move {
-                let signature = vec![1u8, 2, 3];
-                let is_dup = requester.insert_message_hash(signature.clone()).await.unwrap();
-                assert_eq!(is_dup, false);
-                let is_dup = requester.insert_message_hash(signature).await.unwrap();
-                assert_eq!(is_dup, true);
-                let is_dup = requester.insert_message_hash(Vec::new()).await.unwrap();
-                assert_eq!(is_dup, false);
-            });
-        });
+        let signature = vec![1u8, 2, 3];
+        let is_dup = requester.insert_message_hash(signature.clone()).await.unwrap();
+        assert_eq!(is_dup, false);
+        let is_dup = requester.insert_message_hash(signature).await.unwrap();
+        assert_eq!(is_dup, true);
+        let is_dup = requester.insert_message_hash(Vec::new()).await.unwrap();
+        assert_eq!(is_dup, false);
     }
 
-    #[test]
-    fn select_peers() {
-        runtime::test_async(|rt| {
-            let node_identity = make_node_identity();
-            let peer_manager = make_peer_manager();
-            peer_manager
-                .add_peer(Peer::new(
+    #[tokio_macros::test_basic]
+    async fn select_peers() {
+        let node_identity = make_node_identity();
+        let peer_manager = make_peer_manager();
+        peer_manager
+            .add_peer(Peer::new(
+                node_identity.public_key().clone(),
+                node_identity.node_id().clone(),
+                MultiaddressesWithStats::new(vec![]),
+                PeerFlags::empty(),
+                PeerFeatures::COMMUNICATION_CLIENT,
+                &[],
+            ))
+            .unwrap();
+
+        peer_manager
+            .add_peer({
+                let node_identity = make_node_identity();
+                Peer::new(
                     node_identity.public_key().clone(),
                     node_identity.node_id().clone(),
                     MultiaddressesWithStats::new(vec![]),
                     PeerFlags::empty(),
-                    PeerFeatures::COMMUNICATION_CLIENT,
+                    PeerFeatures::COMMUNICATION_NODE,
                     &[],
-                ))
-                .unwrap();
-            let (out_tx, _) = mpsc::channel(1);
-            let (actor_tx, actor_rx) = mpsc::channel(1);
-            let mut requester = DhtRequester::new(actor_tx);
-            let outbound_requester = OutboundMessageRequester::new(out_tx);
-            let shutdown = Shutdown::new();
-            let actor = DhtActor::new(
-                Default::default(),
-                Arc::clone(&node_identity),
-                peer_manager,
-                outbound_requester,
-                actor_rx,
-                shutdown.to_signal(),
-            );
+                )
+            })
+            .unwrap();
+        let (out_tx, _) = mpsc::channel(1);
+        let (actor_tx, actor_rx) = mpsc::channel(1);
+        let mut requester = DhtRequester::new(actor_tx);
+        let outbound_requester = OutboundMessageRequester::new(out_tx);
+        let shutdown = Shutdown::new();
+        let actor = DhtActor::new(
+            Default::default(),
+            Arc::clone(&node_identity),
+            peer_manager,
+            outbound_requester,
+            actor_rx,
+            shutdown.to_signal(),
+        );
 
-            rt.spawn(actor.run());
+        runtime::Handle::current().spawn(actor.run());
 
-            rt.block_on(async move {
-                let peers = requester
-                    .select_peers(BroadcastStrategy::Neighbours(Vec::new()))
-                    .await
-                    .unwrap();
+        let peers = requester
+            .select_peers(BroadcastStrategy::Neighbours(
+                Vec::new(),
+                PeerFeatures::MESSAGE_PROPAGATION,
+            ))
+            .await
+            .unwrap();
 
-                assert_eq!(peers.len(), 0);
+        assert_eq!(peers.len(), 1);
+        let peers = requester
+            .select_peers(BroadcastStrategy::Neighbours(Vec::new(), PeerFeatures::empty()))
+            .await
+            .unwrap();
 
-                let peers = requester
-                    .select_peers(BroadcastStrategy::DirectNodeId(node_identity.node_id().clone()))
-                    .await
-                    .unwrap();
+        assert_eq!(peers.len(), 2);
 
-                assert_eq!(peers.len(), 1);
-            });
-        });
+        let peers = requester
+            .select_peers(BroadcastStrategy::DirectNodeId(Box::new(
+                node_identity.node_id().clone(),
+            )))
+            .await
+            .unwrap();
+
+        assert_eq!(peers.len(), 1);
     }
 }

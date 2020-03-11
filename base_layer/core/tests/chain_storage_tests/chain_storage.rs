@@ -398,7 +398,14 @@ fn add_multiple_blocks() {
     let block0 = store.fetch_block(0).unwrap().block().clone();
     assert_eq!(metadata.best_block, Some(block0.hash()));
     // Add another block
-    let block1 = append_block(&store, &block0, vec![], &consensus_manager.consensus_constants()).unwrap();
+    let block1 = append_block(
+        &store,
+        &block0,
+        vec![],
+        &consensus_manager.consensus_constants(),
+        1.into(),
+    )
+    .unwrap();
     let metadata = store.get_metadata().unwrap();
     let hash = block1.hash();
     assert_eq!(metadata.height_of_longest_chain, Some(1));
@@ -421,7 +428,14 @@ fn test_checkpoints() {
         to: vec![MicroTari(5_000), MicroTari(6_000)]
     );
     let (txn, _, _) = spend_utxos(txn);
-    let block1 = append_block(&db, &blocks[0], vec![txn], &consensus_manager.consensus_constants()).unwrap();
+    let block1 = append_block(
+        &db,
+        &blocks[0],
+        vec![txn],
+        &consensus_manager.consensus_constants(),
+        1.into(),
+    )
+    .unwrap();
     // Get the checkpoint
     let block_a = db.fetch_block(0).unwrap();
     assert_eq!(block_a.confirmations(), 2);
@@ -732,13 +746,13 @@ fn store_and_retrieve_blocks() {
     store.set_validators(validators);
 
     let block0 = store.fetch_block(0).unwrap().block().clone();
-    let block1 = append_block(&store, &block0, vec![], &rules.consensus_constants()).unwrap();
-    let block2 = append_block(&store, &block1, vec![], &rules.consensus_constants()).unwrap();
+    let block1 = append_block(&store, &block0, vec![], &rules.consensus_constants(), 1.into()).unwrap();
+    let block2 = append_block(&store, &block1, vec![], &rules.consensus_constants(), 1.into()).unwrap();
     assert_eq!(*store.fetch_block(0).unwrap().block(), block0);
     assert_eq!(*store.fetch_block(1).unwrap().block(), block1);
     assert_eq!(*store.fetch_block(2).unwrap().block(), block2);
 
-    let block3 = append_block(&store, &block2, vec![], &rules.consensus_constants()).unwrap();
+    let block3 = append_block(&store, &block2, vec![], &rules.consensus_constants(), 1.into()).unwrap();
     assert_eq!(*store.fetch_block(0).unwrap().block(), block0);
     assert_eq!(*store.fetch_block(1).unwrap().block(), block1);
     assert_eq!(*store.fetch_block(2).unwrap().block(), block2);
@@ -756,7 +770,7 @@ fn store_and_retrieve_chain_and_orphan_blocks_with_hashes() {
     store.set_validators(validators);
 
     let block0 = store.fetch_block(0).unwrap().block().clone();
-    let block1 = append_block(&store, &block0, vec![], &rules.consensus_constants()).unwrap();
+    let block1 = append_block(&store, &block0, vec![], &rules.consensus_constants(), 1.into()).unwrap();
     let orphan = create_orphan_block(10, vec![], &rules.consensus_constants());
     let mut txn = DbTransaction::new();
     txn.insert_orphan(orphan.clone());
@@ -854,7 +868,7 @@ fn restore_metadata() {
         db.set_validators(validators.clone());
 
         let block0 = db.fetch_block(0).unwrap().block().clone();
-        let block1 = append_block(&db, &block0, vec![], &rules.consensus_constants()).unwrap();
+        let block1 = append_block(&db, &block0, vec![], &rules.consensus_constants(), 1.into()).unwrap();
         db.add_block(block1.clone()).unwrap();
         block_hash = block1.hash();
         let metadata = db.get_metadata().unwrap();

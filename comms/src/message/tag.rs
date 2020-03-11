@@ -35,6 +35,6 @@ impl MessageTag {
 
 impl fmt::Display for MessageTag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "MessageTag({})", self.0)
+        write!(f, "Tag#{}", self.0)
     }
 }

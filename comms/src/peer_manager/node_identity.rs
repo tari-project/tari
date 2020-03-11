@@ -153,7 +153,7 @@ impl NodeIdentity {
     }
 
     /// Returns a Peer with the same public key, node id, public address and features as represented in this
-    /// NodeIdentity. PeerFlags and supported_protocols are empty.
+    /// NodeIdentity. _NOTE: PeerFlags and supported_protocols are empty._
     pub fn to_peer(&self) -> Peer {
         Peer::new(
             self.public_key().clone(),

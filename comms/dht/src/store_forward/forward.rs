@@ -21,16 +21,20 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    envelope::NodeDestination,
+    envelope::{DhtMessageHeader, NodeDestination},
     inbound::DecryptedDhtMessage,
     outbound::{OutboundMessageRequester, SendMessageParams},
+    proto::envelope::DhtMessageType,
     store_forward::error::StoreAndForwardError,
     PipelineError,
 };
 use futures::{task::Context, Future};
 use log::*;
 use std::{sync::Arc, task::Poll};
-use tari_comms::{peer_manager::PeerManager, types::CommsPublicKey};
+use tari_comms::{
+    peer_manager::{PeerFeatures, PeerManager},
+    types::CommsPublicKey,
+};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::store_forward::forward";
@@ -155,8 +159,7 @@ where
             .err()
             .expect("previous check that decryption failed");
 
-        let mut message_params =
-            self.get_send_params(dht_header.destination.clone(), vec![source_peer.public_key.clone()])?;
+        let mut message_params = self.get_send_params(&dht_header, vec![source_peer.public_key.clone()])?;
 
         message_params.with_dht_header(dht_header.clone());
 
@@ -168,23 +171,30 @@ where
     /// Selects the most appropriate broadcast strategy based on the received messages destination
     fn get_send_params(
         &self,
-        header_dest: NodeDestination,
+        header: &DhtMessageHeader,
         excluded_peers: Vec<CommsPublicKey>,
     ) -> Result<SendMessageParams, StoreAndForwardError>
     {
+        // If this is a DHT message, forward this message to all kinds of neighbouring peers
+        // If not, forward to those who are interested in propagation messages
+        let filter_features = if header.message_type == DhtMessageType::Discovery {
+            PeerFeatures::empty()
+        } else {
+            PeerFeatures::MESSAGE_PROPAGATION
+        };
         let mut params = SendMessageParams::new();
-        match header_dest {
+        match header.destination.clone() {
             NodeDestination::Unknown => {
                 // Send to the current nodes nearest neighbours
-                params.neighbours(excluded_peers);
+                params.neighbours_with_features(excluded_peers, filter_features);
             },
             NodeDestination::PublicKey(dest_public_key) => {
                 if self.peer_manager.exists(&dest_public_key) {
                     // Send to destination peer directly if the current node knows that peer
-                    params.direct_public_key(dest_public_key);
+                    params.direct_public_key(*dest_public_key);
                 } else {
                     // Send to the current nodes nearest neighbours
-                    params.neighbours(excluded_peers);
+                    params.neighbours_with_features(excluded_peers, filter_features);
                 }
             },
             NodeDestination::NodeId(dest_node_id) => {
@@ -195,7 +205,7 @@ where
                     },
                     Err(_) => {
                         // Send to peers that are closest to the destination network region
-                        params.neighbours(excluded_peers);
+                        params.neighbours_with_features(excluded_peers, filter_features);
                     },
                 }
             },

@@ -257,7 +257,7 @@ impl MessagingProtocol {
     }
 
     async fn handle_conn_man_event(&mut self, event: Arc<ConnectionManagerEvent>) {
-        trace!(target: LOG_TARGET, "ConnectionManagerEvent: {}", event);
+        trace!(target: LOG_TARGET, "ConnectionManagerEvent: {:?}", event);
         use ConnectionManagerEvent::*;
         match &*event {
             PeerDisconnected(node_id) => {
@@ -412,7 +412,7 @@ impl MessagingProtocol {
                             }
                         }
 
-                        trace!(target: LOG_TARGET, "Inbound handler sending event '{:?}'", event);
+                        trace!(target: LOG_TARGET, "Inbound handler sending event '{}'", event);
                         if let Err(err) = messaging_events_tx.send(Arc::new(event)) {
                             debug!(
                                 target: LOG_TARGET,

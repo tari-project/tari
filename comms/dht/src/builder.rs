@@ -25,13 +25,11 @@ use futures::channel::mpsc;
 use std::{sync::Arc, time::Duration};
 use tari_comms::peer_manager::{NodeIdentity, PeerManager};
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
 
 pub struct DhtBuilder {
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
     config: DhtConfig,
-    executor: Option<runtime::Handle>,
     outbound_tx: mpsc::Sender<DhtOutboundRequest>,
     shutdown_signal: ShutdownSignal,
 }
@@ -51,7 +49,6 @@ impl DhtBuilder {
             config: Default::default(),
             node_identity,
             peer_manager,
-            executor: None,
             outbound_tx,
             shutdown_signal,
         }
@@ -59,11 +56,6 @@ impl DhtBuilder {
 
     pub fn with_config(mut self, config: DhtConfig) -> Self {
         self.config = config;
-        self
-    }
-
-    pub fn with_executor(mut self, executor: runtime::Handle) -> Self {
-        self.executor = Some(executor);
         self
     }
 
@@ -108,7 +100,6 @@ impl DhtBuilder {
     pub fn finish(self) -> Dht {
         Dht::new(
             self.config,
-            self.executor.unwrap_or_else(runtime::Handle::current),
             self.node_identity,
             self.peer_manager,
             self.outbound_tx,

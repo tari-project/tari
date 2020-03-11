@@ -29,3 +29,12 @@ pub enum NoiseError {
     #[error(no_from)]
     HandshakeFailed(io::Error),
 }
+
+impl NoiseError {
+    pub fn to_friendly_string(&self) -> String {
+        match self {
+            NoiseError::SnowError(err) => format!("SnowError: {:?}", err),
+            NoiseError::HandshakeFailed(err) => format!("HandshakeFailed: {:?}", err),
+        }
+    }
+}

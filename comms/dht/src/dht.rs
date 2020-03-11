@@ -44,7 +44,7 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
+use tokio::task;
 use tower::{layer::Layer, Service, ServiceBuilder};
 
 /// Responsible for starting the DHT actor, building the DHT middleware stack and as a factory
@@ -67,15 +67,14 @@ pub struct Dht {
 impl Dht {
     pub fn new(
         config: DhtConfig,
-        executor: runtime::Handle,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_tx: mpsc::Sender<DhtOutboundRequest>,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
-        let (dht_sender, dht_receiver) = mpsc::channel(10);
-        let (discovery_sender, discovery_receiver) = mpsc::channel(10);
+        let (dht_sender, dht_receiver) = mpsc::channel(20);
+        let (discovery_sender, discovery_receiver) = mpsc::channel(20);
 
         let dht = Self {
             node_identity,
@@ -86,8 +85,8 @@ impl Dht {
             discovery_sender,
         };
 
-        executor.spawn(dht.actor(dht_receiver, shutdown_signal.clone()).run());
-        executor.spawn(dht.discovery_service(discovery_receiver, shutdown_signal).run());
+        task::spawn(dht.actor(dht_receiver, shutdown_signal.clone()).run());
+        task::spawn(dht.discovery_service(discovery_receiver, shutdown_signal).run());
 
         dht
     }
@@ -289,7 +288,7 @@ mod test {
         wrap_in_envelope_body,
     };
     use tari_shutdown::Shutdown;
-    use tokio::{runtime, time};
+    use tokio::{task, time};
     use tower::{layer::Layer, Service};
 
     #[tokio_macros::test_basic]
@@ -375,6 +374,7 @@ mod test {
     #[cfg(not(target_os = "windows"))]
     #[tokio_macros::test_basic]
     async fn stack_forward() {
+        env_logger::init();
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
 
@@ -392,7 +392,7 @@ mod test {
         )
         .finish();
         let oms_mock_state = oms_mock.get_state();
-        runtime::Handle::current().spawn(oms_mock.run());
+        task::spawn(oms_mock.run());
 
         let mut service = dht.inbound_middleware_layer().layer(SinkService::new(next_service_tx));
 

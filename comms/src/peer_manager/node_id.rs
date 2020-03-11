@@ -182,6 +182,20 @@ impl ByteArray for NodeId {
     }
 }
 
+impl ByteArray for Box<NodeId> {
+    /// Try and convert the given byte array to a NodeId. Any failures (incorrect array length,
+    /// implementation-specific checks, etc) return a [ByteArrayError](enum.ByteArrayError.html).
+    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
+        let node_id = NodeId::try_from(bytes).map_err(|err| ByteArrayError::ConversionError(format!("{:?}", err)))?;
+        Ok(Box::new(node_id))
+    }
+
+    /// Return the NodeId as a byte array
+    fn as_bytes(&self) -> &[u8] {
+        &self.as_ref().0
+    }
+}
+
 impl PartialEq for NodeId {
     fn eq(&self, nid: &NodeId) -> bool {
         self.0 == nid.0
