@@ -208,7 +208,7 @@ macro_rules! fetch {
 /// let db = MemoryDatabase::<HashDigest>::default();
 /// let network = Network::LocalNet;
 /// let rules = ConsensusManagerBuilder::new(network).build();
-/// let mut db = BlockchainDatabase::new(db_backend, rules.clone()).unwrap();
+/// let mut db = BlockchainDatabase::new(db_backend, &rules).unwrap();
 /// db.set_validators(validators);
 /// // Do stuff with db
 /// ```
