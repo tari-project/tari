@@ -55,6 +55,22 @@ impl<D: Digest> PostgresDatabase<D> {
                 mmr_cache_config.clone(),
             )?,
         );
+        mmr_caches.insert(
+            MmrTree::RangeProof,
+            MmrCache::new(
+                MemDbVec::<Hash>::new(),
+                PostgresMerkleCheckpointBackend::new(MmrTree::RangeProof, database_url.clone()),
+                mmr_cache_config.clone(),
+            )?,
+        );
+        mmr_caches.insert(
+            MmrTree::Kernel,
+            MmrCache::new(
+                MemDbVec::<Hash>::new(),
+                PostgresMerkleCheckpointBackend::new(MmrTree::Kernel, database_url.clone()),
+                mmr_cache_config.clone(),
+            )?,
+        );
 
         Ok(Self {
             database_url,

@@ -162,6 +162,10 @@ impl TryFrom<MerkleCheckpoint> for MerkleCheckPoint {
             result.push(Hash::from_hex(node.as_str())?);
         }
 
-        Ok(Self::new(result, Bitmap::deserialize(&value.nodes_deleted)))
+        if value.nodes_deleted.is_empty() {
+            Ok(Self::new(result, Bitmap::create()))
+        } else {
+            Ok(Self::new(result, Bitmap::deserialize(&value.nodes_deleted)))
+        }
     }
 }
