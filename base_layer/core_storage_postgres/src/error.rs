@@ -49,6 +49,8 @@ pub enum PostgresChainStorageError {
         actual_hash: String,
         entity: String,
     },
+    #[snafu(display("Checkpoint for {} at height {} not found", mmr_tree, height))]
+    CheckpointNotFoundError{ mmr_tree: MmrTree, height: u64},
     #[snafu(context(false))]
     ChainStorageError { source: ChainStorageError },
     #[snafu(context(false))]
@@ -63,6 +65,8 @@ pub enum PostgresChainStorageError {
     ByteArrayError { source: ByteArrayError },
     #[snafu(context(false))]
     MerkleMountainRangeError { source: MerkleMountainRangeError },
+    #[snafu(display("Poisoned lock access" ))]
+    PoisonedLockError
 }
 
 impl From<PostgresChainStorageError> for ChainStorageError {

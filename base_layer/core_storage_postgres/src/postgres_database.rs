@@ -36,8 +36,12 @@ use tari_mmr::{
     MmrCacheConfig,
     MutableMmr,
 };
+use crate::error::CheckpointNotFoundError;
+use std::sync::{RwLock, Arc};
 
 const LOG_TARGET: &str = "base_layer::core::storage::postgres";
+
+
 
 pub struct PostgresDatabase<D: Digest> {
     database_url: String,
@@ -148,8 +152,10 @@ impl<D: Digest> PostgresDatabase<D> {
         unimplemented!()
     }
 
-    fn create_mmr_checkpoint(&self, conn: &PgConnection, mmr_tree: MmrTree) -> Result<(), PostgresChainStorageError> {
-        models::MerkleCheckpoint::save_current(mmr_tree, conn)
+    fn create_mmr_checkpoint(&mut self, conn: &PgConnection, mmr_tree: MmrTree) -> Result<(), PostgresChainStorageError> {
+        models::MerkleCheckpoint::save_current(mmr_tree, conn)?;
+        self.mmr_caches.get_mut(&mmr_tree).unwrap().update()?;
+        Ok(())
     }
 
     fn rewind_mmr(&self, mmr_tree: MmrTree, height: usize) -> Result<(), PostgresChainStorageError> {
@@ -175,12 +181,8 @@ impl<D: Digest> PostgresDatabase<D> {
         pruned_mmr.compress();
         Ok(pruned_mmr)
     }
-}
 
-impl<D> BlockchainBackend for PostgresDatabase<D>
-where D: Digest + Send + Sync
-{
-    fn write(&self, tx: DbTransaction) -> Result<(), ChainStorageError> {
+    pub fn write(&mut self, tx: DbTransaction) -> Result<(), ChainStorageError> {
         let conn = self.get_conn()?;
         conn.transaction::<(), PostgresChainStorageError, _>(|| {
             for operation in tx.operations {
@@ -201,7 +203,7 @@ where D: Digest + Send + Sync
         Ok(())
     }
 
-    fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
+    pub fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
         let conn = self.get_conn()?;
         debug!(target: LOG_TARGET, "Fetching:{:?}", key);
 
@@ -228,19 +230,21 @@ where D: Digest + Send + Sync
         }
     }
 
-    fn contains(&self, key: &DbKey) -> Result<bool, ChainStorageError> {
+    pub fn contains(&self, key: &DbKey) -> Result<bool, ChainStorageError> {
         self.fetch(key).map(|s| s.is_some())
     }
 
-    fn fetch_mmr_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError> {
-        unimplemented!()
+    pub fn fetch_mmr_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError> {
+        let pruned_mmr = self.get_pruned_mmr(tree, &self.get_conn()?)?;
+        Ok(pruned_mmr.get_merkle_root()?)
     }
 
-    fn fetch_mmr_only_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError> {
-        unimplemented!()
+    pub fn fetch_mmr_only_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError> {
+        let pruned_mmr = self.get_pruned_mmr(tree, &self.get_conn()?)?;
+        Ok(pruned_mmr.get_mmr_only_root()?)
     }
 
-    fn calculate_mmr_root(
+    pub fn calculate_mmr_root(
         &self,
         tree: MmrTree,
         additions: Vec<HashOutput>,
@@ -261,19 +265,32 @@ where D: Digest + Send + Sync
         Ok(pruned_mmr.get_merkle_root()?)
     }
 
-    fn fetch_mmr_proof(&self, tree: MmrTree, pos: usize) -> Result<MerkleProof, ChainStorageError> {
-        unimplemented!()
+    pub fn fetch_mmr_proof(&self, tree: MmrTree, leaf_pos: usize) -> Result<MerkleProof, ChainStorageError> {
+        let pruned_mmr = self.get_pruned_mmr(tree, &self.get_conn()?)?;
+        Ok(match tree {
+            MmrTree::Utxo => MerkleProof::for_leaf_node(&pruned_mmr.mmr(), leaf_pos)?,
+            MmrTree::Kernel => MerkleProof::for_leaf_node(&pruned_mmr.mmr(), leaf_pos)?,
+            MmrTree::RangeProof => MerkleProof::for_leaf_node(&pruned_mmr.mmr(), leaf_pos)?,
+        })
     }
 
-    fn fetch_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
-        unimplemented!()
+    pub fn fetch_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
+        match models::MerkleCheckpoint::fetch(tree, height as i64, &self.get_conn()?)?{
+            Some(cp) => Ok(cp.try_into()?),
+            None => CheckpointNotFoundError {mmr_tree: tree, height}.fail()?
+        }
     }
 
-    fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Hash, bool), ChainStorageError> {
-        unimplemented!()
+    pub fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Hash, bool), ChainStorageError> {
+        let (hash, deleted) = self.mmr_caches.get(&tree).unwrap()
+                .fetch_mmr_node(pos)?;
+        let hash = hash.ok_or_else(|| {
+            ChainStorageError::UnexpectedResult(format!("A leaf node hash in the {} MMR tree was not found", tree))
+        })?;
+        Ok((hash, deleted))
     }
 
-    fn for_each_orphan<F>(&self, mut f: F) -> Result<(), ChainStorageError>
+    pub fn for_each_orphan<F>(&self, mut f: F) -> Result<(), ChainStorageError>
     where
         Self: Sized,
         F: FnMut(Result<(HashOutput, Block), ChainStorageError>),
@@ -285,7 +302,7 @@ where D: Digest + Send + Sync
         Ok(())
     }
 
-    fn for_each_kernel<F>(&self, f: F) -> Result<(), ChainStorageError>
+    pub fn for_each_kernel<F>(&self, f: F) -> Result<(), ChainStorageError>
     where
         Self: Sized,
         F: FnMut(Result<(HashOutput, TransactionKernel), ChainStorageError>),
@@ -293,7 +310,7 @@ where D: Digest + Send + Sync
         unimplemented!()
     }
 
-    fn for_each_header<F>(&self, f: F) -> Result<(), ChainStorageError>
+    pub fn for_each_header<F>(&self, f: F) -> Result<(), ChainStorageError>
     where
         Self: Sized,
         F: FnMut(Result<(u64, BlockHeader), ChainStorageError>),
@@ -301,7 +318,7 @@ where D: Digest + Send + Sync
         unimplemented!()
     }
 
-    fn for_each_utxo<F>(&self, f: F) -> Result<(), ChainStorageError>
+    pub fn for_each_utxo<F>(&self, f: F) -> Result<(), ChainStorageError>
     where
         Self: Sized,
         F: FnMut(Result<(HashOutput, TransactionOutput), ChainStorageError>),
@@ -309,7 +326,7 @@ where D: Digest + Send + Sync
         unimplemented!()
     }
 
-    fn fetch_last_header(&self) -> Result<Option<BlockHeader>, ChainStorageError> {
+    pub fn fetch_last_header(&self) -> Result<Option<BlockHeader>, ChainStorageError> {
         let conn = self.get_conn()?;
         match models::BlockHeader::fetch_tip(&conn)? {
             Some(header) => Ok(Some(header.try_into()?)),
@@ -317,19 +334,30 @@ where D: Digest + Send + Sync
         }
     }
 
-    fn range_proof_checkpoints_len(&self) -> Result<usize, ChainStorageError> {
-        unimplemented!()
+    pub fn range_proof_checkpoints_len(&self) -> Result<usize, ChainStorageError> {
+        let size = models::MerkleCheckpoint::get_len(
+            MmrTree::RangeProof, &self.get_conn()?)?;
+        Ok(size as usize)
     }
 
-    fn get_range_proof_checkpoints(&self, cp_index: usize) -> Result<Option<MerkleCheckPoint>, ChainStorageError> {
-        unimplemented!()
+    pub fn get_range_proof_checkpoints(&self, cp_index: usize) -> Result<Option<MerkleCheckPoint>, ChainStorageError> {
+        match models::MerkleCheckpoint::fetch(MmrTree::RangeProof, cp_index as i64, &self.get_conn()?)?{
+            Some(cp) => Ok(Some(cp.try_into()?)),
+            None => Ok(None)
+        }
+
     }
 
-    fn curr_range_proof_checkpoint_get_added_position(
+    pub fn curr_range_proof_checkpoint_get_added_position(
         &self,
         hash: &HashOutput,
     ) -> Result<Option<usize>, ChainStorageError>
     {
-        unimplemented!()
+      let checkpoint : MerkleCheckPoint = models::MerkleCheckpoint::fetch_or_create_current(MmrTree::RangeProof, &self.get_conn()?)?.try_into()?;
+            Ok(checkpoint.nodes_added()
+            .iter()
+            .position(|h| h == hash))
     }
 }
+
+

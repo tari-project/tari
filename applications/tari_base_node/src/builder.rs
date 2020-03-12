@@ -99,6 +99,7 @@ use tari_wallet::{
     },
 };
 use tokio::{runtime, stream::StreamExt};
+use tari_core_storage_postgres::postgres_database_ref::PostgresDatabaseRef;
 
 const LOG_TARGET: &str = "base_node::initialization";
 
@@ -118,7 +119,7 @@ macro_rules! using_backend {
 pub enum NodeContainer {
     LMDB(BaseNodeContext<LMDBDatabase<HashDigest>>),
     Memory(BaseNodeContext<MemoryDatabase<HashDigest>>),
-    Postgres(BaseNodeContext<PostgresDatabase<HashDigest>>),
+    Postgres(BaseNodeContext<PostgresDatabaseRef<HashDigest>>),
 }
 
 impl NodeContainer {
@@ -309,7 +310,8 @@ pub async fn configure_and_initialize_node(
                 PostgresDatabase::new(connection_string.clone(), MmrCacheConfig::default())
                     .map_err(|e| e.to_string())?;
 
-            let ctx = build_node_context(backend, network, id, config).await?;
+            let backend_ref = PostgresDatabaseRef::new(backend);
+            let ctx = build_node_context(backend_ref, network, id, config).await?;
             NodeContainer::Postgres(ctx)
         },
     };
