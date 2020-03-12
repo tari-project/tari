@@ -71,7 +71,7 @@ fn new_mempool() -> (
 ) {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager);
+    let store = create_mem_db(&consensus_manager);
     let mempool_validator = MempoolValidators::new(
         TxInputAndMaturityValidator::new(store.clone()),
         TxInputAndMaturityValidator::new(store.clone()),
@@ -331,7 +331,7 @@ fn outbound_fetch_blocks() {
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
     block_on(async {
-        let gb = BlockBuilder::new(&consensus_constants).build();
+        let gb = BlockBuilder::new(consensus_constants.blockchain_version()).build();
         let block = HistoricalBlock::new(gb, 0, Vec::new());
         let block_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::HistoricalBlocks(vec![block.clone()])];
         let (received_blocks, _) = futures::join!(

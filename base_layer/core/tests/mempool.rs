@@ -407,7 +407,7 @@ fn test_orphaned_mempool_transactions() {
     let network = Network::LocalNet;
     let (store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
     // A parallel store that will "mine" the orphan chain
-    let mut miner = create_mem_db(consensus_manager.clone());
+    let mut miner = create_mem_db(&consensus_manager);
     let schemas = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
         to: vec![2 * T, 2 * T, 2 * T, 2 * T, 2 * T]

@@ -45,16 +45,13 @@ pub fn create_orphan_block(
     consensus_constants: &ConsensusConstants,
 ) -> Block
 {
-    let mut header = BlockHeader::new(0);
+    let mut header = BlockHeader::new(consensus_constants.blockchain_version());
     header.height = block_height;
-    BlockBuilder::new(consensus_constants)
-        .with_header(header)
-        .with_transactions(transactions)
-        .build()
+    header.into_builder().with_transactions(transactions).build()
 }
 
 pub fn create_mem_db(
-    consensus_manager: ConsensusManager<MemoryDatabase<HashDigest>>,
+    consensus_manager: &ConsensusManager<MemoryDatabase<HashDigest>>,
 ) -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
     let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
     let db = MemoryDatabase::<HashDigest>::default();
