@@ -29,5 +29,5 @@ mod service_response;
 // Public re-exports
 pub use initializer::BaseNodeServiceInitializer;
 pub use service::{BaseNodeService, BaseNodeServiceConfig};
-pub use service_request::{BaseNodeServiceRequest, RequestKey};
+pub use service_request::BaseNodeServiceRequest;
 pub use service_response::BaseNodeServiceResponse;

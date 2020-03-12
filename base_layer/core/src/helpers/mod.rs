@@ -24,6 +24,7 @@
 //! integration test folder.
 
 mod mock_backend;
+mod waiting_requests;
 
 use crate::{
     blocks::{Block, BlockBuilder, BlockHeader},
@@ -34,6 +35,7 @@ use crate::{
 };
 
 pub use mock_backend::MockBackend;
+pub use waiting_requests::{generate_request_key, RequestKey, WaitingRequest, WaitingRequestError, WaitingRequests};
 
 /// Create a partially constructed block using the provided set of transactions
 /// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument

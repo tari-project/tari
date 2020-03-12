@@ -31,13 +31,11 @@ use crate::{
         },
         consts::{BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION, BASE_NODE_SERVICE_REQUEST_TIMEOUT},
         proto,
-        service::{
-            error::BaseNodeServiceError,
-            service_request::{generate_request_key, RequestKey, WaitingRequest, WaitingRequests},
-        },
+        service::error::BaseNodeServiceError,
     },
     blocks::Block,
     chain_storage::BlockchainBackend,
+    helpers::{generate_request_key, RequestKey, WaitingRequest, WaitingRequests},
     proto::core::Block as ProtoBlock,
 };
 use futures::{
@@ -137,7 +135,7 @@ where
 pub struct BaseNodeService<B: BlockchainBackend + 'static> {
     outbound_message_service: OutboundMessageRequester,
     inbound_nch: InboundNodeCommsHandlers<B>,
-    waiting_requests: WaitingRequests,
+    waiting_requests: WaitingRequests<Result<Vec<NodeCommsResponse>, CommsInterfaceError>, NodeCommsResponse>,
     timeout_sender: Sender<RequestKey>,
     timeout_receiver_stream: Option<Receiver<RequestKey>>,
     config: BaseNodeServiceConfig,
@@ -422,7 +420,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
 }
 
 async fn handle_incoming_response(
-    waiting_requests: WaitingRequests,
+    waiting_requests: WaitingRequests<Result<Vec<NodeCommsResponse>, CommsInterfaceError>, NodeCommsResponse>,
     incoming_response: proto::BaseNodeServiceResponse,
 ) -> Result<(), BaseNodeServiceError>
 {
@@ -453,7 +451,7 @@ async fn handle_incoming_response(
 
 async fn handle_outbound_request(
     mut outbound_message_service: OutboundMessageRequester,
-    waiting_requests: WaitingRequests,
+    waiting_requests: WaitingRequests<Result<Vec<NodeCommsResponse>, CommsInterfaceError>, NodeCommsResponse>,
     timeout_sender: Sender<RequestKey>,
     reply_tx: OneshotSender<Result<Vec<NodeCommsResponse>, CommsInterfaceError>>,
     request: NodeCommsRequest,
@@ -545,7 +543,7 @@ async fn handle_outbound_block(
 }
 
 async fn handle_request_timeout(
-    waiting_requests: WaitingRequests,
+    waiting_requests: WaitingRequests<Result<Vec<NodeCommsResponse>, CommsInterfaceError>, NodeCommsResponse>,
     request_key: RequestKey,
 ) -> Result<(), CommsInterfaceError>
 {
