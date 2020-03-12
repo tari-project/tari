@@ -113,6 +113,7 @@ extern crate lazy_static;
 
 extern crate libc;
 extern crate tari_wallet;
+
 mod callback_handler;
 mod error;
 
@@ -175,14 +176,21 @@ pub type TariTransportType = tari_p2p::transport::TransportType;
 pub type TariPublicKey = tari_comms::types::CommsPublicKey;
 pub type TariPrivateKey = tari_comms::types::CommsSecretKey;
 pub type TariCommsConfig = tari_p2p::initialization::CommsConfig;
+
 pub struct TariContacts(Vec<TariContact>);
+
 pub type TariContact = tari_wallet::contacts_service::storage::database::Contact;
 pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::database::CompletedTransaction;
+
 pub struct TariCompletedTransactions(Vec<TariCompletedTransaction>);
+
 pub type TariPendingInboundTransaction = tari_wallet::transaction_service::storage::database::InboundTransaction;
 pub type TariPendingOutboundTransaction = tari_wallet::transaction_service::storage::database::OutboundTransaction;
+
 pub struct TariPendingInboundTransactions(Vec<TariPendingInboundTransaction>);
+
 pub struct TariPendingOutboundTransactions(Vec<TariPendingOutboundTransaction>);
+
 #[derive(Debug, PartialEq)]
 pub struct ByteVector(Vec<c_uchar>); // declared like this so that it can be exposed to external header
 
@@ -197,13 +205,13 @@ pub struct ByteVector(Vec<c_uchar>); // declared like this so that it can be exp
 /// `()` - Does not return a value, equivalent to void in C.
 ///
 /// # Safety
-
 #[no_mangle]
 pub unsafe extern "C" fn string_destroy(ptr: *mut c_char) {
     if !ptr.is_null() {
         let _ = CString::from_raw(ptr);
     }
 }
+
 /// -------------------------------------------------------------------------------------------- ///
 
 /// -------------------------------- ByteVector ------------------------------------------------ ///
@@ -477,7 +485,7 @@ pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut
 ///
 /// # Safety
 #[no_mangle]
-pub unsafe extern "C" fn public_key_to_emoji_node_id(pk: *mut TariPublicKey, error_out: *mut c_int) -> *mut c_char {
+pub unsafe extern "C" fn public_key_to_emoji_id(pk: *mut TariPublicKey, error_out: *mut c_int) -> *mut c_char {
     let mut error = 0;
     let mut result = CString::new("").unwrap();
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -491,6 +499,42 @@ pub unsafe extern "C" fn public_key_to_emoji_node_id(pk: *mut TariPublicKey, err
     result = CString::new(emoji.as_str()).unwrap();
     CString::into_raw(result)
 }
+
+/// Creates a TariPublicKey from a char array in emoji format
+///
+/// ## Arguments
+/// `const *c_char` - The pointer to a TariPublicKey
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a TariPublicKey. Note that it returns null on error.
+///
+/// # Safety
+#[no_mangle]
+pub unsafe extern "C" fn emoji_id_to_public_key(emoji: *const c_char, error_out: *mut c_int) -> *mut TariPublicKey {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if emoji.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("emoji".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    match CStr::from_ptr(emoji)
+        .to_str()
+        .map_err(|_| ())
+        .and_then(EmojiId::str_to_pubkey)
+    {
+        Ok(pk) => Box::into_raw(Box::new(pk)),
+        Err(_) => {
+            error = LibWalletError::from(InterfaceError::InvalidEmojiId).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
 /// -------------------------------------------------------------------------------------------- ///
 
 /// -------------------------------- Private Key ----------------------------------------------- ///
@@ -1757,6 +1801,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut T
         Box::from_raw(transaction);
     }
 }
+
 /// -------------------------------------------------------------------------------------------- ///
 
 /// ----------------------------------- Transport Types -----------------------------------------///
@@ -1991,6 +2036,7 @@ pub unsafe extern "C" fn transport_type_destroy(transport: *mut TariTransportTyp
         Box::from_raw(transport);
     }
 }
+
 /// ---------------------------------------------------------------------------------------------///
 
 /// ----------------------------------- CommsConfig ---------------------------------------------///
@@ -3492,6 +3538,7 @@ pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
 #[cfg(test)]
 mod test {
     extern crate libc;
+
     use crate::*;
     use libc::{c_char, c_uchar, c_uint};
     use std::{ffi::CString, sync::Mutex};
@@ -3765,11 +3812,14 @@ mod test {
             assert_eq!(private_key_length, 32);
             assert_eq!(public_key_length, 32);
             assert_ne!((*private_bytes), (*public_bytes));
-            let emoji = public_key_to_emoji_node_id(public_key, error_ptr) as *mut c_char;
+            let emoji = public_key_to_emoji_id(public_key, error_ptr) as *mut c_char;
             let emoji_str = CStr::from_ptr(emoji).to_str().unwrap();
             assert!(EmojiId::is_valid(emoji_str));
+            let pk_emoji = emoji_id_to_public_key(emoji, error_ptr);
+            assert_eq!((*public_key), (*pk_emoji));
             private_key_destroy(private_key);
             public_key_destroy(public_key);
+            public_key_destroy(pk_emoji);
             byte_vector_destroy(public_bytes);
             byte_vector_destroy(private_bytes);
         }
@@ -3893,6 +3943,7 @@ mod test {
             byte_vector_destroy(contact_key_bytes);
         }
     }
+
     #[test]
     fn test_wallet_ffi() {
         unsafe {

@@ -53,6 +53,8 @@ pub enum InterfaceError {
     /// An error has occurred when attempting to deserialize input data
     #[error(non_std, no_from)]
     DeserializationError(String),
+    /// Emoji ID is invalid
+    InvalidEmojiId,
 }
 
 /// This struct is meant to hold an error for use by FFI client applications. The error has an integer code and string
@@ -85,6 +87,10 @@ impl From<InterfaceError> for LibWalletError {
             },
             InterfaceError::DeserializationError(_) => Self {
                 code: 5,
+                message: format!("{:?}", v),
+            },
+            InterfaceError::InvalidEmojiId => Self {
+                code: 6,
                 message: format!("{:?}", v),
             },
         }
