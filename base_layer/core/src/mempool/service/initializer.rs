@@ -159,7 +159,6 @@ where T: BlockchainBackend + 'static
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
         let outbound_mp_interface =
             OutboundMempoolServiceInterface::new(outbound_request_sender_service, outbound_tx_sender_service);
-        let executer_clone = executor.clone(); // Give MempoolService access to the executor
         let config = self.config;
         let mempool = self.mempool.clone();
         let inbound_handlers = MempoolInboundHandlers::new(mempool, outbound_mp_interface.clone());
@@ -185,8 +184,7 @@ where T: BlockchainBackend + 'static
                 inbound_transaction_stream,
                 base_node.get_block_event_stream(),
             );
-            let service =
-                MempoolService::new(executer_clone, outbound_message_service, inbound_handlers, config).start(streams);
+            let service = MempoolService::new(outbound_message_service, inbound_handlers, config).start(streams);
             futures::pin_mut!(service);
             future::select(service, shutdown).await;
             info!(target: LOG_TARGET, "Mempool Service shutdown");

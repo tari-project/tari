@@ -44,5 +44,5 @@ pub use service::MempoolService;
 mod request;
 mod response;
 
-pub use request::{MempoolRequest, MempoolServiceRequest, RequestKey};
+pub use request::{MempoolRequest, MempoolServiceRequest};
 pub use response::{MempoolResponse, MempoolServiceResponse};
