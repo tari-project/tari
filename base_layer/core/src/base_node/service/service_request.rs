@@ -21,9 +21,14 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::base_node::comms_interface::{CommsInterfaceError, NodeCommsRequest, NodeCommsResponse};
+use derive_error::Error;
 use futures::channel::oneshot::Sender as OneshotSender;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
 pub type RequestKey = u64;
 
@@ -47,4 +52,67 @@ pub struct WaitingRequest {
 pub struct BaseNodeServiceRequest {
     pub request_key: RequestKey,
     pub request: NodeCommsRequest,
+}
+
+#[derive(Debug, Error)]
+pub enum WaitingRequestError {
+    /// A problem has been encountered with the storage backend.
+    #[error(non_std, no_from)]
+    BackendError(String),
+}
+
+/// WaitingRequests is used to keep track of a set of WaitingRequests.
+#[derive(Clone)]
+pub struct WaitingRequests {
+    requests: Arc<RwLock<HashMap<RequestKey, WaitingRequest>>>,
+}
+
+impl WaitingRequests {
+    /// Create a new set of waiting requests.
+    pub fn new() -> Self {
+        Self {
+            requests: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Insert a new waiting request.
+    pub fn insert(&self, key: RequestKey, waiting_request: WaitingRequest) -> Result<(), WaitingRequestError> {
+        self.requests
+            .write()
+            .map_err(|e| WaitingRequestError::BackendError(e.to_string()))?
+            .insert(key, waiting_request);
+        Ok(())
+    }
+
+    /// Remove the waiting request corresponding to the provided key.
+    pub fn remove(&self, key: RequestKey) -> Result<Option<WaitingRequest>, WaitingRequestError> {
+        Ok(self
+            .requests
+            .write()
+            .map_err(|e| WaitingRequestError::BackendError(e.to_string()))?
+            .remove(&key))
+    }
+
+    /// Check if a sufficient number of responses have been received to complete the waiting request. Also, add the
+    /// newly received response to the specified waiting request.
+    pub fn check_complete(
+        &self,
+        key: RequestKey,
+        response: NodeCommsResponse,
+    ) -> Result<Option<WaitingRequest>, WaitingRequestError>
+    {
+        let mut lock = self
+            .requests
+            .write()
+            .map_err(|e| WaitingRequestError::BackendError(e.to_string()))?;
+        let mut finalize_request = false;
+        if let Some(waiting_request) = lock.get_mut(&key) {
+            waiting_request.received_responses.push(response);
+            finalize_request = waiting_request.received_responses.len() >= waiting_request.desired_resp_count;
+        }
+        if finalize_request {
+            return Ok(lock.remove(&key));
+        }
+        Ok(None)
+    }
 }
