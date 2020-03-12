@@ -100,7 +100,7 @@ fn calculate_accumulated_difficulty(
 fn test_initial_sync() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
 
     let pow_algos = vec![
         PowAlgorithm::Blake, //  GB default
@@ -138,7 +138,7 @@ fn test_initial_sync() {
 fn test_sync_to_chain_tip() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let diff_adj_manager = DiffAdjManager::new(store.clone(), &consensus_manager.consensus_constants()).unwrap();
     let _ = consensus_manager.set_diff_manager(diff_adj_manager);
 
@@ -200,7 +200,7 @@ fn test_sync_to_chain_tip() {
 fn test_target_difficulty_with_height() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let diff_adj_manager = DiffAdjManager::new(store.clone(), &consensus_manager.consensus_constants()).unwrap();
     let _ = consensus_manager.set_diff_manager(diff_adj_manager);
     assert!(consensus_manager
@@ -279,7 +279,7 @@ fn test_target_difficulty_with_height() {
 fn test_full_sync_on_reorg() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let diff_adj_manager = DiffAdjManager::new(store.clone(), &consensus_manager.consensus_constants()).unwrap();
 
     let pow_algos = vec![
@@ -327,7 +327,7 @@ fn test_full_sync_on_reorg() {
 fn test_median_timestamp() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let diff_adj_manager = DiffAdjManager::new(store.clone(), &consensus_manager.consensus_constants()).unwrap();
     let pow_algos = vec![PowAlgorithm::Blake]; // GB default
     create_test_pow_blockchain(&store, pow_algos, &consensus_manager.consensus_constants());
@@ -384,7 +384,7 @@ fn test_median_timestamp() {
 fn test_median_timestamp_with_height() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let diff_adj_manager = DiffAdjManager::new(store.clone(), &consensus_manager.consensus_constants()).unwrap();
     let pow_algos = vec![
         PowAlgorithm::Blake, // GB default
@@ -424,7 +424,7 @@ fn test_median_timestamp_with_height() {
 fn test_median_timestamp_odd_order() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let diff_adj_manager = DiffAdjManager::new(store.clone(), &consensus_manager.consensus_constants()).unwrap();
     let pow_algos = vec![PowAlgorithm::Blake]; // GB default
     create_test_pow_blockchain(&store, pow_algos, &consensus_manager.consensus_constants());

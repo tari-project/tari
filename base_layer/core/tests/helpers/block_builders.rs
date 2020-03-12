@@ -84,14 +84,9 @@ fn genesis_template(
     consensus_constants: &ConsensusConstants,
 ) -> (NewBlockTemplate, UnblindedOutput)
 {
-    let header = BlockHeader::new(0);
+    let header = BlockHeader::new(consensus_constants.blockchain_version());
     let (utxo, kernel, output) = create_coinbase(factories, coinbase_value, consensus_constants.coinbase_lock_height());
-    let block = NewBlockTemplate::from(
-        BlockBuilder::new(consensus_constants)
-            .with_header(header)
-            .with_coinbase_utxo(utxo, kernel)
-            .build(),
-    );
+    let block = NewBlockTemplate::from(header.into_builder().with_coinbase_utxo(utxo, kernel).build());
     (block, output)
 }
 
@@ -100,7 +95,7 @@ pub fn create_act_gen_block() {
     let network = MAINNET;
     let consensus_manager: ConsensusManager<MockBackend> = ConsensusManagerBuilder::new(network).build();
     let factories = CryptoFactories::default();
-    let mut header = BlockHeader::new(0);
+    let mut header = BlockHeader::new(consensus_manager.consensus_constants().blockchain_version());
     let value = consensus_manager.emission_schedule().supply_at_block(0);
     let (mut utxo, key) = create_utxo(value, &factories, None);
     utxo.features = OutputFeatures::create_coinbase(1);
@@ -119,10 +114,7 @@ pub fn create_act_gen_block() {
     header.kernel_mr = kern;
     header.output_mr = utxo_hash;
     header.range_proof_mr = rp;
-    let block = BlockBuilder::new(&consensus_manager.consensus_constants())
-        .with_header(header)
-        .with_coinbase_utxo(utxo, kernel)
-        .build();
+    let block = header.into_builder().with_coinbase_utxo(utxo, kernel).build();
     println!("{}", &block);
     dbg!(&key.to_hex());
     dbg!(&block.body.outputs()[0].proof.to_hex());
@@ -194,16 +186,12 @@ pub fn create_genesis_block_with_utxos(
 pub fn chain_block(
     prev_block: &Block,
     transactions: Vec<Transaction>,
-    consensus_constants: &ConsensusConstants,
+    constants: &ConsensusConstants,
 ) -> NewBlockTemplate
 {
-    let header = BlockHeader::from_previous(&prev_block.header);
-    NewBlockTemplate::from(
-        BlockBuilder::new(consensus_constants)
-            .with_header(header)
-            .with_transactions(transactions)
-            .build(),
-    )
+    let mut header = BlockHeader::from_previous(&prev_block.header);
+    header.version = constants.blockchain_version();
+    NewBlockTemplate::from(header.into_builder().with_transactions(transactions).build())
 }
 
 /// Create a new block using the provided coinbase and transactions that adds to the blockchain given in `prev_block`.
@@ -212,13 +200,14 @@ pub fn chain_block_with_coinbase(
     transactions: Vec<Transaction>,
     coinbase_utxo: TransactionOutput,
     coinbase_kernel: TransactionKernel,
-    consensus_constants: &ConsensusConstants,
+    constants: &ConsensusConstants,
 ) -> NewBlockTemplate
 {
-    let header = BlockHeader::from_previous(&prev_block.header);
+    let mut header = BlockHeader::from_previous(&prev_block.header);
+    header.version = constants.blockchain_version();
     NewBlockTemplate::from(
-        BlockBuilder::new(consensus_constants)
-            .with_header(header)
+        header
+            .into_builder()
             .with_transactions(transactions)
             .with_coinbase_utxo(coinbase_utxo, coinbase_kernel)
             .build(),

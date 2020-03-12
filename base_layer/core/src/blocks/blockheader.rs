@@ -38,7 +38,7 @@
 //! This hash is called the UTXO merkle root, and is used as the output_mr
 
 use crate::{
-    blocks::NewBlockHeaderTemplate,
+    blocks::{BlockBuilder, NewBlockHeaderTemplate},
     proof_of_work::{Difficulty, PowError, ProofOfWork},
     transactions::types::{BlindingFactor, HashDigest},
 };
@@ -159,6 +159,10 @@ impl BlockHeader {
         let mut prev_pow = self.pow.clone();
         prev_pow.add_difficulty(&self.pow, self.achieved_difficulty());
         prev_pow.total_accumulated_difficulty()
+    }
+
+    pub fn into_builder(self) -> BlockBuilder {
+        BlockBuilder::new(self.version).with_header(self)
     }
 }
 

@@ -171,6 +171,6 @@ pub fn create_new_blockchain(
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let db = create_mem_db(consensus_manager.clone());
+    let db = create_mem_db(&consensus_manager);
     (db, vec![block0], vec![vec![output]], consensus_manager)
 }
