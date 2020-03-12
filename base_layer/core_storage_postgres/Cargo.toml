@@ -17,4 +17,5 @@ diesel={version="1.4.3", features=["postgres", "numeric", "chrono"]}
 snafu = "0.6.2"
 log = "0.4"
 serde_json="1.0.48"
+croaring =  "=0.3.9"
 serde="1.0.48"

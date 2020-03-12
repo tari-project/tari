@@ -1,8 +1,13 @@
-use crate::{error::PostgresChainStorageError, models, models::Metadata};
+use crate::{
+    error::PostgresChainStorageError,
+    models,
+    models::Metadata,
+    postgres_merkle_checkpoint_backend::PostgresMerkleCheckpointBackend,
+};
 use diesel::{result::Error, Connection, PgConnection};
 use digest::Digest;
 use log::*;
-use std::convert::TryInto;
+use std::{collections::HashMap, convert::TryInto};
 use tari_core::{
     blocks::{Block, BlockHeader},
     chain_storage::{
@@ -12,6 +17,7 @@ use tari_core::{
         DbKeyValuePair,
         DbTransaction,
         DbValue,
+        MemDbVec,
         MmrTree,
         WriteOperation,
     },
@@ -20,20 +26,42 @@ use tari_core::{
         types::HashOutput,
     },
 };
-use tari_crypto::tari_utilities::Hashable;
-use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof};
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tari_mmr::{
+    functions::{prune_mutable_mmr, PrunedMutableMmr},
+    Hash,
+    MerkleCheckPoint,
+    MerkleProof,
+    MmrCache,
+    MmrCacheConfig,
+    MutableMmr,
+};
 
 const LOG_TARGET: &str = "base_layer::core::storage::postgres";
 
-pub fn create_postgres_database(database_url: String) -> PostgresDatabase {
-    PostgresDatabase { database_url }
-}
-
-pub struct PostgresDatabase {
+pub struct PostgresDatabase<D: Digest> {
     database_url: String,
+    mmr_caches: HashMap<MmrTree, MmrCache<D, MemDbVec<Hash>, PostgresMerkleCheckpointBackend>>,
 }
 
-impl PostgresDatabase {
+impl<D: Digest> PostgresDatabase<D> {
+    pub fn new(database_url: String, mmr_cache_config: MmrCacheConfig) -> Result<Self, PostgresChainStorageError> {
+        let mut mmr_caches = HashMap::new();
+        mmr_caches.insert(
+            MmrTree::Utxo,
+            MmrCache::new(
+                MemDbVec::<Hash>::new(),
+                PostgresMerkleCheckpointBackend::new(MmrTree::Utxo, database_url.clone()),
+                mmr_cache_config.clone(),
+            )?,
+        );
+
+        Ok(Self {
+            database_url,
+            mmr_caches,
+        })
+    }
+
     fn get_conn(&self) -> Result<PgConnection, PostgresChainStorageError> {
         Ok(PgConnection::establish(&self.database_url)?)
     }
@@ -111,9 +139,31 @@ impl PostgresDatabase {
     fn rewind_mmr(&self, mmr_tree: MmrTree, height: usize) -> Result<(), PostgresChainStorageError> {
         unimplemented!()
     }
+
+    fn get_pruned_mmr(
+        &self,
+        mmr_tree: MmrTree,
+        conn: &PgConnection,
+    ) -> Result<PrunedMutableMmr<D>, PostgresChainStorageError>
+    {
+        let mut pruned_mmr = prune_mutable_mmr(&*self.mmr_caches.get(&mmr_tree).unwrap())?;
+        let curr_checkpoint: MerkleCheckPoint =
+            models::MerkleCheckpoint::fetch_or_create_current(mmr_tree, conn)?.try_into()?;
+
+        for hash in curr_checkpoint.nodes_added() {
+            pruned_mmr.push(hash)?;
+        }
+        for index in curr_checkpoint.nodes_deleted().to_vec() {
+            pruned_mmr.delete_and_compress(index, false);
+        }
+        pruned_mmr.compress();
+        Ok(pruned_mmr)
+    }
 }
 
-impl BlockchainBackend for PostgresDatabase {
+impl<D> BlockchainBackend for PostgresDatabase<D>
+where D: Digest + Send + Sync
+{
     fn write(&self, tx: DbTransaction) -> Result<(), ChainStorageError> {
         let conn = self.get_conn()?;
         conn.transaction::<(), PostgresChainStorageError, _>(|| {
@@ -181,7 +231,18 @@ impl BlockchainBackend for PostgresDatabase {
         deletions: Vec<HashOutput>,
     ) -> Result<HashOutput, ChainStorageError>
     {
-        unimplemented!()
+        let mut pruned_mmr = self.get_pruned_mmr(tree, &self.get_conn()?)?;
+        for hash in additions {
+            pruned_mmr.push(&hash)?;
+        }
+        // for hash in deletions {
+        //     if let Some(index) =  pruned_mmr.find_leaf_index(hash)?;
+        //         pruned_mmr.delete_and_compress(index, false);
+        //     }
+        // }
+        // pruned_mmr.compress();
+
+        Ok(pruned_mmr.get_merkle_root()?)
     }
 
     fn fetch_mmr_proof(&self, tree: MmrTree, pos: usize) -> Result<MerkleProof, ChainStorageError> {

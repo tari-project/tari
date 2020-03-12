@@ -71,7 +71,7 @@ use tari_core::{
         transaction_validators::{FullTxValidator, TxInputAndMaturityValidator},
     },
 };
-use tari_core_storage_postgres::postgres_database::{create_postgres_database, PostgresDatabase};
+use tari_core_storage_postgres::postgres_database::PostgresDatabase;
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::{
     comms_connector::{pubsub_connector, PubsubDomainConnector, SubscriptionFactory},
@@ -118,7 +118,7 @@ macro_rules! using_backend {
 pub enum NodeContainer {
     LMDB(BaseNodeContext<LMDBDatabase<HashDigest>>),
     Memory(BaseNodeContext<MemoryDatabase<HashDigest>>),
-    Postgres(BaseNodeContext<PostgresDatabase>),
+    Postgres(BaseNodeContext<PostgresDatabase<HashDigest>>),
 }
 
 impl NodeContainer {
@@ -305,7 +305,9 @@ pub async fn configure_and_initialize_node(
             NodeContainer::LMDB(ctx)
         },
         DatabaseType::Postgres { connection_string } => {
-            let backend = create_postgres_database(connection_string.clone());
+            let backend =
+                PostgresDatabase::new(connection_string.clone(), MmrCacheConfig::default())
+                    .map_err(|e| e.to_string())?;
 
             let ctx = build_node_context(backend, network, id, config).await?;
             NodeContainer::Postgres(ctx)

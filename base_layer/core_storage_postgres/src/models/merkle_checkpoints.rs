@@ -1,13 +1,15 @@
 use crate::{
-    error::{MmrFetchError, MmrSaveError, PostgresChainStorageError},
+    error::{MmrFetchError, MmrSaveError, PostgresChainStorageError, QueryError},
     schema::*,
 };
 use chrono::NaiveDateTime;
+use croaring::Bitmap;
 use diesel::prelude::*;
 use snafu::ResultExt;
-use std::default::Default;
+use std::{convert::TryFrom, default::Default};
 use tari_core::{blocks::BlockHash, chain_storage::MmrTree};
 use tari_crypto::tari_utilities::hex::Hex;
+use tari_mmr::{Hash, MerkleCheckPoint};
 
 #[derive(Queryable, Identifiable)]
 #[table_name = "merkle_checkpoints"]
@@ -33,6 +35,20 @@ pub struct NewMerkleCheckpoint {
 }
 
 impl MerkleCheckpoint {
+    pub fn fetch(
+        mmr_tree: MmrTree,
+        rank: i64,
+        conn: &PgConnection,
+    ) -> Result<Option<MerkleCheckpoint>, PostgresChainStorageError>
+    {
+        merkle_checkpoints::table
+            .filter(merkle_checkpoints::mmr_tree.eq(mmr_tree.to_string()))
+            .filter(merkle_checkpoints::rank.eq(rank))
+            .get_result(conn)
+            .optional()
+            .context(MmrFetchError { mmr_tree })
+    }
+
     pub fn fetch_or_create_current(
         mmr_tree: MmrTree,
         conn: &PgConnection,
@@ -49,6 +65,17 @@ impl MerkleCheckpoint {
             Some(r) => Ok(r),
             None => MerkleCheckpoint::create(mmr_tree, true, conn),
         }
+    }
+
+    pub fn get_len(mmr_tree: MmrTree, conn: &PgConnection) -> Result<i64, PostgresChainStorageError> {
+        let len = merkle_checkpoints::table
+            .filter(merkle_checkpoints::mmr_tree.eq(mmr_tree.to_string()))
+            .count()
+            .first(conn)
+            .context(QueryError {
+                query: format!("Get checkpoint length for MMR {}", mmr_tree.to_string()),
+            })?;
+        Ok(len)
     }
 
     pub fn add_node(mmr_tree: MmrTree, hash: &Vec<u8>, conn: &PgConnection) -> Result<(), PostgresChainStorageError> {
@@ -70,9 +97,11 @@ impl MerkleCheckpoint {
         conn: &PgConnection,
     ) -> Result<MerkleCheckpoint, PostgresChainStorageError>
     {
+
         let new_row = NewMerkleCheckpoint {
             mmr_tree: mmr_tree.to_string(),
             is_current,
+            nodes_deleted: Bitmap::create().serialize(),
             ..Default::default()
         };
 
@@ -112,6 +141,7 @@ impl MerkleCheckpoint {
             mmr_tree: mmr_tree.to_string(),
             is_current: true,
             rank: rank + 1,
+            nodes_deleted: Bitmap::create().serialize(),
             ..Default::default()
         };
 
@@ -120,5 +150,18 @@ impl MerkleCheckpoint {
             .execute(conn)?;
 
         Ok(())
+    }
+}
+
+impl TryFrom<MerkleCheckpoint> for MerkleCheckPoint {
+    type Error = PostgresChainStorageError;
+
+    fn try_from(value: MerkleCheckpoint) -> Result<Self, Self::Error> {
+        let mut result = Vec::<Hash>::new();
+        for node in value.nodes_added {
+            result.push(Hash::from_hex(node.as_str())?);
+        }
+
+        Ok(Self::new(result, Bitmap::deserialize(&value.nodes_deleted)))
     }
 }

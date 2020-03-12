@@ -4,6 +4,7 @@ use snafu::{ensure, Backtrace, ErrorCompat, ResultExt, Snafu};
 use std::error;
 use tari_core::chain_storage::{ChainStorageError, DbKey, MmrTree};
 use tari_crypto::tari_utilities::{hex::HexError, ByteArrayError};
+use tari_mmr::error::MerkleMountainRangeError;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub(crate)")]
@@ -60,6 +61,8 @@ pub enum PostgresChainStorageError {
     SerializationError { source: SerdeJsonError },
     #[snafu(context(false))]
     ByteArrayError { source: ByteArrayError },
+    #[snafu(context(false))]
+    MerkleMountainRangeError { source: MerkleMountainRangeError },
 }
 
 impl From<PostgresChainStorageError> for ChainStorageError {

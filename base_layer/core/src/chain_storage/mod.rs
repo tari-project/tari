@@ -65,5 +65,5 @@ pub use lmdb_db::{
     LMDB_DB_UTXOS,
     LMDB_DB_UTXO_MMR_CP_BACKEND,
 };
-pub use memory_db::MemoryDatabase;
+pub use memory_db::{MemDbVec, MemoryDatabase};
 pub use metadata::ChainMetadata;
