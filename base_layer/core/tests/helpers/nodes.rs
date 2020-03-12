@@ -276,7 +276,8 @@ pub fn create_network_with_2_base_nodes(
             bob_node
                 .comms
                 .peer_manager()
-                .exists(alice_node.node_identity.public_key()),
+                .exists(alice_node.node_identity.public_key())
+                .await,
             expect = true,
             max_attempts = 20,
             interval = Duration::from_millis(1000)
@@ -336,7 +337,8 @@ pub fn create_network_with_2_base_nodes_with_config(
             bob_node
                 .comms
                 .peer_manager()
-                .exists(alice_node.node_identity.public_key()),
+                .exists(alice_node.node_identity.public_key())
+                .await,
             expect = true,
             max_attempts = 20,
             interval = Duration::from_millis(1000)
@@ -434,7 +436,8 @@ pub fn create_network_with_3_base_nodes_with_config(
             bob_node
                 .comms
                 .peer_manager()
-                .exists(alice_node.node_identity.public_key()),
+                .exists(alice_node.node_identity.public_key())
+                .await,
             expect = true,
             max_attempts = 20,
             interval = Duration::from_millis(1000)
@@ -443,7 +446,8 @@ pub fn create_network_with_3_base_nodes_with_config(
             carol_node
                 .comms
                 .peer_manager()
-                .exists(alice_node.node_identity.public_key()),
+                .exists(alice_node.node_identity.public_key())
+                .await,
             expect = true,
             max_attempts = 20,
             interval = Duration::from_millis(1000)
@@ -452,7 +456,8 @@ pub fn create_network_with_3_base_nodes_with_config(
             carol_node
                 .comms
                 .peer_manager()
-                .exists(bob_node.node_identity.public_key()),
+                .exists(bob_node.node_identity.public_key())
+                .await,
             expect = true,
             max_attempts = 20,
             interval = Duration::from_millis(1000)
@@ -495,7 +500,7 @@ where
         .unwrap();
 
     for p in peers {
-        comms.async_peer_manager().add_peer(p.to_peer()).await.unwrap();
+        comms.peer_manager().add_peer(p.to_peer()).await.unwrap();
     }
 
     (comms, dht)

@@ -132,10 +132,11 @@ where DS: KeyValueStore<PeerId, Peer>
                     .peer_db
                     .get(&peer_key)
                     .map_err(PeerManagerError::DatabaseError)?
-                    .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+                    .expect("Public key index and peer database are out of sync!");
+
                 trace!(target: LOG_TARGET, "Updating peer '{}'", stored_peer.node_id);
 
-                let must_update_node_id = node_id.is_some();
+                let must_update_node_id = node_id.as_ref().filter(|n| *n != &stored_peer.node_id).is_some();
                 if must_update_node_id {
                     trace!(
                         target: LOG_TARGET,
@@ -161,13 +162,21 @@ where DS: KeyValueStore<PeerId, Peer>
                     .map_err(PeerManagerError::DatabaseError)?;
 
                 if must_update_node_id {
+                    trace!(target: LOG_TARGET, "Must update node id for peer '{}'", node_id);
                     self.remove_index_links(peer_key);
-                    self.add_index_links(peer_key, public_key, node_id);
+                    self.add_index_links(peer_key, public_key, node_id.clone());
                 }
 
                 Ok(())
             },
-            None => Err(PeerManagerError::PeerNotFoundError),
+            None => {
+                trace!(
+                    target: LOG_TARGET,
+                    "Peer not found because the public key '{}' could not be found in the index",
+                    public_key
+                );
+                Err(PeerManagerError::PeerNotFoundError)
+            },
         }
     }
 
@@ -207,10 +216,11 @@ where DS: KeyValueStore<PeerId, Peer>
             .node_id_index
             .get(node_id)
             .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
-        self.peer_db
+        Ok(self
+            .peer_db
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)
+            .expect("public_key index and peer database are out of sync"))
     }
 
     /// Find the peer with the provided PublicKey
@@ -219,10 +229,11 @@ where DS: KeyValueStore<PeerId, Peer>
             .public_key_index
             .get(public_key)
             .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
-        self.peer_db
+        Ok(self
+            .peer_db
             .get(peer_key)
             .map_err(PeerManagerError::DatabaseError)?
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)
+            .expect("public_key index and peer database are out of sync"))
     }
 
     /// Check if a peer exist using the specified public_key

@@ -164,24 +164,18 @@ async fn dht_join_propagation() {
     // to A.
     node_A.dht.dht_requester().send_join().await.unwrap();
 
-    let node_A_peer_manager = node_A.comms.async_peer_manager();
-    let node_C_peer_manager = node_C.comms.async_peer_manager();
+    let node_A_peer_manager = node_A.comms.peer_manager();
+    let node_C_peer_manager = node_C.comms.peer_manager();
 
     // Check that Node A knows about Node C and vice versa
     async_assert_eventually!(
-        node_A_peer_manager
-            .exists(node_C.node_identity().public_key())
-            .await
-            .unwrap(),
+        node_A_peer_manager.exists(node_C.node_identity().public_key()).await,
         expect = true,
         max_attempts = 10,
         interval = Duration::from_millis(1000)
     );
     async_assert_eventually!(
-        node_C_peer_manager
-            .exists(node_A.node_identity().public_key())
-            .await
-            .unwrap(),
+        node_C_peer_manager.exists(node_A.node_identity().public_key()).await,
         expect = true,
         max_attempts = 10,
         interval = Duration::from_millis(500)
@@ -227,32 +221,17 @@ async fn dht_discover_propagation() {
         .await
         .unwrap();
 
-    let node_A_peer_manager = node_A.comms.async_peer_manager();
-    let node_B_peer_manager = node_B.comms.async_peer_manager();
-    let node_C_peer_manager = node_C.comms.async_peer_manager();
-    let node_D_peer_manager = node_D.comms.async_peer_manager();
+    let node_A_peer_manager = node_A.comms.peer_manager();
+    let node_B_peer_manager = node_B.comms.peer_manager();
+    let node_C_peer_manager = node_C.comms.peer_manager();
+    let node_D_peer_manager = node_D.comms.peer_manager();
 
     // Check that all the nodes know about each other in the chain and the discovery worked
-    assert!(node_A_peer_manager
-        .exists(node_D.node_identity().public_key())
-        .await
-        .unwrap());
-    assert!(node_B_peer_manager
-        .exists(node_A.node_identity().public_key())
-        .await
-        .unwrap());
-    assert!(node_C_peer_manager
-        .exists(node_B.node_identity().public_key())
-        .await
-        .unwrap());
-    assert!(node_D_peer_manager
-        .exists(node_C.node_identity().public_key())
-        .await
-        .unwrap());
-    assert!(node_D_peer_manager
-        .exists(node_A.node_identity().public_key())
-        .await
-        .unwrap());
+    assert!(node_A_peer_manager.exists(node_D.node_identity().public_key()).await);
+    assert!(node_B_peer_manager.exists(node_A.node_identity().public_key()).await);
+    assert!(node_C_peer_manager.exists(node_B.node_identity().public_key()).await);
+    assert!(node_D_peer_manager.exists(node_C.node_identity().public_key()).await);
+    assert!(node_D_peer_manager.exists(node_A.node_identity().public_key()).await);
 
     node_A.comms.shutdown().await;
     node_B.comms.shutdown().await;

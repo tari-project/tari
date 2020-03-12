@@ -216,13 +216,9 @@ impl Parser {
         let mut handler = self.node_service.clone();
         self.executor.spawn(async move {
             match handler.get_metadata().await {
-                Err(e) => {
-                    println!("Something went wrong");
-                    warn!(
-                        target: LOG_TARGET,
-                        "Error communicating with base node: {}",
-                        e.to_string(),
-                    );
+                Err(err) => {
+                    println!("Failed to retreive chain metadata: {:?}", err);
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
                     return;
                 },
                 Ok(data) => println!("Current meta data is is: {}", data),
@@ -231,18 +227,24 @@ impl Parser {
     }
 
     fn process_get_peers(&self) {
-        let peers = match self.peer_manager.flood_peers() {
-            Ok(p) => p,
-            Err(e) => {
-                error!(target: LOG_TARGET, "Could not read peers: {}", e.to_string());
-                return;
-            },
-        };
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&peers)
-                .unwrap_or_else(|e| format!("Error serializing peer: {}", e.to_string()))
-        );
+        let peer_manager = self.peer_manager.clone();
+
+        self.executor.spawn(async move {
+            match peer_manager.flood_peers().await {
+                Ok(peers) => {
+                    println!(
+                        "{}",
+                        peers
+                            .into_iter()
+                            .fold(String::new(), |acc, p| { format!("{}\n{}", acc, p) })
+                    );
+                },
+                Err(e) => {
+                    error!(target: LOG_TARGET, "Could not read peers: {}", e.to_string());
+                    return;
+                },
+            }
+        });
     }
 
     // Function to process  the send transaction function

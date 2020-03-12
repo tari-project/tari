@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{base_node::comms_interface::CommsInterfaceError, helpers::WaitingRequestError};
+use crate::base_node::comms_interface::CommsInterfaceError;
 use derive_error::Error;
 use tari_comms_dht::outbound::DhtOutboundError;
 
@@ -32,5 +32,4 @@ pub enum BaseNodeServiceError {
     InvalidRequest(String),
     #[error(msg_embedded, no_from, non_std)]
     InvalidResponse(String),
-    WaitingRequestError(WaitingRequestError),
 }

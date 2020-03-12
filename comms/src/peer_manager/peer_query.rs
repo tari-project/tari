@@ -24,7 +24,7 @@ use crate::peer_manager::{peer_id::PeerId, NodeId, Peer, PeerManagerError};
 use std::cmp::min;
 use tari_storage::{IterationResult, KeyValueStore};
 
-type Predicate<'a, A> = Box<dyn FnMut(&A) -> bool + 'a>;
+type Predicate<'a, A> = Box<dyn FnMut(&A) -> bool + Send + 'a>;
 
 /// Sort options for `PeerQuery`
 #[derive(Debug, Clone)]
@@ -59,7 +59,7 @@ impl<'a> PeerQuery<'a> {
     /// Set the selection predicate. This predicate should return `true` to include a `Peer`
     /// in the result set.
     pub fn select_where<F>(mut self, select_predicate: F) -> Self
-    where F: FnMut(&Peer) -> bool + 'a {
+    where F: FnMut(&Peer) -> bool + Send + 'a {
         self.select_predicate = Some(Box::new(select_predicate));
         self
     }
@@ -77,7 +77,7 @@ impl<'a> PeerQuery<'a> {
     }
 
     pub fn until<F>(mut self, until_predicate: F) -> Self
-    where F: FnMut(&[Peer]) -> bool + 'a {
+    where F: FnMut(&[Peer]) -> bool + Send + 'a {
         self.until_predicate = Some(Box::new(until_predicate));
         self
     }

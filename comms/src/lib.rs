@@ -21,6 +21,9 @@ mod macros;
 pub mod connection_manager;
 pub use connection_manager::{validate_peer_addresses, ConnectionManagerEvent, PeerConnection, PeerConnectionError};
 
+pub mod peer_manager;
+pub use peer_manager::PeerManager;
+
 mod consts;
 mod multiplexing;
 mod noise;
@@ -30,7 +33,6 @@ pub mod backoff;
 pub mod bounded_executor;
 pub mod compat;
 pub mod memsocket;
-pub mod peer_manager;
 pub mod protocol;
 #[macro_use]
 pub mod message;

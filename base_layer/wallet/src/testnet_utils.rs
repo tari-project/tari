@@ -273,10 +273,14 @@ pub fn generate_wallet_test_data<
 
     let alice_peer = wallet_alice.comms.node_identity().to_peer();
 
-    wallet.comms.peer_manager().add_peer(alice_peer)?;
+    wallet
+        .runtime
+        .block_on(wallet.comms.peer_manager().add_peer(alice_peer))?;
     let bob_peer = wallet_bob.comms.node_identity().to_peer();
 
-    wallet.comms.peer_manager().add_peer(bob_peer)?;
+    wallet
+        .runtime
+        .block_on(wallet.comms.peer_manager().add_peer(bob_peer))?;
 
     wallet
         .runtime

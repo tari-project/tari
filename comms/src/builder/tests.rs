@@ -118,7 +118,7 @@ async fn peer_to_peer_custom_protocols() {
     let node_identity1 = comms_node1.node_identity();
     let node_identity2 = comms_node2.node_identity();
     comms_node1
-        .async_peer_manager()
+        .peer_manager()
         .add_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
@@ -190,7 +190,7 @@ async fn peer_to_peer_messaging() {
     let node_identity1 = comms_node1.node_identity();
     let node_identity2 = comms_node2.node_identity();
     comms_node1
-        .async_peer_manager()
+        .peer_manager()
         .add_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
@@ -265,7 +265,7 @@ async fn peer_to_peer_messaging_simultaneous() {
     let node_identity1 = comms_node1.node_identity().clone();
     let node_identity2 = comms_node2.node_identity().clone();
     comms_node1
-        .async_peer_manager()
+        .peer_manager()
         .add_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
@@ -277,7 +277,7 @@ async fn peer_to_peer_messaging_simultaneous() {
         .await
         .unwrap();
     comms_node2
-        .async_peer_manager()
+        .peer_manager()
         .add_peer(Peer::new(
             node_identity1.public_key().clone(),
             node_identity1.node_id().clone(),

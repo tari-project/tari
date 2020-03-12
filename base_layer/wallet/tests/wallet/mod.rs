@@ -132,7 +132,7 @@ fn test_wallet() {
             ContactsServiceMemoryDatabase::new(),
         )
         .unwrap();
-        let bob_wallet = Wallet::new(
+        let mut bob_wallet = Wallet::new(
             config2,
             runtime_node2,
             WalletMemoryDatabase::new(),
@@ -143,21 +143,19 @@ fn test_wallet() {
         .unwrap();
 
         alice_wallet
-            .comms
-            .peer_manager()
-            .add_peer(create_peer(
+            .runtime
+            .block_on(alice_wallet.comms.peer_manager().add_peer(create_peer(
                 bob_identity.public_key().clone(),
                 bob_identity.public_address(),
-            ))
+            )))
             .unwrap();
 
         bob_wallet
-            .comms
-            .peer_manager()
-            .add_peer(create_peer(
+            .runtime
+            .block_on(bob_wallet.comms.peer_manager().add_peer(create_peer(
                 alice_identity.public_key().clone(),
                 alice_identity.public_address(),
-            ))
+            )))
             .unwrap();
 
         alice_wallet

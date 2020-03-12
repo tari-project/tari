@@ -43,7 +43,7 @@ where
         .await
         .unwrap();
 
-    let peer_manager = comms.async_peer_manager();
+    let peer_manager = comms.peer_manager();
 
     for p in peers {
         peer_manager.add_peer(p.to_peer()).await.unwrap();

@@ -188,7 +188,8 @@ mod pingpong {
 
         println!("Comms listening on {}", comms.listening_address());
 
-        comms.peer_manager().add_peer(peer_identity.to_peer()).unwrap();
+        rt.block_on(comms.peer_manager().add_peer(peer_identity.to_peer()))
+            .unwrap();
         let shutdown_signal = comms.shutdown_signal();
 
         let handles = rt

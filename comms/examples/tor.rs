@@ -98,7 +98,7 @@ async fn run() -> Result<(), Error> {
 
     // Let's add node 2 as a peer to node 1
     comms_node1
-        .async_peer_manager()
+        .peer_manager()
         .add_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),

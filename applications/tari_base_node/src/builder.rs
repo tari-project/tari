@@ -355,7 +355,7 @@ where
         save_as_json(&config.tor_identity_file, &hs.get_tor_identity())
             .map_err(|e| format!("Failed to save tor identity: {:?}", e))?;
     }
-    add_peers_to_comms(&comms, assign_peers(&config.peer_seeds))?;
+    add_peers_to_comms(&comms, assign_peers(&config.peer_seeds)).await?;
     create_wallet_folder(&config.wallet_file)?;
     let wallet_conn = run_migration_and_create_connection_pool(&config.wallet_file)
         .map_err(|e| format!("Could not create wallet: {:?}", e))?;
@@ -387,6 +387,7 @@ where
     if let Some(base_node_peer) = comms
         .peer_manager()
         .random_peers(1)
+        .await
         .expect("No peers in peer manager.")
         .first()
     {
@@ -605,13 +606,14 @@ async fn setup_comms_services(
         .map_err(|e| format!("Could not create comms layer: {:?}", e))
 }
 
-fn add_peers_to_comms(comms: &CommsNode, peers: Vec<Peer>) -> Result<(), String> {
+async fn add_peers_to_comms(comms: &CommsNode, peers: Vec<Peer>) -> Result<(), String> {
     for p in peers {
         let peer_desc = p.to_string();
         info!(target: LOG_TARGET, "Adding seed peer [{}]", peer_desc);
         comms
             .peer_manager()
             .add_peer(p)
+            .await
             .map_err(|e| format!("Could not add peer {} to comms layer: {}", peer_desc, e))?;
     }
     Ok(())
