@@ -132,7 +132,7 @@ where
         if let Some(path) = config.logging_path {
             let logfile = FileAppender::builder()
                 .encoder(Box::new(PatternEncoder::new(
-                    "{d(%Y-%m-%d %H:%M:%S.%f)} [{M}#{L}] [{t}] {l:5} {m} (({T}:{I})){n}",
+                    "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}",
                 )))
                 .append(false)
                 .build(path.as_str())
@@ -145,13 +145,11 @@ where
 
             log_handle = Some(log4rs::init_config(config)?);
         }
-
         let db = WalletDatabase::new(wallet_backend);
         let base_node_peers = runtime.block_on(db.get_peers())?;
 
         #[cfg(feature = "test_harness")]
         let transaction_backend_handle = transaction_backend.clone();
-
         let factories = config.factories;
         let (publisher, subscription_factory) = pubsub_connector(
             runtime.handle().clone(),
@@ -160,7 +158,6 @@ where
         let subscription_factory = Arc::new(subscription_factory);
 
         let (comms, dht) = runtime.block_on(initialize_comms(config.comms_config.clone(), publisher))?;
-
         let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
             .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
             .add_initializer(LivenessInitializer::new(
@@ -191,9 +188,7 @@ where
             ))
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
             .finish();
-
         let handles = runtime.block_on(fut).expect("Service initialization failed");
-
         let mut output_manager_handle = handles
             .get_handle::<OutputManagerHandle>()
             .expect("Could not get Output Manager Service Handle");
@@ -206,12 +201,10 @@ where
         let contacts_handle = handles
             .get_handle::<ContactsServiceHandle>()
             .expect("Could not get Contacts Service Handle");
-
         for p in base_node_peers {
             runtime.block_on(transaction_service_handle.set_base_node_public_key(p.public_key.clone()))?;
             runtime.block_on(output_manager_handle.set_base_node_public_key(p.public_key.clone()))?;
         }
-
         Ok(Wallet {
             comms,
             dht_service: dht,
