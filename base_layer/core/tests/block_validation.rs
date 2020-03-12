@@ -34,7 +34,7 @@ fn test_genesis_block() {
     let network = Network::LocalNet;
     let rules = ConsensusManagerBuilder::new(network).build();
     let backend = MemoryDatabase::<HashDigest>::default();
-    let mut db = BlockchainDatabase::new(backend, rules.clone()).unwrap();
+    let mut db = BlockchainDatabase::new(backend, &rules).unwrap();
     let validators = Validators::new(
         FullConsensusValidator::new(rules.clone(), factories, db.clone()),
         StatelessValidator::new(&rules.consensus_constants()),

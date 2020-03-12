@@ -159,9 +159,9 @@ pub struct BlockBuilder {
 }
 
 impl BlockBuilder {
-    pub fn new(consensus_constants: &ConsensusConstants) -> BlockBuilder {
+    pub fn new(blockchain_version: u16) -> BlockBuilder {
         BlockBuilder {
-            header: BlockHeader::new(consensus_constants.blockchain_version()),
+            header: BlockHeader::new(blockchain_version),
             inputs: Vec::new(),
             outputs: Vec::new(),
             kernels: Vec::new(),

@@ -181,7 +181,8 @@ where T: BlockchainBackend + 'static
                     .ok_or_else(|| CommsInterfaceError::UnexpectedApiResponse)?;
                 let best_block_header =
                     async_db::fetch_header_with_block_hash(self.blockchain_db.clone(), best_block_hash).await?;
-                let header = BlockHeader::from_previous(&best_block_header);
+                let mut header = BlockHeader::from_previous(&best_block_header);
+                header.version = self.consensus_manager.consensus_constants().blockchain_version();
 
                 let transactions = async_mempool::retrieve(
                     self.mempool.clone(),
@@ -195,12 +196,8 @@ where T: BlockchainBackend + 'static
                 .map(|tx| (**tx).clone())
                 .collect();
 
-                let block_template = NewBlockTemplate::from(
-                    BlockBuilder::new(&self.consensus_manager.consensus_constants())
-                        .with_header(header)
-                        .with_transactions(transactions)
-                        .build(),
-                );
+                let block_template =
+                    NewBlockTemplate::from(header.into_builder().with_transactions(transactions).build());
                 trace!(target: LOG_TARGET, "New block template requested {}", block_template);
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },

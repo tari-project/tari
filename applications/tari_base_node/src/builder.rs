@@ -317,7 +317,7 @@ where
     B: BlockchainBackend + 'static,
 {
     let rules = ConsensusManagerBuilder::new(network).build();
-    let mut db = BlockchainDatabase::new(backend, rules.clone()).map_err(|e| e.to_string())?;
+    let mut db = BlockchainDatabase::new(backend, &rules).map_err(|e| e.to_string())?;
     let factories = CryptoFactories::default();
     let validators = Validators::new(
         FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
