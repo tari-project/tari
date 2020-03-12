@@ -31,10 +31,11 @@ use super::{
 use crate::{
     backoff::Backoff,
     noise::NoiseConfig,
-    peer_manager::{AsyncPeerManager, NodeId, NodeIdentity},
+    peer_manager::{NodeId, NodeIdentity},
     protocol::{ProtocolEvent, ProtocolId, Protocols},
     transports::Transport,
     types::DEFAULT_LISTENER_ADDRESS,
+    PeerManager,
 };
 use futures::{
     channel::{mpsc, oneshot},
@@ -143,7 +144,7 @@ pub struct ConnectionManager<TTransport, TBackoff> {
     dialer_tx: mpsc::Sender<DialerRequest>,
     dialer: Option<Dialer<TTransport, TBackoff>>,
     listener: Option<PeerListener<TTransport>>,
-    peer_manager: AsyncPeerManager,
+    peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     active_connections: HashMap<NodeId, PeerConnection>,
     shutdown_signal: Option<ShutdownSignal>,
@@ -169,7 +170,7 @@ where
         backoff: TBackoff,
         request_rx: mpsc::Receiver<ConnectionManagerRequest>,
         node_identity: Arc<NodeIdentity>,
-        peer_manager: AsyncPeerManager,
+        peer_manager: Arc<PeerManager>,
         protocols: Protocols<yamux::Stream>,
         connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
         shutdown_signal: ShutdownSignal,
@@ -391,8 +392,8 @@ where
                 }
 
                 // If we're dialing this node, let's cancel it
-                // self.send_dialer_request(DialerRequest::CancelPendingDial(node_id.clone()))
-                //     .await;
+                self.send_dialer_request(DialerRequest::CancelPendingDial(node_id.clone()))
+                    .await;
 
                 match self.active_connections.remove(&node_id) {
                     Some(existing_conn) => {

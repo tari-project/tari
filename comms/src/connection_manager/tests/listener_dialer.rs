@@ -184,8 +184,8 @@ async fn smoke() {
 
     shutdown.trigger().unwrap();
 
-    let peer2 = peer_manager1.find_by_node_id(node_identity2.node_id()).unwrap();
-    let peer1 = peer_manager2.find_by_node_id(node_identity1.node_id()).unwrap();
+    let peer2 = peer_manager1.find_by_node_id(node_identity2.node_id()).await.unwrap();
+    let peer1 = peer_manager2.find_by_node_id(node_identity1.node_id()).await.unwrap();
 
     assert_eq!(&peer1.public_key, node_identity1.public_key());
     assert_eq!(&peer2.public_key, node_identity2.public_key());

@@ -136,12 +136,13 @@ async fn dial_success() {
             PeerFeatures::COMMUNICATION_CLIENT,
             &[],
         ))
+        .await
         .unwrap();
 
     // Dial at the same time
     let mut conn_out = conn_man1.dial_peer(node_identity2.node_id().clone()).await.unwrap();
     assert_eq!(conn_out.peer_node_id(), node_identity2.node_id());
-    let peer2 = peer_manager1.find_by_node_id(conn_out.peer_node_id()).unwrap();
+    let peer2 = peer_manager1.find_by_node_id(conn_out.peer_node_id()).await.unwrap();
     assert_eq!(peer2.supported_protocols, &[TEST_PROTO]);
 
     let event = subscription2.next().await.unwrap().unwrap();
@@ -151,7 +152,7 @@ async fn dial_success() {
     unpack_enum!(ConnectionManagerEvent::PeerConnected(conn_in) = &*event);
     assert_eq!(conn_in.peer_node_id(), node_identity1.node_id());
 
-    let peer1 = peer_manager2.find_by_node_id(node_identity1.node_id()).unwrap();
+    let peer1 = peer_manager2.find_by_node_id(node_identity1.node_id()).await.unwrap();
     assert_eq!(peer1.supported_protocols(), &[TEST_PROTO]);
 
     let err = conn_out.open_substream("/tari/invalid").await.unwrap_err();
@@ -220,7 +221,7 @@ async fn dial_offline_peer() {
     peer.connection_stats.set_connection_failed();
     assert_eq!(peer.is_offline(), true);
 
-    peer_manager.add_peer(peer).unwrap();
+    peer_manager.add_peer(peer).await.unwrap();
 
     let err = conn_man.dial_peer(node_identity.node_id().clone()).await.unwrap_err();
     unpack_enum!(ConnectionManagerError::PeerOffline = err);
@@ -278,6 +279,7 @@ async fn simultaneous_dial_events() {
             PeerFeatures::COMMUNICATION_CLIENT,
             &[],
         ))
+        .await
         .unwrap();
 
     peer_manager2
@@ -289,6 +291,7 @@ async fn simultaneous_dial_events() {
             PeerFeatures::COMMUNICATION_CLIENT,
             &[],
         ))
+        .await
         .unwrap();
 
     // Dial at the same time

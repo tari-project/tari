@@ -100,15 +100,3 @@ where T: BlockchainBackend + 'static
         Ok(())
     }
 }
-
-impl<T> Clone for MempoolInboundHandlers<T>
-where T: BlockchainBackend + 'static
-{
-    fn clone(&self) -> Self {
-        // All members use Arc's internally so calling clone should be cheap.
-        Self {
-            mempool: self.mempool.clone(),
-            outbound_nmi: self.outbound_nmi.clone(),
-        }
-    }
-}

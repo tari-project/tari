@@ -60,7 +60,7 @@ where
         .unwrap();
 
     for p in peers {
-        comms.async_peer_manager().add_peer(p.to_peer()).await.unwrap();
+        comms.peer_manager().add_peer(p.to_peer()).await.unwrap();
     }
 
     (comms, dht)

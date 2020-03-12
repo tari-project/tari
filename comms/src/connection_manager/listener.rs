@@ -33,9 +33,10 @@ use crate::{
     multiaddr::Multiaddr,
     multiplexing::Yamux,
     noise::NoiseConfig,
-    peer_manager::{AsyncPeerManager, NodeIdentity},
+    peer_manager::NodeIdentity,
     protocol::ProtocolId,
     transports::Transport,
+    PeerManager,
 };
 use futures::{channel::mpsc, AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
@@ -54,7 +55,7 @@ pub struct PeerListener<TTransport> {
     shutdown_signal: Option<ShutdownSignal>,
     transport: TTransport,
     noise_config: NoiseConfig,
-    peer_manager: AsyncPeerManager,
+    peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     listening_address: Option<Multiaddr>,
     our_supported_protocols: Vec<ProtocolId>,
@@ -66,13 +67,13 @@ where
     TTransport::Output: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
+    pub fn new(
         executor: runtime::Handle,
         config: ConnectionManagerConfig,
         transport: TTransport,
         noise_config: NoiseConfig,
         conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
-        peer_manager: AsyncPeerManager,
+        peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         supported_protocols: Vec<ProtocolId>,
         shutdown_signal: ShutdownSignal,
@@ -201,7 +202,7 @@ where
     async fn perform_socket_upgrade_procedure(
         executor: runtime::Handle,
         node_identity: Arc<NodeIdentity>,
-        peer_manager: AsyncPeerManager,
+        peer_manager: Arc<PeerManager>,
         noise_config: NoiseConfig,
         conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
         socket: TTransport::Output,
@@ -251,7 +252,8 @@ where
             authenticated_public_key,
             peer_identity,
             allow_test_addresses,
-        )?;
+        )
+        .await?;
 
         debug!(
             target: LOG_TARGET,

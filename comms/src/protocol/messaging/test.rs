@@ -30,7 +30,7 @@ use super::protocol::{
 use crate::{
     message::{InboundMessage, MessageExt, MessageFlags, MessageTag, OutboundMessage},
     net_address::MultiaddressesWithStats,
-    peer_manager::{AsyncPeerManager, NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     proto::envelope::Envelope,
     protocol::{messaging::SendFailReason, ProtocolEvent, ProtocolNotification},
     test_utils::{
@@ -58,7 +58,7 @@ use tokio_macros as runtime;
 const TEST_MSG1: Bytes = Bytes::from_static(b"TEST_MSG1");
 
 async fn spawn_messaging_protocol() -> (
-    AsyncPeerManager,
+    Arc<PeerManager>,
     Arc<NodeIdentity>,
     ConnectionManagerMockState,
     mpsc::Sender<ProtocolNotification<CommsSubstream>>,
@@ -74,7 +74,7 @@ async fn spawn_messaging_protocol() -> (
     let mock_state = mock.get_shared_state();
     rt_handle.spawn(mock.run());
 
-    let peer_manager: AsyncPeerManager = build_peer_manager().into();
+    let peer_manager: Arc<PeerManager> = build_peer_manager().into();
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_CLIENT);
     let (proto_tx, proto_rx) = mpsc::channel(10);
     let (request_tx, request_rx) = mpsc::channel(10);

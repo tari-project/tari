@@ -179,7 +179,7 @@ where
                     );
                     let mut storage = self.storage.take().expect("StoreTask intialized without storage");
                     let msg_clone = message.clone();
-                    tokio::task::spawn_blocking(move || storage.store(msg_clone)).await??;
+                    storage.store(msg_clone).await?;
                 }
 
                 trace!(target: LOG_TARGET, "Passing message to next service");
@@ -201,7 +201,7 @@ where
                     "Decryption failed for message. Adding to SAF storage."
                 );
                 let mut storage = self.storage.take().expect("StoreTask intialized without storage");
-                tokio::task::spawn_blocking(move || storage.store(message)).await??;
+                storage.store(message).await?;
             },
         }
 
@@ -217,7 +217,7 @@ struct InnerStorage {
 }
 
 impl InnerStorage {
-    fn store(&mut self, message: DecryptedDhtMessage) -> Result<(), StoreAndForwardError> {
+    async fn store(&mut self, message: DecryptedDhtMessage) -> Result<(), StoreAndForwardError> {
         let DecryptedDhtMessage {
             version,
             decryption_result,
@@ -244,7 +244,7 @@ impl InnerStorage {
                 );
             },
             NodeDestination::PublicKey(dest_public_key) => {
-                if peer_manager.exists(&dest_public_key) {
+                if peer_manager.exists(&dest_public_key).await {
                     self.storage.insert(
                         origin.signature.clone(),
                         StoredMessage::new(version, dht_header, body),
@@ -253,12 +253,14 @@ impl InnerStorage {
                 }
             },
             NodeDestination::NodeId(dest_node_id) => {
-                if peer_manager.exists_node_id(&dest_node_id) ||
-                    peer_manager.in_network_region(
-                        &dest_node_id,
-                        node_identity.node_id(),
-                        self.config.num_neighbouring_nodes,
-                    )?
+                if peer_manager.exists_node_id(&dest_node_id).await ||
+                    peer_manager
+                        .in_network_region(
+                            &dest_node_id,
+                            node_identity.node_id(),
+                            self.config.num_neighbouring_nodes,
+                        )
+                        .await?
                 {
                     self.storage.insert(
                         origin.signature.clone(),

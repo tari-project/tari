@@ -27,7 +27,7 @@ use crate::{
     connection_manager::{ConnectionManager, ConnectionManagerEvent, ConnectionManagerRequester},
     message::InboundMessage,
     multiaddr::Multiaddr,
-    peer_manager::{AsyncPeerManager, NodeIdentity, PeerManager},
+    peer_manager::{NodeIdentity, PeerManager},
     pipeline,
     protocol::{messaging, messaging::MessagingProtocol},
     tor,
@@ -199,11 +199,6 @@ where
         Arc::clone(&self.peer_manager)
     }
 
-    /// Return an asynchronous PeerManager
-    pub fn async_peer_manager(&self) -> AsyncPeerManager {
-        Arc::clone(&self.peer_manager).into()
-    }
-
     /// Return a cloned atomic reference of the NodeIdentity
     pub fn node_identity(&self) -> Arc<NodeIdentity> {
         Arc::clone(&self.node_identity)
@@ -267,11 +262,6 @@ impl CommsNode {
     /// Return a cloned atomic reference of the PeerManager
     pub fn peer_manager(&self) -> Arc<PeerManager> {
         Arc::clone(&self.peer_manager)
-    }
-
-    /// Return an asynchronous PeerManager
-    pub fn async_peer_manager(&self) -> AsyncPeerManager {
-        Arc::clone(&self.peer_manager).into()
     }
 
     /// Return a cloned atomic reference of the NodeIdentity

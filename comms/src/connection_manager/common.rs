@@ -25,11 +25,12 @@ use crate::{
     connection_manager::error::ConnectionManagerError,
     multiaddr::{Multiaddr, Protocol},
     multiplexing::Yamux,
-    peer_manager::{AsyncPeerManager, NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     proto::identity::PeerIdentityMsg,
     protocol,
     protocol::ProtocolId,
     types::CommsPublicKey,
+    PeerManager,
 };
 use futures::StreamExt;
 use log::*;
@@ -79,14 +80,14 @@ pub fn is_valid_base_node_node_id(node_id: &NodeId, public_key: &CommsPublicKey)
 ///
 /// If the `allow_test_addrs` parameter is true, loopback, local link and other addresses normally not considered valid
 /// for p2p comms will be accepted.
-pub fn validate_and_add_peer_from_peer_identity(
-    peer_manager: &AsyncPeerManager,
+pub async fn validate_and_add_peer_from_peer_identity(
+    peer_manager: &PeerManager,
     authenticated_public_key: CommsPublicKey,
     peer_identity: PeerIdentityMsg,
     allow_test_addrs: bool,
 ) -> Result<NodeId, ConnectionManagerError>
 {
-    let peer_manager = peer_manager.inner();
+    // let peer_manager = peer_manager.inner();
     // Validate the given node id for base nodes
     // TODO: This is technically a domain-level rule
     let peer_node_id =
@@ -96,7 +97,7 @@ pub fn validate_and_add_peer_from_peer_identity(
     }
 
     // Check if we know the peer and if it is banned
-    let maybe_peer = match peer_manager.find_by_public_key(&authenticated_public_key) {
+    let maybe_peer = match peer_manager.find_by_public_key(&authenticated_public_key).await {
         Ok(peer) if peer.is_banned() => return Err(ConnectionManagerError::PeerBanned),
         Ok(peer) => Some(peer),
         Err(err) if err.is_peer_not_found() => None,
@@ -132,15 +133,17 @@ pub fn validate_and_add_peer_from_peer_identity(
             );
             let mut conn_stats = peer.connection_stats;
             conn_stats.set_connection_success();
-            peer_manager.update_peer(
-                &authenticated_public_key,
-                Some(peer_node_id.clone()),
-                Some(addresses),
-                None,
-                Some(PeerFeatures::from_bits_truncate(peer_identity.features)),
-                Some(conn_stats),
-                Some(supported_protocols),
-            )?;
+            peer_manager
+                .update_peer(
+                    &authenticated_public_key,
+                    Some(peer_node_id.clone()),
+                    Some(addresses),
+                    None,
+                    Some(PeerFeatures::from_bits_truncate(peer_identity.features)),
+                    Some(conn_stats),
+                    Some(supported_protocols),
+                )
+                .await?;
         },
         None => {
             debug!(
@@ -149,7 +152,7 @@ pub fn validate_and_add_peer_from_peer_identity(
                 peer_node_id.short_str()
             );
             let mut new_peer = Peer::new(
-                authenticated_public_key,
+                authenticated_public_key.clone(),
                 peer_node_id.clone(),
                 addresses.into(),
                 PeerFlags::empty(),
@@ -157,7 +160,7 @@ pub fn validate_and_add_peer_from_peer_identity(
                 &supported_protocols,
             );
             new_peer.connection_stats.set_connection_success();
-            peer_manager.add_peer(new_peer)?;
+            peer_manager.add_peer(new_peer).await?;
         },
     }
 

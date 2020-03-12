@@ -32,8 +32,6 @@ pub enum PeerManagerError {
     BannedPeer,
     // An problem has been encountered with the database
     DatabaseError(KeyValStoreError),
-    /// Failed to spawn blocking task
-    BlockingTaskSpawnError,
 }
 
 impl PeerManagerError {

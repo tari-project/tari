@@ -159,7 +159,9 @@ where
             .err()
             .expect("previous check that decryption failed");
 
-        let mut message_params = self.get_send_params(&dht_header, vec![source_peer.public_key.clone()])?;
+        let mut message_params = self
+            .get_send_params(&dht_header, vec![source_peer.public_key.clone()])
+            .await?;
 
         message_params.with_dht_header(dht_header.clone());
 
@@ -169,7 +171,7 @@ where
     }
 
     /// Selects the most appropriate broadcast strategy based on the received messages destination
-    fn get_send_params(
+    async fn get_send_params(
         &self,
         header: &DhtMessageHeader,
         excluded_peers: Vec<CommsPublicKey>,
@@ -189,7 +191,7 @@ where
                 params.neighbours_with_features(excluded_peers, filter_features);
             },
             NodeDestination::PublicKey(dest_public_key) => {
-                if self.peer_manager.exists(&dest_public_key) {
+                if self.peer_manager.exists(&dest_public_key).await {
                     // Send to destination peer directly if the current node knows that peer
                     params.direct_public_key(*dest_public_key);
                 } else {
@@ -198,7 +200,7 @@ where
                 }
             },
             NodeDestination::NodeId(dest_node_id) => {
-                match self.peer_manager.find_by_node_id(&dest_node_id) {
+                match self.peer_manager.find_by_node_id(&dest_node_id).await {
                     Ok(dest_peer) => {
                         // Send to destination peer directly if the current node knows that peer
                         params.direct_public_key(dest_peer.public_key);

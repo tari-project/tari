@@ -25,13 +25,14 @@ use crate::{
     compat::IoCompat,
     connection_manager::{ConnectionManagerEvent, ConnectionManagerRequester},
     message::{InboundMessage, MessageTag, OutboundMessage},
-    peer_manager::{AsyncPeerManager, NodeId, NodeIdentity, Peer, PeerManagerError},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerManagerError},
     protocol::{
         messaging::{inbound::InboundMessaging, outbound::OutboundMessaging},
         ProtocolEvent,
         ProtocolNotification,
     },
     types::CommsSubstream,
+    PeerManager,
 };
 use bytes::Bytes;
 use derive_error::Error;
@@ -100,7 +101,7 @@ pub struct MessagingProtocol {
     executor: runtime::Handle,
     connection_manager_requester: ConnectionManagerRequester,
     node_identity: Arc<NodeIdentity>,
-    peer_manager: AsyncPeerManager,
+    peer_manager: Arc<PeerManager>,
     proto_notification: Fuse<mpsc::Receiver<ProtocolNotification<CommsSubstream>>>,
     active_queues: HashMap<Box<NodeId>, mpsc::Sender<OutboundMessage>>,
     request_rx: Fuse<mpsc::Receiver<MessagingRequest>>,
@@ -121,7 +122,7 @@ impl MessagingProtocol {
     pub fn new(
         executor: runtime::Handle,
         connection_manager_requester: ConnectionManagerRequester,
-        peer_manager: AsyncPeerManager,
+        peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         proto_notification: mpsc::Receiver<ProtocolNotification<CommsSubstream>>,
         request_rx: mpsc::Receiver<MessagingRequest>,

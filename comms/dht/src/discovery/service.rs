@@ -126,7 +126,7 @@ impl DhtDiscoveryService {
                 );
             },
 
-            NotifyDiscoveryResponseReceived(discovery_msg) => self.handle_discovery_response(*discovery_msg),
+            NotifyDiscoveryResponseReceived(discovery_msg) => self.handle_discovery_response(*discovery_msg).await,
         }
     }
 
@@ -153,7 +153,7 @@ impl DhtDiscoveryService {
         requests
     }
 
-    fn handle_discovery_response(&mut self, discovery_msg: DiscoveryResponseMessage) {
+    async fn handle_discovery_response(&mut self, discovery_msg: DiscoveryResponseMessage) {
         trace!(
             target: LOG_TARGET,
             "Received discovery response message from {}",
@@ -168,7 +168,7 @@ impl DhtDiscoveryService {
         ) {
             let DiscoveryRequestState { public_key, reply_tx } = request;
 
-            let result = self.validate_then_add_peer(&public_key, discovery_msg);
+            let result = self.validate_then_add_peer(&public_key, discovery_msg).await;
 
             // Resolve any other pending discover requests if the peer was found
             if let Ok(peer) = &result {
@@ -183,7 +183,7 @@ impl DhtDiscoveryService {
         }
     }
 
-    fn validate_then_add_peer(
+    async fn validate_then_add_peer(
         &mut self,
         public_key: &CommsPublicKey,
         discovery_msg: DiscoveryResponseMessage,
@@ -200,12 +200,14 @@ impl DhtDiscoveryService {
         validate_peer_addresses(&addresses, self.config.network.is_localtest())
             .map_err(|err| DhtDiscoveryError::InvalidPeerMultiaddr(err.to_string()))?;
 
-        let peer = self.add_or_update_peer(
-            &public_key,
-            node_id,
-            addresses,
-            PeerFeatures::from_bits_truncate(discovery_msg.peer_features),
-        )?;
+        let peer = self
+            .add_or_update_peer(
+                &public_key,
+                node_id,
+                addresses,
+                PeerFeatures::from_bits_truncate(discovery_msg.peer_features),
+            )
+            .await?;
 
         Ok(peer)
     }
@@ -229,7 +231,7 @@ impl DhtDiscoveryService {
         }
     }
 
-    fn add_or_update_peer(
+    async fn add_or_update_peer(
         &self,
         pubkey: &CommsPublicKey,
         node_id: NodeId,
@@ -238,31 +240,35 @@ impl DhtDiscoveryService {
     ) -> Result<Peer, DhtDiscoveryError>
     {
         let peer_manager = &self.peer_manager;
-        if peer_manager.exists(pubkey) {
-            peer_manager.update_peer(
-                pubkey,
-                Some(node_id),
-                Some(net_addresses),
-                None,
-                Some(peer_features),
-                None,
-                None,
-            )?;
+        if peer_manager.exists(pubkey).await {
+            peer_manager
+                .update_peer(
+                    pubkey,
+                    Some(node_id),
+                    Some(net_addresses),
+                    None,
+                    Some(peer_features),
+                    None,
+                    None,
+                )
+                .await?;
         } else {
-            peer_manager.add_peer(Peer::new(
-                pubkey.clone(),
-                node_id,
-                net_addresses.into(),
-                PeerFlags::default(),
-                peer_features,
-                // We don't know which protocols the peer supports. This is ok because:
-                // 1) supported protocols are considered "extra" information and are not needed for p2p comms, and
-                // 2) when a connection is established with this node, supported protocols information is obtained
-                &[],
-            ))?;
+            peer_manager
+                .add_peer(Peer::new(
+                    pubkey.clone(),
+                    node_id,
+                    net_addresses.into(),
+                    PeerFlags::default(),
+                    peer_features,
+                    // We don't know which protocols the peer supports. This is ok because:
+                    // 1) supported protocols are considered "extra" information and are not needed for p2p comms, and
+                    // 2) when a connection is established with this node, supported protocols information is obtained
+                    &[],
+                ))
+                .await?;
         }
 
-        let peer = peer_manager.find_by_public_key(&pubkey)?;
+        let peer = peer_manager.find_by_public_key(&pubkey).await?;
 
         Ok(peer)
     }

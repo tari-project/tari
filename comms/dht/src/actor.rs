@@ -32,7 +32,6 @@ use crate::{
     discovery::DhtDiscoveryError,
     outbound::{OutboundMessageRequester, SendMessageParams},
     proto::{dht::JoinMessage, envelope::DhtMessageType, store_forward::StoredMessagesRequest},
-    utils::hoist_nested_result,
     DhtConfig,
 };
 use chrono::{DateTime, Utc};
@@ -63,7 +62,6 @@ use tari_comms::{
 };
 use tari_crypto::tari_utilities::ByteArray;
 use tari_shutdown::ShutdownSignal;
-use tokio::task;
 use ttl_cache::TtlCache;
 
 const LOG_TARGET: &str = "comms::dht::actor";
@@ -256,17 +254,18 @@ impl<'a> DhtActor<'a> {
                 let peer_manager = Arc::clone(&self.peer_manager);
                 let node_identity = Arc::clone(&self.node_identity);
                 let config = self.config.clone();
-                Box::pin(
-                    task::spawn_blocking(move || {
-                        match Self::select_peers(config, node_identity, peer_manager, broadcast_strategy) {
-                            Ok(peers) => reply_tx.send(peers).map_err(|_| DhtActorError::ReplyCanceled),
-                            Err(err) => {
-                                error!(target: LOG_TARGET, "Peer selection failed: {:?}", err);
-                                reply_tx.send(Vec::new()).map_err(|_| DhtActorError::ReplyCanceled)
-                            },
-                        }
-                    })
-                    .map(hoist_nested_result),
+                Box::pin(async move {
+                    // task::spawn_blocking(move || {
+                    match Self::select_peers(config, node_identity, peer_manager, broadcast_strategy).await {
+                        Ok(peers) => reply_tx.send(peers).map_err(|_| DhtActorError::ReplyCanceled),
+                        Err(err) => {
+                            error!(target: LOG_TARGET, "Peer selection failed: {:?}", err);
+                            reply_tx.send(Vec::new()).map_err(|_| DhtActorError::ReplyCanceled)
+                        },
+                    }
+                }
+                     // })
+                    // .map(hoist_nested_result),
                 )
             },
             SendRequestStoredMessages(maybe_since) => {
@@ -345,7 +344,7 @@ impl<'a> DhtActor<'a> {
         Ok(())
     }
 
-    fn select_peers(
+    async fn select_peers(
         config: DhtConfig,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
@@ -358,6 +357,7 @@ impl<'a> DhtActor<'a> {
                 // Send to a particular peer matching the given node ID
                 peer_manager
                     .direct_identity_node_id(&node_id)
+                    .await
                     .map(|peer| peer.map(|p| vec![p]).unwrap_or_default())
                     .map_err(Into::into)
             },
@@ -365,24 +365,28 @@ impl<'a> DhtActor<'a> {
                 // Send to a particular peer matching the given node ID
                 peer_manager
                     .direct_identity_public_key(&public_key)
+                    .await
                     .map(|peer| peer.map(|p| vec![p]).unwrap_or_default())
                     .map_err(Into::into)
             },
             Flood => {
                 // Send to all known Communication Node peers
-                peer_manager.flood_peers().map_err(Into::into)
+                peer_manager.flood_peers().await.map_err(Into::into)
             },
-            Closest(closest_request) => Self::select_closest_peers(
-                &config,
-                peer_manager,
-                &closest_request.node_id,
-                closest_request.n,
-                &closest_request.excluded_peers,
-                |_| true,
-            ),
+            Closest(closest_request) => {
+                Self::select_closest_peers(
+                    &config,
+                    peer_manager,
+                    &closest_request.node_id,
+                    closest_request.n,
+                    &closest_request.excluded_peers,
+                    |_| true,
+                )
+                .await
+            },
             Random(n) => {
                 // Send to a random set of peers of size n that are Communication Nodes
-                peer_manager.random_peers(n).map_err(Into::into)
+                peer_manager.random_peers(n).await.map_err(Into::into)
             },
             // TODO: This is a common and expensive search - values here should be cached
             Neighbours(exclude, features) => {
@@ -395,11 +399,12 @@ impl<'a> DhtActor<'a> {
                     &*exclude,
                     |peer| peer.has_features(features),
                 )
+                .await
             },
         }
     }
 
-    fn select_closest_peers<F>(
+    async fn select_closest_peers<F>(
         config: &DhtConfig,
         peer_manager: Arc<PeerManager>,
         node_id: &NodeId,
@@ -408,7 +413,7 @@ impl<'a> DhtActor<'a> {
         mut filter_predicate: F,
     ) -> Result<Vec<Peer>, DhtActorError>
     where
-        F: FnMut(&Peer) -> bool,
+        F: FnMut(&Peer) -> bool + Send,
     {
         // TODO: This query is expensive. We can probably cache a list of neighbouring peers which are online
         // Fetch to all n nearest neighbour Communication Nodes
@@ -483,7 +488,7 @@ impl<'a> DhtActor<'a> {
                         n
             });
 
-        let peers = peer_manager.perform_query(query)?;
+        let peers = peer_manager.perform_query(query).await?;
         let total_excluded = banned_count + connect_ineligable_count + excluded_count + filtered_out_node_count;
         if total_excluded > 0 {
             debug!(
@@ -583,6 +588,7 @@ mod test {
                 PeerFeatures::COMMUNICATION_CLIENT,
                 &[],
             ))
+            .await
             .unwrap();
 
         peer_manager
@@ -597,6 +603,7 @@ mod test {
                     &[],
                 )
             })
+            .await
             .unwrap();
         let (out_tx, _) = mpsc::channel(1);
         let (actor_tx, actor_rx) = mpsc::channel(1);

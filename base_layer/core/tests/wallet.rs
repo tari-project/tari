@@ -161,12 +161,11 @@ fn wallet_base_node_integration_test() {
         .unwrap();
 
     alice_wallet
-        .comms
-        .peer_manager()
-        .add_peer(create_peer(
+        .runtime
+        .block_on(alice_wallet.comms.peer_manager().add_peer(create_peer(
             bob_node_identity.public_key().clone(),
             bob_node_identity.public_address(),
-        ))
+        )))
         .unwrap();
 
     // Bob Wallet setup
@@ -189,7 +188,7 @@ fn wallet_base_node_integration_test() {
         transaction_service_config: None,
     };
     let bob_runtime = create_runtime();
-    let bob_wallet = Wallet::new(
+    let mut bob_wallet = Wallet::new(
         bob_wallet_config,
         bob_runtime,
         WalletMemoryDatabase::new(),
@@ -199,12 +198,11 @@ fn wallet_base_node_integration_test() {
     )
     .unwrap();
     bob_wallet
-        .comms
-        .peer_manager()
-        .add_peer(create_peer(
+        .runtime
+        .block_on(bob_wallet.comms.peer_manager().add_peer(create_peer(
             alice_node_identity.public_key().clone(),
             alice_node_identity.public_address(),
-        ))
+        )))
         .unwrap();
 
     log::info!("Finished Starting Wallets");

@@ -133,7 +133,6 @@ mod discovery;
 mod logging_middleware;
 mod proto;
 mod tower_filter;
-mod utils;
 
 pub mod broadcast_strategy;
 pub mod domain_message;

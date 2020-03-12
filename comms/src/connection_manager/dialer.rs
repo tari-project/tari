@@ -32,7 +32,7 @@ use crate::{
     multiaddr::Multiaddr,
     multiplexing::Yamux,
     noise::{NoiseConfig, NoiseSocket},
-    peer_manager::{AsyncPeerManager, NodeId, NodeIdentity, Peer},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
     protocol::ProtocolId,
     transports::Transport,
     types::CommsPublicKey,
@@ -73,7 +73,7 @@ pub(crate) enum DialerRequest {
 pub struct Dialer<TTransport, TBackoff> {
     executor: runtime::Handle,
     config: ConnectionManagerConfig,
-    peer_manager: AsyncPeerManager,
+    peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     transport: TTransport,
     noise_config: NoiseConfig,
@@ -97,7 +97,7 @@ where
         executor: runtime::Handle,
         config: ConnectionManagerConfig,
         node_identity: Arc<NodeIdentity>,
-        peer_manager: AsyncPeerManager,
+        peer_manager: Arc<PeerManager>,
         transport: TTransport,
         noise_config: NoiseConfig,
         backoff: TBackoff,
@@ -355,7 +355,7 @@ where
     #[allow(clippy::too_many_arguments)]
     async fn perform_socket_upgrade_procedure(
         executor: runtime::Handle,
-        peer_manager: AsyncPeerManager,
+        peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         socket: NoiseSocket<TTransport::Output>,
         dialed_addr: Multiaddr,
@@ -396,7 +396,8 @@ where
             authenticated_public_key,
             peer_identity,
             allow_test_addresses,
-        )?;
+        )
+        .await?;
 
         debug!(
             target: LOG_TARGET,

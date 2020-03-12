@@ -20,8 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{helpers::RequestKey, transactions::types::Signature};
+use crate::transactions::types::Signature;
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
+
+pub type RequestKey = u64; // TODO: BaseNodeService and MempoolService uses RequestKey
+
+/// Generate a new random request key to uniquely identify a request and its corresponding responses.
+#[cfg(feature = "mempool_proto")]
+pub fn generate_request_key<R>(rng: &mut R) -> RequestKey
+where R: RngCore {
+    rng.next_u64()
+}
 
 /// API Request enum for Mempool requests.
 #[derive(Debug, Serialize, Deserialize)]
