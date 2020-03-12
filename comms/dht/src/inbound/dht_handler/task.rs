@@ -242,10 +242,12 @@ where
         self.outbound_service
             .send_raw(
                 SendMessageParams::new()
-                    .closest(origin_peer.node_id, self.config.num_neighbouring_nodes, vec![
-                        origin.public_key.clone(),
-                        source_peer.public_key.clone(),
-                    ])
+                    .closest(
+                        origin_peer.node_id,
+                        self.config.num_neighbouring_nodes,
+                        vec![origin.public_key.clone(), source_peer.public_key.clone()],
+                        PeerFeatures::MESSAGE_PROPAGATION,
+                    )
                     .with_dht_header(dht_header)
                     .finish(),
                 body.to_encoded_bytes()?,
@@ -369,7 +371,7 @@ where
             .send_message_no_header(
                 SendMessageParams::new()
                     .direct_public_key(dest_public_key.clone())
-                    .with_destination(NodeDestination::PublicKey(dest_public_key))
+                    .with_destination(NodeDestination::PublicKey(Box::new(dest_public_key)))
                     .with_dht_message_type(DhtMessageType::Join)
                     .force_origin()
                     .finish(),

@@ -39,7 +39,7 @@ use log::*;
 use std::{pin::Pin, task::Poll, time::Instant};
 use tari_broadcast_channel::Publisher;
 use tari_comms::{
-    peer_manager::{NodeId, Peer},
+    peer_manager::{NodeId, Peer, PeerFeatures},
     types::CommsPublicKey,
 };
 use tari_comms_dht::{
@@ -155,26 +155,43 @@ where
     }
 
     async fn handle_incoming_message(&mut self, msg: DomainMessage<PingPongMessage>) -> Result<(), LivenessError> {
-        let inner_msg = msg.inner();
-        match inner_msg.kind().ok_or_else(|| LivenessError::InvalidPingPongType)? {
+        let DomainMessage::<_> {
+            source_peer,
+            inner: ping_pong_msg,
+            ..
+        } = msg;
+        let node_id = source_peer.node_id;
+        let public_key = source_peer.public_key;
+
+        match ping_pong_msg.kind().ok_or_else(|| LivenessError::InvalidPingPongType)? {
             PingPong::Ping => {
                 self.state.inc_pings_received();
-                self.send_pong(msg.inner.nonce, msg.source_peer.public_key.clone())
-                    .await
-                    .unwrap();
+                trace!(target: LOG_TARGET, "Received ping from peer '{}'", node_id.short_str());
+                self.send_pong(ping_pong_msg.nonce, public_key).await.unwrap();
                 self.state.inc_pongs_sent();
 
                 self.publish_event(LivenessEvent::ReceivedPing).await?;
             },
             PingPong::Pong => {
-                let maybe_latency = self.state.record_pong(inner_msg.nonce);
-                trace!(target: LOG_TARGET, "Recorded latency: {:?}", maybe_latency);
-                let is_neighbour = self.neighbours.contains(&msg.source_peer.node_id);
-                let is_monitored = self.state.is_monitored_node_id(&msg.source_peer.node_id);
+                self.update_neighbours_if_stale().await?;
+                let maybe_latency = self.state.record_pong(ping_pong_msg.nonce);
+                let is_neighbour = self.neighbours.contains(&node_id);
+                let is_monitored = self.state.is_monitored_node_id(&node_id);
+
+                trace!(
+                    target: LOG_TARGET,
+                    "Received pong from peer '{}'. {} {} {}",
+                    node_id.short_str(),
+                    maybe_latency
+                        .map(|ms| format!("Latency: {}ms", ms))
+                        .unwrap_or(String::new()),
+                    if is_neighbour { "(neighbouring)" } else { "" },
+                    if is_monitored { "(monitored)" } else { "" },
+                );
                 let pong_event = PongEvent::new(
-                    msg.source_peer.node_id.clone(),
+                    node_id,
                     maybe_latency,
-                    msg.inner.metadata.into(),
+                    ping_pong_msg.metadata.into(),
                     is_neighbour,
                     is_monitored,
                 );
@@ -183,6 +200,29 @@ where
                     .await?;
             },
         }
+        Ok(())
+    }
+
+    async fn send_ping(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
+        let msg = PingPongMessage::ping();
+        self.state.add_inflight_ping(msg.nonce, &node_id);
+        trace!(target: LOG_TARGET, "Sending ping to peer '{}'", node_id.short_str());
+        if self.neighbours.contains(&node_id) {
+            trace!(
+                target: LOG_TARGET,
+                "Peer '{}' is a neighbouring peer",
+                node_id.short_str()
+            );
+        }
+        self.oms_handle
+            .send_direct_node_id(
+                node_id,
+                OutboundEncryption::None,
+                OutboundDomainMessage::new(TariMessageType::PingPong, msg),
+            )
+            .await
+            .map_err(Into::<DhtOutboundError>::into)?;
+
         Ok(())
     }
 
@@ -239,21 +279,6 @@ where
         }
     }
 
-    async fn send_ping(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
-        let msg = PingPongMessage::ping();
-        self.state.add_inflight_ping(msg.nonce, &node_id);
-        self.oms_handle
-            .send_direct_node_id(
-                node_id,
-                OutboundEncryption::None,
-                OutboundDomainMessage::new(TariMessageType::PingPong, msg),
-            )
-            .await
-            .map_err(Into::<DhtOutboundError>::into)?;
-
-        Ok(())
-    }
-
     async fn update_neighbours_if_stale(&mut self) -> Result<&[Peer], LivenessError> {
         if self.neighbours.is_fresh() {
             return Ok(self.neighbours.peers());
@@ -261,7 +286,10 @@ where
 
         let peers = self
             .dht_requester
-            .select_peers(BroadcastStrategy::Neighbours(Vec::new()))
+            .select_peers(BroadcastStrategy::Neighbours(
+                Vec::new(),
+                PeerFeatures::MESSAGE_PROPAGATION,
+            ))
             .await?;
 
         self.state.set_num_active_neighbours(peers.len());
@@ -377,13 +405,7 @@ mod test {
     };
     use futures::{channel::mpsc, stream};
     use rand::rngs::OsRng;
-    use std::{
-        sync::{
-            atomic::{AtomicBool, Ordering},
-            Arc,
-        },
-        time::Duration,
-    };
+    use std::time::Duration;
     use tari_broadcast_channel as broadcast_channel;
     use tari_comms::{
         multiaddr::Multiaddr,
@@ -392,104 +414,97 @@ mod test {
     use tari_comms_dht::{
         envelope::{DhtMessageHeader, DhtMessageType, Network},
         outbound::{DhtOutboundRequest, SendMessageResponse},
+        DhtRequest,
     };
     use tari_crypto::keys::PublicKey;
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
-    use tari_test_utils::runtime;
+    use tokio::task;
 
-    #[test]
-    fn get_ping_pong_count() {
-        runtime::test_async(|rt| {
-            let state = LivenessState::new();
-            state.inc_pings_received();
-            state.inc_pongs_received();
-            state.inc_pongs_received();
+    #[tokio_macros::test_basic]
+    async fn get_ping_pong_count() {
+        let state = LivenessState::new();
+        state.inc_pings_received();
+        state.inc_pongs_received();
+        state.inc_pongs_received();
 
-            // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
-            let (outbound_tx, _) = mpsc::channel(10);
-            let oms_handle = OutboundMessageRequester::new(outbound_tx);
+        // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
+        let (outbound_tx, _) = mpsc::channel(10);
+        let oms_handle = OutboundMessageRequester::new(outbound_tx);
 
-            // Setup liveness service
-            let (sender_service, receiver) = reply_channel::unbounded();
-            let (publisher, subscriber) = broadcast_channel::bounded(100);
-            let mut liveness_handle = LivenessHandle::new(sender_service, subscriber);
+        // Setup liveness service
+        let (sender_service, receiver) = reply_channel::unbounded();
+        let (publisher, subscriber) = broadcast_channel::bounded(100);
+        let mut liveness_handle = LivenessHandle::new(sender_service, subscriber);
 
-            let (dht_tx, _) = mpsc::channel(10);
-            let dht_requester = DhtRequester::new(dht_tx);
+        let (dht_tx, _) = mpsc::channel(10);
+        let dht_requester = DhtRequester::new(dht_tx);
 
-            let mut shutdown = Shutdown::new();
-            let service = LivenessService::new(
-                Default::default(),
-                receiver,
-                stream::empty(),
-                state,
-                dht_requester,
-                oms_handle,
-                publisher,
-                shutdown.to_signal(),
-            );
+        let shutdown = Shutdown::new();
+        let service = LivenessService::new(
+            Default::default(),
+            receiver,
+            stream::empty(),
+            state,
+            dht_requester,
+            oms_handle,
+            publisher,
+            shutdown.to_signal(),
+        );
 
-            // Run the service
-            rt.spawn(service.run());
+        // Run the service
+        task::spawn(service.run());
 
-            let res = rt.block_on(liveness_handle.get_ping_count()).unwrap();
-            assert_eq!(res, 1);
+        let res = liveness_handle.get_ping_count().await.unwrap();
+        assert_eq!(res, 1);
 
-            let res = rt.block_on(liveness_handle.get_pong_count()).unwrap();
-            assert_eq!(res, 2);
-
-            shutdown.trigger().unwrap();
-        });
+        let res = liveness_handle.get_pong_count().await.unwrap();
+        assert_eq!(res, 2);
     }
 
-    #[test]
-    fn send_ping() {
-        runtime::test_async(|rt| {
-            let state = LivenessState::new();
+    #[tokio_macros::test]
+    async fn send_ping() {
+        let state = LivenessState::new();
 
-            // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
-            let (outbound_tx, mut outbound_rx) = mpsc::channel(10);
-            let oms_handle = OutboundMessageRequester::new(outbound_tx);
+        // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
+        let (outbound_tx, mut outbound_rx) = mpsc::channel(10);
+        let oms_handle = OutboundMessageRequester::new(outbound_tx);
 
-            // Setup liveness service
-            let (sender_service, receiver) = reply_channel::unbounded();
-            let (publisher, subscriber) = broadcast_channel::bounded(100);
-            let mut liveness_handle = LivenessHandle::new(sender_service, subscriber);
+        // Setup liveness service
+        let (sender_service, receiver) = reply_channel::unbounded();
+        let (publisher, subscriber) = broadcast_channel::bounded(100);
+        let mut liveness_handle = LivenessHandle::new(sender_service, subscriber);
 
-            let (dht_tx, _) = mpsc::channel(10);
-            let dht_requester = DhtRequester::new(dht_tx);
+        let (dht_tx, _) = mpsc::channel(10);
+        let dht_requester = DhtRequester::new(dht_tx);
 
-            let mut shutdown = Shutdown::new();
-            let service = LivenessService::new(
-                Default::default(),
-                receiver,
-                stream::empty(),
-                state,
-                dht_requester,
-                oms_handle,
-                publisher,
-                shutdown.to_signal(),
-            );
+        let shutdown = Shutdown::new();
+        let service = LivenessService::new(
+            Default::default(),
+            receiver,
+            stream::empty(),
+            state,
+            dht_requester,
+            oms_handle,
+            publisher,
+            shutdown.to_signal(),
+        );
 
-            // Run the LivenessService
-            rt.spawn(service.run());
+        // Run the LivenessService
+        task::spawn(service.run());
 
-            let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rngs::OsRng);
-            let node_id = NodeId::from_key(&pk).unwrap();
-            // Receive outbound request
-            rt.spawn(async move {
-                match outbound_rx.select_next_some().await {
-                    DhtOutboundRequest::SendMessage(_, _, reply_tx) => {
-                        reply_tx.send(SendMessageResponse::Queued(vec![])).unwrap();
-                    },
-                }
-            });
+        let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rngs::OsRng);
+        let node_id = NodeId::from_key(&pk).unwrap();
+        // Receive outbound request
+        task::spawn(async move {
+            match outbound_rx.select_next_some().await {
+                DhtOutboundRequest::SendMessage(_, _, reply_tx) => {
+                    reply_tx.send(SendMessageResponse::Queued(vec![])).unwrap();
+                },
+            }
+        });
 
-            let _res = rt.block_on(liveness_handle.send_ping(node_id)).unwrap();
-
-            shutdown.trigger().unwrap();
-        })
+        let _res = liveness_handle.send_ping(node_id).await.unwrap();
     }
 
     fn create_dummy_message<T>(inner: T) -> DomainMessage<T> {
@@ -515,104 +530,98 @@ mod test {
         }
     }
 
-    #[test]
-    fn handle_message_ping() {
-        runtime::test_async(|rt| {
-            let state = LivenessState::new();
+    #[tokio_macros::test]
+    async fn handle_message_ping() {
+        let state = LivenessState::new();
 
-            // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
-            let (outbound_tx, mut outbound_rx) = mpsc::channel(10);
-            let oms_handle = OutboundMessageRequester::new(outbound_tx);
+        // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
+        let (outbound_tx, mut outbound_rx) = mpsc::channel(10);
+        let oms_handle = OutboundMessageRequester::new(outbound_tx);
 
-            let msg = create_dummy_message(PingPongMessage::ping());
-            // A stream which emits one message and then closes
-            let pingpong_stream = stream::iter(std::iter::once(msg));
+        let msg = create_dummy_message(PingPongMessage::ping());
+        // A stream which emits one message and then closes
+        let pingpong_stream = stream::iter(std::iter::once(msg));
 
-            let (dht_tx, _) = mpsc::channel(10);
-            let dht_requester = DhtRequester::new(dht_tx);
-            // Setup liveness service
-            let (publisher, _subscriber) = broadcast_channel::bounded(100);
-            let mut shutdown = Shutdown::new();
-            let service = LivenessService::new(
-                Default::default(),
-                stream::empty(),
-                pingpong_stream,
-                state,
-                dht_requester,
-                oms_handle,
-                publisher,
-                shutdown.to_signal(),
-            );
+        let (dht_tx, _) = mpsc::channel(10);
+        let dht_requester = DhtRequester::new(dht_tx);
+        // Setup liveness service
+        let (publisher, _subscriber) = broadcast_channel::bounded(100);
+        let shutdown = Shutdown::new();
+        let service = LivenessService::new(
+            Default::default(),
+            stream::empty(),
+            pingpong_stream,
+            state,
+            dht_requester,
+            oms_handle,
+            publisher,
+            shutdown.to_signal(),
+        );
 
-            rt.spawn(service.run());
+        task::spawn(service.run());
 
-            rt.spawn(async move {
-                // Test oms got request to send message
-                unwrap_oms_send_msg!(outbound_rx.select_next_some().await);
-                shutdown.trigger().unwrap();
-            });
-        });
+        // Test oms got request to send message
+        unwrap_oms_send_msg!(outbound_rx.select_next_some().await);
     }
 
-    #[test]
-    fn handle_message_pong() {
-        runtime::test_async(|rt| {
-            rt.spawn(async {
-                let mut state = LivenessState::new();
+    #[tokio_macros::test_basic]
+    async fn handle_message_pong() {
+        let mut state = LivenessState::new();
 
-                let (outbound_tx, _) = mpsc::channel(10);
-                let oms_handle = OutboundMessageRequester::new(outbound_tx);
+        let (outbound_tx, _) = mpsc::channel(10);
+        let oms_handle = OutboundMessageRequester::new(outbound_tx);
 
-                let mut metadata = Metadata::new();
-                metadata.insert(MetadataKey::ChainMetadata, b"dummy-data".to_vec());
-                let msg = create_dummy_message(PingPongMessage::pong_with_metadata(123, metadata));
+        let mut metadata = Metadata::new();
+        metadata.insert(MetadataKey::ChainMetadata, b"dummy-data".to_vec());
+        let msg = create_dummy_message(PingPongMessage::pong_with_metadata(123, metadata));
+        let peer = msg.source_peer.clone();
 
-                state.add_inflight_ping(msg.inner.nonce, &msg.source_peer.node_id);
-                // A stream which emits one message and then closes
-                let pingpong_stream = stream::iter(std::iter::once(msg));
+        state.add_inflight_ping(msg.inner.nonce, &msg.source_peer.node_id);
+        // A stream which emits one message and then closes
+        let pingpong_stream = stream::iter(std::iter::once(msg));
 
-                let (dht_tx, _) = mpsc::channel(10);
-                let dht_requester = DhtRequester::new(dht_tx);
-                // Setup liveness service
-                let (publisher, subscriber) = broadcast_channel::bounded(100);
-                let mut shutdown = Shutdown::new();
-                let service = LivenessService::new(
-                    Default::default(),
-                    stream::empty(),
-                    pingpong_stream,
-                    state,
-                    dht_requester,
-                    oms_handle,
-                    publisher,
-                    shutdown.to_signal(),
-                );
+        let (dht_tx, mut dht_rx) = mpsc::channel(10);
+        let dht_requester = DhtRequester::new(dht_tx);
 
-                // Create a flag that gets flipped when the subscribed event is received
-                let received_event = Arc::new(AtomicBool::new(false));
-                let rec_event_clone = received_event.clone();
-
-                // Listen for the pong event
-                futures::join!(
-                    async move {
-                        let event = time::timeout(Duration::from_secs(10), subscriber.fuse().select_next_some())
-                            .await
-                            .unwrap();
-
-                        match &*event {
-                            LivenessEvent::ReceivedPong(event) => {
-                                rec_event_clone.store(true, Ordering::SeqCst);
-                                assert_eq!(event.metadata.get(MetadataKey::ChainMetadata).unwrap(), b"dummy-data");
-                            },
-                            _ => panic!("Unexpected event"),
-                        }
-
-                        shutdown.trigger().unwrap();
+        // TODO: create mock
+        task::spawn(async move {
+            use DhtRequest::*;
+            while let Some(req) = dht_rx.next().await {
+                match req {
+                    SelectPeers(_, reply_tx) => {
+                        reply_tx.send(vec![peer.clone()]).unwrap();
                     },
-                    service.run()
-                );
-
-                assert_eq!(received_event.load(Ordering::SeqCst), true);
-            });
+                    _ => panic!("unexpected request {:?}", req),
+                }
+            }
         });
+
+        // Setup liveness service
+        let (publisher, subscriber) = broadcast_channel::bounded(100);
+        let shutdown = Shutdown::new();
+        let service = LivenessService::new(
+            Default::default(),
+            stream::empty(),
+            pingpong_stream,
+            state,
+            dht_requester,
+            oms_handle,
+            publisher,
+            shutdown.to_signal(),
+        );
+
+        task::spawn(service.run());
+
+        // Listen for the pong event
+        let event = time::timeout(Duration::from_secs(10), subscriber.fuse().select_next_some())
+            .await
+            .unwrap();
+
+        match &*event {
+            LivenessEvent::ReceivedPong(event) => {
+                assert_eq!(event.metadata.get(MetadataKey::ChainMetadata).unwrap(), b"dummy-data");
+            },
+            _ => panic!("Unexpected event"),
+        }
     }
 }

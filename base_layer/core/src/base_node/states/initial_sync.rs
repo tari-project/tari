@@ -130,7 +130,7 @@ impl InitialSync {
             return StateEvent::MetadataSynced(SyncStatus::UpToDate);
         }
         let network = self.summarize_network_data(theirs);
-        MetadataSynced(determine_sync_mode(ours, network, LOG_TARGET))
+        MetadataSynced(determine_sync_mode(&ours, &network, LOG_TARGET))
     }
 
     fn summarize_network_data(&self, data: Vec<ChainMetadata>) -> ChainMetadata {

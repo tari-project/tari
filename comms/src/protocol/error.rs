@@ -37,3 +37,14 @@ pub enum ProtocolError {
     ProtocolNotRegistered,
     SendError(mpsc::SendError),
 }
+
+impl ProtocolError {
+    pub fn to_friendly_string(&self) -> String {
+        use ProtocolError::*;
+        match self {
+            IoError(err) => format!("IoError: {:?}", err),
+            SendError(err) => format!("SendError: {:?}", err),
+            err => format!("{}", err),
+        }
+    }
+}

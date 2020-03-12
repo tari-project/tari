@@ -52,7 +52,7 @@ const LOG_TARGET: &str = "comms::dht::discovery_service";
 
 struct DiscoveryRequestState {
     reply_tx: oneshot::Sender<Result<Peer, DhtDiscoveryError>>,
-    public_key: CommsPublicKey,
+    public_key: Box<CommsPublicKey>,
 }
 
 pub struct DhtDiscoveryService {
@@ -140,7 +140,7 @@ impl DhtDiscoveryService {
             }
 
             // Requests for this public key are collected
-            if &request.public_key == public_key {
+            if &*request.public_key == public_key {
                 requests.push(request);
                 continue;
             }
@@ -327,7 +327,7 @@ impl DhtDiscoveryService {
                 // ... if the destination is undisclosed or a public key, send discover to our closest peers
                 NodeDestination::Unknown | NodeDestination::PublicKey(_) => Some(self.node_identity.node_id().clone()),
                 // otherwise, send it to the closest peers to the given NodeId destination we know
-                NodeDestination::NodeId(node_id) => Some(node_id.clone()),
+                NodeDestination::NodeId(node_id) => Some(*node_id.clone()),
             })
             .expect("cannot fail");
 
@@ -345,7 +345,12 @@ impl DhtDiscoveryService {
         self.outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .closest(network_location_node_id, self.config.num_neighbouring_nodes, Vec::new())
+                    .closest(
+                        network_location_node_id,
+                        self.config.num_neighbouring_nodes,
+                        Vec::new(),
+                        PeerFeatures::empty(),
+                    )
                     .with_destination(destination)
                     .with_encryption(OutboundEncryption::EncryptFor(dest_public_key))
                     .with_dht_message_type(DhtMessageType::Discovery)
@@ -395,7 +400,7 @@ mod test {
 
             rt.spawn(service.run());
 
-            let dest_public_key = CommsPublicKey::default();
+            let dest_public_key = Box::new(CommsPublicKey::default());
             let result = rt.block_on(requester.discover_peer(dest_public_key.clone(), None, NodeDestination::Unknown));
 
             assert!(result.unwrap_err().is_timeout());

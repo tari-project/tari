@@ -18,8 +18,8 @@ extern crate lazy_static;
 #[macro_use]
 mod macros;
 
-mod connection_manager;
-pub use connection_manager::validate_peer_addresses;
+pub mod connection_manager;
+pub use connection_manager::{validate_peer_addresses, ConnectionManagerEvent, PeerConnection, PeerConnectionError};
 
 mod consts;
 mod multiplexing;

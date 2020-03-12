@@ -318,16 +318,12 @@ pub fn generate_wallet_test_data<
     // Grab the first 2 outbound tx_ids for later
     let mut outbound_tx_ids = Vec::new();
     let wallet_event_stream = wallet.transaction_service.get_event_stream_fused();
-    let wallet_stream = wallet.runtime.block_on(async {
-        collect_stream!(
-            wallet_event_stream.map(|i| (*i).clone()),
-            take = 4,
-            timeout = Duration::from_secs(60)
-        )
-    });
+    let wallet_stream = wallet
+        .runtime
+        .block_on(async { collect_stream!(wallet_event_stream, take = 4, timeout = Duration::from_secs(60)) });
     for v in wallet_stream {
-        if let TransactionEvent::TransactionSendResult(tx_id, _) = v {
-            outbound_tx_ids.push(tx_id);
+        if let TransactionEvent::TransactionSendResult(tx_id, _) = &*v {
+            outbound_tx_ids.push(tx_id.clone());
         }
     }
     assert_eq!(outbound_tx_ids.len(), 2);
@@ -416,41 +412,25 @@ pub fn generate_wallet_test_data<
     let alice_event_stream = wallet_alice.transaction_service.get_event_stream_fused();
     let bob_event_stream = wallet_bob.transaction_service.get_event_stream_fused();
 
-    let _alice_stream = wallet_alice.runtime.block_on(async {
-        collect_stream!(
-            alice_event_stream.map(|i| (*i).clone()),
-            take = 12,
-            timeout = Duration::from_secs(60)
-        )
-    });
+    let _alice_stream = wallet_alice
+        .runtime
+        .block_on(async { collect_stream!(alice_event_stream, take = 12, timeout = Duration::from_secs(60)) });
 
-    let _bob_stream = wallet_bob.runtime.block_on(async {
-        collect_stream!(
-            bob_event_stream.map(|i| (*i).clone()),
-            take = 8,
-            timeout = Duration::from_secs(60)
-        )
-    });
+    let _bob_stream = wallet_bob
+        .runtime
+        .block_on(async { collect_stream!(bob_event_stream, take = 8, timeout = Duration::from_secs(60)) });
     // Make sure that the messages have been received by the alice and bob wallets before they start sending messages so
     // that they have the wallet in their peer_managers
     let alice_event_stream = wallet_alice.transaction_service.get_event_stream_fused();
     let bob_event_stream = wallet_bob.transaction_service.get_event_stream_fused();
 
-    let _alice_stream = wallet_bob.runtime.block_on(async {
-        collect_stream!(
-            alice_event_stream.map(|i| (*i).clone()),
-            take = 6,
-            timeout = Duration::from_secs(60)
-        )
-    });
+    let _alice_stream = wallet_bob
+        .runtime
+        .block_on(async { collect_stream!(alice_event_stream, take = 6, timeout = Duration::from_secs(60)) });
 
-    let _bob_stream = wallet_bob.runtime.block_on(async {
-        collect_stream!(
-            bob_event_stream.map(|i| (*i).clone()),
-            take = 2,
-            timeout = Duration::from_secs(60)
-        )
-    });
+    let _bob_stream = wallet_bob
+        .runtime
+        .block_on(async { collect_stream!(bob_event_stream, take = 2, timeout = Duration::from_secs(60)) });
 
     // Pending Inbound
     wallet_alice
@@ -503,13 +483,9 @@ pub fn generate_wallet_test_data<
         ))?;
 
     let wallet_event_stream = wallet.transaction_service.get_event_stream_fused();
-    let _wallet_stream = wallet.runtime.block_on(async {
-        collect_stream!(
-            wallet_event_stream.map(|i| (*i).clone()),
-            take = 30,
-            timeout = Duration::from_secs(120)
-        )
-    });
+    let _wallet_stream = wallet
+        .runtime
+        .block_on(async { collect_stream!(wallet_event_stream, take = 30, timeout = Duration::from_secs(120)) });
     let txs = wallet
         .runtime
         .block_on(wallet.transaction_service.get_completed_transactions())
@@ -601,18 +577,14 @@ pub fn generate_wallet_test_data<
         .block_on(
             wallet
                 .transaction_service
-                .test_broadcast_transaction(outbound_tx_ids[0].clone()),
+                .test_broadcast_transaction(outbound_tx_ids[0]),
         )
         .unwrap();
 
     // Mine a tx
     wallet
         .runtime
-        .block_on(
-            wallet
-                .transaction_service
-                .test_mine_transaction(outbound_tx_ids[1].clone()),
-        )
+        .block_on(wallet.transaction_service.test_mine_transaction(outbound_tx_ids[1]))
         .unwrap();
 
     thread::sleep(Duration::from_millis(1000));

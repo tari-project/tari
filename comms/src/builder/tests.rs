@@ -262,8 +262,8 @@ async fn peer_to_peer_messaging_simultaneous() {
     let o1 = outbound_tx1.clone();
     let o2 = outbound_tx2.clone();
 
-    let node_identity1 = comms_node1.node_identity();
-    let node_identity2 = comms_node2.node_identity();
+    let node_identity1 = comms_node1.node_identity().clone();
+    let node_identity2 = comms_node2.node_identity().clone();
     comms_node1
         .async_peer_manager()
         .add_peer(Peer::new(

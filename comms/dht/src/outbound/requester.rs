@@ -36,6 +36,7 @@ use futures::{
 };
 use log::*;
 use tari_comms::{message::MessageExt, peer_manager::NodeId, types::CommsPublicKey, wrap_in_envelope_body};
+
 const LOG_TARGET: &str = "comms::dht::requests::outbound";
 
 #[derive(Clone)]
@@ -82,7 +83,7 @@ impl OutboundMessageRequester {
         self.send_message(
             SendMessageParams::new()
                 .direct_node_id(dest_node_id.clone())
-                .with_destination(NodeDestination::NodeId(dest_node_id))
+                .with_destination(NodeDestination::NodeId(Box::new(dest_node_id)))
                 .with_encryption(encryption)
                 .finish(),
             message,

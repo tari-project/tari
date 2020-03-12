@@ -53,20 +53,43 @@ where
 #[macro_export]
 macro_rules! collect_stream {
     ($stream:expr, take=$take:expr, timeout=$timeout:expr $(,)?) => {{
-        use futures::{FutureExt, StreamExt};
+        use futures::{Stream, StreamExt};
         use tokio::time;
 
-        time::timeout($timeout, $stream.take($take).collect::<Vec<_>>())
-            .await
-            .expect(format!("Timeout before stream could collect {} item(s)", $take).as_str())
+        // Evaluate $stream once, NOT in the loop 🐛🚨
+        let mut stream = $stream;
+
+        let mut items = Vec::new();
+        loop {
+            if let Some(item) = time::timeout($timeout, stream.next()).await.expect(
+                format!(
+                    "Timeout before stream could collect {} item(s). Got {} item(s).",
+                    $take,
+                    items.len()
+                )
+                .as_str(),
+            ) {
+                items.push(item);
+                if items.len() == $take {
+                    break items;
+                }
+            } else {
+                break items;
+            }
+        }
     }};
     ($stream:expr, timeout=$timeout:expr $(,)?) => {{
-        use futures::{FutureExt, StreamExt};
+        use futures::StreamExt;
         use tokio::time;
 
-        time::timeout($timeout, $stream.collect::<Vec<_>>())
+        let mut items = Vec::new();
+        while let Some(item) = time::timeout($timeout, $stream.next())
             .await
-            .expect("Stream did not close within timeout")
+            .expect(format!("Timeout before stream was closed. Got {} items.", items.len()).as_str())
+        {
+            items.push(item);
+        }
+        items
     }};
 }
 
@@ -79,7 +102,7 @@ macro_rules! collect_stream {
 /// # use tari_test_utils::collect_stream_count;
 ///
 /// let mut rt = Runtime::new().unwrap();
-/// let stream = stream::iter(vec![1,2,2,3,2]);
+/// let mut stream = stream::iter(vec![1,2,2,3,2]);
 /// assert_eq!(rt.block_on(async { collect_stream_count!(stream, timeout=Duration::from_secs(1)) }).get(&2), Some(&3));
 /// ```
 #[macro_export]

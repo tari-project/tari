@@ -25,7 +25,7 @@ use crate::{base_node::states::SyncStatus, chain_storage::ChainMetadata};
 use log::*;
 
 /// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
-pub fn determine_sync_mode(local: ChainMetadata, network: ChainMetadata, log_target: &str) -> SyncStatus {
+pub fn determine_sync_mode(local: &ChainMetadata, network: &ChainMetadata, log_target: &str) -> SyncStatus {
     use crate::base_node::states::SyncStatus::*;
     match network.accumulated_difficulty {
         None => {
@@ -41,9 +41,9 @@ pub fn determine_sync_mode(local: ChainMetadata, network: ChainMetadata, log_tar
             if local_tip_accum_difficulty < network_tip_accum_difficulty {
                 info!(
                     target: log_target,
-                    "Our local blockchain accumilated difficulty is a little behind that of the network. We're at \
-                     block #{} with accumulated difficulty #{}, and the chain tip is at #{} with accumulated \
-                     difficulty #{}",
+                    "Our local blockchain accumulated difficulty is a little behind that of the network. We're at \
+                     block #{} with an accumulated difficulty of {}, and the network chain tip is at #{} with an \
+                     accumulated difficulty of {}",
                     local.height_of_longest_chain.unwrap_or(0),
                     local_tip_accum_difficulty,
                     network.height_of_longest_chain.unwrap_or(0),
@@ -51,6 +51,15 @@ pub fn determine_sync_mode(local: ChainMetadata, network: ChainMetadata, log_tar
                 );
                 Lagging
             } else {
+                info!(
+                    target: log_target,
+                    "Our local blockchain is up-to-date. We're at block #{} with an accumulated difficulty of {} and \
+                     the network chain tip is at #{} with an accumulated difficulty of {}",
+                    local.height_of_longest_chain.unwrap_or(0),
+                    local_tip_accum_difficulty,
+                    network.height_of_longest_chain.unwrap_or(0),
+                    network_tip_accum_difficulty,
+                );
                 UpToDate
             }
         },

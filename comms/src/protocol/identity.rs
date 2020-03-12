@@ -76,7 +76,8 @@ where
     debug_assert_eq!(proto, IDENTITY_PROTOCOL);
 
     // Create length-delimited frame codec
-    let mut framed = Framed::new(IoCompat::new(socket), LengthDelimitedCodec::new());
+    let framed = Framed::new(IoCompat::new(socket), LengthDelimitedCodec::new());
+    let (mut sink, mut stream) = framed.split();
 
     let supported_protocols = our_supported_protocols.into_iter().map(|p| p.to_vec()).collect();
 
@@ -90,11 +91,11 @@ where
     .to_encoded_bytes()
     .map_err(|_| IdentityProtocolError::ProtobufEncodingError)?;
 
-    framed.send(msg_bytes.into()).await?;
-    framed.close().await?;
+    sink.send(msg_bytes.into()).await?;
+    sink.close().await?;
 
     // Receive the connecting nodes identity
-    let msg_bytes = framed
+    let msg_bytes = stream
         .next()
         .await
         .ok_or_else(|| IdentityProtocolError::PeerUnexpectedCloseConnection)??;
@@ -119,7 +120,7 @@ pub enum IdentityProtocolError {
 
 impl From<ProtocolError> for IdentityProtocolError {
     fn from(err: ProtocolError) -> Self {
-        IdentityProtocolError::ProtocolError(err.to_string())
+        IdentityProtocolError::ProtocolError(err.to_friendly_string())
     }
 }
 

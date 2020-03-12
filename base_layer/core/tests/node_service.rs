@@ -428,7 +428,14 @@ fn propagate_and_forward_valid_block() {
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
 
-    let block1 = append_block(&alice_node.blockchain_db, &block0, vec![], &rules.consensus_constants()).unwrap();
+    let block1 = append_block(
+        &alice_node.blockchain_db,
+        &block0,
+        vec![],
+        &rules.consensus_constants(),
+        1.into(),
+    )
+    .unwrap();
     let block1_hash = block1.hash();
 
     runtime.block_on(async {
@@ -522,7 +529,14 @@ fn propagate_and_forward_invalid_block() {
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
 
     // Make block 1 invalid
-    let mut block1 = append_block(&alice_node.blockchain_db, &block0, vec![], &rules.consensus_constants()).unwrap();
+    let mut block1 = append_block(
+        &alice_node.blockchain_db,
+        &block0,
+        vec![],
+        &rules.consensus_constants(),
+        1.into(),
+    )
+    .unwrap();
     block1.header.height = 0;
     let block1_hash = block1.hash();
     runtime.block_on(async {
@@ -601,8 +615,8 @@ fn local_get_metadata() {
         BaseNodeBuilder::new(network).start(&mut runtime, temp_dir.path().to_str().unwrap());
     let db = &node.blockchain_db;
     let block0 = db.fetch_block(0).unwrap().block().clone();
-    let block1 = append_block(db, &block0, vec![], &consensus_manager.consensus_constants()).unwrap();
-    let block2 = append_block(db, &block1, vec![], &consensus_manager.consensus_constants()).unwrap();
+    let block1 = append_block(db, &block0, vec![], &consensus_manager.consensus_constants(), 1.into()).unwrap();
+    let block2 = append_block(db, &block1, vec![], &consensus_manager.consensus_constants(), 1.into()).unwrap();
 
     runtime.block_on(async {
         let metadata = node.local_nci.get_metadata().await.unwrap();

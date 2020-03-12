@@ -185,14 +185,9 @@ fn test_wallet() {
             ))
             .unwrap();
 
-        let result_stream = runtime.block_on(async {
-            collect_stream!(
-                alice_event_stream.map(|i| (*i).clone()),
-                take = 2,
-                timeout = Duration::from_secs(10)
-            )
-        });
-        let received_transaction_reply_count = result_stream.iter().fold(0, |acc, x| match x {
+        let result_stream = runtime
+            .block_on(async { collect_stream!(alice_event_stream, take = 2, timeout = Duration::from_secs(10)) });
+        let received_transaction_reply_count = result_stream.iter().fold(0, |acc, x| match &**x {
             TransactionEvent::ReceivedTransactionReply(_) => acc + 1,
             _ => acc,
         });

@@ -508,8 +508,7 @@ where
                         );
                         let noise_socket = noise_config
                             .upgrade_socket(socket, ConnectionDirection::Outbound)
-                            .await
-                            .map_err(|err| ConnectionManagerError::NoiseError(err.to_string()))?;
+                            .await?;
                         Result::<_, ConnectionManagerError>::Ok(noise_socket)
                     };
 
