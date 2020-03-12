@@ -100,19 +100,26 @@ impl EmojiId {
     /// i) The string is 33 bytes long
     /// ii) The last byte is a valid checksum
     pub fn is_valid(s: &str) -> bool {
+        EmojiId::str_to_pubkey(s).is_ok()
+    }
+
+    pub fn str_to_pubkey(s: &str) -> Result<PublicKey, ()> {
         let mut indices = Vec::with_capacity(33);
         for c in s.chars() {
             if let Some(i) = REVERSE_EMOJI.get(&c) {
                 indices.push(*i);
             } else {
-                return false;
+                return Err(());
             }
         }
-        let bytes = EmojiId::byte_vec(s);
-        bytes.is_ok() && is_valid(&indices, 256) && PublicKey::from_bytes(&bytes.unwrap()).is_ok()
+        if !is_valid(&indices, 256) {
+            return Err(());
+        }
+        let bytes = EmojiId::byte_vec(s)?;
+        PublicKey::from_bytes(&bytes).map_err(|_| ())
     }
 
-    /// Return the 33 caharcter emoji string for this emoji ID
+    /// Return the 33 character emoji string for this emoji ID
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -154,19 +161,26 @@ impl Display for EmojiId {
 #[cfg(test)]
 mod test {
     use crate::util::emoji::EmojiId;
+    use tari_core::transactions::types::PublicKey;
     use tari_crypto::tari_utilities::hex::Hex;
 
     #[test]
     fn convert_key() {
+        let pubkey = PublicKey::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
         let eid = EmojiId::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
         assert_eq!(
             eid.as_str(),
             "🖖🥴😍🙃💦🤘🤜👁🙃🙌😱🖐🙀🤳🖖👍✊🐈☂💀👚😶🤟😳👢😘😺🙌🎩🤬🐼😎🥺"
         );
-        let h_eid = EmojiId::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
-        assert_eq!(eid, h_eid);
-        let hex = eid.to_bytes().to_hex();
-        assert_eq!(&hex, "70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a");
+        assert_eq!(EmojiId::from_pubkey(&pubkey), eid);
+        assert_eq!(
+            &eid.to_bytes().to_hex(),
+            "70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a"
+        );
+        assert_eq!(
+            EmojiId::str_to_pubkey("🖖🥴😍🙃💦🤘🤜👁🙃🙌😱🖐🙀🤳🖖👍✊🐈☂💀👚😶🤟😳👢😘😺🙌🎩🤬🐼😎🥺").unwrap(),
+            pubkey
+        );
     }
 
     #[test]
