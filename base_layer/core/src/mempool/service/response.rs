@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    helpers::RequestKey,
+    base_node::RequestKey,
     mempool::{StatsResponse, TxStorageResponse},
 };
 use serde::{Deserialize, Serialize};

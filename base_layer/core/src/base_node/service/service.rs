@@ -30,12 +30,15 @@ use crate::{
             NodeCommsResponse,
         },
         consts::{BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION, BASE_NODE_SERVICE_REQUEST_TIMEOUT},
+        generate_request_key,
         proto,
         service::error::BaseNodeServiceError,
+        RequestKey,
+        WaitingRequest,
+        WaitingRequests,
     },
     blocks::Block,
     chain_storage::BlockchainBackend,
-    helpers::{generate_request_key, RequestKey, WaitingRequest, WaitingRequests},
     proto::core::Block as ProtoBlock,
 };
 use futures::{

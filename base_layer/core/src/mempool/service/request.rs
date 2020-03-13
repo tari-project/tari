@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{helpers::RequestKey, transactions::types::Signature};
+use crate::{base_node::RequestKey, transactions::types::Signature};
 use serde::{Deserialize, Serialize};
 
 /// API Request enum for Mempool requests.

@@ -56,3 +56,8 @@ pub use comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface};
 
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod proto;
+
+#[cfg(any(feature = "base_node", feature = "base_node_proto", feature = "mempool_proto"))]
+mod waiting_requests;
+#[cfg(any(feature = "base_node", feature = "base_node_proto", feature = "mempool_proto"))]
+pub use waiting_requests::{generate_request_key, RequestKey, WaitingRequest, WaitingRequestError, WaitingRequests};
