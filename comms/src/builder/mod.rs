@@ -52,7 +52,6 @@ use crate::{
     multiaddr::Multiaddr,
     noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
-    protocol,
     protocol::{messaging, messaging::MessagingProtocol, ProtocolNotification, Protocols},
     tor,
     transports::{SocksTransport, TcpTransport, Transport},
@@ -346,7 +345,7 @@ where
             .protocols
             .take()
             .or_else(|| Some(Protocols::new()))
-            .map(move |protocols| protocols.add(protocol::comms_protocols(), messaging_proto_tx))
+            .map(move |protocols| protocols.add(&[messaging::MESSAGING_PROTOCOL.clone()], messaging_proto_tx))
             .expect("cannot fail");
 
         //---------------------------------- ConnectionManager --------------------------------------------//

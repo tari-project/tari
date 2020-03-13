@@ -258,7 +258,7 @@ mod test {
             Some(PeerFlags::BANNED),
             Some(PeerFeatures::MESSAGE_PROPAGATION),
             Some(PeerConnectionStats::new()),
-            Some(protocol::comms_protocols().to_vec()),
+            Some(vec![protocol::IDENTITY_PROTOCOL.clone()]),
         );
 
         assert_eq!(peer.public_key, public_key1);
@@ -280,7 +280,7 @@ mod test {
             .any(|net_address_with_stats| net_address_with_stats.address == net_address3));
         assert_eq!(peer.flags, PeerFlags::BANNED);
         assert_eq!(peer.has_features(PeerFeatures::MESSAGE_PROPAGATION), true);
-        assert_eq!(peer.supported_protocols, protocol::comms_protocols());
+        assert_eq!(peer.supported_protocols, vec![protocol::IDENTITY_PROTOCOL.clone()]);
     }
 
     #[test]

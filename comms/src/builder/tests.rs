@@ -147,11 +147,11 @@ async fn peer_to_peer_custom_protocols() {
     unpack_enum!(ConnectionManagerEvent::PeerConnected(_conn) = &*next_event);
 
     // Let's speak both our test protocols
-    let mut negotiated_substream1 = conn1.open_substream(TEST_PROTOCOL).await.unwrap();
+    let mut negotiated_substream1 = conn1.open_substream(&TEST_PROTOCOL).await.unwrap();
     assert_eq!(negotiated_substream1.protocol, TEST_PROTOCOL);
     negotiated_substream1.stream.write_all(TEST_MSG).await.unwrap();
 
-    let mut negotiated_substream2 = conn2.open_substream(ANOTHER_TEST_PROTOCOL).await.unwrap();
+    let mut negotiated_substream2 = conn2.open_substream(&ANOTHER_TEST_PROTOCOL).await.unwrap();
     assert_eq!(negotiated_substream2.protocol, ANOTHER_TEST_PROTOCOL);
     negotiated_substream2.stream.write_all(ANOTHER_TEST_MSG).await.unwrap();
 

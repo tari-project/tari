@@ -58,7 +58,7 @@ where
                 node_identity.node_id().short_str()
             );
             negotiation
-                .negotiate_protocol_outbound(&[IDENTITY_PROTOCOL.clone()])
+                .negotiate_protocol_outbound_optimistic(&IDENTITY_PROTOCOL.clone())
                 .await?
         },
         ConnectionDirection::Inbound => {

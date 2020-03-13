@@ -38,7 +38,7 @@
 // Size of network
 const NUM_NODES: usize = 15;
 // Must be at least 2
-const NUM_WALLETS: usize = 2;
+const NUM_WALLETS: usize = 8;
 
 use futures::{channel::mpsc, future, StreamExt};
 use lazy_static::lazy_static;
@@ -179,44 +179,48 @@ async fn main() {
         println!();
     }
 
-    let first_wallet = wallets.get(0).unwrap();
-    let last_wallet = wallets.last().unwrap();
+    take_a_break().await;
 
-    banner!("Now, '{}' is going to try discover '{}'.", first_wallet, last_wallet);
+    for i in 0..wallets.len() - 1 {
+        let wallet1 = wallets.get(i).unwrap();
+        let wallet2 = wallets.get(i + 1).unwrap();
 
-    let start = Instant::now();
-    let discovery_result = first_wallet
-        .dht
-        .discovery_service_requester()
-        .discover_peer(
-            Box::new(last_wallet.node_identity().public_key().clone()),
-            None,
-            NodeDestination::Unknown,
-        )
-        .await;
+        banner!("Now, '{}' is going to try discover '{}'.", wallet1, wallet2);
 
-    let end = Instant::now();
-    banner!("Discovery is done.");
+        let start = Instant::now();
+        let discovery_result = wallet1
+            .dht
+            .discovery_service_requester()
+            .discover_peer(
+                Box::new(wallet2.node_identity().public_key().clone()),
+                None,
+                NodeDestination::Unknown,
+            )
+            .await;
 
-    match discovery_result {
-        Ok(peer) => {
-            println!(
-                "⚡️🎉😎 '{}' discovered peer '{}' ({}) in {}ms",
-                first_wallet,
-                get_name(&peer.node_id),
-                peer,
-                (end - start).as_millis()
-            );
-        },
-        Err(err) => {
-            println!(
-                "💩 '{}' failed to discover '{}' after {}ms because '{:?}'",
-                first_wallet,
-                last_wallet,
-                (end - start).as_millis(),
-                err
-            );
-        },
+        let end = Instant::now();
+        banner!("Discovery is done.");
+
+        match discovery_result {
+            Ok(peer) => {
+                println!(
+                    "⚡️🎉😎 '{}' discovered peer '{}' ({}) in {}ms",
+                    wallet1,
+                    get_name(&peer.node_id),
+                    peer,
+                    (end - start).as_millis()
+                );
+            },
+            Err(err) => {
+                println!(
+                    "💩 '{}' failed to discover '{}' after {}ms because '{:?}'",
+                    wallet1,
+                    wallet2,
+                    (end - start).as_millis(),
+                    err
+                );
+            },
+        }
     }
 
     banner!("We're done here. Network is shutting down...");

@@ -35,8 +35,11 @@ use crate::{
     transports::{TcpTransport, Transport},
 };
 use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};
-use std::{borrow::Cow, num::NonZeroU16};
+use log::*;
+use std::{borrow::Cow, fmt::Display, num::NonZeroU16};
 use tokio_util::codec::{Framed, LinesCodec};
+
+const LOG_TARGET: &str = "comms::tor::control_client";
 
 /// Client for the Tor control port.
 ///
@@ -181,10 +184,13 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         self.request_response(command).await
     }
 
-    async fn request_response<T: TorCommand>(&mut self, command: T) -> Result<T::Output, TorClientError>
+    async fn request_response<T: TorCommand + Display>(&mut self, command: T) -> Result<T::Output, TorClientError>
     where T::Error: Into<TorClientError> {
-        self.send_line(command.to_command_string().map_err(Into::into)?).await?;
+        trace!(target: LOG_TARGET, "Sent command: {}", command);
+        let cmd_str = command.to_command_string().map_err(Into::into)?;
+        self.send_line(cmd_str).await?;
         let responses = self.recv_next_responses().await?;
+        trace!(target: LOG_TARGET, "Response from tor: {:?}", responses);
         if responses.is_empty() {
             return Err(TorClientError::ServerNoResponse);
         }
