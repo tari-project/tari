@@ -132,7 +132,7 @@ where
         if let Some(path) = config.logging_path {
             let logfile = FileAppender::builder()
                 .encoder(Box::new(PatternEncoder::new(
-                    "{d(%Y-%m-%d %H:%M:%S.%f)} [{M}#{L}] [{t}] {l:5} {m} (({T}:{I})){n}",
+                    "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}",
                 )))
                 .append(false)
                 .build(path.as_str())

@@ -40,10 +40,12 @@ use crate::{
 };
 use futures::SinkExt;
 use log::*;
+use std::sync::Arc;
 use strum_macros::Display;
 use tari_broadcast_channel::Publisher;
 use tari_comms::types::CommsPublicKey;
 use tari_crypto::tari_utilities::hex::Hex;
+use tokio::sync::RwLock;
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
 
@@ -56,9 +58,9 @@ pub enum BlockEvent {
 
 /// The InboundNodeCommsInterface is used to handle all received inbound requests from remote nodes.
 pub struct InboundNodeCommsHandlers<T>
-where T: BlockchainBackend
+where T: BlockchainBackend + 'static
 {
-    event_publisher: Publisher<BlockEvent>,
+    event_publisher: Arc<RwLock<Publisher<BlockEvent>>>,
     blockchain_db: BlockchainDatabase<T>,
     mempool: Mempool<T>,
     consensus_manager: ConsensusManager<T>,
@@ -78,7 +80,7 @@ where T: BlockchainBackend + 'static
     ) -> Self
     {
         Self {
-            event_publisher,
+            event_publisher: Arc::new(RwLock::new(event_publisher)),
             blockchain_db,
             mempool,
             consensus_manager,
@@ -238,6 +240,8 @@ where T: BlockchainBackend + 'static
             },
         };
         self.event_publisher
+            .write()
+            .await
             .send(block_event)
             .await
             .map_err(|_| CommsInterfaceError::EventStreamError)?;
@@ -255,5 +259,20 @@ where T: BlockchainBackend + 'static
             }
         }
         Ok(())
+    }
+}
+
+impl<T> Clone for InboundNodeCommsHandlers<T>
+where T: BlockchainBackend + 'static
+{
+    fn clone(&self) -> Self {
+        // All members use Arc's internally so calling clone should be cheap.
+        Self {
+            event_publisher: self.event_publisher.clone(),
+            blockchain_db: self.blockchain_db.clone(),
+            mempool: self.mempool.clone(),
+            consensus_manager: self.consensus_manager.clone(),
+            outbound_nci: self.outbound_nci.clone(),
+        }
     }
 }
