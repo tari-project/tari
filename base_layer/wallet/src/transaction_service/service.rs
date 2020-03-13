@@ -397,6 +397,7 @@ where
         mined_request_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
     ) -> Result<TransactionServiceResponse, TransactionServiceError>
     {
+        trace!(target: LOG_TARGET, "Handling Service Request: {:?}", request);
         match request {
             TransactionServiceRequest::SendTransaction((dest_pubkey, amount, fee_per_gram, message)) => self
                 .send_transaction(dest_pubkey, amount, fee_per_gram, message, discovery_process_futures)

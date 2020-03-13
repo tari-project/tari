@@ -212,6 +212,7 @@ where
         utxo_query_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, u64>>,
     ) -> Result<OutputManagerResponse, OutputManagerError>
     {
+        trace!(target: LOG_TARGET, "Handling Service Request: {:?}", request);
         match request {
             OutputManagerRequest::AddOutput(uo) => {
                 self.add_output(uo).await.map(|_| OutputManagerResponse::OutputAdded)
@@ -288,7 +289,7 @@ where
         if !self.pending_utxo_query_keys.remove(&request_key) {
             debug!(
                 target: LOG_TARGET,
-                "Ignoring Base Node Repsonse with unexpected request key"
+                "Ignoring Base Node Response with unexpected request key, it was not meant for this service."
             );
             return Ok(());
         }
