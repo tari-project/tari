@@ -722,13 +722,14 @@ fn service_request_timeout() {
     );
 
     runtime.block_on(async {
+        bob_node.comms.shutdown().await;
+
         match alice_node.outbound_mp_interface.get_stats().await {
             Err(MempoolServiceError::RequestTimedOut) => assert!(true),
             _ => assert!(false),
         }
 
         alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }
 

@@ -23,7 +23,7 @@
 use crate::{
     base_node::{
         base_node::BaseNodeStateMachine,
-        states::{InitialSync, ListeningInfo, StateEvent},
+        states::{ListeningInfo, StateEvent},
     },
     blocks::BlockHash,
     chain_storage::{async_db, BlockchainBackend, ChainMetadata, ChainStorageError},
@@ -61,11 +61,12 @@ impl BlockSyncInfo {
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
+        network_tip: &ChainMetadata,
     ) -> StateEvent
     {
         info!(target: LOG_TARGET, "Synchronizing missing blocks");
 
-        match synchronize_blocks(shared).await {
+        match synchronize_blocks(shared, network_tip).await {
             Ok(StateEvent::BlocksSynchronized) => {
                 info!(target: LOG_TARGET, "Block sync state has synchronised");
                 StateEvent::BlocksSynchronized
@@ -83,51 +84,20 @@ impl BlockSyncInfo {
     }
 }
 
-/// State management for Listening -> BlockSync. This change happens when a node has been temporarily disconnected
-/// from the network, or a reorg has occurred.
-impl From<ListeningInfo> for BlockSyncInfo {
-    fn from(_old: ListeningInfo) -> Self {
-        BlockSyncInfo {}
-    }
-}
-
-/// State management for InitialSync -> BlockSync. This change happens when a (previously synced) node is restarted
-/// after being offline for some time.
-impl From<InitialSync> for BlockSyncInfo {
-    fn from(_old: InitialSync) -> Self {
-        BlockSyncInfo {}
-    }
-}
-
-async fn network_tip_metadata<B: BlockchainBackend>(
-    shared: &mut BaseNodeStateMachine<B>,
-) -> Result<ChainMetadata, String> {
-    let metadata_list = shared.comms.get_metadata().await.map_err(|e| e.to_string())?;
-    // TODO: Use heuristics to weed out outliers / dishonest nodes.
-    Ok(metadata_list
-        .into_iter()
-        .fold(ChainMetadata::default(), |best, current| {
-            if current.accumulated_difficulty.unwrap_or(0.into()) >= best.accumulated_difficulty.unwrap_or(0.into()) {
-                current
-            } else {
-                best
-            }
-        }))
-}
-
 async fn synchronize_blocks<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
-) -> Result<StateEvent, String> {
+    network_metadata: &ChainMetadata,
+) -> Result<StateEvent, String>
+{
     let local_metadata = shared.db.get_metadata().map_err(|e| e.to_string())?;
-    let network_metadata = network_tip_metadata(shared).await?;
 
-    if let Some(mut sync_block_hash) = network_metadata.best_block {
+    if let Some(mut sync_block_hash) = network_metadata.best_block.clone() {
         // Find the missing block hashes of the strongest network chain.
         let mut attempts: usize = 0;
         let mut block_hashes = VecDeque::<BlockHash>::new();
         let mut linked_to_chain = false;
-        while local_metadata.accumulated_difficulty.unwrap_or(0.into()) <
-            network_metadata.accumulated_difficulty.unwrap_or(0.into())
+        while local_metadata.accumulated_difficulty.unwrap_or_else(|| 0.into()) <
+            network_metadata.accumulated_difficulty.unwrap_or_else(|| 0.into())
         {
             // Check if sync hash is on local chain.
             if async_db::fetch_header_with_block_hash(shared.db.clone(), sync_block_hash.clone())
@@ -233,4 +203,19 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
     }
 
     Ok(StateEvent::BlocksSynchronized)
+}
+
+/// State management for BlockSync -> Listening.
+impl From<BlockSyncInfo> for ListeningInfo {
+    fn from(_old_state: BlockSyncInfo) -> Self {
+        ListeningInfo {}
+    }
+}
+
+/// State management for Listening -> BlockSync. This change happens when a node has been temporarily disconnected
+/// from the network, or a reorg has occurred.
+impl From<ListeningInfo> for BlockSyncInfo {
+    fn from(_old: ListeningInfo) -> Self {
+        BlockSyncInfo {}
+    }
 }

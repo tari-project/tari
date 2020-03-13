@@ -21,8 +21,23 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{base_node::states::SyncStatus, chain_storage::ChainMetadata};
-
 use log::*;
+
+/// Determine the best metadata from a set of metadata received from the network.
+pub fn best_metadata(metadata_list: Vec<ChainMetadata>) -> ChainMetadata {
+    // TODO: Use heuristics to weed out outliers / dishonest nodes.
+    metadata_list
+        .into_iter()
+        .fold(ChainMetadata::default(), |best, current| {
+            if current.accumulated_difficulty.unwrap_or_else(|| 0.into()) >=
+                best.accumulated_difficulty.unwrap_or_else(|| 0.into())
+            {
+                current
+            } else {
+                best
+            }
+        })
+}
 
 /// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
 pub fn determine_sync_mode(local: &ChainMetadata, network: &ChainMetadata, log_target: &str) -> SyncStatus {
@@ -37,7 +52,7 @@ pub fn determine_sync_mode(local: &ChainMetadata, network: &ChainMetadata, log_t
             UpToDate
         },
         Some(network_tip_accum_difficulty) => {
-            let local_tip_accum_difficulty = local.accumulated_difficulty.unwrap_or(0.into());
+            let local_tip_accum_difficulty = local.accumulated_difficulty.unwrap_or_else(|| 0.into());
             if local_tip_accum_difficulty < network_tip_accum_difficulty {
                 info!(
                     target: log_target,
@@ -49,7 +64,7 @@ pub fn determine_sync_mode(local: &ChainMetadata, network: &ChainMetadata, log_t
                     network.height_of_longest_chain.unwrap_or(0),
                     network_tip_accum_difficulty,
                 );
-                Lagging
+                Lagging(network.clone())
             } else {
                 info!(
                     target: log_target,

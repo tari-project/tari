@@ -25,7 +25,7 @@ use crate::{
         chain_metadata_service::ChainMetadataEvent,
         comms_interface::OutboundNodeCommsInterface,
         states,
-        states::{BaseNodeState, BlockSyncConfig, ListeningConfig, ListeningInfo, StateEvent},
+        states::{BaseNodeState, BlockSyncConfig, ListeningConfig, StateEvent},
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
 };
@@ -36,7 +36,6 @@ use std::sync::{
     Arc,
 };
 use tari_broadcast_channel::{bounded, Publisher, Subscriber};
-use tokio::runtime;
 
 const LOG_TARGET: &str = "c::bn::base_node";
 
@@ -66,7 +65,6 @@ impl Default for BaseNodeStateMachineConfig {
 pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) db: BlockchainDatabase<B>,
     pub(super) comms: OutboundNodeCommsInterface,
-    pub(super) executor: runtime::Handle,
     pub(super) metadata_event_stream: Subscriber<ChainMetadataEvent>,
     pub(super) user_stopped: Arc<AtomicBool>,
     pub(super) config: BaseNodeStateMachineConfig,
@@ -79,7 +77,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     pub fn new(
         db: &BlockchainDatabase<B>,
         comms: &OutboundNodeCommsInterface,
-        executor: runtime::Handle,
         metadata_event_stream: Subscriber<ChainMetadataEvent>,
         config: BaseNodeStateMachineConfig,
     ) -> Self
@@ -88,7 +85,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         Self {
             db: db.clone(),
             comms: comms.clone(),
-            executor,
             metadata_event_stream,
             user_stopped: Arc::new(AtomicBool::new(false)),
             config,
@@ -102,13 +98,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     pub fn transition(state: BaseNodeState, event: StateEvent) -> BaseNodeState {
         use crate::base_node::states::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
         match (state, event) {
-            (Starting(s), Initialized) => InitialSync(s.into()),
-            (InitialSync(s), MetadataSynced(Lagging)) => BlockSync(s.into()),
-            (InitialSync(_s), MetadataSynced(UpToDate)) => Listening(ListeningInfo),
-            (BlockSync(_s), BlocksSynchronized) => Listening(ListeningInfo),
-            (BlockSync(s), MaxRequestAttemptsReached) => InitialSync(s.into()),
-            (Listening(s), FallenBehind(Lagging)) => BlockSync(s.into()),
-            (Listening(s), NetworkSilence) => InitialSync(s.into()),
+            (Starting(s), Initialized) => Listening(s.into()),
+            (BlockSync(s, _), BlocksSynchronized) => Listening(s.into()),
+            (BlockSync(s, _), MaxRequestAttemptsReached) => Listening(s.into()),
+            (Listening(s), FallenBehind(Lagging(network_tip))) => BlockSync(s.into(), network_tip),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
             (_, UserQuit) => Shutdown(states::Shutdown::with_reason("Shutdown initiated by user".to_string())),
             (s, e) => {
@@ -150,9 +143,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             }
             let _ = shared_state.event_sender.send(state.clone()).await;
             let next_event = match &mut state {
-                Starting(s) => s.next_event(&mut shared_state).await,
-                InitialSync(s) => s.next_event(&mut shared_state).await,
-                BlockSync(s) => s.next_event(&mut shared_state).await,
+                Starting(s) => s.next_event(&shared_state).await,
+                BlockSync(s, network_tip) => s.next_event(&mut shared_state, network_tip).await,
                 Listening(s) => s.next_event(&mut shared_state).await,
                 Shutdown(_) => break,
             };

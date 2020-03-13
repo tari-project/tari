@@ -20,55 +20,49 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::chain_storage::ChainMetadata;
 use std::fmt::{Display, Error, Formatter};
 
 /// The base node state represents the FSM of the base node synchronisation process.
 ///
 /// ## Starting state
 /// The node is in the `Starting`` state when it's first created. After basic internal setup and configuration, it will
-/// move to the `InitialSync` state.
+/// move to the `Listening` state.
 ///
-/// ## Initial Sync State
-/// In this state, we need to obtain
-/// i. The height of our chain tip,
-/// ii. The height of the chain tip from the network.
+/// ## Listening
 ///
-/// Once these two values are obtained, we can move to the next state:
-/// If we're between the genesis block and the network chain tip, switch to `BlockSync`.
-/// Otherwise switch to `Listening`
+/// In this state, we listen for chain tip updates from the network.
+///
+/// The liveness service will periodically poll peers to request the chain tip height. If we are more than one block
+/// behind the network chain tip, switch to `BlockSync` mode.
 ///
 /// ## BlockSync
 ///
-/// For each `n` from genesis block + 1 to the network chain tip, submit a request for block `n`. In this state, an
-/// entire block is received, and the normal block validation and storage process is followed. The only difference
-/// between `BlockSync` and `Listening` is that the former state is actively asking for blocks, while the latter is a
-/// passive process.
+/// The BlockSync process first downloads the headers from the chain tip to the fork height on the local chain. The
+/// chain of headers are constructed by first downloading the tip header based on the received best chain metadata and
+/// then recursively downloading the previous header using the previous header hash recorded in the header until the
+/// current local chain is reached. The next step is to download the individual blocks corresponding to the previously
+/// downloaded headers, this is performed in a ascending order from the lowest height to the highest block height until
+/// the tip is reached.
 ///
 /// After we have caught up on the chain, switch to `Listening`.
 ///
-/// If errors occur, re-request the problematic block.
+/// If errors occur, re-request the problematic header or block.
 ///
 /// Give up after n failures and switch back to `Listening` (if a peer gave an erroneous chain tip and cannot provide
 /// the blocks it says it has, we can switch back to `Listening` and try receive blocks passively.
 ///
 /// Full blocks received while in this state can be stored in the orphan pool until they are needed.
 ///
-/// ## Listening
-///
-/// Passively wait for new blocks to arrive, and process them accordingly.
-///
-/// Periodically poll peers to request the chain tip height. If we are more than one block behind the network chain
-/// tip, switch to `BlockSync` mode.
-///
 /// ## Shutdown
 ///
 /// Reject all new requests with a `Shutdown` message, complete current validations / tasks, flush all state if
 /// required, and then shutdown.
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum BaseNodeState {
     Starting(Starting),
-    InitialSync(InitialSync),
-    BlockSync(BlockSyncInfo),
+    BlockSync(BlockSyncInfo, ChainMetadata), // The best network chain metadata
     Listening(ListeningInfo),
     Shutdown(Shutdown),
 }
@@ -92,7 +86,7 @@ pub enum StateEvent {
 #[derive(Debug, PartialEq)]
 pub enum SyncStatus {
     // We are behind the chain tip.
-    Lagging,
+    Lagging(ChainMetadata),
     UpToDate,
 }
 
@@ -100,8 +94,7 @@ impl Display for BaseNodeState {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         let s = match self {
             Self::Starting(_) => "Initializing",
-            Self::InitialSync(_) => "Synchronizing blockchain metadata",
-            Self::BlockSync(_) => "Synchronizing blocks",
+            Self::BlockSync(_, _) => "Synchronizing blocks",
             Self::Listening(_) => "Listening",
             Self::Shutdown(_) => "Shutting down",
         };
@@ -112,13 +105,11 @@ impl Display for BaseNodeState {
 mod block_sync;
 mod error;
 mod helpers;
-mod initial_sync;
 mod listening;
 mod shutdown_state;
 mod starting_state;
 
 pub use block_sync::{BlockSyncConfig, BlockSyncInfo};
-pub use initial_sync::InitialSync;
 pub use listening::{ListeningConfig, ListeningInfo};
 pub use shutdown_state::Shutdown;
 pub use starting_state::Starting;
