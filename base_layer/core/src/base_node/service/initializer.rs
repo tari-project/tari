@@ -53,7 +53,7 @@ use tari_service_framework::{
 use tari_shutdown::ShutdownSignal;
 use tokio::runtime;
 
-const LOG_TARGET: &str = "base_node::service::initializer";
+const LOG_TARGET: &str = "c::bn::service::initializer";
 
 /// Initializer for the Base Node service handle and service future.
 pub struct BaseNodeServiceInitializer<T>

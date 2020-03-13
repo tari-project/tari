@@ -32,7 +32,7 @@ use tari_wallet::{
     },
 };
 
-const LOG_TARGET: &str = "base_layer::wallet::transaction_service::callback_handler";
+const LOG_TARGET: &str = "wallet::transaction_service::callback_handler";
 
 pub struct CallbackHandler<TBackend>
 where TBackend: TransactionBackend + 'static

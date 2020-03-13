@@ -376,7 +376,7 @@ where
             peer_features: self.node_identity.features().bits(),
         };
 
-        trace!("Sending direct join request to {}", dest_public_key);
+        trace!(target: LOG_TARGET, "Sending direct join request to {}", dest_public_key);
         self.outbound_service
             .send_message_no_header(
                 SendMessageParams::new()
@@ -407,7 +407,7 @@ where
             nonce,
         };
 
-        trace!("Sending discovery response to {}", dest_public_key);
+        trace!(target: LOG_TARGET, "Sending discovery response to {}", dest_public_key);
         self.outbound_service
             .send_message_no_header(
                 SendMessageParams::new()

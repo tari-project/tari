@@ -55,7 +55,7 @@ use tari_service_framework::{
 use tari_shutdown::ShutdownSignal;
 use tokio::runtime;
 
-const LOG_TARGET: &str = "base_node::mempool_service::initializer";
+const LOG_TARGET: &str = "c::bn::mempool_service::initializer";
 
 /// Initializer for the Mempool service and service future.
 pub struct MempoolServiceInitializer<T>

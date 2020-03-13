@@ -29,7 +29,7 @@ use futures::{pin_mut, StreamExt};
 use log::*;
 use tari_service_framework::reply_channel;
 
-const LOG_TARGET: &str = "base_layer::wallet:contacts_service";
+const LOG_TARGET: &str = "wallet:contacts_service";
 
 pub struct ContactsService<T>
 where T: ContactsBackend + 'static

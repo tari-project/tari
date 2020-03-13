@@ -99,7 +99,7 @@ use tari_wallet::{
 };
 use tokio::{runtime, stream::StreamExt};
 
-const LOG_TARGET: &str = "base_node::initialization";
+const LOG_TARGET: &str = "c::bn::initialization";
 
 #[macro_export]
 macro_rules! using_backend {

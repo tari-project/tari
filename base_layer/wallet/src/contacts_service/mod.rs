@@ -41,7 +41,7 @@ pub mod handle;
 pub mod service;
 pub mod storage;
 
-const LOG_TARGET: &str = "base_layer::wallet::contacts_service::initializer";
+const LOG_TARGET: &str = "wallet::contacts_service::initializer";
 
 pub struct ContactsServiceInitializer<T>
 where T: ContactsBackend
