@@ -22,7 +22,7 @@ pub mod connection_manager;
 pub use connection_manager::{validate_peer_addresses, ConnectionManagerEvent, PeerConnection, PeerConnectionError};
 
 pub mod peer_manager;
-pub use peer_manager::PeerManager;
+pub use peer_manager::{NodeIdentity, PeerManager};
 
 mod consts;
 mod multiplexing;

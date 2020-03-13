@@ -41,7 +41,7 @@ use std::{
 };
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_comms::{peer_manager::PeerManager, types::CommsPublicKey};
+use tari_comms::{peer_manager::PeerManager, types::CommsPublicKey, NodeIdentity};
 use tari_core::{
     base_node::LocalNodeCommsInterface,
     tari_utilities::hex::Hex,
@@ -62,6 +62,7 @@ pub enum BaseNodeCommand {
     SendTari,
     GetChainMetadata,
     GetPeers,
+    Whoami,
     Quit,
     Exit,
 }
@@ -71,6 +72,7 @@ pub enum BaseNodeCommand {
 pub struct Parser {
     executor: runtime::Handle,
     peer_manager: Arc<PeerManager>,
+    node_identity: Arc<NodeIdentity>,
     shutdown_flag: Arc<AtomicBool>,
     commands: Vec<String>,
     hinter: HistoryHinter,
@@ -112,6 +114,7 @@ impl Parser {
         Parser {
             executor,
             peer_manager: ctx.peer_manager(),
+            node_identity: ctx.node_identity(),
             shutdown_flag: ctx.interrupt_flag(),
             commands: BaseNodeCommand::iter().map(|x| x.to_string()).collect(),
             hinter: HistoryHinter {},
@@ -158,6 +161,12 @@ impl Parser {
             BaseNodeCommand::GetPeers => {
                 println!("Lists the peers that this node is connected to");
             },
+            BaseNodeCommand::Whoami => {
+                println!(
+                    "Display identity information about this node, including: public key, node ID and the public \
+                     address"
+                );
+            },
             BaseNodeCommand::Exit | BaseNodeCommand::Quit => {
                 println!("Exits the base node");
             },
@@ -166,25 +175,29 @@ impl Parser {
 
     // Function to process commands
     fn process_command(&mut self, command: BaseNodeCommand, command_arg: Vec<&str>) {
+        use BaseNodeCommand::*;
         match command {
-            BaseNodeCommand::Help => {
+            Help => {
                 println!("Available commands are: ");
                 let joined = self.commands.join(", ");
                 println!("{}", joined);
             },
-            BaseNodeCommand::GetBalance => {
+            GetBalance => {
                 self.process_get_balance();
             },
-            BaseNodeCommand::SendTari => {
+            SendTari => {
                 self.process_send_tari(command_arg);
             },
-            BaseNodeCommand::GetChainMetadata => {
+            GetChainMetadata => {
                 self.process_get_chain_meta();
             },
-            BaseNodeCommand::GetPeers => {
+            GetPeers => {
                 self.process_get_peers();
             },
-            BaseNodeCommand::Exit | BaseNodeCommand::Quit => {
+            Whoami => {
+                self.process_whoami();
+            },
+            Exit | Quit => {
                 println!("quit received");
                 println!("Shutting down");
                 info!(
@@ -245,6 +258,10 @@ impl Parser {
                 },
             }
         });
+    }
+
+    fn process_whoami(&self) {
+        println!("{}", self.node_identity);
     }
 
     // Function to process  the send transaction function
