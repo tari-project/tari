@@ -31,6 +31,10 @@ pub enum ProtocolError {
     ProtocolIdTooLong,
     /// Protocol negotiation failed because the peer did not accept any protocols
     ProtocolOutboundNegotiationFailed,
+    /// Protocol negotiation failed because the peer did not offer any protocols supported by this node
+    ProtocolInboundNegotiationFailed,
+    /// Optimistic protocol negotiation failed because the peer did not offer a protocol supported by this node
+    ProtocolOptimisticNegotiationFailed,
     /// Protocol negotiation terminated by peer
     ProtocolNegotiationTerminatedByPeer,
     /// Protocol was not registered

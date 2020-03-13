@@ -65,6 +65,18 @@ impl KeyBlob<'_> {
     }
 }
 
+impl fmt::Display for KeyBlob<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use KeyBlob::*;
+        match self {
+            Best => write!(f, "Best"),
+            Rsa1024 => write!(f, "Rsa1024"),
+            Ed25519V3 => write!(f, "Ed25519V3"),
+            String(_) => write!(f, "[redacted]"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PrivateKey {
     /// The server should use the 1024 bit RSA key provided in as KeyBlob (v2).

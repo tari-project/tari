@@ -118,7 +118,7 @@ impl OutboundMessaging {
         mut conn: PeerConnection,
     ) -> Result<NegotiatedSubstream<CommsSubstream>, MessagingProtocolError>
     {
-        match conn.open_substream(MESSAGING_PROTOCOL.clone()).await {
+        match conn.open_substream(&MESSAGING_PROTOCOL).await {
             Ok(substream) => Ok(substream),
             Err(err) => {
                 error!(

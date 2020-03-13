@@ -31,7 +31,7 @@ use crate::{
     },
     noise::NoiseConfig,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags, PeerManagerError},
-    protocol::{ProtocolEvent, ProtocolId, Protocols},
+    protocol::{ProtocolEvent, ProtocolId, Protocols, IDENTITY_PROTOCOL},
     test_utils::{
         node_identity::{build_node_identity, ordered_node_identities},
         test_node::{build_connection_manager, build_peer_manager, TestNodeConfig},
@@ -143,7 +143,7 @@ async fn dial_success() {
     let mut conn_out = conn_man1.dial_peer(node_identity2.node_id().clone()).await.unwrap();
     assert_eq!(conn_out.peer_node_id(), node_identity2.node_id());
     let peer2 = peer_manager1.find_by_node_id(conn_out.peer_node_id()).await.unwrap();
-    assert_eq!(peer2.supported_protocols, &[TEST_PROTO]);
+    assert_eq!(peer2.supported_protocols, [&IDENTITY_PROTOCOL, &TEST_PROTO]);
 
     let event = subscription2.next().await.unwrap().unwrap();
     unpack_enum!(ConnectionManagerEvent::Listening(_addr) = &*event);
@@ -153,12 +153,15 @@ async fn dial_success() {
     assert_eq!(conn_in.peer_node_id(), node_identity1.node_id());
 
     let peer1 = peer_manager2.find_by_node_id(node_identity1.node_id()).await.unwrap();
-    assert_eq!(peer1.supported_protocols(), &[TEST_PROTO]);
+    assert_eq!(peer1.supported_protocols(), [&IDENTITY_PROTOCOL, &TEST_PROTO]);
 
-    let err = conn_out.open_substream("/tari/invalid").await.unwrap_err();
+    let err = conn_out
+        .open_substream(&ProtocolId::from_static(b"/tari/invalid"))
+        .await
+        .unwrap_err();
     unpack_enum!(PeerConnectionError::ProtocolError(_err) = err);
 
-    let mut substream_out = conn_out.open_substream(TEST_PROTO).await.unwrap();
+    let mut substream_out = conn_out.open_substream(&TEST_PROTO).await.unwrap();
     assert_eq!(substream_out.protocol, TEST_PROTO);
 
     const MSG: &[u8] = b"Welease Woger!";

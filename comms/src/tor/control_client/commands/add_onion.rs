@@ -28,8 +28,9 @@ use crate::tor::control_client::{
     response::ResponseLine,
     types::{KeyBlob, KeyType, PortMapping, PrivateKey},
 };
-use std::{borrow::Cow, num::NonZeroU16};
+use std::{borrow::Cow, fmt, num::NonZeroU16};
 
+#[derive(Debug)]
 pub enum AddOnionFlag {
     /// The server should not include the newly generated private key as part of the response.
     DiscardPK,
@@ -44,15 +45,15 @@ pub enum AddOnionFlag {
     MaxStreamsCloseCircuit,
 }
 
-impl ToString for AddOnionFlag {
-    fn to_string(&self) -> String {
+impl fmt::Display for AddOnionFlag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use AddOnionFlag::*;
         match self {
-            DiscardPK => "DiscardPK".to_string(),
-            Detach => "Detach".to_string(),
-            BasicAuth => "BasicAuth".to_string(),
-            NonAnonymous => "NonAnonymous".to_string(),
-            MaxStreamsCloseCircuit => "MaxStreamsCloseCircuit".to_string(),
+            DiscardPK => write!(f, "DiscardPK"),
+            Detach => write!(f, "Detach"),
+            BasicAuth => write!(f, "BasicAuth"),
+            NonAnonymous => write!(f, "NonAnonymous"),
+            MaxStreamsCloseCircuit => write!(f, "MaxStreamsCloseCircuit"),
         }
     }
 }
@@ -172,6 +173,21 @@ impl TorCommand for AddOnion<'_> {
             private_key,
             onion_port: self.port_mapping.onion_port(),
         })
+    }
+}
+
+impl fmt::Display for AddOnion<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ADD_ONION (KeyType={} KeyBlob={} Flags={} PortMapping={})",
+            self.key_type.as_tor_repr(),
+            self.key_blob,
+            self.flags
+                .iter()
+                .fold(String::new(), |acc, f| format!("{}, {}", acc, f)),
+            self.port_mapping
+        )
     }
 }
 

@@ -26,6 +26,7 @@ const OK_CODE: u16 = 250;
 pub const EVENT_CODE: u16 = 650;
 
 /// Represents a single response line from the server.
+#[derive(Debug)]
 pub struct ResponseLine<'a> {
     pub(super) value: Cow<'a, str>,
     pub(super) code: u16,

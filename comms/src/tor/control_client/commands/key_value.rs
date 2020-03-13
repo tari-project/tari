@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::tor::control_client::{commands::TorCommand, error::TorClientError, parsers, response::ResponseLine};
-use std::{borrow::Cow, marker::PhantomData};
+use std::{borrow::Cow, fmt, marker::PhantomData};
 
 /// The GETCONF command.
 ///
@@ -89,6 +89,17 @@ impl<'a, 'b> TorCommand for KeyValueCommand<'a, 'b> {
             .map(|(_, values)| values.iter().map(|value| Cow::from(value.clone().into_owned())))
             .flatten()
             .collect())
+    }
+}
+
+impl fmt::Display for KeyValueCommand<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} (Args = {})",
+            self.command,
+            self.args.iter().fold(String::new(), |acc, a| format!("{}, {}", acc, a))
+        )
     }
 }
 

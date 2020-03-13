@@ -14,7 +14,6 @@ use tari_comms::{
     peer_manager::{NodeId, NodeIdentity, NodeIdentityError, Peer, PeerFeatures, PeerManagerError},
     pipeline,
     pipeline::SinkService,
-    protocol,
     tor,
     CommsBuilder,
     CommsBuilderError,
@@ -105,7 +104,7 @@ async fn run() -> Result<(), Error> {
             vec![node_identity2.public_address()].into(),
             Default::default(),
             PeerFeatures::COMMUNICATION_CLIENT,
-            &protocol::comms_protocols(),
+            &[],
         ))
         .await?;
 

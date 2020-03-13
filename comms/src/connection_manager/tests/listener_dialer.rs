@@ -159,7 +159,10 @@ async fn smoke() {
 
     // Open a substream
     {
-        let mut out_stream = outbound_peer_conn.open_substream("/tari/test-proto").await.unwrap();
+        let mut out_stream = outbound_peer_conn
+            .open_substream(&ProtocolId::from_static(b"/tari/test-proto"))
+            .await
+            .unwrap();
         out_stream.stream.write_all(b"HELLO").await.unwrap();
         out_stream.stream.flush().await.unwrap();
     }

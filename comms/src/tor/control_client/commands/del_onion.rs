@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::tor::control_client::{commands::TorCommand, error::TorClientError, response::ResponseLine};
+use std::fmt;
 
 /// The DEL_ONION command.
 ///
@@ -50,6 +51,12 @@ impl<'a> TorCommand for DelOnion<'a> {
         }
 
         Ok(())
+    }
+}
+
+impl fmt::Display for DelOnion<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "DEL_ONION (ServiceId = {})", self.service_id)
     }
 }
 

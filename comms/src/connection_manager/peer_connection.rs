@@ -144,14 +144,14 @@ impl PeerConnection {
         !self.request_tx.is_closed()
     }
 
-    pub async fn open_substream<P: Into<ProtocolId>>(
+    pub async fn open_substream(
         &mut self,
-        protocol_id: P,
+        protocol_id: &ProtocolId,
     ) -> Result<NegotiatedSubstream<CommsSubstream>, PeerConnectionError>
     {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.request_tx
-            .send(PeerConnectionRequest::OpenSubstream(protocol_id.into(), reply_tx))
+            .send(PeerConnectionRequest::OpenSubstream(protocol_id.clone(), reply_tx))
             .await?;
         reply_rx
             .await
@@ -319,9 +319,15 @@ impl PeerConnectionActor {
             self.peer_node_id.short_str()
         );
         let mut stream = self.control.open_stream().await?;
-        let selected_protocol = ProtocolNegotiation::new(&mut stream)
-            .negotiate_protocol_outbound(&[protocol])
-            .await?;
+
+        let mut negotiation = ProtocolNegotiation::new(&mut stream);
+
+        let selected_protocol = if self.supported_protocols.contains(&protocol) {
+            negotiation.negotiate_protocol_outbound_optimistic(&protocol).await?
+        } else {
+            negotiation.negotiate_protocol_outbound(&[protocol]).await?
+        };
+
         Ok(NegotiatedSubstream::new(selected_protocol, stream))
     }
 

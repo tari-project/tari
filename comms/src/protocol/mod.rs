@@ -37,8 +37,3 @@ pub mod messaging;
 /// Represents a protocol id string (e.g. /tari/transactions/1.0.0).
 /// This is atomically reference counted, so clones are shallow and cheap
 pub type ProtocolId = bytes::Bytes;
-
-/// The protocols offered by comms. These will be added to the list of protocols supported by this node.
-pub fn comms_protocols() -> [ProtocolId; 1] {
-    [messaging::MESSAGING_PROTOCOL.clone()]
-}
