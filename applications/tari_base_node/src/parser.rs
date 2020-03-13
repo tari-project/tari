@@ -41,7 +41,12 @@ use std::{
 };
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_comms::{peer_manager::PeerManager, types::CommsPublicKey, NodeIdentity};
+use tari_comms::{
+    connection_manager::ConnectionManagerRequester,
+    peer_manager::PeerManager,
+    types::CommsPublicKey,
+    NodeIdentity,
+};
 use tari_core::{
     base_node::LocalNodeCommsInterface,
     tari_utilities::hex::Hex,
@@ -55,13 +60,14 @@ use tokio::runtime;
 
 /// Enum representing commands used by the basenode
 #[derive(Clone, PartialEq, Debug, Display, EnumIter, EnumString)]
-#[strum(serialize_all = "snake_case")]
+#[strum(serialize_all = "kebab_case")]
 pub enum BaseNodeCommand {
     Help,
     GetBalance,
     SendTari,
     GetChainMetadata,
-    GetPeers,
+    ListPeers,
+    ListConnections,
     Whoami,
     Quit,
     Exit,
@@ -71,8 +77,9 @@ pub enum BaseNodeCommand {
 #[derive(Helper, Validator, Highlighter)]
 pub struct Parser {
     executor: runtime::Handle,
-    peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
+    peer_manager: Arc<PeerManager>,
+    connection_manager: ConnectionManagerRequester,
     shutdown_flag: Arc<AtomicBool>,
     commands: Vec<String>,
     hinter: HistoryHinter,
@@ -86,18 +93,18 @@ impl Completer for Parser {
     type Candidate = String;
 
     fn complete(&self, line: &str, pos: usize, _ctx: &Context<'_>) -> Result<(usize, Vec<String>), ReadlineError> {
-        let mut completions: Vec<String> = Vec::new();
-        for command in &self.commands {
-            if command.starts_with(line) {
-                completions.push(command.to_string());
-            }
-        }
+        let completions = self
+            .commands
+            .iter()
+            .filter(|cmd| cmd.starts_with(line))
+            .cloned()
+            .collect();
 
         Ok((pos, completions))
     }
 
-    fn update(&self, line: &mut LineBuffer, start: usize, elected: &str) {
-        line.update(elected, start);
+    fn update(&self, line: &mut LineBuffer, _: usize, elected: &str) {
+        line.update(elected, elected.len());
     }
 }
 
@@ -113,8 +120,9 @@ impl Parser {
     pub fn new(executor: runtime::Handle, ctx: &NodeContainer) -> Self {
         Parser {
             executor,
-            peer_manager: ctx.peer_manager(),
             node_identity: ctx.node_identity(),
+            peer_manager: ctx.comms().peer_manager(),
+            connection_manager: ctx.comms().connection_manager(),
             shutdown_flag: ctx.interrupt_flag(),
             commands: BaseNodeCommand::iter().map(|x| x.to_string()).collect(),
             hinter: HistoryHinter {},
@@ -142,32 +150,37 @@ impl Parser {
         if help_command != Some(BaseNodeCommand::Help) {
             return self.process_command(command, commands);
         }
+
+        use BaseNodeCommand::*;
         match command {
-            BaseNodeCommand::Help => {
+            Help => {
                 println!("Available commands are: ");
                 let joined = self.commands.join(", ");
                 println!("{}", joined);
             },
-            BaseNodeCommand::GetBalance => {
+            GetBalance => {
                 println!("Gets your balance");
             },
-            BaseNodeCommand::SendTari => {
+            SendTari => {
                 println!("Sends an amount of Tari to a address call this command via:");
                 println!("send_tari [amount of tari to send] [public key to send to]");
             },
-            BaseNodeCommand::GetChainMetadata => {
+            GetChainMetadata => {
                 println!("Gets your base node chain meta data");
             },
-            BaseNodeCommand::GetPeers => {
-                println!("Lists the peers that this node is connected to");
+            ListPeers => {
+                println!("Lists the peers that this node knows about");
             },
-            BaseNodeCommand::Whoami => {
+            ListConnections => {
+                println!("Lists the peer connections currently held by this node");
+            },
+            Whoami => {
                 println!(
                     "Display identity information about this node, including: public key, node ID and the public \
                      address"
                 );
             },
-            BaseNodeCommand::Exit | BaseNodeCommand::Quit => {
+            Exit | Quit => {
                 println!("Exits the base node");
             },
         }
@@ -191,15 +204,17 @@ impl Parser {
             GetChainMetadata => {
                 self.process_get_chain_meta();
             },
-            GetPeers => {
-                self.process_get_peers();
+            ListPeers => {
+                self.process_list_peers();
+            },
+            ListConnections => {
+                self.process_list_connections();
             },
             Whoami => {
                 self.process_whoami();
             },
             Exit | Quit => {
-                println!("quit received");
-                println!("Shutting down");
+                println!("Shutting down...");
                 info!(
                     target: LOG_TARGET,
                     "Termination signal received from user. Shutting node down."
@@ -230,7 +245,7 @@ impl Parser {
         self.executor.spawn(async move {
             match handler.get_metadata().await {
                 Err(err) => {
-                    println!("Failed to retreive chain metadata: {:?}", err);
+                    println!("Failed to retrieve chain metadata: {:?}", err);
                     warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
                     return;
                 },
@@ -239,7 +254,7 @@ impl Parser {
         });
     }
 
-    fn process_get_peers(&self) {
+    fn process_list_peers(&self) {
         let peer_manager = self.peer_manager.clone();
 
         self.executor.spawn(async move {
@@ -254,6 +269,29 @@ impl Parser {
                 },
                 Err(e) => {
                     error!(target: LOG_TARGET, "Could not read peers: {}", e.to_string());
+                    return;
+                },
+            }
+        });
+    }
+
+    fn process_list_connections(&self) {
+        let mut connection_manager = self.connection_manager.clone();
+        self.executor.spawn(async move {
+            match connection_manager.get_active_connections().await {
+                Ok(conns) if conns.is_empty() => {
+                    println!("No active peer connections.");
+                },
+                Ok(conns) => {
+                    println!(
+                        "{}",
+                        conns
+                            .into_iter()
+                            .fold(String::new(), |acc, p| { format!("{}\n{}", acc, p) })
+                    );
+                },
+                Err(e) => {
+                    error!(target: LOG_TARGET, "Could not list connections: {}", e.to_string());
                     return;
                 },
             }

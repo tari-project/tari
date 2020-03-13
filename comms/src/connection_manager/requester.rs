@@ -43,7 +43,10 @@ pub enum ConnectionManagerRequest {
     ),
     /// Register a oneshot to get triggered when the node is listening, or has failed to listen
     NotifyListening(oneshot::Sender<Multiaddr>),
+    /// Retrieve an active connection for a given node id if one exists.
     GetActiveConnection(NodeId, oneshot::Sender<Option<PeerConnection>>),
+    /// Retrieve all active connections
+    GetActiveConnections(oneshot::Sender<Vec<PeerConnection>>),
 }
 
 /// Responsible for constructing requests to the ConnectionManagerService
@@ -64,7 +67,39 @@ impl ConnectionManagerRequester {
     }
 }
 
+macro_rules! request_fn {
+   ($name:ident($($param:ident:$param_ty:ty),+) -> $ret:ty, request = $($request:ident)::+ $(,)?) => {
+        pub async fn $name(
+            &mut self,
+            $($param: $param_ty),+
+        ) -> Result<$ret, ConnectionManagerError>
+        {
+            let (reply_tx, reply_rx) = oneshot::channel();
+            self.sender
+                .send($($request)::+($($param),+, reply_tx))
+                .await
+                .map_err(|_| ConnectionManagerError::SendToActorFailed)?;
+            reply_rx.await.map_err(|_| ConnectionManagerError::ActorRequestCanceled)
+        }
+   };
+   ($name:ident() -> $ret:ty, request = $($request:ident)::+ $(,)?) => {
+        pub async fn $name(&mut self) -> Result<$ret, ConnectionManagerError>
+        {
+            let (reply_tx, reply_rx) = oneshot::channel();
+            self.sender
+                .send($($request)::+(reply_tx))
+                .await
+                .map_err(|_| ConnectionManagerError::SendToActorFailed)?;
+            reply_rx.await.map_err(|_| ConnectionManagerError::ActorRequestCanceled)
+        }
+   };
+}
+
 impl ConnectionManagerRequester {
+    request_fn!(get_active_connections() -> Vec<PeerConnection>, request = ConnectionManagerRequest::GetActiveConnections);
+
+    request_fn!(get_active_connection(node_id: NodeId) -> Option<PeerConnection>, request = ConnectionManagerRequest::GetActiveConnection);
+
     /// Returns a ConnectionManagerEvent stream
     pub fn get_event_subscription(&self) -> broadcast::Receiver<Arc<ConnectionManagerEvent>> {
         self.event_tx.subscribe()
@@ -105,19 +140,6 @@ impl ConnectionManagerRequester {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
             .send(ConnectionManagerRequest::NotifyListening(reply_tx))
-            .await
-            .map_err(|_| ConnectionManagerError::SendToActorFailed)?;
-        reply_rx.await.map_err(|_| ConnectionManagerError::ActorRequestCanceled)
-    }
-
-    pub async fn get_active_connection(
-        &mut self,
-        node_id: NodeId,
-    ) -> Result<Option<PeerConnection>, ConnectionManagerError>
-    {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(ConnectionManagerRequest::GetActiveConnection(node_id, reply_tx))
             .await
             .map_err(|_| ConnectionManagerError::SendToActorFailed)?;
         reply_rx.await.map_err(|_| ConnectionManagerError::ActorRequestCanceled)

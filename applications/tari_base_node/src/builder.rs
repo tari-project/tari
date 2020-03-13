@@ -32,7 +32,7 @@ use std::{
 use tari_common::{CommsTransport, DatabaseType, GlobalConfig, Network, SocksAuthentication, TorControlAuthentication};
 use tari_comms::{
     multiaddr::Multiaddr,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     socks,
     tor,
     tor::TorIdentity,
@@ -141,9 +141,9 @@ impl NodeContainer {
         using_backend!(self, ctx, ctx.local_node())
     }
 
-    /// Returns the PeerManager.
-    pub fn peer_manager(&self) -> Arc<PeerManager> {
-        using_backend!(self, ctx, ctx.comms.peer_manager())
+    /// Returns the CommsNode.
+    pub fn comms(&self) -> &CommsNode {
+        using_backend!(self, ctx, &ctx.comms)
     }
 
     /// Returns this node's identity.
