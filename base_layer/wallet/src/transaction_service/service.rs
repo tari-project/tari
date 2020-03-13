@@ -98,7 +98,7 @@ use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey, tar
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 
-const LOG_TARGET: &str = "base_layer::wallet::transaction_service::service";
+const LOG_TARGET: &str = "wallet::transaction_service::service";
 
 /// Contains the generated TxId and SpendingKey for a Pending Coinbase transaction
 #[derive(Debug)]
@@ -397,7 +397,7 @@ where
         mined_request_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
     ) -> Result<TransactionServiceResponse, TransactionServiceError>
     {
-        trace!(target: LOG_TARGET, "Handling Service Request: {:?}", request);
+        trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
         match request {
             TransactionServiceRequest::SendTransaction((dest_pubkey, amount, fee_per_gram, message)) => self
                 .send_transaction(dest_pubkey, amount, fee_per_gram, message, discovery_process_futures)

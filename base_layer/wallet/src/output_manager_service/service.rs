@@ -71,7 +71,7 @@ use tari_key_manager::{
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::reply_channel;
 
-const LOG_TARGET: &str = "base_layer::wallet::output_manager_service";
+const LOG_TARGET: &str = "wallet::output_manager_service";
 
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
 /// The service will assemble transactions to be sent from the wallets available outputs and provide keys to receive
@@ -212,7 +212,7 @@ where
         utxo_query_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, u64>>,
     ) -> Result<OutputManagerResponse, OutputManagerError>
     {
-        trace!(target: LOG_TARGET, "Handling Service Request: {:?}", request);
+        trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
         match request {
             OutputManagerRequest::AddOutput(uo) => {
                 self.add_output(uo).await.map(|_| OutputManagerResponse::OutputAdded)

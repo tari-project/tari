@@ -26,7 +26,7 @@ use crate::output_manager_service::{
     storage::database::PendingTransactionOutputs,
 };
 use futures::{stream::Fuse, StreamExt};
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, fmt, time::Duration};
 use tari_broadcast_channel::Subscriber;
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
@@ -56,6 +56,30 @@ pub enum OutputManagerRequest {
     GetSeedWords,
     SetBaseNodePublicKey(CommsPublicKey),
     SyncWithBaseNode,
+}
+
+impl fmt::Display for OutputManagerRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GetBalance => f.write_str("GetBalance"),
+            Self::AddOutput(v) => f.write_str(&format!("AddOutput ({})", v.value)),
+            Self::GetRecipientKey(v) => f.write_str(&format!("GetRecipientKey ({})", v.0)),
+            Self::GetCoinbaseKey(v) => f.write_str(&format!("GetCoinbaseKey ({})", v.0)),
+            Self::ConfirmTransaction(v) => f.write_str(&format!("ConfirmTransaction ({})", v.0)),
+            Self::PrepareToSendTransaction((_, _, _, msg)) => {
+                f.write_str(&format!("PrepareToSendTransaction ({})", msg))
+            },
+            Self::CancelTransaction(v) => f.write_str(&format!("CancelTransaction ({})", v)),
+            Self::TimeoutTransactions(d) => f.write_str(&format!("TimeoutTransactions ({}s)", d.as_secs())),
+            Self::GetPendingTransactions => f.write_str("GetPendingTransactions"),
+            Self::GetSpentOutputs => f.write_str("GetSpentOutputs"),
+            Self::GetUnspentOutputs => f.write_str("GetUnspentOutputs"),
+            Self::GetInvalidOutputs => f.write_str("GetInvalidOutputs"),
+            Self::GetSeedWords => f.write_str("GetSeedWords"),
+            Self::SetBaseNodePublicKey(k) => f.write_str(&format!("SetBaseNodePublicKey ({})", k)),
+            Self::SyncWithBaseNode => f.write_str("SyncWithBaseNode"),
+        }
+    }
 }
 
 /// API Reply enum

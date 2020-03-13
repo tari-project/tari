@@ -76,7 +76,7 @@ use tari_p2p::{
 use tari_service_framework::StackBuilder;
 use tokio::runtime::Runtime;
 
-const LOG_TARGET: &str = "base_layer::wallet";
+const LOG_TARGET: &str = "wallet";
 
 #[derive(Clone)]
 pub struct WalletConfig {
