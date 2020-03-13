@@ -141,8 +141,14 @@ impl NodeContainer {
         using_backend!(self, ctx, ctx.local_node())
     }
 
+    /// Returns the PeerManager.
     pub fn peer_manager(&self) -> Arc<PeerManager> {
         using_backend!(self, ctx, ctx.comms.peer_manager())
+    }
+
+    /// Returns this node's identity.
+    pub fn node_identity(&self) -> Arc<NodeIdentity> {
+        using_backend!(self, ctx, ctx.comms.node_identity())
     }
 
     /// Returns a handle to the wallet transaction service. This function panics if it has not been registered

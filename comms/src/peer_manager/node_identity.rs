@@ -34,7 +34,7 @@ use derive_error::Error;
 use multiaddr::Multiaddr;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
-use std::sync::RwLock;
+use std::{fmt, sync::RwLock};
 use tari_crypto::{
     keys::{PublicKey, SecretKey},
     tari_utilities::hex::serialize_to_hex,
@@ -175,5 +175,16 @@ impl Clone for NodeIdentity {
             secret_key: self.secret_key.clone(),
             public_address: RwLock::new(self.public_address()),
         }
+    }
+}
+
+impl fmt::Display for NodeIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Public Key: {}", self.public_key)?;
+        writeln!(f, "Node ID: {}", self.node_id)?;
+        writeln!(f, "Public Address: {}", acquire_read_lock!(self.public_address))?;
+        writeln!(f, "Features: {:?}", self.features)?;
+
+        Ok(())
     }
 }
