@@ -235,6 +235,7 @@ fn test_listening_network_silence() {
 }
 
 #[test]
+#[cfg(feature = "flaky-tests")]
 fn test_block_sync() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
@@ -296,6 +297,7 @@ fn test_block_sync() {
 }
 
 #[test]
+#[cfg(feature = "flaky-tests")]
 fn test_lagging_block_sync() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
@@ -376,6 +378,7 @@ fn test_lagging_block_sync() {
 }
 
 #[test]
+#[cfg(feature = "flaky-tests")]
 fn test_block_sync_recovery() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
@@ -468,6 +471,7 @@ fn test_block_sync_recovery() {
 }
 
 #[test]
+#[cfg(feature = "flaky-tests")]
 fn test_forked_block_sync() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();

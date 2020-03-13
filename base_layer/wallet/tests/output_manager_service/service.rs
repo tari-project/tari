@@ -621,6 +621,7 @@ fn test_confirming_received_output_sqlite_db() {
 }
 
 #[test]
+#[cfg(feature = "flaky-tests")]
 fn test_startup_utxo_scan() {
     let factories = CryptoFactories::default();
 

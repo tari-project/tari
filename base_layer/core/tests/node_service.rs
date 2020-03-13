@@ -70,6 +70,7 @@ use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
 #[test]
+#[cfg(feature = "flaky-tests")]
 fn request_response_get_metadata() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
@@ -106,6 +107,7 @@ fn request_response_get_metadata() {
 }
 
 #[test]
+#[cfg(feature = "flaky-tests")]
 fn request_and_response_fetch_headers() {
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
@@ -189,6 +191,7 @@ fn request_and_response_fetch_headers_with_hashes() {
 }
 
 #[test]
+#[cfg(feature = "flaky-tests")]
 fn request_and_response_fetch_kernels() {
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
@@ -230,6 +233,7 @@ fn request_and_response_fetch_kernels() {
 }
 
 #[test]
+#[cfg(feature = "flaky-tests")]
 fn request_and_response_fetch_utxos() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
@@ -268,6 +272,7 @@ fn request_and_response_fetch_utxos() {
 }
 
 #[test]
+#[cfg(feature = "flaky-tests")]
 fn request_and_response_fetch_blocks() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
@@ -318,6 +323,7 @@ fn request_and_response_fetch_blocks() {
 }
 
 #[test]
+#[cfg(feature = "flaky-tests")]
 fn request_and_response_fetch_blocks_with_hashes() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();

@@ -259,25 +259,23 @@ pub fn create_network_with_2_base_nodes(
         .start(runtime, data_path);
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity)
-        // Alice will call Bob, otherwise Bob may connect
-        // first and result in a DialCancelled
-        // .with_peers(vec![alice_node_identity])
+        .with_peers(vec![alice_node_identity])
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
 
     // Wait for peers to connect
     runtime.block_on(async {
-        let _ = alice_node
-            .comms
-            .connection_manager()
-            .dial_peer(bob_node.node_identity.node_id().clone())
-            .await;
         async_assert_eventually!(
             bob_node
                 .comms
                 .peer_manager()
                 .exists(alice_node.node_identity.public_key())
-                .await,
+                .await &&
+                alice_node
+                    .comms
+                    .peer_manager()
+                    .exists(bob_node.node_identity.public_key())
+                    .await,
             expect = true,
             max_attempts = 20,
             interval = Duration::from_millis(1000)

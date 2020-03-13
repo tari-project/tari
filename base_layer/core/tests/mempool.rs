@@ -611,6 +611,7 @@ fn request_response_get_tx_state_with_excess_sig() {
 }
 
 #[test]
+#[cfg(feature = "flaky-tests")]
 fn receive_and_propagate_transaction() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
@@ -703,6 +704,7 @@ fn receive_and_propagate_transaction() {
 }
 
 #[test]
+#[cfg(feature = "flaky-tests")]
 fn service_request_timeout() {
     let mut runtime = Runtime::new().unwrap();
     let network = Network::LocalNet;

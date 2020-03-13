@@ -11,6 +11,10 @@ commands:
         description: Set this to true to compile in release mode.
         type: boolean
         default: false
+      include_flaky_tests:
+        description: Also run tests that are mark with the 'flaky-test' feature (via --all-features)
+        type: boolean
+        default: false
     steps:
       - run:
           name: Calculate dependencies
@@ -31,7 +35,7 @@ commands:
             <<#parameters.release>>#<</parameters.release>> cargo fmt --all -- --check
       - run:
           name: Run tests
-          command: cargo test --workspace --all-features --jobs=3 <<#parameters.release>>--release<</parameters.release>>
+          command: cargo test --workspace <<#parameters.include_flaky_tests>>--all-features<</parameters.include_flaky_tests>> --jobs=3 <<#parameters.release>>--release<</parameters.release>>
       - save_cache:
           paths:
             - /usr/local/cargo/registry
@@ -63,6 +67,7 @@ jobs:
       - checkout
       - test:
           release: false
+          include_flaky_tests: false
 
   test-tari-release:
     docker:
@@ -72,6 +77,7 @@ jobs:
       - checkout
       - test:
           release: true
+          include_flaky_tests: true
 
   deploy-docs:
     docker:
