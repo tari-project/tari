@@ -22,7 +22,7 @@
 //
 use crate::{
     base_node::{
-        states::{error::BaseNodeError, StateEvent},
+        states::{error::BaseNodeError, listening::ListeningInfo, StateEvent},
         BaseNodeStateMachine,
     },
     chain_storage::BlockchainBackend,
@@ -50,5 +50,12 @@ impl Starting {
         }
         info!(target: LOG_TARGET, "Node configuration complete.");
         BaseNodeStateMachine::<B>::check_interrupt(shared.user_stopped.deref(), StateEvent::Initialized)
+    }
+}
+
+/// State management for Starting -> Listening. This state change occurs every time a node is restarted.
+impl From<Starting> for ListeningInfo {
+    fn from(_old_state: Starting) -> Self {
+        ListeningInfo {}
     }
 }

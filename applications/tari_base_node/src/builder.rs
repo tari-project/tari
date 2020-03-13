@@ -409,7 +409,6 @@ where
     let node = BaseNodeStateMachine::new(
         &db,
         &outbound_interface,
-        runtime::Handle::current(),
         chain_metadata_service.get_event_stream(),
         BaseNodeStateMachineConfig::default(),
     );

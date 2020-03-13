@@ -33,8 +33,6 @@
 //! [RFC-0111](https://rfc.tari.com/RFC-0111_BaseNodeArchitecture.html).
 
 #[cfg(feature = "base_node")]
-mod backoff;
-#[cfg(feature = "base_node")]
 mod base_node;
 #[cfg(feature = "base_node")]
 pub mod chain_metadata_service;
@@ -47,8 +45,6 @@ pub mod service;
 #[cfg(feature = "base_node")]
 pub mod states;
 // Public re-exports
-#[cfg(feature = "base_node")]
-pub use backoff::BackOff;
 #[cfg(feature = "base_node")]
 pub use base_node::{BaseNodeStateMachine, BaseNodeStateMachineConfig};
 #[cfg(feature = "base_node")]
