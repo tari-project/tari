@@ -25,7 +25,7 @@ use crate::{
         comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
         OutboundNodeCommsInterface,
     },
-    blocks::{blockheader::BlockHeader, Block, BlockBuilder, NewBlockTemplate},
+    blocks::{blockheader::BlockHeader, Block, NewBlockTemplate},
     chain_storage::{
         async_db,
         BlockAddResult,

@@ -21,9 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::comms_interface::BlockEvent,
+    base_node::{comms_interface::BlockEvent, generate_request_key, RequestKey, WaitingRequest, WaitingRequests},
     chain_storage::BlockchainBackend,
-    helpers::{generate_request_key, RequestKey, WaitingRequest, WaitingRequests},
     mempool::{
         proto,
         service::{

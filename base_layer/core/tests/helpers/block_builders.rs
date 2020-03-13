@@ -23,7 +23,7 @@
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
 use tari_core::{
-    blocks::{Block, BlockBuilder, BlockHeader, NewBlockTemplate},
+    blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, MemoryDatabase},
     consensus::{ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, Network},
     helpers::MockBackend,
