@@ -181,12 +181,14 @@ impl PeerConnection {
 
 impl fmt::Display for PeerConnection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        f.debug_struct("PeerConnection")
-            .field("id", &self.id)
-            .field("peer_node_id", &self.peer_node_id.short_str())
-            .field("direction", &self.direction.to_string())
-            .field("address", &self.address.to_string())
-            .finish()
+        write!(
+            f,
+            "Id = {}, Node ID = {}, Direction = {}, Peer Address = {}",
+            self.id,
+            self.peer_node_id.short_str(),
+            self.direction.to_string(),
+            self.address.to_string()
+        )
     }
 }
 

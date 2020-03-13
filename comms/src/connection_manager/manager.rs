@@ -341,6 +341,9 @@ where
             GetActiveConnection(node_id, reply_tx) => {
                 let _ = reply_tx.send(self.active_connections.get(&node_id).map(Clone::clone));
             },
+            GetActiveConnections(reply_tx) => {
+                let _ = reply_tx.send(self.active_connections.values().cloned().collect());
+            },
         }
     }
 

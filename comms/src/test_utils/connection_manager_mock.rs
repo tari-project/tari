@@ -147,6 +147,11 @@ impl ConnectionManagerMock {
                     .send(self.state.active_conns.lock().await.get(&node_id).map(Clone::clone))
                     .unwrap();
             },
+            GetActiveConnections(reply_tx) => {
+                reply_tx
+                    .send(self.state.active_conns.lock().await.values().cloned().collect())
+                    .unwrap();
+            },
         }
     }
 }
