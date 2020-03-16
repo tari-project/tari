@@ -27,7 +27,7 @@ use crate::{
     multiaddr::Multiaddr,
     socks,
     tor::{PrivateKey, TorClientError, TorControlPortClient},
-    transports::{SocksTransport, TcpTransport, Transport},
+    transports::{SocksConfig, SocksTransport, TcpTransport, Transport},
 };
 use serde_derive::{Deserialize, Serialize};
 
@@ -76,7 +76,10 @@ impl HiddenService {
     }
 
     pub fn get_transport(&self) -> SocksTransport {
-        SocksTransport::new(self.socks_addr.clone(), self.socks_auth.clone())
+        SocksTransport::new(SocksConfig {
+            proxy_address: self.socks_addr.clone(),
+            authentication: self.socks_auth.clone(),
+        })
     }
 
     pub fn get_tor_identity(&self) -> TorIdentity {

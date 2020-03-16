@@ -34,7 +34,7 @@ use tari_comms::{
     peer_manager::NodeIdentity,
     pipeline,
     tor,
-    transports::{MemoryTransport, SocksTransport, TcpTransport, Transport},
+    transports::{MemoryTransport, SocksTransport, TcpWithTorTransport, Transport},
     CommsBuilder,
     CommsBuilderError,
     CommsNode,
@@ -172,10 +172,17 @@ where
                 .with_listener_address(listener_address.clone());
             configure_comms_and_dht(comms, config, connector).await
         },
-        TransportType::Tcp { listener_address } => {
+        TransportType::Tcp {
+            listener_address,
+            tor_socks_config,
+        } => {
             debug!(target: LOG_TARGET, "Building TCP comms stack");
+            let mut transport = TcpWithTorTransport::new();
+            if let Some(config) = tor_socks_config {
+                transport.set_tor_socks_proxy(config.clone());
+            }
             let comms = builder
-                .with_transport(TcpTransport::default())
+                .with_transport(transport)
                 .with_listener_address(listener_address.clone());
             configure_comms_and_dht(comms, config, connector).await
         },
@@ -208,13 +215,12 @@ where
             Ok((comms, dht))
         },
         TransportType::Socks {
-            proxy_address,
+            socks_config,
             listener_address,
-            authentication,
         } => {
             debug!(target: LOG_TARGET, "Building SOCKS5 comms stack");
             let comms = builder
-                .with_transport(SocksTransport::new(proxy_address.clone(), authentication.clone()))
+                .with_transport(SocksTransport::new(socks_config.clone()))
                 .with_listener_address(listener_address.clone());
             configure_comms_and_dht(comms, config, connector).await
         },

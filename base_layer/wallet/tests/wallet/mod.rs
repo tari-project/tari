@@ -89,6 +89,7 @@ fn test_wallet() {
             node_identity: Arc::new(alice_identity.clone()),
             transport_type: TransportType::Tcp {
                 listener_address: alice_identity.public_address(),
+                tor_socks_config: None,
             },
             datastore_path: dir_path.to_str().unwrap().to_string(),
             peer_database_name: random_string(8),
@@ -101,6 +102,7 @@ fn test_wallet() {
             node_identity: Arc::new(bob_identity.clone()),
             transport_type: TransportType::Tcp {
                 listener_address: bob_identity.public_address(),
+                tor_socks_config: None,
             },
             datastore_path: dir_path.to_str().unwrap().to_string(),
             peer_database_name: random_string(8),
@@ -234,6 +236,7 @@ fn test_import_utxo() {
         node_identity: Arc::new(alice_identity.clone()),
         transport_type: TransportType::Tcp {
             listener_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
+            tor_socks_config: None,
         },
         datastore_path: temp_dir.path().to_str().unwrap().to_string(),
         peer_database_name: random_string(8),

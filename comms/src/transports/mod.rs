@@ -28,12 +28,16 @@ use futures::{Future, Stream};
 use multiaddr::Multiaddr;
 
 mod memory;
-mod socks;
-mod tcp;
-
 pub use memory::MemoryTransport;
-pub use socks::SocksTransport;
+
+mod socks;
+pub use socks::{SocksConfig, SocksTransport};
+
+mod tcp;
 pub use tcp::{TcpSocket, TcpTransport};
+
+mod tcp_with_tor;
+pub use tcp_with_tor::TcpWithTorTransport;
 
 pub trait Transport {
     /// The output of the transport after a connection is established

@@ -33,9 +33,9 @@ use std::{io, time::Duration};
 const SOCKS_SO_KEEPALIVE: Duration = Duration::from_millis(1500);
 
 #[derive(Clone, Debug)]
-struct SocksConfig {
-    proxy_address: Multiaddr,
-    authentication: socks::Authentication,
+pub struct SocksConfig {
+    pub proxy_address: Multiaddr,
+    pub authentication: socks::Authentication,
 }
 
 #[derive(Clone, Debug)]
@@ -45,16 +45,13 @@ pub struct SocksTransport {
 }
 
 impl SocksTransport {
-    pub fn new(proxy_address: Multiaddr, authentication: socks::Authentication) -> Self {
+    pub fn new(socks_config: SocksConfig) -> Self {
         let mut tcp_transport = TcpTransport::new();
         tcp_transport.set_nodelay(true);
         tcp_transport.set_keepalive(Some(SOCKS_SO_KEEPALIVE));
 
         Self {
-            socks_config: SocksConfig {
-                proxy_address,
-                authentication,
-            },
+            socks_config,
             tcp_transport,
         }
     }
@@ -107,7 +104,10 @@ mod test {
     #[test]
     fn new() {
         let proxy_address = "/ip4/127.0.0.1/tcp/1234".parse::<Multiaddr>().unwrap();
-        let transport = SocksTransport::new(proxy_address.clone(), Default::default());
+        let transport = SocksTransport::new(SocksConfig {
+            proxy_address: proxy_address.clone(),
+            authentication: Default::default(),
+        });
 
         assert_eq!(transport.socks_config.proxy_address, proxy_address);
         assert_eq!(transport.socks_config.authentication, Authentication::None);

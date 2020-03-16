@@ -226,7 +226,11 @@ impl FromStr for SocksAuthentication {
 pub enum CommsTransport {
     /// Use TCP to join the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
     /// e.g. tor onion addresses will not be contactable.
-    Tcp { listener_address: Multiaddr },
+    Tcp {
+        listener_address: Multiaddr,
+        tor_socks_address: Option<Multiaddr>,
+        tor_socks_auth: Option<SocksAuthentication>,
+    },
     /// Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
     /// onion v2, onion v3 and dns addresses.
     TorHiddenService {
@@ -242,8 +246,8 @@ pub enum CommsTransport {
     /// Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
     Socks5 {
         proxy_address: Multiaddr,
-        listener_address: Multiaddr,
         auth: SocksAuthentication,
+        listener_address: Multiaddr,
     },
 }
 
@@ -404,8 +408,16 @@ fn network_transport_config(cfg: &Config, network: &str) -> Result<CommsTranspor
         "tcp" => {
             let key = config_string(network, "tcp_listener_address");
             let listener_address = get_conf_multiaddr(&key)?;
+            let key = config_string(network, "tcp_tor_socks_address");
+            let tor_socks_address = get_conf_multiaddr(&key).ok();
+            let key = config_string(network, "tcp_tor_socks_auth");
+            let tor_socks_auth = get_conf_str(&key).ok().and_then(|auth_str| auth_str.parse().ok());
 
-            Ok(CommsTransport::Tcp { listener_address })
+            Ok(CommsTransport::Tcp {
+                listener_address,
+                tor_socks_auth,
+                tor_socks_address,
+            })
         },
         "tor" => {
             let key = config_string(network, "tor_control_address");
@@ -445,7 +457,7 @@ fn network_transport_config(cfg: &Config, network: &str) -> Result<CommsTranspor
             let key = config_string(network, "socks5_proxy_address");
             let proxy_address = get_conf_multiaddr(&key)?;
 
-            let key = config_string(network, "socks5_listener_address");
+            let key = config_string(network, "socks5_auth");
             let auth_str = get_conf_str(&key)?;
             let auth = auth_str
                 .parse()

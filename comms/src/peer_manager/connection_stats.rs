@@ -87,6 +87,26 @@ impl PeerConnectionStats {
     }
 }
 
+impl fmt::Display for PeerConnectionStats {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.last_connected_at.as_ref() {
+            Some(dt) => {
+                write!(f, "Last connected at '{}'.", dt)?;
+
+                if self.last_failed_at().is_some() {
+                    write!(f, " {}", self.last_connection_attempt)?;
+                }
+            },
+            None => {
+                write!(f, "Never connected to this peer.")?;
+                write!(f, " {}", self.last_connection_attempt)?;
+            },
+        }
+
+        Ok(())
+    }
+}
+
 /// Peer connection statistics
 #[derive(Debug, Clone, Deserialize, Serialize, PartialOrd, PartialEq)]
 pub enum LastConnectionAttempt {
@@ -116,7 +136,6 @@ impl Default for LastConnectionAttempt {
 
 impl Display for LastConnectionAttempt {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        writeln!(f, "Last connection to peer")?;
         use LastConnectionAttempt::*;
         match self {
             Never => write!(f, "Connection never attempted"),
