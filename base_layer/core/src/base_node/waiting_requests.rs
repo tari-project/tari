@@ -36,15 +36,6 @@ where R: RngCore {
     rng.next_u64()
 }
 
-/// The WaitingRequest is used to link incoming responses to the original sent request. When enough responses have been
-/// received or the request timeout has been received then the received responses are returned on the reply_tx.
-#[derive(Debug)]
-pub struct WaitingRequest<T, R> {
-    pub(crate) reply_tx: Option<OneshotSender<T>>,
-    pub(crate) received_responses: Vec<R>,
-    pub(crate) desired_resp_count: usize,
-}
-
 #[derive(Debug, Error)]
 pub enum WaitingRequestError {
     /// A problem has been encountered with the storage backend.
@@ -53,11 +44,11 @@ pub enum WaitingRequestError {
 }
 
 /// WaitingRequests is used to keep track of a set of WaitingRequests.
-pub struct WaitingRequests<T, R> {
-    requests: Arc<RwLock<HashMap<RequestKey, WaitingRequest<T, R>>>>,
+pub struct WaitingRequests<T> {
+    requests: Arc<RwLock<HashMap<RequestKey, Option<OneshotSender<T>>>>>,
 }
 
-impl<T, R> WaitingRequests<T, R> {
+impl<T> WaitingRequests<T> {
     /// Create a new set of waiting requests.
     pub fn new() -> Self {
         Self {
@@ -66,48 +57,29 @@ impl<T, R> WaitingRequests<T, R> {
     }
 
     /// Insert a new waiting request.
-    pub fn insert(&self, key: RequestKey, waiting_request: WaitingRequest<T, R>) -> Result<(), WaitingRequestError> {
+    pub fn insert(&self, key: RequestKey, reply_tx: Option<OneshotSender<T>>) -> Result<(), WaitingRequestError> {
         self.requests
             .write()
             .map_err(|e| WaitingRequestError::BackendError(e.to_string()))?
-            .insert(key, waiting_request);
+            .insert(key, reply_tx);
         Ok(())
     }
 
     /// Remove the waiting request corresponding to the provided key.
-    pub fn remove(&self, key: RequestKey) -> Result<Option<WaitingRequest<T, R>>, WaitingRequestError> {
-        Ok(self
+    pub fn remove(&self, key: RequestKey) -> Result<Option<OneshotSender<T>>, WaitingRequestError> {
+        if let Some(mut reply_tx) = self
             .requests
             .write()
             .map_err(|e| WaitingRequestError::BackendError(e.to_string()))?
-            .remove(&key))
-    }
-
-    /// Check if a sufficient number of responses have been received to complete the waiting request. Also, add the
-    /// newly received response to the specified waiting request.
-    pub fn check_complete(
-        &self,
-        key: RequestKey,
-        response: R,
-    ) -> Result<Option<WaitingRequest<T, R>>, WaitingRequestError>
-    {
-        let mut lock = self
-            .requests
-            .write()
-            .map_err(|e| WaitingRequestError::BackendError(e.to_string()))?;
-        let mut finalize_request = false;
-        if let Some(waiting_request) = lock.get_mut(&key) {
-            waiting_request.received_responses.push(response);
-            finalize_request = waiting_request.received_responses.len() >= waiting_request.desired_resp_count;
-        }
-        if finalize_request {
-            return Ok(lock.remove(&key));
+            .remove(&key)
+        {
+            return Ok(reply_tx.take());
         }
         Ok(None)
     }
 }
 
-impl<T, R> Clone for WaitingRequests<T, R> {
+impl<T> Clone for WaitingRequests<T> {
     fn clone(&self) -> Self {
         Self {
             requests: self.requests.clone(),
@@ -115,7 +87,7 @@ impl<T, R> Clone for WaitingRequests<T, R> {
     }
 }
 
-impl<T, R> Default for WaitingRequests<T, R> {
+impl<T> Default for WaitingRequests<T> {
     fn default() -> Self {
         WaitingRequests::new()
     }

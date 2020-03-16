@@ -29,16 +29,6 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 
-/// NodeCommsRequestType is used to specify the amount of peers that need to be queried before a request can be
-/// finalized.
-#[derive(Debug, Serialize, Deserialize)]
-pub enum NodeCommsRequestType {
-    /// Send the request to a single remote base node
-    Single,
-    /// Send the request to a number of remote base nodes and accumulate all the responses.
-    Many,
-}
-
 /// A container for the parameters required for a FetchMmrState request.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MmrStateRequest {
