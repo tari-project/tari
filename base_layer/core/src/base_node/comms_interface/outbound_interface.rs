@@ -21,12 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::comms_interface::{
-        error::CommsInterfaceError,
-        NodeCommsRequest,
-        NodeCommsRequestType,
-        NodeCommsResponse,
-    },
+    base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
     blocks::{blockheader::BlockHeader, Block},
     chain_storage::{ChainMetadata, HistoricalBlock},
     transactions::{
@@ -45,18 +40,14 @@ pub const LOG_TARGET: &str = "c::bn::comms_interface::outbound_interface";
 /// The OutboundNodeCommsInterface provides an interface to request information from remove nodes.
 #[derive(Clone)]
 pub struct OutboundNodeCommsInterface {
-    request_sender:
-        SenderService<(NodeCommsRequest, NodeCommsRequestType), Result<Vec<NodeCommsResponse>, CommsInterfaceError>>,
+    request_sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
     block_sender: UnboundedSender<(Block, Vec<CommsPublicKey>)>,
 }
 
 impl OutboundNodeCommsInterface {
     /// Construct a new OutboundNodeCommsInterface with the specified SenderService.
     pub fn new(
-        request_sender: SenderService<
-            (NodeCommsRequest, NodeCommsRequestType),
-            Result<Vec<NodeCommsResponse>, CommsInterfaceError>,
-        >,
+        request_sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
         block_sender: UnboundedSender<(Block, Vec<CommsPublicKey>)>,
     ) -> Self
     {
@@ -67,26 +58,16 @@ impl OutboundNodeCommsInterface {
     }
 
     /// Request metadata from remote base nodes.
-    pub async fn get_metadata(&mut self) -> Result<Vec<ChainMetadata>, CommsInterfaceError> {
-        let mut responses = Vec::<ChainMetadata>::new();
-        self.request_sender
-            .call((NodeCommsRequest::GetChainMetadata, NodeCommsRequestType::Many))
-            .await??
-            .into_iter()
-            .for_each(|response| {
-                if let NodeCommsResponse::ChainMetadata(metadata) = response {
-                    responses.push(metadata);
-                } else {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Received unexpected response from peer when requesting metadata: {:?}",
-                        response,
-                    );
-                    // TODO: Potentially ban peer
-                }
-            });
-        trace!(target: LOG_TARGET, "Remote metadata requested: {:?}", responses,);
-        Ok(responses)
+    pub async fn get_metadata(&mut self) -> Result<ChainMetadata, CommsInterfaceError> {
+        if let NodeCommsResponse::ChainMetadata(metadata) =
+            self.request_sender.call(NodeCommsRequest::GetChainMetadata).await??
+        {
+            trace!(target: LOG_TARGET, "Remote metadata requested: {:?}", metadata,);
+            Ok(metadata)
+        } else {
+            // TODO: Potentially ban peer
+            Err(CommsInterfaceError::UnexpectedApiResponse)
+        }
     }
 
     /// Fetch the transaction kernels with the provided hashes from remote base nodes.
@@ -95,11 +76,10 @@ impl OutboundNodeCommsInterface {
         hashes: Vec<HashOutput>,
     ) -> Result<Vec<TransactionKernel>, CommsInterfaceError>
     {
-        if let Some(NodeCommsResponse::TransactionKernels(kernels)) = self
+        if let NodeCommsResponse::TransactionKernels(kernels) = self
             .request_sender
-            .call((NodeCommsRequest::FetchKernels(hashes), NodeCommsRequestType::Single))
+            .call(NodeCommsRequest::FetchKernels(hashes))
             .await??
-            .first()
         {
             Ok(kernels.clone())
         } else {
@@ -109,11 +89,10 @@ impl OutboundNodeCommsInterface {
 
     /// Fetch the block headers corresponding to the provided block numbers from remote base nodes.
     pub async fn fetch_headers(&mut self, block_nums: Vec<u64>) -> Result<Vec<BlockHeader>, CommsInterfaceError> {
-        if let Some(NodeCommsResponse::BlockHeaders(headers)) = self
+        if let NodeCommsResponse::BlockHeaders(headers) = self
             .request_sender
-            .call((NodeCommsRequest::FetchHeaders(block_nums), NodeCommsRequestType::Single))
+            .call(NodeCommsRequest::FetchHeaders(block_nums))
             .await??
-            .first()
         {
             Ok(headers.clone())
         } else {
@@ -127,14 +106,10 @@ impl OutboundNodeCommsInterface {
         block_hashes: Vec<HashOutput>,
     ) -> Result<Vec<BlockHeader>, CommsInterfaceError>
     {
-        if let Some(NodeCommsResponse::BlockHeaders(headers)) = self
+        if let NodeCommsResponse::BlockHeaders(headers) = self
             .request_sender
-            .call((
-                NodeCommsRequest::FetchHeadersWithHashes(block_hashes),
-                NodeCommsRequestType::Single,
-            ))
+            .call(NodeCommsRequest::FetchHeadersWithHashes(block_hashes))
             .await??
-            .first()
         {
             Ok(headers.clone())
         } else {
@@ -148,11 +123,8 @@ impl OutboundNodeCommsInterface {
         hashes: Vec<HashOutput>,
     ) -> Result<Vec<TransactionOutput>, CommsInterfaceError>
     {
-        if let Some(NodeCommsResponse::TransactionOutputs(utxos)) = self
-            .request_sender
-            .call((NodeCommsRequest::FetchUtxos(hashes), NodeCommsRequestType::Single))
-            .await??
-            .first()
+        if let NodeCommsResponse::TransactionOutputs(utxos) =
+            self.request_sender.call(NodeCommsRequest::FetchUtxos(hashes)).await??
         {
             Ok(utxos.clone())
         } else {
@@ -162,11 +134,10 @@ impl OutboundNodeCommsInterface {
 
     /// Fetch the Historical Blocks corresponding to the provided block numbers from remote base nodes.
     pub async fn fetch_blocks(&mut self, block_nums: Vec<u64>) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
-        if let Some(NodeCommsResponse::HistoricalBlocks(blocks)) = self
+        if let NodeCommsResponse::HistoricalBlocks(blocks) = self
             .request_sender
-            .call((NodeCommsRequest::FetchBlocks(block_nums), NodeCommsRequestType::Single))
+            .call(NodeCommsRequest::FetchBlocks(block_nums))
             .await??
-            .first()
         {
             Ok(blocks.clone())
         } else {
@@ -181,14 +152,10 @@ impl OutboundNodeCommsInterface {
         block_hashes: Vec<HashOutput>,
     ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError>
     {
-        if let Some(NodeCommsResponse::HistoricalBlocks(blocks)) = self
+        if let NodeCommsResponse::HistoricalBlocks(blocks) = self
             .request_sender
-            .call((
-                NodeCommsRequest::FetchBlocksWithHashes(block_hashes),
-                NodeCommsRequestType::Single,
-            ))
+            .call(NodeCommsRequest::FetchBlocksWithHashes(block_hashes))
             .await??
-            .first()
         {
             Ok(blocks.clone())
         } else {
