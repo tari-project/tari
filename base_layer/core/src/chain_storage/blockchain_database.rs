@@ -156,6 +156,33 @@ pub trait BlockchainBackend: Send + Sync {
         F: FnMut(Result<(HashOutput, TransactionOutput), ChainStorageError>);
     /// Returns the stored header with the highest corresponding height.
     fn fetch_last_header(&self) -> Result<Option<BlockHeader>, ChainStorageError>;
+
+    fn range_proof_checkpoints_len(&self) -> Result<usize, ChainStorageError>;
+
+    fn get_range_proof_checkpoints(&self, cp_index: usize) -> Result<Option<MerkleCheckPoint>, ChainStorageError>;
+
+    fn curr_range_proof_checkpoint_get_added_position(
+        &self,
+        hash: &HashOutput,
+    ) -> Result<Option<usize>, ChainStorageError>;
+
+    // Returns the leaf index of the hash. If the hash is in the newly added hashes it returns the future MMR index for
+    // that hash, this index is only valid if the change history is Committed.
+    fn find_range_proof_leaf_index(&self, hash: &HashOutput) -> Result<Option<usize>, ChainStorageError> {
+        let mut accum_leaf_index = 0;
+        for cp_index in 0..self.range_proof_checkpoints_len()? {
+            if let Some(cp) = self.get_range_proof_checkpoints(cp_index)? {
+                if let Some(leaf_index) = cp.nodes_added().iter().position(|h| h == hash) {
+                    return Ok(Some(accum_leaf_index + leaf_index));
+                }
+                accum_leaf_index += cp.nodes_added().len();
+            }
+        }
+        if let Some(leaf_index) = self.curr_range_proof_checkpoint_get_added_position(hash)? {
+            return Ok(Some(accum_leaf_index + leaf_index));
+        }
+        Ok(None)
+    }
 }
 
 // Private macro that pulls out all the boiler plate of extracting a DB query result from its variants
@@ -503,7 +530,7 @@ where T: BlockchainBackend
             .as_ref()
             .expect("No validators added")
             .block
-            .validate(&block)
+            .validate(&block, &self)
             .map_err(ChainStorageError::ValidationError)?;
         self.store_new_block(block)
     }
@@ -745,7 +772,7 @@ where T: BlockchainBackend
             .as_ref()
             .expect("No validators added")
             .orphan
-            .validate(&block)
+            .validate(&block, &self)
             .map_err(ChainStorageError::ValidationError)?;
         self.insert_orphan(block.clone())?;
         info!(

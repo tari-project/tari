@@ -150,6 +150,7 @@ pub trait ConfigExtractor {
 pub enum DatabaseType {
     LMDB(PathBuf),
     Memory,
+    Postgres { connection_string: String },
 }
 
 //---------------------------------------------     Network Transport     ------------------------------------------//
@@ -302,13 +303,21 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .get_str(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
     let data_dir = PathBuf::from(data_dir);
-    let db_type = if &db_type == "memory" {
-        DatabaseType::Memory
-    } else if &db_type == "lmdb" {
-        let path = sub_dir(&data_dir, "db")?;
-        DatabaseType::LMDB(PathBuf::from(path))
-    } else {
-        return Err(ConfigurationError::new("base_node.db_type", "Invalid option"));
+    let db_type = match db_type.as_str() {
+        "memory" => DatabaseType::Memory,
+        "lmdb" => {
+            let path = sub_dir(&data_dir, "db")?;
+            DatabaseType::LMDB(PathBuf::from(path))
+        },
+        "postgres" => {
+            let key = config_string(&net_str, "postgres_connection");
+            let connection_string = cfg
+                .get_str(&key)
+                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+
+            DatabaseType::Postgres { connection_string }
+        },
+        _ => return Err(ConfigurationError::new("base_node.db_type", "Invalid option")),
     };
     // Thread counts
     let key = config_string(&net_str, "core_threads");

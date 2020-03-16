@@ -34,7 +34,7 @@ pub const LOG_TARGET: &str = "c::val::helpers";
 /// This function tests that the block timestamp is greater than the median timestamp at the chain tip.
 pub fn check_median_timestamp_at_chain_tip<B: BlockchainBackend>(
     block_header: &BlockHeader,
-    db: BlockchainDatabase<B>,
+    db: &BlockchainDatabase<B>,
     rules: ConsensusManager<B>,
 ) -> Result<(), ValidationError>
 {
@@ -79,7 +79,7 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
 /// Calculates the achieved and target difficulties at the chain tip and compares them.
 pub fn check_achieved_difficulty_at_chain_tip<B: BlockchainBackend>(
     block_header: &BlockHeader,
-    db: BlockchainDatabase<B>,
+    db: &BlockchainDatabase<B>,
     rules: ConsensusManager<B>,
 ) -> Result<(), ValidationError>
 {

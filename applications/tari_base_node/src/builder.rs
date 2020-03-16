@@ -71,6 +71,7 @@ use tari_core::{
         transaction_validators::{FullTxValidator, TxInputAndMaturityValidator},
     },
 };
+use tari_core_storage_postgres::postgres_database::PostgresDatabase;
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::{
     comms_connector::{pubsub_connector, PubsubDomainConnector, SubscriptionFactory},
@@ -98,6 +99,7 @@ use tari_wallet::{
     },
 };
 use tokio::{runtime, stream::StreamExt};
+use tari_core_storage_postgres::postgres_database_ref::PostgresDatabaseRef;
 
 const LOG_TARGET: &str = "c::bn::initialization";
 
@@ -107,6 +109,7 @@ macro_rules! using_backend {
         match $self {
             NodeContainer::LMDB($i) => $cmd,
             NodeContainer::Memory($i) => $cmd,
+            NodeContainer::Postgres($i) => $cmd,
         }
     };
 }
@@ -116,6 +119,7 @@ macro_rules! using_backend {
 pub enum NodeContainer {
     LMDB(BaseNodeContext<LMDBDatabase<HashDigest>>),
     Memory(BaseNodeContext<MemoryDatabase<HashDigest>>),
+    Postgres(BaseNodeContext<PostgresDatabaseRef<HashDigest>>),
 }
 
 impl NodeContainer {
@@ -309,6 +313,15 @@ pub async fn configure_and_initialize_node(
             let ctx = build_node_context(backend, network, id, config).await?;
             NodeContainer::LMDB(ctx)
         },
+        DatabaseType::Postgres { connection_string } => {
+            let backend =
+                PostgresDatabase::new(connection_string.clone(), MmrCacheConfig::default())
+                    .map_err(|e| e.to_string())?;
+
+            let backend_ref = PostgresDatabaseRef::new(backend);
+            let ctx = build_node_context(backend_ref, network, id, config).await?;
+            NodeContainer::Postgres(ctx)
+        },
     };
     Ok(result)
 }
@@ -326,13 +339,13 @@ where
     let mut db = BlockchainDatabase::new(backend, &rules).map_err(|e| e.to_string())?;
     let factories = CryptoFactories::default();
     let validators = Validators::new(
-        FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
+        FullConsensusValidator::new(rules.clone(), factories.clone()),
         StatelessValidator::new(&rules.consensus_constants()),
     );
     db.set_validators(validators);
     let mempool_validator = MempoolValidators::new(
-        FullTxValidator::new(factories.clone(), db.clone()),
-        TxInputAndMaturityValidator::new(db.clone()),
+        FullTxValidator::new(factories.clone()),
+        TxInputAndMaturityValidator::new(),
     );
     let mempool = Mempool::new(db.clone(), MempoolConfig::default(), mempool_validator);
     let diff_adj_manager = DiffAdjManager::new(db.clone(), &rules.consensus_constants()).map_err(|e| e.to_string())?;

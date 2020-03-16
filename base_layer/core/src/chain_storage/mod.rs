@@ -39,7 +39,16 @@ pub mod async_db;
 
 // Public API exports
 pub use blockchain_database::{BlockAddResult, BlockchainBackend, BlockchainDatabase, MutableMmrState, Validators};
-pub use db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree};
+pub use db_transaction::{
+    DbKey,
+    DbKeyValuePair,
+    DbTransaction,
+    DbValue,
+    MetadataKey,
+    MetadataValue,
+    MmrTree,
+    WriteOperation,
+};
 pub use error::ChainStorageError;
 pub use historical_block::HistoricalBlock;
 pub use lmdb_db::{
@@ -56,5 +65,5 @@ pub use lmdb_db::{
     LMDB_DB_UTXOS,
     LMDB_DB_UTXO_MMR_CP_BACKEND,
 };
-pub use memory_db::MemoryDatabase;
+pub use memory_db::{MemDbVec, MemoryDatabase};
 pub use metadata::ChainMetadata;

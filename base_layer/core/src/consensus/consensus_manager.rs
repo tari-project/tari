@@ -107,15 +107,6 @@ where B: BlockchainBackend
         Ok(())
     }
 
-    /// This returns the difficulty adjustment manager back. This can safely be cloned as the Difficulty adjustment
-    /// manager wraps an ARC in side of it.
-    pub fn get_diff_manager(&self) -> Result<DiffAdjManager<B>, ConsensusManagerError> {
-        match self.access_diff_adj()?.as_ref() {
-            Some(v) => Ok(v.clone()),
-            None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
-        }
-    }
-
     /// Returns the estimated target difficulty for the specified PoW algorithm at the chain tip.
     pub fn get_target_difficulty(&self, pow_algo: PowAlgorithm) -> Result<Difficulty, ConsensusManagerError> {
         match self.access_diff_adj()?.as_ref() {

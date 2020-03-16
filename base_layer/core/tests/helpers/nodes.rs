@@ -186,10 +186,8 @@ impl BaseNodeBuilder {
         let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
         let mut blockchain_db = BlockchainDatabase::new(db, &consensus_manager).unwrap();
         blockchain_db.set_validators(validators);
-        let mempool_validator = MempoolValidators::new(
-            TxInputAndMaturityValidator::new(blockchain_db.clone()),
-            TxInputAndMaturityValidator::new(blockchain_db.clone()),
-        );
+        let mempool_validator =
+            MempoolValidators::new(TxInputAndMaturityValidator::new(), TxInputAndMaturityValidator::new());
         let mempool = Mempool::new(
             blockchain_db.clone(),
             self.mempool_config.unwrap_or(MempoolConfig::default()),

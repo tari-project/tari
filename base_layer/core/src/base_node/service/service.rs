@@ -211,7 +211,7 @@ where B: BlockchainBackend + 'static
                 // Outbound block messages from the OutboundNodeCommsInterface
                 outbound_block_context = outbound_block_stream.select_next_some() => {
                     self.spawn_handle_outbound_block(outbound_block_context);
-                },
+                }
 
                 // Incoming request messages from the Comms layer
                 domain_msg = inbound_request_stream.select_next_some() => {

@@ -84,7 +84,7 @@ where
     let val_buf = serialize(val)?;
     txn.access()
         .put(&db, &key_buf, &val_buf, put::Flags::empty())
-        .map_err(|e| ChainStorageError::AccessError(e.to_string()))
+        .map_err(|e| ChainStorageError::ReplaceError(e.to_string()))
 }
 
 pub fn lmdb_delete<K>(txn: &WriteTransaction, db: &Database, key: &K) -> Result<(), ChainStorageError>

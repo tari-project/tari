@@ -41,7 +41,7 @@ impl StatelessTxValidator {
 }
 
 impl<B: BlockchainBackend> Validation<Transaction, B> for StatelessTxValidator {
-    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
+    fn validate(&self, tx: &Transaction, _: &BlockchainDatabase<B>) -> Result<(), ValidationError> {
         verify_tx(tx, &self.factories)?;
         Ok(())
     }
@@ -50,25 +50,21 @@ impl<B: BlockchainBackend> Validation<Transaction, B> for StatelessTxValidator {
 /// This validator will perform a full verification of the transaction. In order the following will be checked:
 /// Transaction integrity, All inputs exist in the backend, All timelocks (kernel lock heights and output maturities)
 /// have passed
-pub struct FullTxValidator<B: BlockchainBackend> {
+pub struct FullTxValidator {
     factories: CryptoFactories,
-    db: BlockchainDatabase<B>,
 }
 
-impl<B: BlockchainBackend> FullTxValidator<B>
-where B: BlockchainBackend
-{
-    pub fn new(factories: CryptoFactories, db: BlockchainDatabase<B>) -> Self {
-        Self { factories, db }
+impl FullTxValidator {
+    pub fn new(factories: CryptoFactories) -> Self {
+        Self { factories }
     }
 }
 
-impl<B: BlockchainBackend> Validation<Transaction, B> for FullTxValidator<B> {
-    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
+impl<B: BlockchainBackend> Validation<Transaction, B> for FullTxValidator {
+    fn validate(&self, tx: &Transaction, db: &BlockchainDatabase<B>) -> Result<(), ValidationError> {
         verify_tx(tx, &self.factories)?;
-        verify_inputs(tx, self.db.clone())?;
-        let height = self
-            .db
+        verify_inputs(tx, db)?;
+        let height = db
             .get_height()
             .map_err(|e| ValidationError::CustomError(e.to_string()))?
             .unwrap_or(0);
@@ -79,23 +75,18 @@ impl<B: BlockchainBackend> Validation<Transaction, B> for FullTxValidator<B> {
 
 /// This validator assumes that the transaction was already validated and it will skip this step. It will only check, in
 /// order,: All inputs exist in the backend, All timelocks (kernel lock heights and output maturities) have passed
-pub struct TxInputAndMaturityValidator<B: BlockchainBackend> {
-    db: BlockchainDatabase<B>,
-}
+pub struct TxInputAndMaturityValidator {}
 
-impl<B: BlockchainBackend> TxInputAndMaturityValidator<B>
-where B: BlockchainBackend
-{
-    pub fn new(db: BlockchainDatabase<B>) -> Self {
-        Self { db }
+impl TxInputAndMaturityValidator {
+    pub fn new() -> Self {
+        Self {}
     }
 }
 
-impl<B: BlockchainBackend> Validation<Transaction, B> for TxInputAndMaturityValidator<B> {
-    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        verify_inputs(tx, self.db.clone())?;
-        let height = self
-            .db
+impl<B: BlockchainBackend> Validation<Transaction, B> for TxInputAndMaturityValidator {
+    fn validate(&self, tx: &Transaction, db: &BlockchainDatabase<B>) -> Result<(), ValidationError> {
+        verify_inputs(tx, db)?;
+        let height = db
             .get_height()
             .or_else(|e| {
                 error!(
@@ -112,42 +103,33 @@ impl<B: BlockchainBackend> Validation<Transaction, B> for TxInputAndMaturityVali
 }
 
 /// This validator will only check that inputs exists in the backend.
-pub struct InputTxValidator<B: BlockchainBackend> {
-    db: BlockchainDatabase<B>,
-}
+pub struct InputTxValidator {}
 
-impl<B: BlockchainBackend> InputTxValidator<B>
-where B: BlockchainBackend
-{
-    pub fn new(db: BlockchainDatabase<B>) -> Self {
-        Self { db }
+impl InputTxValidator {
+    pub fn new() -> Self {
+        Self {}
     }
 }
 
-impl<B: BlockchainBackend> Validation<Transaction, B> for InputTxValidator<B> {
-    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        verify_inputs(tx, self.db.clone())?;
+impl<B: BlockchainBackend> Validation<Transaction, B> for InputTxValidator {
+    fn validate(&self, tx: &Transaction, db: &BlockchainDatabase<B>) -> Result<(), ValidationError> {
+        verify_inputs(tx, db)?;
         Ok(())
     }
 }
 
 /// This validator will only check timelocks, it will check that kernel lock heights and output maturities have passed.
-pub struct TimeLockTxValidator<B: BlockchainBackend> {
-    db: BlockchainDatabase<B>,
-}
+pub struct TimeLockTxValidator {}
 
-impl<B: BlockchainBackend> TimeLockTxValidator<B>
-where B: BlockchainBackend
-{
-    pub fn new(db: BlockchainDatabase<B>) -> Self {
-        Self { db }
+impl TimeLockTxValidator {
+    pub fn new() -> Self {
+        Self {}
     }
 }
 
-impl<B: BlockchainBackend> Validation<Transaction, B> for TimeLockTxValidator<B> {
-    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        let height = self
-            .db
+impl<B: BlockchainBackend> Validation<Transaction, B> for TimeLockTxValidator {
+    fn validate(&self, tx: &Transaction, db: &BlockchainDatabase<B>) -> Result<(), ValidationError> {
+        let height = db
             .get_height()
             .or_else(|e| {
                 error!(
@@ -180,7 +162,7 @@ fn verify_timelocks(tx: &Transaction, current_height: u64) -> Result<(), Validat
 }
 
 // This function checks that all inputs exist in the provided database backend
-fn verify_inputs<B: BlockchainBackend>(tx: &Transaction, db: BlockchainDatabase<B>) -> Result<(), ValidationError> {
+fn verify_inputs<B: BlockchainBackend>(tx: &Transaction, db: &BlockchainDatabase<B>) -> Result<(), ValidationError> {
     for input in tx.body.inputs() {
         if !(db.is_utxo(input.hash())).map_err(|e| ValidationError::CustomError(e.to_string()))? {
             warn!(

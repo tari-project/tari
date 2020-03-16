@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::BlockchainBackend,
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
     mempool::{
         consts::{MEMPOOL_ORPHAN_POOL_CACHE_TTL, MEMPOOL_ORPHAN_POOL_STORAGE_CAPACITY},
         orphan_pool::{error::OrphanPoolError, orphan_pool_storage::OrphanPoolStorage},
@@ -65,9 +65,9 @@ impl<T> OrphanPool<T>
 where T: BlockchainBackend
 {
     /// Create a new OrphanPool with the specified configuration
-    pub fn new(config: OrphanPoolConfig, validator: Validator<Transaction, T>) -> Self {
+    pub fn new(config: OrphanPoolConfig, validator: Validator<Transaction, T>, db: BlockchainDatabase<T>) -> Self {
         Self {
-            pool_storage: Arc::new(RwLock::new(OrphanPoolStorage::new(config, validator))),
+            pool_storage: Arc::new(RwLock::new(OrphanPoolStorage::new(config, validator, db))),
         }
     }
 
@@ -172,13 +172,14 @@ mod test {
         let network = Network::LocalNet;
         let consensus_manager = ConsensusManagerBuilder::new(network).build();
         let store = create_mem_db(&consensus_manager);
-        let mempool_validator = Box::new(TxInputAndMaturityValidator::new(store.clone()));
+        let mempool_validator = Box::new(TxInputAndMaturityValidator::new());
         let orphan_pool = OrphanPool::new(
             OrphanPoolConfig {
                 storage_capacity: 3,
                 tx_ttl: Duration::from_millis(50),
             },
             mempool_validator,
+            store.clone(),
         );
         orphan_pool
             .insert_txs(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone()])

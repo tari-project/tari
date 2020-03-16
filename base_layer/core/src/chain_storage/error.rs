@@ -30,11 +30,11 @@ use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
 #[derive(Debug, Clone, Error, PartialEq)]
 pub enum ChainStorageError {
     // Access to the underlying storage mechanism failed
-    #[error(non_std, no_from)]
+    #[error(msg_embedded, non_std, no_from)]
     AccessError(String),
     // The database may be corrupted or otherwise be in an inconsistent state. Please check logs to try and identify
     // the issue
-    #[error(non_std, no_from)]
+    #[error(msg_embedded, non_std, no_from)]
     CorruptedDatabase(String),
     // A given input could not be spent because it was not in the UTXO set
     UnspendableInput,
@@ -70,4 +70,7 @@ pub enum ChainStorageError {
     BlockingTaskSpawnError(String),
     // A request was out of range
     OutOfRange,
+    // Could not replace value
+    #[error(msg_embedded, non_std, no_from)]
+    ReplaceError(String),
 }

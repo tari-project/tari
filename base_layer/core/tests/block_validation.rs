@@ -36,7 +36,7 @@ fn test_genesis_block() {
     let backend = MemoryDatabase::<HashDigest>::default();
     let mut db = BlockchainDatabase::new(backend, &rules).unwrap();
     let validators = Validators::new(
-        FullConsensusValidator::new(rules.clone(), factories, db.clone()),
+        FullConsensusValidator::new(rules.clone(), factories),
         StatelessValidator::new(&rules.consensus_constants()),
     );
     db.set_validators(validators);

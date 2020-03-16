@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::BlockchainBackend,
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
     mempool::orphan_pool::{error::OrphanPoolError, orphan_pool::OrphanPoolConfig},
     transactions::{transaction::Transaction, types::Signature},
     validation::{ValidationError, Validator},
@@ -42,17 +42,19 @@ where T: BlockchainBackend
     config: OrphanPoolConfig,
     txs_by_signature: TtlCache<Signature, Arc<Transaction>>,
     validator: Validator<Transaction, T>,
+    db: BlockchainDatabase<T>,
 }
 
 impl<T> OrphanPoolStorage<T>
 where T: BlockchainBackend
 {
     /// Create a new OrphanPoolStorage with the specified configuration
-    pub fn new(config: OrphanPoolConfig, validator: Validator<Transaction, T>) -> Self {
+    pub fn new(config: OrphanPoolConfig, validator: Validator<Transaction, T>, db: BlockchainDatabase<T>) -> Self {
         Self {
             config,
             txs_by_signature: TtlCache::new(config.storage_capacity),
             validator,
+            db,
         }
     }
 
@@ -89,7 +91,7 @@ where T: BlockchainBackend
         // We dont care about tx's that appeared in valid blocks. Those tx's will time out in orphan pool and remove
         // them selves.
         for (tx_key, tx) in self.txs_by_signature.iter() {
-            match self.validator.validate(&tx) {
+            match self.validator.validate(&tx, &self.db) {
                 Ok(()) => {
                     trace!(
                         target: LOG_TARGET,
