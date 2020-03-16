@@ -301,7 +301,7 @@ unsigned long long pending_inbound_transaction_get_timestamp(struct TariPendingI
 // |   2 | Mined       |
 // |   3 | Imported    |
 // |   4 | Pending     |
-int pending_Inbound_transaction_get_status(struct TariPendingInboundTransaction *transaction,int* error_out);
+int pending_inbound_transaction_get_status(struct TariPendingInboundTransaction *transaction,int* error_out);
 
 // Frees memory for a TariPendingInboundTransaction
 void pending_inbound_transaction_destroy(struct TariPendingInboundTransaction *transaction);
@@ -411,13 +411,13 @@ unsigned long long wallet_import_utxo(struct TariWallet *wallet, unsigned long l
 bool wallet_sync_with_base_node(struct TariWallet *wallet, int* error_out);
 
 // Simulates the completion of a broadcasted TariPendingInboundTransaction
-bool wallet_test_broadcast_transaction(struct TariWallet *wallet, struct TariCompletedTransaction *tx, int* error_out);
+bool wallet_test_broadcast_transaction(struct TariWallet *wallet, unsigned long long tx, int* error_out);
 
 // Simulates receiving the finalized version of a TariPendingInboundTransaction
 bool wallet_test_finalize_received_transaction(struct TariWallet *wallet, struct TariPendingInboundTransaction *tx, int* error_out);
 
 // Simulates a TariCompletedTransaction that has been mined
-bool wallet_test_mine_transaction(struct TariWallet *wallet, struct TariCompletedTransaction *tx, int* error_out);
+bool wallet_test_mine_transaction(struct TariWallet *wallet, unsigned long long tx, int* error_out);
 
 // Simulates a TariPendingInboundtransaction being received
 bool wallet_test_receive_transaction(struct TariWallet *wallet,int* error_out);
