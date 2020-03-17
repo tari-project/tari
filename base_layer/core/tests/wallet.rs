@@ -135,7 +135,6 @@ fn wallet_base_node_integration_test() {
     };
     let alice_wallet_config = WalletConfig {
         comms_config: alice_comms_config,
-        logging_path: None,
         factories: factories.clone(),
         transaction_service_config: Some(TransactionServiceConfig {
             mempool_broadcast_timeout: Duration::from_secs(10),
@@ -183,7 +182,6 @@ fn wallet_base_node_integration_test() {
     };
     let bob_wallet_config = WalletConfig {
         comms_config: bob_comms_config,
-        logging_path: None,
         factories: factories.clone(),
         transaction_service_config: None,
     };

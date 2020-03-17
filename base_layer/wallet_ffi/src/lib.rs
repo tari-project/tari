@@ -121,6 +121,12 @@ use crate::{callback_handler::CallbackHandler, error::InterfaceError};
 use core::ptr;
 use error::LibWalletError;
 use libc::{c_char, c_int, c_longlong, c_uchar, c_uint, c_ulonglong, c_ushort};
+use log::{LevelFilter, *};
+use log4rs::{
+    append::file::FileAppender,
+    config::{Appender, Config, Root},
+    encode::pattern::PatternEncoder,
+};
 use rand::rngs::OsRng;
 use std::{
     boxed::Box,
@@ -146,7 +152,7 @@ use tari_wallet::{
     contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
     error::WalletError,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
-    storage::{connection_manager::run_migration_and_create_connection_pool, sqlite_db::WalletSqliteDatabase},
+    storage::{connection_manager::run_migration_and_create_sqlite_connection, sqlite_db::WalletSqliteDatabase},
     testnet_utils::{
         broadcast_transaction,
         complete_sent_transaction,
@@ -164,6 +170,8 @@ use tari_wallet::{
     wallet::WalletConfig,
 };
 use tokio::runtime::Runtime;
+
+const LOG_TARGET: &str = "wallet_ffi";
 
 pub type TariWallet = tari_wallet::wallet::Wallet<
     WalletSqliteDatabase,
@@ -2212,6 +2220,28 @@ pub unsafe extern "C" fn wallet_create(
     let runtime = Runtime::new();
     let factories = CryptoFactories::default();
     let w;
+
+    match logging_path_string {
+        Some(path) => {
+            let logfile = FileAppender::builder()
+                .encoder(Box::new(PatternEncoder::new(
+                    "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}",
+                )))
+                .append(false)
+                .build(path.as_str())
+                .unwrap();
+
+            let lconfig = Config::builder()
+                .appender(Appender::builder().build("logfile", Box::new(logfile)))
+                .build(Root::builder().appender("logfile").build(LevelFilter::Debug))
+                .unwrap();
+
+            log4rs::init_config(lconfig).expect("Should be able to start logging");
+            debug!(target: LOG_TARGET, "Logging started");
+        },
+        _ => (),
+    }
+
     match runtime {
         Ok(runtime) => {
             let sql_database_path = format!(
@@ -2219,17 +2249,24 @@ pub unsafe extern "C" fn wallet_create(
                 (*config).datastore_path.clone(),
                 (*config).peer_database_name.clone()
             );
-            let connection_pool = run_migration_and_create_connection_pool(&sql_database_path)
-                .expect("Could not create Sqlite Connection Pool");
-            let wallet_backend = WalletSqliteDatabase::new(connection_pool.clone());
-            let transaction_backend = TransactionServiceSqliteDatabase::new(connection_pool.clone());
-            let output_manager_backend = OutputManagerSqliteDatabase::new(connection_pool.clone());
-            let contacts_backend = ContactsServiceSqliteDatabase::new(connection_pool);
+            let connection = run_migration_and_create_sqlite_connection(&sql_database_path)
+                .map_err(|e| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Error creating Sqlite Connection in Wallet: {:?}", e
+                    );
+                    e
+                })
+                .expect("Could not open Sqlite db");
+            let wallet_backend = WalletSqliteDatabase::new(connection.clone());
+            let transaction_backend = TransactionServiceSqliteDatabase::new(connection.clone());
+            let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone());
+            let contacts_backend = ContactsServiceSqliteDatabase::new(connection);
+            debug!(target: LOG_TARGET, "Databases Initialized");
 
             w = TariWallet::new(
                 WalletConfig {
                     comms_config: (*config).clone(),
-                    logging_path: logging_path_string,
                     factories,
                     transaction_service_config: None,
                 },

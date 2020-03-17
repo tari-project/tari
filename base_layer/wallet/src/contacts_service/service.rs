@@ -65,7 +65,7 @@ where T: ContactsBackend + 'static
             .fuse();
         pin_mut!(request_stream);
 
-        info!("Contacts Service started");
+        info!(target: LOG_TARGET, "Contacts Service started");
         loop {
             futures::select! {
                 request_context = request_stream.select_next_some() => {
@@ -84,7 +84,7 @@ where T: ContactsBackend + 'static
                 }
             }
         }
-        info!("Contacts Service ended");
+        info!(target: LOG_TARGET, "Contacts Service ended");
         Ok(())
     }
 

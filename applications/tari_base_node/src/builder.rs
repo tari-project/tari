@@ -90,7 +90,7 @@ use tari_wallet::{
         storage::sqlite_db::OutputManagerSqliteDatabase,
         OutputManagerServiceInitializer,
     },
-    storage::connection_manager::{run_migration_and_create_connection_pool, WalletConnection},
+    storage::connection_manager::{run_migration_and_create_sqlite_connection, WalletConnection},
     transaction_service::{
         config::TransactionServiceConfig,
         handle::TransactionServiceHandle,
@@ -364,7 +364,7 @@ where
     }
     add_peers_to_comms(&comms, assign_peers(&config.peer_seeds)).await?;
     create_wallet_folder(&config.wallet_file)?;
-    let wallet_conn = run_migration_and_create_connection_pool(&config.wallet_file)
+    let wallet_conn = run_migration_and_create_sqlite_connection(&config.wallet_file)
         .map_err(|e| format!("Could not create wallet: {:?}", e))?;
     debug!(target: LOG_TARGET, "Registering base node services");
     let handles = register_services(

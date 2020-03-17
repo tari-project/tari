@@ -113,13 +113,11 @@ fn test_wallet() {
         };
         let config1 = WalletConfig {
             comms_config: comms_config1,
-            logging_path: None,
             factories: factories.clone(),
             transaction_service_config: None,
         };
         let config2 = WalletConfig {
             comms_config: comms_config2,
-            logging_path: None,
             factories: factories.clone(),
             transaction_service_config: None,
         };
@@ -247,7 +245,6 @@ fn test_import_utxo() {
     };
     let config = WalletConfig {
         comms_config,
-        logging_path: None,
         factories: factories.clone(),
         transaction_service_config: None,
     };
@@ -318,7 +315,6 @@ fn test_data_generation() {
     let config = WalletConfig {
         comms_config,
         factories,
-        logging_path: None,
         transaction_service_config: None,
     };
 
