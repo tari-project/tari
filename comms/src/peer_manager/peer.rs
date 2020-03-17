@@ -199,10 +199,11 @@ impl Peer {
 impl Display for Peer {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.write_str(&format!(
-            "[{}] PK={} Features={:?}",
+            "[{}] PK={} Features={:?} {}",
             self.node_id.short_str(),
             self.public_key,
-            self.features
+            self.features,
+            self.connection_stats,
         ))
     }
 }

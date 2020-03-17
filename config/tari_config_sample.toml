@@ -125,9 +125,14 @@ peer_seeds = []
 # -------------- Transport configuration --------------
 # Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
 # e.g. tor onion addresses will not be contactable.
-#transport = "tcp"
+transport = "tcp"
 # # The address and port to listen for peer connections over TCP.
-#tcp_listener_address = "/ip4/0.0.0.0/tcp/18189"
+tcp_listener_address = "/ip4/0.0.0.0/tcp/18189"
+# Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
+# This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
+# only advertise an onion address.
+tcp_tor_socks_address = "/ip4/127.0.0.1/tcp/36050"
+tcp_tor_socks_auth = "none"
 
 # Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
 # onion v2, onion v3 and dns addresses.

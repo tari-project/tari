@@ -131,11 +131,11 @@ where
 
                 _ = ping_tick.select_next_some() => {
                         let _ = self.ping_neighbours().await.or_else(|err| {
-                            error!(target: LOG_TARGET, "Error when pinging neighbours: {}", err);
+                            error!(target: LOG_TARGET, "Error when pinging neighbours: {:?}", err);
                             Err(err)
                         });
                         let _ = self.ping_monitored_node_ids().await.or_else(|err| {
-                            error!(target: LOG_TARGET, "Error when pinging monitored nodes: {}", err);
+                            error!(target: LOG_TARGET, "Error when pinging monitored nodes: {:?}", err);
                             Err(err)
                         });
                 },

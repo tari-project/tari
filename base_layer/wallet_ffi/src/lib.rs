@@ -1853,6 +1853,7 @@ pub unsafe extern "C" fn transport_tcp_create(
     }
     let transport = TariTransportType::Tcp {
         listener_address: listener_address_str.parse::<Multiaddr>().unwrap(),
+        tor_socks_config: None,
     };
     Box::into_raw(Box::new(transport))
 }

@@ -170,6 +170,7 @@ mod pingpong {
         } else {
             TransportType::Tcp {
                 listener_address: node_identity.public_address(),
+                tor_socks_config: None,
             }
         };
 
