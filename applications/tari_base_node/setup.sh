@@ -23,6 +23,7 @@ tar -xvf tari_*.tar.gz
 mv tari_base_node "${INSTALL_ROOT}"
 
 # Start Tor
+killall tor
 osascript -e "tell application \"Terminal\" to do script \"sh ${PWD}/start_tor.sh\""
 
 # Configure Base Node

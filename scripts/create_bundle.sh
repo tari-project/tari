@@ -23,9 +23,8 @@ config/presets/rincewind-simple.toml
 common/logging/log4rs-sample.yml
 applications/tari_base_node/install-osx.sh
 applications/tari_base_node/start_tor.sh
+applications/tari_base_node/README.md
 '
 
 # Create a zip file, stripping out paths (-j)
 zip -j - $BUNDLE > $OUTFILE
-
-
