@@ -29,7 +29,9 @@ use crate::{
     chain_storage::{async_db, BlockchainBackend, ChainMetadata, ChainStorageError},
 };
 use log::*;
+use rand::seq::SliceRandom;
 use std::collections::VecDeque;
+use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "c::bn::states::block_sync";
@@ -62,11 +64,12 @@ impl BlockSyncInfo {
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
         network_tip: &ChainMetadata,
+        sync_peers: &[NodeId],
     ) -> StateEvent
     {
         info!(target: LOG_TARGET, "Synchronizing missing blocks");
 
-        match synchronize_blocks(shared, network_tip).await {
+        match synchronize_blocks(shared, network_tip, sync_peers).await {
             Ok(StateEvent::BlocksSynchronized) => {
                 info!(target: LOG_TARGET, "Block sync state has synchronised");
                 StateEvent::BlocksSynchronized
@@ -87,9 +90,11 @@ impl BlockSyncInfo {
 async fn synchronize_blocks<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
     network_metadata: &ChainMetadata,
+    sync_peers: &[NodeId],
 ) -> Result<StateEvent, String>
 {
     let local_metadata = shared.db.get_metadata().map_err(|e| e.to_string())?;
+    let mut selected_sync_peer = select_sync_peer(sync_peers);
 
     if let Some(mut sync_block_hash) = network_metadata.best_block.clone() {
         // Find the missing block hashes of the strongest network chain.
@@ -114,15 +119,18 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             }
             // Add missing block to download queue.
             block_hashes.push_front(sync_block_hash.clone());
-            // Find the previous block hash by requesting the current header from a random peer node.
+            // Find the previous block hash by requesting the current header from the sync peer node.
             match shared
                 .comms
-                .fetch_headers_with_hashes(vec![sync_block_hash.clone()])
+                .request_headers_with_hashes_from_peer(vec![sync_block_hash.clone()], selected_sync_peer.clone())
                 .await
             {
                 Ok(headers) => {
                     debug!(target: LOG_TARGET, "Received {} headers from peer", headers.len());
                     if let Some(header) = headers.first() {
+                        // TODO: Validate received headers and download larger set of headers with single request.
+                        // TODO: ban peers that provided bad headers and blocks.
+
                         if header.hash() == sync_block_hash {
                             attempts = 0;
                             sync_block_hash = header.prev_hash.clone();
@@ -142,6 +150,8 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             if attempts >= shared.config.block_sync_config.max_header_request_retry_attempts {
                 return Ok(StateEvent::MaxRequestAttemptsReached);
             }
+            // Select different sync peer
+            selected_sync_peer = select_sync_peer(sync_peers);
         }
 
         // Sync missing blocks
@@ -152,7 +162,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                     // Request the block from a random peer node and add to chain.
                     match shared
                         .comms
-                        .fetch_blocks_with_hashes(vec![sync_block_hash.clone()])
+                        .request_blocks_with_hashes_from_peer(vec![sync_block_hash.clone()], selected_sync_peer.clone())
                         .await
                     {
                         Ok(blocks) => {
@@ -190,8 +200,9 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                             );
                         },
                     }
-                    // Attempt again to retrieve the correct block
+                    // Attempt again to retrieve the correct block with different sync peer
                     attempts += 1;
+                    selected_sync_peer = select_sync_peer(sync_peers);
                 }
                 if attempts >= shared.config.block_sync_config.max_block_request_retry_attempts {
                     return Ok(StateEvent::MaxRequestAttemptsReached);
@@ -203,6 +214,11 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
     }
 
     Ok(StateEvent::BlocksSynchronized)
+}
+
+// Select a random peer from the set of sync peers that have the current network tip.
+fn select_sync_peer(sync_peers: &[NodeId]) -> Option<NodeId> {
+    sync_peers.choose(&mut rand::thread_rng()).map(Clone::clone)
 }
 
 /// State management for BlockSync -> Listening.

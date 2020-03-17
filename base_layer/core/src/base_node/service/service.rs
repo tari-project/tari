@@ -47,7 +47,7 @@ use futures::{
 use log::*;
 use rand::rngs::OsRng;
 use std::{convert::TryInto, time::Duration};
-use tari_comms::types::CommsPublicKey;
+use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
@@ -92,7 +92,9 @@ pub struct BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, SLocalB
 impl<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock>
     BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock>
 where
-    SOutReq: Stream<Item = RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>>,
+    SOutReq: Stream<
+        Item = RequestContext<(NodeCommsRequest, Option<NodeId>), Result<NodeCommsResponse, CommsInterfaceError>>,
+    >,
     SInReq: Stream<Item = DomainMessage<proto::BaseNodeServiceRequest>>,
     SInRes: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
     SBlockIn: Stream<Item = DomainMessage<Block>>,
@@ -157,7 +159,9 @@ where B: BlockchainBackend + 'static
         streams: BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock>,
     ) -> Result<(), BaseNodeServiceError>
     where
-        SOutReq: Stream<Item = RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>>,
+        SOutReq: Stream<
+            Item = RequestContext<(NodeCommsRequest, Option<NodeId>), Result<NodeCommsResponse, CommsInterfaceError>>,
+        >,
         SInReq: Stream<Item = DomainMessage<proto::BaseNodeServiceRequest>>,
         SInRes: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
         SBlockIn: Stream<Item = DomainMessage<Block>>,
@@ -237,7 +241,10 @@ where B: BlockchainBackend + 'static
 
     fn spawn_handle_outbound_request(
         &self,
-        request_context: RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
+        request_context: RequestContext<
+            (NodeCommsRequest, Option<NodeId>),
+            Result<NodeCommsResponse, CommsInterfaceError>,
+        >,
     )
     {
         let outbound_message_service = self.outbound_message_service.clone();
@@ -245,13 +252,14 @@ where B: BlockchainBackend + 'static
         let timeout_sender = self.timeout_sender.clone();
         let config = self.config;
         task::spawn(async move {
-            let (request, reply_tx) = request_context.split();
+            let ((request, node_id), reply_tx) = request_context.split();
             let _ = handle_outbound_request(
                 outbound_message_service,
                 waiting_requests,
                 timeout_sender,
                 reply_tx,
                 request,
+                node_id,
                 config,
             )
             .await
@@ -430,6 +438,7 @@ async fn handle_outbound_request(
     timeout_sender: Sender<RequestKey>,
     reply_tx: OneshotSender<Result<NodeCommsResponse, CommsInterfaceError>>,
     request: NodeCommsRequest,
+    node_id: Option<NodeId>,
     config: BaseNodeServiceConfig,
 ) -> Result<(), CommsInterfaceError>
 {
@@ -440,7 +449,10 @@ async fn handle_outbound_request(
     };
 
     let mut send_msg_params = SendMessageParams::new();
-    send_msg_params.random(1);
+    match node_id {
+        Some(node_id) => send_msg_params.direct_node_id(node_id),
+        None => send_msg_params.random(1),
+    };
 
     let send_result = outbound_message_service
         .send_message(

@@ -224,7 +224,7 @@ where T: BlockchainBackend + 'static
             source_peer
                 .as_ref()
                 .map(|p| format!("remote peer: {}", p))
-                .unwrap_or("local services".to_string())
+                .unwrap_or_else(|| "local services".to_string())
         );
         trace!(target: LOG_TARGET, "Block: {}", block);
         let add_block_result = async_db::add_block(self.blockchain_db.clone(), block.clone()).await;

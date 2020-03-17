@@ -99,9 +99,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         use crate::base_node::states::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
         match (state, event) {
             (Starting(s), Initialized) => Listening(s.into()),
-            (BlockSync(s, _), BlocksSynchronized) => Listening(s.into()),
-            (BlockSync(s, _), MaxRequestAttemptsReached) => Listening(s.into()),
-            (Listening(s), FallenBehind(Lagging(network_tip))) => BlockSync(s.into(), network_tip),
+            (BlockSync(s, _, _), BlocksSynchronized) => Listening(s.into()),
+            (BlockSync(s, _, _), MaxRequestAttemptsReached) => Listening(s.into()),
+            (Listening(s), FallenBehind(Lagging(network_tip, sync_peers))) => {
+                BlockSync(s.into(), network_tip, sync_peers)
+            },
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
             (_, UserQuit) => Shutdown(states::Shutdown::with_reason("Shutdown initiated by user".to_string())),
             (s, e) => {
@@ -144,7 +146,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             let _ = shared_state.event_sender.send(state.clone()).await;
             let next_event = match &mut state {
                 Starting(s) => s.next_event(&shared_state).await,
-                BlockSync(s, network_tip) => s.next_event(&mut shared_state, network_tip).await,
+                BlockSync(s, network_tip, sync_peers) => s.next_event(&mut shared_state, network_tip, sync_peers).await,
                 Listening(s) => s.next_event(&mut shared_state).await,
                 Shutdown(_) => break,
             };
