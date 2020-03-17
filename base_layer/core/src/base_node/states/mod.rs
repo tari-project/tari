@@ -22,6 +22,7 @@
 
 use crate::chain_storage::ChainMetadata;
 use std::fmt::{Display, Error, Formatter};
+use tari_comms::peer_manager::NodeId;
 
 /// The base node state represents the FSM of the base node synchronisation process.
 ///
@@ -62,7 +63,7 @@ use std::fmt::{Display, Error, Formatter};
 #[derive(Clone, Debug, PartialEq)]
 pub enum BaseNodeState {
     Starting(Starting),
-    BlockSync(BlockSyncInfo, ChainMetadata), // The best network chain metadata
+    BlockSync(BlockSyncInfo, ChainMetadata, Vec<NodeId>), // The best network chain metadata
     Listening(ListeningInfo),
     Shutdown(Shutdown),
 }
@@ -86,7 +87,7 @@ pub enum StateEvent {
 #[derive(Debug, PartialEq)]
 pub enum SyncStatus {
     // We are behind the chain tip.
-    Lagging(ChainMetadata),
+    Lagging(ChainMetadata, Vec<NodeId>),
     UpToDate,
 }
 
@@ -94,7 +95,7 @@ impl Display for BaseNodeState {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         let s = match self {
             Self::Starting(_) => "Initializing",
-            Self::BlockSync(_, _) => "Synchronizing blocks",
+            Self::BlockSync(_, _, _) => "Synchronizing blocks",
             Self::Listening(_) => "Listening",
             Self::Shutdown(_) => "Shutting down",
         };

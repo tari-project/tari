@@ -121,7 +121,7 @@ fn test_listening_lagging() {
             .unwrap();
 
         match next_event {
-            StateEvent::FallenBehind(Lagging(_)) => assert!(true),
+            StateEvent::FallenBehind(Lagging(_, _)) => assert!(true),
             _ => assert!(false),
         }
 
@@ -256,8 +256,9 @@ fn test_block_sync() {
 
         // Sync Blocks from genesis block to tip
         let network_tip = bob_db.get_metadata().unwrap();
+        let sync_peers = vec![bob_node.node_identity.node_id().clone()];
         let state_event = BlockSyncInfo {}
-            .next_event(&mut alice_state_machine, &network_tip)
+            .next_event(&mut alice_state_machine, &network_tip, &sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
         assert_eq!(alice_db.get_height(), bob_db.get_height());
@@ -337,8 +338,9 @@ fn test_lagging_block_sync() {
 
         // Lagging state beyond horizon, sync remaining Blocks to tip
         let network_tip = bob_db.get_metadata().unwrap();
+        let sync_peers = vec![bob_node.node_identity.node_id().clone()];
         let state_event = BlockSyncInfo {}
-            .next_event(&mut alice_state_machine, &network_tip)
+            .next_event(&mut alice_state_machine, &network_tip, &sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
 
@@ -423,7 +425,10 @@ fn test_block_sync_recovery() {
         // won't always have these blocks and Alice will have to request these blocks again until her maximum attempts
         // have been reached.
         let network_tip = bob_db.get_metadata().unwrap();
-        let state_event = BlockSyncInfo.next_event(&mut alice_state_machine, &network_tip).await;
+        let sync_peers = vec![bob_node.node_identity.node_id().clone()];
+        let state_event = BlockSyncInfo
+            .next_event(&mut alice_state_machine, &network_tip, &sync_peers)
+            .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
 
         for height in 1..=network_tip.height_of_longest_chain.unwrap() {
@@ -523,8 +528,9 @@ fn test_forked_block_sync() {
         assert_eq!(bob_db.get_height(), Ok(Some(9)));
 
         let network_tip = bob_db.get_metadata().unwrap();
+        let sync_peers = vec![bob_node.node_identity.node_id().clone()];
         let state_event = BlockSyncInfo {}
-            .next_event(&mut alice_state_machine, &network_tip)
+            .next_event(&mut alice_state_machine, &network_tip, &sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
 

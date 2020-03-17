@@ -22,6 +22,7 @@
 
 use crate::{base_node::states::SyncStatus, chain_storage::ChainMetadata};
 use log::*;
+use tari_comms::peer_manager::NodeId;
 
 /// Determine the best metadata from a set of metadata received from the network.
 pub fn best_metadata(metadata_list: Vec<ChainMetadata>) -> ChainMetadata {
@@ -40,7 +41,13 @@ pub fn best_metadata(metadata_list: Vec<ChainMetadata>) -> ChainMetadata {
 }
 
 /// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
-pub fn determine_sync_mode(local: &ChainMetadata, network: &ChainMetadata, log_target: &str) -> SyncStatus {
+pub fn determine_sync_mode(
+    local: &ChainMetadata,
+    network: ChainMetadata,
+    sync_peers: Vec<NodeId>,
+    log_target: &str,
+) -> SyncStatus
+{
     use crate::base_node::states::SyncStatus::*;
     match network.accumulated_difficulty {
         None => {
@@ -64,7 +71,7 @@ pub fn determine_sync_mode(local: &ChainMetadata, network: &ChainMetadata, log_t
                     network.height_of_longest_chain.unwrap_or(0),
                     network_tip_accum_difficulty,
                 );
-                Lagging(network.clone())
+                Lagging(network, sync_peers)
             } else {
                 info!(
                     target: log_target,

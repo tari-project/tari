@@ -594,13 +594,15 @@ fn service_request_timeout() {
     );
 
     runtime.block_on(async {
+        // Bob should not be reachable
+        bob_node.comms.shutdown().await;
+
         assert_eq!(
             alice_node.outbound_nci.get_metadata().await,
             Err(CommsInterfaceError::RequestTimedOut)
         );
 
         alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }
 

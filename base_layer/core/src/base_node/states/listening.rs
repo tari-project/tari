@@ -22,7 +22,7 @@
 
 use crate::{
     base_node::{
-        chain_metadata_service::ChainMetadataEvent,
+        chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
         states::{
             helpers::{best_metadata, determine_sync_mode},
             StateEvent,
@@ -36,11 +36,12 @@ use crate::{
 use futures::stream::StreamExt;
 use log::*;
 use std::collections::VecDeque;
+use tari_comms::peer_manager::NodeId;
 
 const LOG_TARGET: &str = "c::bn::states::listening";
 
 // The number of liveness rounds that need to be included when determining the best network tip.
-const METADATA_LIVENESS_ROUNDS: usize = 3;
+const METADATA_LIVENESS_ROUNDS: usize = 1;
 
 /// Configuration for the Listening state.
 #[derive(Clone, Copy, Debug)]
@@ -66,7 +67,7 @@ impl ListeningInfo {
     pub async fn next_event<B: BlockchainBackend>(&mut self, shared: &mut BaseNodeStateMachine<B>) -> StateEvent {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
 
-        let mut metadata_rounds = VecDeque::<Vec<ChainMetadata>>::new();
+        let mut metadata_rounds = VecDeque::<Vec<PeerChainMetadata>>::new();
         let mut metadata_event_stream = shared.metadata_event_stream.clone().fuse();
         loop {
             futures::select! {
@@ -88,10 +89,14 @@ impl ListeningInfo {
                                         return FatalError(msg);
                                     },
                                 };
-
-                                let metadata_list: Vec<ChainMetadata> = metadata_rounds.clone().into_iter().flatten().collect();
-                                if let SyncStatus::Lagging(network_tip) = determine_sync_mode(&local, &best_metadata(metadata_list), LOG_TARGET) {
-                                    return StateEvent::FallenBehind(SyncStatus::Lagging(network_tip));
+                                // Find the best network metadata and set of sync peers with the best tip.
+                                let metadata_list = metadata_rounds.iter().flatten()
+                                                    .map(|peer_metadata| peer_metadata.chain_metadata.clone())
+                                                    .collect::<Vec<_>>();
+                                let best_metadata=best_metadata(metadata_list);
+                                let sync_peers=find_sync_peers(&best_metadata,&metadata_rounds);
+                                if let SyncStatus::Lagging(network_tip,sync_peers) = determine_sync_mode(&local, best_metadata, sync_peers,LOG_TARGET) {
+                                    return StateEvent::FallenBehind(SyncStatus::Lagging(network_tip,sync_peers));
                                 }
                             }
                         }
@@ -105,4 +110,15 @@ impl ListeningInfo {
             }
         }
     }
+}
+
+// Finds the set of sync peers that have the best tip on their main chain.
+fn find_sync_peers(best_metadata: &ChainMetadata, metadata_rounds: &VecDeque<Vec<PeerChainMetadata>>) -> Vec<NodeId> {
+    let mut sync_peers = Vec::<NodeId>::new();
+    for peer_metadata in metadata_rounds.iter().flatten() {
+        if peer_metadata.chain_metadata == *best_metadata {
+            sync_peers.push(peer_metadata.node_id.clone());
+        }
+    }
+    sync_peers
 }

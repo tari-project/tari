@@ -25,6 +25,7 @@ mod helpers;
 
 use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, executor::block_on, StreamExt};
 use tari_broadcast_channel::bounded;
+use tari_comms::peer_manager::NodeId;
 use tari_core::{
     base_node::{
         comms_interface::{CommsInterfaceError, InboundNodeCommsHandlers, NodeCommsRequest, NodeCommsResponse},
@@ -48,7 +49,7 @@ use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_test_utils::runtime::test_async;
 
 async fn test_request_responder(
-    receiver: &mut Receiver<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
+    receiver: &mut Receiver<(NodeCommsRequest, Option<NodeId>), Result<NodeCommsResponse, CommsInterfaceError>>,
     response: NodeCommsResponse,
 )
 {

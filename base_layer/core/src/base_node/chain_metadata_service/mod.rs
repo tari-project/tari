@@ -28,5 +28,5 @@ mod initializer;
 mod service;
 
 // Public re-exports
-pub use handle::{ChainMetadataEvent, ChainMetadataHandle};
+pub use handle::{ChainMetadataEvent, ChainMetadataHandle, PeerChainMetadata};
 pub use initializer::ChainMetadataServiceInitializer;
