@@ -359,7 +359,7 @@ where
     save_as_json(&config.identity_file, &*comms.node_identity())
         .map_err(|e| format!("Failed to save node identity: {:?}", e))?;
     if let Some(hs) = comms.hidden_service() {
-        save_as_json(&config.tor_identity_file, &hs.get_tor_identity())
+        save_as_json(&config.tor_identity_file, hs.tor_identity())
             .map_err(|e| format!("Failed to save tor identity: {:?}", e))?;
     }
     add_peers_to_comms(&comms, assign_peers(&config.peer_seeds)).await?;

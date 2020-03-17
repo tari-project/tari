@@ -2005,7 +2005,7 @@ pub unsafe extern "C" fn wallet_get_tor_identity(wallet: *const TariWallet, erro
         let service = (*wallet).comms.hidden_service();
         match service {
             Some(s) => {
-                let tor_identity = s.get_tor_identity();
+                let tor_identity = s.tor_identity();
                 identity_bytes = tor_identity.to_binary().unwrap();
             },
             None => {

@@ -24,64 +24,65 @@ use super::{
     commands,
     commands::{AddOnionFlag, AddOnionResponse, TorCommand},
     error::TorClientError,
-    parsers,
-    response::{ResponseLine, EVENT_CODE},
+    response::ResponseLine,
     types::{KeyBlob, KeyType, PortMapping},
     PrivateKey,
+    LOG_TARGET,
 };
 use crate::{
-    compat::IoCompat,
     multiaddr::Multiaddr,
+    tor::control_client::{event::TorControlEvent, monitor::spawn_monitor},
     transports::{TcpTransport, Transport},
 };
-use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};
+use futures::{channel::mpsc, AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
 use std::{borrow::Cow, fmt::Display, num::NonZeroU16};
-use tokio_util::codec::{Framed, LinesCodec};
-
-const LOG_TARGET: &str = "comms::tor::control_client";
+use tokio::sync::broadcast;
 
 /// Client for the Tor control port.
 ///
 /// See the [Tor Control Port Spec](https://gitweb.torproject.org/torspec.git/tree/control-spec.txt) for more details.
-pub struct TorControlPortClient<TSocket> {
-    framed: Framed<IoCompat<TSocket>, LinesCodec>,
+pub struct TorControlPortClient {
+    cmd_tx: mpsc::Sender<String>,
+    output_stream: mpsc::Receiver<ResponseLine>,
+    event_tx: broadcast::Sender<TorControlEvent>,
 }
 
-impl TorControlPortClient<<TcpTransport as Transport>::Output> {
+impl TorControlPortClient {
     /// Connect using TCP to the given address.
-    pub async fn connect(addr: Multiaddr) -> Result<Self, TorClientError> {
+    pub async fn connect(
+        addr: Multiaddr,
+        event_tx: broadcast::Sender<TorControlEvent>,
+    ) -> Result<Self, TorClientError>
+    {
         let mut tcp = TcpTransport::new();
         tcp.set_nodelay(true);
         let socket = tcp.dial(addr)?.await?;
-        Ok(Self::new(socket))
+        Ok(Self::new(socket, event_tx))
     }
-}
 
-/// Represents tor control port authentication mechanisms
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Authentication {
-    /// No control port authentication required
-    None,
-    /// A hashed password will be sent to authenticate
-    HashedPassword(String),
-    /// Cookie authentication. The contents of the cookie file encoded as hex
-    Cookie(String),
-}
-impl Default for Authentication {
-    fn default() -> Self {
-        Authentication::None
-    }
-}
-
-impl<TSocket> TorControlPortClient<TSocket>
-where TSocket: AsyncRead + AsyncWrite + Unpin
-{
     /// Create a new TorControlPortClient using the given socket
-    pub fn new(socket: TSocket) -> Self {
+    pub fn new<TSocket>(socket: TSocket, event_tx: broadcast::Sender<TorControlEvent>) -> Self
+    where TSocket: AsyncRead + AsyncWrite + Unpin + Send + 'static {
+        let (cmd_tx, cmd_rx) = mpsc::channel(10);
+        let output_stream = spawn_monitor(cmd_rx, socket, event_tx.clone());
         Self {
-            framed: Framed::new(IoCompat::new(socket), LinesCodec::new()),
+            cmd_tx,
+            output_stream,
+            event_tx,
         }
+    }
+
+    pub fn is_connected(&self) -> bool {
+        !self.cmd_tx.is_closed()
+    }
+
+    pub(in crate::tor) fn event_sender(&self) -> &broadcast::Sender<TorControlEvent> {
+        &self.event_tx
+    }
+
+    pub fn get_event_stream(&self) -> broadcast::Receiver<TorControlEvent> {
+        self.event_tx.subscribe()
     }
 
     /// Authenticate with the tor control port
@@ -120,6 +121,13 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             return Err(TorClientError::ServerNoResponse);
         }
         Ok(response)
+    }
+
+    /// The SETEVENTS command.
+    pub async fn set_events(&mut self, events: &[&str]) -> Result<(), TorClientError> {
+        let command = commands::set_events(events);
+        let _ = self.request_response(command).await?;
+        Ok(())
     }
 
     /// The ADD_ONION command, used to create onion hidden services.
@@ -199,33 +207,25 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn send_line(&mut self, line: String) -> Result<(), TorClientError> {
-        self.framed.send(line).await.map_err(Into::into)
+        self.cmd_tx
+            .send(line)
+            .await
+            .map_err(|_| TorClientError::CommandSenderDisconnected)
     }
 
     async fn recv_ok(&mut self) -> Result<(), TorClientError> {
-        let line = self.receive_line().await?;
-        let resp = parsers::response_line(&line)?;
+        let resp = self.receive_line().await?;
         if resp.is_ok() {
             Ok(())
         } else {
-            Err(TorClientError::TorCommandFailed(resp.value.into_owned()))
+            Err(TorClientError::TorCommandFailed(resp.value))
         }
     }
 
-    async fn recv_next_responses(&mut self) -> Result<Vec<ResponseLine<'_>>, TorClientError> {
+    async fn recv_next_responses(&mut self) -> Result<Vec<ResponseLine>, TorClientError> {
         let mut msgs = Vec::new();
         loop {
-            let line = self.receive_line().await?;
-            let mut msg = parsers::response_line(&line)?;
-            // Ignore event codes (for now)
-            if msg.code == EVENT_CODE {
-                continue;
-            }
-            if msg.is_multiline {
-                let lines = self.receive_multiline().await?;
-                msg.value = Cow::from(format!("{}\n{}", msg.value, lines.join("\n")));
-            }
-
+            let msg = self.receive_line().await?;
             let has_more = msg.has_more();
             msgs.push(msg.into_owned());
             if !has_more {
@@ -236,45 +236,45 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         Ok(msgs)
     }
 
-    async fn receive_line(&mut self) -> Result<String, TorClientError> {
+    async fn receive_line(&mut self) -> Result<ResponseLine, TorClientError> {
         let line = self
-            .framed
+            .output_stream
             .next()
             .await
-            .ok_or_else(|| TorClientError::UnexpectedEof)??;
+            .ok_or_else(|| TorClientError::UnexpectedEof)?;
 
         Ok(line)
     }
+}
 
-    async fn receive_multiline(&mut self) -> Result<Vec<String>, TorClientError> {
-        let mut lines = Vec::new();
-        loop {
-            let line = self.receive_line().await?;
-            let trimmed = line.trim();
-            if trimmed == "." {
-                break;
-            }
-            lines.push(trimmed.to_string());
-        }
-
-        Ok(lines)
+/// Represents tor control port authentication mechanisms
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Authentication {
+    /// No control port authentication required
+    None,
+    /// A hashed password will be sent to authenticate
+    HashedPassword(String),
+    /// Cookie authentication. The contents of the cookie file encoded as hex
+    Cookie(String),
+}
+impl Default for Authentication {
+    fn default() -> Self {
+        Authentication::None
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        memsocket::MemorySocket,
-        tor::control_client::{test_server, test_server::canned_responses, types::PrivateKey},
-    };
+    use crate::tor::control_client::{test_server, test_server::canned_responses, types::PrivateKey};
     use futures::future;
     use std::net::SocketAddr;
     use tari_test_utils::unpack_enum;
 
-    async fn setup_test() -> (TorControlPortClient<MemorySocket>, test_server::State) {
+    async fn setup_test() -> (TorControlPortClient, test_server::State) {
         let (_, mock_state, socket) = test_server::spawn().await;
-        let tor = TorControlPortClient::new(socket);
+        let (event_tx, _) = broadcast::channel(1);
+        let tor = TorControlPortClient::new(socket, event_tx);
         (tor, mock_state)
     }
 
@@ -285,7 +285,9 @@ mod test {
             .unwrap()
             .await
             .unwrap();
-        let (result_out, result_in) = future::join(TorControlPortClient::connect(addr), listener.next()).await;
+        let (event_tx, _) = broadcast::channel(1);
+        let (result_out, result_in) =
+            future::join(TorControlPortClient::connect(addr, event_tx), listener.next()).await;
 
         // Check that the connection is successfully made
         result_out.unwrap();

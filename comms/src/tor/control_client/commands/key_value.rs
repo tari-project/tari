@@ -37,6 +37,13 @@ pub fn get_info(key_name: &str) -> KeyValueCommand<'_, '_> {
     KeyValueCommand::new("GETINFO", &[key_name])
 }
 
+/// The SETEVENTS command.
+///
+/// This command is used to set the events that tor will emit
+pub fn set_events<'b>(event_types: &[&'b str]) -> KeyValueCommand<'static, 'b> {
+    KeyValueCommand::new("SETEVENTS", event_types)
+}
+
 pub struct KeyValueCommand<'a, 'b> {
     command: &'a str,
     args: Vec<&'b str>,
@@ -61,7 +68,7 @@ impl<'a, 'b> TorCommand for KeyValueCommand<'a, 'b> {
         Ok(format!("{} {}", self.command, self.args.join(" ")))
     }
 
-    fn parse_responses(&self, mut responses: Vec<ResponseLine<'_>>) -> Result<Self::Output, Self::Error> {
+    fn parse_responses(&self, mut responses: Vec<ResponseLine>) -> Result<Self::Output, Self::Error> {
         if let Some(resp) = responses.iter().find(|v| v.is_err()) {
             return Err(TorClientError::TorCommandFailed(resp.value.to_string()));
         }

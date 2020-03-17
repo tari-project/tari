@@ -48,7 +48,7 @@ impl fmt::Display for ParseError {
     }
 }
 
-pub fn response_line(line: &str) -> Result<ResponseLine<'_>, ParseError> {
+pub fn response_line(line: &str) -> Result<ResponseLine, ParseError> {
     let parser = map_res(digit1, |code: &str| code.parse::<u16>());
     let (rest, code) = parser(line)?;
     let (rest, ch) = anychar(rest)?;
@@ -63,7 +63,7 @@ pub fn response_line(line: &str) -> Result<ResponseLine<'_>, ParseError> {
         has_more: ['-', '+'].contains(&ch),
         is_multiline: ch == '+',
         code,
-        value: rest.into(),
+        value: rest.to_owned(),
     })
 }
 

@@ -242,7 +242,7 @@ where
         let messaging = MessagingProtocol::new(
             executor,
             conn_man_requester,
-            peer_manager.into(),
+            peer_manager,
             node_identity,
             proto_rx,
             messaging_request_rx,
@@ -287,7 +287,7 @@ where
             backoff,
             request_rx,
             node_identity,
-            peer_manager.into(),
+            peer_manager,
             protocols,
             connection_manager_events_tx,
             self.shutdown.to_signal(),

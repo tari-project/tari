@@ -23,52 +23,41 @@
 mod builder;
 pub use builder::{HiddenServiceBuilder, HiddenServiceBuilderError, HsFlags};
 
+mod controller;
+
 use crate::{
     multiaddr::Multiaddr,
     socks,
-    tor::{PrivateKey, TorClientError, TorControlPortClient},
-    transports::{SocksConfig, SocksTransport, TcpTransport, Transport},
+    tor::{PrivateKey, TorClientError},
+    transports::{SocksConfig, SocksTransport},
 };
 use serde_derive::{Deserialize, Serialize};
+use tari_shutdown::Shutdown;
 
 /// Handle for a Tor Hidden Service. This handle keeps the session to the Tor control port alive.
 /// Once this is dropped, the hidden service will cease to be accessible.
 pub struct HiddenService {
-    /// The client connection to the Tor Control Port. `AddOnionFlag::Detach` is not used, so we have to keep the Tor
-    /// Control port connection open.
-    pub(super) client: TorControlPortClient<<TcpTransport as Transport>::Output>,
-    /// The service id of the hidden service.
-    pub(super) service_id: String,
+    /// The identity of the hidden service
+    pub(super) identity: TorIdentity,
     /// The SOCKS5 address obtained by querying the Tor control port and used to configure the `SocksTransport`.
     pub(super) socks_addr: Multiaddr,
     /// SOCKS5 authentication details used to configure the `SocksTransport`.
     pub(super) socks_auth: socks::Authentication,
-    /// The Private Key for the hidden service.
-    pub(super) private_key: PrivateKey,
-    /// The onion port used.
-    pub(super) onion_port: u16,
     /// The address where incoming traffic to the `onion_addr` will be forwarded to.
     pub(super) proxied_addr: Multiaddr,
+    /// Shutdown signal for hidden service
+    pub(super) shutdown: Shutdown,
 }
 
 impl HiddenService {
-    /// Delete the hidden service. Once this is called the hidden service will no longer be accessible.
-    pub async fn delete(&mut self) -> Result<(), TorClientError> {
-        self.client.del_onion(&self.service_id).await.map_err(Into::into)
-    }
-
     pub fn get_onion_address(&self) -> Multiaddr {
         // service_id should always come from the tor control server, so the length can be relied on
-        multiaddr_from_service_id_and_port(&self.service_id, self.onion_port)
+        multiaddr_from_service_id_and_port(self.service_id(), self.identity.onion_port)
             .expect("failed to create onion address from HiddenService service_id and onion_port")
     }
 
     pub fn service_id(&self) -> &str {
-        &self.service_id
-    }
-
-    pub fn private_key(&self) -> &PrivateKey {
-        &self.private_key
+        &self.identity.service_id
     }
 
     pub fn proxied_address(&self) -> &Multiaddr {
@@ -82,12 +71,8 @@ impl HiddenService {
         })
     }
 
-    pub fn get_tor_identity(&self) -> TorIdentity {
-        TorIdentity {
-            private_key: self.private_key.clone(),
-            service_id: self.service_id.clone(),
-            onion_port: self.onion_port,
-        }
+    pub fn tor_identity(&self) -> &TorIdentity {
+        &self.identity
     }
 }
 
