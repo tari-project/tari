@@ -138,7 +138,7 @@ where D: Digest
 impl<D> BlockchainBackend for MemoryDatabase<D>
 where D: Digest + Send + Sync
 {
-    fn write(&self, tx: DbTransaction) -> Result<(), ChainStorageError> {
+    fn write(&mut self, tx: DbTransaction) -> Result<(), ChainStorageError> {
         let mut db = self
             .db
             .write()
