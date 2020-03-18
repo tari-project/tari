@@ -98,7 +98,7 @@ pub enum OutputManagerResponse {
     InvalidOutputs(Vec<UnblindedOutput>),
     SeedWords(Vec<String>),
     BaseNodePublicKeySet,
-    StartedBaseNodeSync,
+    StartedBaseNodeSync(u64),
 }
 
 /// Events that can be published on the Text Message Service Event Stream
@@ -289,9 +289,9 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn sync_with_base_node(&mut self) -> Result<(), OutputManagerError> {
+    pub async fn sync_with_base_node(&mut self) -> Result<u64, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::SyncWithBaseNode).await?? {
-            OutputManagerResponse::StartedBaseNodeSync => Ok(()),
+            OutputManagerResponse::StartedBaseNodeSync(request_key) => Ok(request_key),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

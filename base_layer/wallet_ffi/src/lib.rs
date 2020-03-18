@@ -71,7 +71,7 @@
 //! 2.  The sender will send back the finalized `CompletedTransaction`
 //! 3.  This wallet will also broadcast the `CompletedTransaction` to a Base Node to be added to the mempool, its status
 //!     will move from `Completed` to `Broadcast`. This is done so that the Receiver can be sure the finalized
-//!     transaciton is broadcast.
+//!     transaction is broadcast.
 //! 6.  This wallet will then monitor the Base Layer to see when the transaction is mined which means the
 //!     `CompletedTransaction` status will become `Mined` and the funds will then move from the `PendingIncomingBalance`
 //!     to the `AvailableBalance`.
@@ -105,7 +105,7 @@
 //!     change the status of the `CompletedTransaction` from    `Broadcast` to `Mined`. The pending funds will also
 //!     become finalized as spent and available funds respectively
 
-#![recursion_limit = "256"]
+#![recursion_limit = "512"]
 
 #[cfg(test)]
 #[macro_use]
@@ -2177,14 +2177,25 @@ pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
 /// `config` - The TariCommsConfig pointer
 /// `log_path` - An optional file path to the file where the logs will be written. If no log is required pass *null*
 /// pointer.
-/// `callback_received_transaction` - The callback function pointer matching the function signature
-/// `callback_received_transaction_reply` - The callback function pointer matching the function signature
-/// `callback_received_finalized_transaction` - The callback function pointer matching the function signature
-/// `callback_transaction_broadcast` - The callback function pointer matching the function signature
-/// `callback_transaction_mined` - The callback function pointer matching the function signature
-/// `callback_discovery_process_complete` - The callback function pointer matching the function signature
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
+/// `callback_received_transaction` - The callback function pointer matching the function signature. This will be called
+/// when an inbound transaction is received.
+/// `callback_received_transaction_reply` - The callback function pointer matching the function signature. This will be
+/// called when a reply is received for a pending outbound transaction
+/// `callback_received_finalized_transaction` - The callback function pointer matching the function signature. This will
+/// be called when a Finalized version on an Inbound transaction is received
+/// `callback_transaction_broadcast` - The callback function pointer matching the function signature. This will be
+/// called when a Finalized transaction is detected a Broadcast to a base node mempool.
+/// `callback_transaction_mined` - The callback function pointer matching the function signature. This will be called
+/// when a Broadcast transaction is detected as mined.
+/// `callback_discovery_process_complete` - The callback function pointer matching the function signature. This will be
+/// called when a `send_transacion(..)` call is made to a peer whose address is not known and a discovery process must
+/// be conducted. The outcome of the discovery process is relayed via this callback
+/// `callback_base_node_sync_complete` - The callback function pointer matching the function signature. This is called
+/// when a Base Node Sync process is completed or times out. The request_key is used to identify which request this
+/// callback references and a result of true means it was successful and false that the process timed out and new one
+/// will be started
+/// `error_out` - Pointer to an int which will be modified
+/// to an error code should one occur, may not be null. Functions as an out parameter.
 /// ## Returns
 /// `*mut TariWallet` - Returns a pointer to a TariWallet, note that it returns ptr::null_mut()
 /// if config is null, a wallet error was encountered or if the runtime could not be created
@@ -2200,6 +2211,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_transaction_broadcast: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_transaction_mined: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_discovery_process_complete: unsafe extern "C" fn(c_ulonglong, bool),
+    callback_base_node_sync_complete: unsafe extern "C" fn(u64, bool),
     error_out: *mut c_int,
 ) -> *mut TariWallet
 {
@@ -2283,6 +2295,7 @@ pub unsafe extern "C" fn wallet_create(
                     let callback_handler = CallbackHandler::new(
                         TransactionDatabase::new(transaction_backend),
                         w.transaction_service.get_event_stream_fused(),
+                        w.output_manager_service.get_event_stream_fused(),
                         w.comms.shutdown_signal(),
                         callback_received_transaction,
                         callback_received_transaction_reply,
@@ -2290,6 +2303,7 @@ pub unsafe extern "C" fn wallet_create(
                         callback_transaction_broadcast,
                         callback_transaction_mined,
                         callback_discovery_process_complete,
+                        callback_base_node_sync_complete,
                     );
 
                     w.runtime.spawn(callback_handler.start());
@@ -3522,25 +3536,26 @@ pub unsafe extern "C" fn wallet_import_utxo(
 /// as an out parameter.
 ///
 /// ## Returns
-/// `bool` -  Returns where the sync command was executed successfully
+/// `c_ulonglong` -  Returns a unique Request Key that is used to identify which callbacks refer to this specific sync
+/// request. Note the result will be 0 if there was an error
 ///
 /// # Safety
 #[no_mangle]
-pub unsafe extern "C" fn wallet_sync_with_base_node(wallet: *mut TariWallet, error_out: *mut c_int) -> bool {
+pub unsafe extern "C" fn wallet_sync_with_base_node(wallet: *mut TariWallet, error_out: *mut c_int) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
+        return 0;
     }
 
     match (*wallet).sync_with_base_node() {
-        Ok(()) => true,
+        Ok(request_key) => request_key,
         Err(e) => {
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            false
+            0
         },
     }
 }
@@ -3585,7 +3600,7 @@ mod test {
         pub broadcast_tx_callback_called: bool,
         pub mined_tx_callback_called: bool,
         pub discovery_send_callback_called: bool,
-        pub base_node_error_callback_called: bool,
+        pub base_node_sync_callback_called: bool,
     }
 
     impl CallbackState {
@@ -3597,7 +3612,7 @@ mod test {
                 broadcast_tx_callback_called: false,
                 mined_tx_callback_called: false,
                 discovery_send_callback_called: false,
-                base_node_error_callback_called: false,
+                base_node_sync_callback_called: false,
             }
         }
 
@@ -3608,7 +3623,7 @@ mod test {
             self.broadcast_tx_callback_called = false;
             self.mined_tx_callback_called = false;
             self.discovery_send_callback_called = false;
-            self.base_node_error_callback_called = false;
+            self.base_node_sync_callback_called = false;
         }
     }
 
@@ -3687,6 +3702,10 @@ mod test {
         assert!(true);
     }
 
+    unsafe extern "C" fn base_node_sync_process_complete_callback(_tx_id: c_ulonglong, _result: bool) {
+        assert!(true);
+    }
+
     unsafe extern "C" fn received_tx_callback_bob(tx: *mut TariPendingInboundTransaction) {
         assert_eq!(tx.is_null(), false);
         assert_eq!(
@@ -3737,6 +3756,10 @@ mod test {
     }
 
     unsafe extern "C" fn discovery_process_complete_callback_bob(_tx_id: c_ulonglong, _result: bool) {
+        assert!(true);
+    }
+
+    unsafe extern "C" fn base_node_sync_process_complete_callback_bob(_tx_id: c_ulonglong, _result: bool) {
         assert!(true);
     }
 
@@ -4011,6 +4034,7 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 discovery_process_complete_callback,
+                base_node_sync_process_complete_callback,
                 error_ptr,
             );
             let secret_key_bob = private_key_generate();
@@ -4041,6 +4065,7 @@ mod test {
                 broadcast_callback_bob,
                 mined_callback_bob,
                 discovery_process_complete_callback_bob,
+                base_node_sync_process_complete_callback_bob,
                 error_ptr,
             );
 
@@ -4237,7 +4262,7 @@ mod test {
                 .expect("Tx should be in collection");
 
             assert_eq!(import_transaction.amount, utxo_value * uT);
-            assert_eq!(wallet_sync_with_base_node(alice_wallet, error_ptr), false);
+            assert_eq!(wallet_sync_with_base_node(alice_wallet, error_ptr), 0);
             let mut peer_added =
                 wallet_add_base_node_peer(alice_wallet, public_key_bob.clone(), address_bob_str, error_ptr);
             assert_eq!(peer_added, true);
@@ -4252,7 +4277,7 @@ mod test {
                         .dial_peer((*bob_wallet).comms.node_identity().node_id().clone()),
                 )
                 .unwrap();
-            assert_eq!(wallet_sync_with_base_node(alice_wallet, error_ptr), true);
+            assert!(wallet_sync_with_base_node(alice_wallet, error_ptr) > 0);
 
             let lock = CALLBACK_STATE_FFI.lock().unwrap();
             assert!(lock.received_tx_callback_called);

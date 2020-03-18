@@ -98,7 +98,7 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(
             OutputManagerServiceConfig {
-                base_node_query_timeout_in_secs: 3,
+                base_node_query_timeout: Duration::from_secs(3),
             },
             outbound_message_requester.clone(),
             oms_request_receiver,

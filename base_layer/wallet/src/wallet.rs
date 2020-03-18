@@ -154,9 +154,7 @@ where
                 factories.clone(),
             ))
             .add_initializer(TransactionServiceInitializer::new(
-                config
-                    .transaction_service_config
-                    .unwrap_or(TransactionServiceConfig::default()),
+                config.transaction_service_config.unwrap_or_default(),
                 subscription_factory.clone(),
                 comms.subscribe_messaging_events(),
                 transaction_backend,
@@ -236,10 +234,8 @@ where
             self.transaction_service
                 .set_base_node_public_key(peer.public_key.clone()),
         )?;
-        self.runtime.block_on(
-            self.output_manager_service
-                .set_base_node_public_key(peer.public_key.clone()),
-        )?;
+        self.runtime
+            .block_on(self.output_manager_service.set_base_node_public_key(peer.public_key))?;
 
         Ok(())
     }
@@ -304,9 +300,10 @@ where
 
     /// Have all the wallet components that need to start a sync process with the set base node to confirm the wallets
     /// state is accurately reflected on the blockchain
-    pub fn sync_with_base_node(&mut self) -> Result<(), WalletError> {
-        self.runtime
+    pub fn sync_with_base_node(&mut self) -> Result<u64, WalletError> {
+        let request_key = self
+            .runtime
             .block_on(self.output_manager_service.sync_with_base_node())?;
-        Ok(())
+        Ok(request_key)
     }
 }

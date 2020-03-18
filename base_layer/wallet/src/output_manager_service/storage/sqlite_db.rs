@@ -148,19 +148,19 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         match op {
             WriteOperation::Insert(kvp) => match kvp {
                 DbKeyValuePair::SpentOutput(k, o) => {
-                    if let Ok(_) = OutputSql::find(&k.to_vec(), &(*conn)) {
+                    if OutputSql::find(&k.to_vec(), &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
                     OutputSql::new(*o, OutputStatus::Spent, None).commit(&(*conn))?
                 },
                 DbKeyValuePair::UnspentOutput(k, o) => {
-                    if let Ok(_) = OutputSql::find(&k.to_vec(), &(*conn)) {
+                    if OutputSql::find(&k.to_vec(), &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
                     OutputSql::new(*o, OutputStatus::Unspent, None).commit(&(*conn))?
                 },
                 DbKeyValuePair::PendingTransactionOutputs(tx_id, p) => {
-                    if let Ok(_) = PendingTransactionOutputSql::find(tx_id, &(*conn)) {
+                    if PendingTransactionOutputSql::find(tx_id, &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
                     PendingTransactionOutputSql::new(p.tx_id, p.timestamp).commit(&(*conn))?;

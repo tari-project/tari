@@ -165,25 +165,25 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         match op {
             WriteOperation::Insert(kvp) => match kvp {
                 DbKeyValuePair::PendingOutboundTransaction(k, v) => {
-                    if let Ok(_) = OutboundTransactionSql::find(k, &(*conn)) {
+                    if OutboundTransactionSql::find(k, &(*conn)).is_ok() {
                         return Err(TransactionStorageError::DuplicateOutput);
                     }
                     OutboundTransactionSql::try_from(*v)?.commit(&(*conn))?;
                 },
                 DbKeyValuePair::PendingInboundTransaction(k, v) => {
-                    if let Ok(_) = InboundTransactionSql::find(k, &(*conn)) {
+                    if InboundTransactionSql::find(k, &(*conn)).is_ok() {
                         return Err(TransactionStorageError::DuplicateOutput);
                     }
                     InboundTransactionSql::try_from(*v)?.commit(&(*conn))?;
                 },
                 DbKeyValuePair::PendingCoinbaseTransaction(k, v) => {
-                    if let Ok(_) = PendingCoinbaseTransactionSql::find(k, &(*conn)) {
+                    if PendingCoinbaseTransactionSql::find(k, &(*conn)).is_ok() {
                         return Err(TransactionStorageError::DuplicateOutput);
                     }
                     PendingCoinbaseTransactionSql::from(*v).commit(&(*conn))?;
                 },
                 DbKeyValuePair::CompletedTransaction(k, v) => {
-                    if let Ok(_) = CompletedTransactionSql::find(k, &(*conn)) {
+                    if CompletedTransactionSql::find(k, &(*conn)).is_ok() {
                         return Err(TransactionStorageError::DuplicateOutput);
                     }
                     CompletedTransactionSql::try_from(*v)?.commit(&(*conn))?;
