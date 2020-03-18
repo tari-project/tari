@@ -262,11 +262,11 @@ where
             OutputManagerRequest::SyncWithBaseNode => self
                 .query_unspent_outputs_status(utxo_query_timeout_futures)
                 .await
-                .map(|_| OutputManagerResponse::StartedBaseNodeSync),
+                .map(OutputManagerResponse::StartedBaseNodeSync),
             OutputManagerRequest::GetInvalidOutputs => self
                 .fetch_invalid_outputs()
                 .await
-                .map(|o| OutputManagerResponse::InvalidOutputs(o)),
+                .map(OutputManagerResponse::InvalidOutputs),
         }
     }
 
@@ -306,7 +306,7 @@ where
         // Go through all the returned UTXOs and if they are in the hashmap remove them
         for output in response.iter() {
             let response_hash = TransactionOutput::try_from(output.clone())
-                .map_err(|e| OutputManagerError::ConversionError(e))?
+                .map_err(OutputManagerError::ConversionError)?
                 .hash();
 
             let _ = output_hashes.remove(&response_hash);
@@ -354,10 +354,10 @@ where
     pub async fn query_unspent_outputs_status(
         &mut self,
         utxo_query_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, u64>>,
-    ) -> Result<(), OutputManagerError>
+    ) -> Result<u64, OutputManagerError>
     {
         match self.base_node_public_key.as_ref() {
-            None => return Err(OutputManagerError::NoBaseNodeKeysProvided),
+            None => Err(OutputManagerError::NoBaseNodeKeysProvided),
             Some(pk) => {
                 let unspent_outputs: Vec<UnblindedOutput> = self.db.get_unspent_outputs().await?;
                 let mut output_hashes = Vec::new();
@@ -370,7 +370,7 @@ where
 
                 let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs { outputs: output_hashes });
                 let service_request = BaseNodeProto::BaseNodeServiceRequest {
-                    request_key: request_key.clone(),
+                    request_key,
                     request: Some(request),
                 };
                 self.outbound_message_service
@@ -381,19 +381,16 @@ where
                     )
                     .await?;
 
-                self.pending_utxo_query_keys.insert(request_key.clone());
-                let state_timeout = StateDelay::new(
-                    Duration::from_secs(self.config.base_node_query_timeout_in_secs),
-                    request_key.clone(),
-                );
+                self.pending_utxo_query_keys.insert(request_key);
+                let state_timeout = StateDelay::new(self.config.base_node_query_timeout, request_key);
                 utxo_query_timeout_futures.push(state_timeout.delay().boxed());
                 debug!(
                     target: LOG_TARGET,
                     "Output Manager Sync query ({}) sent to Base Node", request_key
                 );
+                Ok(request_key)
             },
         }
-        Ok(())
     }
 
     /// Add an unblinded output to the unspent outputs list

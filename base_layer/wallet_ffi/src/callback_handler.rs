@@ -20,12 +20,40 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! # Wallet Callback Handler
+//! This CallbackHandler will monitor event streams from the various wallet services and on relevant events will call
+//! the assigned callbacks to provide asynchronous feedback to the client application that an event has occured
+//!
+//! ## Callbacks  
+//! `callback_received_transaction` - This will be called when an inbound transaction is received from an external
+//! wallet
+//!
+//! `callback_received_transaction_reply` - This will be called when a reply is received for a pending outbound
+//! transaction that is waiting to be negotiated
+//!
+//! `callback_received_finalized_transaction` - This will be called when a Finalized version on an Inbound transaction
+//! is received from the Sender of a transaction
+//!
+//! `callback_transaction_broadcast` - This will be  called when a Finalized transaction is detected a Broadcast to a
+//! base node mempool.
+//!
+//! `callback_transaction_mined` - This will be called when a Broadcast transaction is detected as mined via a base
+//! node request
+//!
+//! `callback_discovery_process_complete` - This will be called when a `send_transacion(..)` call is made to a peer
+//! whose address is not known and a discovery process must be conducted. The outcome of the discovery process is
+//! relayed via this callback
+//!
+//! `callback_base_node_sync_complete` - This is called when a Base Node Sync process is completed or times out. The
+//! request_key is used to identify which request this callback references and a result of true means it was successful
+//! and false that the process timed out and new one will be started
+
 use futures::{stream::Fuse, StreamExt};
 use log::*;
 use tari_broadcast_channel::Subscriber;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
-    output_manager_service::TxId,
+    output_manager_service::{handle::OutputManagerEvent, TxId},
     transaction_service::{
         handle::TransactionEvent,
         storage::database::{CompletedTransaction, InboundTransaction, TransactionBackend, TransactionDatabase},
@@ -43,8 +71,10 @@ where TBackend: TransactionBackend + 'static
     callback_transaction_broadcast: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_transaction_mined: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_discovery_process_complete: unsafe extern "C" fn(TxId, bool),
+    callback_base_node_sync_complete: unsafe extern "C" fn(TxId, bool),
     db: TransactionDatabase<TBackend>,
-    event_stream: Fuse<Subscriber<TransactionEvent>>,
+    transaction_service_event_stream: Fuse<Subscriber<TransactionEvent>>,
+    output_manager_service_event_stream: Fuse<Subscriber<OutputManagerEvent>>,
     shutdown_signal: Option<ShutdownSignal>,
 }
 
@@ -53,7 +83,8 @@ where TBackend: TransactionBackend + 'static
 {
     pub fn new(
         db: TransactionDatabase<TBackend>,
-        event_stream: Fuse<Subscriber<TransactionEvent>>,
+        transaction_service_event_stream: Fuse<Subscriber<TransactionEvent>>,
+        output_manager_service_event_stream: Fuse<Subscriber<OutputManagerEvent>>,
         shutdown_signal: ShutdownSignal,
         callback_received_transaction: unsafe extern "C" fn(*mut InboundTransaction),
         callback_received_transaction_reply: unsafe extern "C" fn(*mut CompletedTransaction),
@@ -61,6 +92,7 @@ where TBackend: TransactionBackend + 'static
         callback_transaction_broadcast: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_transaction_mined: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_discovery_process_complete: unsafe extern "C" fn(TxId, bool),
+        callback_base_node_sync_complete: unsafe extern "C" fn(u64, bool),
     ) -> Self
     {
         info!(
@@ -87,6 +119,10 @@ where TBackend: TransactionBackend + 'static
             target: LOG_TARGET,
             "DiscoveryProcessCompleteCallback -> Assigning Fn:  {:?}", callback_discovery_process_complete
         );
+        info!(
+            target: LOG_TARGET,
+            "BaseNodeSyncCompleteCallback -> Assigning Fn:  {:?}", callback_base_node_sync_complete
+        );
 
         Self {
             callback_received_transaction,
@@ -95,8 +131,10 @@ where TBackend: TransactionBackend + 'static
             callback_transaction_broadcast,
             callback_transaction_mined,
             callback_discovery_process_complete,
+            callback_base_node_sync_complete,
             db,
-            event_stream,
+            transaction_service_event_stream,
+            output_manager_service_event_stream,
             shutdown_signal: Some(shutdown_signal),
         }
     }
@@ -111,8 +149,8 @@ where TBackend: TransactionBackend + 'static
 
         loop {
             futures::select! {
-                msg = self.event_stream.select_next_some() => {
-                    trace!(target: LOG_TARGET, "Callback Handler  {:?}", msg);
+                msg = self.transaction_service_event_stream.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Transaction Service Callback Handler event {:?}", msg);
                     match (*msg).clone() {
                         TransactionEvent::ReceivedTransaction(tx_id) => {
                             self.receive_transaction_event(tx_id).await;
@@ -145,10 +183,23 @@ where TBackend: TransactionBackend + 'static
                         _ => (),
                     }
                 },
+                msg = self.output_manager_service_event_stream.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
+                    match (*msg).clone() {
+                        OutputManagerEvent::ReceiveBaseNodeResponse(request_key) => {
+                            self.receive_sync_process_result(request_key, true);
+                        },
+                        OutputManagerEvent::BaseNodeSyncRequestTimedOut(request_key) => {
+                            self.receive_sync_process_result(request_key, false);
+                        }
+                        /// Only the above variants are mapped to callbacks
+                        _ => (),
+                    }
+                },
                 complete => {
                     info!(target: LOG_TARGET, "Callback Handler is exiting because all tasks have completed");
                     break;
-                }
+                },
                  _ = shutdown_signal => {
                     info!(target: LOG_TARGET, "Transaction Callback Handler shutting down because the shutdown signal was received");
                     break;
@@ -247,6 +298,16 @@ where TBackend: TransactionBackend + 'static
                 }
             },
             Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {:?}", e),
+        }
+    }
+
+    fn receive_sync_process_result(&mut self, request_key: u64, result: bool) {
+        debug!(
+            target: LOG_TARGET,
+            "Calling Base Node Sync result callback function for Request Key: {} with result {}", request_key, result
+        );
+        unsafe {
+            (self.callback_base_node_sync_complete)(request_key, result);
         }
     }
 }

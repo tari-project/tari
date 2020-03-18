@@ -64,7 +64,7 @@ impl InnerDatabase {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct OutputManagerMemoryDatabase {
     db: Arc<RwLock<InnerDatabase>>,
 }

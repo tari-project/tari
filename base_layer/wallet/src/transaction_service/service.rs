@@ -1101,7 +1101,7 @@ where
                     )
                     .await?;
                 // Start Timeout
-                let state_timeout = StateDelay::new(self.config.mempool_broadcast_timeout.clone(), completed_tx.tx_id);
+                let state_timeout = StateDelay::new(self.config.mempool_broadcast_timeout, completed_tx.tx_id);
 
                 broadcast_timeout_futures.push(state_timeout.delay().boxed());
             },
@@ -1245,8 +1245,7 @@ where
                     )
                     .await?;
                 // Start Timeout
-                let state_timeout =
-                    StateDelay::new(self.config.base_node_mined_timeout.clone(), completed_tx.tx_id.clone());
+                let state_timeout = StateDelay::new(self.config.base_node_mined_timeout, completed_tx.tx_id);
 
                 mined_request_timeout_futures.push(state_timeout.delay().boxed());
             },
@@ -1623,7 +1622,7 @@ async fn transaction_send_discovery_process_completion(
                     "Send Discovery process for TX_ID: {} was unsuccessful and no message was sent", tx_id
                 ),
                 1 => {
-                    message_tag = Some(tags[0].clone());
+                    message_tag = Some(tags[0]);
 
                     info!(
                         target: LOG_TARGET,
@@ -1654,7 +1653,7 @@ async fn transaction_send_discovery_process_completion(
         },
     }
 
-    return if let Some(mt) = message_tag {
+    if let Some(mt) = message_tag {
         let updated_outbound_tx = OutboundTransaction {
             timestamp: Utc::now().naive_utc(),
             ..outbound_tx.clone()
@@ -1662,5 +1661,5 @@ async fn transaction_send_discovery_process_completion(
         Ok((mt, updated_outbound_tx))
     } else {
         Err(TransactionServiceError::DiscoveryProcessFailed(tx_id))
-    };
+    }
 }
