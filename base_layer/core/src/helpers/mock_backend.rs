@@ -36,7 +36,7 @@ use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof};
 pub struct MockBackend;
 
 impl BlockchainBackend for MockBackend {
-    fn write(&self, _tx: DbTransaction) -> Result<(), ChainStorageError> {
+    fn write(&mut self, _tx: DbTransaction) -> Result<(), ChainStorageError> {
         unimplemented!()
     }
 
