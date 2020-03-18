@@ -52,7 +52,6 @@ impl CpuBlakePow {
         target_difficulty: Difficulty,
         mut header: BlockHeader,
         stop_flag: Arc<AtomicBool>,
-        kill_flag: Arc<AtomicBool>,
     ) -> Option<BlockHeader>
     {
         let mut start = Instant::now();
@@ -72,11 +71,11 @@ impl CpuBlakePow {
                     std::u64::MAX - last_measured_nonce + nonce
                 };
                 let hash_rate = hashes as f64 / start.elapsed().as_micros() as f64;
-                info!(target: LOG_TARGET, "Mining hash rate: {:.6} MH/s", hash_rate);
+                info!(target: LOG_TARGET, "Mining hash rate per thread: {:.6} MH/s", hash_rate);
                 last_measured_nonce = nonce;
                 start = Instant::now();
             }
-            if stop_flag.load(Ordering::Relaxed) || kill_flag.load(Ordering::Relaxed) {
+            if stop_flag.load(Ordering::Relaxed) {
                 info!(target: LOG_TARGET, "Mining stopped via flag");
                 return None;
             }

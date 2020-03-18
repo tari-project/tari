@@ -32,16 +32,17 @@ use tari_core::{
 };
 use tari_service_framework::handles::ServiceHandles;
 
-pub fn build_miner<B: BlockchainBackend, H: AsRef<ServiceHandles>>(
+pub fn build_miner<B: BlockchainBackend + 'static, H: AsRef<ServiceHandles>>(
     handles: H,
     stop_flag: Arc<AtomicBool>,
     event_stream: Subscriber<BaseNodeState>,
     consensus_manager: ConsensusManager<B>,
+    num_threads: usize,
 ) -> Miner<B>
 {
     let handles = handles.as_ref();
     let node_local_interface = handles.get_handle::<LocalNodeCommsInterface>().unwrap();
-    let mut miner = Miner::new(stop_flag, consensus_manager, &node_local_interface);
+    let mut miner = Miner::new(stop_flag, consensus_manager, &node_local_interface, num_threads);
     miner.subscribe_to_state_change(event_stream);
     miner
 }
