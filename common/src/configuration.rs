@@ -65,9 +65,9 @@ pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, String>
     }
 }
 
-/// Installs a new configuration file template, copied from `tari_config_sample.toml` to the given path.
+/// Installs a new configuration file template, copied from `rincewind-simple.toml` to the given path.
 pub fn install_default_config_file(path: &Path) -> Result<(), std::io::Error> {
-    let source = include_str!("../../config/tari_config_sample.toml");
+    let source = include_str!("../../config/presets/rincewind-simple.toml");
     fs::write(path, source)
 }
 
