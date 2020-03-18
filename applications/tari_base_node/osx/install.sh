@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Installer script for Tari base node. This script is bundled with OSX and Linux versions of the Tari base node
-# binary distributions.
+# Installer script for Tari base node. This script is bundled with OSX 
+# versions of the Tari base node binary distributions.
 
 logo="
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣤⣾⣿⣿⣶⣤⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -46,16 +46,28 @@ for line in $logo; do
   printf "%*s\n" $(( (31 + columns) / 2)) "$line"
 done
 
+if [ ! "$(uname)" == "Darwin" ]; then
+  echo "Installer script meant for OSX"
+  echo "Please visit https://tari.com/downloads/"
+  echo " and download the binary distro for your platform"
+  exit 1
+fi
+
 DATA_DIR=${1:-"$HOME/.tari"}
 NETWORK=rincewind
 
 banner Installing and setting up your Tari Base Node
-echo "Creating Tari data folder in $DATA_DIR"
-mkdir -p $DATA_DIR/$NETWORK
-echo "Copying configuraton files"
-cp rincewind-simple.toml $DATA_DIR/config.toml
-cp log4rs-sample.yml $DATA_DIR/log4rs.yml
-echo "Configuration complete."
+if [ ! -d "$DATA_DIR/$NETWORK" ]; then
+  echo "Creating Tari data folder in $DATA_DIR"
+  mkdir -p $DATA_DIR/$NETWORK
+fi
+
+if [ ! -f "$DATA_DIR/config.toml" ]; then
+  echo "Copying configuraton files"
+  cp rincewind-simple.toml $DATA_DIR/config.toml
+  cp log4rs-sample.yml $DATA_DIR/log4rs.yml
+  echo "Configuration complete."
+fi
 
 ./install_tor.sh no-run
 # Start Tor
@@ -64,7 +76,13 @@ echo "Waiting for Tor to start..."
 sleep 20
 echo "Ok"
 
+# Make Base Node exec
+if [ -f ./tari_base_node ]; then
+  chmod +x ./tari_base_node
+fi
+
 # Configure Base Node
+./tari_base_node --init
 ./tari_base_node --create_id
 
 banner Running Tari Base Node

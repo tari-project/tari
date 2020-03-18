@@ -3,10 +3,13 @@
 # build tar ball for tagged releases
 #
 
+#shopt -s extglob
+
 # ToDo
 #  Check options
 #
 # ./$0 (version|latest-tag)
+#  ie: ./$0 nightly-development-test-$(date +'%Y-%m-%d')
 
 # Env
 distName="tari_base_node"
@@ -141,12 +144,13 @@ cargo build --release
 
 COPY_FILES=(
   "target/release/tari_base_node"
-  "config.toml"
+  "config/presets/rincewind-simple.toml"
   "config/tari_config_sample.toml"
-  "log4rs.yml"
+#  "log4rs.yml"
   "common/logging/log4rs-sample.yml"
   "applications/tari_base_node/README.md"
-  "install.sh"
+  applications/tari_base_node/$osname/*
+  "scripts/install_tor.sh"
 )
 
 for COPY_FILE in "${COPY_FILES[@]}"; do
@@ -156,7 +160,7 @@ done
 pushd $distDir/dist
 if [ "$osname" == "osx" ]  && [ -n "${osxsign}" ]; then
   echo "Signing OSX Binary ..."
-  codesign --force --verify --verbose --sign "${osxsign}" "${distDir}/tari_base_node"
+  codesign --force --verify --verbose --sign "${osxsign}" "${distDir}/dist/tari_base_node"
 fi
 shasum -a $shaSumVal * >> "$distDir/$hashFile"
 #echo "$(cat $distDir/$hashFile)" | shasum -a $shaSumVal --check --status
