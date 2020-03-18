@@ -39,13 +39,7 @@ use crate::{
     },
 };
 use blake2::Digest;
-use log::{LevelFilter, *};
-use log4rs::{
-    append::file::FileAppender,
-    config::{Appender, Config, Root},
-    encode::pattern::PatternEncoder,
-    Handle as LogHandle,
-};
+use log::*;
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -81,7 +75,6 @@ const LOG_TARGET: &str = "wallet";
 #[derive(Clone)]
 pub struct WalletConfig {
     pub comms_config: CommsConfig,
-    pub logging_path: Option<String>,
     pub factories: CryptoFactories,
     pub transaction_service_config: Option<TransactionServiceConfig>,
 }
@@ -103,7 +96,6 @@ where
     pub contacts_service: ContactsServiceHandle,
     pub db: WalletDatabase<T>,
     pub runtime: Runtime,
-    pub log_handle: Option<LogHandle>,
     pub factories: CryptoFactories,
     #[cfg(feature = "test_harness")]
     pub transaction_backend: U,
@@ -128,24 +120,6 @@ where
         contacts_backend: W,
     ) -> Result<Wallet<T, U, V, W>, WalletError>
     {
-        let mut log_handle = None;
-        if let Some(path) = config.logging_path {
-            let logfile = FileAppender::builder()
-                .encoder(Box::new(PatternEncoder::new(
-                    "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}",
-                )))
-                .append(false)
-                .build(path.as_str())
-                .unwrap();
-
-            let config = Config::builder()
-                .appender(Appender::builder().build("logfile", Box::new(logfile)))
-                .build(Root::builder().appender("logfile").build(LevelFilter::Debug))
-                .unwrap();
-
-            log_handle = Some(log4rs::init_config(config)?);
-        }
-
         let db = WalletDatabase::new(wallet_backend);
         let base_node_peers = runtime.block_on(db.get_peers())?;
 
@@ -221,7 +195,6 @@ where
             contacts_service: contacts_handle,
             db,
             runtime,
-            log_handle,
             factories,
             #[cfg(feature = "test_harness")]
             transaction_backend: transaction_backend_handle,

@@ -1351,7 +1351,10 @@ where
                         .await
                         .map_err(|_| TransactionServiceError::EventStreamError)?;
 
-                    info!("Transaction (TxId: {:?}) detected as mined on the Base Layer", tx_id);
+                    info!(
+                        target: LOG_TARGET,
+                        "Transaction (TxId: {:?}) detected as mined on the Base Layer", tx_id
+                    );
                 }
             }
         } else {

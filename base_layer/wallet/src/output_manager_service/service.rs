@@ -160,7 +160,7 @@ where
 
         let mut utxo_query_timeout_futures: FuturesUnordered<BoxFuture<'static, u64>> = FuturesUnordered::new();
 
-        info!("Output Manager Service started");
+        info!(target: LOG_TARGET, "Output Manager Service started");
         loop {
             futures::select! {
                 request_context = request_stream.select_next_some() => {
@@ -201,7 +201,7 @@ where
                 }
             }
         }
-        info!("Output Manager Service ended");
+        info!(target: LOG_TARGET, "Output Manager Service ended");
         Ok(())
     }
 

@@ -84,7 +84,7 @@ use tari_wallet::{
         storage::{database::OutputManagerDatabase, memory_db::OutputManagerMemoryDatabase},
         OutputManagerServiceInitializer,
     },
-    storage::connection_manager::run_migration_and_create_connection_pool,
+    storage::connection_manager::run_migration_and_create_sqlite_connection,
     transaction_service::{
         config::TransactionServiceConfig,
         error::TransactionServiceError,
@@ -404,12 +404,12 @@ fn manage_single_transaction_sqlite_db() {
     let alice_db_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), alice_db_name);
     let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
     let bob_db_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), bob_db_name);
-    let connection_pool_alice = run_migration_and_create_connection_pool(&alice_db_path).unwrap();
-    let connection_pool_bob = run_migration_and_create_connection_pool(&bob_db_path).unwrap();
+    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
+    let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
 
     manage_single_transaction(
-        TransactionServiceSqliteDatabase::new(connection_pool_alice),
-        TransactionServiceSqliteDatabase::new(connection_pool_bob),
+        TransactionServiceSqliteDatabase::new(connection_alice),
+        TransactionServiceSqliteDatabase::new(connection_bob),
         temp_dir.path().to_str().unwrap().to_string(),
     );
 }
@@ -585,13 +585,13 @@ fn manage_multiple_transactions_sqlite_db() {
     let bob_db_path = format!("{}/{}", path_string, bob_db_name);
     let carol_db_name = format!("{}.sqlite3", random_string(8).as_str());
     let carol_db_path = format!("{}/{}", path_string, carol_db_name);
-    let connection_pool_alice = run_migration_and_create_connection_pool(&alice_db_path).unwrap();
-    let connection_pool_bob = run_migration_and_create_connection_pool(&bob_db_path).unwrap();
-    let connection_pool_carol = run_migration_and_create_connection_pool(&carol_db_path).unwrap();
+    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
+    let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
+    let connection_carol = run_migration_and_create_sqlite_connection(&carol_db_path).unwrap();
     manage_multiple_transactions(
-        TransactionServiceSqliteDatabase::new(connection_pool_alice),
-        TransactionServiceSqliteDatabase::new(connection_pool_bob),
-        TransactionServiceSqliteDatabase::new(connection_pool_carol),
+        TransactionServiceSqliteDatabase::new(connection_alice),
+        TransactionServiceSqliteDatabase::new(connection_bob),
+        TransactionServiceSqliteDatabase::new(connection_carol),
         path_string,
     );
 }
@@ -682,11 +682,11 @@ fn test_sending_repeated_tx_ids_sqlite_db() {
         let alice_db_path = format!("{}/{}", path_string, alice_db_name);
         let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
         let bob_db_path = format!("{}/{}", path_string, bob_db_name);
-        let connection_pool_alice = run_migration_and_create_connection_pool(&alice_db_path).unwrap();
-        let connection_pool_bob = run_migration_and_create_connection_pool(&bob_db_path).unwrap();
+        let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
+        let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
         test_sending_repeated_tx_ids(
-            TransactionServiceSqliteDatabase::new(connection_pool_alice),
-            TransactionServiceSqliteDatabase::new(connection_pool_bob),
+            TransactionServiceSqliteDatabase::new(connection_alice),
+            TransactionServiceSqliteDatabase::new(connection_bob),
         );
     });
 }
@@ -781,8 +781,8 @@ fn test_accepting_unknown_tx_id_and_malformed_reply_sqlite_db() {
         let path_string = dir_path.to_str().unwrap().to_string();
         let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
         let alice_db_path = format!("{}/{}", path_string, alice_db_name);
-        let connection_pool_alice = run_migration_and_create_connection_pool(&alice_db_path).unwrap();
-        test_accepting_unknown_tx_id_and_malformed_reply(TransactionServiceSqliteDatabase::new(connection_pool_alice));
+        let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
+        test_accepting_unknown_tx_id_and_malformed_reply(TransactionServiceSqliteDatabase::new(connection_alice));
     });
 }
 
@@ -838,9 +838,9 @@ fn finalize_tx_with_nonexistent_txid_sqlite_db() {
         let path_string = dir_path.to_str().unwrap().to_string();
         let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
         let alice_db_path = format!("{}/{}", path_string, alice_db_name);
-        let connection_pool_alice = run_migration_and_create_connection_pool(&alice_db_path).unwrap();
+        let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
 
-        finalize_tx_with_nonexistent_txid(TransactionServiceSqliteDatabase::new(connection_pool_alice));
+        finalize_tx_with_nonexistent_txid(TransactionServiceSqliteDatabase::new(connection_alice));
     });
 }
 
@@ -939,11 +939,11 @@ fn finalize_tx_with_incorrect_pubkey_sqlite_db() {
         let alice_db_path = format!("{}/{}", path_string, alice_db_name);
         let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
         let bob_db_path = format!("{}/{}", path_string, bob_db_name);
-        let connection_pool_alice = run_migration_and_create_connection_pool(&alice_db_path).unwrap();
-        let connection_pool_bob = run_migration_and_create_connection_pool(&bob_db_path).unwrap();
+        let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
+        let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
         finalize_tx_with_incorrect_pubkey(
-            TransactionServiceSqliteDatabase::new(connection_pool_alice),
-            TransactionServiceSqliteDatabase::new(connection_pool_bob),
+            TransactionServiceSqliteDatabase::new(connection_alice),
+            TransactionServiceSqliteDatabase::new(connection_bob),
         );
     });
 }
@@ -1042,11 +1042,11 @@ fn finalize_tx_with_missing_output_sqlite_db() {
         let alice_db_path = format!("{}/{}", path_string, alice_db_name);
         let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
         let bob_db_path = format!("{}/{}", path_string, bob_db_name);
-        let connection_pool_alice = run_migration_and_create_connection_pool(&alice_db_path).unwrap();
-        let connection_pool_bob = run_migration_and_create_connection_pool(&bob_db_path).unwrap();
+        let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
+        let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
         finalize_tx_with_missing_output(
-            TransactionServiceSqliteDatabase::new(connection_pool_alice),
-            TransactionServiceSqliteDatabase::new(connection_pool_bob),
+            TransactionServiceSqliteDatabase::new(connection_alice),
+            TransactionServiceSqliteDatabase::new(connection_bob),
         );
     });
 }
@@ -1324,9 +1324,9 @@ fn test_coinbase_sqlite_db() {
         let path_string = dir_path.to_str().unwrap().to_string();
         let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
         let alice_db_path = format!("{}/{}", path_string, alice_db_name);
-        let connection_pool_alice = run_migration_and_create_connection_pool(&alice_db_path).unwrap();
+        let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
 
-        test_coinbase(TransactionServiceSqliteDatabase::new(connection_pool_alice));
+        test_coinbase(TransactionServiceSqliteDatabase::new(connection_alice));
     });
 }
 

@@ -4,8 +4,7 @@ CREATE TABLE outputs (
     flags INTEGER NOT NULL,
     maturity INTEGER NOT NULL,
     status INTEGER NOT NULL,
-    tx_id INTEGER NULL,
-    FOREIGN KEY(tx_id) REFERENCES pending_transaction_outputs(tx_id)
+    tx_id INTEGER NULL
 );
 
 CREATE TABLE pending_transaction_outputs (

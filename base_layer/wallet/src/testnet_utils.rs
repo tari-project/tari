@@ -136,7 +136,6 @@ pub fn create_wallet(
 
     let config = WalletConfig {
         comms_config,
-        logging_path: None,
         factories,
         transaction_service_config: None,
     };

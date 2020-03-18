@@ -23,6 +23,7 @@ chrono = { version = "0.4.6", features = ["serde"]}
 tari_broadcast_channel = "^0.1"
 derive-error = "0.0.4"
 log = "0.4.6"
+log4rs = {version = "0.8.3", features = ["console_appender", "file_appender", "file", "yaml_format"]}
 
 [dependencies.tari_core]
 path = "../../base_layer/core"

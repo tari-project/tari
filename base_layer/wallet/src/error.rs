@@ -56,6 +56,8 @@ pub enum WalletStorageError {
     ConversionError,
     /// Could not find all values specified for batch operation
     ValuesNotFound,
+    /// Db Path does not exist
+    DbPathDoesNotExist,
     SerdeJsonError(SerdeJsonError),
     R2d2Error,
     DieselError(DieselError),

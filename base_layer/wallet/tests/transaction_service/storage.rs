@@ -36,7 +36,7 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
 };
 use tari_wallet::{
-    storage::connection_manager::run_migration_and_create_connection_pool,
+    storage::connection_manager::run_migration_and_create_sqlite_connection,
     transaction_service::storage::{
         database::{
             CompletedTransaction,
@@ -305,6 +305,7 @@ pub fn test_transaction_service_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
-    test_db_backend(TransactionServiceSqliteDatabase::new(connection_pool));
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    test_db_backend(TransactionServiceSqliteDatabase::new(connection));
 }

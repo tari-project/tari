@@ -72,7 +72,7 @@ use tari_wallet::{
             sqlite_db::OutputManagerSqliteDatabase,
         },
     },
-    storage::connection_manager::run_migration_and_create_connection_pool,
+    storage::connection_manager::run_migration_and_create_sqlite_connection,
 };
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
@@ -214,9 +214,9 @@ fn sending_transaction_and_confirmation_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
-    sending_transaction_and_confirmation(OutputManagerSqliteDatabase::new(connection_pool));
+    sending_transaction_and_confirmation(OutputManagerSqliteDatabase::new(connection));
 }
 
 fn send_not_enough_funds<T: OutputManagerBackend + 'static>(backend: T) {
@@ -257,9 +257,9 @@ fn send_not_enough_funds_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
-    send_not_enough_funds(OutputManagerSqliteDatabase::new(connection_pool));
+    send_not_enough_funds(OutputManagerSqliteDatabase::new(connection));
 }
 
 fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
@@ -333,9 +333,9 @@ fn send_no_change_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
-    send_no_change(OutputManagerSqliteDatabase::new(connection_pool));
+    send_no_change(OutputManagerSqliteDatabase::new(connection));
 }
 
 fn send_not_enough_for_change<T: OutputManagerBackend + 'static>(backend: T) {
@@ -378,9 +378,9 @@ fn send_not_enough_for_change_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
-    send_not_enough_for_change(OutputManagerSqliteDatabase::new(connection_pool));
+    send_not_enough_for_change(OutputManagerSqliteDatabase::new(connection));
 }
 
 fn receiving_and_confirmation<T: OutputManagerBackend + 'static>(backend: T) {
@@ -422,9 +422,9 @@ fn receiving_and_confirmation_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
-    receiving_and_confirmation(OutputManagerSqliteDatabase::new(connection_pool));
+    receiving_and_confirmation(OutputManagerSqliteDatabase::new(connection));
 }
 
 fn cancel_transaction<T: OutputManagerBackend + 'static>(backend: T) {
@@ -472,8 +472,9 @@ fn cancel_transaction_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
-    cancel_transaction(OutputManagerSqliteDatabase::new(connection_pool));
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    cancel_transaction(OutputManagerSqliteDatabase::new(connection));
 }
 
 fn timeout_transaction<T: OutputManagerBackend + 'static>(backend: T) {
@@ -526,8 +527,9 @@ fn timeout_transaction_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
-    timeout_transaction(OutputManagerSqliteDatabase::new(connection_pool));
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    timeout_transaction(OutputManagerSqliteDatabase::new(connection));
 }
 
 fn test_get_balance<T: OutputManagerBackend + 'static>(backend: T) {
@@ -578,8 +580,9 @@ fn test_get_balance_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
-    test_get_balance(OutputManagerSqliteDatabase::new(connection_pool));
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    test_get_balance(OutputManagerSqliteDatabase::new(connection));
 }
 
 fn test_confirming_received_output<T: OutputManagerBackend + 'static>(backend: T) {
@@ -616,8 +619,9 @@ fn test_confirming_received_output_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
-    test_confirming_received_output(OutputManagerSqliteDatabase::new(connection_pool));
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    test_confirming_received_output(OutputManagerSqliteDatabase::new(connection));
 }
 
 #[test]
