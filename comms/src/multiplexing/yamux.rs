@@ -166,10 +166,21 @@ where S: Stream<Item = Result<yamux::Stream, yamux::ConnectionError>> + Unpin
         loop {
             let either = future::select(self.inner.next(), signal.take().expect("cannot fail")).await;
             match either {
+                // Underlying Connection closed
+                Either::Left((Some(err @ Err(yamux::ConnectionError::Closed)), _)) => {
+                    let _ = self.sender.send(err).await;
+                    trace!(
+                        target: LOG_TARGET,
+                        "Incoming peer substream task is shutting down because the yamux connection is closed"
+                    );
+                    break;
+                },
+                // Received a substream result
                 Either::Left((Some(substream_result), sig)) => {
                     signal = Some(sig);
                     let _ = self.sender.send(substream_result).await;
                 },
+                // The substream closed
                 Either::Left((None, _)) => {
                     trace!(
                         target: LOG_TARGET,
@@ -177,6 +188,7 @@ where S: Stream<Item = Result<yamux::Stream, yamux::ConnectionError>> + Unpin
                     );
                     break;
                 },
+                // The shutdown signal was received
                 Either::Right((_, _)) => {
                     trace!(
                         target: LOG_TARGET,
@@ -186,6 +198,8 @@ where S: Stream<Item = Result<yamux::Stream, yamux::ConnectionError>> + Unpin
                 },
             }
         }
+
+        self.sender.close_channel();
     }
 }
 
