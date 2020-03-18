@@ -55,6 +55,7 @@ use tari_core::{
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::TransactionServiceHandle,
+    util::emoji::EmojiId,
 };
 use tokio::runtime;
 
@@ -68,6 +69,7 @@ pub enum BaseNodeCommand {
     GetChainMetadata,
     ListPeers,
     ListConnections,
+    ListHeaders,
     Whoami,
     Quit,
     Exit,
@@ -174,6 +176,9 @@ impl Parser {
             ListConnections => {
                 println!("Lists the peer connections currently held by this node");
             },
+            ListHeaders => {
+                println!("List the last headers up to a maximum of 10 of the current chain");
+            },
             Whoami => {
                 println!(
                     "Display identity information about this node, including: public key, node ID and the public \
@@ -209,6 +214,9 @@ impl Parser {
             },
             ListConnections => {
                 self.process_list_connections();
+            },
+            ListHeaders => {
+                self.process_list_headers(10);
             },
             Whoami => {
                 self.process_whoami();
@@ -303,6 +311,41 @@ impl Parser {
         });
     }
 
+    fn process_list_headers(&self, max_headers: usize) {
+        let mut handler = self.node_service.clone();
+        self.executor.spawn(async move {
+            let mut height = match handler.get_metadata().await {
+                Err(err) => {
+                    println!("Failed to retrieve chain height: {:?}", err);
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                    0
+                },
+                Ok(data) => data.height_of_longest_chain.unwrap_or(0),
+            };
+            let mut headers = Vec::new();
+            headers.push(height);
+            height -= 1;
+            while (headers.len() < 10) && (height > 0) {
+                headers.push(height);
+                height -= 1;
+            }
+            let headers = match handler.get_header(headers).await {
+                Err(err) => {
+                    println!("Failed to retrieve headers: {:?}", err);
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                    return;
+                },
+                Ok(data) => data,
+            };
+            println!(
+                "{}",
+                headers
+                    .into_iter()
+                    .fold(String::new(), |acc, p| { format!("{}\n\n{}", acc, p) })
+            );
+        });
+    }
+
     fn process_whoami(&self) {
         println!("{}", self.node_identity);
     }
@@ -321,11 +364,15 @@ impl Parser {
         }
         let amount: MicroTari = amount.unwrap().into();
         let dest_pubkey = CommsPublicKey::from_hex(command_arg[2]);
-        if dest_pubkey.is_err() {
-            println!("please enter a valid destination pub_key");
-            return;
-        }
-        let dest_pubkey = dest_pubkey.unwrap();
+        let dest_pubkey = if dest_pubkey.is_err() {
+            if !EmojiId::is_valid(command_arg[2]) {
+                println!("please enter a valid destination pub_key");
+                return;
+            }
+            EmojiId::str_to_pubkey(command_arg[2]).unwrap()
+        } else {
+            dest_pubkey.unwrap()
+        };
         let fee_per_gram = 25 * uT;
         let mut handler = self.wallet_transaction_service.clone();
         self.executor.spawn(async move {
