@@ -27,8 +27,10 @@ use tari_common::{bootstrap_config_from_cli, ConfigBootstrap};
 
 /// Prints a pretty banner on the console
 pub fn print_banner() {
+    let logo = include!("../assets/tari_logo.rs");
     println!(
-        "\n$ Tari Base Node\n$ Copyright 2019-2020. {}\n$ Version {}\n\nPress Ctrl-C to quit..",
+        "{}\n\n$ Tari Base Node\n$ Copyright 2019-2020. {}\n$ Version {}\n\nPress Ctrl-C to quit..",
+        logo,
         consts::AUTHOR,
         consts::VERSION
     );
