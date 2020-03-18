@@ -25,7 +25,7 @@ use crate::{
         comms_interface::{BlockEvent, LocalNodeCommsInterface},
         states::BaseNodeState,
     },
-    blocks::{Block, NewBlockTemplate},
+    blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{BlockAddResult, BlockchainBackend},
     consensus::ConsensusManager,
     mining::{blake_miner::CpuBlakePow, error::MinerError, CoinbaseBuilder},
@@ -55,33 +55,38 @@ use tari_broadcast_channel::Subscriber;
 use tari_crypto::keys::SecretKey;
 use tokio::task::spawn_blocking;
 
+use tokio::task;
+
 pub const LOG_TARGET: &str = "c::m::miner";
 
 pub struct Miner<B: BlockchainBackend> {
     kill_flag: Arc<AtomicBool>,
-    received_new_block_flag: Arc<AtomicBool>,
+    stop_mining_flag: Arc<AtomicBool>,
     consensus: ConsensusManager<B>,
     node_interface: LocalNodeCommsInterface,
     utxo_sender: Sender<UnblindedOutput>,
     state_change_event_rx: Option<Subscriber<BaseNodeState>>,
+    threads: usize,
 }
 
-impl<B: BlockchainBackend> Miner<B> {
+impl<B: BlockchainBackend + 'static> Miner<B> {
     /// Constructs a new miner
     pub fn new(
         stop_flag: Arc<AtomicBool>,
         consensus: ConsensusManager<B>,
         node_interface: &LocalNodeCommsInterface,
+        threads: usize,
     ) -> Miner<B>
     {
         let (utxo_sender, _): (Sender<UnblindedOutput>, Receiver<UnblindedOutput>) = mpsc::channel(1);
         Miner {
             kill_flag: stop_flag,
             consensus,
-            received_new_block_flag: Arc::new(AtomicBool::new(false)),
+            stop_mining_flag: Arc::new(AtomicBool::new(false)),
             node_interface: node_interface.clone(),
             utxo_sender,
             state_change_event_rx: None,
+            threads,
         }
     }
 
@@ -114,32 +119,32 @@ impl<B: BlockchainBackend> Miner<B> {
     /// 4. We iterate on the header nonce until
     ///     * the target difficulty is reached
     ///     * or the loop is interrupted because a new block was found in the interim, or the miner is stopped
-    async fn mining(&mut self) -> Result<(), MinerError> {
+    async fn mining(mut self) -> Result<Miner<B>, MinerError> {
         // Lets make sure its set to mine
-        debug!(target: LOG_TARGET, "Start mining thread");
-        while !self.kill_flag.load(Ordering::Relaxed) {
-            while !self.received_new_block_flag.load(Ordering::Relaxed) {
-                tokio::time::delay_for(Duration::from_millis(100)).await; // wait for new block event
-                if self.kill_flag.load(Ordering::Relaxed) {
-                    debug!(target: LOG_TARGET, "Mining stopped with kill flag.");
-                    return Ok(());
-                }
-            }
-            let flag = self.received_new_block_flag.clone();
-            flag.store(false, Ordering::Relaxed);
-            debug!(target: LOG_TARGET, "Miner asking for new candidate block to mine.");
-            let mut block_template = self.get_block_template().await?;
-            let output = self.add_coinbase(&mut block_template)?;
-            let mut block = self.get_block(block_template).await?;
-            debug!(target: LOG_TARGET, "Miner got new block to mine.");
-            let difficulty = self.get_req_difficulty().await?;
-            let new_block_event_flag = self.received_new_block_flag.clone();
-            let kill = self.kill_flag.clone();
+        debug!(target: LOG_TARGET, "Miner asking for new candidate block to mine.");
+        let mut block_template = self.get_block_template().await?;
+        let output = self.add_coinbase(&mut block_template)?;
+        let mut block = self.get_block(block_template).await?;
+        debug!(target: LOG_TARGET, "Miner got new block to mine.");
+        let difficulty = self.get_req_difficulty().await?;
+        let (tx, mut rx): (Sender<Option<BlockHeader>>, Receiver<Option<BlockHeader>>) = mpsc::channel(self.threads);
+        for _ in 0..self.threads {
+            let stop_mining_flag = self.stop_mining_flag.clone();
             let header = block.header.clone();
-            let mining_handle =
-                spawn_blocking(move || CpuBlakePow::mine(difficulty, header, new_block_event_flag, kill));
-            let result = mining_handle.await.unwrap_or(None);
-            if let Some(r) = result {
+            let mut tx_channel = tx.clone();
+            trace!("spawning mining thread");
+            spawn_blocking(move || {
+                let result = CpuBlakePow::mine(difficulty, header, stop_mining_flag);
+                // send back what the miner found, None will be sent if the miner did not find a nonce
+                tx_channel.try_send(result);
+            });
+        }
+        drop(tx); // lets ensure that the tx all get dropped
+        while let Some(value) = rx.next().await {
+            // let see if we sound a header, this will be none if no header was found
+            if let Some(r) = value {
+                // found block, lets ensure we kill all other threads
+                self.stop_mining_flag.store(true, Ordering::Relaxed);
                 block.header = r;
                 self.send_block(block).await.or_else(|e| {
                     error!(target: LOG_TARGET, "Could not send block to base node. {:?}.", e);
@@ -152,50 +157,74 @@ impl<B: BlockchainBackend> Miner<B> {
                         Err(e)
                     })
                     .map_err(|e| MinerError::CommunicationError(e.to_string()))?;
+                break;
             }
         }
-        debug!(target: LOG_TARGET, "Mining thread stopped.");
-        Ok(())
+        trace!("returning closing thread");
+        Ok(self)
+    }
+
+    // This is just a helper function to get around the rust borrow checker
+    async fn not_mining(self) -> Result<Miner<B>, MinerError> {
+        Ok(self)
     }
 
     /// function, this function gets called when a new block event is triggered. It will ensure that the miner
     /// restarts/starts to mine.
     pub async fn mine(mut self) {
-        let flag = self.received_new_block_flag.clone();
+        // This flag is used to stop the mining;
+        let flag = self.stop_mining_flag.clone();
         let block_event = self.node_interface.clone().get_block_event_stream_fused();
         let state_event = self
             .state_change_event_rx
             .take()
             .expect("Miner does not have access to state event stream")
             .fuse();
-        let t_miner = self.mining().fuse();
+
+        let t_miner_kill_check = check_kill_flag(self.kill_flag.clone(), flag.clone()).fuse();
 
         pin_mut!(block_event);
         pin_mut!(state_event);
-        pin_mut!(t_miner);
-        loop {
+        pin_mut!(t_miner_kill_check);
+        let mut start_mining = false;
+        trace!("starting mining thread");
+        'main: loop {
+            flag.store(false, Ordering::Relaxed); // ensure we can mine if we need to
+            let mining_future = match start_mining {
+                true => task::spawn(self.mining()),
+                false => task::spawn(self.not_mining()),
+            };
             futures::select! {
             msg = block_event.select_next_some() => {
                 match (*msg).clone() {
                     BlockEvent::Verified((_, result)) => {
                     if result == BlockAddResult::Ok{
                         flag.store(true, Ordering::Relaxed);
+                        start_mining = true;
                     };
                 },
                 _ => (),
                 }
             },
             msg = state_event.select_next_some() => {
+                flag.store(true, Ordering::Relaxed);
                 match (*msg).clone() {
                     BaseNodeState::Listening(_) => {
-                        flag.store(true, Ordering::Relaxed);
+                        start_mining = true;
                     },
-                    _ => (),
+                    _ => {
+                        start_mining = false;
+                    },
                 }
             },
-            (_) = t_miner => break,
+            (_) = t_miner_kill_check => {
+                flag.store(true, Ordering::Relaxed);
+                break 'main;
+            }
             };
+            self = mining_future.await.expect("Miner crashed").expect("Miner crashed");
         }
+        debug!(target: LOG_TARGET, "Mining thread stopped.");
     }
 
     /// function, temp use genesis block as template
@@ -291,5 +320,14 @@ impl<B: BlockchainBackend> Miner<B> {
             })
             .map_err(|e| MinerError::CommunicationError(e.to_string()))?;
         Ok(())
+    }
+}
+
+async fn check_kill_flag(kill_flag: Arc<AtomicBool>, stop_flag: Arc<AtomicBool>) {
+    loop {
+        tokio::time::delay_for(Duration::from_millis(100)).await;
+        if kill_flag.load(Ordering::Relaxed) {
+            stop_flag.store(true, Ordering::Relaxed);
+        }
     }
 }

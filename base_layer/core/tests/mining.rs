@@ -103,7 +103,7 @@ fn mining() {
     });
     // Setup and start the miner
     let stop_flag = Arc::new(AtomicBool::new(false));
-    let mut miner = Miner::new(stop_flag, consensus_manager, &alice_node.local_nci);
+    let mut miner = Miner::new(stop_flag, consensus_manager, &alice_node.local_nci, 1);
     let (mut state_event_sender, state_event_receiver): (Publisher<BaseNodeState>, Subscriber<BaseNodeState>) =
         bounded(1);
     miner.subscribe_to_state_change(state_event_receiver);

@@ -266,6 +266,7 @@ pub struct GlobalConfig {
     pub peer_seeds: Vec<String>,
     pub peer_db_path: String,
     pub enable_mining: bool,
+    pub num_mining_threads: usize,
     pub wallet_file: String,
     pub tor_identity_file: String,
 }
@@ -365,6 +366,11 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .get_bool(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as bool;
 
+    let key = config_string(&net_str, "num_mining_threads");
+    let num_mining_threads = cfg
+        .get_int(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+
     // set wallet_file
     let key = "wallet.wallet_file".to_string();
     let wallet_file = cfg
@@ -383,6 +389,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         peer_seeds,
         peer_db_path,
         enable_mining,
+        num_mining_threads,
         wallet_file,
         tor_identity_file,
     })
@@ -537,6 +544,7 @@ pub fn default_config() -> Config {
     cfg.set_default("base_node.mainnet.grpc_address", "tcp://127.0.0.1:18041")
         .unwrap();
     cfg.set_default("base_node.mainnet.enable_mining", false).unwrap();
+    cfg.set_default("base_node.mainnet.num_mining_threads", 1).unwrap();
 
     // Rincewind base node defaults
     cfg.set_default("base_node.rincewind.db_type", "lmdb").unwrap();
@@ -565,6 +573,7 @@ pub fn default_config() -> Config {
     cfg.set_default("base_node.rincewind.grpc_address", "tcp://127.0.0.1:18141")
         .unwrap();
     cfg.set_default("base_node.rincewind.enable_mining", false).unwrap();
+    cfg.set_default("base_node.rincewind.num_mining_threads", 1).unwrap();
 
     set_transport_defaults(&mut cfg);
 
