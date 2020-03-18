@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::{comms_interface::BlockEvent, generate_request_key, RequestKey, WaitingRequest, WaitingRequests},
+    base_node::{comms_interface::BlockEvent, generate_request_key, RequestKey, WaitingRequests},
     chain_storage::BlockchainBackend,
     mempool::{
         proto,
@@ -104,7 +104,7 @@ where
 pub struct MempoolService<B: BlockchainBackend + 'static> {
     outbound_message_service: OutboundMessageRequester,
     inbound_handlers: MempoolInboundHandlers<B>,
-    waiting_requests: WaitingRequests<Result<MempoolResponse, MempoolServiceError>, MempoolResponse>,
+    waiting_requests: WaitingRequests<Result<MempoolResponse, MempoolServiceError>>,
     timeout_sender: Sender<RequestKey>,
     timeout_receiver_stream: Option<Receiver<RequestKey>>,
     config: MempoolServiceConfig,
@@ -348,34 +348,23 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
 }
 
 async fn handle_incoming_response(
-    waiting_requests: WaitingRequests<Result<MempoolResponse, MempoolServiceError>, MempoolResponse>,
+    waiting_requests: WaitingRequests<Result<MempoolResponse, MempoolServiceError>>,
     incoming_response: proto::MempoolServiceResponse,
 ) -> Result<(), MempoolServiceError>
 {
     let proto::MempoolServiceResponse { request_key, response } = incoming_response;
-    let response = response
+    let response: MempoolResponse = response
         .and_then(|r| r.try_into().ok())
         .ok_or_else(|| MempoolServiceError::InvalidResponse("Received an invalid Mempool response".to_string()))?;
 
-    if let Some(waiting_request) = waiting_requests.check_complete(request_key, response)? {
-        let WaitingRequest {
-            mut reply_tx,
-            received_responses,
-            ..
-        } = waiting_request;
-        if let Some(reply_tx) = reply_tx.take() {
-            if let Some(received_response) = received_responses.into_iter().next() {
-                let _ = reply_tx.send(Ok(received_response).or_else(|resp| {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Failed to send outbound request (request key:{})  from Mempool service: {:?}",
-                        &request_key,
-                        resp
-                    );
-                    Err(resp)
-                }));
-            }
-        }
+    if let Some(reply_tx) = waiting_requests.remove(request_key)? {
+        let _ = reply_tx.send(Ok(response).or_else(|resp| {
+            warn!(
+                target: LOG_TARGET,
+                "Failed to send outbound request (request key:{})  from Mempool service: {:?}", &request_key, resp
+            );
+            Err(resp)
+        }));
     }
 
     Ok(())
@@ -383,7 +372,7 @@ async fn handle_incoming_response(
 
 async fn handle_outbound_request(
     mut outbound_message_service: OutboundMessageRequester,
-    waiting_requests: WaitingRequests<Result<MempoolResponse, MempoolServiceError>, MempoolResponse>,
+    waiting_requests: WaitingRequests<Result<MempoolResponse, MempoolServiceError>>,
     timeout_sender: Sender<RequestKey>,
     reply_tx: OneshotSender<Result<MempoolResponse, MempoolServiceError>>,
     request: MempoolRequest,
@@ -413,11 +402,7 @@ async fn handle_outbound_request(
     match send_result.resolve_ok().await {
         Some(tags) if !tags.is_empty() => {
             // Spawn timeout and wait for matching response to arrive
-            waiting_requests.insert(request_key, WaitingRequest {
-                reply_tx: Some(reply_tx),
-                received_responses: Vec::new(),
-                desired_resp_count: 1,
-            })?;
+            waiting_requests.insert(request_key, Some(reply_tx))?;
             // Spawn timeout for waiting_request
             spawn_request_timeout(timeout_sender, request_key, config.request_timeout);
         },
@@ -461,21 +446,19 @@ async fn handle_incoming_tx<B: BlockchainBackend + 'static>(
 }
 
 async fn handle_request_timeout(
-    waiting_requests: WaitingRequests<Result<MempoolResponse, MempoolServiceError>, MempoolResponse>,
+    waiting_requests: WaitingRequests<Result<MempoolResponse, MempoolServiceError>>,
     request_key: RequestKey,
 ) -> Result<(), MempoolServiceError>
 {
-    if let Some(mut waiting_request) = waiting_requests.remove(request_key)? {
-        if let Some(reply_tx) = waiting_request.reply_tx.take() {
-            let reply_msg = Err(MempoolServiceError::RequestTimedOut);
-            let _ = reply_tx.send(reply_msg.or_else(|resp| {
-                error!(
-                    target: LOG_TARGET,
-                    "Failed to send outbound request from Mempool service"
-                );
-                Err(resp)
-            }));
-        }
+    if let Some(reply_tx) = waiting_requests.remove(request_key)? {
+        let reply_msg = Err(MempoolServiceError::RequestTimedOut);
+        let _ = reply_tx.send(reply_msg.or_else(|resp| {
+            error!(
+                target: LOG_TARGET,
+                "Failed to send outbound request from Mempool service"
+            );
+            Err(resp)
+        }));
     }
 
     Ok(())

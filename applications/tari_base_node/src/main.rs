@@ -98,7 +98,10 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     // Load or create the Node identity
     let node_identity = match load_identity(&node_config.identity_file) {
-        Ok(id) => id,
+        Ok(id) => {
+            id.set_public_address(node_config.public_address.clone()).unwrap();
+            id
+        },
         Err(e) => {
             if !arguments.create_id {
                 error!(

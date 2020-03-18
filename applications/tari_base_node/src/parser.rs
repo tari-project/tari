@@ -260,12 +260,15 @@ impl Parser {
         self.executor.spawn(async move {
             match peer_manager.flood_peers().await {
                 Ok(peers) => {
+                    let num_peers = peers.len();
                     println!(
                         "{}",
                         peers
                             .into_iter()
                             .fold(String::new(), |acc, p| { format!("{}\n{}", acc, p) })
                     );
+
+                    println!("{} peer(s) known by this node", num_peers);
                 },
                 Err(e) => {
                     error!(target: LOG_TARGET, "Could not read peers: {}", e.to_string());
@@ -283,12 +286,14 @@ impl Parser {
                     println!("No active peer connections.");
                 },
                 Ok(conns) => {
+                    let num_connections = conns.len();
                     println!(
                         "{}",
                         conns
                             .into_iter()
                             .fold(String::new(), |acc, p| { format!("{}\n{}", acc, p) })
                     );
+                    println!("{} active connection(s)", num_connections);
                 },
                 Err(e) => {
                     error!(target: LOG_TARGET, "Could not list connections: {}", e.to_string());

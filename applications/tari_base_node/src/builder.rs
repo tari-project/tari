@@ -36,6 +36,7 @@ use tari_comms::{
     socks,
     tor,
     tor::TorIdentity,
+    transports::SocksConfig,
     utils::multiaddr::multiaddr_to_socketaddr,
     CommsNode,
 };
@@ -316,7 +317,7 @@ pub async fn configure_and_initialize_node(
 async fn build_node_context<B>(
     backend: B,
     network: NetworkType,
-    id: Arc<NodeIdentity>,
+    node_identity: Arc<NodeIdentity>,
     config: &GlobalConfig,
 ) -> Result<BaseNodeContext<B>, String>
 where
@@ -341,7 +342,7 @@ where
     let handle = runtime::Handle::current();
     let (publisher, subscription_factory) = pubsub_connector(handle, 100);
     let comms_config = CommsConfig {
-        node_identity: id.clone(),
+        node_identity: node_identity.clone(),
         transport_type: setup_transport_type(&config),
         datastore_path: config.peer_db_path.clone(),
         peer_database_name: "peers".to_string(),
@@ -367,7 +368,7 @@ where
         .map_err(|e| format!("Could not create wallet: {:?}", e))?;
     debug!(target: LOG_TARGET, "Registering base node services");
     let handles = register_services(
-        id.clone(),
+        node_identity.clone(),
         &comms,
         &dht,
         db.clone(),
@@ -501,8 +502,20 @@ fn assign_peers(seeds: &[String]) -> Vec<Peer> {
 }
 
 fn setup_transport_type(config: &GlobalConfig) -> TransportType {
+    debug!(target: LOG_TARGET, "Transport is set to '{:?}'", config.comms_transport);
+
     match config.comms_transport.clone() {
-        CommsTransport::Tcp { listener_address } => TransportType::Tcp { listener_address },
+        CommsTransport::Tcp {
+            listener_address,
+            tor_socks_address,
+            tor_socks_auth,
+        } => TransportType::Tcp {
+            listener_address,
+            tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
+                proxy_address,
+                authentication: tor_socks_auth.map(into_socks_authentication).unwrap_or_default(),
+            }),
+        },
         CommsTransport::TorHiddenService {
             control_server_address,
             socks_address_override,
@@ -549,16 +562,20 @@ fn setup_transport_type(config: &GlobalConfig) -> TransportType {
             listener_address,
             auth,
         } => TransportType::Socks {
-            proxy_address,
-            listener_address,
-            authentication: {
-                match auth {
-                    SocksAuthentication::None => socks::Authentication::None,
-                    SocksAuthentication::UsernamePassword(username, password) => {
-                        socks::Authentication::Password(username, password)
-                    },
-                }
+            socks_config: SocksConfig {
+                proxy_address,
+                authentication: into_socks_authentication(auth),
             },
+            listener_address,
+        },
+    }
+}
+
+fn into_socks_authentication(auth: SocksAuthentication) -> socks::Authentication {
+    match auth {
+        SocksAuthentication::None => socks::Authentication::None,
+        SocksAuthentication::UsernamePassword(username, password) => {
+            socks::Authentication::Password(username, password)
         },
     }
 }

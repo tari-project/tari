@@ -26,23 +26,6 @@ function banner() {
   echo
 }
 
-function run_tor() {
-  echo
-  banner "Running Tor"
-
-  tor --allow-missing-torrc --ignore-missing-torrc \
-     --clientonly 1 \
-     --socksport $SOCKSPORT \
-     --controlport $CONTROLPORT\
-     --log "notice stdout" \
-     --clientuseipv6 1
-}
-
-if hash tor 2>/dev/null; then
-  run_tor
-  exit
-fi
-
 function install_tor_linux_apt() {
   if [ "$EUID" -ne 0 ]; then
     echo "Please run as root"
@@ -67,7 +50,6 @@ EOF
    systemctl disable tor.service
    kill `ps -e | grep tor | cut -d " " -f1` 2>/dev/null || true
 
-   run_tor
 }
 
 function install_tor_mac() {
@@ -84,11 +66,11 @@ function install_tor_mac() {
     bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
     echo "Homebrew successfully installed"
   fi
-
+  # Install bottles
+  brew install pkgconfig 1>&2
+  brew install sqlite3 1>&2
   brew install tor 1>&2
   echo "Tor successfully installed"
-
-  run_tor
 }
 
 case "$(uname -s)" in
@@ -102,11 +84,6 @@ case "$(uname -s)" in
       install_tor_linux_apt
       ;;
     Darwin*)
-      if ! hash brew 2> /dev/null; then
-        echo "Homebrew is not installed. To install homebrew use:"
-        echo '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)'
-        exit 1
-      fi
       install_tor_mac
       ;;
     CYGWIN*)

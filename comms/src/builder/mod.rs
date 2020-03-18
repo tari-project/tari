@@ -32,6 +32,9 @@ pub use comms_node::{BuiltCommsNode, CommsNode};
 mod shutdown;
 pub use shutdown::CommsShutdown;
 
+mod error;
+pub use error::CommsBuilderError;
+
 mod consts;
 mod placeholder;
 
@@ -43,7 +46,6 @@ use crate::{
     connection_manager::{
         ConnectionManager,
         ConnectionManagerConfig,
-        ConnectionManagerError,
         ConnectionManagerEvent,
         ConnectionManagerRequest,
         ConnectionManagerRequester,
@@ -51,39 +53,19 @@ use crate::{
     message::InboundMessage,
     multiaddr::Multiaddr,
     noise::NoiseConfig,
-    peer_manager::{NodeIdentity, PeerManager, PeerManagerError},
+    peer_manager::{NodeIdentity, PeerManager},
     protocol::{messaging, messaging::MessagingProtocol, ProtocolNotification, Protocols},
     tor,
-    transports::{SocksTransport, TcpTransport, Transport},
+    transports::{SocksTransport, TcpWithTorTransport, Transport},
     types::{CommsDatabase, CommsSubstream},
 };
-use derive_error::Error;
 use futures::{channel::mpsc, AsyncRead, AsyncWrite};
 use log::*;
-use std::{fmt::Debug, sync::Arc};
+use std::sync::Arc;
 use tari_shutdown::Shutdown;
 use tokio::{runtime, sync::broadcast};
 
 const LOG_TARGET: &str = "comms::builder";
-
-#[derive(Debug, Error)]
-pub enum CommsBuilderError {
-    PeerManagerError(PeerManagerError),
-    ConnectionManagerError(ConnectionManagerError),
-    /// Node identity not set. Call `with_node_identity(node_identity)` on [CommsBuilder]
-    NodeIdentityNotSet,
-    /// The PeerStorage was not provided to the CommsBuilder. Use `with_peer_storage` to set it.
-    PeerStorageNotProvided,
-    /// The messaging pipeline was not provided to the CommsBuilder. Use `with_messaging_pipeline` to set it.
-    /// pipeline.
-    MessagingPiplineNotProvided,
-    /// Unable to receive a ConnectionManagerEvent within timeout
-    ConnectionManagerEventStreamTimeout,
-    /// ConnectionManagerEvent stream unexpectedly closed
-    ConnectionManagerEventStreamClosed,
-    /// Receiving on ConnectionManagerEvent stream lagged unexpectedly
-    ConnectionManagerEventStreamLagged,
-}
 
 /// The `CommsBuilder` provides a simple builder API for getting Tari comms p2p messaging up and running.
 pub struct CommsBuilder<TTransport> {
@@ -98,20 +80,20 @@ pub struct CommsBuilder<TTransport> {
     shutdown: Shutdown,
 }
 
-impl CommsBuilder<TcpTransport> {
+impl CommsBuilder<TcpWithTorTransport> {
     /// Create a new CommsBuilder
     pub fn new() -> Self {
         Default::default()
     }
 
-    fn default_tcp_transport() -> TcpTransport {
-        let mut tcp = TcpTransport::new();
-        tcp.set_nodelay(true);
-        tcp
+    fn default_tcp_transport() -> TcpWithTorTransport {
+        let mut tcp_with_tor = TcpWithTorTransport::new();
+        tcp_with_tor.tcp_transport_mut().set_nodelay(true);
+        tcp_with_tor
     }
 }
 
-impl Default for CommsBuilder<TcpTransport> {
+impl Default for CommsBuilder<TcpWithTorTransport> {
     fn default() -> Self {
         Self {
             peer_storage: None,
@@ -122,7 +104,6 @@ impl Default for CommsBuilder<TcpTransport> {
             protocols: None,
             hidden_service: None,
             connection_manager_config: ConnectionManagerConfig::default(),
-
             shutdown: Shutdown::new(),
         }
     }

@@ -1290,10 +1290,12 @@ where
     ) -> Result<(), TransactionServiceError>
     {
         let tx_id = response.request_key;
-        let response = match response.response {
-            Some(BaseNodeResponseProto::TransactionOutputs(outputs)) => Ok(outputs.outputs),
-            _ => Err(TransactionServiceError::InvalidStateError),
-        }?;
+        let response: Vec<tari_core::transactions::proto::types::TransactionOutput> = match response.response {
+            Some(BaseNodeResponseProto::TransactionOutputs(outputs)) => outputs.outputs,
+            _ => {
+                return Ok(());
+            },
+        };
 
         let completed_tx = match self.db.get_completed_transaction(tx_id.clone()).await {
             Ok(tx) => tx,

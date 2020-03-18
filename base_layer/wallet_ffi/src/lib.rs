@@ -1853,6 +1853,7 @@ pub unsafe extern "C" fn transport_tcp_create(
     }
     let transport = TariTransportType::Tcp {
         listener_address: listener_address_str.parse::<Multiaddr>().unwrap(),
+        tor_socks_config: None,
     };
     Box::into_raw(Box::new(transport))
 }
@@ -2617,7 +2618,7 @@ pub unsafe extern "C" fn wallet_test_finalize_received_transaction(
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
-/// `tx` - The completed transaction to operate on
+/// `tx_id` - The transaction id to operate on
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -2628,7 +2629,7 @@ pub unsafe extern "C" fn wallet_test_finalize_received_transaction(
 #[no_mangle]
 pub unsafe extern "C" fn wallet_test_broadcast_transaction(
     wallet: *mut TariWallet,
-    tx: *mut TariCompletedTransaction,
+    tx_id: c_ulonglong,
     error_out: *mut c_int,
 ) -> bool
 {
@@ -2640,13 +2641,7 @@ pub unsafe extern "C" fn wallet_test_broadcast_transaction(
         return false;
     }
 
-    if tx.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("tx".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
-    }
-
-    match broadcast_transaction(&mut *wallet, (*tx).tx_id) {
+    match broadcast_transaction(&mut *wallet, tx_id) {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -2662,7 +2657,7 @@ pub unsafe extern "C" fn wallet_test_broadcast_transaction(
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
-/// `tx` - The completed transaction to operate on
+/// `tx_id` - The transaction id to operate on
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -2673,7 +2668,7 @@ pub unsafe extern "C" fn wallet_test_broadcast_transaction(
 #[no_mangle]
 pub unsafe extern "C" fn wallet_test_mine_transaction(
     wallet: *mut TariWallet,
-    tx: *mut TariCompletedTransaction,
+    tx_id: c_ulonglong,
     error_out: *mut c_int,
 ) -> bool
 {
@@ -2684,12 +2679,7 @@ pub unsafe extern "C" fn wallet_test_mine_transaction(
         ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
-    if tx.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("tx".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
-    }
-    match mine_transaction(&mut *wallet, (*tx).tx_id) {
+    match mine_transaction(&mut *wallet, tx_id) {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -4158,8 +4148,8 @@ mod test {
             for (_k, v) in completed_transactions {
                 if v.status == TransactionStatus::Completed {
                     let tx_ptr = Box::into_raw(Box::new(v.clone()));
-                    wallet_test_broadcast_transaction(alice_wallet, tx_ptr, error_ptr);
-                    wallet_test_mine_transaction(alice_wallet, tx_ptr, error_ptr);
+                    wallet_test_broadcast_transaction(alice_wallet, (*tx_ptr).tx_id, error_ptr);
+                    wallet_test_mine_transaction(alice_wallet, (*tx_ptr).tx_id, error_ptr);
                 }
             }
 

@@ -277,13 +277,13 @@ where
     ) -> Result<(), OutputManagerError>
     {
         let request_key = response.request_key;
-        let response = match response.response {
-            Some(BaseNodeResponseProto::TransactionOutputs(outputs)) => Ok(outputs.outputs),
-            _ => Err(OutputManagerError::InvalidResponseError(format!(
-                "Could not parse response with request key: {}",
-                request_key
-            ))),
-        }?;
+
+        let response: Vec<tari_core::transactions::proto::types::TransactionOutput> = match response.response {
+            Some(BaseNodeResponseProto::TransactionOutputs(outputs)) => outputs.outputs,
+            _ => {
+                return Ok(());
+            },
+        };
 
         // Only process requests with a request_key that we are expecting.
         if !self.pending_utxo_query_keys.remove(&request_key) {

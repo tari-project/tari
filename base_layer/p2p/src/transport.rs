@@ -20,22 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{multiaddr::Multiaddr, socks, tor};
+use tari_comms::{multiaddr::Multiaddr, socks, tor, transports::SocksConfig};
 
 #[derive(Debug, Clone)]
 pub enum TransportType {
     /// Use a memory transport. This transport recognises /memory addresses primarily used for local testing.
     Memory { listener_address: Multiaddr },
     /// Use a TcpTransport. This transport recognises /ip{4|6}/.../tcp/xxxx addresses.
-    Tcp { listener_address: Multiaddr },
+    Tcp {
+        listener_address: Multiaddr,
+        /// The optional SOCKS proxy to use when connecting to Tor onion addresses
+        tor_socks_config: Option<SocksConfig>,
+    },
     /// This does not directly map to a transport, but will configure comms to run over a tor hidden service using the
     /// Tor proxy. This transport recognises ip/tcp, onion v2, onion v3 and dns addresses.
     Tor(TorConfig),
     /// Use a SOCKS5 proxy transport. This transport recognises ip/tcp and dns addresses.
     Socks {
-        proxy_address: Multiaddr,
+        socks_config: SocksConfig,
         listener_address: Multiaddr,
-        authentication: socks::Authentication,
     },
 }
 

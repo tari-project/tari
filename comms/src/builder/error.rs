@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,17 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod comms_request;
-mod comms_response;
-mod error;
-mod inbound_handlers;
-mod local_interface;
-mod outbound_interface;
+use crate::{connection_manager::ConnectionManagerError, peer_manager::PeerManagerError};
+use derive_error::Error;
 
-// Public re-exports
-pub use comms_request::{MmrStateRequest, NodeCommsRequest};
-pub use comms_response::NodeCommsResponse;
-pub use error::CommsInterfaceError;
-pub use inbound_handlers::{BlockEvent, InboundNodeCommsHandlers};
-pub use local_interface::LocalNodeCommsInterface;
-pub use outbound_interface::OutboundNodeCommsInterface;
+#[derive(Debug, Error)]
+pub enum CommsBuilderError {
+    PeerManagerError(PeerManagerError),
+    ConnectionManagerError(ConnectionManagerError),
+    /// Node identity not set. Call `with_node_identity(node_identity)` on [CommsBuilder]
+    NodeIdentityNotSet,
+    /// The PeerStorage was not provided to the CommsBuilder. Use `with_peer_storage` to set it.
+    PeerStorageNotProvided,
+    /// The messaging pipeline was not provided to the CommsBuilder. Use `with_messaging_pipeline` to set it.
+    /// pipeline.
+    MessagingPiplineNotProvided,
+    /// Unable to receive a ConnectionManagerEvent within timeout
+    ConnectionManagerEventStreamTimeout,
+    /// ConnectionManagerEvent stream unexpectedly closed
+    ConnectionManagerEventStreamClosed,
+    /// Receiving on ConnectionManagerEvent stream lagged unexpectedly
+    ConnectionManagerEventStreamLagged,
+}

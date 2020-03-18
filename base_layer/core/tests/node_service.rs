@@ -95,9 +95,7 @@ fn request_response_get_metadata() {
 
     runtime.block_on(async {
         let received_metadata = alice_node.outbound_nci.get_metadata().await.unwrap();
-        assert_eq!(received_metadata.len(), 2);
-        assert_eq!(received_metadata[0].height_of_longest_chain, Some(0));
-        assert_eq!(received_metadata[1].height_of_longest_chain, Some(0));
+        assert_eq!(received_metadata.height_of_longest_chain, Some(0));
 
         alice_node.comms.shutdown().await;
         bob_node.comms.shutdown().await;
