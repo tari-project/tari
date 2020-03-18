@@ -136,25 +136,60 @@ impl Parser {
 
     /// This will parse the provided command and execute the task
     pub fn handle_command(&mut self, command_str: &str) {
-        let commands: Vec<&str> = command_str.split(' ').collect();
-        let command = BaseNodeCommand::from_str(commands[0]);
+        let mut args = command_str.split(' ');
+        let command = BaseNodeCommand::from_str(args.next().unwrap_or(&"help"));
         if command.is_err() {
             println!("{} is not a valid command, please enter a valid command", command_str);
             println!("Enter help or press tab for available commands");
             return;
         }
         let command = command.unwrap();
-        let help_command = if commands.len() == 2 {
-            Some(BaseNodeCommand::from_str(commands[1]).unwrap_or(BaseNodeCommand::Help))
-        } else {
-            None
-        };
-        if help_command != Some(BaseNodeCommand::Help) {
-            return self.process_command(command, commands);
-        }
+        return self.process_command(command, args);
+    }
 
+    // Function to process commands
+    fn process_command<'a, I: Iterator<Item = &'a str>>(&mut self, command: BaseNodeCommand, args: I) {
         use BaseNodeCommand::*;
         match command {
+            Help => {
+                self.print_help(args);
+            },
+            GetBalance => {
+                self.process_get_balance();
+            },
+            SendTari => {
+                self.process_send_tari(args);
+            },
+            GetChainMetadata => {
+                self.process_get_chain_meta();
+            },
+            ListPeers => {
+                self.process_list_peers();
+            },
+            ListConnections => {
+                self.process_list_connections();
+            },
+            ListHeaders => {
+                self.process_list_headers(args);
+            },
+            Whoami => {
+                self.process_whoami();
+            },
+            Exit | Quit => {
+                println!("Shutting down...");
+                info!(
+                    target: LOG_TARGET,
+                    "Termination signal received from user. Shutting node down."
+                );
+                self.shutdown_flag.store(true, Ordering::SeqCst);
+            },
+        }
+    }
+
+    fn print_help<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+        let help_for = BaseNodeCommand::from_str(args.next().unwrap_or_default()).unwrap_or(BaseNodeCommand::Help);
+        use BaseNodeCommand::*;
+        match help_for {
             Help => {
                 println!("Available commands are: ");
                 let joined = self.commands.join(", ");
@@ -187,47 +222,6 @@ impl Parser {
             },
             Exit | Quit => {
                 println!("Exits the base node");
-            },
-        }
-    }
-
-    // Function to process commands
-    fn process_command(&mut self, command: BaseNodeCommand, command_arg: Vec<&str>) {
-        use BaseNodeCommand::*;
-        match command {
-            Help => {
-                println!("Available commands are: ");
-                let joined = self.commands.join(", ");
-                println!("{}", joined);
-            },
-            GetBalance => {
-                self.process_get_balance();
-            },
-            SendTari => {
-                self.process_send_tari(command_arg);
-            },
-            GetChainMetadata => {
-                self.process_get_chain_meta();
-            },
-            ListPeers => {
-                self.process_list_peers();
-            },
-            ListConnections => {
-                self.process_list_connections();
-            },
-            ListHeaders => {
-                self.process_list_headers(10);
-            },
-            Whoami => {
-                self.process_whoami();
-            },
-            Exit | Quit => {
-                println!("Shutting down...");
-                info!(
-                    target: LOG_TARGET,
-                    "Termination signal received from user. Shutting node down."
-                );
-                self.shutdown_flag.store(true, Ordering::SeqCst);
             },
         }
     }
@@ -311,10 +305,11 @@ impl Parser {
         });
     }
 
-    fn process_list_headers(&self, max_headers: usize) {
+    fn process_list_headers<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+        let max_headers = args.next().unwrap_or("1").parse().unwrap_or(1);
         let mut handler = self.node_service.clone();
         self.executor.spawn(async move {
-            let mut height = match handler.get_metadata().await {
+            let max_height = match handler.get_metadata().await {
                 Err(err) => {
                     println!("Failed to retrieve chain height: {:?}", err);
                     warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
@@ -322,14 +317,8 @@ impl Parser {
                 },
                 Ok(data) => data.height_of_longest_chain.unwrap_or(0),
             };
-            let mut headers = Vec::new();
-            headers.push(height);
-            height -= 1;
-            while (headers.len() < 10) && (height > 0) {
-                headers.push(height);
-                height -= 1;
-            }
-            let headers = match handler.get_header(headers).await {
+            let heights = (0..max_height + 1).rev().take(max_headers).collect();
+            let headers = match handler.get_header(heights).await {
                 Err(err) => {
                     println!("Failed to retrieve headers: {:?}", err);
                     warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
@@ -351,7 +340,8 @@ impl Parser {
     }
 
     // Function to process  the send transaction function
-    fn process_send_tari(&mut self, command_arg: Vec<&str>) {
+    fn process_send_tari<'a, I: Iterator<Item = &'a str>>(&mut self, args: I) {
+        let command_arg = args.take(3).collect::<Vec<&str>>();
         if command_arg.len() != 3 {
             println!("Command entered incorrectly, please use the following format: ");
             println!("send_tari [amount of tari to send] [public key to send to]");
@@ -363,16 +353,14 @@ impl Parser {
             return;
         }
         let amount: MicroTari = amount.unwrap().into();
-        let dest_pubkey = CommsPublicKey::from_hex(command_arg[2]);
-        let dest_pubkey = if dest_pubkey.is_err() {
-            if !EmojiId::is_valid(command_arg[2]) {
-                println!("please enter a valid destination pub_key");
-                return;
-            }
-            EmojiId::str_to_pubkey(command_arg[2]).unwrap()
-        } else {
-            dest_pubkey.unwrap()
-        };
+        let dest_pubkey =
+            match CommsPublicKey::from_hex(command_arg[2]).or_else(|_| EmojiId::str_to_pubkey(command_arg[2])) {
+                Ok(pk) => pk,
+                Err(_) => {
+                    println!("please enter a valid destination pub_key");
+                    return;
+                },
+            };
         let fee_per_gram = 25 * uT;
         let mut handler = self.wallet_transaction_service.clone();
         self.executor.spawn(async move {
