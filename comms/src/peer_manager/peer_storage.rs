@@ -164,7 +164,7 @@ where DS: KeyValueStore<PeerId, Peer>
                 if must_update_node_id {
                     trace!(target: LOG_TARGET, "Must update node id for peer '{}'", node_id);
                     self.remove_index_links(peer_key);
-                    self.add_index_links(peer_key, public_key, node_id.clone());
+                    self.add_index_links(peer_key, public_key, node_id);
                 }
 
                 Ok(())

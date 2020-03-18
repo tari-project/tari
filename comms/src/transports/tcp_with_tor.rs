@@ -87,7 +87,7 @@ impl Transport for TcpWithTorTransport {
                 },
                 None => Err(io::Error::new(
                     io::ErrorKind::Other,
-                    format!("Tor SOCKS proxy is not set for TCP transport. Cannot dial peer with onion addresses."),
+                    "Tor SOCKS proxy is not set for TCP transport. Cannot dial peer with onion addresses.".to_owned(),
                 )),
             }
         } else {

@@ -44,10 +44,10 @@ impl<'a> TorCommand for DelOnion<'a> {
         Ok(format!("DEL_ONION {}", self.service_id))
     }
 
-    fn parse_responses(&self, mut responses: Vec<ResponseLine<'_>>) -> Result<Self::Output, Self::Error> {
+    fn parse_responses(&self, mut responses: Vec<ResponseLine>) -> Result<Self::Output, Self::Error> {
         let last_response = responses.pop().ok_or_else(|| TorClientError::UnexpectedEof)?;
         if let Some(err) = last_response.err() {
-            return Err(TorClientError::TorCommandFailed(err.into_owned()));
+            return Err(TorClientError::TorCommandFailed(err.to_owned()));
         }
 
         Ok(())

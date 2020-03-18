@@ -182,9 +182,7 @@ where
                     target: LOG_TARGET,
                     "Received pong from peer '{}'. {} {} {}",
                     node_id.short_str(),
-                    maybe_latency
-                        .map(|ms| format!("Latency: {}ms", ms))
-                        .unwrap_or(String::new()),
+                    maybe_latency.map(|ms| format!("Latency: {}ms", ms)).unwrap_or_default(),
                     if is_neighbour { "(neighbouring)" } else { "" },
                     if is_monitored { "(monitored)" } else { "" },
                 );

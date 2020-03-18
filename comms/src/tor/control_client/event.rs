@@ -19,42 +19,42 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use super::parsers::ParseError;
+
+use super::response::ResponseLine;
 use derive_error::Error;
-use std::io;
-use tokio_util::codec::LinesCodecError;
 
 #[derive(Debug, Error)]
-pub enum TorClientError {
-    /// Failed to read/write line to socket. The maximum line length was exceeded.
-    MaxLineLengthExceeded,
-    Io(io::Error),
-    /// Command failed
-    #[error(no_from, non_std)]
-    TorCommandFailed(String),
-    /// Tor control port connection unexpectedly closed
-    UnexpectedEof,
-    ParseError(ParseError),
-    /// The server returned no response
-    ServerNoResponse,
-    /// Server did not return a ServiceID for ADD_ONION command
-    AddOnionNoServiceId,
-    /// The given service id was invalid
-    InvalidServiceId,
-    /// Onion address is exists
-    OnionAddressCollision,
-    /// Response returned an no value for key
-    KeyValueNoValue,
-    /// The command sender disconnected
-    CommandSenderDisconnected,
+pub enum ControlEventError {
+    EmptyResponse,
+    InvalidEventData,
 }
 
-impl From<LinesCodecError> for TorClientError {
-    fn from(err: LinesCodecError) -> Self {
-        use LinesCodecError::*;
-        match err {
-            MaxLineLengthExceeded => TorClientError::MaxLineLengthExceeded,
-            Io(err) => TorClientError::Io(err),
+#[derive(Debug, Clone)]
+pub enum TorControlEvent {
+    NetworkLivenessUp,
+    NetworkLivenessDown,
+    TorControlDisconnected,
+    Unsupported(String),
+}
+
+impl TorControlEvent {
+    pub fn try_from_response(resp: ResponseLine) -> Result<Self, ControlEventError> {
+        debug_assert!(resp.is_event());
+
+        let mut parts = resp.value.splitn(2, ' ');
+        let event_type = parts.next().ok_or_else(|| ControlEventError::EmptyResponse)?;
+
+        match event_type {
+            "NETWORK_LIVENESS" => {
+                let up_or_down = parts.next().ok_or_else(|| ControlEventError::InvalidEventData)?;
+
+                match up_or_down.trim() {
+                    "UP" => Ok(TorControlEvent::NetworkLivenessUp),
+                    "DOWN" => Ok(TorControlEvent::NetworkLivenessDown),
+                    _ => Err(ControlEventError::InvalidEventData),
+                }
+            },
+            s => Ok(TorControlEvent::Unsupported(s.to_owned())),
         }
     }
 }

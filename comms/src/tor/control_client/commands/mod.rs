@@ -28,7 +28,7 @@ mod key_value;
 
 pub use add_onion::{AddOnion, AddOnionFlag, AddOnionResponse};
 pub use del_onion::DelOnion;
-pub use key_value::{get_conf, get_info, KeyValueCommand};
+pub use key_value::{get_conf, get_info, set_events, KeyValueCommand};
 
 pub trait TorCommand {
     type Output;
@@ -36,5 +36,5 @@ pub trait TorCommand {
 
     fn to_command_string(&self) -> Result<String, Self::Error>;
 
-    fn parse_responses(&self, responses: Vec<ResponseLine<'_>>) -> Result<Self::Output, Self::Error>;
+    fn parse_responses(&self, responses: Vec<ResponseLine>) -> Result<Self::Output, Self::Error>;
 }

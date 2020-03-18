@@ -28,6 +28,10 @@ pub use error::TorClientError;
 
 pub mod commands;
 
+mod event;
+pub use event::TorControlEvent;
+
+mod monitor;
 mod parsers;
 mod response;
 
@@ -36,3 +40,5 @@ pub use types::{KeyBlob, KeyType, PortMapping, PrivateKey};
 
 #[cfg(test)]
 mod test_server;
+
+const LOG_TARGET: &str = "comms::tor::control_client";

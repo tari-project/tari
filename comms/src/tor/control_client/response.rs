@@ -20,21 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::borrow::Cow;
-
 const OK_CODE: u16 = 250;
 pub const EVENT_CODE: u16 = 650;
 
 /// Represents a single response line from the server.
 #[derive(Debug)]
-pub struct ResponseLine<'a> {
-    pub(super) value: Cow<'a, str>,
+pub struct ResponseLine {
+    pub(super) value: String,
     pub(super) code: u16,
     pub(super) has_more: bool,
     pub(super) is_multiline: bool,
 }
 
-impl<'a> ResponseLine<'a> {
+impl ResponseLine {
     pub fn is_ok(&self) -> bool {
         self.code == OK_CODE
     }
@@ -43,9 +41,13 @@ impl<'a> ResponseLine<'a> {
         self.has_more
     }
 
-    pub fn into_owned<'b>(self) -> ResponseLine<'b> {
+    pub fn is_event(&self) -> bool {
+        self.code == EVENT_CODE
+    }
+
+    pub fn into_owned(self) -> ResponseLine {
         ResponseLine {
-            value: Cow::Owned(self.value.into_owned()),
+            value: self.value,
             code: self.code,
             has_more: self.has_more,
             is_multiline: self.is_multiline,
@@ -56,9 +58,9 @@ impl<'a> ResponseLine<'a> {
         !self.is_ok()
     }
 
-    pub fn err(&self) -> Option<Cow<'a, str>> {
+    pub fn err(&self) -> Option<&str> {
         if self.is_err() {
-            Some(self.value.clone())
+            Some(&self.value)
         } else {
             None
         }
