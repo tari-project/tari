@@ -20,37 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::PipelineError;
-use futures::{task::Context, Future, Sink, SinkExt};
-use std::{error::Error, pin::Pin, task::Poll};
-use tower::Service;
+use std::{error, fmt};
 
-/// A service which forwards and messages it gets to the given Sink
-#[derive(Clone)]
-pub struct SinkService<TSink>(TSink);
+#[derive(Debug)]
+pub struct PipelineError {
+    err_string: String,
+}
 
-impl<TSink> SinkService<TSink> {
-    pub fn new(sink: TSink) -> Self {
-        SinkService(sink)
+impl PipelineError {
+    pub fn from_debug<E: fmt::Debug>(err: E) -> Self {
+        Self {
+            err_string: format!("{:?}", err),
+        }
     }
 }
 
-impl<T, TSink> Service<T> for SinkService<TSink>
-where
-    TSink: Sink<T> + Unpin + Clone + 'static,
-    TSink::Error: Error + Send + Sync + 'static,
-{
-    type Error = PipelineError;
-    type Response = ();
-
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
-
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.0).poll_ready(cx).map_err(PipelineError::from_debug)
+impl From<&str> for PipelineError {
+    fn from(s: &str) -> Self {
+        Self::from_debug(s)
     }
+}
 
-    fn call(&mut self, item: T) -> Self::Future {
-        let mut sink = self.0.clone();
-        async move { sink.send(item).await.map_err(PipelineError::from_debug) }
+impl error::Error for PipelineError {}
+
+impl fmt::Display for PipelineError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.err_string)
     }
 }

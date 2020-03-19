@@ -140,5 +140,3 @@ pub mod envelope;
 pub mod inbound;
 pub mod outbound;
 pub mod store_forward;
-
-pub type PipelineError = Box<dyn std::error::Error + Send + Sync>;

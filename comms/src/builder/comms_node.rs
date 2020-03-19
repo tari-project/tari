@@ -150,12 +150,12 @@ where
         );
         info!(
             target: LOG_TARGET,
-            "Your nodes network ID is '{}'",
+            "Your node's network ID is '{}'",
             node_identity.node_id()
         );
         info!(
             target: LOG_TARGET,
-            "Your nodes public address is '{}'",
+            "Your node's public address is '{}'",
             node_identity.public_address()
         );
         let messaging_pipeline = messaging_pipeline.ok_or(CommsBuilderError::MessagingPiplineNotProvided)?;

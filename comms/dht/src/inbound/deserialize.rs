@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{inbound::DhtInboundMessage, proto::envelope::DhtEnvelope, PipelineError};
+use crate::{inbound::DhtInboundMessage, proto::envelope::DhtEnvelope};
 use futures::{task::Context, Future};
 use log::*;
 use prost::Message;
 use std::{convert::TryInto, task::Poll};
-use tari_comms::message::InboundMessage;
+use tari_comms::{message::InboundMessage, pipeline::PipelineError};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::deserialize";
@@ -49,7 +49,7 @@ impl<S> DhtDeserializeMiddleware<S> {
 impl<S> Service<InboundMessage> for DhtDeserializeMiddleware<S>
 where
     S: Service<DhtInboundMessage, Response = ()> + Clone + 'static,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     type Error = PipelineError;
     type Response = ();
@@ -68,11 +68,11 @@ where
 impl<S> DhtDeserializeMiddleware<S>
 where
     S: Service<DhtInboundMessage, Response = ()>,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     pub async fn deserialize(mut next_service: S, message: InboundMessage) -> Result<(), PipelineError> {
         trace!(target: LOG_TARGET, "Deserializing InboundMessage");
-        next_service.ready().await.map_err(Into::into)?;
+        next_service.ready().await.map_err(PipelineError::from_debug)?;
 
         let InboundMessage {
             source_peer, mut body, ..
@@ -95,13 +95,16 @@ where
                     }
                 }
 
-                let inbound_msg =
-                    DhtInboundMessage::new(dht_envelope.header.try_into()?, source_peer, dht_envelope.body);
-                next_service.call(inbound_msg).await.map_err(Into::into)
+                let inbound_msg = DhtInboundMessage::new(
+                    dht_envelope.header.try_into().map_err(PipelineError::from_debug)?,
+                    source_peer,
+                    dht_envelope.body,
+                );
+                next_service.call(inbound_msg).await.map_err(PipelineError::from_debug)
             },
             Err(err) => {
                 error!(target: LOG_TARGET, "DHT deserialization failed: {}", err);
-                Err(err.into())
+                Err(PipelineError::from_debug(err))
             },
         }
     }

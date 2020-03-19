@@ -43,7 +43,13 @@ use crate::{
 use chrono::{Duration as ChronoDuration, Utc};
 use log::*;
 use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng, RngCore};
-use std::{iter, sync::Arc, thread, time::Duration};
+use std::{
+    iter,
+    path::{Path, PathBuf},
+    sync::Arc,
+    thread,
+    time::Duration,
+};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -108,7 +114,7 @@ pub fn random_string(len: usize) -> String {
 pub fn create_wallet(
     secret_key: CommsSecretKey,
     public_address: Multiaddr,
-    data_path: String,
+    datastore_path: PathBuf,
 ) -> Wallet<WalletMemoryDatabase, TransactionMemoryDatabase, OutputManagerMemoryDatabase, ContactsServiceMemoryDatabase>
 {
     let runtime = Runtime::new().unwrap();
@@ -123,7 +129,7 @@ pub fn create_wallet(
             listener_address: public_address,
         },
         node_identity,
-        datastore_path: data_path,
+        datastore_path,
         peer_database_name: random_string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
@@ -162,9 +168,10 @@ pub fn generate_wallet_test_data<
     U: TransactionBackend + Clone,
     V: OutputManagerBackend,
     W: ContactsBackend,
+    P: AsRef<Path>,
 >(
     wallet: &mut Wallet<T, U, V, W>,
-    data_path: &str,
+    data_path: P,
     transaction_service_backend: U,
 ) -> Result<(), WalletError>
 {
@@ -230,7 +237,7 @@ pub fn generate_wallet_test_data<
         target: LOG_TARGET,
         "Spinning up Alice wallet to generate test transactions"
     );
-    let alice_temp_dir = format!("{}/{}", data_path, random_string(8));
+    let alice_temp_dir = data_path.as_ref().join(random_string(8));
     let _ = std::fs::create_dir(&alice_temp_dir);
 
     let mut wallet_alice = create_wallet(
@@ -250,7 +257,7 @@ pub fn generate_wallet_test_data<
         target: LOG_TARGET,
         "Spinning up Bob wallet to generate test transactions"
     );
-    let bob_temp_dir = format!("{}/{}", data_path, random_string(8));
+    let bob_temp_dir = data_path.as_ref().join(random_string(8));
     let _ = std::fs::create_dir(&bob_temp_dir);
 
     let mut wallet_bob = create_wallet(

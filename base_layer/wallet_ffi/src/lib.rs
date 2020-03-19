@@ -131,6 +131,7 @@ use rand::rngs::OsRng;
 use std::{
     boxed::Box,
     ffi::{CStr, CString},
+    path::PathBuf,
     slice,
     sync::Arc,
 };
@@ -2124,7 +2125,7 @@ pub unsafe extern "C" fn comms_config_create(
                     let config = TariCommsConfig {
                         node_identity: Arc::new(ni),
                         transport_type: (*transport_type).clone(),
-                        datastore_path: datastore_path_string,
+                        datastore_path: PathBuf::from(datastore_path_string),
                         peer_database_name: database_name_string,
                         max_concurrent_inbound_tasks: 100,
                         outbound_buffer_size: 100,
@@ -2256,11 +2257,10 @@ pub unsafe extern "C" fn wallet_create(
 
     match runtime {
         Ok(runtime) => {
-            let sql_database_path = format!(
-                "{}/{}.sqlite3",
-                (*config).datastore_path.clone(),
-                (*config).peer_database_name.clone()
-            );
+            let sql_database_path = (*config)
+                .datastore_path
+                .join((*config).peer_database_name.clone())
+                .with_extension("sqlite3");
             let connection = run_migration_and_create_sqlite_connection(&sql_database_path)
                 .map_err(|e| {
                     error!(

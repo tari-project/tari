@@ -28,11 +28,12 @@ use derive_error::Error;
 use futures::{channel::mpsc, AsyncRead, AsyncWrite, Sink};
 use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use std::{error::Error, iter, sync::Arc, time::Duration};
+use std::{error::Error, iter, path::PathBuf, sync::Arc, time::Duration};
 use tari_comms::{
     backoff::ConstantBackoff,
     peer_manager::NodeIdentity,
     pipeline,
+    pipeline::SinkService,
     tor,
     transports::{MemoryTransport, SocksTransport, TcpWithTorTransport, Transport},
     CommsBuilder,
@@ -55,7 +56,7 @@ pub enum CommsInitializationError {
 #[derive(Clone)]
 pub struct CommsConfig {
     /// Path to the LMDB data files.
-    pub datastore_path: String,
+    pub datastore_path: PathBuf,
     /// Name to use for the peer database
     pub peer_database_name: String,
     /// The maximum number of concurrent Inbound tasks allowed before back-pressure is applied to peers
@@ -139,7 +140,7 @@ where
                 .with_inbound_pipeline(
                     ServiceBuilder::new()
                         .layer(dht.inbound_middleware_layer())
-                        .service(connector),
+                        .service(SinkService::new(connector)),
                 )
                 .finish(),
         )
@@ -291,7 +292,7 @@ where
                 .with_inbound_pipeline(
                     ServiceBuilder::new()
                         .layer(dht.inbound_middleware_layer())
-                        .service(connector),
+                        .service(SinkService::new(connector)),
                 )
                 .finish(),
         )

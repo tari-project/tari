@@ -30,7 +30,6 @@ use crate::{
         dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage, RejectMessage},
         envelope::DhtMessageType,
     },
-    PipelineError,
 };
 use log::*;
 use std::sync::Arc;
@@ -38,6 +37,7 @@ use tari_comms::{
     message::MessageExt,
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
+    pipeline::PipelineError,
     types::CommsPublicKey,
 };
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
@@ -58,7 +58,7 @@ pub struct ProcessDhtMessage<S> {
 impl<S> ProcessDhtMessage<S>
 where
     S: Service<DecryptedDhtMessage, Response = ()>,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     pub fn new(
         config: DhtConfig,
@@ -89,19 +89,31 @@ where
 
         // If this message failed to decrypt, this middleware is not interested in it
         if message.decryption_failed() {
-            self.next_service.oneshot(message).await.map_err(Into::into)?;
+            self.next_service
+                .oneshot(message)
+                .await
+                .map_err(PipelineError::from_debug)?;
             return Ok(());
         }
 
         match message.dht_header.message_type {
-            DhtMessageType::Join => self.handle_join(message).await?,
-            DhtMessageType::Discovery => self.handle_discover(message).await?,
-            DhtMessageType::DiscoveryResponse => self.handle_discover_response(message).await?,
-            DhtMessageType::RejectMsg => self.handle_message_reject(message).await?,
+            DhtMessageType::Join => self.handle_join(message).await.map_err(PipelineError::from_debug)?,
+            DhtMessageType::Discovery => self.handle_discover(message).await.map_err(PipelineError::from_debug)?,
+            DhtMessageType::DiscoveryResponse => self
+                .handle_discover_response(message)
+                .await
+                .map_err(PipelineError::from_debug)?,
+            DhtMessageType::RejectMsg => self
+                .handle_message_reject(message)
+                .await
+                .map_err(PipelineError::from_debug)?,
             // Not a DHT message, call downstream middleware
             _ => {
                 trace!(target: LOG_TARGET, "Passing message onto next service");
-                self.next_service.oneshot(message).await.map_err(Into::into)?
+                self.next_service
+                    .oneshot(message)
+                    .await
+                    .map_err(PipelineError::from_debug)?
             },
         }
 

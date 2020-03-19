@@ -177,7 +177,7 @@ mod pingpong {
         let comms_config = CommsConfig {
             transport_type,
             node_identity,
-            datastore_path: datastore_path.path().to_str().unwrap().to_string(),
+            datastore_path: datastore_path.path().to_path_buf(),
             peer_database_name: random_string(8),
             max_concurrent_inbound_tasks: 10,
             outbound_buffer_size: 10,

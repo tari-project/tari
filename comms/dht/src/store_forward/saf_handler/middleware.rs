@@ -27,11 +27,13 @@ use crate::{
     inbound::DecryptedDhtMessage,
     outbound::OutboundMessageRequester,
     store_forward::SafStorage,
-    PipelineError,
 };
 use futures::{task::Context, Future};
 use std::{sync::Arc, task::Poll};
-use tari_comms::peer_manager::{NodeIdentity, PeerManager};
+use tari_comms::{
+    peer_manager::{NodeIdentity, PeerManager},
+    pipeline::PipelineError,
+};
 use tower::Service;
 
 #[derive(Clone)]
@@ -77,7 +79,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Cl
     type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.next_service.poll_ready(cx).map_err(Into::into)
+        self.next_service.poll_ready(cx)
     }
 
     fn call(&mut self, message: DecryptedDhtMessage) -> Self::Future {

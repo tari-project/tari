@@ -134,6 +134,11 @@ impl Peer {
                 .unwrap_or(false)
     }
 
+    /// TODO: Remove once we don't have to sync wallet and base node db
+    pub fn unset_id(&mut self) {
+        self.id = None;
+    }
+
     pub(super) fn set_id(&mut self, id: PeerId) {
         debug_assert!(self.id.is_none());
         self.id = Some(id);

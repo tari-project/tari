@@ -162,10 +162,10 @@ mod test {
     fn test_bootstrap_config_from_cli_and_load_configuration() {
         // Cleanup old test files and folder if exist
         if std::path::Path::new(&dir_utils::default_subdir("")).exists() {
-            std::fs::remove_dir_all(&dir_utils::default_subdir(""));
+            std::fs::remove_dir_all(&dir_utils::default_subdir("")).unwrap();
         }
         // Create test folder
-        dir_utils::create_data_directory();
+        dir_utils::create_data_directory().unwrap();
 
         // Create command line test data
         let matches = clap_app!(myapp =>
@@ -188,7 +188,7 @@ mod test {
 
         // Cleanup test data
         if std::path::Path::new(&dir_utils::default_subdir("")).exists() {
-            std::fs::remove_dir_all(&dir_utils::default_subdir(""));
+            std::fs::remove_dir_all(&dir_utils::default_subdir("")).unwrap();
         }
 
         // Assert results

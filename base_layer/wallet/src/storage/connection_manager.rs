@@ -28,11 +28,17 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-pub type WalletConnection = Arc<Mutex<SqliteConnection>>;
+pub type WalletDbConnection = Arc<Mutex<SqliteConnection>>;
 
-pub fn run_migration_and_create_sqlite_connection(db_path: &str) -> Result<WalletConnection, WalletStorageError> {
-    let db_exists = Path::new(db_path).exists();
-    let connection = SqliteConnection::establish(db_path)?;
+pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
+    db_path: P,
+) -> Result<WalletDbConnection, WalletStorageError> {
+    let db_exists = db_path.as_ref().exists();
+    let path_str = db_path
+        .as_ref()
+        .to_str()
+        .ok_or_else(|| WalletStorageError::InvalidUnicodePath)?;
+    let connection = SqliteConnection::establish(path_str)?;
     connection.execute("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 60000;")?;
 
     if !db_exists {
@@ -40,5 +46,6 @@ pub fn run_migration_and_create_sqlite_connection(db_path: &str) -> Result<Walle
         embedded_migrations::run_with_output(&connection, &mut io::stdout())
             .map_err(|err| WalletStorageError::DatabaseMigrationError(format!("Database migration failed {}", err)))?;
     }
+
     Ok(Arc::new(Mutex::new(connection)))
 }

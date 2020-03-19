@@ -81,7 +81,8 @@ pub enum BaseNodeCommand {
 #[derive(Helper, Validator, Highlighter)]
 pub struct Parser {
     executor: runtime::Handle,
-    node_identity: Arc<NodeIdentity>,
+    wallet_node_identity: Arc<NodeIdentity>,
+    base_node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
     connection_manager: ConnectionManagerRequester,
     shutdown_flag: Arc<AtomicBool>,
@@ -125,9 +126,10 @@ impl Parser {
     pub fn new(executor: runtime::Handle, ctx: &NodeContainer) -> Self {
         Parser {
             executor,
-            node_identity: ctx.node_identity(),
-            peer_manager: ctx.comms().peer_manager(),
-            connection_manager: ctx.comms().connection_manager(),
+            wallet_node_identity: ctx.wallet_node_identity(),
+            base_node_identity: ctx.base_node_identity(),
+            peer_manager: ctx.base_node_comms().peer_manager(),
+            connection_manager: ctx.base_node_comms().connection_manager(),
             shutdown_flag: ctx.interrupt_flag(),
             commands: BaseNodeCommand::iter().map(|x| x.to_string()).collect(),
             hinter: HistoryHinter {},
@@ -140,6 +142,9 @@ impl Parser {
 
     /// This will parse the provided command and execute the task
     pub fn handle_command(&mut self, command_str: &str) {
+        if command_str.trim().is_empty() {
+            return;
+        }
         let mut args = command_str.split(' ');
         let command = BaseNodeCommand::from_str(args.next().unwrap_or(&"help"));
         if command.is_err() {
@@ -252,7 +257,7 @@ impl Parser {
             match handler.get_balance().await {
                 Err(e) => {
                     println!("Something went wrong");
-                    warn!(target: LOG_TARGET, "Error communicating with wallet: {}", e.to_string(),);
+                    warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
                     return;
                 },
                 Ok(data) => println!("Balances:\n{}", data),
@@ -267,10 +272,10 @@ impl Parser {
             match handler.get_metadata().await {
                 Err(err) => {
                     println!("Failed to retrieve chain metadata: {:?}", err);
-                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err);
                     return;
                 },
-                Ok(data) => println!("Current meta data is is: {}", data),
+                Ok(data) => println!("{}", data),
             };
         });
     }
@@ -278,26 +283,31 @@ impl Parser {
     fn process_get_block<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
         let command_arg = args.take(4).collect::<Vec<&str>>();
         let height = if command_arg.len() == 1 {
-            let height = command_arg[0].parse::<u64>();
-            if height.is_err() {
-                println!("Invalid number provided");
-                return;
-            };
-            vec![height.unwrap()]
+            match command_arg[0].parse::<u64>().ok() {
+                Some(height) => height,
+                None => {
+                    println!("Invalid block height provided. Height must be an integer.");
+                    return;
+                },
+            }
         } else {
             println!("Invalid command, please enter as follows:");
             println!("get-block [height of the block]");
+            println!("e.g. get-block 10");
             return;
         };
         let mut handler = self.node_service.clone();
         self.executor.spawn(async move {
-            match handler.get_blocks(height).await {
+            match handler.get_blocks(vec![height]).await {
                 Err(err) => {
                     println!("Failed to retrieve blocks: {:?}", err);
-                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err,);
                     return;
                 },
-                Ok(data) => println!("{}", data[0].block),
+                Ok(mut data) => match data.pop() {
+                    Some(historical_block) => println!("{}", historical_block.block),
+                    None => println!("Block not found at height {}", height),
+                },
             };
         });
     }
@@ -313,13 +323,13 @@ impl Parser {
                         "{}",
                         peers
                             .into_iter()
-                            .fold(String::new(), |acc, p| { format!("{}\n{}", acc, p) })
+                            .fold(String::new(), |acc, p| format!("{}\n{}", acc, p))
                     );
-
                     println!("{} peer(s) known by this node", num_peers);
                 },
-                Err(e) => {
-                    error!(target: LOG_TARGET, "Could not read peers: {}", e.to_string());
+                Err(err) => {
+                    println!("Failed to list peers: {:?}", err);
+                    error!(target: LOG_TARGET, "Could not list peers: {:?}", err);
                     return;
                 },
             }
@@ -339,12 +349,13 @@ impl Parser {
                         "{}",
                         conns
                             .into_iter()
-                            .fold(String::new(), |acc, p| { format!("{}\n{}", acc, p) })
+                            .fold(String::new(), |acc, p| format!("{}\n{}", acc, p))
                     );
                     println!("{} active connection(s)", num_connections);
                 },
-                Err(e) => {
-                    error!(target: LOG_TARGET, "Could not list connections: {}", e.to_string());
+                Err(err) => {
+                    println!("Failed to list connections: {:?}", err);
+                    error!(target: LOG_TARGET, "Could not list connections: {:?}", err);
                     return;
                 },
             }
@@ -354,8 +365,12 @@ impl Parser {
     fn process_toggle_mining(&mut self) {
         let new_state = !self.enable_miner.load(Ordering::SeqCst);
         self.enable_miner.store(new_state, Ordering::SeqCst);
-        debug!("Mining enabled is now switched to {}", new_state);
-        println!("Mining enabled is now switched to {}", new_state);
+        if new_state {
+            println!("Mining is ON");
+        } else {
+            println!("Mining is OFF");
+        }
+        debug!(target: LOG_TARGET, "Mining state is now switched to {}", new_state);
     }
 
     fn process_list_headers<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
@@ -429,7 +444,11 @@ impl Parser {
     }
 
     fn process_whoami(&self) {
-        println!("{}", self.node_identity);
+        println!("======== Wallet ==========");
+        println!("{}", self.wallet_node_identity);
+        println!();
+        println!("======== Base Node ==========");
+        println!("{}", self.base_node_identity);
     }
 
     // Function to process  the send transaction function
@@ -472,7 +491,7 @@ impl Parser {
                 Err(e) => {
                     println!("Something went wrong sending funds");
                     println!("{:?}", e);
-                    warn!(target: LOG_TARGET, "Error communicating with wallet: {}", e.to_string(),);
+                    warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
                     return;
                 },
                 Ok(_) => println!("Sending {} Tari to {} ", amount, dest_pubkey),

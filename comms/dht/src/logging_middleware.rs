@@ -45,6 +45,7 @@ impl<R> MessageLoggingLayer<R> {
 impl<S, R> Layer<S> for MessageLoggingLayer<R>
 where
     S: Service<R>,
+    S::Error: std::error::Error + Send + Sync + 'static,
     R: Display,
 {
     type Service = MessageLoggingService<S>;
@@ -72,6 +73,7 @@ impl<S> MessageLoggingService<S> {
 impl<S, R> Service<R> for MessageLoggingService<S>
 where
     S: Service<R> + Clone,
+    S::Error: std::error::Error + Send + Sync + 'static,
     R: Display,
 {
     type Error = S::Error;

@@ -24,13 +24,12 @@ use crate::{
     crypt,
     envelope::DhtMessageFlags,
     inbound::message::{DecryptedDhtMessage, DhtInboundMessage},
-    PipelineError,
 };
 use futures::{task::Context, Future};
 use log::*;
 use prost::Message;
 use std::{sync::Arc, task::Poll};
-use tari_comms::{message::EnvelopeBody, peer_manager::NodeIdentity};
+use tari_comms::{message::EnvelopeBody, peer_manager::NodeIdentity, pipeline::PipelineError};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::middleware::encryption";
@@ -73,7 +72,7 @@ impl<S> DecryptionService<S> {
 impl<S> Service<DhtInboundMessage> for DecryptionService<S>
 where
     S: Service<DecryptedDhtMessage, Response = ()> + Clone,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     type Error = PipelineError;
     type Response = ();
@@ -92,7 +91,7 @@ where
 impl<S> DecryptionService<S>
 where
     S: Service<DecryptedDhtMessage, Response = ()>,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     async fn handle_message(
         next_service: S,
@@ -155,7 +154,7 @@ where
             Ok(deserialized) => {
                 debug!(target: LOG_TARGET, "Message successfully decrypted");
                 let msg = DecryptedDhtMessage::succeeded(deserialized, message);
-                next_service.oneshot(msg).await.map_err(Into::into)
+                next_service.oneshot(msg).await.map_err(PipelineError::from_debug)
             },
             Err(err) => {
                 debug!(target: LOG_TARGET, "Unable to deserialize message: {}", err);
@@ -172,7 +171,7 @@ where
                     "Message is not encrypted. Passing onto next service"
                 );
                 let msg = DecryptedDhtMessage::succeeded(deserialized, message);
-                next_service.oneshot(msg).await.map_err(Into::into)
+                next_service.oneshot(msg).await.map_err(PipelineError::from_debug)
             },
             Err(err) => {
                 // Message was not encrypted but failed to deserialize - immediately discard
@@ -188,7 +187,7 @@ where
 
     async fn decryption_failed(next_service: S, message: DhtInboundMessage) -> Result<(), PipelineError> {
         let msg = DecryptedDhtMessage::failed(message);
-        next_service.oneshot(msg).await.map_err(Into::into)
+        next_service.oneshot(msg).await.map_err(PipelineError::from_debug)
     }
 }
 

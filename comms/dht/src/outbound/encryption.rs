@@ -23,12 +23,11 @@
 use crate::{
     crypt,
     outbound::message::{DhtOutboundMessage, OutboundEncryption},
-    PipelineError,
 };
 use futures::{task::Context, Future};
 use log::*;
 use std::{sync::Arc, task::Poll};
-use tari_comms::peer_manager::NodeIdentity;
+use tari_comms::{peer_manager::NodeIdentity, pipeline::PipelineError};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::middleware::encryption";
@@ -71,7 +70,7 @@ impl<S> EncryptionService<S> {
 impl<S> Service<DhtOutboundMessage> for EncryptionService<S>
 where
     S: Service<DhtOutboundMessage, Response = ()> + Clone,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     type Error = PipelineError;
     type Response = ();
@@ -90,10 +89,10 @@ where
 impl<S> EncryptionService<S>
 where
     S: Service<DhtOutboundMessage, Response = ()>,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     async fn handle_message(
-        mut next_service: S,
+        next_service: S,
         node_identity: Arc<NodeIdentity>,
         mut message: DhtOutboundMessage,
     ) -> Result<(), PipelineError>
@@ -103,7 +102,7 @@ where
             OutboundEncryption::EncryptFor(public_key) => {
                 debug!(target: LOG_TARGET, "Encrypting message for {}", public_key);
                 let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), &**public_key);
-                message.body = crypt::encrypt(&shared_secret, &message.body)?;
+                message.body = crypt::encrypt(&shared_secret, &message.body).map_err(PipelineError::from_debug)?;
             },
             OutboundEncryption::EncryptForPeer => {
                 debug!(
@@ -112,15 +111,14 @@ where
                 );
                 let shared_secret =
                     crypt::generate_ecdh_secret(node_identity.secret_key(), &message.destination_peer.public_key);
-                message.body = crypt::encrypt(&shared_secret, &message.body)?
+                message.body = crypt::encrypt(&shared_secret, &message.body).map_err(PipelineError::from_debug)?
             },
             OutboundEncryption::None => {
                 debug!(target: LOG_TARGET, "Encryption not requested for message");
             },
         };
 
-        next_service.ready().await.map_err(Into::into)?;
-        next_service.call(message).await.map_err(Into::into)
+        next_service.oneshot(message).await.map_err(PipelineError::from_debug)
     }
 }
 
