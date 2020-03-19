@@ -71,7 +71,7 @@ use tari_core::{
         types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
     },
     validation::{
-        block_validators::{FullConsensusValidator, StatelessValidator},
+        block_validators::{FullConsensusValidator, StatelessBlockValidator},
         transaction_validators::{FullTxValidator, TxInputAndMaturityValidator},
     },
 };
@@ -203,7 +203,7 @@ pub struct BaseNodeContext<B: BlockchainBackend> {
     pub comms: CommsNode,
     pub handles: Arc<ServiceHandles>,
     pub node: BaseNodeStateMachine<B>,
-    pub miner: Option<Miner<B>>,
+    pub miner: Option<Miner>,
     pub miner_enabled: Arc<AtomicBool>,
 }
 
@@ -332,19 +332,16 @@ where
     B: BlockchainBackend + 'static,
 {
     let rules = ConsensusManagerBuilder::new(network).build();
-    let mut db = BlockchainDatabase::new(backend, &rules).map_err(|e| e.to_string())?;
     let factories = CryptoFactories::default();
     let validators = Validators::new(
-        FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
-        StatelessValidator::new(&rules.consensus_constants()),
+        FullConsensusValidator::new(rules.clone(), factories.clone()),
+        StatelessBlockValidator::new(&rules.consensus_constants()),
     );
-    db.set_validators(validators);
-    let mempool_validator = MempoolValidators::new(
-        FullTxValidator::new(factories.clone(), db.clone()),
-        TxInputAndMaturityValidator::new(db.clone()),
-    );
+    let db = BlockchainDatabase::new(backend, &rules, validators).map_err(|e| e.to_string())?;
+    let mempool_validator =
+        MempoolValidators::new(FullTxValidator::new(factories.clone()), TxInputAndMaturityValidator {});
     let mempool = Mempool::new(db.clone(), MempoolConfig::default(), mempool_validator);
-    let diff_adj_manager = DiffAdjManager::new(db.clone(), &rules.consensus_constants()).map_err(|e| e.to_string())?;
+    let diff_adj_manager = DiffAdjManager::new(&rules.consensus_constants()).map_err(|e| e.to_string())?;
     rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
     create_peer_db_folder(&config.peer_db_path)?;
     let handle = runtime::Handle::current();
@@ -661,7 +658,7 @@ async fn register_services<B>(
     wallet_conn: &WalletConnection,
     subscription_factory: SubscriptionFactory,
     mempool: Mempool<B>,
-    consensus_manager: ConsensusManager<B>,
+    consensus_manager: ConsensusManager,
     factories: CryptoFactories,
 ) -> Arc<ServiceHandles>
 where

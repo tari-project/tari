@@ -38,7 +38,19 @@ mod metadata;
 pub mod async_db;
 
 // Public API exports
-pub use blockchain_database::{BlockAddResult, BlockchainBackend, BlockchainDatabase, MutableMmrState, Validators};
+pub use blockchain_database::{
+    calculate_mmr_roots,
+    calculate_mmr_roots_writeguard,
+    fetch_header,
+    fetch_header_writeguard,
+    is_utxo,
+    is_utxo_writeguard,
+    BlockAddResult,
+    BlockchainBackend,
+    BlockchainDatabase,
+    MutableMmrState,
+    Validators,
+};
 pub use db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree};
 pub use error::ChainStorageError;
 pub use historical_block::HistoricalBlock;

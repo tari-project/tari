@@ -63,7 +63,7 @@ where T: BlockchainBackend + 'static
     event_publisher: Arc<RwLock<Publisher<BlockEvent>>>,
     blockchain_db: BlockchainDatabase<T>,
     mempool: Mempool<T>,
-    consensus_manager: ConsensusManager<T>,
+    consensus_manager: ConsensusManager,
     outbound_nci: OutboundNodeCommsInterface,
 }
 
@@ -75,7 +75,7 @@ where T: BlockchainBackend + 'static
         event_publisher: Publisher<BlockEvent>,
         blockchain_db: BlockchainDatabase<T>,
         mempool: Mempool<T>,
-        consensus_manager: ConsensusManager<T>,
+        consensus_manager: ConsensusManager,
         outbound_nci: OutboundNodeCommsInterface,
     ) -> Self
     {
@@ -206,7 +206,11 @@ where T: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::NewBlock(block))
             },
             NodeCommsRequest::GetTargetDifficulty(pow_algo) => Ok(NodeCommsResponse::TargetDifficulty(
-                self.consensus_manager.get_target_difficulty(*pow_algo)?,
+                self.consensus_manager.get_target_difficulty(
+                    &self.blockchain_db.metadata_read_access()?,
+                    &self.blockchain_db.db_read_access()?,
+                    *pow_algo,
+                )?,
             )),
         }
     }

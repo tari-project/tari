@@ -27,26 +27,29 @@ use crate::{
         BlockValidationError,
         NewBlockTemplate,
     },
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
+    chain_storage::{calculate_mmr_roots_writeguard, is_utxo_writeguard, BlockchainBackend, ChainMetadata},
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{transaction::OutputFlags, types::CryptoFactories},
     validation::{
-        helpers::{check_achieved_difficulty_at_chain_tip, check_median_timestamp_at_chain_tip},
-        Validation,
+        helpers::{check_achieved_difficulty, check_median_timestamp},
+        StatelessValidation,
         ValidationError,
+        ValidationWriteGuard,
     },
 };
 use log::*;
+use std::sync::RwLockWriteGuard;
 use tari_crypto::tari_utilities::hash::Hashable;
+
 pub const LOG_TARGET: &str = "c::val::block_validators";
 
 /// This validator tests whether a candidate block is internally consistent
 #[derive(Clone)]
-pub struct StatelessValidator {
+pub struct StatelessBlockValidator {
     consensus_constants: ConsensusConstants,
 }
 
-impl StatelessValidator {
+impl StatelessBlockValidator {
     pub fn new(consensus_constants: &ConsensusConstants) -> Self {
         Self {
             consensus_constants: consensus_constants.clone(),
@@ -54,7 +57,7 @@ impl StatelessValidator {
     }
 }
 
-impl<B: BlockchainBackend> Validation<Block, B> for StatelessValidator {
+impl StatelessValidation<Block> for StatelessBlockValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Is there precisely one Coinbase output and is it correctly defined?
     /// 1. Is the accounting correct?
@@ -70,25 +73,18 @@ impl<B: BlockchainBackend> Validation<Block, B> for StatelessValidator {
 
 /// This block checks whether a block satisfies *all* consensus rules. If a block passes this validator, it is the
 /// next block on the blockchain.
-pub struct FullConsensusValidator<B: BlockchainBackend> {
-    rules: ConsensusManager<B>,
+pub struct FullConsensusValidator {
+    rules: ConsensusManager,
     factories: CryptoFactories,
-    db: BlockchainDatabase<B>,
 }
 
-impl<B: BlockchainBackend> FullConsensusValidator<B>
-where B: BlockchainBackend
-{
-    pub fn new(rules: ConsensusManager<B>, factories: CryptoFactories, db: BlockchainDatabase<B>) -> Self {
-        Self { rules, factories, db }
-    }
-
-    fn db(&self) -> Result<BlockchainDatabase<B>, ValidationError> {
-        Ok(self.db.clone())
+impl FullConsensusValidator {
+    pub fn new(rules: ConsensusManager, factories: CryptoFactories) -> Self {
+        Self { rules, factories }
     }
 }
 
-impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator<B> {
+impl<B: BlockchainBackend> ValidationWriteGuard<Block, B> for FullConsensusValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Does the block satisfy the stateless checks?
     /// 1. Are all inputs currently in the UTXO set?
@@ -96,23 +92,31 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator<B> {
     /// 1. Is the block header timestamp greater than the median timestamp?
     /// 1. Is the Proof of Work valid?
     /// 1. Is the achieved difficulty of this block >= the target difficulty for this block?
-    fn validate(&self, block: &Block) -> Result<(), ValidationError> {
+    fn validate(
+        &self,
+        block: &Block,
+        db: &RwLockWriteGuard<B>,
+        metadata: &RwLockWriteGuard<ChainMetadata>,
+    ) -> Result<(), ValidationError>
+    {
         check_coinbase_output(block, &self.rules.consensus_constants())?;
         check_cut_through(block)?;
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
         check_accounting_balance(block, self.rules.clone(), &self.factories)?;
-        check_inputs_are_utxos(block, self.db()?)?;
+        check_inputs_are_utxos(block, &db)?;
+        check_mmr_roots(block, &db)?;
         check_timestamp_ftl(&block.header, &self.rules)?;
-        check_median_timestamp_at_chain_tip(&block.header, self.db()?, self.rules.clone())?;
-        check_achieved_difficulty_at_chain_tip(&block.header, self.db()?, self.rules.clone())?; // Update function signature once diff adjuster is complete
+        let tip_height = metadata.height_of_longest_chain.unwrap_or(0);
+        check_median_timestamp(db, &block.header, tip_height, self.rules.clone())?;
+        check_achieved_difficulty(db, &block.header, tip_height, self.rules.clone())?;
         Ok(())
     }
 }
 
 //-------------------------------------     Block validator helper functions     -------------------------------------//
-fn check_accounting_balance<B: BlockchainBackend>(
+fn check_accounting_balance(
     block: &Block,
-    rules: ConsensusManager<B>,
+    rules: ConsensusManager,
     factories: &CryptoFactories,
 ) -> Result<(), ValidationError>
 {
@@ -133,12 +137,12 @@ fn check_coinbase_output(block: &Block, consensus_constants: &ConsensusConstants
 /// This function checks that all inputs in the blocks are valid UTXO's to be spend
 fn check_inputs_are_utxos<B: BlockchainBackend>(
     block: &Block,
-    db: BlockchainDatabase<B>,
+    db: &RwLockWriteGuard<B>,
 ) -> Result<(), ValidationError>
 {
     for utxo in block.body.inputs() {
         if !(utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT)) &&
-            !(db.is_utxo(utxo.hash())).map_err(|e| ValidationError::CustomError(e.to_string()))?
+            !(is_utxo_writeguard(db, utxo.hash())).map_err(|e| ValidationError::CustomError(e.to_string()))?
         {
             warn!(
                 target: LOG_TARGET,
@@ -151,9 +155,9 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(
 }
 
 /// This function tests that the block timestamp is less than the ftl.
-fn check_timestamp_ftl<B: BlockchainBackend>(
+fn check_timestamp_ftl(
     block_header: &BlockHeader,
-    consensus_manager: &ConsensusManager<B>,
+    consensus_manager: &ConsensusManager,
 ) -> Result<(), ValidationError>
 {
     if block_header.timestamp > consensus_manager.consensus_constants().ftl() {
@@ -164,11 +168,10 @@ fn check_timestamp_ftl<B: BlockchainBackend>(
     Ok(())
 }
 
-fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: BlockchainDatabase<B>) -> Result<(), ValidationError> {
+fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &RwLockWriteGuard<B>) -> Result<(), ValidationError> {
     let template = NewBlockTemplate::from(block.clone());
-    let tmp_block = db
-        .calculate_mmr_roots(template)
-        .map_err(|e| ValidationError::CustomError(e.to_string()))?;
+    let tmp_block =
+        calculate_mmr_roots_writeguard(db, template).map_err(|e| ValidationError::CustomError(e.to_string()))?;
     let tmp_header = &tmp_block.header;
     let header = &block.header;
     if header.kernel_mr != tmp_header.kernel_mr ||

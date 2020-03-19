@@ -60,7 +60,7 @@ use tari_core::{
         types::CryptoFactories,
     },
     txn_schema,
-    validation::block_validators::StatelessValidator,
+    validation::{block_validators::StatelessBlockValidator, mocks::MockValidator},
 };
 use tari_crypto::tari_utilities::hash::Hashable;
 use tari_mmr::MmrCacheConfig;
@@ -502,7 +502,8 @@ fn propagate_and_forward_invalid_block() {
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let stateless_validator = StatelessValidator::new(&rules.consensus_constants());
+    let stateless_block_validator = StatelessBlockValidator::new(&rules.consensus_constants());
+    let mock_validator = MockValidator::new(true);
     let (mut alice_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone(), carol_node_identity.clone()])
@@ -512,13 +513,13 @@ fn propagate_and_forward_invalid_block() {
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![alice_node_identity.clone(), dan_node_identity.clone()])
         .with_consensus_manager(rules)
-        .with_validators(stateless_validator.clone(), stateless_validator.clone())
+        .with_validators(mock_validator.clone(), stateless_block_validator.clone())
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
     let (carol_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(carol_node_identity.clone())
         .with_peers(vec![alice_node_identity, dan_node_identity.clone()])
         .with_consensus_manager(rules)
-        .with_validators(stateless_validator.clone(), stateless_validator)
+        .with_validators(mock_validator.clone(), stateless_block_validator)
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
     let (dan_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(dan_node_identity)

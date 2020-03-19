@@ -742,8 +742,7 @@ fn store_and_retrieve_blocks() {
     let network = Network::LocalNet;
     let rules = ConsensusManagerBuilder::new(network).build();
     let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
-    let mut store = BlockchainDatabase::new(db, &rules).unwrap();
-    store.set_validators(validators);
+    let store = BlockchainDatabase::new(db, &rules, validators).unwrap();
 
     let block0 = store.fetch_block(0).unwrap().block().clone();
     let block1 = append_block(&store, &block0, vec![], &rules.consensus_constants(), 1.into()).unwrap();
@@ -766,8 +765,7 @@ fn store_and_retrieve_chain_and_orphan_blocks_with_hashes() {
     let network = Network::LocalNet;
     let rules = ConsensusManagerBuilder::new(network).build();
     let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
-    let mut store = BlockchainDatabase::new(db, &rules).unwrap();
-    store.set_validators(validators);
+    let store = BlockchainDatabase::new(db, &rules, validators).unwrap();
 
     let block0 = store.fetch_block(0).unwrap().block().clone();
     let block1 = append_block(&store, &block0, vec![], &rules.consensus_constants(), 1.into()).unwrap();
@@ -864,8 +862,7 @@ fn restore_metadata() {
     let path = create_temporary_data_path();
     {
         let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
-        let mut db = BlockchainDatabase::new(db, &rules).unwrap();
-        db.set_validators(validators.clone());
+        let db = BlockchainDatabase::new(db, &rules, validators.clone()).unwrap();
 
         let block0 = db.fetch_block(0).unwrap().block().clone();
         let block1 = append_block(&db, &block0, vec![], &rules.consensus_constants(), 1.into()).unwrap();
@@ -877,8 +874,7 @@ fn restore_metadata() {
     }
     // Restore blockchain db
     let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
-    let mut db = BlockchainDatabase::new(db, &rules).unwrap();
-    db.set_validators(validators);
+    let db = BlockchainDatabase::new(db, &rules, validators).unwrap();
 
     let metadata = db.get_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(1));

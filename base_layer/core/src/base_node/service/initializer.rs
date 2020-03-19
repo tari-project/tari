@@ -62,7 +62,7 @@ where T: BlockchainBackend
     inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
     blockchain_db: BlockchainDatabase<T>,
     mempool: Mempool<T>,
-    consensus_manager: ConsensusManager<T>,
+    consensus_manager: ConsensusManager,
     config: BaseNodeServiceConfig,
 }
 
@@ -74,7 +74,7 @@ where T: BlockchainBackend
         inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
         blockchain_db: BlockchainDatabase<T>,
         mempool: Mempool<T>,
-        consensus_manager: ConsensusManager<T>,
+        consensus_manager: ConsensusManager,
         config: BaseNodeServiceConfig,
     ) -> Self
     {

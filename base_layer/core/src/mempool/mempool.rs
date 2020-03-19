@@ -43,8 +43,8 @@ pub const LOG_TARGET: &str = "c::mp::mempool";
 
 /// Struct containing the validators the mempool needs to run, It forces the correct amount of validators are given
 pub struct MempoolValidators<B: BlockchainBackend> {
-    mempool: Box<dyn Validation<Transaction, B>>,
-    orphan: Box<dyn Validation<Transaction, B>>,
+    mempool: Validator<Transaction, B>,
+    orphan: Validator<Transaction, B>,
 }
 
 impl<B: BlockchainBackend> MempoolValidators<B> {
@@ -59,7 +59,7 @@ impl<B: BlockchainBackend> MempoolValidators<B> {
         }
     }
 
-    pub fn into_validators(self) -> (Box<dyn Validation<Transaction, B>>, Box<dyn Validation<Transaction, B>>) {
+    pub fn into_validators(self) -> (Validator<Transaction, B>, Validator<Transaction, B>) {
         (self.mempool, self.orphan)
     }
 }
@@ -86,7 +86,7 @@ where T: BlockchainBackend
         let (mempool_validator, orphan_validator) = validators.into_validators();
         Self {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool_config),
-            orphan_pool: OrphanPool::new(config.orphan_pool_config, orphan_validator),
+            orphan_pool: OrphanPool::new(config.orphan_pool_config, orphan_validator, blockchain_db.clone()),
             pending_pool: PendingPool::new(config.pending_pool_config),
             reorg_pool: ReorgPool::new(config.reorg_pool_config),
             blockchain_db,
@@ -98,7 +98,11 @@ where T: BlockchainBackend
     /// pipeline already and will thus always be internally consistent by this stage
     pub fn insert(&self, tx: Arc<Transaction>) -> Result<(), MempoolError> {
         // The transaction is already internally consistent
-        match self.validator.validate(&tx) {
+        match self.validator.validate(
+            &tx,
+            &self.blockchain_db.db_read_access()?,
+            &self.blockchain_db.metadata_read_access()?,
+        ) {
             Ok(()) => self.unconfirmed_pool.insert(tx)?,
             Err(ValidationError::UnknownInputs) => self.orphan_pool.insert(tx)?,
             Err(ValidationError::MaturityError) => self.pending_pool.insert(tx)?,

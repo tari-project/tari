@@ -26,19 +26,18 @@ use std::sync::Arc;
 use tari_broadcast_channel::Subscriber;
 use tari_core::{
     base_node::{states::BaseNodeState, LocalNodeCommsInterface},
-    chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
     mining::Miner,
 };
 use tari_service_framework::handles::ServiceHandles;
 
-pub fn build_miner<B: BlockchainBackend + 'static, H: AsRef<ServiceHandles>>(
+pub fn build_miner<H: AsRef<ServiceHandles>>(
     handles: H,
     stop_flag: Arc<AtomicBool>,
     event_stream: Subscriber<BaseNodeState>,
-    consensus_manager: ConsensusManager<B>,
+    consensus_manager: ConsensusManager,
     num_threads: usize,
-) -> Miner<B>
+) -> Miner
 {
     let handles = handles.as_ref();
     let node_local_interface = handles.get_handle::<LocalNodeCommsInterface>().unwrap();

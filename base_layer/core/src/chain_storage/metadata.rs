@@ -87,7 +87,7 @@ impl Display for ChainMetadata {
             .clone()
             .map(|b| b.to_hex())
             .unwrap_or_else(|| "Empty Database".into());
-        let accumulated_difficulty = self.accumulated_difficulty.unwrap_or(0.into());
+        let accumulated_difficulty = self.accumulated_difficulty.unwrap_or_else(|| 0.into());
         fmt.write_str(&format!("Height of longest chain : {}\n", height))?;
         fmt.write_str(&format!(
             "Geometric mean of longest chain : {}\n",
