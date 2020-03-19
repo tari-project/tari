@@ -33,7 +33,7 @@ use tari_core::{
     blocks::Block,
     chain_storage::{async_db, BlockAddResult, MmrTree},
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
-    helpers::{create_orphan_block, MockBackend},
+    helpers::create_orphan_block,
     transactions::{
         helpers::schema_to_transaction,
         tari_amount::T,
@@ -224,7 +224,7 @@ fn fetch_async_mmr_roots() {
 fn async_add_block_fetch_orphan() {
     env_logger::init();
     let network = Network::LocalNet;
-    let consensus: ConsensusManager<MockBackend> = ConsensusManagerBuilder::new(network).build();
+    let consensus: ConsensusManager = ConsensusManagerBuilder::new(network).build();
     let (db, _, _, _) = create_blockchain_db_no_cut_through();
     let orphan = create_orphan_block(7, vec![], &consensus.consensus_constants());
     let block_hash = orphan.hash();

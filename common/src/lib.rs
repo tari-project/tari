@@ -155,7 +155,7 @@ where F: Fn(&Path) -> Result<(), std::io::Error> {
 
 #[cfg(test)]
 mod test {
-    use crate::{bootstrap_config_from_cli, dir_utils, load_configuration, DEFAULT_CONFIG, DEFAULT_LOG_CONFIG};
+    use crate::{bootstrap_config_from_cli, dir_utils, load_configuration};
     use clap::clap_app;
 
     #[test]

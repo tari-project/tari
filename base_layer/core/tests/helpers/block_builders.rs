@@ -26,7 +26,6 @@ use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, MemoryDatabase},
     consensus::{ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, Network},
-    helpers::MockBackend,
     proof_of_work::Difficulty,
     transactions::{
         helpers::{
@@ -93,7 +92,7 @@ fn genesis_template(
 // This is a helper function to generate and print out a block that can be used as the genesis block.
 pub fn create_act_gen_block() {
     let network = MAINNET;
-    let consensus_manager: ConsensusManager<MockBackend> = ConsensusManagerBuilder::new(network).build();
+    let consensus_manager: ConsensusManager = ConsensusManagerBuilder::new(network).build();
     let factories = CryptoFactories::default();
     let mut header = BlockHeader::new(consensus_manager.consensus_constants().blockchain_version());
     let value = consensus_manager.emission_schedule().supply_at_block(0);

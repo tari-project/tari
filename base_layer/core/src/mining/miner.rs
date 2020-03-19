@@ -26,7 +26,7 @@ use crate::{
         states::BaseNodeState,
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::{BlockAddResult, BlockchainBackend},
+    chain_storage::BlockAddResult,
     consensus::ConsensusManager,
     mining::{blake_miner::CpuBlakePow, error::MinerError, CoinbaseBuilder},
     proof_of_work::{Difficulty, PowAlgorithm},
@@ -59,10 +59,10 @@ use tokio::task;
 
 pub const LOG_TARGET: &str = "c::m::miner";
 
-pub struct Miner<B: BlockchainBackend> {
+pub struct Miner {
     kill_flag: Arc<AtomicBool>,
     stop_mining_flag: Arc<AtomicBool>,
-    consensus: ConsensusManager<B>,
+    consensus: ConsensusManager,
     node_interface: LocalNodeCommsInterface,
     utxo_sender: Sender<UnblindedOutput>,
     state_change_event_rx: Option<Subscriber<BaseNodeState>>,
@@ -70,14 +70,14 @@ pub struct Miner<B: BlockchainBackend> {
     enabled: Arc<AtomicBool>,
 }
 
-impl<B: BlockchainBackend + 'static> Miner<B> {
+impl Miner {
     /// Constructs a new miner
     pub fn new(
         stop_flag: Arc<AtomicBool>,
-        consensus: ConsensusManager<B>,
+        consensus: ConsensusManager,
         node_interface: &LocalNodeCommsInterface,
         threads: usize,
-    ) -> Miner<B>
+    ) -> Miner
     {
         let (utxo_sender, _): (Sender<UnblindedOutput>, Receiver<UnblindedOutput>) = mpsc::channel(1);
         Miner {
@@ -127,7 +127,7 @@ impl<B: BlockchainBackend + 'static> Miner<B> {
     /// 4. We iterate on the header nonce until
     ///     * the target difficulty is reached
     ///     * or the loop is interrupted because a new block was found in the interim, or the miner is stopped
-    async fn mining(mut self) -> Result<Miner<B>, MinerError> {
+    async fn mining(mut self) -> Result<Miner, MinerError> {
         // Lets make sure its set to mine
         debug!(target: LOG_TARGET, "Miner asking for new candidate block to mine.");
         let mut block_template = self.get_block_template().await?;
@@ -173,7 +173,7 @@ impl<B: BlockchainBackend + 'static> Miner<B> {
     }
 
     // This is just a helper function to get around the rust borrow checker
-    async fn not_mining(self) -> Result<Miner<B>, MinerError> {
+    async fn not_mining(self) -> Result<Miner, MinerError> {
         Ok(self)
     }
 

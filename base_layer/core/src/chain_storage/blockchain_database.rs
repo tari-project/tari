@@ -34,7 +34,7 @@ use crate::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::{BlindingFactor, Commitment, CommitmentFactory, HashOutput},
     },
-    validation::{Validation, Validator},
+    validation::{StatelessValidation, StatelessValidator, ValidationWriteGuard, ValidatorWriteGuard},
 };
 use croaring::Bitmap;
 use log::*;
@@ -73,12 +73,16 @@ pub struct MutableMmrState {
 /// The `GenesisBlockValidator` is used to check that the chain builds on the correct genesis block.
 /// The `ChainTipValidator` is used to check that the accounting balance and MMR states of the chain state is valid.
 pub struct Validators<B: BlockchainBackend> {
-    block: Arc<Validator<Block, B>>,
-    orphan: Arc<Validator<Block, B>>,
+    block: Arc<ValidatorWriteGuard<Block, B>>,
+    orphan: Arc<StatelessValidator<Block>>,
 }
 
 impl<B: BlockchainBackend> Validators<B> {
-    pub fn new(block: impl Validation<Block, B> + 'static, orphan: impl Validation<Block, B> + 'static) -> Self {
+    pub fn new(
+        block: impl ValidationWriteGuard<Block, B> + 'static,
+        orphan: impl StatelessValidation<Block> + 'static,
+    ) -> Self
+    {
         Self {
             block: Arc::new(Box::new(block)),
             orphan: Arc::new(Box::new(orphan)),
@@ -208,8 +212,7 @@ macro_rules! fetch {
 /// let db = MemoryDatabase::<HashDigest>::default();
 /// let network = Network::LocalNet;
 /// let rules = ConsensusManagerBuilder::new(network).build();
-/// let mut db = BlockchainDatabase::new(db_backend, &rules).unwrap();
-/// db.set_validators(validators);
+/// let db = BlockchainDatabase::new(db_backend, &rules, validators).unwrap();
 /// // Do stuff with db
 /// ```
 pub struct BlockchainDatabase<T>
@@ -217,19 +220,24 @@ where T: BlockchainBackend
 {
     metadata: Arc<RwLock<ChainMetadata>>,
     db: Arc<RwLock<T>>,
-    validators: Option<Validators<T>>,
+    validators: Validators<T>,
 }
 
 impl<T> BlockchainDatabase<T>
 where T: BlockchainBackend
 {
     /// Creates a new `BlockchainDatabase` using the provided backend.
-    pub fn new(db: T, consensus_manager: &ConsensusManager<T>) -> Result<Self, ChainStorageError> {
+    pub fn new(
+        db: T,
+        consensus_manager: &ConsensusManager,
+        validators: Validators<T>,
+    ) -> Result<Self, ChainStorageError>
+    {
         let metadata = Self::read_metadata(&db)?;
         let blockchain_db = BlockchainDatabase {
             metadata: Arc::new(RwLock::new(metadata)),
             db: Arc::new(RwLock::new(db)),
-            validators: None,
+            validators,
         };
         if blockchain_db.get_height()?.is_none() {
             let genesis_block = consensus_manager.get_genesis_block();
@@ -244,10 +252,6 @@ where T: BlockchainBackend
             blockchain_db.update_metadata(0, genesis_block_hash, pow)?;
         }
         Ok(blockchain_db)
-    }
-
-    pub fn set_validators(&mut self, validators: Validators<T>) {
-        self.validators = Some(validators);
     }
 
     /// Reads the blockchain metadata (block height etc) from the underlying backend and returns it.
@@ -318,7 +322,7 @@ where T: BlockchainBackend
         }
     }
 
-    fn metadata_read_access(&self) -> Result<RwLockReadGuard<ChainMetadata>, ChainStorageError> {
+    pub fn metadata_read_access(&self) -> Result<RwLockReadGuard<ChainMetadata>, ChainStorageError> {
         self.metadata.read().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -328,7 +332,7 @@ where T: BlockchainBackend
         })
     }
 
-    fn metadata_write_access(&self) -> Result<RwLockWriteGuard<ChainMetadata>, ChainStorageError> {
+    pub fn metadata_write_access(&self) -> Result<RwLockWriteGuard<ChainMetadata>, ChainStorageError> {
         self.metadata.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -338,7 +342,7 @@ where T: BlockchainBackend
         })
     }
 
-    fn db_read_access(&self) -> Result<RwLockReadGuard<T>, ChainStorageError> {
+    pub fn db_read_access(&self) -> Result<RwLockReadGuard<T>, ChainStorageError> {
         self.db.read().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -348,7 +352,7 @@ where T: BlockchainBackend
         })
     }
 
-    fn db_write_access(&self) -> Result<RwLockWriteGuard<T>, ChainStorageError> {
+    pub fn db_write_access(&self) -> Result<RwLockWriteGuard<T>, ChainStorageError> {
         self.db.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -462,7 +466,7 @@ where T: BlockchainBackend
     ) -> Result<HashOutput, ChainStorageError>
     {
         let db = self.db_read_access()?;
-        calculate_mmr_root(&db, tree, additions, deletions)
+        db.calculate_mmr_root(tree, additions, deletions)
     }
 
     /// `calculate_mmr_roots` takes a block template and calculates the MMR roots for a hypothetical new block that
@@ -507,15 +511,13 @@ where T: BlockchainBackend
     pub fn add_block(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
         // Perform orphan block validation.
         self.validators
-            .as_ref()
-            .expect("No validators added")
             .orphan
             .validate(&block)
             .map_err(ChainStorageError::ValidationError)?;
 
         let mut metadata = self.metadata_write_access()?;
         let mut db = self.db_write_access()?;
-        add_block(&mut metadata, &mut db, block)
+        add_block(&mut metadata, &mut db, &self.validators.block, block)
     }
 
     fn store_new_block(&self, block: Block) -> Result<(), ChainStorageError> {
@@ -647,7 +649,7 @@ fn fetch_kernel_writeguard<T: BlockchainBackend>(
     fetch!(db, hash, TransactionKernel)
 }
 
-fn fetch_header<T: BlockchainBackend>(
+pub fn fetch_header<T: BlockchainBackend>(
     db: &RwLockReadGuard<T>,
     block_num: u64,
 ) -> Result<BlockHeader, ChainStorageError>
@@ -655,7 +657,7 @@ fn fetch_header<T: BlockchainBackend>(
     fetch!(db, block_num, BlockHeader)
 }
 
-fn fetch_header_writeguard<T: BlockchainBackend>(
+pub fn fetch_header_writeguard<T: BlockchainBackend>(
     db: &RwLockWriteGuard<T>,
     block_num: u64,
 ) -> Result<BlockHeader, ChainStorageError>
@@ -732,7 +734,16 @@ fn fetch_orphan_writeguard<T: BlockchainBackend>(
     fetch!(db, hash, OrphanBlock)
 }
 
-fn is_utxo<T: BlockchainBackend>(db: &RwLockReadGuard<T>, hash: HashOutput) -> Result<bool, ChainStorageError> {
+pub fn is_utxo<T: BlockchainBackend>(db: &RwLockReadGuard<T>, hash: HashOutput) -> Result<bool, ChainStorageError> {
+    let key = DbKey::UnspentOutput(hash);
+    db.contains(&key)
+}
+
+pub fn is_utxo_writeguard<T: BlockchainBackend>(
+    db: &RwLockWriteGuard<T>,
+    hash: HashOutput,
+) -> Result<bool, ChainStorageError>
+{
     let key = DbKey::UnspentOutput(hash);
     db.contains(&key)
 }
@@ -753,17 +764,7 @@ fn fetch_mmr_only_root<T: BlockchainBackend>(
     db.fetch_mmr_only_root(tree)
 }
 
-fn calculate_mmr_root<T: BlockchainBackend>(
-    db: &RwLockReadGuard<T>,
-    tree: MmrTree,
-    additions: Vec<HashOutput>,
-    deletions: Vec<HashOutput>,
-) -> Result<HashOutput, ChainStorageError>
-{
-    db.calculate_mmr_root(tree, additions, deletions)
-}
-
-fn calculate_mmr_roots<T: BlockchainBackend>(
+pub fn calculate_mmr_roots<T: BlockchainBackend>(
     db: &RwLockReadGuard<T>,
     template: NewBlockTemplate,
 ) -> Result<Block, ChainStorageError>
@@ -777,9 +778,29 @@ fn calculate_mmr_roots<T: BlockchainBackend>(
     let inp_hashes: Vec<HashOutput> = body.inputs().iter().map(|inp| inp.hash()).collect();
 
     let mut header = BlockHeader::from(header);
-    header.kernel_mr = calculate_mmr_root(db, MmrTree::Kernel, kernel_hashes, vec![])?;
-    header.output_mr = calculate_mmr_root(db, MmrTree::Utxo, out_hashes, inp_hashes)?;
-    header.range_proof_mr = calculate_mmr_root(db, MmrTree::RangeProof, rp_hashes, vec![])?;
+    header.kernel_mr = db.calculate_mmr_root(MmrTree::Kernel, kernel_hashes, vec![])?;
+    header.output_mr = db.calculate_mmr_root(MmrTree::Utxo, out_hashes, inp_hashes)?;
+    header.range_proof_mr = db.calculate_mmr_root(MmrTree::RangeProof, rp_hashes, vec![])?;
+    Ok(Block { header, body })
+}
+
+pub fn calculate_mmr_roots_writeguard<T: BlockchainBackend>(
+    db: &RwLockWriteGuard<T>,
+    template: NewBlockTemplate,
+) -> Result<Block, ChainStorageError>
+{
+    let NewBlockTemplate { header, mut body } = template;
+    // Make sure the body components are sorted. If they already are, this is a very cheap call.
+    body.sort();
+    let kernel_hashes: Vec<HashOutput> = body.kernels().iter().map(|k| k.hash()).collect();
+    let out_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.hash()).collect();
+    let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.proof().hash()).collect();
+    let inp_hashes: Vec<HashOutput> = body.inputs().iter().map(|inp| inp.hash()).collect();
+
+    let mut header = BlockHeader::from(header);
+    header.kernel_mr = db.calculate_mmr_root(MmrTree::Kernel, kernel_hashes, vec![])?;
+    header.output_mr = db.calculate_mmr_root(MmrTree::Utxo, out_hashes, inp_hashes)?;
+    header.range_proof_mr = db.calculate_mmr_root(MmrTree::RangeProof, rp_hashes, vec![])?;
     Ok(Block { header, body })
 }
 
@@ -796,6 +817,7 @@ fn fetch_mmr_proof<T: BlockchainBackend>(
 fn add_block<T: BlockchainBackend>(
     metadata: &mut RwLockWriteGuard<ChainMetadata>,
     db: &mut RwLockWriteGuard<T>,
+    block_validator: &Arc<ValidatorWriteGuard<Block, T>>,
     block: Block,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
@@ -804,21 +826,19 @@ fn add_block<T: BlockchainBackend>(
         return Ok(BlockAddResult::BlockExists);
     }
 
-    handle_possible_reorg(metadata, db, block)
+    handle_possible_reorg(metadata, db, block_validator, block)
 }
 
 fn validate_and_store_new_block<T: BlockchainBackend>(
+    metadata: &mut RwLockWriteGuard<ChainMetadata>,
     db: &mut RwLockWriteGuard<T>,
+    block_validator: &Arc<ValidatorWriteGuard<Block, T>>,
     block: Block,
 ) -> Result<(), ChainStorageError>
 {
-    // TODO: Add validator back when validators can use shared write lock.
-    // self.validators
-    // .as_ref()
-    // .expect("No validators added")
-    // .block
-    // .validate(&block)
-    // .map_err(ChainStorageError::ValidationError)?;
+    block_validator
+        .validate(&block, db, metadata)
+        .map_err(ChainStorageError::ValidationError)?;
     store_new_block(db, block)
 }
 
@@ -1148,10 +1168,10 @@ fn rewind_to_height<T: BlockchainBackend>(
 fn handle_possible_reorg<T: BlockchainBackend>(
     metadata: &mut RwLockWriteGuard<ChainMetadata>,
     db: &mut RwLockWriteGuard<T>,
+    block_validator: &Arc<ValidatorWriteGuard<Block, T>>,
     block: Block,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
-    // let metadata = self.get_metadata()?;
     let db_height = metadata
         .height_of_longest_chain
         .ok_or_else(|| ChainStorageError::InvalidQuery("Cannot retrieve block. Blockchain DB is empty".into()))
@@ -1172,7 +1192,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     trace!(target: LOG_TARGET, "{}", block);
     // Trigger a reorg check for all blocks in the orphan block pool
     debug!(target: LOG_TARGET, "Checking for chain re-org.");
-    handle_reorg(metadata, db, block)
+    handle_reorg(metadata, db, block_validator, block)
 }
 
 // The handle_reorg function is triggered by the adding of orphaned blocks. Reorg chains are constructed by
@@ -1184,6 +1204,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
 fn handle_reorg<T: BlockchainBackend>(
     metadata: &mut RwLockWriteGuard<ChainMetadata>,
     db: &mut RwLockWriteGuard<T>,
+    block_validator: &Arc<ValidatorWriteGuard<Block, T>>,
     new_block: Block,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
@@ -1229,7 +1250,7 @@ fn handle_reorg<T: BlockchainBackend>(
             .header
             .height -
             1;
-        let removed_blocks = reorganize_chain(metadata, db, fork_height, reorg_chain)?;
+        let removed_blocks = reorganize_chain(metadata, db, block_validator, fork_height, reorg_chain)?;
         update_metadata(metadata, db, fork_tip_header.height, fork_tip_hash, pow)?;
         if removed_blocks.is_empty() {
             return Ok(BlockAddResult::Ok);
@@ -1256,6 +1277,7 @@ fn handle_reorg<T: BlockchainBackend>(
 fn reorganize_chain<T: BlockchainBackend>(
     metadata: &mut RwLockWriteGuard<ChainMetadata>,
     db: &mut RwLockWriteGuard<T>,
+    block_validator: &Arc<ValidatorWriteGuard<Block, T>>,
     height: u64,
     chain: VecDeque<Block>,
 ) -> Result<Vec<Block>, ChainStorageError>
@@ -1265,7 +1287,7 @@ fn reorganize_chain<T: BlockchainBackend>(
     for block in chain.into_iter() {
         let orphan_hash = block.hash();
         txn.delete(DbKey::OrphanBlock(orphan_hash));
-        validate_and_store_new_block(db, block)?;
+        validate_and_store_new_block(metadata, db, block_validator, block)?;
     }
     commit(db, txn)?;
     Ok(removed_blocks)

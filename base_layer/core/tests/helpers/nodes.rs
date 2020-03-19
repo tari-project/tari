@@ -49,7 +49,12 @@ use tari_core::{
     },
     proof_of_work::DiffAdjManager,
     transactions::types::HashDigest,
-    validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator, Validation},
+    validation::{
+        mocks::MockValidator,
+        transaction_validators::TxInputAndMaturityValidator,
+        StatelessValidation,
+        ValidationWriteGuard,
+    },
 };
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::{
@@ -89,7 +94,7 @@ pub struct BaseNodeBuilder {
     mempool_service_config: Option<MempoolServiceConfig>,
     liveness_service_config: Option<LivenessConfig>,
     validators: Option<Validators<MemoryDatabase<HashDigest>>>,
-    consensus_manager: Option<ConsensusManager<MemoryDatabase<HashDigest>>>,
+    consensus_manager: Option<ConsensusManager>,
     network: Network,
 }
 
@@ -154,8 +159,8 @@ impl BaseNodeBuilder {
 
     pub fn with_validators(
         mut self,
-        block: impl Validation<Block, MemoryDatabase<HashDigest>> + 'static,
-        orphan: impl Validation<Block, MemoryDatabase<HashDigest>> + 'static,
+        block: impl ValidationWriteGuard<Block, MemoryDatabase<HashDigest>> + 'static,
+        orphan: impl StatelessValidation<Block> + 'static,
     ) -> Self
     {
         let validators = Validators::new(block, orphan);
@@ -164,18 +169,13 @@ impl BaseNodeBuilder {
     }
 
     /// Set the configuration of the Consensus Manager
-    pub fn with_consensus_manager(mut self, consensus_manager: ConsensusManager<MemoryDatabase<HashDigest>>) -> Self {
+    pub fn with_consensus_manager(mut self, consensus_manager: ConsensusManager) -> Self {
         self.consensus_manager = Some(consensus_manager);
         self
     }
 
     /// Build the test base node and start its services.
-    pub fn start(
-        self,
-        runtime: &mut Runtime,
-        data_path: &str,
-    ) -> (NodeInterfaces, ConsensusManager<MemoryDatabase<HashDigest>>)
-    {
+    pub fn start(self, runtime: &mut Runtime, data_path: &str) -> (NodeInterfaces, ConsensusManager) {
         let mmr_cache_config = self.mmr_cache_config.unwrap_or(MmrCacheConfig { rewind_hist_len: 10 });
         let validators = self
             .validators
@@ -184,19 +184,14 @@ impl BaseNodeBuilder {
             .consensus_manager
             .unwrap_or(ConsensusManagerBuilder::new(self.network).build());
         let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
-        let mut blockchain_db = BlockchainDatabase::new(db, &consensus_manager).unwrap();
-        blockchain_db.set_validators(validators);
-        let mempool_validator = MempoolValidators::new(
-            TxInputAndMaturityValidator::new(blockchain_db.clone()),
-            TxInputAndMaturityValidator::new(blockchain_db.clone()),
-        );
+        let blockchain_db = BlockchainDatabase::new(db, &consensus_manager, validators).unwrap();
+        let mempool_validator = MempoolValidators::new(TxInputAndMaturityValidator {}, TxInputAndMaturityValidator {});
         let mempool = Mempool::new(
             blockchain_db.clone(),
             self.mempool_config.unwrap_or(MempoolConfig::default()),
             mempool_validator,
         );
-        let diff_adj_manager =
-            DiffAdjManager::new(blockchain_db.clone(), &consensus_manager.consensus_constants()).unwrap();
+        let diff_adj_manager = DiffAdjManager::new(&consensus_manager.consensus_constants()).unwrap();
         consensus_manager.set_diff_manager(diff_adj_manager).unwrap();
         let node_identity = self.node_identity.unwrap_or(random_node_identity());
         let (
@@ -243,11 +238,7 @@ impl BaseNodeBuilder {
 pub fn create_network_with_2_base_nodes(
     runtime: &mut Runtime,
     data_path: &str,
-) -> (
-    NodeInterfaces,
-    NodeInterfaces,
-    ConsensusManager<MemoryDatabase<HashDigest>>,
-)
+) -> (NodeInterfaces, NodeInterfaces, ConsensusManager)
 {
     let alice_node_identity = random_node_identity();
     let bob_node_identity = random_node_identity();
@@ -294,13 +285,9 @@ pub fn create_network_with_2_base_nodes_with_config(
     mmr_cache_config: MmrCacheConfig,
     mempool_service_config: MempoolServiceConfig,
     liveness_service_config: LivenessConfig,
-    consensus_manager: ConsensusManager<MemoryDatabase<HashDigest>>,
+    consensus_manager: ConsensusManager,
     data_path: &str,
-) -> (
-    NodeInterfaces,
-    NodeInterfaces,
-    ConsensusManager<MemoryDatabase<HashDigest>>,
-)
+) -> (NodeInterfaces, NodeInterfaces, ConsensusManager)
 {
     let alice_node_identity = random_node_identity();
     let bob_node_identity = random_node_identity();
@@ -352,12 +339,7 @@ pub fn create_network_with_2_base_nodes_with_config(
 pub fn create_network_with_3_base_nodes(
     runtime: &mut Runtime,
     data_path: &str,
-) -> (
-    NodeInterfaces,
-    NodeInterfaces,
-    NodeInterfaces,
-    ConsensusManager<MemoryDatabase<HashDigest>>,
-)
+) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces, ConsensusManager)
 {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
@@ -380,14 +362,9 @@ pub fn create_network_with_3_base_nodes_with_config(
     mmr_cache_config: MmrCacheConfig,
     mempool_service_config: MempoolServiceConfig,
     liveness_service_config: LivenessConfig,
-    consensus_manager: ConsensusManager<MemoryDatabase<HashDigest>>,
+    consensus_manager: ConsensusManager,
     data_path: &str,
-) -> (
-    NodeInterfaces,
-    NodeInterfaces,
-    NodeInterfaces,
-    ConsensusManager<MemoryDatabase<HashDigest>>,
-)
+) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces, ConsensusManager)
 {
     let alice_node_identity = random_node_identity();
     let bob_node_identity = random_node_identity();
@@ -513,7 +490,7 @@ fn setup_base_node_services(
     peers: Vec<Arc<NodeIdentity>>,
     blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
     mempool: Mempool<MemoryDatabase<HashDigest>>,
-    consensus_manager: ConsensusManager<MemoryDatabase<HashDigest>>,
+    consensus_manager: ConsensusManager,
     base_node_service_config: BaseNodeServiceConfig,
     mempool_service_config: MempoolServiceConfig,
     liveness_service_config: LivenessConfig,

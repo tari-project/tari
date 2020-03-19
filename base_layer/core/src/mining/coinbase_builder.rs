@@ -22,7 +22,6 @@
 //
 
 use crate::{
-    chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
     transactions::{
         tari_amount::{uT, MicroTari},
@@ -111,11 +110,7 @@ impl CoinbaseBuilder {
     /// After `build` is called, the struct is destroyed and the private keys stored are dropped and the memory zeroed
     /// out (by virtue of the zero_on_drop crate).
     #[allow(clippy::erasing_op)] // This is for 0 * uT
-    pub fn build<B: BlockchainBackend>(
-        self,
-        rules: ConsensusManager<B>,
-    ) -> Result<(Transaction, UnblindedOutput), CoinbaseBuildError>
-    {
+    pub fn build(self, rules: ConsensusManager) -> Result<(Transaction, UnblindedOutput), CoinbaseBuildError> {
         let height = self
             .block_height
             .ok_or_else(|| CoinbaseBuildError::MissingBlockHeight)?;
@@ -162,7 +157,6 @@ impl CoinbaseBuilder {
 mod test {
     use crate::{
         consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
-        helpers::MockBackend,
         mining::{coinbase_builder::CoinbaseBuildError, CoinbaseBuilder},
         transactions::{
             helpers::TestParams,
@@ -173,7 +167,7 @@ mod test {
     };
     use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
-    fn get_builder() -> (CoinbaseBuilder, ConsensusManager<MockBackend>, CryptoFactories) {
+    fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
         let network = Network::LocalNet;
         let rules = ConsensusManagerBuilder::new(network).build();
         let factories = CryptoFactories::default();

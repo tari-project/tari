@@ -20,9 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::Validation;
-use crate::{chain_storage::BlockchainBackend, validation::error::ValidationError};
+use super::{StatelessValidation, Validation, ValidationWriteGuard};
+use crate::{
+    chain_storage::{BlockchainBackend, ChainMetadata},
+    validation::error::ValidationError,
+};
+use std::sync::{RwLockReadGuard, RwLockWriteGuard};
 
+#[derive(Clone)]
 pub struct MockValidator {
     result: bool,
 }
@@ -34,6 +39,42 @@ impl MockValidator {
 }
 
 impl<T, B: BlockchainBackend> Validation<T, B> for MockValidator {
+    fn validate(
+        &self,
+        _item: &T,
+        _db: &RwLockReadGuard<B>,
+        _metadata: &RwLockReadGuard<ChainMetadata>,
+    ) -> Result<(), ValidationError>
+    {
+        if self.result {
+            Ok(())
+        } else {
+            Err(ValidationError::CustomError(
+                "This mock validator always returns an error".into(),
+            ))
+        }
+    }
+}
+
+impl<T, B: BlockchainBackend> ValidationWriteGuard<T, B> for MockValidator {
+    fn validate(
+        &self,
+        _item: &T,
+        _db: &RwLockWriteGuard<B>,
+        _metadata: &RwLockWriteGuard<ChainMetadata>,
+    ) -> Result<(), ValidationError>
+    {
+        if self.result {
+            Ok(())
+        } else {
+            Err(ValidationError::CustomError(
+                "This mock validator always returns an error".into(),
+            ))
+        }
+    }
+}
+
+impl<T> StatelessValidation<T> for MockValidator {
     fn validate(&self, _item: &T) -> Result<(), ValidationError> {
         if self.result {
             Ok(())
@@ -47,21 +88,17 @@ impl<T, B: BlockchainBackend> Validation<T, B> for MockValidator {
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        chain_storage::MemoryDatabase,
-        transactions::types::HashDigest,
-        validation::{mocks::MockValidator, Validation},
-    };
+    use crate::validation::{mocks::MockValidator, StatelessValidation};
 
     #[test]
     fn mock_is_valid() {
         let validator = MockValidator::new(true);
-        assert!(<MockValidator as Validation<_, MemoryDatabase<HashDigest>>>::validate(&validator, &()).is_ok());
+        assert!(<MockValidator as StatelessValidation<_>>::validate(&validator, &()).is_ok());
     }
 
     #[test]
     fn mock_is_invalid() {
         let validator = MockValidator::new(false);
-        assert!(<MockValidator as Validation<_, MemoryDatabase<HashDigest>>>::validate(&validator, &()).is_err());
+        assert!(<MockValidator as StatelessValidation<_>>::validate(&validator, &()).is_err());
     }
 }
