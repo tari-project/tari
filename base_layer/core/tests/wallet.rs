@@ -33,7 +33,10 @@ use core::iter;
 use futures::{FutureExt, SinkExt, StreamExt};
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::{
-    sync::{atomic::AtomicBool, Arc},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 use tari_broadcast_channel::{bounded, Publisher, Subscriber};
@@ -291,6 +294,7 @@ fn wallet_base_node_integration_test() {
     // Setup and start the miner
     let stop_flag = Arc::new(AtomicBool::new(false));
     let mut miner = Miner::new(stop_flag, consensus_manager, &base_node.local_nci, 1);
+    miner.enable_mining_flag().store(true, Ordering::Relaxed);
     let (mut state_event_sender, state_event_receiver): (Publisher<BaseNodeState>, Subscriber<BaseNodeState>) =
         bounded(1);
     miner.subscribe_to_state_change(state_event_receiver);

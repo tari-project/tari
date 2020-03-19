@@ -67,6 +67,7 @@ pub struct Miner<B: BlockchainBackend> {
     utxo_sender: Sender<UnblindedOutput>,
     state_change_event_rx: Option<Subscriber<BaseNodeState>>,
     threads: usize,
+    enabled: Arc<AtomicBool>,
 }
 
 impl<B: BlockchainBackend + 'static> Miner<B> {
@@ -87,6 +88,7 @@ impl<B: BlockchainBackend + 'static> Miner<B> {
             utxo_sender,
             state_change_event_rx: None,
             threads,
+            enabled: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -104,6 +106,11 @@ impl<B: BlockchainBackend + 'static> Miner<B> {
     /// and the miner can ask for a new block to mine upon.
     pub fn subscribe_to_state_change(&mut self, state_change_event_rx: Subscriber<BaseNodeState>) {
         self.state_change_event_rx = Some(state_change_event_rx);
+    }
+
+    /// This function returns a arc copy of the atomic bool to start and shutdown the miner.
+    pub fn enable_mining_flag(&self) -> Arc<AtomicBool> {
+        self.enabled.clone()
     }
 
     /// Mine blocks asynchronously.
@@ -190,6 +197,9 @@ impl<B: BlockchainBackend + 'static> Miner<B> {
         trace!("starting mining thread");
         'main: loop {
             flag.store(false, Ordering::Relaxed); // ensure we can mine if we need to
+            if !self.enabled.load(Ordering::Relaxed) {
+                start_mining = false;
+            }
             let mining_future = match start_mining {
                 true => task::spawn(self.mining()),
                 false => task::spawn(self.not_mining()),

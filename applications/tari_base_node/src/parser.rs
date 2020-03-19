@@ -71,6 +71,7 @@ pub enum BaseNodeCommand {
     ListConnections,
     ListHeaders,
     Whoami,
+    ToggleMining,
     Quit,
     Exit,
 }
@@ -88,6 +89,7 @@ pub struct Parser {
     wallet_output_service: OutputManagerHandle,
     node_service: LocalNodeCommsInterface,
     wallet_transaction_service: TransactionServiceHandle,
+    enable_miner: Arc<AtomicBool>,
 }
 
 // This will go through all instructions and look for potential matches
@@ -131,6 +133,7 @@ impl Parser {
             wallet_output_service: ctx.output_manager(),
             node_service: ctx.local_node(),
             wallet_transaction_service: ctx.wallet_transaction_service(),
+            enable_miner: ctx.miner_enabled(),
         }
     }
 
@@ -171,6 +174,9 @@ impl Parser {
             },
             ListHeaders => {
                 self.process_list_headers(args);
+            },
+            ToggleMining => {
+                self.process_toggle_mining();
             },
             Whoami => {
                 self.process_whoami();
@@ -213,6 +219,9 @@ impl Parser {
             },
             ListHeaders => {
                 println!("List the last headers up to a maximum of 10 of the current chain");
+            },
+            ToggleMining => {
+                println!("Enable or disable the miner on this node, calling this command will toggle the state");
             },
             Whoami => {
                 println!(
@@ -303,6 +312,12 @@ impl Parser {
                 },
             }
         });
+    }
+
+    fn process_toggle_mining(&mut self) {
+        let new_state = !self.enable_miner.load(Ordering::SeqCst);
+        self.enable_miner.store(new_state, Ordering::SeqCst);
+        debug!("Mining state is now switched to {}", new_state);
     }
 
     fn process_list_headers<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {

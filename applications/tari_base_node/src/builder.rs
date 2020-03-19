@@ -26,7 +26,10 @@ use rand::rngs::OsRng;
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::{atomic::AtomicBool, Arc},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 use tari_common::{CommsTransport, DatabaseType, GlobalConfig, Network, SocksAuthentication, TorControlAuthentication};
@@ -152,6 +155,11 @@ impl NodeContainer {
         using_backend!(self, ctx, ctx.comms.node_identity())
     }
 
+    /// Returns this node's miner enabled flag.
+    pub fn miner_enabled(&self) -> Arc<AtomicBool> {
+        using_backend!(self, ctx, ctx.miner_enabled.clone())
+    }
+
     /// Returns a handle to the wallet transaction service. This function panics if it has not been registered
     /// with the comms service
     pub fn wallet_transaction_service(&self) -> TransactionServiceHandle {
@@ -162,26 +170,25 @@ impl NodeContainer {
         info!(target: LOG_TARGET, "Tari base node has STARTED");
         let mut wallet_output_handle = ctx.output_manager();
         // Start wallet & miner
-        if let Some(mut miner) = ctx.miner.take() {
-            let mut rx = miner.get_utxo_receiver_channel();
-            rt.spawn(async move {
-                debug!(target: LOG_TARGET, "Mining wallet ready to receive coins.");
-                while let Some(utxo) = rx.next().await {
-                    match wallet_output_handle.add_output(utxo).await {
-                        Ok(_) => info!(
-                            target: LOG_TARGET,
-                            "🤑💰🤑 Newly mined coinbase output added to wallet 🤑💰🤑"
-                        ),
-                        Err(e) => warn!(target: LOG_TARGET, "Error adding output: {}", e),
-                    }
+        let mut miner = ctx.miner.take().expect("Miner was not constructed");
+        let mut rx = miner.get_utxo_receiver_channel();
+        rt.spawn(async move {
+            debug!(target: LOG_TARGET, "Mining wallet ready to receive coins.");
+            while let Some(utxo) = rx.next().await {
+                match wallet_output_handle.add_output(utxo).await {
+                    Ok(_) => info!(
+                        target: LOG_TARGET,
+                        "🤑💰🤑 Newly mined coinbase output added to wallet 🤑💰🤑"
+                    ),
+                    Err(e) => warn!(target: LOG_TARGET, "Error adding output: {}", e),
                 }
-            });
-            rt.spawn(async move {
-                debug!(target: LOG_TARGET, "Starting miner");
-                miner.mine().await;
-                debug!(target: LOG_TARGET, "Miner has shutdown");
-            });
-        }
+            }
+        });
+        rt.spawn(async move {
+            debug!(target: LOG_TARGET, "Starting miner");
+            miner.mine().await;
+            debug!(target: LOG_TARGET, "Miner has shutdown");
+        });
         info!(
             target: LOG_TARGET,
             "Starting node - It will run until a fatal error occurs or until the stop flag is activated."
@@ -197,6 +204,7 @@ pub struct BaseNodeContext<B: BlockchainBackend> {
     pub handles: Arc<ServiceHandles>,
     pub node: BaseNodeStateMachine<B>,
     pub miner: Option<Miner<B>>,
+    pub miner_enabled: Arc<AtomicBool>,
 }
 
 impl<B: BlockchainBackend> BaseNodeContext<B> {
@@ -419,28 +427,31 @@ where
         chain_metadata_service.get_event_stream(),
         BaseNodeStateMachineConfig::default(),
     );
-    let miner = if config.enable_mining {
-        debug!(target: LOG_TARGET, "Configuring solo miner");
-        let event_stream = node.get_state_change_event_stream();
-        Some(miner::build_miner(
-            &handles,
-            node.get_interrupt_flag(),
-            event_stream,
-            rules,
-            config.num_mining_threads,
-        ))
+
+    let event_stream = node.get_state_change_event_stream();
+    let miner = miner::build_miner(
+        &handles,
+        node.get_interrupt_flag(),
+        event_stream,
+        rules,
+        config.num_mining_threads,
+    );
+    if config.enable_mining {
+        debug!(target: LOG_TARGET, "Enabling solo miner");
+        miner.enable_mining_flag().store(true, Ordering::Relaxed);
     } else {
         debug!(
             target: LOG_TARGET,
-            "Mining is disabled in the config file. This node will not mine for Tari"
+            "Mining is disabled in the config file. This node will not mine for Tari unless enabled in the UI"
         );
-        None
     };
+    let miner_enabled = miner.enable_mining_flag();
     Ok(BaseNodeContext {
         comms,
         handles,
         node,
-        miner,
+        miner: Some(miner),
+        miner_enabled,
     })
 }
 
