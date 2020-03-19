@@ -354,7 +354,8 @@ impl Parser {
     fn process_toggle_mining(&mut self) {
         let new_state = !self.enable_miner.load(Ordering::SeqCst);
         self.enable_miner.store(new_state, Ordering::SeqCst);
-        debug!("Mining state is now switched to {}", new_state);
+        debug!("Mining enabled is now switched to {}", new_state);
+        println!("Mining enabled is now switched to {}", new_state);
     }
 
     fn process_list_headers<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
