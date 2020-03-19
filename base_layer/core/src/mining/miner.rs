@@ -95,7 +95,8 @@ impl<B: BlockchainBackend + 'static> Miner<B> {
     /// This function instantiates a new channel and returns the receiver so that the miner can send out a unblinded
     /// output. This output is only sent if the miner successfully mines a block
     pub fn get_utxo_receiver_channel(&mut self) -> Receiver<UnblindedOutput> {
-        let (sender, receiver): (Sender<UnblindedOutput>, Receiver<UnblindedOutput>) = mpsc::channel(1);
+        // this should not be too large, as this should not get lost as these are your coinbase utxo's
+        let (sender, receiver): (Sender<UnblindedOutput>, Receiver<UnblindedOutput>) = mpsc::channel(20);
         self.utxo_sender = sender;
         receiver
     }
