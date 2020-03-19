@@ -49,7 +49,7 @@ use tari_comms::{
 };
 use tari_core::{
     base_node::LocalNodeCommsInterface,
-    tari_utilities::hex::Hex,
+    tari_utilities::{hex::Hex, Hashable},
     transactions::tari_amount::{uT, MicroTari},
 };
 use tari_wallet::{
@@ -70,6 +70,7 @@ pub enum BaseNodeCommand {
     ListPeers,
     ListConnections,
     ListHeaders,
+    GetBlock,
     Whoami,
     ToggleMining,
     Quit,
@@ -147,7 +148,7 @@ impl Parser {
             return;
         }
         let command = command.unwrap();
-        return self.process_command(command, args);
+        self.process_command(command, args);
     }
 
     // Function to process commands
@@ -178,6 +179,9 @@ impl Parser {
             ToggleMining => {
                 self.process_toggle_mining();
             },
+            GetBlock => {
+                self.process_get_block(args);
+            },
             Whoami => {
                 self.process_whoami();
             },
@@ -206,7 +210,7 @@ impl Parser {
             },
             SendTari => {
                 println!("Sends an amount of Tari to a address call this command via:");
-                println!("send_tari [amount of tari to send] [public key to send to]");
+                println!("send-tari [amount of tari to send] [public key to send to]");
             },
             GetChainMetadata => {
                 println!("Gets your base node chain meta data");
@@ -218,10 +222,16 @@ impl Parser {
                 println!("Lists the peer connections currently held by this node");
             },
             ListHeaders => {
-                println!("List the last headers up to a maximum of 10 of the current chain");
+                println!("List the amount of headers, can be called in the following two ways: ");
+                println!("list-headers [first header height] [last header height]");
+                println!("list-headers [number of headers starting from the chain tip back]");
             },
             ToggleMining => {
                 println!("Enable or disable the miner on this node, calling this command will toggle the state");
+            },
+            GetBlock => {
+                println!("View a block of a height, call this command via:");
+                println!("get-block [height of the block]");
             },
             Whoami => {
                 println!(
@@ -261,6 +271,33 @@ impl Parser {
                     return;
                 },
                 Ok(data) => println!("Current meta data is is: {}", data),
+            };
+        });
+    }
+
+    fn process_get_block<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
+        let command_arg = args.take(4).collect::<Vec<&str>>();
+        let height = if command_arg.len() == 1 {
+            let height = command_arg[0].parse::<u64>();
+            if height.is_err() {
+                println!("Invalid number provided");
+                return;
+            };
+            vec![height.unwrap()]
+        } else {
+            println!("Invalid command, please enter as follows:");
+            println!("get-block [height of the block]");
+            return;
+        };
+        let mut handler = self.node_service.clone();
+        self.executor.spawn(async move {
+            match handler.get_blocks(height).await {
+                Err(err) => {
+                    println!("Failed to retrieve blocks: {:?}", err);
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                    return;
+                },
+                Ok(data) => println!("{}", data[0].block),
             };
         });
     }
@@ -320,20 +357,62 @@ impl Parser {
         debug!("Mining state is now switched to {}", new_state);
     }
 
-    fn process_list_headers<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        let max_headers = args.next().unwrap_or("1").parse().unwrap_or(1);
+    fn process_list_headers<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
+        let command_arg = args.take(4).collect::<Vec<&str>>();
+        if (command_arg.is_empty()) || (command_arg.len() > 2) {
+            println!("Command entered incorrectly, please use the following formats: ");
+            println!("list-headers [first header height] [last header height]");
+            println!("list-headers [amount of headers from top]");
+            return;
+        }
+        let height = if command_arg.len() == 2 {
+            let height = command_arg[1].parse::<u64>();
+            if height.is_err() {
+                println!("Invalid number provided");
+                return;
+            };
+            Some(height.unwrap())
+        } else {
+            None
+        };
+        let start = command_arg[0].parse::<u64>();
+        if start.is_err() {
+            println!("Invalid number provided");
+            return;
+        };
+        let counter = if command_arg.len() == 2 {
+            let start = start.unwrap();
+            let temp_height = height.clone().unwrap();
+            if temp_height <= start {
+                println!("start hight should be bigger than the end height");
+                return;
+            }
+            (temp_height - start) as usize
+        } else {
+            start.unwrap() as usize
+        };
+
         let mut handler = self.node_service.clone();
         self.executor.spawn(async move {
-            let max_height = match handler.get_metadata().await {
-                Err(err) => {
-                    println!("Failed to retrieve chain height: {:?}", err);
-                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
-                    0
-                },
-                Ok(data) => data.height_of_longest_chain.unwrap_or(0),
+            let mut height = if let Some(v) = height {
+                v
+            } else {
+                match handler.get_metadata().await {
+                    Err(err) => {
+                        println!("Failed to retrieve chain height: {:?}", err);
+                        warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                        0
+                    },
+                    Ok(data) => data.height_of_longest_chain.unwrap_or(0),
+                }
             };
-            let heights = (0..max_height + 1).rev().take(max_headers).collect();
-            let headers = match handler.get_header(heights).await {
+            let mut headers = Vec::new();
+            headers.push(height);
+            while (headers.len() <= counter) && (height > 0) {
+                height -= 1;
+                headers.push(height);
+            }
+            let headers = match handler.get_header(headers).await {
                 Err(err) => {
                     println!("Failed to retrieve headers: {:?}", err);
                     warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
@@ -341,12 +420,10 @@ impl Parser {
                 },
                 Ok(data) => data,
             };
-            println!(
-                "{}",
-                headers
-                    .into_iter()
-                    .fold(String::new(), |acc, p| { format!("{}\n\n{}", acc, p) })
-            );
+            for header in headers {
+                println!("\n\nHeader hash: {}", header.hash().to_hex());
+                println!("{}", header);
+            }
         });
     }
 
@@ -356,26 +433,28 @@ impl Parser {
 
     // Function to process  the send transaction function
     fn process_send_tari<'a, I: Iterator<Item = &'a str>>(&mut self, args: I) {
-        let command_arg = args.take(3).collect::<Vec<&str>>();
-        if command_arg.len() != 3 {
+        let command_arg = args.take(4).collect::<Vec<&str>>();
+        if command_arg.len() != 2 {
             println!("Command entered incorrectly, please use the following format: ");
             println!("send_tari [amount of tari to send] [public key to send to]");
             return;
         }
-        let amount = command_arg[1].parse::<u64>();
+        let amount = command_arg[0].parse::<u64>();
         if amount.is_err() {
             println!("please enter a valid amount of tari");
             return;
         }
         let amount: MicroTari = amount.unwrap().into();
-        let dest_pubkey =
-            match CommsPublicKey::from_hex(command_arg[2]).or_else(|_| EmojiId::str_to_pubkey(command_arg[2])) {
-                Ok(pk) => pk,
-                Err(_) => {
-                    println!("please enter a valid destination pub_key");
-                    return;
-                },
-            };
+        let dest_pubkey = CommsPublicKey::from_hex(command_arg[1]);
+        let dest_pubkey = if let Ok(v) = dest_pubkey {
+            v
+        } else {
+            if !EmojiId::is_valid(command_arg[2]) {
+                println!("please enter a valid destination public key or emoji ID");
+                return;
+            }
+            EmojiId::str_to_pubkey(command_arg[1]).unwrap()
+        };
         let fee_per_gram = 25 * uT;
         let mut handler = self.wallet_transaction_service.clone();
         self.executor.spawn(async move {
