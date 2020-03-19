@@ -13,7 +13,7 @@ tari_crypto = { version = "^0.3" }
 tari_p2p = {path = "../p2p", version = "^0.0"}
 tari_wallet = { path = "../wallet", version = "^0.0", features = ["test_harness", "c_integration"]}
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0"}
-tari_utilities = "0.1.1"
+tari_utilities = "^0.1"
 
 futures =  { version = "^0.3.1", features =["compat", "std"]}
 tokio = "0.2.10"
