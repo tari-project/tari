@@ -30,7 +30,10 @@ use helpers::{
     event_stream::event_stream_next,
     nodes::create_network_with_2_base_nodes_with_config,
 };
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{atomic::Ordering, Arc},
+    time::Duration,
+};
 use tari_broadcast_channel::{bounded, Publisher, Subscriber};
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundEncryption};
 use tari_core::{
@@ -104,6 +107,7 @@ fn mining() {
     // Setup and start the miner
     let stop_flag = Arc::new(AtomicBool::new(false));
     let mut miner = Miner::new(stop_flag, consensus_manager, &alice_node.local_nci, 1);
+    miner.enable_mining_flag().store(true, Ordering::Relaxed);
     let (mut state_event_sender, state_event_receiver): (Publisher<BaseNodeState>, Subscriber<BaseNodeState>) =
         bounded(1);
     miner.subscribe_to_state_change(state_event_receiver);
