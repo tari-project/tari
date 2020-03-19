@@ -190,6 +190,11 @@ mod test {
         assert!(EmojiId::is_valid(eid.as_str()));
         assert_eq!(EmojiId::is_valid("😂"), false, "Emoji ID too short");
         assert_eq!(
+            EmojiId::is_valid("🖖🥴😍🙃💦🤘🤜👁🙃🙌😱🖐🙀🤳🖖👍✊🐈☂💀👚😶🤟😳👢😘😺🙌🎩🤬🐼"),
+            false,
+            "Emoji ID too short"
+        );
+        assert_eq!(
             EmojiId::is_valid("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a"),
             false,
             "Not emoji string"

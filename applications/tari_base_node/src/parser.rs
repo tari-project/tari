@@ -433,28 +433,29 @@ impl Parser {
     }
 
     // Function to process  the send transaction function
-    fn process_send_tari<'a, I: Iterator<Item = &'a str>>(&mut self, args: I) {
-        let command_arg = args.take(4).collect::<Vec<&str>>();
-        if command_arg.len() != 2 {
-            println!("Command entered incorrectly, please use the following format: ");
-            println!("send_tari [amount of tari to send] [public key to send to]");
-            return;
-        }
-        let amount = command_arg[0].parse::<u64>();
-        if amount.is_err() {
+    fn process_send_tari<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
+        let amount = args.next().and_then(|v| v.parse::<u64>().ok());
+        if amount.is_none() {
             println!("please enter a valid amount of tari");
             return;
         }
         let amount: MicroTari = amount.unwrap().into();
-        let dest_pubkey = CommsPublicKey::from_hex(command_arg[1]);
-        let dest_pubkey = if let Ok(v) = dest_pubkey {
-            v
-        } else {
-            if !EmojiId::is_valid(command_arg[2]) {
-                println!("please enter a valid destination public key or emoji ID");
+
+        let key = match args.next() {
+            Some(k) => k.to_string(),
+            None => {
+                println!("Command entered incorrectly, please use the following format: ");
+                println!("send_tari [amount of tari to send] [public key or emoji id to send to]");
                 return;
-            }
-            EmojiId::str_to_pubkey(command_arg[1]).unwrap()
+            },
+        };
+
+        let dest_pubkey = match EmojiId::str_to_pubkey(&key).or_else(|_| CommsPublicKey::from_hex(&key)) {
+            Ok(v) => v,
+            _ => {
+                println!("please enter a valid destination public key or emoji id");
+                return;
+            },
         };
         let fee_per_gram = 25 * uT;
         let mut handler = self.wallet_transaction_service.clone();
@@ -474,7 +475,7 @@ impl Parser {
                     warn!(target: LOG_TARGET, "Error communicating with wallet: {}", e.to_string(),);
                     return;
                 },
-                Ok(_) => println!("Send {} Tari to {} ", amount, dest_pubkey),
+                Ok(_) => println!("Sending {} Tari to {} ", amount, dest_pubkey),
             };
         });
     }
