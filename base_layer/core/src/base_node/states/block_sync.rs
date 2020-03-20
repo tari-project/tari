@@ -109,16 +109,36 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                 .await
                 .is_ok()
             {
+                trace!(
+                    target: LOG_TARGET,
+                    "Block hash {} is common between our chain and the network.",
+                    sync_block_hash.to_hex()
+                );
                 linked_to_chain = true;
                 break;
             }
             // Check if blockchain db already has the sync hash block.
             if let Ok(block) = async_db::fetch_orphan(shared.db.clone(), sync_block_hash.clone()).await {
+                trace!(
+                    target: LOG_TARGET,
+                    "Block hash {} is already in our orphan pool",
+                    sync_block_hash.to_hex()
+                );
                 sync_block_hash = block.header.prev_hash;
                 continue;
             }
             // Add missing block to download queue.
             block_hashes.push_front(sync_block_hash.clone());
+            trace!(
+                target: LOG_TARGET,
+                "Block hash {} is is marked for downloading",
+                sync_block_hash.to_hex()
+            );
+            let peer_note = selected_sync_peer
+                .as_ref()
+                .map(|p| p.to_string())
+                .unwrap_or("a random peer".into());
+            trace!(target: LOG_TARGET, "We will request the header from {}.", peer_note);
             // Find the previous block hash by requesting the current header from the sync peer node.
             match shared
                 .comms
@@ -130,12 +150,23 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                     if let Some(header) = headers.first() {
                         // TODO: Validate received headers and download larger set of headers with single request.
                         // TODO: ban peers that provided bad headers and blocks.
+                        trace!(
+                            target: LOG_TARGET,
+                            "Received header as part of sync request: {}",
+                            header
+                        );
 
                         if header.hash() == sync_block_hash {
                             attempts = 0;
                             sync_block_hash = header.prev_hash.clone();
                             continue;
                         }
+                        debug!(
+                            target: LOG_TARGET,
+                            "This was NOT the header we were expecting. Expected {}. Got {}",
+                            sync_block_hash.to_hex(),
+                            header.hash().to_hex()
+                        );
                     }
                 },
                 Err(e) => {
@@ -147,6 +178,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             }
             // Attempt again to retrieve the correct header.
             attempts += 1;
+            debug!(target: LOG_TARGET, "Retrying header sync. Attempt {}", attempts);
             if attempts >= shared.config.block_sync_config.max_header_request_retry_attempts {
                 return Ok(StateEvent::MaxRequestAttemptsReached);
             }
@@ -154,12 +186,27 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             selected_sync_peer = select_sync_peer(sync_peers);
         }
 
+        info!(
+            target: LOG_TARGET,
+            "Headers have been synchronised with the network. Proceeding to block sync"
+        );
+
         // Sync missing blocks
         if linked_to_chain {
             for sync_block_hash in block_hashes {
                 attempts = 0;
                 while attempts < shared.config.block_sync_config.max_block_request_retry_attempts {
                     // Request the block from a random peer node and add to chain.
+                    let peer_note = selected_sync_peer
+                        .as_ref()
+                        .map(|p| p.to_string())
+                        .unwrap_or("a random peer".into());
+                    trace!(
+                        target: LOG_TARGET,
+                        "Requesting block {} from {}.",
+                        sync_block_hash.to_hex(),
+                        peer_note
+                    );
                     match shared
                         .comms
                         .request_blocks_with_hashes_from_peer(vec![sync_block_hash.clone()], selected_sync_peer.clone())
@@ -168,10 +215,17 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                         Ok(blocks) => {
                             debug!(target: LOG_TARGET, "Received {} blocks from peer", blocks.len());
                             if let Some(hist_block) = blocks.first() {
+                                trace!(target: LOG_TARGET, "{}", hist_block.block);
                                 let block_hash = hist_block.block().hash();
                                 if block_hash == sync_block_hash {
                                     match shared.db.add_block(hist_block.block().clone()) {
                                         Ok(_) => {
+                                            debug!(
+                                                target: LOG_TARGET,
+                                                "Block #{} ({}) sucessfully added to database",
+                                                hist_block.block.header.height,
+                                                block_hash.to_hex()
+                                            );
                                             break;
                                         },
                                         Err(ChainStorageError::InvalidBlock) => {
@@ -202,6 +256,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                     }
                     // Attempt again to retrieve the correct block with different sync peer
                     attempts += 1;
+                    debug!(target: LOG_TARGET, "Retrying block download. Attempt {}", attempts);
                     selected_sync_peer = select_sync_peer(sync_peers);
                 }
                 if attempts >= shared.config.block_sync_config.max_block_request_retry_attempts {
@@ -212,7 +267,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             warn!(target: LOG_TARGET, "Network fork chain not linked to local chain.",);
         }
     }
-
+    debug!(target: LOG_TARGET, "Block synchronisation successful");
     Ok(StateEvent::BlocksSynchronized)
 }
 
