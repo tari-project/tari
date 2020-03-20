@@ -204,10 +204,19 @@ impl Peer {
 impl Display for Peer {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.write_str(&format!(
-            "[{}] PK={} Features={:?} {}",
+            "[{}] PK={} {} {:?} {}",
             self.node_id.short_str(),
             self.public_key,
-            self.features,
+            self.addresses
+                .address_iter()
+                .next()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "<none>".to_string()),
+            match self.features {
+                PeerFeatures::COMMUNICATION_NODE => "BASE_NODE".to_string(),
+                PeerFeatures::COMMUNICATION_CLIENT => "WALLET".to_string(),
+                f => format!("{:?}", f),
+            },
             self.connection_stats,
         ))
     }

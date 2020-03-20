@@ -130,6 +130,8 @@ mod dht;
 pub use dht::Dht;
 
 mod discovery;
+pub use discovery::DhtDiscoveryRequester;
+
 mod logging_middleware;
 mod proto;
 mod tower_filter;
