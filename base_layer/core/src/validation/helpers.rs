@@ -31,6 +31,7 @@ use log::*;
 use tari_crypto::tari_utilities::hash::Hashable;
 pub const LOG_TARGET: &str = "c::val::helpers";
 use std::sync::RwLockWriteGuard;
+use tari_crypto::tari_utilities::hex::Hex;
 
 /// This function tests that the block timestamp is greater than the median timestamp at the specified height.
 pub fn check_median_timestamp<B: BlockchainBackend>(
@@ -52,6 +53,13 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
         })
         .map_err(|_| ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestamp))?;
     if block_header.timestamp < median_timestamp {
+        warn!(
+            target: LOG_TARGET,
+            "Block header timestamp {} is less than median timestamp: {} for block:{}",
+            block_header.timestamp,
+            median_timestamp,
+            block_header.hash().to_hex()
+        );
         return Err(ValidationError::BlockHeaderError(
             BlockHeaderValidationError::InvalidTimestamp,
         ));
@@ -83,6 +91,13 @@ pub fn check_achieved_difficulty<B: BlockchainBackend>(
             })?;
     }
     if achieved < target {
+        warn!(
+            target: LOG_TARGET,
+            "Proof of work for {} was below the target difficulty. Achieved: {}, Target:{}",
+            block_header.hash().to_hex(),
+            achieved,
+            target
+        );
         return Err(ValidationError::BlockHeaderError(
             BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyTooLow),
         ));
