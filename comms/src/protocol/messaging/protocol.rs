@@ -49,8 +49,7 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 const LOG_TARGET: &str = "comms::protocol::messaging";
 pub static MESSAGING_PROTOCOL: Bytes = Bytes::from_static(b"/tari/messaging/0.1.0");
-/// The size of the buffered channel used for _each_ peer's message queue
-const MESSAGE_QUEUE_BUF_SIZE: usize = 20;
+const INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE: usize = 50;
 
 pub type MessagingEventSender = broadcast::Sender<Arc<MessagingEvent>>;
 pub type MessagingEventReceiver = broadcast::Receiver<Arc<MessagingEvent>>;
@@ -103,14 +102,14 @@ pub struct MessagingProtocol {
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
     proto_notification: Fuse<mpsc::Receiver<ProtocolNotification<CommsSubstream>>>,
-    active_queues: HashMap<Box<NodeId>, mpsc::Sender<OutboundMessage>>,
+    active_queues: HashMap<Box<NodeId>, mpsc::UnboundedSender<OutboundMessage>>,
     request_rx: Fuse<mpsc::Receiver<MessagingRequest>>,
     messaging_events_tx: MessagingEventSender,
     inbound_message_tx: mpsc::Sender<InboundMessage>,
     internal_messaging_event_tx: mpsc::Sender<MessagingEvent>,
     internal_messaging_event_rx: Fuse<mpsc::Receiver<MessagingEvent>>,
-    retry_queue_tx: mpsc::Sender<OutboundMessage>,
-    retry_queue_rx: Fuse<mpsc::Receiver<OutboundMessage>>,
+    retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
+    retry_queue_rx: Fuse<mpsc::UnboundedReceiver<OutboundMessage>>,
     attempts: HashMap<MessageTag, usize>,
     max_attempts: usize,
     shutdown_signal: Option<ShutdownSignal>,
@@ -132,8 +131,9 @@ impl MessagingProtocol {
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
-        let (internal_messaging_event_tx, internal_messaging_event_rx) = mpsc::channel(50);
-        let (retry_queue_tx, retry_queue_rx) = mpsc::channel(50);
+        let (internal_messaging_event_tx, internal_messaging_event_rx) =
+            mpsc::channel(INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE);
+        let (retry_queue_tx, retry_queue_rx) = mpsc::unbounded();
         Self {
             executor,
             connection_manager_requester,
@@ -240,7 +240,7 @@ impl MessagingProtocol {
                                 entry.insert(1);
                             },
                             Err(err) => {
-                                warn!(target: LOG_TARGET, "Failed to send to retry_queue '{:?}'", err);
+                                warn!(target: LOG_TARGET, "Failed to send to retry queue '{:?}'", err);
                             },
                         }
                     }
@@ -271,7 +271,7 @@ impl MessagingProtocol {
                 }
             },
             PeerConnectWillClose(_, node_id, direction) => {
-                if let Some(mut sender) = self.active_queues.remove(node_id) {
+                if let Some(sender) = self.active_queues.remove(node_id) {
                     sender.close_channel();
                     debug!(
                         target: LOG_TARGET,
@@ -348,9 +348,9 @@ impl MessagingProtocol {
         conn_man_requester: ConnectionManagerRequester,
         events_tx: mpsc::Sender<MessagingEvent>,
         peer_node_id: NodeId,
-    ) -> Result<mpsc::Sender<OutboundMessage>, MessagingProtocolError>
+    ) -> Result<mpsc::UnboundedSender<OutboundMessage>, MessagingProtocolError>
     {
-        let (msg_tx, msg_rx) = mpsc::channel(MESSAGE_QUEUE_BUF_SIZE);
+        let (msg_tx, msg_rx) = mpsc::unbounded();
         executor.spawn(
             OutboundMessaging::new(conn_man_requester, our_node_identity, events_tx, msg_rx, peer_node_id).run(),
         );

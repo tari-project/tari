@@ -130,7 +130,7 @@ where
             .shutdown
             .take()
             .expect("Establisher initialized without a shutdown");
-        debug!(target: LOG_TARGET, "Connection establisher started");
+        debug!(target: LOG_TARGET, "Connection dialer started");
         loop {
             futures::select! {
                 request = self.request_rx.select_next_some() => self.handle_request(&mut pending_dials, request),
@@ -138,7 +138,7 @@ where
                     self.handle_dial_result(dial_state, dial_result).await;
                 }
                 _ = shutdown => {
-                    info!(target: LOG_TARGET, "Connection establisher shutting down because the shutdown signal was received");
+                    info!(target: LOG_TARGET, "Connection dialer shutting down because the shutdown signal was received");
                     self.cancel_all_dials();
                     break;
                 }
@@ -148,18 +148,10 @@ where
 
     fn handle_request(&mut self, pending_dials: &mut DialFuturesUnordered, request: DialerRequest) {
         use DialerRequest::*;
+        trace!(target: LOG_TARGET, "Connection dialer got request: {:?}", request);
         match request {
             Dial(peer, reply_tx) => {
-                if !peer.is_persisted() {
-                    log_if_error_fmt!(
-                        target: LOG_TARGET,
-                        reply_tx.send(Err(ConnectionManagerError::PeerNotPersisted)),
-                        "Failed to send dial result for peer '{}'",
-                        peer.node_id.short_str()
-                    );
-                    return;
-                }
-                self.handle_dial_peer_request(pending_dials, *peer, reply_tx);
+                self.handle_dial_peer_request(pending_dials, peer, reply_tx);
             },
             CancelPendingDial(peer_id) => {
                 if let Some(mut s) = self.cancel_signals.remove(&peer_id) {
@@ -266,7 +258,7 @@ where
     fn handle_dial_peer_request(
         &mut self,
         pending_dials: &mut DialFuturesUnordered,
-        peer: Peer,
+        peer: Box<Peer>,
         reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
     )
     {

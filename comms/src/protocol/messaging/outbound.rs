@@ -37,7 +37,7 @@ const LOG_TARGET: &str = "comms::protocol::messaging::outbound";
 pub struct OutboundMessaging {
     conn_man_requester: ConnectionManagerRequester,
     node_identity: Arc<NodeIdentity>,
-    request_rx: mpsc::Receiver<OutboundMessage>,
+    request_rx: mpsc::UnboundedReceiver<OutboundMessage>,
     messaging_events_tx: mpsc::Sender<MessagingEvent>,
     peer_node_id: NodeId,
 }
@@ -47,7 +47,7 @@ impl OutboundMessaging {
         conn_man_requester: ConnectionManagerRequester,
         node_identity: Arc<NodeIdentity>,
         messaging_events_tx: mpsc::Sender<MessagingEvent>,
-        request_rx: mpsc::Receiver<OutboundMessage>,
+        request_rx: mpsc::UnboundedReceiver<OutboundMessage>,
         peer_node_id: NodeId,
     ) -> Self
     {
