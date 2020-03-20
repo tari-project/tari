@@ -112,9 +112,7 @@ fn mining() {
         bounded(1);
     miner.subscribe_to_state_change(state_event_receiver);
     let miner_utxo_stream = miner.get_utxo_receiver_channel().fuse();
-    runtime.spawn(async move {
-        miner.mine().await;
-    });
+    runtime.spawn(miner.mine());
 
     runtime.block_on(async {
         // Force the base node state machine into listening state so the miner will start mining
@@ -141,9 +139,14 @@ fn mining() {
             }
         }
         assert!(found_tx_outputs == tx1.body.outputs().len());
-        assert_eq!(
-            alice_node.mempool.has_tx_with_excess_sig(tx1_excess_sig).unwrap(),
-            TxStorageResponse::ReorgPool
+        async_assert_eventually!(
+            alice_node
+                .mempool
+                .has_tx_with_excess_sig(tx1_excess_sig.clone())
+                .unwrap(),
+            expect = TxStorageResponse::ReorgPool,
+            max_attempts = 10,
+            interval = Duration::from_secs(1),
         );
 
         alice_node.comms.shutdown().await;
