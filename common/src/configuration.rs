@@ -26,7 +26,6 @@ use config::{Config, Environment};
 use log::*;
 use multiaddr::{Multiaddr, Protocol};
 use std::{
-    convert::TryFrom,
     error::Error,
     fmt::{Display, Formatter, Result as FormatResult},
     fs,
@@ -78,20 +77,17 @@ pub enum Network {
     Rincewind,
 }
 
-impl TryFrom<String> for Network {
-    type Error = ConfigurationError;
+impl FromStr for Network {
+    type Err = ConfigurationError;
 
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        let val = value.to_lowercase();
-        if &val == "rincewind" {
-            Ok(Self::Rincewind)
-        } else if &val == "mainnet" {
-            Ok(Self::MainNet)
-        } else {
-            Err(ConfigurationError::new(
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.to_lowercase().as_str() {
+            "rincewind" => Ok(Self::Rincewind),
+            "mainnet" => Ok(Self::MainNet),
+            invalid => Err(ConfigurationError::new(
                 "network",
-                &format!("Invalid network option: {}", value),
-            ))
+                &format!("Invalid network option: {}", invalid),
+            )),
         }
     }
 }
@@ -264,19 +260,22 @@ pub struct GlobalConfig {
     pub identity_file: PathBuf,
     pub public_address: Multiaddr,
     pub peer_seeds: Vec<String>,
-    pub peer_db_path: String,
+    pub peer_db_path: PathBuf,
     pub enable_mining: bool,
     pub num_mining_threads: usize,
-    pub wallet_file: String,
-    pub tor_identity_file: String,
+    pub tor_identity_file: PathBuf,
+    pub wallet_db_file: PathBuf,
+    pub wallet_identity_file: PathBuf,
+    pub wallet_tor_identity_file: PathBuf,
+    pub wallet_peer_db_path: PathBuf,
 }
 
 impl GlobalConfig {
     pub fn convert_from(mut cfg: Config) -> Result<Self, ConfigurationError> {
         let network = cfg
             .get_str("base_node.network")
-            .map_err(|e| ConfigurationError::new("base_node.network", &e.to_string()))?;
-        let network = Network::try_from(network)?;
+            .map_err(|e| ConfigurationError::new("base_node.network", &e.to_string()))?
+            .parse()?;
 
         // Add in settings from the environment (with a prefix of TARI_NODE)
         // Eg.. `TARI_NODE_DEBUG=1 ./target/app` would set the `debug` key
@@ -286,56 +285,67 @@ impl GlobalConfig {
     }
 }
 
-/// Returns an OS-dependent string of the data subdirectory
-pub fn sub_dir(data_dir: &Path, sub_dir: &str) -> Result<String, ConfigurationError> {
-    let mut dir = data_dir.to_path_buf();
-    dir.push(sub_dir);
-    dir.to_str()
-        .map(String::from)
-        .ok_or_else(|| ConfigurationError::new("data_dir", "Not a valid UTF-8 string"))
-}
-
 fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, ConfigurationError> {
     let net_str = network.to_string().to_lowercase();
+
     let key = config_string(&net_str, "db_type");
     let db_type = cfg
         .get_str(&key)
         .map(|s| s.to_lowercase())
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+
     let key = config_string(&net_str, "data_dir");
-    let data_dir = cfg
+    let data_dir: PathBuf = cfg
         .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
-    let data_dir = PathBuf::from(data_dir);
-    let db_type = if &db_type == "memory" {
-        DatabaseType::Memory
-    } else if &db_type == "lmdb" {
-        let path = sub_dir(&data_dir, "db")?;
-        DatabaseType::LMDB(PathBuf::from(path))
-    } else {
-        return Err(ConfigurationError::new("base_node.db_type", "Invalid option"));
-    };
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .into();
+
+    let db_type = match db_type.as_str() {
+        "memory" => Ok(DatabaseType::Memory),
+        "lmdb" => Ok(DatabaseType::LMDB(data_dir.join("db"))),
+        invalid_opt => Err(ConfigurationError::new(
+            "base_node.db_type",
+            &format!("Invalid option: {}", invalid_opt),
+        )),
+    }?;
+
     // Thread counts
     let key = config_string(&net_str, "core_threads");
     let core_threads = cfg
         .get_int(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+
     let key = config_string(&net_str, "blocking_threads");
     let blocking_threads = cfg
         .get_int(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
-    // Node id path
+
+    // NodeIdentity path
     let key = config_string(&net_str, "identity_file");
     let identity_file = cfg
         .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
-    let identity_file = PathBuf::from(identity_file);
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .into();
+
+    // Wallet identity path
+    let key = config_string(&net_str, "wallet_identity_file");
+    let wallet_identity_file = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .into();
+
+    let key = config_string(&net_str, "wallet_tor_identity_file");
+    let wallet_tor_identity_file = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .into();
 
     // Tor private key persistence
     let key = config_string(&net_str, "tor_identity_file");
     let tor_identity_file = cfg
         .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .into();
 
     // Transport
     let comms_transport = network_transport_config(&cfg, &net_str)?;
@@ -358,7 +368,8 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let peer_seeds = peer_seeds.into_iter().map(|v| v.into_str().unwrap()).collect();
 
     // Peer DB path
-    let peer_db_path = sub_dir(&data_dir, "peer_db")?;
+    let peer_db_path = data_dir.join("peer_db");
+    let wallet_peer_db_path = data_dir.join("wallet_peer_db");
 
     // set base node mining
     let key = config_string(&net_str, "enable_mining");
@@ -373,9 +384,10 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
 
     // set wallet_file
     let key = "wallet.wallet_file".to_string();
-    let wallet_file = cfg
+    let wallet_db_file = cfg
         .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as String;
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .into();
 
     Ok(GlobalConfig {
         network,
@@ -390,8 +402,11 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         peer_db_path,
         enable_mining,
         num_mining_threads,
-        wallet_file,
         tor_identity_file,
+        wallet_identity_file,
+        wallet_db_file,
+        wallet_tor_identity_file,
+        wallet_peer_db_path,
     })
 }
 
@@ -514,7 +529,8 @@ pub fn default_config() -> Config {
     cfg.set_default("wallet.wallet_file", default_subdir("wallet/wallet.dat"))
         .unwrap();
 
-    // Base Node settings
+    //---------------------------------- Mainnet Defaults --------------------------------------------//
+
     cfg.set_default("base_node.network", "mainnet").unwrap();
 
     // Mainnet base node defaults
@@ -536,6 +552,16 @@ pub fn default_config() -> Config {
     )
     .unwrap();
     cfg.set_default(
+        "base_node.mainnet.wallet_identity_file",
+        default_subdir("mainnet/wallet-identity.json"),
+    )
+    .unwrap();
+    cfg.set_default(
+        "base_node.mainnet.wallet_tor_identity_file",
+        default_subdir("mainnet/wallet-tor.json"),
+    )
+    .unwrap();
+    cfg.set_default(
         "base_node.mainnet.public_address",
         format!("{}/tcp/18041", local_ip_addr),
     )
@@ -546,7 +572,8 @@ pub fn default_config() -> Config {
     cfg.set_default("base_node.mainnet.enable_mining", false).unwrap();
     cfg.set_default("base_node.mainnet.num_mining_threads", 1).unwrap();
 
-    // Rincewind base node defaults
+    //---------------------------------- Rincewind Defaults --------------------------------------------//
+
     cfg.set_default("base_node.rincewind.db_type", "lmdb").unwrap();
     cfg.set_default("base_node.rincewind.peer_seeds", Vec::<String>::new())
         .unwrap();
@@ -557,6 +584,16 @@ pub fn default_config() -> Config {
     cfg.set_default(
         "base_node.rincewind.tor_identity_file",
         default_subdir("rincewind/tor.json"),
+    )
+    .unwrap();
+    cfg.set_default(
+        "base_node.rincewind.wallet_identity_file",
+        default_subdir("rincewind/wallet-identity.json"),
+    )
+    .unwrap();
+    cfg.set_default(
+        "base_node.rincewind.wallet_tor_identity_file",
+        default_subdir("rincewind/wallet-tor.json"),
     )
     .unwrap();
     cfg.set_default(

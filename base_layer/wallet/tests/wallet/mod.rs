@@ -91,7 +91,7 @@ fn test_wallet() {
                 listener_address: alice_identity.public_address(),
                 tor_socks_config: None,
             },
-            datastore_path: dir_path.to_str().unwrap().to_string(),
+            datastore_path: dir_path.to_path_buf(),
             peer_database_name: random_string(8),
             max_concurrent_inbound_tasks: 100,
             outbound_buffer_size: 100,
@@ -104,7 +104,7 @@ fn test_wallet() {
                 listener_address: bob_identity.public_address(),
                 tor_socks_config: None,
             },
-            datastore_path: dir_path.to_str().unwrap().to_string(),
+            datastore_path: dir_path.to_path_buf(),
             peer_database_name: random_string(8),
             max_concurrent_inbound_tasks: 100,
             outbound_buffer_size: 100,
@@ -236,7 +236,7 @@ fn test_import_utxo() {
             listener_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             tor_socks_config: None,
         },
-        datastore_path: temp_dir.path().to_str().unwrap().to_string(),
+        datastore_path: temp_dir.path().to_path_buf(),
         peer_database_name: random_string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
@@ -301,7 +301,7 @@ fn test_data_generation() {
         transport_type: TransportType::Memory {
             listener_address: "/memory/0".parse().unwrap(),
         },
-        datastore_path: temp_dir.path().to_str().unwrap().to_string(),
+        datastore_path: temp_dir.path().to_path_buf(),
         peer_database_name: random_string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
@@ -330,7 +330,7 @@ fn test_data_generation() {
     )
     .unwrap();
 
-    generate_wallet_test_data(&mut wallet, temp_dir.path().to_str().unwrap(), transaction_backend).unwrap();
+    generate_wallet_test_data(&mut wallet, temp_dir.path(), transaction_backend).unwrap();
 
     let contacts = wallet.runtime.block_on(wallet.contacts_service.get_contacts()).unwrap();
     assert!(contacts.len() > 0);

@@ -129,7 +129,7 @@ fn wallet_base_node_integration_test() {
         transport_type: TransportType::Memory {
             listener_address: alice_node_identity.public_address(),
         },
-        datastore_path: temp_dir.path().to_str().unwrap().to_string(),
+        datastore_path: temp_dir.path().to_path_buf(),
         peer_database_name: random_string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
@@ -176,7 +176,7 @@ fn wallet_base_node_integration_test() {
         transport_type: TransportType::Memory {
             listener_address: bob_node_identity.public_address(),
         },
-        datastore_path: temp_dir.path().to_str().unwrap().to_string(),
+        datastore_path: temp_dir.path().to_path_buf(),
         peer_database_name: random_string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,

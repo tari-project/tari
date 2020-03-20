@@ -32,7 +32,6 @@ use crate::{
         store_forward::{StoredMessage, StoredMessagesRequest, StoredMessagesResponse},
     },
     store_forward::{error::StoreAndForwardError, SafStorage},
-    PipelineError,
 };
 use digest::Digest;
 use futures::{future, stream, Future, StreamExt};
@@ -42,6 +41,7 @@ use std::{convert::TryInto, sync::Arc};
 use tari_comms::{
     message::EnvelopeBody,
     peer_manager::{NodeIdentity, Peer, PeerManager, PeerManagerError},
+    pipeline::PipelineError,
     types::Challenge,
     utils::signature,
 };
@@ -104,13 +104,21 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
 
         match message.dht_header.message_type {
-            DhtMessageType::SafRequestMessages => self.handle_stored_messages_request(message).await?,
+            DhtMessageType::SafRequestMessages => self
+                .handle_stored_messages_request(message)
+                .await
+                .map_err(PipelineError::from_debug)?,
 
-            DhtMessageType::SafStoredMessages => self.handle_stored_messages(message).await?,
+            DhtMessageType::SafStoredMessages => self
+                .handle_stored_messages(message)
+                .await
+                .map_err(PipelineError::from_debug)?,
             // Not a SAF message, call downstream middleware
             _ => {
                 trace!(target: LOG_TARGET, "Passing message onto next service");
-                self.next_service.oneshot(message).await?
+                if let Err(err) = self.next_service.oneshot(message).await {
+                    return Err(PipelineError::from_debug(err));
+                }
             },
         }
 
@@ -426,7 +434,6 @@ mod test {
             service_spy,
             DhtMockState,
         },
-        PipelineError,
     };
     use chrono::Utc;
     use futures::channel::mpsc;

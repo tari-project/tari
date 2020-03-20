@@ -26,13 +26,13 @@ use crate::{
     outbound::{OutboundMessageRequester, SendMessageParams},
     proto::envelope::DhtMessageType,
     store_forward::error::StoreAndForwardError,
-    PipelineError,
 };
 use futures::{task::Context, Future};
 use log::*;
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
     peer_manager::{PeerFeatures, PeerManager},
+    pipeline::PipelineError,
     types::CommsPublicKey,
 };
 use tower::{layer::Layer, Service, ServiceExt};
@@ -90,7 +90,7 @@ impl<S> ForwardMiddleware<S> {
 impl<S> Service<DecryptedDhtMessage> for ForwardMiddleware<S>
 where
     S: Service<DecryptedDhtMessage, Response = ()> + Clone + 'static,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     type Error = PipelineError;
     type Response = ();
@@ -132,17 +132,20 @@ impl<S> Forwarder<S> {
 impl<S> Forwarder<S>
 where
     S: Service<DecryptedDhtMessage, Response = ()>,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     async fn handle(mut self, message: DecryptedDhtMessage) -> Result<(), PipelineError> {
         if message.decryption_failed() {
             debug!(target: LOG_TARGET, "Decryption failed. Forwarding message");
-            self.forward(&message).await?;
+            self.forward(&message).await.map_err(PipelineError::from_debug)?;
         }
 
         // The message has been forwarded, but other middleware may be interested (i.e. StoreMiddleware)
         trace!(target: LOG_TARGET, "Passing message to next service");
-        self.next_service.oneshot(message).await.map_err(Into::into)?;
+        self.next_service
+            .oneshot(message)
+            .await
+            .map_err(PipelineError::from_debug)?;
         Ok(())
     }
 

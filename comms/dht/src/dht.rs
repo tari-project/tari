@@ -34,7 +34,6 @@ use crate::{
     tower_filter,
     tower_filter::error::Error as FilterError,
     DhtConfig,
-    PipelineError,
 };
 use futures::{channel::mpsc, future, Future};
 use log::*;
@@ -42,6 +41,7 @@ use std::sync::Arc;
 use tari_comms::{
     message::{InboundMessage, OutboundMessage},
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
+    pipeline::PipelineError,
 };
 use tari_shutdown::ShutdownSignal;
 use tokio::task;
@@ -155,8 +155,9 @@ impl Dht {
                       + Send,
     >
     where
-        S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + Sync + 'static,
+        S: Service<DecryptedDhtMessage, Response = ()> + Clone + Send + Sync + 'static,
         S::Future: Send,
+        S::Error: std::error::Error + Send + Sync + 'static,
     {
         let saf_storage = Arc::new(store_forward::SafStorage::new(
             self.config.saf_msg_cache_storage_capacity,
@@ -249,7 +250,7 @@ impl Dht {
             }
 
             match msg.dht_header.message_type {
-                DhtMessageType::SafRequestMessages | DhtMessageType::SafStoredMessages => {
+                DhtMessageType::SafRequestMessages => {
                     // TODO: #banheuristic This is an indication of node misbehaviour
                     warn!(
                         "Received store and forward message from PublicKey={}. Store and forward feature is not \

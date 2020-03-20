@@ -32,7 +32,6 @@ use crate::{
         SendMessageResponse,
     },
     proto::envelope::{DhtMessageType, Network},
-    PipelineError,
 };
 use futures::{
     channel::oneshot,
@@ -46,6 +45,7 @@ use std::{sync::Arc, task::Poll};
 use tari_comms::{
     message::MessageFlags,
     peer_manager::{NodeId, NodeIdentity, Peer},
+    pipeline::PipelineError,
     types::CommsPublicKey,
 };
 use tower::{layer::Layer, Service, ServiceExt};
@@ -121,7 +121,9 @@ impl<S> BroadcastMiddleware<S> {
 }
 
 impl<S> Service<DhtOutboundRequest> for BroadcastMiddleware<S>
-where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError> + Clone
+where
+    S: Service<DhtOutboundMessage, Response = ()> + Clone,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     type Error = PipelineError;
     type Response = ();
@@ -155,7 +157,9 @@ struct BroadcastTask<S> {
 }
 
 impl<S> BroadcastTask<S>
-where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
+where
+    S: Service<DhtOutboundMessage, Response = ()>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     pub fn new(
         service: S,
@@ -179,7 +183,10 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     pub async fn handle(mut self) -> Result<(), PipelineError> {
         let request = self.request.take().expect("request cannot be None");
         debug!(target: LOG_TARGET, "Processing outbound request {}", request);
-        let messages = self.generate_outbound_messages(request).await?;
+        let messages = self
+            .generate_outbound_messages(request)
+            .await
+            .map_err(PipelineError::from_debug)?;
         debug!(
             target: LOG_TARGET,
             "Passing {} message(s) to next_service",
@@ -234,7 +241,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             .filter(|pk| *pk == self.node_identity.public_key())
             .is_some()
         {
-            warn!(target: LOG_TARGET, "Attempt to send to own peer");
+            warn!(target: LOG_TARGET, "Attempt to send a message to ourselves");
+            let _ = reply_tx.send(SendMessageResponse::Failed);
             return Err(DhtOutboundError::SendToOurselves);
         }
 
@@ -512,7 +520,7 @@ mod test {
         let spy = service_spy();
 
         let mut service = BroadcastMiddleware::new(
-            spy.to_service(),
+            spy.to_service::<PipelineError>(),
             node_identity,
             dht_requester,
             dht_discover_requester,
@@ -556,7 +564,7 @@ mod test {
         let spy = service_spy();
 
         let mut service = BroadcastMiddleware::new(
-            spy.to_service(),
+            spy.to_service::<PipelineError>(),
             Arc::new(node_identity),
             dht_requester,
             dht_discover_requester,
@@ -608,7 +616,7 @@ mod test {
         let spy = service_spy();
 
         let mut service = BroadcastMiddleware::new(
-            spy.to_service(),
+            spy.to_service::<PipelineError>(),
             Arc::new(node_identity),
             dht_requester,
             dht_discover_requester,

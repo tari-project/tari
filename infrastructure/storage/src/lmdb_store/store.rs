@@ -26,7 +26,12 @@ use lmdb_zero::{
 };
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{cmp::max, collections::HashMap, path::Path, sync::Arc};
+use std::{
+    cmp::max,
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 const LOG_TARGET: &str = "lmdb";
 
@@ -52,7 +57,7 @@ type DatabaseRef = Arc<Database<'static>>;
 /// ```
 #[derive(Default)]
 pub struct LMDBBuilder {
-    path: String,
+    path: PathBuf,
     db_size_mb: usize,
     max_dbs: usize,
     db_names: HashMap<String, db::Flags>,
@@ -79,11 +84,8 @@ impl LMDBBuilder {
     /// Set the directory where the LMDB database exists, or must be created.
     /// Note: The directory must exist already; it is not created for you. If it does not exist, `build()` will
     /// return `LMDBError::InvalidPath`.
-    pub fn set_path(mut self, path: &str) -> LMDBBuilder {
-        self.path = path.into();
-        if !self.path.ends_with('/') {
-            self.path += "/";
-        }
+    pub fn set_path<P: AsRef<Path>>(mut self, path: P) -> LMDBBuilder {
+        self.path = path.as_ref().to_owned();
         self
     }
 
@@ -112,22 +114,22 @@ impl LMDBBuilder {
     /// Create a new LMDBStore instance and open the underlying database environment
     pub fn build(mut self) -> Result<LMDBStore, LMDBError> {
         let max_dbs = max(self.db_names.len(), self.max_dbs) as u32;
-        let path = Path::new(&self.path);
-        if !path.exists() {
+        if !self.path.exists() {
             return Err(LMDBError::InvalidPath);
         }
-        let path = if let Some(path) = path.to_str() {
-            path.to_string()
-        } else {
-            return Err(LMDBError::InvalidPath);
-        };
+        let path = self
+            .path
+            .to_str()
+            .map(String::from)
+            .ok_or_else(|| LMDBError::InvalidPath)?;
+
         let env = unsafe {
             let mut builder = EnvBuilder::new()?;
             builder.set_mapsize(self.db_size_mb * 1024 * 1024)?;
             builder.set_maxdbs(max_dbs)?;
             // Using open::Flags::NOTLS does not compile!?! NOTLS=0x200000
             let flags = open::Flags::from_bits(0x200_000).expect("LMDB open::Flag is correct");
-            builder.open(&self.path, flags, 0o600)?
+            builder.open(&path, flags, 0o600)?
         };
         let env = Arc::new(env);
         info!(
