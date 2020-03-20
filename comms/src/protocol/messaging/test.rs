@@ -77,7 +77,7 @@ async fn spawn_messaging_protocol() -> (
     let peer_manager: Arc<PeerManager> = build_peer_manager().into();
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_CLIENT);
     let (proto_tx, proto_rx) = mpsc::channel(10);
-    let (request_tx, request_rx) = mpsc::channel(10);
+    let (request_tx, request_rx) = mpsc::channel(100);
     let (inbound_msg_tx, inbound_msg_rx) = mpsc::channel(100);
     let (events_tx, events_rx) = broadcast::channel(100);
 
@@ -270,7 +270,7 @@ async fn many_concurrent_send_message_requests() {
     let node_id2 = node_id::random();
 
     let (conn1, peer_conn_mock1, _, peer_conn_mock2) =
-        create_peer_connection_mock_pair(1, node_id1.clone(), node_id2.clone()).await;
+        create_peer_connection_mock_pair(1, node_id1, node_id2.clone()).await;
 
     // Add mock peer connection to connection manager mock for node 2
     conn_man_mock.add_active_connection(node_id2.clone(), conn1).await;
@@ -302,4 +302,33 @@ async fn many_concurrent_send_message_requests() {
 
     // Got a single call to create a substream
     assert_eq!(peer_conn_mock1.call_count(), 1);
+}
+
+#[runtime::test_basic]
+async fn many_concurrent_send_message_requests_that_fail() {
+    const NUM_MSGS: usize = 100;
+    let (_, _, _, _, mut request_tx, _, events_rx, _shutdown) = spawn_messaging_protocol().await;
+
+    let node_id2 = node_id::random();
+
+    // Send many messages to node
+    let mut msg_tags = Vec::with_capacity(NUM_MSGS);
+    for _ in 0..NUM_MSGS {
+        let out_msg = OutboundMessage::new(node_id2.clone(), MessageFlags::NONE, TEST_MSG1);
+        msg_tags.push(out_msg.tag);
+        request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
+    }
+
+    // Check that we got message success events
+    let events = collect_stream!(events_rx, take = NUM_MSGS, timeout = Duration::from_secs(10));
+    assert_eq!(events.len(), NUM_MSGS);
+    for event in events {
+        let event = event.unwrap();
+        unpack_enum!(MessagingEvent::SendMessageFailed(out_msg, reason) = &*event);
+        unpack_enum!(SendFailReason::PeerDialFailed = reason);
+        // Assert that each tag is emitted only once
+        let index = msg_tags.iter().position(|t| t == &out_msg.tag).unwrap();
+        msg_tags.remove(index);
+    }
+    assert_eq!(msg_tags.len(), 0);
 }

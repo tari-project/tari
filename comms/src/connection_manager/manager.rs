@@ -55,7 +55,7 @@ use tokio::{runtime, sync::broadcast, task, time};
 const LOG_TARGET: &str = "comms::connection_manager::manager";
 
 const EVENT_CHANNEL_SIZE: usize = 32;
-const ESTABLISHER_CHANNEL_SIZE: usize = 32;
+const DIALER_REQUEST_CHANNEL_SIZE: usize = 32;
 
 #[derive(Debug)]
 pub enum ConnectionManagerEvent {
@@ -178,7 +178,7 @@ where
     {
         let (internal_event_tx, internal_event_rx) = mpsc::channel(EVENT_CHANNEL_SIZE);
 
-        let (establisher_tx, establisher_rx) = mpsc::channel(ESTABLISHER_CHANNEL_SIZE);
+        let (dialer_tx, dialer_rx) = mpsc::channel(DIALER_REQUEST_CHANNEL_SIZE);
 
         let supported_protocols = protocols.get_supported_protocols();
 
@@ -202,7 +202,7 @@ where
             transport,
             noise_config,
             backoff,
-            establisher_rx,
+            dialer_rx,
             internal_event_tx,
             supported_protocols,
             shutdown_signal.clone(),
@@ -217,7 +217,7 @@ where
             peer_manager,
             protocols,
             internal_event_rx: internal_event_rx.fuse(),
-            dialer_tx: establisher_tx,
+            dialer_tx,
             dialer: Some(dialer),
             listener: Some(listener),
             active_connections: Default::default(),
@@ -308,6 +308,7 @@ where
 
     async fn handle_request(&mut self, request: ConnectionManagerRequest) {
         use ConnectionManagerRequest::*;
+        trace!(target: LOG_TARGET, "Connection manager got request: {:?}", request);
         match request {
             DialPeer(node_id, is_forced, reply_tx) => match self.get_active_connection(&node_id) {
                 Some(conn) => {
@@ -573,10 +574,7 @@ where
                 }
 
                 if let Err(err) = self.dialer_tx.try_send(DialerRequest::Dial(Box::new(peer), reply_tx)) {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to send request to establisher because '{}'", err
-                    );
+                    error!(target: LOG_TARGET, "Failed to send request to dialer because '{}'", err);
                     // TODO: If the channel is full - we'll fail to dial. This function should block until the dial
                     //       request channel has cleared
 

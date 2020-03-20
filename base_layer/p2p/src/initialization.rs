@@ -265,7 +265,10 @@ where
     let peer_database = datastore.get_handle(&config.peer_database_name).unwrap();
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
-    let comms = builder.with_peer_storage(peer_database).build()?;
+    let comms = builder
+        .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
+        .with_peer_storage(peer_database)
+        .build()?;
 
     // Create outbound channel
     let (outbound_tx, outbound_rx) = mpsc::channel(config.outbound_buffer_size);
