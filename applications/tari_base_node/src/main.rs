@@ -31,6 +31,7 @@ mod consts;
 mod miner;
 /// Parser module used to control user commands
 mod parser;
+mod utils;
 
 use crate::builder::{create_new_base_node_identity, load_identity};
 use log::*;

@@ -131,8 +131,6 @@ pub enum TransactionEvent {
     TransactionSendDiscoveryComplete(TxId, bool),
     TransactionBroadcast(TxId),
     TransactionMined(TxId),
-    TransactionSendDiscoverySuccess(TxId),
-    TransactionSendDiscoveryFailure(TxId),
     TransactionMinedRequestTimedOut(TxId),
     Error(String),
 }

@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::LOG_TARGET;
-use crate::builder::NodeContainer;
+use crate::{builder::NodeContainer, utils};
 use log::*;
 use rustyline::{
     completion::Completer,
@@ -38,6 +38,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    time::{Duration, Instant},
 };
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
@@ -54,10 +55,10 @@ use tari_core::{
 };
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
-    transaction_service::handle::TransactionServiceHandle,
+    transaction_service::{error::TransactionServiceError, handle::TransactionServiceHandle},
     util::emoji::EmojiId,
 };
-use tokio::runtime;
+use tokio::{runtime, time};
 
 /// Enum representing commands used by the basenode
 #[derive(Clone, PartialEq, Debug, Display, EnumIter, EnumString)]
@@ -455,7 +456,7 @@ impl Parser {
     fn process_send_tari<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
         let amount = args.next().and_then(|v| v.parse::<u64>().ok());
         if amount.is_none() {
-            println!("please enter a valid amount of tari");
+            println!("Please enter a valid amount of tari");
             return;
         }
         let amount: MicroTari = amount.unwrap().into();
@@ -472,22 +473,74 @@ impl Parser {
         let dest_pubkey = match EmojiId::str_to_pubkey(&key).or_else(|_| CommsPublicKey::from_hex(&key)) {
             Ok(v) => v,
             _ => {
-                println!("please enter a valid destination public key or emoji id");
+                println!("Please enter a valid destination public key or emoji id");
                 return;
             },
         };
         let fee_per_gram = 25 * uT;
-        let mut handler = self.wallet_transaction_service.clone();
+        let mut txn_service = self.wallet_transaction_service.clone();
         self.executor.spawn(async move {
-            match handler
+            let event_stream = txn_service.get_event_stream_fused();
+            match txn_service
                 .send_transaction(
                     dest_pubkey.clone(),
                     amount,
                     fee_per_gram,
-                    "coinbase reward from mining".into(),
+                    "Coinbase reward from mining".into(),
                 )
                 .await
             {
+                Err(TransactionServiceError::OutboundSendDiscoveryInProgress(tx_id)) => {
+                    println!(
+                        "No peer found matching that public key. Attempting to discover the peer on the network. 🌎"
+                    );
+                    let start = Instant::now();
+                    match time::timeout(
+                        Duration::from_secs(120),
+                        utils::wait_for_discovery_transaction_event(event_stream, tx_id),
+                    )
+                    .await
+                    {
+                        Ok(true) => {
+                            let end = Instant::now();
+                            println!(
+                                "Discovery succeeded for peer {} after {}ms",
+                                dest_pubkey,
+                                (end - start).as_millis()
+                            );
+                            debug!(
+                                target: LOG_TARGET,
+                                "Discovery succeeded for peer {} after {}ms",
+                                dest_pubkey,
+                                (end - start).as_millis()
+                            );
+                        },
+                        Ok(false) => {
+                            let end = Instant::now();
+                            println!(
+                                "Discovery failed for peer {} after {}ms",
+                                dest_pubkey,
+                                (end - start).as_millis()
+                            );
+                            println!("The peer may be offline. Please try again later.");
+
+                            debug!(
+                                target: LOG_TARGET,
+                                "Discovery failed for peer {} after {}ms",
+                                dest_pubkey,
+                                (end - start).as_millis()
+                            );
+                        },
+                        Err(_) => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Discovery timed out before the node was discovered."
+                            );
+                            println!("Discovery timed out before the node was discovered.");
+                            println!("The peer may be offline. Please try again later.");
+                        },
+                    }
+                },
                 Err(e) => {
                     println!("Something went wrong sending funds");
                     println!("{:?}", e);
