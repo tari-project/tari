@@ -164,6 +164,7 @@ where
         loop {
             futures::select! {
                 request_context = request_stream.select_next_some() => {
+                trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
                     let _ = reply_tx.send(self.handle_request(request, &mut utxo_query_timeout_futures).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling request: {:?}", resp);
@@ -175,6 +176,7 @@ where
                 },
                  // Incoming messages from the Comms layer
                 msg = base_node_response_stream.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Handling Base Node Response");
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
                     let result = self.handle_base_node_response(inner_msg).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling base node service response from {}: {:?}", origin_public_key, resp);
@@ -190,6 +192,7 @@ where
                     }
                 }
                 utxo_hash = utxo_query_timeout_futures.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Handling Base Node Sync Timeout");
                     let _ = self.handle_utxo_query_timeout(utxo_hash, &mut  utxo_query_timeout_futures).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling UTXO query timeout : {:?}", resp);
                         Err(resp)
@@ -200,6 +203,7 @@ where
                     break;
                 }
             }
+            trace!(target: LOG_TARGET, "Select Loop end");
         }
         info!(target: LOG_TARGET, "Output Manager Service ended");
         Ok(())
@@ -294,6 +298,8 @@ where
             return Ok(());
         }
 
+        trace!(target: LOG_TARGET, "Handling a Base Node Response");
+
         // Construct a HashMap of all the unspent outputs
         let unspent_outputs: Vec<UnblindedOutput> = self.db.get_unspent_outputs().await?;
 
@@ -340,7 +346,8 @@ where
         if self.pending_utxo_query_keys.remove(&query_key) {
             debug!(target: LOG_TARGET, "UTXO Query {} timed out", query_key);
             self.query_unspent_outputs_status(utxo_query_timeout_futures).await?;
-
+            // TODO Remove this once this bug is fixed
+            trace!(target: LOG_TARGET, "Finished queueing new Base Node query timeout");
             self.event_publisher
                 .send(OutputManagerEvent::BaseNodeSyncRequestTimedOut(query_key))
                 .await
@@ -373,6 +380,8 @@ where
                     request_key,
                     request: Some(request),
                 };
+                // TODO Remove this once this bug is fixed
+                trace!(target: LOG_TARGET, "About to attempt to send query to base node");
                 self.outbound_message_service
                     .send_direct(
                         pk.clone(),
@@ -380,7 +389,8 @@ where
                         OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request),
                     )
                     .await?;
-
+                // TODO Remove this once this bug is fixed
+                trace!(target: LOG_TARGET, "Query sent to Base Node");
                 self.pending_utxo_query_keys.insert(request_key);
                 let state_timeout = StateDelay::new(self.config.base_node_query_timeout, request_key);
                 utxo_query_timeout_futures.push(state_timeout.delay().boxed());
