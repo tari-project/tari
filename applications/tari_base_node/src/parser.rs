@@ -447,6 +447,10 @@ impl Parser {
     fn process_whoami(&self) {
         println!("======== Wallet ==========");
         println!("{}", self.wallet_node_identity);
+        println!(
+            "Emoji ID: {}",
+            EmojiId::from_pubkey(&self.wallet_node_identity.public_key())
+        );
         println!();
         println!("======== Base Node ==========");
         println!("{}", self.base_node_identity);
