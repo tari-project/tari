@@ -34,7 +34,7 @@ use crate::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::{BlindingFactor, Commitment, CommitmentFactory, HashOutput},
     },
-    validation::{StatelessValidation, StatelessValidator, ValidationWriteGuard, ValidatorWriteGuard},
+    validation::{StatelessValidation, StatelessValidator, ValidationError, ValidationWriteGuard, ValidatorWriteGuard},
 };
 use croaring::Bitmap;
 use log::*;
@@ -829,19 +829,6 @@ fn add_block<T: BlockchainBackend>(
     handle_possible_reorg(metadata, db, block_validator, block)
 }
 
-fn validate_and_store_new_block<T: BlockchainBackend>(
-    metadata: &mut RwLockWriteGuard<ChainMetadata>,
-    db: &mut RwLockWriteGuard<T>,
-    block_validator: &Arc<ValidatorWriteGuard<Block, T>>,
-    block: Block,
-) -> Result<(), ChainStorageError>
-{
-    block_validator
-        .validate(&block, db, metadata)
-        .map_err(ChainStorageError::ValidationError)?;
-    store_new_block(db, block)
-}
-
 fn store_new_block<T: BlockchainBackend>(db: &mut RwLockWriteGuard<T>, block: Block) -> Result<(), ChainStorageError> {
     let (header, inputs, outputs, kernels) = block.dissolve();
     // Build all the DB queries needed to add the block and the add it atomically
@@ -1283,14 +1270,57 @@ fn reorganize_chain<T: BlockchainBackend>(
 ) -> Result<Vec<Block>, ChainStorageError>
 {
     let removed_blocks = rewind_to_height(metadata, db, height)?;
-    let mut txn = DbTransaction::new();
-    for block in chain.into_iter() {
-        let orphan_hash = block.hash();
-        txn.delete(DbKey::OrphanBlock(orphan_hash));
-        validate_and_store_new_block(metadata, db, block_validator, block)?;
+    trace!(target: LOG_TARGET, "Validate and add chain blocks.",);
+    let mut validation_result: Result<(), ValidationError> = Ok(());
+    let mut orphan_hashes = Vec::<BlockHash>::with_capacity(chain.len());
+    for block in chain {
+        let block_hash = block.hash();
+        orphan_hashes.push(block_hash.clone());
+        validation_result = block_validator.validate(&block, db, metadata);
+        if validation_result.is_err() {
+            debug!(
+                target: LOG_TARGET,
+                "Orphan block {} failed validation during chain reorganization",
+                block_hash.to_hex(),
+            );
+            remove_orphan(db, block.hash())?;
+            break;
+        }
+        store_new_block(db, block)?;
     }
-    commit(db, txn)?;
-    Ok(removed_blocks)
+
+    match validation_result {
+        Ok(_) => {
+            trace!(target: LOG_TARGET, "Removing reorged orphan blocks.",);
+            if !orphan_hashes.is_empty() {
+                let mut txn = DbTransaction::new();
+                for orphan_hash in orphan_hashes {
+                    txn.delete(DbKey::OrphanBlock(orphan_hash));
+                }
+                commit(db, txn)?;
+            }
+            Ok(removed_blocks)
+        },
+        Err(e) => {
+            trace!(target: LOG_TARGET, "Restoring previous chain after failed reorg.",);
+            let invalid_chain = rewind_to_height(metadata, db, height)?;
+            debug!(
+                target: LOG_TARGET,
+                "Removed incomplete chain of blocks during chain restore: {:?}.",
+                invalid_chain
+                    .iter()
+                    .map(|block| block.hash().to_hex())
+                    .collect::<Vec<_>>(),
+            );
+            let mut txn = DbTransaction::new();
+            for block in removed_blocks {
+                txn.delete(DbKey::OrphanBlock(block.hash()));
+                store_new_block(db, block)?;
+            }
+            commit(db, txn)?;
+            Err(ChainStorageError::ValidationError(e))
+        },
+    }
 }
 
 // Insert the provided block into the orphan pool.
