@@ -146,7 +146,7 @@ impl Parser {
         if command_str.trim().is_empty() {
             return;
         }
-        let mut args = command_str.split(' ');
+        let mut args = command_str.split_whitespace();
         let command = BaseNodeCommand::from_str(args.next().unwrap_or(&"help"));
         if command.is_err() {
             println!("{} is not a valid command, please enter a valid command", command_str);
@@ -216,7 +216,7 @@ impl Parser {
             },
             SendTari => {
                 println!("Sends an amount of Tari to a address call this command via:");
-                println!("send-tari [amount of tari to send] [public key to send to]");
+                println!("send-tari [amount of tari to send] [destination public key or emoji id] [optional: msg]");
             },
             GetChainMetadata => {
                 println!("Gets your base node chain meta data");
@@ -477,17 +477,16 @@ impl Parser {
                 return;
             },
         };
+
+        // Use the rest of the command line as my message
+        let msg = args.collect::<Vec<&str>>().join(" ");
+
         let fee_per_gram = 25 * uT;
         let mut txn_service = self.wallet_transaction_service.clone();
         self.executor.spawn(async move {
             let event_stream = txn_service.get_event_stream_fused();
             match txn_service
-                .send_transaction(
-                    dest_pubkey.clone(),
-                    amount,
-                    fee_per_gram,
-                    "Coinbase reward from mining".into(),
-                )
+                .send_transaction(dest_pubkey.clone(), amount, fee_per_gram, msg)
                 .await
             {
                 Err(TransactionServiceError::OutboundSendDiscoveryInProgress(tx_id)) => {
