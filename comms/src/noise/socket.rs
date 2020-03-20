@@ -754,4 +754,31 @@ mod test {
             Ok(())
         })
     }
+
+    #[test]
+    fn unexpected_eof() -> io::Result<()> {
+        // Current thread runtime stack overflows, so the full tokio runtime is used here
+        let mut rt = Runtime::new().unwrap();
+        rt.block_on(async move {
+            let ((_dialer_keypair, dialer), (_listener_keypair, listener)) = build_test_connection().await.unwrap();
+
+            let (mut a, mut b) = perform_handshake(dialer, listener).await?;
+
+            let buf_send = [1; MAX_PAYLOAD_LENGTH];
+            a.write_all(&buf_send).await?;
+            a.flush().await?;
+
+            a.socket.close().await.unwrap();
+            drop(a);
+
+            let mut buf_receive = [0; MAX_PAYLOAD_LENGTH];
+            b.read_exact(&mut buf_receive).await.unwrap();
+            assert_eq!(&buf_receive[..], &buf_send[..]);
+
+            let err = b.read_exact(&mut buf_receive).await.unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+
+            Ok(())
+        })
+    }
 }

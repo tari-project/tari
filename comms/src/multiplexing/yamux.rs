@@ -169,20 +169,38 @@ where S: Stream<Item = Result<yamux::Stream, yamux::ConnectionError>> + Unpin
                 // Underlying Connection closed
                 Either::Left((Some(err @ Err(yamux::ConnectionError::Closed)), _)) => {
                     let _ = self.sender.send(err).await;
-                    trace!(
+                    debug!(
                         target: LOG_TARGET,
                         "Incoming peer substream task is shutting down because the yamux connection is closed"
                     );
                     break;
                 },
+                Either::Left((Some(Err(yamux::ConnectionError::Io(err))), _))
+                    if err.kind() == io::ErrorKind::UnexpectedEof =>
+                {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Incoming peer substream task is shutting down because the socket reached an EOF state"
+                    );
+                    break;
+                }
                 // Received a substream result
                 Either::Left((Some(substream_result), sig)) => {
                     signal = Some(sig);
-                    let _ = self.sender.send(substream_result).await;
+                    if let Err(err) = self.sender.send(substream_result).await {
+                        if err.is_disconnected() {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Incoming peer substream task is shutting down because the internal stream sender \
+                                 channel was closed"
+                            );
+                            break;
+                        }
+                    }
                 },
                 // The substream closed
                 Either::Left((None, _)) => {
-                    trace!(
+                    debug!(
                         target: LOG_TARGET,
                         "Incoming peer substream task is shutting down because the stream ended"
                     );
@@ -190,7 +208,7 @@ where S: Stream<Item = Result<yamux::Stream, yamux::ConnectionError>> + Unpin
                 },
                 // The shutdown signal was received
                 Either::Right((_, _)) => {
-                    trace!(
+                    debug!(
                         target: LOG_TARGET,
                         "Incoming peer substream task is shutting down because the shutdown signal was received"
                     );
