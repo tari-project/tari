@@ -44,10 +44,11 @@ use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_comms::{
     connection_manager::ConnectionManagerRequester,
-    peer_manager::PeerManager,
+    peer_manager::{PeerFeatures, PeerManager, PeerQuery},
     types::CommsPublicKey,
     NodeIdentity,
 };
+use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
     base_node::LocalNodeCommsInterface,
     tari_utilities::{hex::Hex, Hashable},
@@ -71,6 +72,7 @@ pub enum BaseNodeCommand {
     ListPeers,
     ListConnections,
     ListHeaders,
+    DiscoverPeer,
     GetBlock,
     Whoami,
     ToggleMining,
@@ -83,6 +85,7 @@ pub enum BaseNodeCommand {
 pub struct Parser {
     executor: runtime::Handle,
     wallet_node_identity: Arc<NodeIdentity>,
+    discovery_service: DhtDiscoveryRequester,
     base_node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
     connection_manager: ConnectionManagerRequester,
@@ -128,6 +131,7 @@ impl Parser {
         Parser {
             executor,
             wallet_node_identity: ctx.wallet_node_identity(),
+            discovery_service: ctx.base_node_dht().discovery_service_requester(),
             base_node_identity: ctx.base_node_identity(),
             peer_manager: ctx.base_node_comms().peer_manager(),
             connection_manager: ctx.base_node_comms().connection_manager(),
@@ -173,8 +177,11 @@ impl Parser {
             GetChainMetadata => {
                 self.process_get_chain_meta();
             },
+            DiscoverPeer => {
+                self.process_discover_peer(args);
+            },
             ListPeers => {
-                self.process_list_peers();
+                self.process_list_peers(args);
             },
             ListConnections => {
                 self.process_list_connections();
@@ -220,6 +227,9 @@ impl Parser {
             },
             GetChainMetadata => {
                 println!("Gets your base node chain meta data");
+            },
+            DiscoverPeer => {
+                println!("Attempt to discover a peer on the Tari network");
             },
             ListPeers => {
                 println!("Lists the peers that this node knows about");
@@ -313,11 +323,52 @@ impl Parser {
         });
     }
 
-    fn process_list_peers(&self) {
-        let peer_manager = self.peer_manager.clone();
+    fn process_discover_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
+        let mut dht = self.discovery_service.clone();
+
+        let dest_pubkey = match args.next().and_then(parse_emoji_id_or_public_key) {
+            Some(v) => Box::new(v),
+            None => {
+                println!("Please enter a valid destination public key or emoji id");
+                println!("discover-peer [hex public key or emoji id]");
+                return;
+            },
+        };
 
         self.executor.spawn(async move {
-            match peer_manager.flood_peers().await {
+            let start = Instant::now();
+            println!("🌎 Peer discovery started.");
+            match dht.discover_peer(dest_pubkey, None, NodeDestination::Unknown).await {
+                Ok(p) => {
+                    let end = Instant::now();
+                    println!("⚡️ Discovery succeeded in {}ms!", (end - start).as_millis());
+                    println!("This peer was found:");
+                    println!("{}", p);
+                },
+                Err(err) => {
+                    println!("💀 Discovery failed: '{:?}'", err);
+                },
+            }
+        });
+    }
+
+    fn process_list_peers<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
+        let peer_manager = self.peer_manager.clone();
+        let filter = args.next().map(ToOwned::to_owned);
+
+        self.executor.spawn(async move {
+            let mut query = PeerQuery::new();
+            if let Some(f) = filter {
+                let filter = f.to_lowercase();
+                query = query.select_where(move |p| match filter.as_str() {
+                    "basenode" | "basenodes" | "base_node" | "base-node" | "bn" => {
+                        p.features == PeerFeatures::COMMUNICATION_NODE
+                    },
+                    "wallet" | "wallets" | "w" => p.features == PeerFeatures::COMMUNICATION_CLIENT,
+                    _ => false,
+                })
+            }
+            match peer_manager.perform_query(query).await {
                 Ok(peers) => {
                     let num_peers = peers.len();
                     println!(
@@ -474,9 +525,9 @@ impl Parser {
             },
         };
 
-        let dest_pubkey = match EmojiId::str_to_pubkey(&key).or_else(|_| CommsPublicKey::from_hex(&key)) {
-            Ok(v) => v,
-            _ => {
+        let dest_pubkey = match parse_emoji_id_or_public_key(&key) {
+            Some(v) => v,
+            None => {
                 println!("Please enter a valid destination public key or emoji id");
                 return;
             },
@@ -554,4 +605,10 @@ impl Parser {
             };
         });
     }
+}
+
+fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
+    EmojiId::str_to_pubkey(key)
+        .or_else(|_| CommsPublicKey::from_hex(key))
+        .ok()
 }

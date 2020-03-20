@@ -158,6 +158,11 @@ impl NodeContainer {
         using_backend!(self, ctx, ctx.base_node_comms.node_identity())
     }
 
+    /// Returns the base node DHT
+    pub fn base_node_dht(&self) -> &Dht {
+        using_backend!(self, ctx, &ctx.base_node_dht)
+    }
+
     /// Returns this node's wallet identity.
     pub fn wallet_node_identity(&self) -> Arc<NodeIdentity> {
         using_backend!(self, ctx, ctx.wallet_comms.node_identity())
