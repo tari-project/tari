@@ -1,74 +1,120 @@
-# A sample log configuration file for running in debug mode. By default, this configuration splits up log messages to
+# A sample log configuration file for running in release mode. By default, this configuration splits up log messages to
 # three destinations:
-#    * Console: For log messages with level WARN and higher
-#    * log/network-debug.log: Debug-level logs related to the comms crate. This file will be very busy since there
+#    * Console: For log messages with level INFO and higher
+#    * log/network.log: TRACE-level logs related to networking. This file will be quite busy since there
 #      are lots of P2P debug messages, and so this traffic is segregated from the application log messages
-#    * log/base_layer-debug.log: Non-comms related Debug-level messages and higher are logged into this file
+#    * log/base_layer.log: Non-comms related TRACE-level messages and higher are logged into this file
+#    * log/other.log: Third-party crates' messages will be logged here at an WARN level or higher
 #
 #  See https://docs.rs/log4rs/0.8.3/log4rs/encode/pattern/index.html for deciphering the log pattern. The log format
 #  used in this sample configuration prints messages as:
-#  timestamp [source file#lno] [target] LEVEL message (thread)
-
+#  timestamp [target] LEVEL message
+refresh_rate: 30 seconds
 appenders:
   # An appender named "stdout" that writes to stdout
   stdout:
     kind: console
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{M}#{L}] [{t}] {h({l}):5} {m} (({T}:{I})){n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {h({l}):5} {m}{n}"
 
   # An appender named "network" that writes to a file with a custom pattern encoder
   network:
-    kind: file
-    path: "log/network-debug.log"
-    encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{M}#{L}] [{t}] {l:5} {m} (({T}:{I})){n}"
-
-  message_logs:
-    kind: file
-    path: "data/node_1/messages.log"
-    encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
-
-  requests:
-    kind: file
-    path: "data/node_1/requests.log"
+    kind: rolling_file
+    path: "log/network.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "log/network.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 
   # An appender named "base_layer" that writes to a file with a custom pattern encoder
   base_layer:
-    kind: file
-    path: "log/base_layer-debug.log"
+    kind: rolling_file
+    path: "log/base_layer.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "log/base_layer.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{M}#{L}] [{t}] {l:5} {m} (({T}:{I})){n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 
-# Set the default logging level to "debug" and attach the "base_layer" appender to the root
+       # An appender named "base_layer" that writes to a file with a custom pattern encoder
+  other:
+    kind: rolling_file
+    path: "log/other.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "log/other.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+
+# Set the default logging level to "error" and attach the "stdout" appender to the root
 root:
-  level: debug
+  level: trace
   appenders:
     - base_layer
 
 loggers:
-  # Set the maximum console output to "warn"
-  stdout:
-    level: warn
+  # Set the maximum console output to "info"
+  base_node:
+    level: info
     appenders:
       - stdout
     additive: false
 
   # Route log events sent to the "comms" logger to the "network" appender
   comms:
-    level: debug
+    level: trace
     appenders:
       - network
     additive: false
-
-  comms::middleware::message_logging:
+  # Route log events sent to the "p2p" logger to the "network" appender
+  p2p:
     level: trace
     appenders:
-      - message_logs
-
-  comms::dht::outbound::requester:
-    level: trace
+      - network
+    additive: false
+    # Route log events sent to the "p2p" logger to the "network" appender
+  yamux:
+    level: warn
     appenders:
-      - requests
+      - network
+    additive: false
+ # Route log events sent to the "mio" logger to the "other" appender
+  mio:
+    level: warn
+    appenders:
+      - network
+    additive: false
+  # Route log events sent to the "rustyline" logger to the "other" appender
+  rustyline:
+    level: warn
+    appenders:
+      - other
+    additive: false
+  # Route log events sent to the "tokio_util" logger to the "other" appender
+  tokio_util:
+    level: warn
+    appenders:
+      - other
+    additive: false
