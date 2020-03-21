@@ -525,7 +525,20 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     /// Perform a Single Round-Trip noise IX handshake returning the underlying [NoiseSocket]
     /// (switched to transport mode) upon success.
     pub async fn handshake_1rt(mut self) -> io::Result<NoiseSocket<TSocket>> {
-        // The Dialer
+        match self.perform_handshake().await {
+            Ok(_) => self.finish(),
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Noise handshake failed because '{:?}'. Closing socket.", err
+                );
+                self.socket.close().await?;
+                Err(err)
+            },
+        }
+    }
+
+    pub async fn perform_handshake(&mut self) -> io::Result<()> {
         if self.socket.state.is_initiator() {
             // -> e, s
             self.send().await?;
@@ -542,7 +555,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             self.flush().await?;
         }
 
-        self.finish()
+        Ok(())
     }
 
     async fn send(&mut self) -> io::Result<usize> {

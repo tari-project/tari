@@ -255,7 +255,6 @@ impl<'a> DhtActor<'a> {
                 let node_identity = Arc::clone(&self.node_identity);
                 let config = self.config.clone();
                 Box::pin(async move {
-                    // task::spawn_blocking(move || {
                     match Self::select_peers(config, node_identity, peer_manager, broadcast_strategy).await {
                         Ok(peers) => reply_tx.send(peers).map_err(|_| DhtActorError::ReplyCanceled),
                         Err(err) => {
@@ -263,10 +262,7 @@ impl<'a> DhtActor<'a> {
                             reply_tx.send(Vec::new()).map_err(|_| DhtActorError::ReplyCanceled)
                         },
                     }
-                }
-                     // })
-                    // .map(hoist_nested_result),
-                )
+                })
             },
             SendRequestStoredMessages(maybe_since) => {
                 let node_identity = Arc::clone(&self.node_identity);
