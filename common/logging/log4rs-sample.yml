@@ -1,9 +1,10 @@
 # A sample log configuration file for running in release mode. By default, this configuration splits up log messages to
 # three destinations:
-#    * Console: For log messages with level ERROR and higher
+#    * Console: For log messages with level INFO and higher
 #    * log/network.log: INFO-level logs related to the comms crate. This file will be quite busy since there
 #      are lots of P2P debug messages, and so this traffic is segregated from the application log messages
-#    * log/base_layer.log: Non-comms related WARN-level messages and higher are logged into this file
+#    * log/base_layer.log: Non-comms related INFO-level messages and higher are logged into this file
+#    * log/other.log: Third-party crates' messages will be logged here at an ERROR level
 #
 #  See https://docs.rs/log4rs/0.8.3/log4rs/encode/pattern/index.html for deciphering the log pattern. The log format
 #  used in this sample configuration prints messages as:
@@ -24,7 +25,7 @@ appenders:
       kind: compound
       trigger:
         kind: size
-        limit: 10mb
+        limit: 1mb
       roller:
         kind: fixed_window
         base: 1
@@ -41,7 +42,7 @@ appenders:
       kind: compound
       trigger:
         kind: size
-        limit: 10mb
+        limit: 1mb
       roller:
         kind: fixed_window
         base: 1
@@ -58,7 +59,7 @@ appenders:
       kind: compound
       trigger:
         kind: size
-        limit: 10mb
+        limit: 1mb
       roller:
         kind: fixed_window
         base: 1
@@ -69,51 +70,51 @@ appenders:
 
 # Set the default logging level to "error" and attach the "stdout" appender to the root
 root:
-  level: warn
+  level: info
   appenders:
     - base_layer
 
 loggers:
-  # Set the maximum console output to "error"
+  # Set the maximum console output to "info"
   base_node:
-    level: error
+    level: info
     appenders:
       - stdout
     additive: false
 
   # Route log events sent to the "comms" logger to the "network" appender
   comms:
-    level: trace
+    level: info
     appenders:
       - network
     additive: false
   # Route log events sent to the "p2p" logger to the "network" appender
   p2p:
-    level: trace
+    level: info
     appenders:
       - network
     additive: false
     # Route log events sent to the "p2p" logger to the "network" appender
   yamux:
-    level: trace
+    level: info
     appenders:
       - network
     additive: false
  # Route log events sent to the "mio" logger to the "other" appender
   mio:
-    level: trace
+    level: error
     appenders:
       - network
     additive: false
   # Route log events sent to the "rustyline" logger to the "other" appender
   rustyline:
-    level: trace
+    level: error
     appenders:
       - other
     additive: false
   # Route log events sent to the "tokio_util" logger to the "other" appender
   tokio_util:
-    level: trace
+    level: error
     appenders:
       - other
     additive: false
