@@ -1,4 +1,4 @@
-# A simple set of sane defaults for connecting to the Ricnewind testnet
+# A simple set of sane defaults for connecting to the Rincewind testnet
 [common]
 #peer_database = "~/.tari/peers"
 

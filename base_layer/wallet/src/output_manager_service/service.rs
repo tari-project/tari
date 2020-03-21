@@ -34,13 +34,7 @@ use crate::{
 use futures::{future::BoxFuture, pin_mut, stream::FuturesUnordered, FutureExt, SinkExt, Stream, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{
-    collections::{HashMap, HashSet},
-    convert::TryFrom,
-    fmt,
-    sync::Mutex,
-    time::Duration,
-};
+use std::{collections::HashMap, convert::TryFrom, fmt, sync::Mutex, time::Duration};
 use tari_broadcast_channel::Publisher;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
@@ -89,7 +83,7 @@ where TBackend: OutputManagerBackend + 'static
     base_node_response_stream: Option<BNResponseStream>,
     factories: CryptoFactories,
     base_node_public_key: Option<CommsPublicKey>,
-    pending_utxo_query_keys: HashSet<u64>,
+    pending_utxo_query_keys: HashMap<u64, Vec<Vec<u8>>>,
     event_publisher: Publisher<OutputManagerEvent>,
 }
 
@@ -138,7 +132,7 @@ where
             base_node_response_stream: Some(base_node_response_stream),
             factories,
             base_node_public_key: None,
-            pending_utxo_query_keys: HashSet::new(),
+            pending_utxo_query_keys: HashMap::new(),
             event_publisher,
         })
     }
@@ -290,13 +284,17 @@ where
         };
 
         // Only process requests with a request_key that we are expecting.
-        if !self.pending_utxo_query_keys.remove(&request_key) {
-            debug!(
-                target: LOG_TARGET,
-                "Ignoring Base Node Response with unexpected request key, it was not meant for this service."
-            );
-            return Ok(());
-        }
+        let queried_hashes: Vec<Vec<u8>> = match self.pending_utxo_query_keys.remove(&request_key) {
+            None => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Ignoring Base Node Response with unexpected request key ({}), it was not meant for this service.",
+                    request_key
+                );
+                return Ok(());
+            },
+            Some(qh) => qh,
+        };
 
         trace!(target: LOG_TARGET, "Handling a Base Node Response");
 
@@ -306,7 +304,9 @@ where
         let mut output_hashes = HashMap::new();
         for uo in unspent_outputs.iter() {
             let hash = uo.as_transaction_output(&self.factories)?.hash();
-            output_hashes.insert(hash.clone(), uo.clone());
+            if queried_hashes.iter().find(|h| &&hash == h).is_some() {
+                output_hashes.insert(hash.clone(), uo.clone());
+            }
         }
 
         // Go through all the returned UTXOs and if they are in the hashmap remove them
@@ -320,6 +320,10 @@ where
 
         // If there are any remaining Unspent Outputs we will move them to the invalid collection
         for (_k, v) in output_hashes {
+            debug!(
+                target: LOG_TARGET,
+                "Output with value {} not returned from Base Node query and is thus being invalidated", v.value
+            );
             self.db.invalidate_output(v).await?;
         }
 
@@ -343,7 +347,7 @@ where
         utxo_query_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, u64>>,
     ) -> Result<(), OutputManagerError>
     {
-        if self.pending_utxo_query_keys.remove(&query_key) {
+        if self.pending_utxo_query_keys.remove(&query_key).is_some() {
             debug!(target: LOG_TARGET, "UTXO Query {} timed out", query_key);
             self.query_unspent_outputs_status(utxo_query_timeout_futures).await?;
             // TODO Remove this once this bug is fixed
@@ -375,7 +379,9 @@ where
 
                 let request_key = OsRng.next_u64();
 
-                let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs { outputs: output_hashes });
+                let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs {
+                    outputs: output_hashes.clone(),
+                });
                 let service_request = BaseNodeProto::BaseNodeServiceRequest {
                     request_key,
                     request: Some(request),
@@ -391,7 +397,7 @@ where
                     .await?;
                 // TODO Remove this once this bug is fixed
                 trace!(target: LOG_TARGET, "Query sent to Base Node");
-                self.pending_utxo_query_keys.insert(request_key);
+                self.pending_utxo_query_keys.insert(request_key, output_hashes);
                 let state_timeout = StateDelay::new(self.config.base_node_query_timeout, request_key);
                 utxo_query_timeout_futures.push(state_timeout.delay().boxed());
                 debug!(
