@@ -74,6 +74,8 @@ impl CpuBlakePow {
                 info!(target: LOG_TARGET, "Mining hash rate per thread: {:.6} MH/s", hash_rate);
                 last_measured_nonce = nonce;
                 start = Instant::now();
+
+                header.timestamp = EpochTime::now();
             }
             if stop_flag.load(Ordering::Relaxed) {
                 info!(target: LOG_TARGET, "Mining stopped via flag");
@@ -84,9 +86,7 @@ impl CpuBlakePow {
             } else {
                 nonce += 1;
             }
-            if nonce == start_nonce {
-                header.timestamp = EpochTime::now();
-            }
+
             header.nonce = nonce;
             difficulty = ProofOfWork::achieved_difficulty(&header);
         }

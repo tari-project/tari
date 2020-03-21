@@ -21,16 +21,24 @@ pub struct LinearWeightedMovingAverage {
     block_window: usize,
     target_time: u64,
     initial_difficulty: u64,
+    max_block_time: u64,
 }
 
 impl LinearWeightedMovingAverage {
-    pub fn new(block_window: usize, target_time: u64, initial_difficulty: u64) -> LinearWeightedMovingAverage {
+    pub fn new(
+        block_window: usize,
+        target_time: u64,
+        initial_difficulty: u64,
+        max_block_time: u64,
+    ) -> LinearWeightedMovingAverage
+    {
         LinearWeightedMovingAverage {
             timestamps: VecDeque::with_capacity(block_window + 1),
             accumulated_difficulties: VecDeque::with_capacity(block_window + 1),
             block_window,
             target_time,
             initial_difficulty,
+            max_block_time,
         }
     }
 
@@ -56,7 +64,6 @@ impl LinearWeightedMovingAverage {
         let mut this_timestamp;
         // Loop through N most recent blocks.
         for i in 1..(n + 1) as usize {
-            // 6*T limit prevents large drops in diff from long solve times which would cause oscillations.
             // We cannot have if solve_time < 1 then solve_time = 1, this will greatly increase the next timestamp
             // difficulty which will lower the difficulty
             if timestamps[i] > previous_timestamp {
@@ -64,7 +71,7 @@ impl LinearWeightedMovingAverage {
             } else {
                 this_timestamp = previous_timestamp.increase(1);
             }
-            let solve_time = cmp::min((this_timestamp - previous_timestamp).as_u64(), 6 * self.target_time);
+            let solve_time = cmp::min((this_timestamp - previous_timestamp).as_u64(), self.max_block_time);
             previous_timestamp = this_timestamp;
 
             // Give linearly higher weight to more recent solve times.
@@ -144,13 +151,13 @@ mod test {
 
     #[test]
     fn lwma_zero_len() {
-        let dif = LinearWeightedMovingAverage::new(90, 120, 1);
+        let dif = LinearWeightedMovingAverage::new(90, 120, 1, 120 * 6);
         assert_eq!(dif.get_difficulty(), Difficulty::min());
     }
 
     #[test]
     fn lwma_add_non_increasing_diff() {
-        let mut dif = LinearWeightedMovingAverage::new(90, 120, 1);
+        let mut dif = LinearWeightedMovingAverage::new(90, 120, 1, 120 * 6);
         assert!(dif.add(100.into(), 100.into()).is_ok());
         assert!(dif.add(100.into(), 100.into()).is_err());
         assert!(dif.add(100.into(), 50.into()).is_err());
@@ -158,7 +165,7 @@ mod test {
 
     #[test]
     fn lwma_negative_solve_times() {
-        let mut dif = LinearWeightedMovingAverage::new(90, 120, 1);
+        let mut dif = LinearWeightedMovingAverage::new(90, 120, 1, 120 * 6);
         let mut timestamp = 60.into();
         let mut cum_diff = Difficulty::from(100);
         let _ = dif.add(timestamp, cum_diff);
@@ -186,7 +193,7 @@ mod test {
 
     #[test]
     fn lwma_limit_difficulty_change() {
-        let mut dif = LinearWeightedMovingAverage::new(5, 60, 1);
+        let mut dif = LinearWeightedMovingAverage::new(5, 60, 1, 60 * 6);
         let _ = dif.add(60.into(), 100.into());
         let _ = dif.add(10_000_000.into(), 200.into());
         assert_eq!(dif.get_difficulty(), 17.into());
@@ -202,7 +209,7 @@ mod test {
     // Acum dif: 100, 200, 300, 400, 500, 605, 733, 856, 972,1066,1105,1151,1206,1281,1429
     // Target:     1, 100, 100, 100, 100, 107, 136, 130, 120,  94,  36,  39,  47,  67, 175
     fn lwma_calculate() {
-        let mut dif = LinearWeightedMovingAverage::new(5, 60, 1);
+        let mut dif = LinearWeightedMovingAverage::new(5, 60, 1, 60 * 6);
         let _ = dif.add(60.into(), 100.into());
         assert_eq!(dif.get_difficulty(), 1.into());
         let _ = dif.add(120.into(), 200.into());

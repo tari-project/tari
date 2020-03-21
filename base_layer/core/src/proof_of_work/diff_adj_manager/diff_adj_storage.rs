@@ -59,6 +59,7 @@ pub struct DiffAdjStorage {
     timestamps: VecDeque<EpochTime>,
     difficulty_block_window: u64,
     diff_target_block_interval: u64,
+    difficulty_max_block_interval: u64,
     median_timestamp_count: usize,
     min_pow_difficulty: u64,
 }
@@ -71,11 +72,13 @@ impl DiffAdjStorage {
                 consensus_constants.get_difficulty_block_window() as usize,
                 consensus_constants.get_diff_target_block_interval(),
                 consensus_constants.min_pow_difficulty(),
+                consensus_constants.get_difficulty_max_block_interval(),
             ),
             blake_lwma: LinearWeightedMovingAverage::new(
                 consensus_constants.get_difficulty_block_window() as usize,
                 consensus_constants.get_diff_target_block_interval(),
                 consensus_constants.min_pow_difficulty(),
+                consensus_constants.get_difficulty_max_block_interval(),
             ),
             sync_data: None,
             timestamps: VecDeque::new(),
@@ -83,6 +86,7 @@ impl DiffAdjStorage {
             median_timestamp_count: consensus_constants.get_median_timestamp_count(),
             diff_target_block_interval: consensus_constants.get_diff_target_block_interval(),
             min_pow_difficulty: consensus_constants.min_pow_difficulty(),
+            difficulty_max_block_interval: consensus_constants.get_difficulty_max_block_interval(),
         }
     }
 
@@ -286,11 +290,13 @@ impl DiffAdjStorage {
             self.difficulty_block_window as usize,
             self.diff_target_block_interval,
             self.min_pow_difficulty,
+            self.difficulty_max_block_interval,
         );
         self.blake_lwma = LinearWeightedMovingAverage::new(
             self.difficulty_block_window as usize,
             self.diff_target_block_interval,
             self.min_pow_difficulty,
+            self.difficulty_max_block_interval,
         );
         self.sync_data = None;
         self.timestamps = VecDeque::new();

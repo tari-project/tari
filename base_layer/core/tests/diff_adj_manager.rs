@@ -83,6 +83,7 @@ fn calculate_accumulated_difficulty(
         consensus_constants.get_difficulty_block_window() as usize,
         consensus_constants.get_diff_target_block_interval(),
         consensus_constants.min_pow_difficulty(),
+        consensus_constants.get_difficulty_max_block_interval(),
     );
     for height in heights {
         let header = db.fetch_header(height).unwrap();

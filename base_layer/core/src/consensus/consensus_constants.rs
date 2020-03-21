@@ -42,6 +42,8 @@ pub struct ConsensusConstants {
     target_block_interval: u64,
     /// When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at
     difficulty_block_window: u64,
+    /// When doing difficulty adjustments, this is the maximum block time allowed
+    difficulty_max_block_interval: u64,
     /// Maximum transaction weight used for the construction of new blocks.
     max_block_transaction_weight: u64,
     /// The amount of PoW algorithms used by the Tari chain.
@@ -117,6 +119,12 @@ impl ConsensusConstants {
         self.pow_algo_count * self.target_block_interval
     }
 
+    /// The maximum time a block is considered to take. Used by the difficulty adjustment algorithms
+    /// Multiplied by the PoW algorithm count.
+    pub fn get_difficulty_max_block_interval(&self) -> u64 {
+        self.pow_algo_count * self.difficulty_max_block_interval
+    }
+
     /// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward.
     pub fn get_median_timestamp_count(&self) -> usize {
         self.median_timestamp_count
@@ -136,6 +144,7 @@ impl ConsensusConstants {
             future_time_limit: target_block_interval * difficulty_block_window / 20,
             target_block_interval,
             difficulty_block_window,
+            difficulty_max_block_interval: target_block_interval * 10000, // No max
             max_block_transaction_weight: 10000, // TODO: a better weight estimate should be selected
             pow_algo_count: 1,
             median_timestamp_count: 11,
@@ -154,6 +163,7 @@ impl ConsensusConstants {
             blockchain_version: 1,
             future_time_limit: target_block_interval * difficulty_block_window / 20,
             target_block_interval,
+            difficulty_max_block_interval: target_block_interval * 6,
             difficulty_block_window,
             max_block_transaction_weight: 10000, // TODO: a better weight estimate should be selected
             pow_algo_count: 2,
@@ -174,6 +184,7 @@ impl ConsensusConstants {
             blockchain_version: 1,
             future_time_limit: target_block_interval * difficulty_block_window / 20,
             target_block_interval,
+            difficulty_max_block_interval: target_block_interval * 6,
             difficulty_block_window,
             max_block_transaction_weight: 10000,
             pow_algo_count: 2,
