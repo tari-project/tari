@@ -36,9 +36,10 @@ impl LinearWeightedMovingAverage {
 
     fn calculate(&self) -> Difficulty {
         let timestamps = &self.timestamps;
-        if timestamps.len() <= 1 {
+        if timestamps.len() <= 150 {
             // return INITIAL_DIFFICULTY;
-            return self.initial_difficulty.into();
+            // We return 10 times it, based it wat a intel mac 2017 cpu can roughly do, so we have 10 cpu's mining.
+            return (self.initial_difficulty * 10).into();
         }
 
         // Use the array length rather than block_window to include early cases where the no. of pts < block_window
