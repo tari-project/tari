@@ -39,7 +39,7 @@ use crate::{
 };
 use log::*;
 use std::sync::RwLockWriteGuard;
-use tari_crypto::tari_utilities::hash::Hashable;
+use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 
 pub const LOG_TARGET: &str = "c::val::block_validators";
 
@@ -125,7 +125,15 @@ fn check_accounting_balance(
     block
         .body
         .validate_internal_consistency(&offset, total_coinbase, factories)
-        .map_err(ValidationError::TransactionError)
+        .map_err(|err| {
+            warn!(
+                target: LOG_TARGET,
+                "Internal validation failed on block:{}:{}",
+                block.hash().to_hex(),
+                err
+            );
+            ValidationError::TransactionError(err)
+        })
 }
 
 fn check_coinbase_output(block: &Block, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
@@ -161,6 +169,11 @@ fn check_timestamp_ftl(
 ) -> Result<(), ValidationError>
 {
     if block_header.timestamp > consensus_manager.consensus_constants().ftl() {
+        warn!(
+            target: LOG_TARGET,
+            "Invalid Future Time Limit on block:{}",
+            block_header.hash().to_hex()
+        );
         return Err(ValidationError::BlockHeaderError(
             BlockHeaderValidationError::InvalidTimestampFutureTimeLimit,
         ));
@@ -178,6 +191,11 @@ fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &RwLockWriteGuard<B>
         header.output_mr != tmp_header.output_mr ||
         header.range_proof_mr != tmp_header.range_proof_mr
     {
+        warn!(
+            target: LOG_TARGET,
+            "Block header MMR roots in {} do not match calculated roots",
+            block.hash().to_hex()
+        );
         Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots))
     } else {
         Ok(())
@@ -186,6 +204,11 @@ fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &RwLockWriteGuard<B>
 
 fn check_cut_through(block: &Block) -> Result<(), ValidationError> {
     if !block.body.cut_through_check() {
+        warn!(
+            target: LOG_TARGET,
+            "Block validation for {} failed: block no cut through",
+            block.hash().to_hex()
+        );
         return Err(ValidationError::BlockError(BlockValidationError::NoCutThrough));
     }
     Ok(())
