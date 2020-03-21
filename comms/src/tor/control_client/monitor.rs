@@ -98,8 +98,9 @@ where
                 Either::Right((Some(Err(err)), _)) => {
                     error!(
                         target: LOG_TARGET,
-                        "Line framing error when reading from tor control server: '{:?}'", err
+                        "Line framing error when reading from tor control server: '{:?}'. Monitor is exiting.", err
                     );
+                    break;
                 },
                 // The control server disconnected
                 Either::Right((None, _)) => {
