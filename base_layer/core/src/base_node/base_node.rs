@@ -100,7 +100,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         match (state, event) {
             (Starting(s), Initialized) => Listening(s.into()),
             (BlockSync(s, _, _), BlocksSynchronized) => Listening(s.into()),
-            (BlockSync(s, _, _), MaxRequestAttemptsReached) => Listening(s.into()),
+            (BlockSync(s, _, _), BlockSyncFailure) => Listening(s.into()),
             (Listening(s), FallenBehind(Lagging(network_tip, sync_peers))) => {
                 BlockSync(s.into(), network_tip, sync_peers)
             },

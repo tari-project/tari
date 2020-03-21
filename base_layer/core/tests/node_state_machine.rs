@@ -228,8 +228,11 @@ fn test_block_sync() {
     );
     let state_machine_config = BaseNodeStateMachineConfig {
         block_sync_config: BlockSyncConfig {
+            random_sync_peer_with_chain: true,
             max_header_request_retry_attempts: 20,
             max_block_request_retry_attempts: 20,
+            max_add_block_retry_attempts: 3,
+            header_request_size: 5,
         },
         listening_config: ListeningConfig::default(),
     };
@@ -297,8 +300,11 @@ fn test_lagging_block_sync() {
     );
     let state_machine_config = BaseNodeStateMachineConfig {
         block_sync_config: BlockSyncConfig {
+            random_sync_peer_with_chain: true,
             max_header_request_retry_attempts: 20,
             max_block_request_retry_attempts: 20,
+            max_add_block_retry_attempts: 3,
+            header_request_size: 5,
         },
         listening_config: ListeningConfig::default(),
     };
@@ -383,8 +389,11 @@ fn test_block_sync_recovery() {
     );
     let state_machine_config = BaseNodeStateMachineConfig {
         block_sync_config: BlockSyncConfig {
+            random_sync_peer_with_chain: true,
             max_header_request_retry_attempts: 20,
             max_block_request_retry_attempts: 20,
+            max_add_block_retry_attempts: 3,
+            header_request_size: 5,
         },
         listening_config: ListeningConfig::default(),
     };
@@ -469,8 +478,11 @@ fn test_forked_block_sync() {
     );
     let state_machine_config = BaseNodeStateMachineConfig {
         block_sync_config: BlockSyncConfig {
+            random_sync_peer_with_chain: true,
             max_header_request_retry_attempts: 20,
             max_block_request_retry_attempts: 20,
+            max_add_block_retry_attempts: 3,
+            header_request_size: 5,
         },
         listening_config: ListeningConfig::default(),
     };

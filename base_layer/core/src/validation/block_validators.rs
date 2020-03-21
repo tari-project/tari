@@ -71,7 +71,7 @@ impl StatelessValidation<Block> for StatelessBlockValidator {
     }
 }
 
-/// This block checks whether a block satisfies *all* consensus rules. If a block passes this validator, it is the
+/// This validator checks whether a block satisfies *all* consensus rules. If a block passes this validator, it is the
 /// next block on the blockchain.
 pub struct FullConsensusValidator {
     rules: ConsensusManager,
@@ -88,6 +88,7 @@ impl<B: BlockchainBackend> ValidationWriteGuard<Block, B> for FullConsensusValid
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Does the block satisfy the stateless checks?
     /// 1. Are all inputs currently in the UTXO set?
+    /// 1. Are the block header MMR roots valid?
     /// 1. Is the block header timestamp less than the ftl?
     /// 1. Is the block header timestamp greater than the median timestamp?
     /// 1. Is the Proof of Work valid?
