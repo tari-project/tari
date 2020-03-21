@@ -26,7 +26,9 @@ use crate::support::{
 };
 use futures::{
     channel::{mpsc, mpsc::Sender},
+    FutureExt,
     SinkExt,
+    StreamExt,
 };
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
@@ -75,7 +77,7 @@ use tari_wallet::{
     storage::connection_manager::run_migration_and_create_sqlite_connection,
 };
 use tempdir::TempDir;
-use tokio::runtime::Runtime;
+use tokio::{runtime::Runtime, time::delay_for};
 
 pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     runtime: &mut Runtime,
@@ -672,6 +674,11 @@ fn test_startup_utxo_scan() {
         })
     );
 
+    let key3 = PrivateKey::random(&mut OsRng);
+    let value3 = 900;
+    let output3 = UnblindedOutput::new(MicroTari::from(value3), key3, None);
+    runtime.block_on(oms.add_output(output3.clone())).unwrap();
+
     let call = outbound_service.pop_call().unwrap();
     let envelope_body = EnvelopeBody::decode(&mut call.1.as_slice()).unwrap();
     let bn_request: BaseNodeProto::BaseNodeServiceRequest = envelope_body
@@ -741,8 +748,9 @@ fn test_startup_utxo_scan() {
     assert_eq!(invalid_outputs[0], output2);
 
     let unspent_outputs = runtime.block_on(oms.get_unspent_outputs()).unwrap();
-    assert_eq!(unspent_outputs.len(), 1);
-    assert_eq!(unspent_outputs[0], output1);
+    assert_eq!(unspent_outputs.len(), 2);
+    assert!(unspent_outputs.iter().find(|uo| uo == &&output1).is_some());
+    assert!(unspent_outputs.iter().find(|uo| uo == &&output3).is_some());
 
     runtime.block_on(oms.sync_with_base_node()).unwrap();
 
@@ -762,7 +770,6 @@ fn test_startup_utxo_scan() {
             BaseNodeProto::TransactionOutputs { outputs: vec![].into() },
         )),
     };
-
     runtime
         .block_on(base_node_response_sender.send(create_dummy_message(
             base_node_response,
@@ -770,25 +777,29 @@ fn test_startup_utxo_scan() {
         )))
         .unwrap();
 
-    let result_stream = runtime.block_on(async {
-        collect_stream!(
-            oms.get_event_stream_fused().map(|i| (*i).clone()),
-            take = 3,
-            timeout = Duration::from_secs(60)
-        )
+    let mut event_stream = oms.get_event_stream_fused();
+
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let mut acc = 0;
+        loop {
+            futures::select! {
+                event = event_stream.select_next_some() => {
+                    if let OutputManagerEvent::ReceiveBaseNodeResponse(_) = (*event).clone() {
+                        acc += 1;
+                        if acc >= 2 {
+                            break;
+                        }
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert!(acc >= 2, "Did not receive enough responses");
     });
 
-    assert_eq!(
-        2,
-        result_stream.iter().fold(0, |acc, item| {
-            if let OutputManagerEvent::ReceiveBaseNodeResponse(_) = item {
-                acc + 1
-            } else {
-                acc
-            }
-        })
-    );
-
     let invalid_txs = runtime.block_on(oms.get_invalid_outputs()).unwrap();
-    assert_eq!(invalid_txs.len(), 2);
+    assert_eq!(invalid_txs.len(), 3);
 }
