@@ -409,7 +409,9 @@ where
     }
 
     pub async fn get_balance(&self) -> Result<Balance, OutputManagerError> {
-        Ok(self.db.get_balance().await?)
+        let balance = self.db.get_balance().await?;
+        trace!(target: LOG_TARGET, "Balance: {:?}", balance);
+        Ok(balance)
     }
 
     /// Request a spending key to be used to accept a transaction from a sender.
