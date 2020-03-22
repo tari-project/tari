@@ -69,46 +69,50 @@ impl ListeningInfo {
 
         let mut metadata_rounds = VecDeque::<Vec<PeerChainMetadata>>::new();
         let mut metadata_event_stream = shared.metadata_event_stream.clone().fuse();
-        loop {
-            futures::select! {
-                metadata_event = metadata_event_stream.select_next_some() => {
-                    if let ChainMetadataEvent::PeerChainMetadataReceived(chain_metadata_list) = &*metadata_event {
-                        if !chain_metadata_list.is_empty() {
-                            // Update the metadata queue
-                            if metadata_rounds.len()>=shared.config.listening_config.metadata_liveness_rounds {
-                                metadata_rounds.pop_front();
-                            }
-                            metadata_rounds.push_back(chain_metadata_list.clone());
 
-                            if metadata_rounds.len()==shared.config.listening_config.metadata_liveness_rounds {
-                                info!(target: LOG_TARGET, "Loading local blockchain metadata.");
-                                let local = match shared.db.get_metadata() {
-                                    Ok(m) => m,
-                                    Err(e) => {
-                                        let msg = format!("Could not get local blockchain metadata. {}", e.to_string());
-                                        return FatalError(msg);
-                                    },
-                                };
-                                // Find the best network metadata and set of sync peers with the best tip.
-                                let metadata_list = metadata_rounds.iter().flatten()
-                                                    .map(|peer_metadata| peer_metadata.chain_metadata.clone())
-                                                    .collect::<Vec<_>>();
-                                let best_metadata=best_metadata(metadata_list);
-                                let sync_peers=find_sync_peers(&best_metadata,&metadata_rounds);
-                                if let SyncStatus::Lagging(network_tip,sync_peers) = determine_sync_mode(&local, best_metadata, sync_peers,LOG_TARGET) {
-                                    return StateEvent::FallenBehind(SyncStatus::Lagging(network_tip,sync_peers));
-                                }
+        while let Some(metadata_event) = metadata_event_stream.next().await {
+            match &*metadata_event {
+                ChainMetadataEvent::PeerChainMetadataReceived(chain_metadata_list) => {
+                    if !chain_metadata_list.is_empty() {
+                        // Update the metadata queue
+                        if metadata_rounds.len() >= shared.config.listening_config.metadata_liveness_rounds {
+                            metadata_rounds.pop_front();
+                        }
+                        metadata_rounds.push_back(chain_metadata_list.clone());
+
+                        if metadata_rounds.len() == shared.config.listening_config.metadata_liveness_rounds {
+                            info!(target: LOG_TARGET, "Loading local blockchain metadata.");
+                            let local = match shared.db.get_metadata() {
+                                Ok(m) => m,
+                                Err(e) => {
+                                    let msg = format!("Could not get local blockchain metadata. {}", e.to_string());
+                                    return FatalError(msg);
+                                },
+                            };
+                            // Find the best network metadata and set of sync peers with the best tip.
+                            let metadata_list = metadata_rounds
+                                .iter()
+                                .flatten()
+                                .map(|peer_metadata| peer_metadata.chain_metadata.clone())
+                                .collect::<Vec<_>>();
+                            let best_metadata = best_metadata(metadata_list);
+                            let sync_peers = find_sync_peers(&best_metadata, &metadata_rounds);
+                            if let SyncStatus::Lagging(network_tip, sync_peers) =
+                                determine_sync_mode(&local, best_metadata, sync_peers, LOG_TARGET)
+                            {
+                                return StateEvent::FallenBehind(SyncStatus::Lagging(network_tip, sync_peers));
                             }
                         }
                     }
                 },
-
-                complete => {
-                    debug!(target: LOG_TARGET, "Event listener is complete because liveness metadata and timeout streams were closed");
-                    return StateEvent::UserQuit;
-                }
             }
         }
+
+        debug!(
+            target: LOG_TARGET,
+            "Event listener is complete because liveness metadata and timeout streams were closed"
+        );
+        return StateEvent::UserQuit;
     }
 }
 

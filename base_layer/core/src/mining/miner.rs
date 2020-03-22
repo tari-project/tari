@@ -41,26 +41,21 @@ use futures::{
         mpsc,
         mpsc::{Receiver, Sender},
     },
-    future::FutureExt,
     pin_mut,
     StreamExt,
 };
 use log::*;
 use rand::rngs::OsRng;
-use std::{
-    sync::{atomic::Ordering, Arc},
-    time::Duration,
-};
+use std::sync::{atomic::Ordering, Arc};
 use tari_broadcast_channel::Subscriber;
 use tari_crypto::keys::SecretKey;
-use tokio::task::spawn_blocking;
-
-use tokio::task;
+use tari_shutdown::ShutdownSignal;
+use tokio::{task, task::spawn_blocking};
 
 pub const LOG_TARGET: &str = "c::m::miner";
 
 pub struct Miner {
-    kill_flag: Arc<AtomicBool>,
+    kill_signal: ShutdownSignal,
     stop_mining_flag: Arc<AtomicBool>,
     consensus: ConsensusManager,
     node_interface: LocalNodeCommsInterface,
@@ -73,7 +68,7 @@ pub struct Miner {
 impl Miner {
     /// Constructs a new miner
     pub fn new(
-        stop_flag: Arc<AtomicBool>,
+        kill_signal: ShutdownSignal,
         consensus: ConsensusManager,
         node_interface: &LocalNodeCommsInterface,
         threads: usize,
@@ -81,7 +76,7 @@ impl Miner {
     {
         let (utxo_sender, _): (Sender<UnblindedOutput>, Receiver<UnblindedOutput>) = mpsc::channel(1);
         Miner {
-            kill_flag: stop_flag,
+            kill_signal,
             consensus,
             stop_mining_flag: Arc::new(AtomicBool::new(false)),
             node_interface: node_interface.clone(),
@@ -181,23 +176,21 @@ impl Miner {
     /// restarts/starts to mine.
     pub async fn mine(mut self) {
         // This flag is used to stop the mining;
-        let flag = self.stop_mining_flag.clone();
+        let stop_mining_flag = self.stop_mining_flag.clone();
         let block_event = self.node_interface.clone().get_block_event_stream_fused();
         let state_event = self
             .state_change_event_rx
             .take()
             .expect("Miner does not have access to state event stream")
             .fuse();
-
-        let t_miner_kill_check = check_kill_flag(self.kill_flag.clone(), flag.clone()).fuse();
+        let mut kill_signal = self.kill_signal.clone();
 
         pin_mut!(block_event);
         pin_mut!(state_event);
-        pin_mut!(t_miner_kill_check);
         let mut start_mining = false;
         trace!("starting mining thread");
         'main: loop {
-            flag.store(false, Ordering::Relaxed); // ensure we can mine if we need to
+            stop_mining_flag.store(false, Ordering::Relaxed); // ensure we can mine if we need to
             if !self.enabled.load(Ordering::Relaxed) {
                 start_mining = false;
             }
@@ -210,7 +203,7 @@ impl Miner {
                 match (*msg).clone() {
                     BlockEvent::Verified((_, result)) => {
                     if result == BlockAddResult::Ok{
-                        flag.store(true, Ordering::Relaxed);
+                        stop_mining_flag.store(true, Ordering::Relaxed);
                         start_mining = true;
                     };
                 },
@@ -218,7 +211,7 @@ impl Miner {
                 }
             },
             msg = state_event.select_next_some() => {
-                flag.store(true, Ordering::Relaxed);
+                stop_mining_flag.store(true, Ordering::Relaxed);
                 match (*msg).clone() {
                     BaseNodeState::Listening(_) => {
                         start_mining = true;
@@ -228,8 +221,9 @@ impl Miner {
                     },
                 }
             },
-            (_) = t_miner_kill_check => {
-                flag.store(true, Ordering::Relaxed);
+            _ = kill_signal => {
+                info!(target: LOG_TARGET, "Mining kill signal received! Miner is shutting down");
+                stop_mining_flag.store(true, Ordering::Relaxed);
                 break 'main;
             }
             };
@@ -331,14 +325,5 @@ impl Miner {
             })
             .map_err(|e| MinerError::CommunicationError(e.to_string()))?;
         Ok(())
-    }
-}
-
-async fn check_kill_flag(kill_flag: Arc<AtomicBool>, stop_flag: Arc<AtomicBool>) {
-    loop {
-        tokio::time::delay_for(Duration::from_millis(100)).await;
-        if kill_flag.load(Ordering::Relaxed) {
-            stop_flag.store(true, Ordering::Relaxed);
-        }
     }
 }

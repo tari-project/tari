@@ -33,8 +33,6 @@
 //! [RFC-0111](https://rfc.tari.com/RFC-0111_BaseNodeArchitecture.html).
 
 #[cfg(feature = "base_node")]
-mod base_node;
-#[cfg(feature = "base_node")]
 pub mod chain_metadata_service;
 #[cfg(feature = "base_node")]
 pub mod comms_interface;
@@ -43,12 +41,14 @@ pub mod consts;
 #[cfg(feature = "base_node")]
 pub mod service;
 #[cfg(feature = "base_node")]
+mod state_machine;
+#[cfg(feature = "base_node")]
 pub mod states;
 // Public re-exports
 #[cfg(feature = "base_node")]
-pub use base_node::{BaseNodeStateMachine, BaseNodeStateMachineConfig};
-#[cfg(feature = "base_node")]
 pub use comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface};
+#[cfg(feature = "base_node")]
+pub use state_machine::{BaseNodeStateMachine, BaseNodeStateMachineConfig};
 
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod proto;

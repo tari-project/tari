@@ -23,17 +23,13 @@
 #[allow(dead_code)]
 mod helpers;
 
-use bitflags::_core::sync::atomic::AtomicBool;
 use futures::{SinkExt, StreamExt};
 use helpers::{
     block_builders::create_genesis_block_with_coinbase_value,
     event_stream::event_stream_next,
     nodes::create_network_with_2_base_nodes_with_config,
 };
-use std::{
-    sync::{atomic::Ordering, Arc},
-    time::Duration,
-};
+use std::{sync::atomic::Ordering, time::Duration};
 use tari_broadcast_channel::{bounded, Publisher, Subscriber};
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundEncryption};
 use tari_core::{
@@ -49,6 +45,7 @@ use tari_core::{
 };
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
+use tari_shutdown::Shutdown;
 use tari_test_utils::{async_assert_eventually, random::string};
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
@@ -105,8 +102,8 @@ fn mining() {
         );
     });
     // Setup and start the miner
-    let stop_flag = Arc::new(AtomicBool::new(false));
-    let mut miner = Miner::new(stop_flag, consensus_manager, &alice_node.local_nci, 1);
+    let shutdown = Shutdown::new();
+    let mut miner = Miner::new(shutdown.to_signal(), consensus_manager, &alice_node.local_nci, 1);
     miner.enable_mining_flag().store(true, Ordering::Relaxed);
     let (mut state_event_sender, state_event_receiver): (Publisher<BaseNodeState>, Subscriber<BaseNodeState>) =
         bounded(1);

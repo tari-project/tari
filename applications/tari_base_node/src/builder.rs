@@ -89,6 +89,7 @@ use tari_p2p::{
     transport::{TorConfig, TransportType},
 };
 use tari_service_framework::{handles::ServiceHandles, StackBuilder};
+use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
@@ -130,10 +131,6 @@ impl NodeContainer {
     /// starting the base node state machine. This call consumes the NodeContainer instance.
     pub async fn run(self, rt: runtime::Handle) {
         using_backend!(self, ctx, NodeContainer::run_impl(ctx, rt).await)
-    }
-
-    pub fn interrupt_flag(&self) -> Arc<AtomicBool> {
-        using_backend!(self, ctx, ctx.node.get_interrupt_flag())
     }
 
     /// Returns a handle to the wallet output manager service. This function panics if it has not been registered
@@ -322,6 +319,7 @@ pub async fn configure_and_initialize_node(
     config: &GlobalConfig,
     node_identity: Arc<NodeIdentity>,
     wallet_node_identity: Arc<NodeIdentity>,
+    interrupt_signal: ShutdownSignal,
 ) -> Result<NodeContainer, String>
 {
     let network = match &config.network {
@@ -331,12 +329,28 @@ pub async fn configure_and_initialize_node(
     let result = match &config.db_type {
         DatabaseType::Memory => {
             let backend = MemoryDatabase::<HashDigest>::default();
-            let ctx = build_node_context(backend, network, node_identity, wallet_node_identity, config).await?;
+            let ctx = build_node_context(
+                backend,
+                network,
+                node_identity,
+                wallet_node_identity,
+                config,
+                interrupt_signal,
+            )
+            .await?;
             NodeContainer::Memory(ctx)
         },
         DatabaseType::LMDB(p) => {
             let backend = create_lmdb_database(&p, MmrCacheConfig::default()).map_err(|e| e.to_string())?;
-            let ctx = build_node_context(backend, network, node_identity, wallet_node_identity, config).await?;
+            let ctx = build_node_context(
+                backend,
+                network,
+                node_identity,
+                wallet_node_identity,
+                config,
+                interrupt_signal,
+            )
+            .await?;
             NodeContainer::LMDB(ctx)
         },
     };
@@ -349,6 +363,7 @@ async fn build_node_context<B>(
     base_node_identity: Arc<NodeIdentity>,
     wallet_node_identity: Arc<NodeIdentity>,
     config: &GlobalConfig,
+    interrupt_signal: ShutdownSignal,
 ) -> Result<BaseNodeContext<B>, String>
 where
     B: BlockchainBackend + 'static,
@@ -452,6 +467,7 @@ where
         &outbound_interface,
         chain_metadata_service.get_event_stream(),
         BaseNodeStateMachineConfig::default(),
+        interrupt_signal,
     );
 
     //---------------------------------- Mining --------------------------------------------//
@@ -459,7 +475,7 @@ where
     let event_stream = node.get_state_change_event_stream();
     let miner = miner::build_miner(
         &base_node_handles,
-        node.get_interrupt_flag(),
+        node.get_interrupt_signal(),
         event_stream,
         rules,
         config.num_mining_threads,
