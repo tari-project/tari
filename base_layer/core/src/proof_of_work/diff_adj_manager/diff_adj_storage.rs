@@ -35,6 +35,7 @@ use crate::{
 };
 use log::*;
 use std::{
+    cmp,
     collections::VecDeque,
     sync::{RwLockReadGuard, RwLockWriteGuard},
 };
@@ -59,8 +60,9 @@ pub struct DiffAdjStorage {
     timestamps: VecDeque<EpochTime>,
     difficulty_block_window: u64,
     diff_target_block_interval: u64,
+    difficulty_max_block_interval: u64,
     median_timestamp_count: usize,
-    min_pow_difficulty: u64,
+    min_pow_difficulty: Difficulty,
 }
 
 impl DiffAdjStorage {
@@ -71,11 +73,13 @@ impl DiffAdjStorage {
                 consensus_constants.get_difficulty_block_window() as usize,
                 consensus_constants.get_diff_target_block_interval(),
                 consensus_constants.min_pow_difficulty(),
+                consensus_constants.get_difficulty_max_block_interval(),
             ),
             blake_lwma: LinearWeightedMovingAverage::new(
                 consensus_constants.get_difficulty_block_window() as usize,
                 consensus_constants.get_diff_target_block_interval(),
                 consensus_constants.min_pow_difficulty(),
+                consensus_constants.get_difficulty_max_block_interval(),
             ),
             sync_data: None,
             timestamps: VecDeque::new(),
@@ -83,6 +87,7 @@ impl DiffAdjStorage {
             median_timestamp_count: consensus_constants.get_median_timestamp_count(),
             diff_target_block_interval: consensus_constants.get_diff_target_block_interval(),
             min_pow_difficulty: consensus_constants.min_pow_difficulty(),
+            difficulty_max_block_interval: consensus_constants.get_difficulty_max_block_interval(),
         }
     }
 
@@ -153,11 +158,18 @@ impl DiffAdjStorage {
         height: u64,
     ) -> Result<(), DiffAdjManagerError>
     {
+        debug!(
+            target: LOG_TARGET,
+            "Updating difficulty adjustment manager to height:{}", height
+        );
         let block_hash = fetch_header(db, height)?.hash();
         match self.check_sync_state(db, &block_hash, height)? {
             UpdateState::FullSync => self.sync_full_history(db, block_hash, height)?,
             UpdateState::SyncToTip => self.sync_to_chain_tip(db, block_hash, height)?,
-            UpdateState::Synced => {},
+            UpdateState::Synced => debug!(
+                target: LOG_TARGET,
+                "Difficulty adjustment manager is already synced to height:{}", height
+            ),
         };
         Ok(())
     }
@@ -173,7 +185,10 @@ impl DiffAdjStorage {
         match self.check_sync_state_writeguard(db, &block_hash, height)? {
             UpdateState::FullSync => self.sync_full_history_writeguard(db, block_hash, height)?,
             UpdateState::SyncToTip => self.sync_to_chain_tip_writeguard(db, block_hash, height)?,
-            UpdateState::Synced => {},
+            UpdateState::Synced => debug!(
+                target: LOG_TARGET,
+                "Difficulty adjustment manager is already synced to height:{}", height
+            ),
         };
         Ok(())
     }
@@ -210,9 +225,13 @@ impl DiffAdjStorage {
     ) -> Result<Difficulty, DiffAdjManagerError>
     {
         self.update(db, height)?;
+        debug!(
+            target: LOG_TARGET,
+            "Getting target difficulty at height:{} for PoW:{}", height, pow_algo
+        );
         Ok(match pow_algo {
-            PowAlgorithm::Monero => self.monero_lwma.get_difficulty(),
-            PowAlgorithm::Blake => self.blake_lwma.get_difficulty(),
+            PowAlgorithm::Monero => cmp::max(self.min_pow_difficulty, self.monero_lwma.get_difficulty()),
+            PowAlgorithm::Blake => cmp::max(self.min_pow_difficulty, self.blake_lwma.get_difficulty()),
         })
     }
 
@@ -225,9 +244,13 @@ impl DiffAdjStorage {
     ) -> Result<Difficulty, DiffAdjManagerError>
     {
         self.update_writeguard(db, height)?;
+        debug!(
+            target: LOG_TARGET,
+            "Getting target difficulty at height:{} for PoW:{}", height, pow_algo
+        );
         Ok(match pow_algo {
-            PowAlgorithm::Monero => self.monero_lwma.get_difficulty(),
-            PowAlgorithm::Blake => self.blake_lwma.get_difficulty(),
+            PowAlgorithm::Monero => cmp::max(self.min_pow_difficulty, self.monero_lwma.get_difficulty()),
+            PowAlgorithm::Blake => cmp::max(self.min_pow_difficulty, self.blake_lwma.get_difficulty()),
         })
     }
 
@@ -282,15 +305,18 @@ impl DiffAdjStorage {
 
     // Resets the DiffAdjStorage.
     fn reset(&mut self) {
+        debug!(target: LOG_TARGET, "Resetting difficulty adjustment manager LWMAs");
         self.monero_lwma = LinearWeightedMovingAverage::new(
             self.difficulty_block_window as usize,
             self.diff_target_block_interval,
             self.min_pow_difficulty,
+            self.difficulty_max_block_interval,
         );
         self.blake_lwma = LinearWeightedMovingAverage::new(
             self.difficulty_block_window as usize,
             self.diff_target_block_interval,
             self.min_pow_difficulty,
+            self.difficulty_max_block_interval,
         );
         self.sync_data = None;
         self.timestamps = VecDeque::new();
@@ -298,9 +324,20 @@ impl DiffAdjStorage {
 
     // Adds the new PoW sample to the specific LinearWeightedMovingAverage specified by the PoW algorithm.
     fn add(&mut self, timestamp: EpochTime, pow: ProofOfWork) -> Result<(), DiffAdjManagerError> {
+        debug!(
+            target: LOG_TARGET,
+            "Adding timestamp {} for {}", timestamp, pow.pow_algo
+        );
         match pow.pow_algo {
-            PowAlgorithm::Monero => self.monero_lwma.add(timestamp, pow.accumulated_monero_difficulty)?,
-            PowAlgorithm::Blake => self.blake_lwma.add(timestamp, pow.accumulated_blake_difficulty)?,
+            PowAlgorithm::Monero => {
+                let target_difficulty = self.monero_lwma.get_difficulty();
+                self.monero_lwma.add(timestamp, target_difficulty)?
+            },
+
+            PowAlgorithm::Blake => {
+                let target_difficulty = self.blake_lwma.get_difficulty();
+                self.blake_lwma.add(timestamp, target_difficulty)?
+            },
         }
         Ok(())
     }
@@ -314,43 +351,19 @@ impl DiffAdjStorage {
     ) -> Result<(), DiffAdjManagerError>
     {
         self.reset();
-        let mut monero_diff_list = Vec::<(EpochTime, Difficulty)>::with_capacity(self.difficulty_block_window as usize);
-        let mut blake_diff_list = Vec::<(EpochTime, Difficulty)>::with_capacity(self.difficulty_block_window as usize);
-        for height in (0..=height_of_longest_chain).rev() {
+        debug!(
+            target: LOG_TARGET,
+            "Syncing full difficulty adjustment manager history to height:{}", height_of_longest_chain
+        );
+
+        // TODO: Store the target difficulty so that we don't have to calculate it for the whole chain
+        for height in 0..=height_of_longest_chain {
             let header = fetch_header(db, height)?;
             // keep MEDIAN_TIMESTAMP_COUNT blocks for median timestamp
             if self.timestamps.len() < self.median_timestamp_count {
                 self.timestamps.push_front(header.timestamp);
             }
-            match header.pow.pow_algo {
-                PowAlgorithm::Monero => {
-                    if (monero_diff_list.len() as u64) < self.difficulty_block_window {
-                        monero_diff_list.push((
-                            header.timestamp,
-                            header.pow.accumulated_monero_difficulty + header.achieved_difficulty(),
-                        ));
-                    }
-                },
-                PowAlgorithm::Blake => {
-                    if (blake_diff_list.len() as u64) < self.difficulty_block_window {
-                        blake_diff_list.push((
-                            header.timestamp,
-                            header.pow.accumulated_blake_difficulty + header.achieved_difficulty(),
-                        ));
-                    }
-                },
-            }
-            if ((monero_diff_list.len() as u64) >= self.difficulty_block_window) &&
-                ((blake_diff_list.len() as u64) >= self.difficulty_block_window)
-            {
-                break;
-            }
-        }
-        for (timestamp, accumulated_difficulty) in monero_diff_list.into_iter().rev() {
-            self.monero_lwma.add(timestamp, accumulated_difficulty)?
-        }
-        for (timestamp, accumulated_difficulty) in blake_diff_list.into_iter().rev() {
-            self.blake_lwma.add(timestamp, accumulated_difficulty)?
+            self.add(header.timestamp, header.pow)?;
         }
         self.sync_data = Some((height_of_longest_chain, best_block));
 
@@ -366,43 +379,19 @@ impl DiffAdjStorage {
     ) -> Result<(), DiffAdjManagerError>
     {
         self.reset();
-        let mut monero_diff_list = Vec::<(EpochTime, Difficulty)>::with_capacity(self.difficulty_block_window as usize);
-        let mut blake_diff_list = Vec::<(EpochTime, Difficulty)>::with_capacity(self.difficulty_block_window as usize);
-        for height in (0..=height_of_longest_chain).rev() {
+        debug!(
+            target: LOG_TARGET,
+            "Syncing full difficulty adjustment manager history to height:{}", height_of_longest_chain
+        );
+
+        // TODO: Store the target difficulty so that we don't have to calculate it for the whole chain
+        for height in 0..=height_of_longest_chain {
             let header = fetch_header_writeguard(db, height)?;
             // keep MEDIAN_TIMESTAMP_COUNT blocks for median timestamp
             if self.timestamps.len() < self.median_timestamp_count {
                 self.timestamps.push_front(header.timestamp);
             }
-            match header.pow.pow_algo {
-                PowAlgorithm::Monero => {
-                    if (monero_diff_list.len() as u64) < self.difficulty_block_window {
-                        monero_diff_list.push((
-                            header.timestamp,
-                            header.pow.accumulated_monero_difficulty + header.achieved_difficulty(),
-                        ));
-                    }
-                },
-                PowAlgorithm::Blake => {
-                    if (blake_diff_list.len() as u64) < self.difficulty_block_window {
-                        blake_diff_list.push((
-                            header.timestamp,
-                            header.pow.accumulated_blake_difficulty + header.achieved_difficulty(),
-                        ));
-                    }
-                },
-            }
-            if ((monero_diff_list.len() as u64) >= self.difficulty_block_window) &&
-                ((blake_diff_list.len() as u64) >= self.difficulty_block_window)
-            {
-                break;
-            }
-        }
-        for (timestamp, accumulated_difficulty) in monero_diff_list.into_iter().rev() {
-            self.monero_lwma.add(timestamp, accumulated_difficulty)?
-        }
-        for (timestamp, accumulated_difficulty) in blake_diff_list.into_iter().rev() {
-            self.blake_lwma.add(timestamp, accumulated_difficulty)?
+            self.add(header.timestamp, header.pow)?;
         }
         self.sync_data = Some((height_of_longest_chain, best_block));
 
@@ -418,6 +407,12 @@ impl DiffAdjStorage {
     ) -> Result<(), DiffAdjManagerError>
     {
         if let Some((sync_height, _)) = self.sync_data {
+            debug!(
+                target: LOG_TARGET,
+                "Syncing difficulty adjustment manager from height:{} to height:{}",
+                sync_height,
+                height_of_longest_chain
+            );
             for height in (sync_height + 1)..=height_of_longest_chain {
                 let header = fetch_header(db, height)?;
                 // add new timestamps
@@ -425,20 +420,7 @@ impl DiffAdjStorage {
                 if self.timestamps.len() > self.median_timestamp_count {
                     self.timestamps.remove(0); // remove oldest
                 }
-                match header.pow.pow_algo {
-                    PowAlgorithm::Monero => {
-                        self.monero_lwma.add(
-                            header.timestamp,
-                            header.pow.accumulated_monero_difficulty + header.achieved_difficulty(),
-                        )?;
-                    },
-                    PowAlgorithm::Blake => {
-                        self.blake_lwma.add(
-                            header.timestamp,
-                            header.pow.accumulated_blake_difficulty + header.achieved_difficulty(),
-                        )?;
-                    },
-                }
+                self.add(header.timestamp, header.pow)?;
             }
             self.sync_data = Some((height_of_longest_chain, best_block));
         }
@@ -454,6 +436,12 @@ impl DiffAdjStorage {
     ) -> Result<(), DiffAdjManagerError>
     {
         if let Some((sync_height, _)) = self.sync_data {
+            debug!(
+                target: LOG_TARGET,
+                "Syncing difficulty adjustment manager from height:{} to height:{}",
+                sync_height,
+                height_of_longest_chain
+            );
             for height in (sync_height + 1)..=height_of_longest_chain {
                 let header = fetch_header_writeguard(db, height)?;
                 // add new timestamps
@@ -461,20 +449,7 @@ impl DiffAdjStorage {
                 if self.timestamps.len() > self.median_timestamp_count {
                     self.timestamps.remove(0); // remove oldest
                 }
-                match header.pow.pow_algo {
-                    PowAlgorithm::Monero => {
-                        self.monero_lwma.add(
-                            header.timestamp,
-                            header.pow.accumulated_monero_difficulty + header.achieved_difficulty(),
-                        )?;
-                    },
-                    PowAlgorithm::Blake => {
-                        self.blake_lwma.add(
-                            header.timestamp,
-                            header.pow.accumulated_blake_difficulty + header.achieved_difficulty(),
-                        )?;
-                    },
-                }
+                self.add(header.timestamp, header.pow)?;
             }
             self.sync_data = Some((height_of_longest_chain, best_block));
         }
