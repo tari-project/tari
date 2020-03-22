@@ -46,6 +46,7 @@ fn create_test_pow_blockchain(
     consensus_constants: &ConsensusConstants,
 )
 {
+    // Remove the first as it will be replaced by the genesis block
     pow_algos.remove(0);
     let block0 = db.fetch_block(0).unwrap().block().clone();
     append_to_pow_blockchain(db, block0, pow_algos, consensus_constants);
@@ -83,15 +84,12 @@ fn calculate_accumulated_difficulty(
         consensus_constants.get_difficulty_block_window() as usize,
         consensus_constants.get_diff_target_block_interval(),
         consensus_constants.min_pow_difficulty(),
+        consensus_constants.get_difficulty_max_block_interval(),
     );
     for height in heights {
         let header = db.fetch_header(height).unwrap();
-        let accumulated_difficulty = header.achieved_difficulty() +
-            match header.pow.pow_algo {
-                PowAlgorithm::Monero => header.pow.accumulated_monero_difficulty,
-                PowAlgorithm::Blake => header.pow.accumulated_blake_difficulty,
-            };
-        lwma.add(header.timestamp, accumulated_difficulty).unwrap();
+
+        lwma.add(header.timestamp, lwma.get_difficulty()).unwrap();
     }
     lwma.get_difficulty()
 }
@@ -150,7 +148,7 @@ fn test_sync_to_chain_tip() {
     let _ = consensus_manager.set_diff_manager(diff_adj_manager);
 
     let pow_algos = vec![
-        PowAlgorithm::Blake, // GB default
+        PowAlgorithm::Blake, // Genesis block default
         PowAlgorithm::Monero,
         PowAlgorithm::Blake,
         PowAlgorithm::Blake,

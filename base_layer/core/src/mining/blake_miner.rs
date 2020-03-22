@@ -56,7 +56,6 @@ impl CpuBlakePow {
     {
         let mut start = Instant::now();
         let mut nonce: u64 = OsRng.next_u64();
-        let start_nonce = nonce;
         let mut last_measured_nonce = nonce;
         // We're mining over here!
         let mut difficulty = ProofOfWork::achieved_difficulty(&header);
@@ -74,6 +73,8 @@ impl CpuBlakePow {
                 info!(target: LOG_TARGET, "Mining hash rate per thread: {:.6} MH/s", hash_rate);
                 last_measured_nonce = nonce;
                 start = Instant::now();
+
+                header.timestamp = EpochTime::now();
             }
             if stop_flag.load(Ordering::Relaxed) {
                 info!(target: LOG_TARGET, "Mining stopped via flag");
@@ -84,9 +85,7 @@ impl CpuBlakePow {
             } else {
                 nonce += 1;
             }
-            if nonce == start_nonce {
-                header.timestamp = EpochTime::now();
-            }
+
             header.nonce = nonce;
             difficulty = ProofOfWork::achieved_difficulty(&header);
         }

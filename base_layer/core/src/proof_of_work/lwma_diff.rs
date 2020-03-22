@@ -17,20 +17,28 @@ pub const LOG_TARGET: &str = "c::pow::lwma_diff";
 
 pub struct LinearWeightedMovingAverage {
     timestamps: VecDeque<EpochTime>,
-    accumulated_difficulties: VecDeque<Difficulty>,
+    target_difficulties: VecDeque<Difficulty>,
     block_window: usize,
     target_time: u64,
-    initial_difficulty: u64,
+    initial_difficulty: Difficulty,
+    max_block_time: u64,
 }
 
 impl LinearWeightedMovingAverage {
-    pub fn new(block_window: usize, target_time: u64, initial_difficulty: u64) -> LinearWeightedMovingAverage {
+    pub fn new(
+        block_window: usize,
+        target_time: u64,
+        initial_difficulty: Difficulty,
+        max_block_time: u64,
+    ) -> LinearWeightedMovingAverage
+    {
         LinearWeightedMovingAverage {
             timestamps: VecDeque::with_capacity(block_window + 1),
-            accumulated_difficulties: VecDeque::with_capacity(block_window + 1),
+            target_difficulties: VecDeque::with_capacity(block_window + 1),
             block_window,
             target_time,
             initial_difficulty,
+            max_block_time,
         }
     }
 
@@ -38,25 +46,23 @@ impl LinearWeightedMovingAverage {
         let timestamps = &self.timestamps;
         if timestamps.len() <= 1 {
             // return INITIAL_DIFFICULTY;
-            return self.initial_difficulty.into();
+            return self.initial_difficulty;
         }
 
         // Use the array length rather than block_window to include early cases where the no. of pts < block_window
         let n = (timestamps.len() - 1) as u64;
 
         let mut weighted_times: u64 = 0;
-
-        let difficulty: u64 = self.accumulated_difficulties[n as usize]
-            .checked_sub(self.accumulated_difficulties[0])
-            .expect("Accumulated difficulties cannot decrease in proof of work")
-            .as_u64();
+        let mut difficulty: u64 = 0;
+        for diff in self.target_difficulties.iter().skip(1) {
+            difficulty += diff.as_u64();
+        }
         let ave_difficulty = difficulty as f64 / n as f64;
 
         let mut previous_timestamp = timestamps[0];
         let mut this_timestamp;
         // Loop through N most recent blocks.
-        for i in 1..(n + 1) as usize {
-            // 6*T limit prevents large drops in diff from long solve times which would cause oscillations.
+        for i in 1..=n as usize {
             // We cannot have if solve_time < 1 then solve_time = 1, this will greatly increase the next timestamp
             // difficulty which will lower the difficulty
             if timestamps[i] > previous_timestamp {
@@ -64,7 +70,7 @@ impl LinearWeightedMovingAverage {
             } else {
                 this_timestamp = previous_timestamp.increase(1);
             }
-            let solve_time = cmp::min((this_timestamp - previous_timestamp).as_u64(), 6 * self.target_time);
+            let solve_time = cmp::min((this_timestamp - previous_timestamp).as_u64(), self.max_block_time);
             previous_timestamp = this_timestamp;
 
             // Give linearly higher weight to more recent solve times.
@@ -85,8 +91,8 @@ impl LinearWeightedMovingAverage {
             timestamps[n as usize],
             weighted_times,
             k,
-            self.accumulated_difficulties[0],
-            self.accumulated_difficulties[n as usize],
+            self.target_difficulties[0],
+            self.target_difficulties[n as usize],
             ave_difficulty,
             target
         );
@@ -104,31 +110,17 @@ impl LinearWeightedMovingAverage {
 }
 
 impl DifficultyAdjustment for LinearWeightedMovingAverage {
-    fn add(
-        &mut self,
-        timestamp: EpochTime,
-        accumulated_difficulty: Difficulty,
-    ) -> Result<(), DifficultyAdjustmentError>
-    {
-        trace!(
+    fn add(&mut self, timestamp: EpochTime, target_difficulty: Difficulty) -> Result<(), DifficultyAdjustmentError> {
+        debug!(
             target: LOG_TARGET,
-            "Adding new timestamp and difficulty requested: {:?}, {:?}",
-            timestamp,
-            accumulated_difficulty
+            "Adding new timestamp and difficulty requested: {:?}, {:?}", timestamp, target_difficulty
         );
-        match self.accumulated_difficulties.back() {
-            None => {},
-            Some(v) => {
-                if accumulated_difficulty <= *v {
-                    return Err(DifficultyAdjustmentError::DecreasingAccumulatedDifficulty);
-                }
-            },
-        };
+
         self.timestamps.push_back(timestamp);
-        self.accumulated_difficulties.push_back(accumulated_difficulty);
+        self.target_difficulties.push_back(target_difficulty);
         while self.timestamps.len() > self.block_window + 1 {
             self.timestamps.pop_front();
-            self.accumulated_difficulties.pop_front();
+            self.target_difficulties.pop_front();
         }
         Ok(())
     }
@@ -144,37 +136,26 @@ mod test {
 
     #[test]
     fn lwma_zero_len() {
-        let dif = LinearWeightedMovingAverage::new(90, 120, 1);
+        let dif = LinearWeightedMovingAverage::new(90, 120, 1.into(), 120 * 6);
         assert_eq!(dif.get_difficulty(), Difficulty::min());
     }
 
     #[test]
-    fn lwma_add_non_increasing_diff() {
-        let mut dif = LinearWeightedMovingAverage::new(90, 120, 1);
-        assert!(dif.add(100.into(), 100.into()).is_ok());
-        assert!(dif.add(100.into(), 100.into()).is_err());
-        assert!(dif.add(100.into(), 50.into()).is_err());
-    }
-
-    #[test]
     fn lwma_negative_solve_times() {
-        let mut dif = LinearWeightedMovingAverage::new(90, 120, 1);
+        let mut dif = LinearWeightedMovingAverage::new(90, 120, 1.into(), 120 * 6);
         let mut timestamp = 60.into();
         let mut cum_diff = Difficulty::from(100);
         let _ = dif.add(timestamp, cum_diff);
         timestamp = timestamp.increase(60);
-        cum_diff += Difficulty::from(100);
         let _ = dif.add(timestamp, cum_diff);
         // Lets create a history and populate the vecs
         for _i in 0..150 {
-            cum_diff += Difficulty::from(100);
             timestamp = timestamp.increase(60);
             let _ = dif.add(timestamp, cum_diff);
         }
         // lets create chaos by having 60 blocks as negative solve times. This should never be allowed in practice by
         // having checks on the block times.
         for _i in 0..60 {
-            cum_diff += Difficulty::from(100);
             timestamp = (timestamp.as_u64() - 1).into(); // Only choosing -1 here since we are testing negative solve times and we cannot have 0 time
             let diff_before = dif.get_difficulty();
             let _ = dif.add(timestamp, cum_diff);
@@ -186,11 +167,11 @@ mod test {
 
     #[test]
     fn lwma_limit_difficulty_change() {
-        let mut dif = LinearWeightedMovingAverage::new(5, 60, 1);
+        let mut dif = LinearWeightedMovingAverage::new(5, 60, 1.into(), 60 * 6);
         let _ = dif.add(60.into(), 100.into());
-        let _ = dif.add(10_000_000.into(), 200.into());
+        let _ = dif.add(10_000_000.into(), 100.into());
         assert_eq!(dif.get_difficulty(), 17.into());
-        let _ = dif.add(20_000_000.into(), 216.into());
+        let _ = dif.add(20_000_000.into(), 16.into());
         assert_eq!(dif.get_difficulty(), 10.into());
     }
 
@@ -202,36 +183,36 @@ mod test {
     // Acum dif: 100, 200, 300, 400, 500, 605, 733, 856, 972,1066,1105,1151,1206,1281,1429
     // Target:     1, 100, 100, 100, 100, 107, 136, 130, 120,  94,  36,  39,  47,  67, 175
     fn lwma_calculate() {
-        let mut dif = LinearWeightedMovingAverage::new(5, 60, 1);
+        let mut dif = LinearWeightedMovingAverage::new(5, 60, 1.into(), 60 * 6);
         let _ = dif.add(60.into(), 100.into());
         assert_eq!(dif.get_difficulty(), 1.into());
-        let _ = dif.add(120.into(), 200.into());
+        let _ = dif.add(120.into(), 100.into());
         assert_eq!(dif.get_difficulty(), 100.into());
-        let _ = dif.add(180.into(), 300.into());
+        let _ = dif.add(180.into(), 100.into());
         assert_eq!(dif.get_difficulty(), 100.into());
-        let _ = dif.add(240.into(), 400.into());
+        let _ = dif.add(240.into(), 100.into());
         assert_eq!(dif.get_difficulty(), 100.into());
-        let _ = dif.add(300.into(), 500.into());
+        let _ = dif.add(300.into(), 100.into());
         assert_eq!(dif.get_difficulty(), 100.into());
-        let _ = dif.add(350.into(), 605.into());
+        let _ = dif.add(350.into(), 105.into());
         assert_eq!(dif.get_difficulty(), 107.into());
-        let _ = dif.add(380.into(), 733.into());
+        let _ = dif.add(380.into(), 128.into());
         assert_eq!(dif.get_difficulty(), 136.into());
-        let _ = dif.add(445.into(), 856.into());
+        let _ = dif.add(445.into(), 123.into());
         assert_eq!(dif.get_difficulty(), 130.into());
-        let _ = dif.add(515.into(), 972.into());
+        let _ = dif.add(515.into(), 116.into());
         assert_eq!(dif.get_difficulty(), 120.into());
-        let _ = dif.add(615.into(), 1066.into());
+        let _ = dif.add(615.into(), 94.into());
         assert_eq!(dif.get_difficulty(), 94.into());
-        let _ = dif.add(975.into(), 1105.into());
+        let _ = dif.add(975.into(), 39.into());
         assert_eq!(dif.get_difficulty(), 36.into());
-        let _ = dif.add(976.into(), 1151.into());
+        let _ = dif.add(976.into(), 46.into());
         assert_eq!(dif.get_difficulty(), 39.into());
-        let _ = dif.add(977.into(), 1206.into());
+        let _ = dif.add(977.into(), 55.into());
         assert_eq!(dif.get_difficulty(), 47.into());
-        let _ = dif.add(978.into(), 1281.into());
+        let _ = dif.add(978.into(), 75.into());
         assert_eq!(dif.get_difficulty(), 67.into());
-        let _ = dif.add(979.into(), 1429.into());
+        let _ = dif.add(979.into(), 148.into());
         assert_eq!(dif.get_difficulty(), 175.into());
     }
 }
