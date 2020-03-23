@@ -345,6 +345,14 @@ where
             GetActiveConnections(reply_tx) => {
                 let _ = reply_tx.send(self.active_connections.values().cloned().collect());
             },
+            DisconnectPeer(node_id, reply_tx) => match self.active_connections.remove(&node_id) {
+                Some(mut conn) => {
+                    let _ = reply_tx.send(conn.disconnect().await.map_err(Into::into));
+                },
+                None => {
+                    let _ = reply_tx.send(Ok(()));
+                },
+            },
         }
     }
 

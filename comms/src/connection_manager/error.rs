@@ -31,6 +31,8 @@ use futures::channel::mpsc;
 #[derive(Debug, Error, Clone)]
 pub enum ConnectionManagerError {
     PeerManagerError(PeerManagerError),
+    #[error(msg_embedded, no_from, non_std)]
+    PeerConnectionError(String),
     /// Cannot connect to peers which are not persisted in the peer manager database.
     PeerNotPersisted,
     /// Failed to send request to ConnectionManagerActor. Channel closed.
@@ -87,6 +89,12 @@ impl From<yamux::ConnectionError> for ConnectionManagerError {
 impl From<noise::NoiseError> for ConnectionManagerError {
     fn from(err: noise::NoiseError) -> Self {
         ConnectionManagerError::NoiseError(err.to_friendly_string())
+    }
+}
+
+impl From<PeerConnectionError> for ConnectionManagerError {
+    fn from(err: PeerConnectionError) -> Self {
+        ConnectionManagerError::PeerConnectionError(err.to_string())
     }
 }
 

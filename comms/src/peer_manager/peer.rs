@@ -204,7 +204,8 @@ impl Peer {
 impl Display for Peer {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.write_str(&format!(
-            "[{}] PK={} {} {:?} {}",
+            "{}[{}] PK={} {} {:?} {}",
+            if self.is_banned() { "BANNED " } else { "" },
             self.node_id.short_str(),
             self.public_key,
             self.addresses
