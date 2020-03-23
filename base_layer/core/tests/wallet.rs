@@ -137,6 +137,7 @@ fn wallet_base_node_integration_test() {
         transaction_service_config: Some(TransactionServiceConfig {
             mempool_broadcast_timeout: Duration::from_secs(10),
             base_node_mined_timeout: Duration::from_secs(1),
+            ..Default::default()
         }),
     };
     let alice_runtime = create_runtime();

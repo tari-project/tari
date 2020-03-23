@@ -296,7 +296,10 @@ where
             Some(qh) => qh,
         };
 
-        trace!(target: LOG_TARGET, "Handling a Base Node Response");
+        trace!(
+            target: LOG_TARGET,
+            "Handling a Base Node Response meant for this service"
+        );
 
         // Construct a HashMap of all the unspent outputs
         let unspent_outputs: Vec<UnblindedOutput> = self.db.get_unspent_outputs().await?;

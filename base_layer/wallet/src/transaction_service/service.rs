@@ -54,6 +54,7 @@ use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
     sync::Arc,
+    time::Duration,
 };
 use tari_broadcast_channel::Publisher;
 use tari_comms::{
@@ -682,7 +683,11 @@ where
 
         // Logging this error here instead of propogating it up to the select! catchall which generates the Error Event.
         let _ = self
-            .broadcast_completed_transaction_to_mempool(tx_id, broadcast_timeout_futures)
+            .broadcast_completed_transaction_to_mempool(
+                tx_id,
+                self.config.initial_mempool_broadcast_timeout,
+                broadcast_timeout_futures,
+            )
             .await
             .map_err(|e| {
                 error!(
@@ -873,7 +878,11 @@ where
 
         // Logging this error here instead of propogating it up to the select! catchall which generates the Error Event.
         let _ = self
-            .broadcast_completed_transaction_to_mempool(tx_id, broadcast_timeout_futures)
+            .broadcast_completed_transaction_to_mempool(
+                tx_id,
+                self.config.initial_mempool_broadcast_timeout,
+                broadcast_timeout_futures,
+            )
             .await
             .map_err(|e| {
                 error!(
@@ -1057,6 +1066,7 @@ where
     pub async fn broadcast_completed_transaction_to_mempool(
         &mut self,
         tx_id: TxId,
+        timeout: Duration,
         broadcast_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
     ) -> Result<(), TransactionServiceError>
     {
@@ -1101,7 +1111,7 @@ where
                     )
                     .await?;
                 // Start Timeout
-                let state_timeout = StateDelay::new(self.config.mempool_broadcast_timeout, completed_tx.tx_id);
+                let state_timeout = StateDelay::new(timeout, completed_tx.tx_id);
 
                 broadcast_timeout_futures.push(state_timeout.delay().boxed());
             },
@@ -1117,11 +1127,16 @@ where
         broadcast_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
     ) -> Result<(), TransactionServiceError>
     {
+        trace!(target: LOG_TARGET, "Querying Broadcast? for all completed Transactions");
         let completed_txs = self.db.get_completed_transactions().await?;
         for completed_tx in completed_txs.values() {
             if completed_tx.status == TransactionStatus::Completed {
-                self.broadcast_completed_transaction_to_mempool(completed_tx.tx_id.clone(), broadcast_timeout_futures)
-                    .await?;
+                self.broadcast_completed_transaction_to_mempool(
+                    completed_tx.tx_id.clone(),
+                    self.config.initial_mempool_broadcast_timeout,
+                    broadcast_timeout_futures,
+                )
+                .await?;
             }
         }
 
@@ -1142,8 +1157,12 @@ where
         if completed_tx.status == TransactionStatus::Completed {
             info!(target: LOG_TARGET, "Mempool broadcast timed out for TX_ID: {}", tx_id);
 
-            self.broadcast_completed_transaction_to_mempool(tx_id, broadcast_timeout_futures)
-                .await?;
+            self.broadcast_completed_transaction_to_mempool(
+                tx_id,
+                self.config.mempool_broadcast_timeout,
+                broadcast_timeout_futures,
+            )
+            .await?;
 
             self.event_publisher
                 .send(TransactionEvent::MempoolBroadcastTimedOut(tx_id))
@@ -1188,8 +1207,12 @@ where
                         );
                         self.db.broadcast_completed_transaction(tx_id.clone()).await?;
                         // Start monitoring the base node to see if this Tx has been mined
-                        self.send_transaction_mined_request(tx_id.clone(), mined_request_timeout_futures)
-                            .await?;
+                        self.send_transaction_mined_request(
+                            tx_id.clone(),
+                            self.config.base_node_mined_timeout,
+                            mined_request_timeout_futures,
+                        )
+                        .await?;
 
                         self.event_publisher
                             .send(TransactionEvent::TransactionBroadcast(tx_id))
@@ -1208,6 +1231,7 @@ where
     async fn send_transaction_mined_request(
         &mut self,
         tx_id: TxId,
+        timeout: Duration,
         mined_request_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
     ) -> Result<(), TransactionServiceError>
     {
@@ -1245,7 +1269,7 @@ where
                     )
                     .await?;
                 // Start Timeout
-                let state_timeout = StateDelay::new(self.config.base_node_mined_timeout, completed_tx.tx_id);
+                let state_timeout = StateDelay::new(timeout, completed_tx.tx_id);
 
                 mined_request_timeout_futures.push(state_timeout.delay().boxed());
             },
@@ -1270,8 +1294,12 @@ where
                 "Transaction Mined? request timed out for TX_ID: {}", tx_id
             );
 
-            self.send_transaction_mined_request(tx_id, mined_request_timeout_futures)
-                .await?;
+            self.send_transaction_mined_request(
+                tx_id,
+                self.config.base_node_mined_timeout,
+                mined_request_timeout_futures,
+            )
+            .await?;
 
             self.event_publisher
                 .send(TransactionEvent::TransactionMinedRequestTimedOut(tx_id))
@@ -1312,8 +1340,7 @@ where
             if response.len() != completed_tx.transaction.body.outputs().len() {
                 info!(
                     target: LOG_TARGET,
-                    "Base node response received for TxId: {:?} with {} outputs but expected {} outputs, Tx not mined \
-                     yet",
+                    "Base node response received. TxId: {:?} not mined yet. ({} outputs requested but {} returned)",
                     tx_id,
                     response.len(),
                     completed_tx.transaction.body.outputs().len(),
@@ -1373,11 +1400,19 @@ where
         mined_request_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
     ) -> Result<(), TransactionServiceError>
     {
+        trace!(
+            target: LOG_TARGET,
+            "Querying Transaction Mined? for all Broadcast Transactions"
+        );
         let completed_txs = self.db.get_completed_transactions().await?;
         for completed_tx in completed_txs.values() {
             if completed_tx.status == TransactionStatus::Broadcast {
-                self.send_transaction_mined_request(completed_tx.tx_id.clone(), mined_request_timeout_futures)
-                    .await?;
+                self.send_transaction_mined_request(
+                    completed_tx.tx_id.clone(),
+                    self.config.initial_base_node_mined_timeout,
+                    mined_request_timeout_futures,
+                )
+                .await?;
             }
         }
 

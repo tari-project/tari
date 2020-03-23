@@ -153,6 +153,7 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
             TransactionServiceConfig {
                 mempool_broadcast_timeout: Duration::from_secs(5),
                 base_node_mined_timeout: Duration::from_secs(5),
+                ..Default::default()
             },
             subscription_factory,
             comms.subscribe_messaging_events(),
@@ -225,6 +226,7 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
         TransactionServiceConfig {
             mempool_broadcast_timeout: Duration::from_secs(5),
             base_node_mined_timeout: Duration::from_secs(5),
+            ..Default::default()
         },
         TransactionDatabase::new(backend),
         ts_request_receiver,
