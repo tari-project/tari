@@ -147,6 +147,11 @@ impl PeerManager {
         self.peer_storage.read().await.exists_node_id(node_id)
     }
 
+    /// Returns all peers
+    pub async fn all(&self) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_storage.read().await.all()
+    }
+
     /// Get a peer matching the given node ID
     pub async fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
         match self.peer_storage.read().await.direct_identity_node_id(&node_id) {
