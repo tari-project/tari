@@ -146,9 +146,7 @@ impl ConsensusConstants {
             target_block_interval,
             difficulty_block_window,
             difficulty_max_block_interval: target_block_interval * 60,
-            max_block_transaction_weight: 10000,
-            // TODO: a better weight estimate should be
-            // selected
+            max_block_transaction_weight: 6250,
             pow_algo_count: 1,
             median_timestamp_count: 11,
             emission_initial: 5_538_846_115 * uT,
@@ -168,7 +166,7 @@ impl ConsensusConstants {
             target_block_interval,
             difficulty_max_block_interval: target_block_interval * 6,
             difficulty_block_window,
-            max_block_transaction_weight: 10000, // TODO: a better weight estimate should be selected
+            max_block_transaction_weight: 6250,
             pow_algo_count: 2,
             median_timestamp_count: 11,
             emission_initial: 10_000_000.into(),
@@ -189,7 +187,7 @@ impl ConsensusConstants {
             target_block_interval,
             difficulty_max_block_interval: target_block_interval * 6,
             difficulty_block_window,
-            max_block_transaction_weight: 10000,
+            max_block_transaction_weight: 6250,
             pow_algo_count: 2,
             median_timestamp_count: 11,
             emission_initial: 10_000_000.into(),
