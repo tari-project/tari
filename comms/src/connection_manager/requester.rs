@@ -47,6 +47,8 @@ pub enum ConnectionManagerRequest {
     GetActiveConnection(NodeId, oneshot::Sender<Option<PeerConnection>>),
     /// Retrieve all active connections
     GetActiveConnections(oneshot::Sender<Vec<PeerConnection>>),
+    /// Disconnect a peer
+    DisconnectPeer(NodeId, oneshot::Sender<Result<(), ConnectionManagerError>>),
 }
 
 /// Responsible for constructing requests to the ConnectionManagerService
@@ -99,6 +101,8 @@ impl ConnectionManagerRequester {
     request_fn!(get_active_connections() -> Vec<PeerConnection>, request = ConnectionManagerRequest::GetActiveConnections);
 
     request_fn!(get_active_connection(node_id: NodeId) -> Option<PeerConnection>, request = ConnectionManagerRequest::GetActiveConnection);
+
+    request_fn!(disconnect_peer(node_id: NodeId) -> Result<(), ConnectionManagerError>, request = ConnectionManagerRequest::DisconnectPeer);
 
     /// Returns a ConnectionManagerEvent stream
     pub fn get_event_subscription(&self) -> broadcast::Receiver<Arc<ConnectionManagerEvent>> {

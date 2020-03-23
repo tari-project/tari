@@ -71,6 +71,8 @@ pub enum BaseNodeCommand {
     SendTari,
     GetChainMetadata,
     ListPeers,
+    BanPeer,
+    UnbanPeer,
     ListConnections,
     ListHeaders,
     DiscoverPeer,
@@ -188,6 +190,12 @@ impl Parser {
             ListPeers => {
                 self.process_list_peers(args);
             },
+            BanPeer => {
+                self.process_ban_peer(args, true);
+            },
+            UnbanPeer => {
+                self.process_ban_peer(args, false);
+            },
             ListConnections => {
                 self.process_list_connections();
             },
@@ -238,6 +246,12 @@ impl Parser {
             },
             ListPeers => {
                 println!("Lists the peers that this node knows about");
+            },
+            BanPeer => {
+                println!("Bans a peer");
+            },
+            UnbanPeer => {
+                println!("Removes the peer ban");
             },
             ListConnections => {
                 println!("Lists the peer connections currently held by this node");
@@ -387,6 +401,47 @@ impl Parser {
                 Err(err) => {
                     println!("Failed to list peers: {:?}", err);
                     error!(target: LOG_TARGET, "Could not list peers: {:?}", err);
+                    return;
+                },
+            }
+        });
+    }
+
+    fn process_ban_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I, is_banned: bool) {
+        let peer_manager = self.peer_manager.clone();
+        let mut connection_manager = self.connection_manager.clone();
+
+        let public_key = match args.next().and_then(parse_emoji_id_or_public_key) {
+            Some(v) => Box::new(v),
+            None => {
+                println!("Please enter a valid destination public key or emoji id");
+                println!("ban-peer/unban-peer [hex public key or emoji id]");
+                return;
+            },
+        };
+
+        self.executor.spawn(async move {
+            match peer_manager.set_banned(&public_key, is_banned).await {
+                Ok(node_id) => {
+                    if is_banned {
+                        match connection_manager.disconnect_peer(node_id).await {
+                            Ok(_) => {
+                                println!("Peer was banned.");
+                            },
+                            Err(err) => {
+                                println!(
+                                    "Peer was banned but an error occurred when disconnecting them: {:?}",
+                                    err
+                                );
+                            },
+                        }
+                    } else {
+                        println!("Peer ban was removed.");
+                    }
+                },
+                Err(err) => {
+                    println!("Failed to ban/unban peer: {:?}", err);
+                    error!(target: LOG_TARGET, "Could not ban/unban peer: {:?}", err);
                     return;
                 },
             }

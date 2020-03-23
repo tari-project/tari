@@ -207,8 +207,8 @@ impl PeerManager {
     }
 
     /// Thread safe access to peer - Changes the ban flag bit of the peer
-    pub async fn set_banned(&self, node_id: &NodeId, ban_flag: bool) -> Result<(), PeerManagerError> {
-        self.peer_storage.write().await.set_banned(node_id, ban_flag)
+    pub async fn set_banned(&self, public_key: &CommsPublicKey, ban_flag: bool) -> Result<NodeId, PeerManagerError> {
+        self.peer_storage.write().await.set_banned(public_key, ban_flag)
     }
 
     /// Thread safe access to peer - Adds a new net address to the peer if it doesn't yet exist

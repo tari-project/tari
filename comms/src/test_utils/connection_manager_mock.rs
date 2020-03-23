@@ -152,6 +152,10 @@ impl ConnectionManagerMock {
                     .send(self.state.active_conns.lock().await.values().cloned().collect())
                     .unwrap();
             },
+            DisconnectPeer(node_id, reply_tx) => {
+                let _ = self.state.active_conns.lock().await.remove(&node_id);
+                reply_tx.send(Ok(())).unwrap();
+            },
         }
     }
 }

@@ -398,10 +398,10 @@ where DS: KeyValueStore<PeerId, Peer>
     }
 
     /// Enables Thread safe access - Changes the ban flag bit of the peer
-    pub fn set_banned(&mut self, node_id: &NodeId, ban_flag: bool) -> Result<(), PeerManagerError> {
+    pub fn set_banned(&mut self, public_key: &CommsPublicKey, ban_flag: bool) -> Result<NodeId, PeerManagerError> {
         let peer_key = *self
-            .node_id_index
-            .get(&node_id)
+            .public_key_index
+            .get(&public_key)
             .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peer_db
@@ -409,9 +409,11 @@ where DS: KeyValueStore<PeerId, Peer>
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
         peer.set_banned(ban_flag);
+        let node_id = peer.node_id.clone();
         self.peer_db
             .insert(peer_key, peer)
-            .map_err(PeerManagerError::DatabaseError)
+            .map_err(PeerManagerError::DatabaseError)?;
+        Ok(node_id)
     }
 
     /// Enables Thread safe access - Adds a new net address to the peer if it doesn't yet exist
