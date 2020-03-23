@@ -45,7 +45,7 @@ pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, String>
         "Loading configuration file from  {}",
         bootstrap.config.to_str().unwrap_or("[??]")
     );
-    let mut cfg = default_config();
+    let mut cfg = default_config(bootstrap);
     // Load the configuration file
     let filename = bootstrap
         .config
@@ -511,7 +511,7 @@ fn config_string(network: &str, key: &str) -> String {
 ///
 /// The `Config` object that is returned holds _all_ the default values possible in the `~/.tari.config.toml` file.
 /// These will typically be overridden by userland settings in envars, the config file, or the command line.
-pub fn default_config() -> Config {
+pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     let mut cfg = Config::new();
     let local_ip_addr = get_local_ip().unwrap_or_else(|| "/ip4/1.2.3.4".parse().unwrap());
 
@@ -519,15 +519,21 @@ pub fn default_config() -> Config {
     cfg.set_default("common.message_cache_size", 10).unwrap();
     cfg.set_default("common.message_cache_ttl", 1440).unwrap();
     cfg.set_default("common.peer_whitelist", Vec::<String>::new()).unwrap();
-    cfg.set_default("common.peer_database ", default_subdir("peers"))
-        .unwrap();
+    cfg.set_default(
+        "common.peer_database ",
+        default_subdir("peers", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
     cfg.set_default("common.blacklist_ban_period ", 1440).unwrap();
 
     // Wallet settings
     cfg.set_default("wallet.grpc_enabled", false).unwrap();
     cfg.set_default("wallet.grpc_address", "tcp://127.0.0.1:18040").unwrap();
-    cfg.set_default("wallet.wallet_file", default_subdir("wallet/wallet.dat"))
-        .unwrap();
+    cfg.set_default(
+        "wallet.wallet_file",
+        default_subdir("wallet/wallet.dat", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
 
     //---------------------------------- Mainnet Defaults --------------------------------------------//
 
@@ -539,26 +545,29 @@ pub fn default_config() -> Config {
         .unwrap();
     cfg.set_default("base_node.mainnet.blocking_threads", 4).unwrap();
     cfg.set_default("base_node.mainnet.core_threads", 6).unwrap();
-    cfg.set_default("base_node.mainnet.data_dir", default_subdir("mainnet/"))
-        .unwrap();
+    cfg.set_default(
+        "base_node.mainnet.data_dir",
+        default_subdir("mainnet/", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
     cfg.set_default(
         "base_node.mainnet.identity_file",
-        default_subdir("mainnet/node_id.json"),
+        default_subdir("mainnet/node_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.mainnet.tor_identity_file",
-        default_subdir("mainnet/tor.json"),
+        default_subdir("mainnet/tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.mainnet.wallet_identity_file",
-        default_subdir("mainnet/wallet-identity.json"),
+        default_subdir("mainnet/wallet-identity.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.mainnet.wallet_tor_identity_file",
-        default_subdir("mainnet/wallet-tor.json"),
+        default_subdir("mainnet/wallet-tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
@@ -579,26 +588,29 @@ pub fn default_config() -> Config {
         .unwrap();
     cfg.set_default("base_node.rincewind.blocking_threads", 4).unwrap();
     cfg.set_default("base_node.rincewind.core_threads", 4).unwrap();
-    cfg.set_default("base_node.rincewind.data_dir", default_subdir("rincewind/"))
-        .unwrap();
+    cfg.set_default(
+        "base_node.rincewind.data_dir",
+        default_subdir("rincewind/", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
     cfg.set_default(
         "base_node.rincewind.tor_identity_file",
-        default_subdir("rincewind/tor.json"),
+        default_subdir("rincewind/tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.rincewind.wallet_identity_file",
-        default_subdir("rincewind/wallet-identity.json"),
+        default_subdir("rincewind/wallet-identity.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.rincewind.wallet_tor_identity_file",
-        default_subdir("rincewind/wallet-tor.json"),
+        default_subdir("rincewind/wallet-tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.rincewind.identity_file",
-        default_subdir("rincewind/node_id.json"),
+        default_subdir("rincewind/node_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(

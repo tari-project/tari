@@ -141,11 +141,11 @@ mod test {
     #[test]
     fn get_log_configuration_path_default() {
         let path = get_log_configuration_path(Some(PathBuf::from(
-            &dir_utils::default_subdir("").trim_end_matches(PATH_SEPARATOR),
+            &dir_utils::default_subdir("", None).trim_end_matches(PATH_SEPARATOR),
         )));
         assert_eq!(
             path.to_str().unwrap(),
-            dir_utils::default_subdir("").trim_end_matches(PATH_SEPARATOR)
+            dir_utils::default_subdir("", None).trim_end_matches(PATH_SEPARATOR)
         );
     }
 

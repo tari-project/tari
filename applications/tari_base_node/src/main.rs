@@ -59,15 +59,6 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), ExitCodes> {
-    // Create the tari data directory
-    if let Err(e) = tari_common::dir_utils::create_data_directory() {
-        println!(
-            "We couldn't create a default Tari data directory and have to quit now. This makes us sad :(\n {}",
-            e.to_string()
-        );
-        return Err(ExitCodes::ConfigError);
-    }
-
     // Parse and validate command-line arguments
     let arguments = cli::parse_cli_args();
 
