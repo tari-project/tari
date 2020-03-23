@@ -70,7 +70,7 @@ impl Shutdown {
     pub fn trigger(&mut self) -> Result<(), ()> {
         match self.trigger.take() {
             Some(trigger) => {
-                trigger.send(()).map_err(|_| ())?;
+                trigger.send(())?;
 
                 if let Some(on_triggered) = self.on_triggered.take() {
                     on_triggered();

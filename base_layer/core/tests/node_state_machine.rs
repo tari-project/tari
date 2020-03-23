@@ -50,6 +50,7 @@ use tari_core::{
 };
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::services::liveness::LivenessConfig;
+use tari_shutdown::Shutdown;
 use tari_test_utils::random::string;
 use tempdir::TempDir;
 use tokio::{runtime::Runtime, time};
@@ -82,11 +83,13 @@ fn test_listening_lagging() {
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
     );
+    let shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.outbound_nci,
         alice_node.chain_metadata_handle.get_event_stream(),
         BaseNodeStateMachineConfig::default(),
+        shutdown.to_signal(),
     );
 
     let await_event_task = runtime.spawn(async move { ListeningInfo.next_event(&mut alice_state_machine).await });
@@ -158,11 +161,13 @@ fn test_event_channel() {
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
     );
+    let shutdown = Shutdown::new();
     let alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.outbound_nci,
         alice_node.chain_metadata_handle.get_event_stream(),
         BaseNodeStateMachineConfig::default(),
+        shutdown.to_signal(),
     );
     let rx = alice_state_machine.get_state_change_event_stream();
 
@@ -236,11 +241,13 @@ fn test_block_sync() {
         },
         listening_config: ListeningConfig::default(),
     };
+    let shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.outbound_nci,
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
+        shutdown.to_signal(),
     );
 
     runtime.block_on(async {
@@ -308,11 +315,13 @@ fn test_lagging_block_sync() {
         },
         listening_config: ListeningConfig::default(),
     };
+    let shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.outbound_nci,
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
+        shutdown.to_signal(),
     );
 
     runtime.block_on(async {
@@ -397,11 +406,13 @@ fn test_block_sync_recovery() {
         },
         listening_config: ListeningConfig::default(),
     };
+    let shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.outbound_nci,
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
+        shutdown.to_signal(),
     );
 
     runtime.block_on(async {
@@ -486,11 +497,13 @@ fn test_forked_block_sync() {
         },
         listening_config: ListeningConfig::default(),
     };
+    let shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.outbound_nci,
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
+        shutdown.to_signal(),
     );
 
     runtime.block_on(async {

@@ -37,15 +37,10 @@ use crate::builder::{create_new_base_node_identity, load_identity};
 use log::*;
 use parser::Parser;
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
-use std::{
-    path::PathBuf,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-};
+use std::{path::PathBuf, sync::Arc};
 use tari_common::{load_configuration, GlobalConfig};
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
+use tari_shutdown::Shutdown;
 use tokio::runtime::Runtime;
 
 pub const LOG_TARGET: &str = "base_node::app";
@@ -118,11 +113,13 @@ fn main_inner() -> Result<(), ExitCodes> {
     )?;
 
     // Build, node, build!
+    let shutdown = Shutdown::new();
     let ctx = rt
         .block_on(builder::configure_and_initialize_node(
             &node_config,
             node_identity,
             wallet_identity,
+            shutdown.to_signal(),
         ))
         .map_err(|err| {
             error!(target: LOG_TARGET, "{}", err);
@@ -146,7 +143,6 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     // Run, node, run!
     let parser = Parser::new(rt.handle().clone(), &ctx);
-    let interrupt_flag = ctx.interrupt_flag();
     let base_node_handle = rt.spawn(ctx.run(rt.handle().clone()));
 
     info!(
@@ -154,7 +150,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         "Node has been successfully configured and initialized. Starting CLI loop."
     );
 
-    cli_loop(parser, interrupt_flag);
+    cli_loop(parser, shutdown);
 
     match rt.block_on(base_node_handle) {
         Ok(_) => info!(target: LOG_TARGET, "Node shutdown successfully."),
@@ -186,7 +182,7 @@ fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
         .map_err(|e| format!("There was an error while building the node runtime. {}", e.to_string()))
 }
 
-fn cli_loop(parser: Parser, shutdown_flag: Arc<AtomicBool>) {
+fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
     let cli_config = Config::builder()
         .history_ignore_space(true)
         .completion_type(CompletionType::List)
@@ -201,18 +197,19 @@ fn cli_loop(parser: Parser, shutdown_flag: Arc<AtomicBool>) {
             Ok(line) => {
                 rustyline.add_history_entry(line.as_str());
                 if let Some(p) = rustyline.helper_mut().as_deref_mut() {
-                    p.handle_command(&line)
+                    p.handle_command(&line, &mut shutdown)
                 }
             },
             Err(ReadlineError::Interrupted) => {
                 // shutdown section. Will shutdown all interfaces when ctrl-c was pressed
-                println!("CTRL-C received");
-                println!("Shutting down");
+                println!("The node is shutting down because Ctrl+C was received...");
                 info!(
                     target: LOG_TARGET,
                     "Termination signal received from user. Shutting node down."
                 );
-                shutdown_flag.store(true, Ordering::SeqCst);
+                if shutdown.trigger().is_err() {
+                    error!(target: LOG_TARGET, "Shutdown signal failed to trigger");
+                };
                 break;
             },
             Err(err) => {
@@ -220,7 +217,7 @@ fn cli_loop(parser: Parser, shutdown_flag: Arc<AtomicBool>) {
                 break;
             },
         }
-        if shutdown_flag.load(Ordering::Relaxed) {
+        if shutdown.is_triggered() {
             break;
         };
     }

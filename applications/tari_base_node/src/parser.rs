@@ -54,6 +54,7 @@ use tari_core::{
     tari_utilities::{hex::Hex, Hashable},
     transactions::tari_amount::{uT, MicroTari},
 };
+use tari_shutdown::Shutdown;
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{error::TransactionServiceError, handle::TransactionServiceHandle},
@@ -89,7 +90,6 @@ pub struct Parser {
     base_node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
     connection_manager: ConnectionManagerRequester,
-    shutdown_flag: Arc<AtomicBool>,
     commands: Vec<String>,
     hinter: HistoryHinter,
     wallet_output_service: OutputManagerHandle,
@@ -135,7 +135,6 @@ impl Parser {
             base_node_identity: ctx.base_node_identity(),
             peer_manager: ctx.base_node_comms().peer_manager(),
             connection_manager: ctx.base_node_comms().connection_manager(),
-            shutdown_flag: ctx.interrupt_flag(),
             commands: BaseNodeCommand::iter().map(|x| x.to_string()).collect(),
             hinter: HistoryHinter {},
             wallet_output_service: ctx.output_manager(),
@@ -146,7 +145,7 @@ impl Parser {
     }
 
     /// This will parse the provided command and execute the task
-    pub fn handle_command(&mut self, command_str: &str) {
+    pub fn handle_command(&mut self, command_str: &str, shutdown: &mut Shutdown) {
         if command_str.trim().is_empty() {
             return;
         }
@@ -158,11 +157,17 @@ impl Parser {
             return;
         }
         let command = command.unwrap();
-        self.process_command(command, args);
+        self.process_command(command, args, shutdown);
     }
 
     // Function to process commands
-    fn process_command<'a, I: Iterator<Item = &'a str>>(&mut self, command: BaseNodeCommand, args: I) {
+    fn process_command<'a, I: Iterator<Item = &'a str>>(
+        &mut self,
+        command: BaseNodeCommand,
+        args: I,
+        shutdown: &mut Shutdown,
+    )
+    {
         use BaseNodeCommand::*;
         match command {
             Help => {
@@ -204,7 +209,7 @@ impl Parser {
                     target: LOG_TARGET,
                     "Termination signal received from user. Shutting node down."
                 );
-                self.shutdown_flag.store(true, Ordering::SeqCst);
+                let _ = shutdown.trigger();
             },
         }
     }

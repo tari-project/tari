@@ -22,8 +22,8 @@
 
 use crate::{
     base_node::{
-        base_node::BaseNodeStateMachine,
         comms_interface::OutboundNodeCommsInterface,
+        state_machine::BaseNodeStateMachine,
         states::{ListeningInfo, StateEvent},
     },
     blocks::{

@@ -21,8 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use core::sync::atomic::AtomicBool;
-use std::sync::Arc;
 use tari_broadcast_channel::Subscriber;
 use tari_core::{
     base_node::{states::BaseNodeState, LocalNodeCommsInterface},
@@ -30,10 +28,11 @@ use tari_core::{
     mining::Miner,
 };
 use tari_service_framework::handles::ServiceHandles;
+use tari_shutdown::ShutdownSignal;
 
 pub fn build_miner<H: AsRef<ServiceHandles>>(
     handles: H,
-    stop_flag: Arc<AtomicBool>,
+    kill_signal: ShutdownSignal,
     event_stream: Subscriber<BaseNodeState>,
     consensus_manager: ConsensusManager,
     num_threads: usize,
@@ -41,7 +40,7 @@ pub fn build_miner<H: AsRef<ServiceHandles>>(
 {
     let handles = handles.as_ref();
     let node_local_interface = handles.get_handle::<LocalNodeCommsInterface>().unwrap();
-    let mut miner = Miner::new(stop_flag, consensus_manager, &node_local_interface, num_threads);
+    let mut miner = Miner::new(kill_signal, consensus_manager, &node_local_interface, num_threads);
     miner.subscribe_to_state_change(event_stream);
     miner
 }

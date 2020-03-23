@@ -32,13 +32,7 @@ use helpers::{
 use core::iter;
 use futures::{FutureExt, SinkExt, StreamExt};
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
+use std::{sync::atomic::Ordering, time::Duration};
 use tari_broadcast_channel::{bounded, Publisher, Subscriber};
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -59,6 +53,7 @@ use tari_core::{
 };
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::{initialization::CommsConfig, services::liveness::LivenessConfig, transport::TransportType};
+use tari_shutdown::Shutdown;
 use tari_test_utils::async_assert_eventually;
 use tari_wallet::{
     contacts_service::storage::memory_db::ContactsServiceMemoryDatabase,
@@ -292,8 +287,8 @@ fn wallet_base_node_integration_test() {
     let transaction = transaction.expect("Transaction must be present");
 
     // Setup and start the miner
-    let stop_flag = Arc::new(AtomicBool::new(false));
-    let mut miner = Miner::new(stop_flag, consensus_manager, &base_node.local_nci, 1);
+    let shutdown = Shutdown::new();
+    let mut miner = Miner::new(shutdown.to_signal(), consensus_manager, &base_node.local_nci, 1);
     miner.enable_mining_flag().store(true, Ordering::Relaxed);
     let (mut state_event_sender, state_event_receiver): (Publisher<BaseNodeState>, Subscriber<BaseNodeState>) =
         bounded(1);
