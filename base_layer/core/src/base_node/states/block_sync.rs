@@ -45,6 +45,7 @@ const LOG_TARGET: &str = "c::bn::states::block_sync";
 // to query headers and blocks.
 const RANDOM_SYNC_PEER_WITH_CHAIN: bool = true;
 // The maximum number of retry attempts a node can perform to request a particular block from remote nodes.
+const MAX_METADATA_REQUEST_RETRY_ATTEMPTS: usize = 3;
 const MAX_HEADER_REQUEST_RETRY_ATTEMPTS: usize = 5;
 const MAX_BLOCK_REQUEST_RETRY_ATTEMPTS: usize = 5;
 // The maximum number of retry attempts for attempting to validly request and add the block at a specific block height
@@ -57,6 +58,7 @@ const HEADER_REQUEST_SIZE: usize = 100;
 #[derive(Clone, Copy)]
 pub struct BlockSyncConfig {
     pub random_sync_peer_with_chain: bool,
+    pub max_metadata_request_retry_attempts: usize,
     pub max_header_request_retry_attempts: usize,
     pub max_block_request_retry_attempts: usize,
     pub max_add_block_retry_attempts: usize,
@@ -67,6 +69,7 @@ impl Default for BlockSyncConfig {
     fn default() -> Self {
         Self {
             random_sync_peer_with_chain: RANDOM_SYNC_PEER_WITH_CHAIN,
+            max_metadata_request_retry_attempts: MAX_METADATA_REQUEST_RETRY_ATTEMPTS,
             max_header_request_retry_attempts: MAX_HEADER_REQUEST_RETRY_ATTEMPTS,
             max_block_request_retry_attempts: MAX_BLOCK_REQUEST_RETRY_ATTEMPTS,
             max_add_block_retry_attempts: MAX_ADD_BLOCK_RETRY_ATTEMPTS,
@@ -161,7 +164,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                 "Checking if current chain lagging on best network chain."
             );
             let local_tip_height = local_metadata.height_of_longest_chain.unwrap_or(0);
-            let network_tip_height = network_metadata.height_of_longest_chain.unwrap_or(0);
+            let mut network_tip_height = network_metadata.height_of_longest_chain.unwrap_or(0);
             let mut sync_height = local_tip_height + 1;
             if check_chain_split(
                 comms,
@@ -187,8 +190,14 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             }
 
             info!(target: LOG_TARGET, "Synchronize missing blocks.");
-            for height in sync_height..=network_tip_height {
+            let mut height = sync_height;
+            while height <= network_tip_height {
                 request_and_add_block(db, comms, config, sync_peers, height).await?;
+                if height == network_tip_height {
+                    info!(target: LOG_TARGET, "Check if sync peer chain has been extended.");
+                    network_tip_height = request_network_tip_height(comms, config, sync_peers).await?;
+                }
+                height += 1;
             }
             return Ok(());
         }
@@ -403,6 +412,42 @@ async fn request_headers(
             },
         }
         debug!(target: LOG_TARGET, "Retrying header download. Attempt {}", attempt);
+    }
+    Err(BlockSyncError::MaxRequestAttemptsReached)
+}
+
+// Request the updated tip height from a remote sync peer.
+async fn request_network_tip_height(
+    comms: &mut OutboundNodeCommsInterface,
+    config: &BlockSyncConfig,
+    sync_peers: &[NodeId],
+) -> Result<u64, BlockSyncError>
+{
+    for attempt in 1..=config.max_metadata_request_retry_attempts {
+        let selected_sync_peer = select_sync_peer(config, sync_peers);
+        let peer_note = selected_sync_peer
+            .as_ref()
+            .map(|p| p.to_string())
+            .unwrap_or_else(|| "a random peer".into());
+        trace!(target: LOG_TARGET, "Requesting updated metadata from {}.", peer_note);
+        match comms.request_metadata_from_peer(selected_sync_peer.clone()).await {
+            Ok(metadata) => {
+                debug!(target: LOG_TARGET, "Received updated metadata from peer");
+                if let Some(network_tip_height) = metadata.height_of_longest_chain {
+                    return Ok(network_tip_height);
+                }
+            },
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to fetch updated metadata from peer: {:?}. ", e,
+                );
+            },
+        }
+        debug!(
+            target: LOG_TARGET,
+            "Retrying chain metadata download. Attempt {}", attempt
+        );
     }
     Err(BlockSyncError::MaxRequestAttemptsReached)
 }

@@ -144,7 +144,7 @@ mod test {
     fn lwma_negative_solve_times() {
         let mut dif = LinearWeightedMovingAverage::new(90, 120, 1.into(), 120 * 6);
         let mut timestamp = 60.into();
-        let mut cum_diff = Difficulty::from(100);
+        let cum_diff = Difficulty::from(100);
         let _ = dif.add(timestamp, cum_diff);
         timestamp = timestamp.increase(60);
         let _ = dif.add(timestamp, cum_diff);
