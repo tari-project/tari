@@ -49,6 +49,7 @@ pub fn parse_cli_args() -> Arguments {
         (version: consts::VERSION)
         (author: consts::AUTHOR)
         (about: "The reference Tari cryptocurrency base node implementation")
+        (@arg base_dir: -b --base_dir +takes_value "A path to a directory to store your files")
         (@arg config: -c --config +takes_value "A path to the configuration file to use (config.toml)")
         (@arg log_config: -l --log_config +takes_value "A path to the logfile configuration (log4rs.yml))")
         (@arg init: --init "Create a default configuration file if it doesn't exist")
