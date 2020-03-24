@@ -1420,19 +1420,25 @@ fn find_orphan_chain_tips<T: BlockchainBackend>(
 ) -> Vec<BlockHash>
 {
     let mut tip_hashes = Vec::<BlockHash>::new();
+    let mut parents = Vec::<(BlockHash, u64)>::new();
     db.for_each_orphan(|pair| {
         let (_, block) = pair.unwrap();
         if (block.header.prev_hash == parent_hash) && (block.header.height == parent_height + 1) {
-            let next_parent_hash = block.hash();
-            let mut orphan_chain_tips = find_orphan_chain_tips(db, block.header.height, next_parent_hash.clone());
-            if !orphan_chain_tips.is_empty() {
-                tip_hashes.append(&mut orphan_chain_tips);
-            } else {
-                tip_hashes.push(next_parent_hash);
-            }
+            // we found a match, let save to call later
+            parents.push((block.hash(), block.header.height));
         }
     })
     .expect("Unexpected result for database query");
+    // we need two for loops so that we ensure we release the db read lock as this iterative call can saturate all db
+    // read locks. This ensures the call only uses one read lock.
+    for (parent_hash, parent_height) in parents {
+        let mut orphan_chain_tips = find_orphan_chain_tips(db, parent_height, parent_hash.clone());
+        if !orphan_chain_tips.is_empty() {
+            tip_hashes.append(&mut orphan_chain_tips);
+        } else {
+            tip_hashes.push(parent_hash);
+        }
+    }
     if tip_hashes.is_empty() {
         // No chain tips found, then parent must be the tip.
         tip_hashes.push(parent_hash);
