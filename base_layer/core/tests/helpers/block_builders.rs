@@ -56,7 +56,7 @@ use tari_mmr::MutableMmr;
 
 const MAINNET: Network = Network::MainNet;
 
-fn create_coinbase(
+pub fn create_coinbase(
     factories: &CryptoFactories,
     value: MicroTari,
     maturity_height: u64,

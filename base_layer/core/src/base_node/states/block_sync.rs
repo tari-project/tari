@@ -22,7 +22,6 @@
 
 use crate::{
     base_node::{
-        comms_interface::OutboundNodeCommsInterface,
         state_machine::BaseNodeStateMachine,
         states::{ListeningInfo, StateEvent},
     },
@@ -30,13 +29,16 @@ use crate::{
         blockheader::{BlockHash, BlockHeader},
         Block,
     },
-    chain_storage::{async_db, BlockchainBackend, BlockchainDatabase, ChainMetadata, ChainStorageError},
+    chain_storage::{async_db, BlockchainBackend, ChainMetadata, ChainStorageError},
 };
 use core::cmp::min;
 use derive_error::Error;
 use log::*;
 use rand::seq::SliceRandom;
-use tari_comms::peer_manager::NodeId;
+use tari_comms::{
+    connection_manager::ConnectionManagerError,
+    peer_manager::{NodeId, PeerManagerError},
+};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "c::bn::states::block_sync";
@@ -78,7 +80,7 @@ impl Default for BlockSyncConfig {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Error)]
+#[derive(Clone, Debug, Error)]
 pub enum BlockSyncError {
     MaxRequestAttemptsReached,
     MaxAddBlockAttemptsReached,
@@ -86,7 +88,10 @@ pub enum BlockSyncError {
     InvalidChainLink,
     EmptyBlockchain,
     EmptyNetworkBestBlock,
+    NoSyncPeers,
     ChainStorageError(ChainStorageError),
+    PeerManagerError(PeerManagerError),
+    ConnectionManagerError(ConnectionManagerError),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -97,19 +102,11 @@ impl BlockSyncInfo {
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
         network_tip: &ChainMetadata,
-        sync_peers: &[NodeId],
+        sync_peers: &mut Vec<NodeId>,
     ) -> StateEvent
     {
         info!(target: LOG_TARGET, "Synchronizing missing blocks.");
-        match synchronize_blocks(
-            &shared.db,
-            &mut shared.comms,
-            &shared.config.block_sync_config,
-            network_tip,
-            sync_peers,
-        )
-        .await
-        {
+        match synchronize_blocks(shared, network_tip, sync_peers).await {
             Ok(()) => {
                 info!(target: LOG_TARGET, "Block sync state has synchronised.");
                 StateEvent::BlocksSynchronized
@@ -139,6 +136,10 @@ impl BlockSyncInfo {
                 );
                 StateEvent::BlockSyncFailure
             },
+            Err(BlockSyncError::NoSyncPeers) => {
+                warn!(target: LOG_TARGET, "No remaining sync peers.",);
+                StateEvent::BlockSyncFailure
+            },
             Err(BlockSyncError::EmptyNetworkBestBlock) => {
                 warn!(target: LOG_TARGET, "An empty network best block hash was received.",);
                 StateEvent::BlockSyncFailure
@@ -149,14 +150,12 @@ impl BlockSyncInfo {
 }
 
 async fn synchronize_blocks<B: BlockchainBackend + 'static>(
-    db: &BlockchainDatabase<B>,
-    comms: &mut OutboundNodeCommsInterface,
-    config: &BlockSyncConfig,
+    shared: &mut BaseNodeStateMachine<B>,
     network_metadata: &ChainMetadata,
-    sync_peers: &[NodeId],
+    sync_peers: &mut Vec<NodeId>,
 ) -> Result<(), BlockSyncError>
 {
-    let local_metadata = db.get_metadata()?;
+    let local_metadata = shared.db.get_metadata()?;
     if let Some(local_block_hash) = local_metadata.best_block.clone() {
         if let Some(network_block_hash) = network_metadata.best_block.clone() {
             info!(
@@ -167,8 +166,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             let mut network_tip_height = network_metadata.height_of_longest_chain.unwrap_or(0);
             let mut sync_height = local_tip_height + 1;
             if check_chain_split(
-                comms,
-                config,
+                shared,
                 sync_peers,
                 local_tip_height,
                 network_tip_height,
@@ -179,7 +177,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             {
                 info!(target: LOG_TARGET, "Chain split detected, finding chain split height.");
                 let min_tip_height = min(local_tip_height, network_tip_height);
-                sync_height = find_chain_split_height(db, comms, config, sync_peers, min_tip_height).await?;
+                sync_height = find_chain_split_height(shared, sync_peers, min_tip_height).await?;
                 info!(target: LOG_TARGET, "Chain split found at height {}.", sync_height);
             } else {
                 trace!(
@@ -192,10 +190,10 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             info!(target: LOG_TARGET, "Synchronize missing blocks.");
             let mut height = sync_height;
             while height <= network_tip_height {
-                request_and_add_block(db, comms, config, sync_peers, height).await?;
+                request_and_add_block(shared, sync_peers, height).await?;
                 if height == network_tip_height {
                     info!(target: LOG_TARGET, "Check if sync peer chain has been extended.");
-                    network_tip_height = request_network_tip_height(comms, config, sync_peers).await?;
+                    network_tip_height = request_network_tip_height(shared, sync_peers).await?;
                 }
                 height += 1;
             }
@@ -211,10 +209,9 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
 // a higher accumulated difficulty compared to the local chain. In the case when the network height is lower, but has a
 // higher accumulated difficulty, then a network split must have occurred as the local chain will have a different block
 // at the shared height if the local tip has a lower accumulated difficulty compared to the network tip.
-async fn check_chain_split(
-    comms: &mut OutboundNodeCommsInterface,
-    config: &BlockSyncConfig,
-    sync_peers: &[NodeId],
+async fn check_chain_split<B: BlockchainBackend + 'static>(
+    shared: &mut BaseNodeStateMachine<B>,
+    sync_peers: &mut Vec<NodeId>,
     local_tip_height: u64,
     network_tip_height: u64,
     local_block_hash: &BlockHash,
@@ -222,7 +219,7 @@ async fn check_chain_split(
 ) -> Result<bool, BlockSyncError>
 {
     Ok(if network_tip_height > local_tip_height {
-        let header = request_header(comms, config, sync_peers, local_tip_height).await?;
+        let (header, _) = request_header(shared, sync_peers, local_tip_height).await?;
         *local_block_hash != header.hash()
     } else if network_tip_height == local_tip_height {
         *local_block_hash != *network_block_hash
@@ -234,47 +231,47 @@ async fn check_chain_split(
 // Find the block height where the chain split occurs. The chain split height is the height of the first block that is
 // not common between the local and network chains.
 async fn find_chain_split_height<B: BlockchainBackend + 'static>(
-    db: &BlockchainDatabase<B>,
-    comms: &mut OutboundNodeCommsInterface,
-    config: &BlockSyncConfig,
-    sync_peers: &[NodeId],
+    shared: &mut BaseNodeStateMachine<B>,
+    sync_peers: &mut Vec<NodeId>,
     tip_height: u64,
 ) -> Result<u64, BlockSyncError>
 {
     for block_nums in (1..=tip_height)
         .rev()
         .collect::<Vec<u64>>()
-        .chunks(config.header_request_size)
+        .chunks(shared.config.block_sync_config.header_request_size)
     {
-        let headers = request_headers(comms, config, sync_peers, block_nums).await?;
+        let (headers, sync_peer) = request_headers(shared, sync_peers, block_nums).await?;
         for header in headers {
             // Check if header is linked to local chain
-            if let Ok(prev_header) = async_db::fetch_header_with_block_hash(db.clone(), header.prev_hash.clone()).await
+            if let Ok(prev_header) =
+                async_db::fetch_header_with_block_hash(shared.db.clone(), header.prev_hash.clone()).await
             {
                 if prev_header.height + 1 == header.height {
                     return Ok(header.height);
                 } else {
+                    ban_sync_peer(shared, sync_peers, sync_peer.clone()).await?;
                     return Err(BlockSyncError::InvalidChainLink);
                 }
             }
         }
     }
+    ban_all_sync_peers(shared, sync_peers).await?;
     Err(BlockSyncError::ForkChainNotLinked)
 }
 
 // Request a block from a remote sync peer and attempt to add it to the local blockchain.
 async fn request_and_add_block<B: BlockchainBackend + 'static>(
-    db: &BlockchainDatabase<B>,
-    comms: &mut OutboundNodeCommsInterface,
-    config: &BlockSyncConfig,
-    sync_peers: &[NodeId],
+    shared: &mut BaseNodeStateMachine<B>,
+    sync_peers: &mut Vec<NodeId>,
     height: u64,
 ) -> Result<(), BlockSyncError>
 {
+    let config = shared.config.block_sync_config;
     for attempt in 0..config.max_add_block_retry_attempts {
-        let block = request_block(comms, config, sync_peers, height).await?;
+        let (block, sync_peer) = request_block(shared, sync_peers, height).await?;
         let block_hash = block.hash();
-        match db.add_block(block.clone()) {
+        match shared.db.add_block(block.clone()) {
             Ok(_) => {
                 info!(
                     target: LOG_TARGET,
@@ -291,6 +288,7 @@ async fn request_and_add_block<B: BlockchainBackend + 'static>(
                     "Invalid block {} received from peer. Retrying",
                     block_hash.to_hex(),
                 );
+                ban_sync_peer(shared, sync_peers, sync_peer.clone()).await?;
             },
             Err(ChainStorageError::ValidationError(_)) => {
                 warn!(
@@ -298,6 +296,7 @@ async fn request_and_add_block<B: BlockchainBackend + 'static>(
                     "Validation on block {} from peer failed. Retrying",
                     block_hash.to_hex(),
                 );
+                ban_sync_peer(shared, sync_peers, sync_peer.clone()).await?;
             },
             Err(e) => return Err(BlockSyncError::ChainStorageError(e)),
         }
@@ -307,39 +306,46 @@ async fn request_and_add_block<B: BlockchainBackend + 'static>(
 }
 
 // Request a block from a remote sync peer.
-async fn request_block(
-    comms: &mut OutboundNodeCommsInterface,
-    config: &BlockSyncConfig,
-    sync_peers: &[NodeId],
+async fn request_block<B: BlockchainBackend + 'static>(
+    shared: &mut BaseNodeStateMachine<B>,
+    sync_peers: &mut Vec<NodeId>,
     height: u64,
-) -> Result<Block, BlockSyncError>
+) -> Result<(Block, NodeId), BlockSyncError>
 {
+    let config = shared.config.block_sync_config;
     for attempt in 1..=config.max_block_request_retry_attempts {
-        let selected_sync_peer = select_sync_peer(config, sync_peers);
-        let peer_note = selected_sync_peer
-            .as_ref()
-            .map(|p| p.to_string())
-            .unwrap_or_else(|| "a random peer".into());
-        trace!(target: LOG_TARGET, "Requesting block {} from {}.", height, peer_note);
-        match comms
-            .request_blocks_from_peer(vec![height], selected_sync_peer.clone())
+        let sync_peer = select_sync_peer(&config, sync_peers)?;
+        trace!(target: LOG_TARGET, "Requesting block {} from {}.", height, sync_peer);
+        match shared
+            .comms
+            .request_blocks_from_peer(vec![height], Some(sync_peer.clone()))
             .await
         {
             Ok(blocks) => {
                 debug!(target: LOG_TARGET, "Received {} blocks from peer", blocks.len());
-                if let Some(hist_block) = blocks.first() {
-                    let block = hist_block.block();
-                    trace!(target: LOG_TARGET, "{}", block);
-                    if block.header.height == height {
-                        return Ok(block.clone());
-                    } else {
+                match blocks.first() {
+                    Some(hist_block) => {
+                        let block = hist_block.block();
+                        trace!(target: LOG_TARGET, "{}", block);
+                        if block.header.height == height {
+                            return Ok((block.clone(), sync_peer.clone()));
+                        } else {
+                            debug!(
+                                target: LOG_TARGET,
+                                "This was NOT the block we were expecting. Expected {}. Got {}",
+                                height,
+                                block.header.height
+                            );
+                            ban_sync_peer(shared, sync_peers, sync_peer.clone()).await?;
+                        }
+                    },
+                    None => {
                         debug!(
                             target: LOG_TARGET,
-                            "This was NOT the block we were expecting. Expected {}. Got {}",
-                            height,
-                            block.header.height
+                            "Remote node provided an empty response. Expected {}.", height,
                         );
-                    }
+                        ban_sync_peer(shared, sync_peers, sync_peer.clone()).await?;
+                    },
                 }
             },
             Err(e) => {
@@ -355,45 +361,43 @@ async fn request_block(
 }
 
 // Request a header from a remote sync peer.
-async fn request_header(
-    comms: &mut OutboundNodeCommsInterface,
-    config: &BlockSyncConfig,
-    sync_peers: &[NodeId],
+async fn request_header<B: BlockchainBackend + 'static>(
+    shared: &mut BaseNodeStateMachine<B>,
+    sync_peers: &mut Vec<NodeId>,
     height: u64,
-) -> Result<BlockHeader, BlockSyncError>
+) -> Result<(BlockHeader, NodeId), BlockSyncError>
 {
-    if let Some(header) = request_headers(comms, config, sync_peers, &[height]).await?.first() {
-        return Ok(header.clone());
+    let (headers, sync_peer) = request_headers(shared, sync_peers, &[height]).await?;
+    if let Some(header) = headers.first() {
+        return Ok((header.clone(), sync_peer));
     }
     Err(BlockSyncError::MaxRequestAttemptsReached)
 }
 
 // Request a set of headers from a remote sync peer.
-async fn request_headers(
-    comms: &mut OutboundNodeCommsInterface,
-    config: &BlockSyncConfig,
-    sync_peers: &[NodeId],
+async fn request_headers<B: BlockchainBackend + 'static>(
+    shared: &mut BaseNodeStateMachine<B>,
+    sync_peers: &mut Vec<NodeId>,
     block_nums: &[u64],
-) -> Result<Vec<BlockHeader>, BlockSyncError>
+) -> Result<(Vec<BlockHeader>, NodeId), BlockSyncError>
 {
+    let config = shared.config.block_sync_config;
     for attempt in 1..=config.max_header_request_retry_attempts {
-        let selected_sync_peer = select_sync_peer(config, sync_peers);
-        let peer_note = selected_sync_peer
-            .as_ref()
-            .map(|p| p.to_string())
-            .unwrap_or_else(|| "a random peer".into());
-        trace!(target: LOG_TARGET, "Requesting headers from {}.", peer_note);
-        match comms
-            .request_headers_from_peer(block_nums.to_vec(), selected_sync_peer.clone())
+        let sync_peer = select_sync_peer(&config, sync_peers)?;
+        trace!(target: LOG_TARGET, "Requesting headers from {}.", sync_peer);
+        match shared
+            .comms
+            .request_headers_from_peer(block_nums.to_vec(), Some(sync_peer.clone()))
             .await
         {
             Ok(headers) => {
                 debug!(target: LOG_TARGET, "Received {} headers from peer", headers.len());
                 if block_nums.len() == headers.len() {
                     if (0..block_nums.len()).all(|i| headers[i].height == block_nums[i]) {
-                        return Ok(headers);
+                        return Ok((headers, sync_peer));
                     } else {
                         debug!(target: LOG_TARGET, "This was NOT the headers we were expecting.");
+                        ban_sync_peer(shared, sync_peers, sync_peer.clone()).await?;
                     }
                 } else {
                     debug!(
@@ -402,6 +406,7 @@ async fn request_headers(
                         block_nums.len(),
                         headers.len()
                     );
+                    ban_sync_peer(shared, sync_peers, sync_peer.clone()).await?;
                 }
             },
             Err(e) => {
@@ -417,20 +422,16 @@ async fn request_headers(
 }
 
 // Request the updated tip height from a remote sync peer.
-async fn request_network_tip_height(
-    comms: &mut OutboundNodeCommsInterface,
-    config: &BlockSyncConfig,
+async fn request_network_tip_height<B: BlockchainBackend + 'static>(
+    shared: &mut BaseNodeStateMachine<B>,
     sync_peers: &[NodeId],
 ) -> Result<u64, BlockSyncError>
 {
+    let config = shared.config.block_sync_config;
     for attempt in 1..=config.max_metadata_request_retry_attempts {
-        let selected_sync_peer = select_sync_peer(config, sync_peers);
-        let peer_note = selected_sync_peer
-            .as_ref()
-            .map(|p| p.to_string())
-            .unwrap_or_else(|| "a random peer".into());
-        trace!(target: LOG_TARGET, "Requesting updated metadata from {}.", peer_note);
-        match comms.request_metadata_from_peer(selected_sync_peer.clone()).await {
+        let sync_peer = select_sync_peer(&config, sync_peers)?;
+        trace!(target: LOG_TARGET, "Requesting updated metadata from {}.", sync_peer);
+        match shared.comms.request_metadata_from_peer(Some(sync_peer.clone())).await {
             Ok(metadata) => {
                 debug!(target: LOG_TARGET, "Received updated metadata from peer");
                 if let Some(network_tip_height) = metadata.height_of_longest_chain {
@@ -454,13 +455,44 @@ async fn request_network_tip_height(
 
 // Selects the first sync peer or a random peer from the set of sync peers that have the current network tip depending
 // on the selected configuration.
-fn select_sync_peer(config: &BlockSyncConfig, sync_peers: &[NodeId]) -> Option<NodeId> {
+fn select_sync_peer(config: &BlockSyncConfig, sync_peers: &[NodeId]) -> Result<NodeId, BlockSyncError> {
     if config.random_sync_peer_with_chain {
         sync_peers.choose(&mut rand::thread_rng())
     } else {
         sync_peers.first()
     }
     .map(Clone::clone)
+    .ok_or(BlockSyncError::NoSyncPeers)
+}
+
+// Ban and disconnect the provided sync peer.
+async fn ban_sync_peer<B: BlockchainBackend + 'static>(
+    shared: &mut BaseNodeStateMachine<B>,
+    sync_peers: &mut Vec<NodeId>,
+    sync_peer: NodeId,
+) -> Result<(), BlockSyncError>
+{
+    warn!(target: LOG_TARGET, "Banning peer {} from local node.", sync_peer);
+    sync_peers.retain(|p| *p != sync_peer);
+    let peer = shared.peer_manager.find_by_node_id(&sync_peer).await?;
+    shared.peer_manager.set_banned(&peer.public_key, true).await?;
+    shared.connection_manager.disconnect_peer(sync_peer).await??;
+    if sync_peers.is_empty() {
+        return Err(BlockSyncError::NoSyncPeers);
+    }
+    Ok(())
+}
+
+// Ban and disconnect entire set of sync peers.
+async fn ban_all_sync_peers<B: BlockchainBackend + 'static>(
+    shared: &mut BaseNodeStateMachine<B>,
+    sync_peers: &mut Vec<NodeId>,
+) -> Result<(), BlockSyncError>
+{
+    while !sync_peers.is_empty() {
+        ban_sync_peer(shared, sync_peers, sync_peers[0].clone()).await?;
+    }
+    Ok(())
 }
 
 /// State management for BlockSync -> Listening.
