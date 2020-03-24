@@ -1237,7 +1237,9 @@ where
     {
         let completed_tx = self.db.get_completed_transaction(tx_id.clone()).await?;
 
-        if completed_tx.status != TransactionStatus::Broadcast || completed_tx.transaction.body.kernels().is_empty() {
+        if (completed_tx.status != TransactionStatus::Broadcast && completed_tx.status != TransactionStatus::Completed) ||
+            completed_tx.transaction.body.kernels().is_empty()
+        {
             return Err(TransactionServiceError::InvalidCompletedTransaction);
         }
 
@@ -1288,7 +1290,7 @@ where
     {
         let completed_tx = self.db.get_completed_transaction(tx_id.clone()).await?;
 
-        if completed_tx.status == TransactionStatus::Broadcast {
+        if completed_tx.status == TransactionStatus::Broadcast || completed_tx.status == TransactionStatus::Completed {
             info!(
                 target: LOG_TARGET,
                 "Transaction Mined? request timed out for TX_ID: {}", tx_id
@@ -1334,16 +1336,16 @@ where
                 return Ok(());
             },
         };
-        // If this transaction is still in the Broadcast State it should be upgraded to the Mined state
-        if completed_tx.status == TransactionStatus::Broadcast {
+        // If this transaction is still in the Broadcast or Completed State it should be upgraded to the Mined state
+        if completed_tx.status == TransactionStatus::Broadcast || completed_tx.status == TransactionStatus::Completed {
             // Confirm that all outputs were reported as mined for the transaction
             if response.len() != completed_tx.transaction.body.outputs().len() {
                 info!(
                     target: LOG_TARGET,
                     "Base node response received. TxId: {:?} not mined yet. ({} outputs requested but {} returned)",
                     tx_id,
-                    response.len(),
                     completed_tx.transaction.body.outputs().len(),
+                    response.len(),
                 );
             } else {
                 let mut check = true;
@@ -1406,7 +1408,9 @@ where
         );
         let completed_txs = self.db.get_completed_transactions().await?;
         for completed_tx in completed_txs.values() {
-            if completed_tx.status == TransactionStatus::Broadcast {
+            if completed_tx.status == TransactionStatus::Broadcast ||
+                completed_tx.status == TransactionStatus::Completed
+            {
                 self.send_transaction_mined_request(
                     completed_tx.tx_id.clone(),
                     self.config.initial_base_node_mined_timeout,
