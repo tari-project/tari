@@ -323,7 +323,7 @@ where
 
         // If there are any remaining Unspent Outputs we will move them to the invalid collection
         for (_k, v) in output_hashes {
-            debug!(
+            warn!(
                 target: LOG_TARGET,
                 "Output with value {} not returned from Base Node query and is thus being invalidated", v.value
             );
