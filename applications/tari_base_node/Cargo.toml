@@ -34,3 +34,4 @@ rustyline = "6.0"
 rustyline-derive = "0.3"
 strum = "0.18.0"
 strum_macros = "0.18.0"
+qrcode = { version = "0.12" }

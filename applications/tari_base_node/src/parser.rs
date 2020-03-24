@@ -23,6 +23,7 @@
 use super::LOG_TARGET;
 use crate::{builder::NodeContainer, utils};
 use log::*;
+use qrcode::{render::unicode, QrCode};
 use rustyline::{
     completion::Completer,
     error::ReadlineError,
@@ -558,10 +559,21 @@ impl Parser {
     fn process_whoami(&self) {
         println!("======== Wallet ==========");
         println!("{}", self.wallet_node_identity);
-        println!(
-            "Emoji ID: {}",
-            EmojiId::from_pubkey(&self.wallet_node_identity.public_key())
+        let emoji_id = EmojiId::from_pubkey(&self.wallet_node_identity.public_key());
+        println!("Emoji ID: {}", emoji_id);
+        println!();
+        // TODO: Pass the network in as a var
+        let qr_link = format!(
+            "tari://rincewind/pubkey/{}",
+            &self.wallet_node_identity.public_key().to_hex()
         );
+        let code = QrCode::new(qr_link).unwrap();
+        let image = code
+            .render::<unicode::Dense1x2>()
+            .dark_color(unicode::Dense1x2::Dark)
+            .light_color(unicode::Dense1x2::Light)
+            .build();
+        println!("{}", image);
         println!();
         println!("======== Base Node ==========");
         println!("{}", self.base_node_identity);
