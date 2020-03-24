@@ -272,6 +272,16 @@ where DS: KeyValueStore<PeerId, Peer>
         query.executor(&self.peer_db).get_results()
     }
 
+    /// Return all peers
+    pub fn all(&self) -> Result<Vec<Peer>, PeerManagerError> {
+        let mut peers = Vec::with_capacity(self.peer_db.size()?);
+        self.peer_db.for_each_ok(|(_, peer)| {
+            peers.push(peer);
+            IterationResult::Continue
+        })?;
+        Ok(peers)
+    }
+
     /// Compile a list of all known peers
     pub fn flood_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_db

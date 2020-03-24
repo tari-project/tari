@@ -86,7 +86,7 @@ where
     }
 
     fn call(&mut self, msg: R) -> Self::Future {
-        trace!(target: LOG_TARGET, "{}{}", self.prefix_msg, msg);
+        debug!(target: LOG_TARGET, "{}{}", self.prefix_msg, msg);
         let mut inner = self.inner.clone();
         async move {
             inner.ready().await?;

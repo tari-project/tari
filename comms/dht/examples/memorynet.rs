@@ -36,12 +36,15 @@
 //! `RUST_BACKTRACE=1 RUST_LOG=trace cargo run --example memorynet 2> /tmp/debug.log`
 
 // Size of network
-const NUM_NODES: usize = 15;
+const NUM_NODES: usize = 40;
 // Must be at least 2
 const NUM_WALLETS: usize = 8;
 
+mod memory_net;
+
 use futures::{channel::mpsc, future, StreamExt};
 use lazy_static::lazy_static;
+use memory_net::DrainBurst;
 use rand::{rngs::OsRng, Rng};
 use std::{
     collections::HashMap,
@@ -56,6 +59,7 @@ use tari_comms::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerStorage},
     pipeline,
     pipeline::SinkService,
+    protocol::messaging::MessagingEvent,
     transports::MemoryTransport,
     types::CommsDatabase,
     CommsBuilder,
@@ -64,10 +68,14 @@ use tari_comms::{
     PeerConnection,
 };
 use tari_comms_dht::{envelope::NodeDestination, inbound::DecryptedDhtMessage, Dht, DhtBuilder};
+use tari_crypto::tari_utilities::ByteArray;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tari_test_utils::{paths::create_temporary_data_path, random};
 use tokio::{runtime, time};
 use tower::ServiceBuilder;
+
+type MessagingEventRx = mpsc::UnboundedReceiver<(NodeId, NodeId)>;
+type MessagingEventTx = mpsc::UnboundedSender<(NodeId, NodeId)>;
 
 macro_rules! banner {
     ($($arg: tt)*) => {
@@ -102,6 +110,15 @@ fn get_name(node_id: &NodeId) -> String {
         .unwrap_or_else(|| format!("NoName ({})", node_id.short_str()))
 }
 
+fn get_short_name(node_id: &NodeId) -> String {
+    NAME_MAP
+        .lock()
+        .unwrap()
+        .get(node_id)
+        .map(|name| format!("{}", name))
+        .unwrap_or_else(|| format!("NoName ({})", node_id.short_str()))
+}
+
 fn get_next_name() -> String {
     let pos = {
         let mut i = NAME_POS.lock().unwrap();
@@ -115,7 +132,7 @@ fn get_next_name() -> String {
     }
 }
 
-#[tokio_macros::main_basic]
+#[tokio_macros::main]
 async fn main() {
     env_logger::init();
 
@@ -125,10 +142,19 @@ async fn main() {
         NUM_WALLETS
     );
 
-    let mut seed_node = make_node(PeerFeatures::COMMUNICATION_NODE, None).await;
+    let (messaging_events_tx, mut messaging_events_rx) = mpsc::unbounded();
+
+    let mut seed_node = make_node(PeerFeatures::COMMUNICATION_NODE, None, messaging_events_tx.clone()).await;
 
     let mut nodes = future::join_all(
-        repeat_with(|| make_node(PeerFeatures::COMMUNICATION_NODE, Some(seed_node.to_peer()))).take(NUM_NODES),
+        repeat_with(|| {
+            make_node(
+                PeerFeatures::COMMUNICATION_NODE,
+                Some(seed_node.to_peer()),
+                messaging_events_tx.clone(),
+            )
+        })
+        .take(NUM_NODES),
     )
     .await;
 
@@ -137,6 +163,7 @@ async fn main() {
             make_node(
                 PeerFeatures::COMMUNICATION_CLIENT,
                 Some(nodes[OsRng.gen_range(0, NUM_NODES - 1)].to_peer()),
+                messaging_events_tx.clone(),
             )
         })
         .take(NUM_WALLETS),
@@ -155,6 +182,8 @@ async fn main() {
     }
 
     take_a_break().await;
+
+    peer_list_summary(&nodes).await;
 
     banner!(
         "Now, {} wallets are going to join from a random base node.",
@@ -179,13 +208,63 @@ async fn main() {
         println!();
     }
 
-    take_a_break().await;
+    peer_list_summary(&wallets).await;
 
+    drain_messaging_events(&mut messaging_events_rx, false).await;
+    take_a_break().await;
+    drain_messaging_events(&mut messaging_events_rx, false).await;
+
+    discovery(&wallets, &mut messaging_events_rx, false, false).await;
+
+    take_a_break().await;
+    drain_messaging_events(&mut messaging_events_rx, true).await;
+
+    discovery(&wallets, &mut messaging_events_rx, true, false).await;
+
+    take_a_break().await;
+    drain_messaging_events(&mut messaging_events_rx, true).await;
+
+    discovery(&wallets, &mut messaging_events_rx, false, true).await;
+
+    banner!("That's it folks! Network is shutting down...");
+
+    shutdown_all(nodes).await;
+    shutdown_all(wallets).await;
+}
+
+async fn shutdown_all(nodes: Vec<TestNode>) {
+    let tasks = nodes.into_iter().map(|node| node.comms.shutdown());
+    future::join_all(tasks).await;
+}
+
+async fn discovery(
+    wallets: &[TestNode],
+    messaging_events_rx: &mut MessagingEventRx,
+    use_network_region: bool,
+    use_destination_node_id: bool,
+)
+{
+    let mut successes = 0;
     for i in 0..wallets.len() - 1 {
         let wallet1 = wallets.get(i).unwrap();
         let wallet2 = wallets.get(i + 1).unwrap();
 
         banner!("Now, '{}' is going to try discover '{}'.", wallet1, wallet2);
+
+        let mut destination = NodeDestination::Unknown;
+        if use_network_region {
+            let mut new_node_id = [0; 13];
+            let node_id = wallet2.get_node_id();
+            let buf = &mut new_node_id[..10];
+            buf.copy_from_slice(&node_id.as_bytes()[..10]);
+            let regional_node_id = NodeId::from_bytes(&new_node_id).unwrap();
+            destination = NodeDestination::NodeId(Box::new(regional_node_id));
+        }
+
+        let mut node_id_dest = None;
+        if use_destination_node_id {
+            node_id_dest = Some(wallet2.get_node_id());
+        }
 
         let start = Instant::now();
         let discovery_result = wallet1
@@ -193,8 +272,8 @@ async fn main() {
             .discovery_service_requester()
             .discover_peer(
                 Box::new(wallet2.node_identity().public_key().clone()),
-                None,
-                NodeDestination::Unknown,
+                node_id_dest,
+                destination,
             )
             .await;
 
@@ -203,6 +282,7 @@ async fn main() {
 
         match discovery_result {
             Ok(peer) => {
+                successes += 1;
                 println!(
                     "⚡️🎉😎 '{}' discovered peer '{}' ({}) in {}ms",
                     wallet1,
@@ -210,6 +290,10 @@ async fn main() {
                     peer,
                     (end - start).as_millis()
                 );
+
+                println!();
+                time::delay_for(Duration::from_secs(5)).await;
+                drain_messaging_events(messaging_events_rx, false).await;
             },
             Err(err) => {
                 println!(
@@ -219,37 +303,85 @@ async fn main() {
                     (end - start).as_millis(),
                     err
                 );
+
+                println!();
+                time::delay_for(Duration::from_secs(5)).await;
+                drain_messaging_events(messaging_events_rx, true).await;
             },
         }
     }
 
-    banner!("We're done here. Network is shutting down...");
-
-    shutdown_all(nodes).await;
-    shutdown_all(wallets).await;
+    banner!(
+        "✨ The set of discoveries succeeded {}% of the time.",
+        (successes as f32 / wallets.len() as f32) * 100.0
+    );
 }
 
-async fn shutdown_all(nodes: Vec<TestNode>) {
-    let tasks = nodes.into_iter().map(|node| async move {
-        let node_name = node.name;
-        node.comms.shutdown().await;
-        println!("'{}' is shut down", node_name);
-    });
-    future::join_all(tasks).await;
+async fn peer_list_summary(network: &[TestNode]) {
+    for node in network {
+        let peers = node.comms.peer_manager().all().await.unwrap();
+        println!("-----------------------------------------");
+        println!("{} knows {} peer(s):", node, peers.len());
+        println!(
+            "  {}",
+            peers
+                .iter()
+                .map(|p| &p.node_id)
+                .map(get_name)
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        println!("-----------------------------------------");
+    }
 }
 
-fn event_logger(node_name: String) -> impl FnMut(Arc<ConnectionManagerEvent>) -> Arc<ConnectionManagerEvent> {
+async fn drain_messaging_events(messaging_rx: &mut MessagingEventRx, show_logs: bool) {
+    let drain_fut = DrainBurst::new(messaging_rx);
+    if show_logs {
+        let messages = drain_fut.await;
+        let num_messages = messages.len();
+        let mut node_id_buf = Vec::new();
+        let mut last_from_node = None;
+        for (from_node, to_node) in &messages {
+            match &last_from_node {
+                Some(node_id) if *node_id == from_node => {
+                    node_id_buf.push(to_node);
+                },
+                Some(_) => {
+                    println!(
+                        "📨 {} sent {} messages to {}️",
+                        get_short_name(last_from_node.take().unwrap()),
+                        node_id_buf.len(),
+                        node_id_buf.drain(..).map(get_short_name).collect::<Vec<_>>().join(", ")
+                    );
+                },
+                None => {
+                    last_from_node = Some(from_node);
+                    node_id_buf.push(to_node)
+                },
+            }
+        }
+        println!("{} messages sent between nodes", num_messages);
+    } else {
+        let _ = drain_fut.await;
+    }
+}
+
+fn connection_manager_logger(
+    node_id: NodeId,
+) -> impl FnMut(Arc<ConnectionManagerEvent>) -> Arc<ConnectionManagerEvent> {
+    let node_name = get_name(&node_id);
     move |event| {
         use ConnectionManagerEvent::*;
         print!("EVENT: ");
         match &*event {
             PeerConnected(conn) => match conn.direction() {
                 ConnectionDirection::Inbound => {
-                    println!(
-                        "'{}' got inbound connection from '{}'",
-                        node_name,
-                        get_name(conn.peer_node_id()),
-                    );
+                    // println!(
+                    //     "'{}' got inbound connection from '{}'",
+                    //     node_name,
+                    //     get_name(conn.peer_node_id()),
+                    // );
                 },
                 ConnectionDirection::Outbound => {
                     println!("'{}' connected to '{}'", node_name, get_name(conn.peer_node_id()),);
@@ -299,7 +431,7 @@ struct TestNode {
     comms: CommsNode,
     seed_peer: Option<Peer>,
     dht: Dht,
-    events_rx: mpsc::Receiver<Arc<ConnectionManagerEvent>>,
+    conn_man_events_rx: mpsc::Receiver<Arc<ConnectionManagerEvent>>,
     _ims_rx: mpsc::Receiver<DecryptedDhtMessage>,
 }
 
@@ -309,13 +441,14 @@ impl TestNode {
         dht: Dht,
         seed_peer: Option<Peer>,
         ims_rx: mpsc::Receiver<DecryptedDhtMessage>,
+        messaging_events_tx: MessagingEventTx,
     ) -> Self
     {
         let name = get_next_name();
         register_name(comms.node_identity().node_id().clone(), name.clone());
 
-        let (events_tx, events_rx) = mpsc::channel(100);
-        Self::spawn_event_monitor(&comms, events_tx);
+        let (conn_man_events_tx, events_rx) = mpsc::channel(100);
+        Self::spawn_event_monitor(&comms, conn_man_events_tx, messaging_events_tx);
 
         Self {
             name,
@@ -323,19 +456,44 @@ impl TestNode {
             comms,
             dht,
             _ims_rx: ims_rx,
-            events_rx,
+            conn_man_events_rx: events_rx,
         }
     }
 
-    fn spawn_event_monitor(comms: &CommsNode, events_tx: mpsc::Sender<Arc<ConnectionManagerEvent>>) {
-        let subscription = comms.subscribe_connection_manager_events();
-        runtime::Handle::current().spawn(
-            subscription
+    fn spawn_event_monitor(
+        comms: &CommsNode,
+        events_tx: mpsc::Sender<Arc<ConnectionManagerEvent>>,
+        messaging_events_tx: MessagingEventTx,
+    )
+    {
+        let conn_man_event_sub = comms.subscribe_connection_manager_events();
+        let messaging_events = comms.subscribe_messaging_events();
+        let spawner = runtime::Handle::current();
+
+        spawner.spawn(
+            conn_man_event_sub
                 .filter(|r| future::ready(r.is_ok()))
                 .map(Result::unwrap)
-                .map(event_logger(get_name(comms.node_identity().node_id())))
+                .map(connection_manager_logger(comms.node_identity().node_id().clone()))
                 .map(Ok)
                 .forward(events_tx),
+        );
+
+        let node_id = comms.node_identity().node_id().clone();
+
+        spawner.spawn(
+            messaging_events
+                .filter(|r| future::ready(r.is_ok()))
+                .map(Result::unwrap)
+                .filter_map(move |event| {
+                    use MessagingEvent::*;
+                    future::ready(match &*event {
+                        MessageReceived(peer_node_id, _) => Some((Clone::clone(&**peer_node_id), node_id.clone())),
+                        _ => None,
+                    })
+                })
+                .map(Ok)
+                .forward(messaging_events_tx),
         );
     }
 
@@ -357,7 +515,7 @@ impl TestNode {
     pub async fn expect_peer_connection(&mut self, node_id: &NodeId) -> Option<PeerConnection> {
         use ConnectionManagerEvent::*;
         loop {
-            let event = time::timeout(Duration::from_secs(10), self.events_rx.next())
+            let event = time::timeout(Duration::from_secs(10), self.conn_man_events_rx.next())
                 .await
                 .ok()??;
 
@@ -402,7 +560,7 @@ fn create_peer_storage(peers: Vec<Peer>) -> CommsDatabase {
     storage.into()
 }
 
-async fn make_node(features: PeerFeatures, seed_peer: Option<Peer>) -> TestNode {
+async fn make_node(features: PeerFeatures, seed_peer: Option<Peer>, messaging_events_tx: MessagingEventTx) -> TestNode {
     let node_identity = make_node_identity(features);
 
     let (tx, ims_rx) = mpsc::channel(1);
@@ -413,7 +571,7 @@ async fn make_node(features: PeerFeatures, seed_peer: Option<Peer>) -> TestNode 
     )
     .await;
 
-    TestNode::new(comms, dht, seed_peer, ims_rx)
+    TestNode::new(comms, dht, seed_peer, ims_rx, messaging_events_tx)
 }
 
 async fn setup_comms_dht(
@@ -432,7 +590,7 @@ async fn setup_comms_dht(
         .with_transport(MemoryTransport)
         .with_node_identity(node_identity)
         .with_peer_storage(storage)
-        .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(100)))
+        .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(1000)))
         .build()
         .unwrap();
 
