@@ -51,8 +51,9 @@ pub use builder::{BuiltCommsNode, CommsBuilder, CommsBuilderError, CommsNode};
 // Re-exports
 pub use bytes::Bytes;
 
-#[cfg(test)]
-pub(crate) mod test_utils;
+// TODO: Test utils should be part of a `tari_comms_test` crate
+// #[cfg(test)]
+pub mod test_utils;
 
 pub mod multiaddr {
     // Re-export so that client code does not have to have multiaddr as a dependency

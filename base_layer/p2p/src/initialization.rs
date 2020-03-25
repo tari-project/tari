@@ -121,6 +121,7 @@ where
         comms.node_identity(),
         comms.peer_manager(),
         outbound_tx,
+        comms.connection_manager_requester(),
         comms.shutdown_signal(),
     )
     .local_test()
@@ -277,6 +278,7 @@ where
         comms.node_identity(),
         comms.peer_manager(),
         outbound_tx,
+        comms.connection_manager_requester(),
         comms.shutdown_signal(),
     )
     .with_config(config.dht)
