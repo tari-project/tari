@@ -465,6 +465,8 @@ where
     let node = BaseNodeStateMachine::new(
         &db,
         &outbound_interface,
+        base_node_comms.peer_manager(),
+        base_node_comms.connection_manager(),
         chain_metadata_service.get_event_stream(),
         BaseNodeStateMachineConfig::default(),
         interrupt_signal,

@@ -25,14 +25,15 @@ use crate::{
         chain_metadata_service::ChainMetadataEvent,
         comms_interface::OutboundNodeCommsInterface,
         states,
-        states::{BaseNodeState, BlockSyncConfig, ListeningConfig, StateEvent},
+        states::{BaseNodeState, BlockSyncConfig, StateEvent},
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
 };
 use futures::{future, future::Either, SinkExt};
 use log::*;
-use std::future::Future;
+use std::{future::Future, sync::Arc};
 use tari_broadcast_channel::{bounded, Publisher, Subscriber};
+use tari_comms::{connection_manager::ConnectionManagerRequester, PeerManager};
 use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &str = "c::bn::base_node";
@@ -41,14 +42,12 @@ const LOG_TARGET: &str = "c::bn::base_node";
 #[derive(Clone, Copy)]
 pub struct BaseNodeStateMachineConfig {
     pub block_sync_config: BlockSyncConfig,
-    pub listening_config: ListeningConfig,
 }
 
 impl Default for BaseNodeStateMachineConfig {
     fn default() -> Self {
         Self {
             block_sync_config: BlockSyncConfig::default(),
-            listening_config: ListeningConfig::default(),
         }
     }
 }
@@ -63,6 +62,8 @@ impl Default for BaseNodeStateMachineConfig {
 pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) db: BlockchainDatabase<B>,
     pub(super) comms: OutboundNodeCommsInterface,
+    pub(super) peer_manager: Arc<PeerManager>,
+    pub(super) connection_manager: ConnectionManagerRequester,
     pub(super) metadata_event_stream: Subscriber<ChainMetadataEvent>,
     pub(super) config: BaseNodeStateMachineConfig,
     event_sender: Publisher<BaseNodeState>,
@@ -75,6 +76,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     pub fn new(
         db: &BlockchainDatabase<B>,
         comms: &OutboundNodeCommsInterface,
+        peer_manager: Arc<PeerManager>,
+        connection_manager: ConnectionManagerRequester,
         metadata_event_stream: Subscriber<ChainMetadataEvent>,
         config: BaseNodeStateMachineConfig,
         shutdown_signal: ShutdownSignal,
@@ -84,6 +87,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         Self {
             db: db.clone(),
             comms: comms.clone(),
+            peer_manager,
+            connection_manager,
             metadata_event_stream,
             interrupt_signal: shutdown_signal,
             config,

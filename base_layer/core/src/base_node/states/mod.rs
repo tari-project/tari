@@ -111,6 +111,6 @@ mod shutdown_state;
 mod starting_state;
 
 pub use block_sync::{BlockSyncConfig, BlockSyncInfo};
-pub use listening::{ListeningConfig, ListeningInfo};
+pub use listening::ListeningInfo;
 pub use shutdown_state::Shutdown;
 pub use starting_state::Starting;
