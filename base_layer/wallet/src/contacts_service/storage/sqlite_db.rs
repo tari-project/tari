@@ -56,7 +56,7 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
                 Err(e) => return Err(e),
             },
             DbKey::Contacts => Some(DbValue::Contacts(
-                ContactSql::index(&conn)?
+                ContactSql::index(&(*conn))?
                     .iter()
                     .map(|c| Contact::try_from(c.clone()))
                     .collect::<Result<Vec<_>, _>>()?,
