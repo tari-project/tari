@@ -3317,19 +3317,19 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
     match pending_transactions {
         Ok(pending_transactions) => {
             for (id, tx) in &pending_transactions {
-                if id == &transaction_id {
+                if id == &transaction_id && tx.status == TransactionStatus::Mined {
                     let pending = tx.clone();
                     return Box::into_raw(Box::new(pending));
                 }
             }
-            ptr::null_mut()
         },
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            ptr::null_mut()
         },
     }
+
+    ptr::null_mut()
 }
 
 /// Get the TariPendingInboundTransaction from a TariWallet by its' TransactionId
@@ -3364,6 +3364,28 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
         .runtime
         .block_on((*wallet).transaction_service.get_pending_inbound_transactions());
 
+    let completed_transactions = (*wallet)
+        .runtime
+        .block_on((*wallet).transaction_service.get_completed_transactions());
+
+    match completed_transactions {
+        Ok(completed_transactions) => {
+            for (id, tx) in &completed_transactions {
+                if id == &transaction_id &&
+                    (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed)
+                {
+                    let completed = tx.clone();
+                    let pending_tx = TariPendingInboundTransaction::from(completed).clone();
+                    return Box::into_raw(Box::new(pending_tx));
+                }
+            }
+        },
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+        },
+    }
+
     match pending_transactions {
         Ok(pending_transactions) => {
             for (id, tx) in &pending_transactions {
@@ -3372,14 +3394,14 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
                     return Box::into_raw(Box::new(pending));
                 }
             }
-            ptr::null_mut()
         },
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            ptr::null_mut()
         },
     }
+
+    ptr::null_mut()
 }
 
 /// Get the TariPendingOutboundTransaction from a TariWallet by its' TransactionId
@@ -3414,6 +3436,28 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
         .runtime
         .block_on((*wallet).transaction_service.get_pending_outbound_transactions());
 
+    let completed_transactions = (*wallet)
+        .runtime
+        .block_on((*wallet).transaction_service.get_completed_transactions());
+
+    match completed_transactions {
+        Ok(completed_transactions) => {
+            for (id, tx) in &completed_transactions {
+                if id == &transaction_id &&
+                    (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed)
+                {
+                    let completed = tx.clone();
+                    let pending_tx = TariPendingOutboundTransaction::from(completed).clone();
+                    return Box::into_raw(Box::new(pending_tx));
+                }
+            }
+        },
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+        },
+    }
+
     match pending_transactions {
         Ok(pending_transactions) => {
             for (id, tx) in &pending_transactions {
@@ -3422,14 +3466,14 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
                     return Box::into_raw(Box::new(pending));
                 }
             }
-            ptr::null_mut()
         },
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            ptr::null_mut()
         },
     }
+
+    ptr::null_mut()
 }
 
 /// Get the TariPublicKey from a TariWallet
@@ -4142,6 +4186,16 @@ mod test {
             let ffi_inbound_txs = wallet_get_pending_inbound_transactions(&mut (*alice_wallet), error_ptr);
             assert_eq!(pending_inbound_transactions_get_length(ffi_inbound_txs, error_ptr), 6);
 
+            let id_inbound = pending_inbound_transactions_get_at(&mut (*ffi_inbound_txs), 0, error_ptr);
+            let id_inbound_get = wallet_get_pending_inbound_transaction_by_id(
+                &mut (*alice_wallet),
+                (&mut (*id_inbound)).tx_id,
+                error_ptr,
+            );
+            assert_eq!((*id_inbound), (*id_inbound_get));
+            pending_inbound_transaction_destroy(&mut (*id_inbound));
+            pending_inbound_transaction_destroy(&mut (*id_inbound_get));
+
             let mut found_pending = false;
             for i in 0..pending_inbound_transactions_get_length(ffi_inbound_txs, error_ptr) {
                 let pending_tx = pending_inbound_transactions_get_at(ffi_inbound_txs, i, error_ptr);
@@ -4155,6 +4209,16 @@ mod test {
             // `wallet_test_generate_data(...)` creates 9 completed outbound transactions that are not mined
             let ffi_outbound_txs = wallet_get_pending_outbound_transactions(&mut (*alice_wallet), error_ptr);
             assert_eq!(pending_outbound_transactions_get_length(ffi_outbound_txs, error_ptr), 9);
+
+            let id_outbound = pending_outbound_transactions_get_at(&mut (*ffi_outbound_txs), 0, error_ptr);
+            let id_outbound_get = wallet_get_pending_outbound_transaction_by_id(
+                &mut (*alice_wallet),
+                (&mut (*id_outbound)).tx_id,
+                error_ptr,
+            );
+            assert_eq!((*id_outbound), (*id_outbound_get));
+            pending_outbound_transaction_destroy(&mut (*id_outbound));
+            pending_outbound_transaction_destroy(&mut (*id_outbound_get));
 
             let mut found_broadcast = false;
             for i in 0..pending_outbound_transactions_get_length(ffi_outbound_txs, error_ptr) {
@@ -4198,6 +4262,13 @@ mod test {
             // At this stage there is only 1 Mined transaction created by the `wallet_test_generate_data(...)` function
             let ffi_completed_txs = wallet_get_completed_transactions(&mut (*alice_wallet), error_ptr);
             assert_eq!(completed_transactions_get_length(ffi_completed_txs, error_ptr), 1);
+
+            let id_completed = completed_transactions_get_at(&mut (*ffi_completed_txs), 0, error_ptr);
+            let id_completed_get =
+                wallet_get_completed_transaction_by_id(&mut (*alice_wallet), (&mut (*id_completed)).tx_id, error_ptr);
+            assert_eq!((*id_completed), (*id_completed_get));
+            completed_transaction_destroy(&mut (*id_completed));
+            completed_transaction_destroy(&mut (*id_completed_get));
 
             // TODO: Test transaction collection and transaction methods
             let completed_transactions: std::collections::HashMap<
