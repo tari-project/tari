@@ -42,7 +42,8 @@ use tari_crypto::tari_utilities::hex::serialize_to_hex;
 bitflags! {
     #[derive(Default, Deserialize, Serialize)]
     pub struct PeerFlags: u8 {
-        const BANNED = 0b0000_0001;
+        const BANNED = 0x01;
+        const OFFLINE = 0x02;
     }
 }
 
@@ -126,12 +127,17 @@ impl Peer {
 
     /// Returns true if the last connection attempt has failed within the constant
     /// [PEER_OFFLINE_COOLDOWN_PERIOD](crate::consts::PEER_OFFLINE_COOLDOWN_PERIOD).
-    pub fn is_offline(&self) -> bool {
+    pub fn is_recently_offline(&self) -> bool {
         self.connection_stats.failed_attempts() > 1 &&
             self.connection_stats
                 .time_since_last_failure()
                 .map(|last_failure| last_failure <= PEER_OFFLINE_COOLDOWN_PERIOD)
                 .unwrap_or(false)
+    }
+
+    /// Returns true if the peer is marked as offline
+    pub fn is_offline(&self) -> bool {
+        self.flags.contains(PeerFlags::OFFLINE)
     }
 
     /// TODO: Remove once we don't have to sync wallet and base node db
@@ -194,9 +200,14 @@ impl Peer {
         self.flags.contains(PeerFlags::BANNED)
     }
 
-    /// Changes the ban flag bit of the peer
+    /// Changes the BANNED flag bit of the peer
     pub fn set_banned(&mut self, ban_flag: bool) {
         self.flags.set(PeerFlags::BANNED, ban_flag);
+    }
+
+    /// Changes the OFFLINE flag bit of the peer
+    pub fn set_offline(&mut self, is_offline: bool) {
+        self.flags.set(PeerFlags::OFFLINE, is_offline);
     }
 }
 

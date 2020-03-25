@@ -88,6 +88,7 @@ impl PeerManager {
         let mut storage = self.peer_storage.write().await;
         let mut peer = storage.find_by_node_id(node_id)?;
         peer.connection_stats.set_connection_success();
+        peer.flags.remove(PeerFlags::OFFLINE);
         storage.update_peer(
             &peer.public_key,
             None,
@@ -211,12 +212,17 @@ impl PeerManager {
             .in_network_region(node_id, region_node_id, n)
     }
 
-    /// Thread safe access to peer - Changes the ban flag bit of the peer
+    /// Changes the ban flag bit of the peer
     pub async fn set_banned(&self, public_key: &CommsPublicKey, ban_flag: bool) -> Result<NodeId, PeerManagerError> {
         self.peer_storage.write().await.set_banned(public_key, ban_flag)
     }
 
-    /// Thread safe access to peer - Adds a new net address to the peer if it doesn't yet exist
+    /// Changes the offline flag bit of the peer
+    pub async fn set_offline(&self, public_key: &CommsPublicKey, is_offline: bool) -> Result<NodeId, PeerManagerError> {
+        self.peer_storage.write().await.set_offline(public_key, is_offline)
+    }
+
+    /// Adds a new net address to the peer if it doesn't yet exist
     pub async fn add_net_address(&self, node_id: &NodeId, net_address: &Multiaddr) -> Result<(), PeerManagerError> {
         self.peer_storage.write().await.add_net_address(node_id, net_address)
     }

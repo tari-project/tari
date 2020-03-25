@@ -220,9 +220,9 @@ async fn dial_offline_peer() {
     );
 
     peer.connection_stats.set_connection_failed();
-    assert_eq!(peer.is_offline(), false);
+    assert_eq!(peer.is_recently_offline(), false);
     peer.connection_stats.set_connection_failed();
-    assert_eq!(peer.is_offline(), true);
+    assert_eq!(peer.is_recently_offline(), true);
 
     peer_manager.add_peer(peer).await.unwrap();
 

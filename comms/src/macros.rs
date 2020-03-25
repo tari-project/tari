@@ -141,3 +141,13 @@ macro_rules! log_if_error_fmt {
         log_if_error_fmt!(level:error, target: "$crate", $expr, $($args)+)
     }};
 }
+
+/// Add `#[cfg(test)]` attribute to items
+macro_rules! cfg_test {
+     ($($item:item)*) => {
+        $(
+            #[cfg(test)]
+            $item
+        )*
+    }
+}

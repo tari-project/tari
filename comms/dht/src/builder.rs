@@ -23,7 +23,10 @@
 use crate::{outbound::DhtOutboundRequest, Dht, DhtConfig};
 use futures::channel::mpsc;
 use std::{sync::Arc, time::Duration};
-use tari_comms::peer_manager::{NodeIdentity, PeerManager};
+use tari_comms::{
+    connection_manager::ConnectionManagerRequester,
+    peer_manager::{NodeIdentity, PeerManager},
+};
 use tari_shutdown::ShutdownSignal;
 
 pub struct DhtBuilder {
@@ -31,6 +34,7 @@ pub struct DhtBuilder {
     peer_manager: Arc<PeerManager>,
     config: DhtConfig,
     outbound_tx: mpsc::Sender<DhtOutboundRequest>,
+    connection_manager: ConnectionManagerRequester,
     shutdown_signal: ShutdownSignal,
 }
 
@@ -39,6 +43,7 @@ impl DhtBuilder {
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_tx: mpsc::Sender<DhtOutboundRequest>,
+        connection_manager: ConnectionManagerRequester,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
@@ -50,6 +55,7 @@ impl DhtBuilder {
             node_identity,
             peer_manager,
             outbound_tx,
+            connection_manager,
             shutdown_signal,
         }
     }
@@ -103,6 +109,7 @@ impl DhtBuilder {
             self.node_identity,
             self.peer_manager,
             self.outbound_tx,
+            self.connection_manager,
             self.shutdown_signal,
         )
     }

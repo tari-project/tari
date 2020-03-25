@@ -34,15 +34,12 @@ use crate::{
     proto::envelope::Envelope,
     protocol::{messaging::SendFailReason, ProtocolEvent, ProtocolNotification},
     test_utils::{
-        create_connection_manager_mock,
-        create_peer_connection_mock_pair,
+        mocks::{create_connection_manager_mock, create_peer_connection_mock_pair, ConnectionManagerMockState},
         node_id,
         node_identity::build_node_identity,
-        peer_manager::build_peer_manager,
         transport,
-        ConnectionManagerMockState,
     },
-    types::{CommsPublicKey, CommsSubstream},
+    types::{CommsDatabase, CommsPublicKey, CommsSubstream},
 };
 use bytes::Bytes;
 use futures::{channel::mpsc, SinkExt, StreamExt};
@@ -75,7 +72,7 @@ async fn spawn_messaging_protocol() -> (
     let mock_state = mock.get_shared_state();
     rt_handle.spawn(mock.run());
 
-    let peer_manager: Arc<PeerManager> = build_peer_manager().into();
+    let peer_manager = PeerManager::new(CommsDatabase::new()).map(Arc::new).unwrap();
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_CLIENT);
     let (proto_tx, proto_rx) = mpsc::channel(10);
     let (request_tx, request_rx) = mpsc::channel(100);

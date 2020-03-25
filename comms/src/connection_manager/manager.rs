@@ -567,7 +567,7 @@ where
     {
         match self.peer_manager.find_by_node_id(&node_id).await {
             Ok(peer) => {
-                if !force_dial && peer.is_offline() {
+                if !force_dial && peer.is_recently_offline() {
                     debug!(
                         target: LOG_TARGET,
                         "Peer '{}' is offline (i.e. we failed to connect to them recently).",

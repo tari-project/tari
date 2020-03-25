@@ -598,6 +598,7 @@ async fn setup_comms_dht(
         comms.node_identity(),
         comms.peer_manager(),
         outbound_tx,
+        comms.connection_manager_requester(),
         comms.shutdown_signal(),
     )
     .local_test()

@@ -451,18 +451,19 @@ impl<'a> DhtActor<'a> {
                 }
 
                 let is_connect_eligible = {
+                    !peer.is_offline() &&
                     // Check this peer was recently connectable
-                    peer.connection_stats.failed_attempts() <= config.broadcast_cooldown_max_attempts ||
+                        (peer.connection_stats.failed_attempts() <= config.broadcast_cooldown_max_attempts ||
                         peer.connection_stats
                             .time_since_last_failure()
                             .map(|failed_since| failed_since >= config.broadcast_cooldown_period)
-                            .unwrap_or(true)
+                            .unwrap_or(true))
                 };
 
                 if !is_connect_eligible {
                     trace!(
                         target: LOG_TARGET,
-                        "[{}] suffered too many connection attempt failures",
+                        "[{}] suffered too many connection attempt failures or is offline",
                         peer.node_id
                     );
                     connect_ineligable_count += 1;

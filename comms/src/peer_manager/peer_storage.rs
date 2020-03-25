@@ -407,7 +407,7 @@ where DS: KeyValueStore<PeerId, Peer>
         Ok(region2node_dist <= dists[last_index])
     }
 
-    /// Enables Thread safe access - Changes the ban flag bit of the peer
+    /// Changes the ban flag bit of the peer
     pub fn set_banned(&mut self, public_key: &CommsPublicKey, ban_flag: bool) -> Result<NodeId, PeerManagerError> {
         let peer_key = *self
             .public_key_index
@@ -419,6 +419,25 @@ where DS: KeyValueStore<PeerId, Peer>
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
         peer.set_banned(ban_flag);
+        let node_id = peer.node_id.clone();
+        self.peer_db
+            .insert(peer_key, peer)
+            .map_err(PeerManagerError::DatabaseError)?;
+        Ok(node_id)
+    }
+
+    /// Changes the OFFLINE flag bit of the peer
+    pub fn set_offline(&mut self, public_key: &CommsPublicKey, ban_flag: bool) -> Result<NodeId, PeerManagerError> {
+        let peer_key = *self
+            .public_key_index
+            .get(&public_key)
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+        let mut peer: Peer = self
+            .peer_db
+            .get(&peer_key)
+            .map_err(PeerManagerError::DatabaseError)?
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+        peer.set_offline(ban_flag);
         let node_id = peer.node_id.clone();
         self.peer_db
             .insert(peer_key, peer)

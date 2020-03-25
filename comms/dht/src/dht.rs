@@ -39,6 +39,7 @@ use futures::{channel::mpsc, future, Future};
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
+    connection_manager::ConnectionManagerRequester,
     message::{InboundMessage, OutboundMessage},
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
     pipeline::PipelineError,
@@ -62,6 +63,8 @@ pub struct Dht {
     dht_sender: mpsc::Sender<DhtRequest>,
     /// Sender for DHT requests
     discovery_sender: mpsc::Sender<DhtDiscoveryRequest>,
+    /// Connection manager actor requester
+    connection_manager: ConnectionManagerRequester,
 }
 
 impl Dht {
@@ -70,6 +73,7 @@ impl Dht {
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_tx: mpsc::Sender<DhtOutboundRequest>,
+        connection_manager: ConnectionManagerRequester,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
@@ -82,6 +86,7 @@ impl Dht {
             config,
             outbound_tx,
             dht_sender,
+            connection_manager,
             discovery_sender,
         };
 
@@ -120,6 +125,7 @@ impl Dht {
             Arc::clone(&self.node_identity),
             Arc::clone(&self.peer_manager),
             self.outbound_requester(),
+            self.connection_manager.clone(),
             request_receiver,
             shutdown_signal,
         )
@@ -286,6 +292,7 @@ mod test {
     use tari_comms::{
         message::{MessageExt, MessageFlags},
         pipeline::SinkService,
+        test_utils::mocks::create_connection_manager_mock,
         wrap_in_envelope_body,
     };
     use tari_shutdown::Shutdown;
@@ -296,14 +303,21 @@ mod test {
     async fn stack_unencrypted() {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
+        let (connection_manager, _) = create_connection_manager_mock(1);
 
         // Dummy out channel, we are not testing outbound here.
         let (out_tx, _) = mpsc::channel(10);
 
         let shutdown = Shutdown::new();
-        let dht = DhtBuilder::new(Arc::clone(&node_identity), peer_manager, out_tx, shutdown.to_signal())
-            .local_test()
-            .finish();
+        let dht = DhtBuilder::new(
+            Arc::clone(&node_identity),
+            peer_manager,
+            out_tx,
+            connection_manager,
+            shutdown.to_signal(),
+        )
+        .local_test()
+        .finish();
 
         let (out_tx, mut out_rx) = mpsc::channel(10);
 
@@ -337,12 +351,20 @@ mod test {
     async fn stack_encrypted() {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
+        let (connection_manager, _) = create_connection_manager_mock(1);
 
         // Dummy out channel, we are not testing outbound here.
         let (out_tx, _) = mpsc::channel(10);
 
         let shutdown = Shutdown::new();
-        let dht = DhtBuilder::new(Arc::clone(&node_identity), peer_manager, out_tx, shutdown.to_signal()).finish();
+        let dht = DhtBuilder::new(
+            Arc::clone(&node_identity),
+            peer_manager,
+            out_tx,
+            connection_manager,
+            shutdown.to_signal(),
+        )
+        .finish();
 
         let (out_tx, mut out_rx) = mpsc::channel(10);
 
@@ -375,12 +397,12 @@ mod test {
     #[cfg(not(target_os = "windows"))]
     #[tokio_macros::test_basic]
     async fn stack_forward() {
-        env_logger::init();
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
 
         let shutdown = Shutdown::new();
 
+        let (connection_manager, _) = create_connection_manager_mock(1);
         let (next_service_tx, mut next_service_rx) = mpsc::channel(10);
         let (oms_requester, oms_mock) = create_outbound_service_mock(1);
 
@@ -389,6 +411,7 @@ mod test {
             Arc::clone(&node_identity),
             peer_manager,
             oms_requester.get_mpsc_sender(),
+            connection_manager,
             shutdown.to_signal(),
         )
         .finish();
@@ -436,12 +459,20 @@ mod test {
     async fn stack_filter_saf_message() {
         let node_identity = make_client_identity();
         let peer_manager = make_peer_manager();
+        let (connection_manager, _) = create_connection_manager_mock(1);
 
         // Dummy out channel, we are not testing outbound here.
         let (out_tx, _) = mpsc::channel(10);
 
         let shutdown = Shutdown::new();
-        let dht = DhtBuilder::new(Arc::clone(&node_identity), peer_manager, out_tx, shutdown.to_signal()).finish();
+        let dht = DhtBuilder::new(
+            Arc::clone(&node_identity),
+            peer_manager,
+            out_tx,
+            connection_manager,
+            shutdown.to_signal(),
+        )
+        .finish();
 
         let (next_service_tx, mut next_service_rx) = mpsc::channel(10);
 
