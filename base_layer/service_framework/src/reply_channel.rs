@@ -255,10 +255,9 @@ mod test {
     #[test]
     fn requestor_call() {
         let (tx, rx) = mpsc::unbounded();
-        let mut requestor = SenderService::<_, _>::new(tx);
+        let requestor = SenderService::<_, _>::new(tx);
 
-        block_on(requestor.ready()).unwrap();
-        let fut = future::join(requestor.call("PING"), reply(rx, "PONG"));
+        let fut = future::join(requestor.oneshot("PING"), reply(rx, "PONG"));
 
         let msg = block_on(fut.map(|(r, _)| r.unwrap()));
         assert_eq!(msg, "PONG");
@@ -280,7 +279,6 @@ mod test {
 
         block_on(future::join(
             async move {
-                requestor.ready().await.unwrap();
                 // `_` drops the response receiver, so when a reply is sent it will fail
                 let _ = requestor.call("PING");
             },
@@ -298,8 +296,7 @@ mod test {
 
         block_on(future::join(
             async move {
-                requestor.ready().await.unwrap();
-                let err = requestor.call("PING").await.unwrap_err();
+                let err = requestor.ready_and().await.unwrap().call("PING").await.unwrap_err();
                 assert_eq!(err, TransportChannelError::Canceled);
             },
             async move {
@@ -311,10 +308,9 @@ mod test {
 
     #[test]
     fn request_response_success() {
-        let (mut requestor, mut request_stream) = super::unbounded::<_, &str>();
+        let (requestor, mut request_stream) = super::unbounded::<_, &str>();
 
-        block_on(requestor.ready()).unwrap();
-        let (result, _) = block_on(future::join(requestor.call("PING"), async move {
+        let (result, _) = block_on(future::join(requestor.oneshot("PING"), async move {
             let req = request_stream.next().await.unwrap();
             req.reply("PONG").unwrap();
         }));

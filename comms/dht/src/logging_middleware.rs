@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{task::Context, Future};
+use futures::{task::Context, Future, TryFutureExt};
 use log::*;
 use std::{fmt::Display, marker::PhantomData, task::Poll};
 use tower::{layer::Layer, Service, ServiceExt};
@@ -88,9 +88,6 @@ where
     fn call(&mut self, msg: R) -> Self::Future {
         debug!(target: LOG_TARGET, "{}{}", self.prefix_msg, msg);
         let mut inner = self.inner.clone();
-        async move {
-            inner.ready().await?;
-            inner.call(msg).await
-        }
+        async move { inner.ready_and().and_then(|s| s.call(msg)).await.map_err(Into::into) }
     }
 }
