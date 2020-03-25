@@ -33,6 +33,7 @@ use helpers::{
         create_genesis_block,
         find_header_with_achieved_difficulty,
     },
+    chain_metadata::{random_peer_metadata, MockChainMetadata},
     nodes::{
         create_network_with_2_base_nodes_with_config,
         create_network_with_3_base_nodes_with_config,
@@ -40,16 +41,19 @@ use helpers::{
         BaseNodeBuilder,
     },
 };
+use log::debug;
 use rand::{rngs::OsRng, RngCore};
 use std::time::Duration;
 use tari_core::{
     base_node::{
+        chain_metadata_service::PeerChainMetadata,
         service::BaseNodeServiceConfig,
-        states::{BaseNodeState, BlockSyncConfig, BlockSyncInfo, ListeningInfo, StateEvent, SyncStatus::Lagging},
+        states::{BlockSyncConfig, BlockSyncInfo, ListeningInfo, StateEvent, SyncStatus, SyncStatus::Lagging},
         BaseNodeStateMachine,
         BaseNodeStateMachineConfig,
     },
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
+    helpers::create_mem_db,
     mempool::MempoolServiceConfig,
     transactions::types::CryptoFactories,
     validation::{block_validators::StatelessBlockValidator, mocks::MockValidator},
@@ -143,79 +147,50 @@ fn test_listening_lagging() {
 
 #[test]
 fn test_event_channel() {
-    let mut runtime = Runtime::new().unwrap();
-    let factories = CryptoFactories::default();
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
-    let network = Network::LocalNet;
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
-        .build();
-    let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
-    let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
-        .with_block(prev_block.clone())
-        .build();
-    let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
-        &mut runtime,
-        BaseNodeServiceConfig::default(),
-        MmrCacheConfig::default(),
-        MempoolServiceConfig::default(),
-        LivenessConfig {
-            enable_auto_join: false,
-            enable_auto_stored_message_request: false,
-            auto_ping_interval: Some(Duration::from_millis(100)),
-            refresh_neighbours_interval: Duration::from_secs(60),
-        },
-        consensus_manager,
-        temp_dir.path().to_str().unwrap(),
-    );
-    let shutdown = Shutdown::new();
-    let alice_state_machine = BaseNodeStateMachine::new(
-        &alice_node.blockchain_db,
-        &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
-        alice_node.comms.connection_manager(),
-        alice_node.chain_metadata_handle.get_event_stream(),
+    let mut runtime = Runtime::new().unwrap();
+    let (node, consensus_manager) =
+        BaseNodeBuilder::new(Network::Rincewind).start(&mut runtime, temp_dir.path().to_str().unwrap());
+    // let shutdown = Shutdown::new();
+    let db = create_mem_db(&consensus_manager);
+    let mut shutdown = Shutdown::new();
+    let mut mock = MockChainMetadata::new();
+    let state_machine = BaseNodeStateMachine::new(
+        &db,
+        &node.outbound_nci,
+        node.comms.peer_manager(),
+        node.comms.connection_manager(),
+        mock.subscriber(),
         BaseNodeStateMachineConfig::default(),
         shutdown.to_signal(),
     );
-    let rx = alice_state_machine.get_state_change_event_stream();
+    let rx = state_machine.get_state_change_event_stream();
 
-    runtime.spawn(alice_state_machine.run());
+    runtime.spawn(state_machine.run());
 
+    let PeerChainMetadata {
+        node_id,
+        chain_metadata,
+    } = random_peer_metadata(10, 5_000.into());
+    runtime
+        .block_on(mock.publish_chain_metadata(&node_id, &chain_metadata))
+        .expect("Could not publish metadata");
     runtime.block_on(async {
-        let bob_db = bob_node.blockchain_db;
-        let mut bob_local_nci = bob_node.local_nci;
-
-        // Bob Block 1 - no block event
-        prev_block = append_block(
-            &bob_db,
-            &prev_block,
-            vec![],
-            &consensus_manager.consensus_constants(),
-            1.into(),
-        )
-        .unwrap();
-        // Bob Block 2 - with block event and liveness service metadata update
-        let prev_block = bob_db
-            .calculate_mmr_roots(chain_block(
-                &prev_block,
-                vec![],
-                &consensus_manager.consensus_constants(),
-            ))
-            .unwrap();
-        bob_local_nci.submit_block(prev_block.clone()).await.unwrap();
-        assert_eq!(bob_db.get_height(), Ok(Some(2)));
-        let state = rx.fuse().select_next_some().await;
-        if let BaseNodeState::Listening(_) = *state {
-            assert!(true);
-        } else {
-            assert!(false);
+        let mut fused = rx.fuse();
+        let event = fused.next().await;
+        assert_eq!(*event.unwrap(), StateEvent::Initialized);
+        let event = fused.next().await;
+        match *event.unwrap() {
+            StateEvent::FallenBehind(SyncStatus::Lagging(ref data, ref id)) => {
+                assert_eq!(data.height_of_longest_chain, Some(10));
+                assert_eq!(data.accumulated_difficulty, Some(5_000.into()));
+                assert_eq!(id[0], node_id);
+            },
+            _ => assert!(false),
         }
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
+        node.comms.shutdown().await;
     });
+    let _ = shutdown.trigger();
 }
 
 #[test]

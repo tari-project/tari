@@ -42,10 +42,7 @@ use tari_comms::{
 };
 use tari_comms_dht::DhtConfig;
 use tari_core::{
-    base_node::{
-        service::BaseNodeServiceConfig,
-        states::{BaseNodeState, ListeningInfo},
-    },
+    base_node::{service::BaseNodeServiceConfig, states::StateEvent},
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     mempool::{MempoolServiceConfig, TxStorageResponse},
     mining::Miner,
@@ -291,8 +288,7 @@ fn wallet_base_node_integration_test() {
     let shutdown = Shutdown::new();
     let mut miner = Miner::new(shutdown.to_signal(), consensus_manager, &base_node.local_nci, 1);
     miner.enable_mining_flag().store(true, Ordering::Relaxed);
-    let (mut state_event_sender, state_event_receiver): (Publisher<BaseNodeState>, Subscriber<BaseNodeState>) =
-        bounded(1);
+    let (mut state_event_sender, state_event_receiver): (Publisher<_>, Subscriber<_>) = bounded(1);
     miner.subscribe_to_state_change(state_event_receiver);
     let miner_utxo_stream = miner.get_utxo_receiver_channel().fuse();
     runtime.spawn(async move {
@@ -300,11 +296,8 @@ fn wallet_base_node_integration_test() {
     });
 
     runtime.block_on(async {
-        // Force the base node state machine into listening state so the miner will start mining
-        assert!(state_event_sender
-            .send(BaseNodeState::Listening(ListeningInfo {}))
-            .await
-            .is_ok());
+        // Simulate block sync
+        assert!(state_event_sender.send(StateEvent::BlocksSynchronized).await.is_ok());
         // Wait for miner to finish mining block 1
         assert!(event_stream_next(miner_utxo_stream, Duration::from_secs(20))
             .await
