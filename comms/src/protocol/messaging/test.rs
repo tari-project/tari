@@ -56,6 +56,7 @@ use tokio::{runtime::Handle, sync::broadcast, time};
 use tokio_macros as runtime;
 
 const TEST_MSG1: Bytes = Bytes::from_static(b"TEST_MSG1");
+const MAX_ATTEMPTS: usize = 2;
 
 async fn spawn_messaging_protocol() -> (
     Arc<PeerManager>,
@@ -90,7 +91,7 @@ async fn spawn_messaging_protocol() -> (
         request_rx,
         events_tx,
         inbound_msg_tx,
-        0,
+        MAX_ATTEMPTS,
         shutdown.to_signal(),
     );
     rt_handle.spawn(msg_proto.run());
@@ -210,8 +211,8 @@ async fn send_message_dial_failed() {
     assert_eq!(out_msg.tag, expected_out_msg_tag);
 
     let calls = conn_manager_mock.take_calls().await;
-    assert_eq!(calls.len(), 1);
-    assert!(calls[0].starts_with("DialPeer"));
+    assert_eq!(calls.len(), MAX_ATTEMPTS);
+    assert!(calls.iter().all(|evt| evt.starts_with("DialPeer")));
 }
 
 #[runtime::test_basic]
@@ -256,7 +257,7 @@ async fn send_message_substream_bulk_failure() {
     for _ in 0..NUM_MSGS - 1 {
         let event = event_tx.next().await.unwrap().unwrap();
         unpack_enum!(MessagingEvent::SendMessageFailed(out_msg, reason) = &*event);
-        unpack_enum!(SendFailReason::SubstreamSendFailed = reason);
+        unpack_enum!(SendFailReason::SubstreamOpenFailed = reason);
         assert_eq!(out_msg.tag, expected_out_msg_tags.remove(0));
     }
 }

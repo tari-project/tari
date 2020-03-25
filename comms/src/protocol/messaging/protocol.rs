@@ -226,6 +226,10 @@ impl MessagingProtocol {
                             .send(Arc::new(SendMessageFailed(out_msg, reason)));
                     },
                     n => {
+                        self.retry_queue_tx.send(out_msg).await.expect(
+                            "retry_queue send cannot fail because the channel sender and receiver are contained in \
+                             and dropped with MessagingProtocol",
+                        );
                         *entry.get_mut() = n + 1;
                     },
                 },
@@ -235,14 +239,12 @@ impl MessagingProtocol {
                             .messaging_events_tx
                             .send(Arc::new(SendMessageFailed(out_msg, reason)));
                     } else {
-                        match self.retry_queue_tx.send(out_msg).await {
-                            Ok(_) => {
-                                entry.insert(1);
-                            },
-                            Err(err) => {
-                                warn!(target: LOG_TARGET, "Failed to send to retry queue '{:?}'", err);
-                            },
-                        }
+                        self.retry_queue_tx.send(out_msg).await.expect(
+                            "retry_queue send cannot fail because the channel sender and receiver are contained in \
+                             and dropped with MessagingProtocol",
+                        );
+                        // 2 = 1 first attempt + 1 attempt added to the queue
+                        entry.insert(2);
                     }
                 },
             },
