@@ -70,9 +70,8 @@ where
     S: Service<DhtInboundMessage, Response = ()>,
     S::Error: std::error::Error + Send + Sync + 'static,
 {
-    pub async fn deserialize(mut next_service: S, message: InboundMessage) -> Result<(), PipelineError> {
+    pub async fn deserialize(next_service: S, message: InboundMessage) -> Result<(), PipelineError> {
         trace!(target: LOG_TARGET, "Deserializing InboundMessage");
-        next_service.ready().await.map_err(PipelineError::from_debug)?;
 
         let InboundMessage {
             source_peer, mut body, ..
@@ -100,7 +99,11 @@ where
                     source_peer,
                     dht_envelope.body,
                 );
-                next_service.call(inbound_msg).await.map_err(PipelineError::from_debug)
+
+                next_service
+                    .oneshot(inbound_msg)
+                    .await
+                    .map_err(PipelineError::from_debug)
             },
             Err(err) => {
                 error!(target: LOG_TARGET, "DHT deserialization failed: {}", err);
