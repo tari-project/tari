@@ -446,7 +446,9 @@ fn test_orphaned_mempool_transactions() {
     // There are 2 orphan txs
     vec![txns[2].clone(), txns2[0].clone(), txns2[1].clone(), txns2[2].clone()]
         .into_iter()
-        .for_each(|t| mempool.insert(t).unwrap());
+        .for_each(|t| {
+            let _ = mempool.insert(t).unwrap();
+        });
 
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.total_txs, 4);

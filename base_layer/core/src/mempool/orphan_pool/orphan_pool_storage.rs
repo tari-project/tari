@@ -28,6 +28,7 @@ use crate::{
 };
 use log::*;
 use std::sync::Arc;
+use tari_crypto::tari_utilities::hex::Hex;
 use ttl_cache::TtlCache;
 
 pub const LOG_TARGET: &str = "c::mp::orphan_pool::orphan_pool_storage";
@@ -66,8 +67,13 @@ where T: BlockchainBackend
     /// Insert a new transaction into the OrphanPoolStorage. Orphaned transactions will have a limited Time-to-live and
     /// will be discarded if the UTXOs they require are not created before the Time-to-live threshold is reached.
     pub fn insert(&mut self, tx: Arc<Transaction>) {
-        trace!(target: LOG_TARGET, "Adding tx to orphan pool: {:?}", tx.clone());
         let tx_key = tx.body.kernels()[0].excess_sig.clone();
+        debug!(
+            target: LOG_TARGET,
+            "Inserting tx into orphan pool: {}",
+            tx_key.get_signature().to_hex()
+        );
+        trace!(target: LOG_TARGET, "Transaction inserted: {}", tx);
         let _ = self.txs_by_signature.insert(tx_key, tx, self.config.tx_ttl);
     }
 

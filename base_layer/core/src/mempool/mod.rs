@@ -57,6 +57,8 @@ pub use service::{MempoolServiceError, MempoolServiceInitializer, OutboundMempoo
 pub mod proto;
 #[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod service;
+
+use core::fmt::{Display, Error, Formatter};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -76,4 +78,17 @@ pub enum TxStorageResponse {
     PendingPool,
     ReorgPool,
     NotStored,
+}
+
+impl Display for TxStorageResponse {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        let storage = match self {
+            TxStorageResponse::UnconfirmedPool => "Unconfirmed pool",
+            TxStorageResponse::OrphanPool => "Orphan pool",
+            TxStorageResponse::PendingPool => "Pending pool",
+            TxStorageResponse::ReorgPool => "Reorg pool",
+            TxStorageResponse::NotStored => "Not stored",
+        };
+        fmt.write_str(&storage.to_string())
+    }
 }

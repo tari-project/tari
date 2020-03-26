@@ -41,7 +41,6 @@ use helpers::{
         BaseNodeBuilder,
     },
 };
-use log::debug;
 use rand::{rngs::OsRng, RngCore};
 use std::time::Duration;
 use tari_core::{

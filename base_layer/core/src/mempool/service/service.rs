@@ -55,7 +55,7 @@ use tari_comms_dht::{
     envelope::NodeDestination,
     outbound::{OutboundEncryption, OutboundMessageRequester},
 };
-use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::RequestContext;
 use tokio::task;
@@ -355,13 +355,13 @@ async fn handle_incoming_response(
     let proto::MempoolServiceResponse { request_key, response } = incoming_response;
     let response: MempoolResponse = response
         .and_then(|r| r.try_into().ok())
-        .ok_or_else(|| MempoolServiceError::InvalidResponse("Received an invalid Mempool response".to_string()))?;
+        .ok_or_else(|| MempoolServiceError::InvalidResponse("Received an invalid mempool response".to_string()))?;
 
     if let Some(reply_tx) = waiting_requests.remove(request_key)? {
         let _ = reply_tx.send(Ok(response).or_else(|resp| {
             warn!(
                 target: LOG_TARGET,
-                "Failed to send outbound request (request key:{})  from Mempool service: {:?}", &request_key, resp
+                "Failed to finalize request (request key:{}): {:?}", &request_key, resp
             );
             Err(resp)
         }));
@@ -410,7 +410,7 @@ async fn handle_outbound_request(
             let _ = reply_tx.send(Err(MempoolServiceError::NoBootstrapNodesConfigured).or_else(|resp| {
                 error!(
                     target: LOG_TARGET,
-                    "Failed to send outbound request from Mempool service as no bootstrap nodes were configured"
+                    "Failed to send outbound request as no bootstrap nodes were configured"
                 );
                 Err(resp)
             }));
@@ -421,7 +421,7 @@ async fn handle_outbound_request(
                 .or_else(|resp| {
                     error!(
                         target: LOG_TARGET,
-                        "Failed to send outbound request from Mempool service because of a failure in DHT broadcast"
+                        "Failed to send outbound request because DHT outbound broadcast failed"
                     );
                     Err(resp)
                 });
@@ -438,6 +438,17 @@ async fn handle_incoming_tx<B: BlockchainBackend + 'static>(
 {
     let DomainMessage::<_> { source_peer, inner, .. } = domain_transaction_msg;
 
+    debug!(
+        "New transaction received: {}, from: {}",
+        inner.body.kernels()[0].excess_sig.get_signature().to_hex(),
+        source_peer.public_key,
+    );
+    trace!(
+        target: LOG_TARGET,
+        "New transaction: {}, from: {}",
+        inner,
+        source_peer.public_key
+    );
     inbound_handlers
         .handle_transaction(&inner, Some(source_peer.public_key))
         .await?;
@@ -455,7 +466,7 @@ async fn handle_request_timeout(
         let _ = reply_tx.send(reply_msg.or_else(|resp| {
             error!(
                 target: LOG_TARGET,
-                "Failed to send outbound request from Mempool service"
+                "Failed to send outbound request (request key: {}): {:?}", &request_key, resp
             );
             Err(resp)
         }));
