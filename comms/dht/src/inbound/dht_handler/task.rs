@@ -338,10 +338,9 @@ where
             DhtInboundError::OriginRequired("Origin header required for Discovery message".to_string())
         })?;
 
-        trace!(
+        info!(
             target: LOG_TARGET,
-            "Received Discover Message from {}",
-            origin.public_key,
+            "Received discovery message from '{}'", origin.public_key,
         );
 
         let addresses = discover_msg

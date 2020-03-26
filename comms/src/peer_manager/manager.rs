@@ -35,6 +35,7 @@ use crate::{
     types::{CommsDatabase, CommsPublicKey},
 };
 use multiaddr::Multiaddr;
+use tari_storage::IterationResult;
 use tokio::sync::RwLock;
 
 /// The PeerManager consist of a routing table of previously discovered peers.
@@ -178,6 +179,11 @@ impl PeerManager {
     /// Fetch all peers (except banned ones)
     pub async fn flood_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage.read().await.flood_peers()
+    }
+
+    pub async fn for_each<F>(&self, f: F) -> Result<(), PeerManagerError>
+    where F: FnMut(Peer) -> IterationResult {
+        self.peer_storage.read().await.for_each(f)
     }
 
     /// Fetch n nearest neighbour Communication Nodes

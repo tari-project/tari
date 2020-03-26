@@ -45,6 +45,7 @@ mod memory_net;
 use futures::{channel::mpsc, future, StreamExt};
 use lazy_static::lazy_static;
 use memory_net::DrainBurst;
+use prettytable::{cell, row, Table};
 use rand::{rngs::OsRng, Rng};
 use std::{
     collections::HashMap,
@@ -126,7 +127,7 @@ fn get_next_name() -> String {
         *i
     };
     if pos > NAMES.len() {
-        format!("Node {}", pos - NAMES.len())
+        format!("Node{}", pos - NAMES.len())
     } else {
         NAMES[pos - 1].to_owned()
     }
@@ -208,23 +209,23 @@ async fn main() {
         println!();
     }
 
+    drain_messaging_events(&mut messaging_events_rx, false).await;
+    take_a_break().await;
+    drain_messaging_events(&mut messaging_events_rx, false).await;
+
     peer_list_summary(&wallets).await;
 
-    drain_messaging_events(&mut messaging_events_rx, false).await;
-    take_a_break().await;
-    drain_messaging_events(&mut messaging_events_rx, false).await;
-
-    discovery(&wallets, &mut messaging_events_rx, false, false).await;
+    discovery(&wallets, &mut messaging_events_rx, false, true).await;
 
     take_a_break().await;
-    drain_messaging_events(&mut messaging_events_rx, true).await;
+    drain_messaging_events(&mut messaging_events_rx, false).await;
 
     discovery(&wallets, &mut messaging_events_rx, true, false).await;
 
     take_a_break().await;
-    drain_messaging_events(&mut messaging_events_rx, true).await;
+    drain_messaging_events(&mut messaging_events_rx, false).await;
 
-    discovery(&wallets, &mut messaging_events_rx, false, true).await;
+    discovery(&wallets, &mut messaging_events_rx, false, false).await;
 
     banner!("That's it folks! Network is shutting down...");
 
@@ -245,11 +246,14 @@ async fn discovery(
 )
 {
     let mut successes = 0;
+    let mut total_time = Duration::from_secs(0);
     for i in 0..wallets.len() - 1 {
         let wallet1 = wallets.get(i).unwrap();
         let wallet2 = wallets.get(i + 1).unwrap();
 
-        banner!("Now, '{}' is going to try discover '{}'.", wallet1, wallet2);
+        banner!("'{}' is going to try discover '{}'.", wallet1, wallet2);
+
+        peer_list_summary(&[wallet1, wallet2]).await;
 
         let mut destination = NodeDestination::Unknown;
         if use_network_region {
@@ -283,6 +287,7 @@ async fn discovery(
         match discovery_result {
             Ok(peer) => {
                 successes += 1;
+                total_time += end - start;
                 println!(
                     "⚡️🎉😎 '{}' discovered peer '{}' ({}) in {}ms",
                     wallet1,
@@ -312,26 +317,42 @@ async fn discovery(
     }
 
     banner!(
-        "✨ The set of discoveries succeeded {}% of the time.",
-        (successes as f32 / wallets.len() as f32) * 100.0
+        "✨ The set of discoveries succeeded {}% of the time and took a total of {:.1}s.",
+        (successes as f32 / (wallets.len() - 1) as f32) * 100.0,
+        total_time.as_secs_f32()
     );
 }
 
-async fn peer_list_summary(network: &[TestNode]) {
+async fn peer_list_summary<'a, I: IntoIterator<Item = T>, T: AsRef<TestNode>>(network: I) {
     for node in network {
-        let peers = node.comms.peer_manager().all().await.unwrap();
-        println!("-----------------------------------------");
-        println!("{} knows {} peer(s):", node, peers.len());
-        println!(
-            "  {}",
-            peers
-                .iter()
-                .map(|p| &p.node_id)
-                .map(get_name)
-                .collect::<Vec<_>>()
-                .join("\n")
-        );
-        println!("-----------------------------------------");
+        let node_identity = node.as_ref().comms.node_identity();
+        let peers = node
+            .as_ref()
+            .comms
+            .peer_manager()
+            .closest_peers(node_identity.node_id(), 10, &[])
+            .await
+            .unwrap();
+        let mut table = Table::new();
+        table.add_row(row![
+            format!("{} closest peers (MAX: 10)", node.as_ref()),
+            "Distance".to_string(),
+            "Kind",
+        ]);
+        table.add_empty_row();
+        for peer in peers {
+            table.add_row(row![
+                get_name(&peer.node_id),
+                node_identity.node_id().distance(&peer.node_id),
+                if peer.features.contains(PeerFeatures::COMMUNICATION_NODE) {
+                    "BaseNode"
+                } else {
+                    "Wallet"
+                }
+            ]);
+        }
+        table.printstd();
+        println!();
     }
 }
 
@@ -363,7 +384,8 @@ async fn drain_messaging_events(messaging_rx: &mut MessagingEventRx, show_logs: 
         }
         println!("{} messages sent between nodes", num_messages);
     } else {
-        let _ = drain_fut.await;
+        let len = drain_fut.await.len();
+        println!("📨 {} messages exchanged", len);
     }
 }
 
@@ -526,6 +548,12 @@ impl TestNode {
                 _ => {},
             }
         }
+    }
+}
+
+impl AsRef<TestNode> for TestNode {
+    fn as_ref(&self) -> &TestNode {
+        self
     }
 }
 

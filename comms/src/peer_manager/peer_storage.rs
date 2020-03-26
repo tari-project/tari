@@ -285,11 +285,14 @@ where DS: KeyValueStore<PeerId, Peer>
     /// Compile a list of all known peers
     pub fn flood_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_db
-            .filter_take(PEER_MANAGER_MAX_FLOOD_PEERS, |(_, peer)| {
-                !peer.is_banned() && peer.has_features(PeerFeatures::MESSAGE_PROPAGATION)
-            })
+            .filter_take(PEER_MANAGER_MAX_FLOOD_PEERS, |(_, peer)| !peer.is_banned())
             .map(|pairs| pairs.into_iter().map(|(_, peer)| peer).collect())
             .map_err(PeerManagerError::DatabaseError)
+    }
+
+    pub fn for_each<F>(&self, mut f: F) -> Result<(), PeerManagerError>
+    where F: FnMut(Peer) -> IterationResult {
+        self.peer_db.for_each_ok(|(_, peer)| f(peer)).map_err(Into::into)
     }
 
     /// Compile a list of peers

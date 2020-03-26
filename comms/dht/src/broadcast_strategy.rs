@@ -40,7 +40,7 @@ pub enum BroadcastStrategy {
     DirectNodeId(Box<NodeId>),
     /// Send to a particular peer matching the given Public Key
     DirectPublicKey(Box<CommsPublicKey>),
-    /// Send to all known Communication Node peers
+    /// Send to all known peers
     Flood,
     /// Send to a random set of peers of size n that are Communication Nodes
     Random(usize),
@@ -49,7 +49,7 @@ pub enum BroadcastStrategy {
     /// A convenient strategy which behaves the same as the `Closest` strategy with the `NodeId` set
     /// to this node and a pre-configured number of neighbours that have all the matching PeerFeatures flags.
     /// This strategy excludes the given public keys.
-    Neighbours(Vec<CommsPublicKey>, PeerFeatures),
+    Neighbours(Vec<CommsPublicKey>, bool),
 }
 
 impl fmt::Display for BroadcastStrategy {
@@ -61,9 +61,12 @@ impl fmt::Display for BroadcastStrategy {
             Flood => write!(f, "Flood"),
             Closest(request) => write!(f, "Closest({})", request.n),
             Random(n) => write!(f, "Random({})", n),
-            Neighbours(excluded, features) => {
-                write!(f, "Neighbours({} excluded, PeerFlags={:?})", excluded.len(), features)
-            },
+            Neighbours(excluded, include_clients) => write!(
+                f,
+                "Neighbours({} excluded{})",
+                excluded.len(),
+                if *include_clients { ", Include all clients" } else { "" }
+            ),
         }
     }
 }

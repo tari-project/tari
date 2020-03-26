@@ -39,7 +39,7 @@ use log::*;
 use std::{pin::Pin, task::Poll, time::Instant};
 use tari_broadcast_channel::Publisher;
 use tari_comms::{
-    peer_manager::{NodeId, Peer, PeerFeatures},
+    peer_manager::{NodeId, Peer},
     types::CommsPublicKey,
 };
 use tari_comms_dht::{
@@ -284,10 +284,7 @@ where
 
         let peers = self
             .dht_requester
-            .select_peers(BroadcastStrategy::Neighbours(
-                Vec::new(),
-                PeerFeatures::MESSAGE_PROPAGATION,
-            ))
+            .select_peers(BroadcastStrategy::Neighbours(Vec::new(), false))
             .await?;
 
         self.state.set_num_active_neighbours(peers.len());
