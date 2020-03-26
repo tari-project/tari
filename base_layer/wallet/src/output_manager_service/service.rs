@@ -34,7 +34,7 @@ use crate::{
 use futures::{future::BoxFuture, pin_mut, stream::FuturesUnordered, FutureExt, SinkExt, Stream, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{collections::HashMap, convert::TryFrom, fmt, sync::Mutex, time::Duration};
+use std::{cmp::Ordering, collections::HashMap, convert::TryFrom, fmt, sync::Mutex, time::Duration};
 use tari_broadcast_channel::Publisher;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
@@ -514,7 +514,7 @@ where
     ) -> Result<SenderTransactionProtocol, OutputManagerError>
     {
         let outputs = self
-            .select_outputs(amount, fee_per_gram, UTXOSelectionStrategy::Smallest)
+            .select_outputs(amount, fee_per_gram, UTXOSelectionStrategy::MaturityThenSmallest)
             .await?;
         let total = outputs.iter().fold(MicroTari::from(0), |acc, x| acc + x.value);
 
@@ -646,20 +646,31 @@ where
 
         let uo = self.db.fetch_sorted_unspent_outputs().await?;
 
-        match strategy {
-            UTXOSelectionStrategy::Smallest => {
-                for o in uo.iter() {
-                    outputs.push(o.clone());
-                    total += o.value;
-                    // I am assuming that the only output will be the payment output and change if required
-                    fee_without_change = Fee::calculate(fee_per_gram, outputs.len(), 1);
-                    fee_with_change = Fee::calculate(fee_per_gram, outputs.len(), 2);
-
-                    if total == amount + fee_without_change || total >= amount + fee_with_change {
-                        break;
-                    }
-                }
+        let uo = match strategy {
+            UTXOSelectionStrategy::Smallest => uo,
+            // TODO: We should pass in the current height and group
+            // all funds less than the current height as maturity 0
+            UTXOSelectionStrategy::MaturityThenSmallest => {
+                let mut new_uo = uo.clone();
+                new_uo.sort_by(|a, b| match a.features.maturity.cmp(&b.features.maturity) {
+                    Ordering::Equal => a.value.cmp(&b.value),
+                    Ordering::Less => Ordering::Less,
+                    Ordering::Greater => Ordering::Greater,
+                });
+                new_uo
             },
+        };
+
+        for o in uo.iter() {
+            outputs.push(o.clone());
+            total += o.value;
+            // I am assuming that the only output will be the payment output and change if required
+            fee_without_change = Fee::calculate(fee_per_gram, outputs.len(), 1);
+            fee_with_change = Fee::calculate(fee_per_gram, outputs.len(), 2);
+
+            if total == amount + fee_without_change || total >= amount + fee_with_change {
+                break;
+            }
         }
 
         if (total != amount + fee_without_change) && (total < amount + fee_with_change) {
@@ -717,9 +728,11 @@ where
 /// Different UTXO selection strategies for choosing which UTXO's are used to fulfill a transaction
 /// TODO Investigate and implement more optimal strategies
 pub enum UTXOSelectionStrategy {
-    // Start from the smallest UTXOs and work your way up until the amount is covered. Main benefit is removing small
-    // UTXOs from the blockchain, con is that it costs more in fees
+    // Start from the smallest UTXOs and work your way up until the amount is covered. Main benefit
+    // is removing small UTXOs from the blockchain, con is that it costs more in fees
     Smallest,
+    // Start from oldest maturity to reduce the likelihood of grabbing locked up UTXOs
+    MaturityThenSmallest,
 }
 
 /// This struct holds the detailed balance of the Output Manager Service.
