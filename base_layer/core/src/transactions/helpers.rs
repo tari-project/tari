@@ -323,7 +323,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
     let change_output = UnblindedOutput {
         value: change,
         spending_key: test_params.change_key.clone(),
-        features: schema.features.clone(),
+        features: schema.features,
     };
     outputs.push(change_output);
     match stx_protocol.finalize(KernelFeatures::empty(), &factories) {

@@ -44,7 +44,7 @@ use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use std::{
     collections::HashMap,
     convert::TryFrom,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard},
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
@@ -60,6 +60,93 @@ pub struct TransactionServiceSqliteDatabase {
 impl TransactionServiceSqliteDatabase {
     pub fn new(database_connection: Arc<Mutex<SqliteConnection>>) -> Self {
         Self { database_connection }
+    }
+
+    fn insert(kvp: DbKeyValuePair, conn: MutexGuard<SqliteConnection>) -> Result<(), TransactionStorageError> {
+        match kvp {
+            DbKeyValuePair::PendingOutboundTransaction(k, v) => {
+                if OutboundTransactionSql::find(k, &(*conn)).is_ok() {
+                    return Err(TransactionStorageError::DuplicateOutput);
+                }
+                OutboundTransactionSql::try_from(*v)?.commit(&(*conn))?;
+            },
+            DbKeyValuePair::PendingInboundTransaction(k, v) => {
+                if InboundTransactionSql::find(k, &(*conn)).is_ok() {
+                    return Err(TransactionStorageError::DuplicateOutput);
+                }
+                InboundTransactionSql::try_from(*v)?.commit(&(*conn))?;
+            },
+            DbKeyValuePair::PendingCoinbaseTransaction(k, v) => {
+                if PendingCoinbaseTransactionSql::find(k, &(*conn)).is_ok() {
+                    return Err(TransactionStorageError::DuplicateOutput);
+                }
+                PendingCoinbaseTransactionSql::from(*v).commit(&(*conn))?;
+            },
+            DbKeyValuePair::CompletedTransaction(k, v) => {
+                if CompletedTransactionSql::find(k, &(*conn)).is_ok() {
+                    return Err(TransactionStorageError::DuplicateOutput);
+                }
+                CompletedTransactionSql::try_from(*v)?.commit(&(*conn))?;
+            },
+        }
+        Ok(())
+    }
+
+    fn remove(key: DbKey, conn: MutexGuard<SqliteConnection>) -> Result<Option<DbValue>, TransactionStorageError> {
+        match key {
+            DbKey::PendingOutboundTransaction(k) => match OutboundTransactionSql::find(k, &(*conn)) {
+                Ok(v) => {
+                    v.delete(&(*conn))?;
+                    Ok(Some(DbValue::PendingOutboundTransaction(Box::new(
+                        OutboundTransaction::try_from(v)?,
+                    ))))
+                },
+                Err(TransactionStorageError::DieselError(DieselError::NotFound)) => Err(
+                    TransactionStorageError::ValueNotFound(DbKey::PendingOutboundTransaction(k)),
+                ),
+                Err(e) => Err(e),
+            },
+            DbKey::PendingInboundTransaction(k) => match InboundTransactionSql::find(k, &(*conn)) {
+                Ok(v) => {
+                    v.delete(&(*conn))?;
+                    Ok(Some(DbValue::PendingInboundTransaction(Box::new(
+                        InboundTransaction::try_from(v)?,
+                    ))))
+                },
+                Err(TransactionStorageError::DieselError(DieselError::NotFound)) => Err(
+                    TransactionStorageError::ValueNotFound(DbKey::PendingOutboundTransaction(k)),
+                ),
+                Err(e) => Err(e),
+            },
+            DbKey::PendingCoinbaseTransaction(k) => match PendingCoinbaseTransactionSql::find(k, &(*conn)) {
+                Ok(v) => {
+                    v.delete(&(*conn))?;
+                    Ok(Some(DbValue::PendingCoinbaseTransaction(Box::new(
+                        PendingCoinbaseTransaction::try_from(v)?,
+                    ))))
+                },
+                Err(TransactionStorageError::DieselError(DieselError::NotFound)) => Err(
+                    TransactionStorageError::ValueNotFound(DbKey::PendingOutboundTransaction(k)),
+                ),
+                Err(e) => Err(e),
+            },
+            DbKey::CompletedTransaction(k) => match CompletedTransactionSql::find(k, &(*conn)) {
+                Ok(v) => {
+                    v.delete(&(*conn))?;
+                    Ok(Some(DbValue::CompletedTransaction(Box::new(
+                        CompletedTransaction::try_from(v)?,
+                    ))))
+                },
+                Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
+                    Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(k)))
+                },
+                Err(e) => Err(e),
+            },
+            DbKey::PendingOutboundTransactions => Err(TransactionStorageError::OperationNotSupported),
+            DbKey::PendingInboundTransactions => Err(TransactionStorageError::OperationNotSupported),
+            DbKey::CompletedTransactions => Err(TransactionStorageError::OperationNotSupported),
+            DbKey::PendingCoinbaseTransactions => Err(TransactionStorageError::OperationNotSupported),
+        }
     }
 }
 
@@ -163,94 +250,10 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let conn = acquire_lock!(self.database_connection);
 
         match op {
-            WriteOperation::Insert(kvp) => match kvp {
-                DbKeyValuePair::PendingOutboundTransaction(k, v) => {
-                    if OutboundTransactionSql::find(k, &(*conn)).is_ok() {
-                        return Err(TransactionStorageError::DuplicateOutput);
-                    }
-                    OutboundTransactionSql::try_from(*v)?.commit(&(*conn))?;
-                },
-                DbKeyValuePair::PendingInboundTransaction(k, v) => {
-                    if InboundTransactionSql::find(k, &(*conn)).is_ok() {
-                        return Err(TransactionStorageError::DuplicateOutput);
-                    }
-                    InboundTransactionSql::try_from(*v)?.commit(&(*conn))?;
-                },
-                DbKeyValuePair::PendingCoinbaseTransaction(k, v) => {
-                    if PendingCoinbaseTransactionSql::find(k, &(*conn)).is_ok() {
-                        return Err(TransactionStorageError::DuplicateOutput);
-                    }
-                    PendingCoinbaseTransactionSql::from(*v).commit(&(*conn))?;
-                },
-                DbKeyValuePair::CompletedTransaction(k, v) => {
-                    if CompletedTransactionSql::find(k, &(*conn)).is_ok() {
-                        return Err(TransactionStorageError::DuplicateOutput);
-                    }
-                    CompletedTransactionSql::try_from(*v)?.commit(&(*conn))?;
-                },
-            },
-            WriteOperation::Remove(kvp) => match kvp {
-                DbKey::PendingOutboundTransaction(k) => match OutboundTransactionSql::find(k, &(*conn)) {
-                    Ok(v) => {
-                        v.delete(&(*conn))?;
-                        return Ok(Some(DbValue::PendingOutboundTransaction(Box::new(
-                            OutboundTransaction::try_from(v)?,
-                        ))));
-                    },
-                    Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
-                        return Err(TransactionStorageError::ValueNotFound(
-                            DbKey::PendingOutboundTransaction(k),
-                        ))
-                    },
-                    Err(e) => return Err(e),
-                },
-                DbKey::PendingInboundTransaction(k) => match InboundTransactionSql::find(k, &(*conn)) {
-                    Ok(v) => {
-                        v.delete(&(*conn))?;
-                        return Ok(Some(DbValue::PendingInboundTransaction(Box::new(
-                            InboundTransaction::try_from(v)?,
-                        ))));
-                    },
-                    Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
-                        return Err(TransactionStorageError::ValueNotFound(
-                            DbKey::PendingOutboundTransaction(k),
-                        ))
-                    },
-                    Err(e) => return Err(e),
-                },
-                DbKey::PendingCoinbaseTransaction(k) => match PendingCoinbaseTransactionSql::find(k, &(*conn)) {
-                    Ok(v) => {
-                        v.delete(&(*conn))?;
-                        return Ok(Some(DbValue::PendingCoinbaseTransaction(Box::new(
-                            PendingCoinbaseTransaction::try_from(v)?,
-                        ))));
-                    },
-                    Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
-                        return Err(TransactionStorageError::ValueNotFound(
-                            DbKey::PendingOutboundTransaction(k),
-                        ))
-                    },
-                    Err(e) => return Err(e),
-                },
-                DbKey::CompletedTransaction(k) => match CompletedTransactionSql::find(k, &(*conn)) {
-                    Ok(v) => {
-                        v.delete(&(*conn))?;
-                        return Ok(Some(DbValue::CompletedTransaction(Box::new(
-                            CompletedTransaction::try_from(v)?,
-                        ))));
-                    },
-                    Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
-                        return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(k)))
-                    },
-                    Err(e) => return Err(e),
-                },
-                DbKey::PendingOutboundTransactions => return Err(TransactionStorageError::OperationNotSupported),
-                DbKey::PendingInboundTransactions => return Err(TransactionStorageError::OperationNotSupported),
-                DbKey::CompletedTransactions => return Err(TransactionStorageError::OperationNotSupported),
-                DbKey::PendingCoinbaseTransactions => return Err(TransactionStorageError::OperationNotSupported),
-            },
+            WriteOperation::Insert(kvp) => TransactionServiceSqliteDatabase::insert(kvp, conn).map(|_| None),
+
+            WriteOperation::Remove(key) => TransactionServiceSqliteDatabase::remove(key, conn),
         }
-        Ok(None)
     }
 
     fn transaction_exists(&self, tx_id: u64) -> Result<bool, TransactionStorageError> {
