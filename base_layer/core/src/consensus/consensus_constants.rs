@@ -140,7 +140,7 @@ impl ConsensusConstants {
         let target_block_interval = 60;
         let difficulty_block_window = 150;
         ConsensusConstants {
-            coinbase_lock_height: 1,
+            coinbase_lock_height: 60,
             blockchain_version: 1,
             future_time_limit: target_block_interval * difficulty_block_window / 20,
             target_block_interval,
