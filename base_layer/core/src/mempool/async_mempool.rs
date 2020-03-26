@@ -62,7 +62,7 @@ macro_rules! make_async {
     };
 }
 
-make_async!(insert(tx: Arc<Transaction>) -> ());
+make_async!(insert(tx: Arc<Transaction>) -> TxStorageResponse);
 make_async!(process_published_block(published_block: Block) -> ());
 make_async!(process_reorg(removed_blocks: Vec<Block>, new_blocks: Vec<Block>) -> ());
 make_async!(snapshot() -> Vec<Arc<Transaction>>);

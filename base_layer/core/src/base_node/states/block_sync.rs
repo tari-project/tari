@@ -144,7 +144,7 @@ impl BlockSyncInfo {
                 warn!(target: LOG_TARGET, "An empty network best block hash was received.",);
                 StateEvent::BlockSyncFailure
             },
-            Err(e) => StateEvent::FatalError(format!("Synchronizing blocks failed. {}", e)),
+            Err(e) => StateEvent::FatalError(format!("Synchronizing blocks failed. {:?}", e)),
         }
     }
 }

@@ -27,7 +27,9 @@ use crate::{
 };
 use log::*;
 use std::sync::Arc;
+use tari_crypto::tari_utilities::hex::Hex;
 use ttl_cache::TtlCache;
+
 pub const LOG_TARGET: &str = "c::mp::reorg_pool::reorg_pool_storage";
 
 /// Reorg makes use of ReorgPoolStorage to provide thread save access to its TtlCache.
@@ -54,7 +56,12 @@ impl ReorgPoolStorage {
     /// the ReorgPoolStorage and will be discarded once the Time-to-live threshold has been reached.
     pub fn insert(&mut self, tx: Arc<Transaction>) {
         let tx_key = tx.body.kernels()[0].excess_sig.clone();
-        trace!(target: LOG_TARGET, "Inserting tx into reorg pool: {:?}", tx_key,);
+        trace!(
+            target: LOG_TARGET,
+            "Inserting tx into reorg pool: {}",
+            tx_key.get_signature().to_hex()
+        );
+        trace!(target: LOG_TARGET, "Transaction inserted: {}", tx);
         let _ = self.txs_by_signature.insert(tx_key, tx, self.config.tx_ttl);
     }
 

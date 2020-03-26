@@ -21,13 +21,26 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{base_node::RequestKey, transactions::types::Signature};
+use core::fmt::{Display, Error, Formatter};
 use serde::{Deserialize, Serialize};
+use tari_crypto::tari_utilities::hex::Hex;
 
 /// API Request enum for Mempool requests.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum MempoolRequest {
     GetStats,
     GetTxStateWithExcessSig(Signature),
+}
+
+impl Display for MempoolRequest {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        match self {
+            MempoolRequest::GetStats => f.write_str("GetStats"),
+            MempoolRequest::GetTxStateWithExcessSig(sig) => {
+                f.write_str(&format!("GetTxStateWithExcessSig ({})", sig.get_signature().to_hex()))
+            },
+        }
+    }
 }
 
 /// Request type for a received MempoolService request.

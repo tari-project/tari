@@ -38,6 +38,7 @@ use crate::{
 };
 use log::*;
 use std::sync::Arc;
+use tari_crypto::tari_utilities::hex::Hex;
 
 pub const LOG_TARGET: &str = "c::mp::mempool";
 
@@ -96,19 +97,32 @@ where T: BlockchainBackend
 
     /// Insert an unconfirmed transaction into the Mempool. The transaction *MUST* have passed through the validation
     /// pipeline already and will thus always be internally consistent by this stage
-    pub fn insert(&self, tx: Arc<Transaction>) -> Result<(), MempoolError> {
+    pub fn insert(&self, tx: Arc<Transaction>) -> Result<TxStorageResponse, MempoolError> {
+        debug!(
+            target: LOG_TARGET,
+            "Inserting tx into mempool: {}",
+            tx.body.kernels()[0].excess_sig.get_signature().to_hex()
+        );
         // The transaction is already internally consistent
         match self.validator.validate(
             &tx,
             &self.blockchain_db.db_read_access()?,
             &self.blockchain_db.metadata_read_access()?,
         ) {
-            Ok(()) => self.unconfirmed_pool.insert(tx)?,
-            Err(ValidationError::UnknownInputs) => self.orphan_pool.insert(tx)?,
-            Err(ValidationError::MaturityError) => self.pending_pool.insert(tx)?,
-            _ => return Err(MempoolError::ValidationError),
-        };
-        Ok(())
+            Ok(()) => {
+                self.unconfirmed_pool.insert(tx)?;
+                Ok(TxStorageResponse::UnconfirmedPool)
+            },
+            Err(ValidationError::UnknownInputs) => {
+                self.orphan_pool.insert(tx)?;
+                Ok(TxStorageResponse::OrphanPool)
+            },
+            Err(ValidationError::MaturityError) => {
+                self.pending_pool.insert(tx)?;
+                Ok(TxStorageResponse::PendingPool)
+            },
+            _ => Err(MempoolError::ValidationError),
+        }
     }
 
     // Insert a set of new transactions into the UTxPool.
