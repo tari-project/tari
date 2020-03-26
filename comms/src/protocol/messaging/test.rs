@@ -137,7 +137,7 @@ async fn new_inbound_substream_handling() {
         .await
         .unwrap();
 
-    let stream_theirs = muxer_theirs.incoming_mut().next().await.unwrap().unwrap();
+    let stream_theirs = muxer_theirs.incoming_mut().next().await.unwrap();
     let mut framed_theirs = MessagingProtocol::framed(stream_theirs);
 
     let envelope = Envelope::construct_signed(&sk, &pk, TEST_MSG1, MessageFlags::empty()).unwrap();

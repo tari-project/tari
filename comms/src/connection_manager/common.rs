@@ -51,7 +51,7 @@ pub async fn perform_identity_exchange<'p, P: IntoIterator<Item = &'p ProtocolId
             .incoming_mut()
             .next()
             .await
-            .ok_or_else(|| ConnectionManagerError::IncomingListenerStreamClosed)??,
+            .ok_or_else(|| ConnectionManagerError::IncomingListenerStreamClosed)?,
         ConnectionDirection::Outbound => control.open_stream().await?,
     };
 

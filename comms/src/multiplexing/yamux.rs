@@ -37,8 +37,8 @@ use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::runtime;
 use yamux::Mode;
 
-type IncomingRx = mpsc::Receiver<Result<yamux::Stream, yamux::ConnectionError>>;
-type IncomingTx = mpsc::Sender<Result<yamux::Stream, yamux::ConnectionError>>;
+type IncomingRx = mpsc::Receiver<yamux::Stream>;
+type IncomingTx = mpsc::Sender<yamux::Stream>;
 
 pub type Control = yamux::Control;
 
@@ -86,7 +86,7 @@ impl Yamux {
         Ok(Self { control, incoming })
     }
 
-    // yamux@0.4.0 requires the incoming substream stream be polled in order to make progress on requests from it's
+    // yamux@0.4 requires the incoming substream stream be polled in order to make progress on requests from it's
     // Control api. Here we spawn off a worker which will do this job
     fn spawn_incoming_stream_worker<TSocket>(
         executor: runtime::Handle,
@@ -131,7 +131,7 @@ impl IncomingSubstreams {
 }
 
 impl Stream for IncomingSubstreams {
-    type Item = Result<yamux::Stream, yamux::ConnectionError>;
+    type Item = yamux::Stream;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         Pin::new(&mut self.inner).poll_next(cx)
@@ -146,7 +146,7 @@ impl Drop for IncomingSubstreams {
 
 struct IncomingWorker<S> {
     inner: S,
-    sender: mpsc::Sender<Result<yamux::Stream, yamux::ConnectionError>>,
+    sender: mpsc::Sender<yamux::Stream>,
     shutdown_signal: Option<ShutdownSignal>,
 }
 
@@ -166,28 +166,17 @@ where S: Stream<Item = Result<yamux::Stream, yamux::ConnectionError>> + Unpin
         loop {
             let either = future::select(self.inner.next(), signal.take().expect("cannot fail")).await;
             match either {
-                // Underlying Connection closed
-                Either::Left((Some(err @ Err(yamux::ConnectionError::Closed)), _)) => {
-                    let _ = self.sender.send(err).await;
+                Either::Left((Some(Err(err)), _)) => {
                     debug!(
                         target: LOG_TARGET,
-                        "Incoming peer substream task is shutting down because the yamux connection is closed"
+                        "Incoming peer substream task received an error because '{}'", err
                     );
                     break;
                 },
-                Either::Left((Some(Err(yamux::ConnectionError::Io(err))), _))
-                    if err.kind() == io::ErrorKind::UnexpectedEof =>
-                {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Incoming peer substream task is shutting down because the socket reached an EOF state"
-                    );
-                    break;
-                }
                 // Received a substream result
-                Either::Left((Some(substream_result), sig)) => {
+                Either::Left((Some(Ok(stream)), sig)) => {
                     signal = Some(sig);
-                    if let Err(err) = self.sender.send(substream_result).await {
+                    if let Err(err) = self.sender.send(stream).await {
                         if err.is_disconnected() {
                             debug!(
                                 target: LOG_TARGET,
@@ -257,8 +246,7 @@ mod test {
         let mut substream = listener
             .next()
             .await
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no substream"))?
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no substream"))?;
 
         let mut buf = Vec::new();
         let _ = future::select(substream.read_to_end(&mut buf), listener.next()).await;
@@ -290,7 +278,7 @@ mod test {
         let mut incoming = Yamux::upgrade_connection(rt_handle.clone(), listener, ConnectionDirection::Inbound)
             .await?
             .incoming();
-        let mut substream = incoming.next().await.unwrap().unwrap();
+        let mut substream = incoming.next().await.unwrap();
         rt_handle.spawn(async move {
             incoming.next().await;
         });
@@ -344,7 +332,7 @@ mod test {
         let mut incoming = Yamux::upgrade_connection(rt_handle.clone(), listener, ConnectionDirection::Inbound)
             .await?
             .incoming();
-        let mut substream = incoming.next().await.unwrap().unwrap();
+        let mut substream = incoming.next().await.unwrap();
         rt_handle.spawn(async move {
             incoming.next().await;
         });
