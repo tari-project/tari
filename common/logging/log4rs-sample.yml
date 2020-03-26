@@ -68,27 +68,31 @@ appenders:
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 
-# Set the default logging level to "error" and attach the "stdout" appender to the root
+# Set the default logging level to "warn" and attach the "stdout" appender to the root
 root:
-  level: info
+  level: warn
   appenders:
-    - base_layer
+    - stdout
 
 loggers:
-  # Set the maximum console output to "info"
-  base_node:
+  # Route log events sent to the "core" logger to the "base_layer" appender
+  c:
     level: info
     appenders:
-      - stdout
+      - base_layer
     additive: false
-
+  # Route log events sent to the "wallet" logger to the "base_layer" appender
+  wallet:
+    level: info
+    appenders:
+      - base_layer
+    additive: false
   # Route log events sent to the "comms" logger to the "network" appender
   comms:
     level: info
     appenders:
       - network
     additive: false
-  # Route log events sent to the "p2p" logger to the "network" appender
   p2p:
     level: info
     appenders:
