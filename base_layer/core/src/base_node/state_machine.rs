@@ -66,8 +66,8 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) connection_manager: ConnectionManagerRequester,
     pub(super) metadata_event_stream: Subscriber<ChainMetadataEvent>,
     pub(super) config: BaseNodeStateMachineConfig,
-    event_sender: Publisher<BaseNodeState>,
-    event_receiver: Subscriber<BaseNodeState>,
+    event_sender: Publisher<StateEvent>,
+    event_receiver: Subscriber<StateEvent>,
     interrupt_signal: ShutdownSignal,
 }
 
@@ -83,7 +83,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
-        let (event_sender, event_receiver): (Publisher<BaseNodeState>, Subscriber<BaseNodeState>) = bounded(1);
+        let (event_sender, event_receiver): (Publisher<_>, Subscriber<_>) = bounded(10);
         Self {
             db: db.clone(),
             comms: comms.clone(),
@@ -120,13 +120,18 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         }
     }
 
+    /// This clones the receiver end of the channel and gives out a copy to the caller
+    /// This allows multiple subscribers to this channel by only keeping one channel and cloning the receiver for every
+    /// caller.
+    pub fn get_state_change_event_stream(&self) -> Subscriber<StateEvent> {
+        self.event_receiver.clone()
+    }
+
     /// Start the base node runtime.
     pub async fn run(mut self) {
         use crate::base_node::states::BaseNodeState::*;
         let mut state = Starting(states::Starting);
         loop {
-            let _ = self.event_sender.send(state.clone()).await;
-
             if let Shutdown(reason) = &state {
                 debug!(
                     target: LOG_TARGET,
@@ -140,7 +145,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
 
             // Get the next `StateEvent`, returning a `UserQuit` state event if the interrupt signal is triggered
             let next_event = select_next_state_event(interrupt_signal, next_state_future).await;
-
+            // Publish the event on the event bus
+            let _ = self.event_sender.send(next_event.clone()).await;
             debug!(
                 target: LOG_TARGET,
                 "=== Base Node event in State [{}]:  {:?}", state, next_event
@@ -165,13 +171,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     /// the node will enter a `Shutdown` state.
     pub fn get_interrupt_signal(&self) -> ShutdownSignal {
         self.interrupt_signal.clone()
-    }
-
-    /// This clones the receiver end of the channel and gives out a copy to the caller
-    /// This allows multiple subscribers to this channel by only keeping one channel and cloning the receiver for every
-    /// caller.
-    pub fn get_state_change_event_stream(&self) -> Subscriber<BaseNodeState> {
-        self.event_receiver.clone()
     }
 }
 

@@ -23,7 +23,7 @@
 use crate::{
     base_node::{
         comms_interface::{BlockEvent, LocalNodeCommsInterface},
-        states::BaseNodeState,
+        states::{StateEvent, SyncStatus},
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::BlockAddResult,
@@ -60,7 +60,7 @@ pub struct Miner {
     consensus: ConsensusManager,
     node_interface: LocalNodeCommsInterface,
     utxo_sender: Sender<UnblindedOutput>,
-    state_change_event_rx: Option<Subscriber<BaseNodeState>>,
+    state_change_event_rx: Option<Subscriber<StateEvent>>,
     threads: usize,
     enabled: Arc<AtomicBool>,
 }
@@ -100,7 +100,7 @@ impl Miner {
     /// The state machine will publish state changes here. The miner is only interested to know when the state machine
     /// transitions to listing state. This means that the miner has moved from some disconnected state to up to date
     /// and the miner can ask for a new block to mine upon.
-    pub fn subscribe_to_state_change(&mut self, state_change_event_rx: Subscriber<BaseNodeState>) {
+    pub fn subscribe_to_state_change(&mut self, state_change_event_rx: Subscriber<StateEvent>) {
         self.state_change_event_rx = Some(state_change_event_rx);
     }
 
@@ -139,7 +139,9 @@ impl Miner {
             spawn_blocking(move || {
                 let result = CpuBlakePow::mine(difficulty, header, stop_mining_flag);
                 // send back what the miner found, None will be sent if the miner did not find a nonce
-                tx_channel.try_send(result);
+                if let Err(e) = tx_channel.try_send(result) {
+                    warn!(target: LOG_TARGET, "Could not return mining result: {}", e);
+                }
             });
         }
         drop(tx); // lets ensure that the tx all get dropped
@@ -187,7 +189,8 @@ impl Miner {
 
         pin_mut!(block_event);
         pin_mut!(state_event);
-        let mut start_mining = false;
+        // Start mining immediately in case we're the only node on the network and we never receive a BlockSync event
+        let mut start_mining = true;
         trace!("starting mining thread");
         'main: loop {
             stop_mining_flag.store(false, Ordering::Relaxed); // ensure we can mine if we need to
@@ -200,9 +203,9 @@ impl Miner {
             };
             futures::select! {
             msg = block_event.select_next_some() => {
-                match (*msg).clone() {
-                    BlockEvent::Verified((_, result)) => {
-                    if result == BlockAddResult::Ok{
+                match *msg {
+                    BlockEvent::Verified((_, ref result)) => {
+                    if *result == BlockAddResult::Ok{
                         stop_mining_flag.store(true, Ordering::Relaxed);
                         start_mining = true;
                     };
@@ -210,15 +213,20 @@ impl Miner {
                 _ => (),
                 }
             },
-            msg = state_event.select_next_some() => {
+            event = state_event.select_next_some() => {
+                use StateEvent::*;
                 stop_mining_flag.store(true, Ordering::Relaxed);
-                match (*msg).clone() {
-                    BaseNodeState::Listening(_) => {
+                match *event {
+                    BlocksSynchronized | NetworkSilence => {
+                        info!(target: LOG_TARGET,
+                        "Our chain has synchronised with the network, or is a seed node. Starting miner");
                         start_mining = true;
                     },
-                    _ => {
+                    FallenBehind(SyncStatus::Lagging(_, _)) => {
+                        info!(target: LOG_TARGET, "Our chain has fallen behind the network. Pausing miner");
                         start_mining = false;
                     },
+                    _ => {},
                 }
             },
             _ = kill_signal => {

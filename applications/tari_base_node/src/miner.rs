@@ -23,7 +23,7 @@
 
 use tari_broadcast_channel::Subscriber;
 use tari_core::{
-    base_node::{states::BaseNodeState, LocalNodeCommsInterface},
+    base_node::{states::StateEvent, LocalNodeCommsInterface},
     consensus::ConsensusManager,
     mining::Miner,
 };
@@ -33,7 +33,7 @@ use tari_shutdown::ShutdownSignal;
 pub fn build_miner<H: AsRef<ServiceHandles>>(
     handles: H,
     kill_signal: ShutdownSignal,
-    event_stream: Subscriber<BaseNodeState>,
+    event_stream: Subscriber<StateEvent>,
     consensus_manager: ConsensusManager,
     num_threads: usize,
 ) -> Miner
