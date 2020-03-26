@@ -101,7 +101,7 @@ impl PeerConnectionMockState {
     }
 
     pub async fn next_incoming_substream(&self) -> Option<yamux::Stream> {
-        self.mux_incoming.lock().await.next().await.map(Result::unwrap)
+        self.mux_incoming.lock().await.next().await
     }
 
     pub async fn disconnect(&self) {

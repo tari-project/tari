@@ -238,7 +238,7 @@ impl PeerConnectionActor {
 
                 maybe_substream = self.incoming_substreams.next() => {
                     match maybe_substream {
-                        Some(Ok(substream)) => {
+                        Some(substream) => {
                             if let Err(err) = self.handle_incoming_substream(substream).await {
                                 error!(
                                     target: LOG_TARGET,
@@ -248,10 +248,6 @@ impl PeerConnectionActor {
                                     error = err
                                 )
                             }
-                        },
-                        Some(Err(err)) => {
-                            warn!(target: LOG_TARGET, "[{}] Incoming substream error '{}'. Closing connection for peer '{}'", self, err, self.peer_node_id.short_str());
-                            self.disconnect(false).await;
                         },
                         None => {
                             debug!(target: LOG_TARGET, "[{}] Peer '{}' closed the connection", self, self.peer_node_id.short_str());
