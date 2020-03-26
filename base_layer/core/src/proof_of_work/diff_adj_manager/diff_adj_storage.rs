@@ -230,7 +230,7 @@ impl DiffAdjStorage {
             "Getting target difficulty at height:{} for PoW:{}", height, pow_algo
         );
         Ok(match pow_algo {
-            PowAlgorithm::Monero => cmp::max(self.min_pow_difficulty, self.monero_lwma.get_difficulty()),
+            PowAlgorithm::Monero => self.monero_lwma.get_difficulty(),
             PowAlgorithm::Blake => cmp::max(self.min_pow_difficulty, self.blake_lwma.get_difficulty()),
         })
     }
@@ -249,7 +249,7 @@ impl DiffAdjStorage {
             "Getting target difficulty at height:{} for PoW:{}", height, pow_algo
         );
         Ok(match pow_algo {
-            PowAlgorithm::Monero => cmp::max(self.min_pow_difficulty, self.monero_lwma.get_difficulty()),
+            PowAlgorithm::Monero => self.monero_lwma.get_difficulty(),
             PowAlgorithm::Blake => cmp::max(self.min_pow_difficulty, self.blake_lwma.get_difficulty()),
         })
     }
@@ -335,7 +335,7 @@ impl DiffAdjStorage {
             },
 
             PowAlgorithm::Blake => {
-                let target_difficulty = self.blake_lwma.get_difficulty();
+                let target_difficulty = cmp::max(self.min_pow_difficulty, self.blake_lwma.get_difficulty());
                 self.blake_lwma.add(timestamp, target_difficulty)?
             },
         }
@@ -360,8 +360,10 @@ impl DiffAdjStorage {
         for height in 0..=height_of_longest_chain {
             let header = fetch_header(db, height)?;
             // keep MEDIAN_TIMESTAMP_COUNT blocks for median timestamp
-            if self.timestamps.len() < self.median_timestamp_count {
-                self.timestamps.push_front(header.timestamp);
+            // we need to keep the last bunch
+            self.timestamps.push_back(header.timestamp);
+            if self.timestamps.len() > self.median_timestamp_count {
+                let _ = self.timestamps.remove(0);
             }
             self.add(header.timestamp, header.pow)?;
         }
@@ -388,8 +390,10 @@ impl DiffAdjStorage {
         for height in 0..=height_of_longest_chain {
             let header = fetch_header_writeguard(db, height)?;
             // keep MEDIAN_TIMESTAMP_COUNT blocks for median timestamp
-            if self.timestamps.len() < self.median_timestamp_count {
-                self.timestamps.push_front(header.timestamp);
+            // we need to keep the last bunch
+            self.timestamps.push_back(header.timestamp);
+            if self.timestamps.len() > self.median_timestamp_count {
+                let _ = self.timestamps.remove(0);
             }
             self.add(header.timestamp, header.pow)?;
         }
