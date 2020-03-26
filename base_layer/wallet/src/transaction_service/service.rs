@@ -68,7 +68,7 @@ use tari_comms_dht::{
     outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageResponse},
 };
 #[cfg(feature = "test_harness")]
-use tari_core::transactions::{tari_amount::T, types::BlindingFactor};
+use tari_core::transactions::{tari_amount::uT, types::BlindingFactor};
 use tari_core::{
     base_node::proto::{
         base_node as BaseNodeProto,
@@ -1501,10 +1501,7 @@ where
                 pending_tx
                     .outputs_to_be_spent
                     .iter()
-                    .map(|o| {
-                        o.as_transaction_input(&self.factories.commitment, OutputFeatures::default())
-                            .clone()
-                    })
+                    .map(|o| o.as_transaction_input(&self.factories.commitment, OutputFeatures::default()))
                     .collect(),
                 pending_tx
                     .outputs_to_be_received
@@ -1512,7 +1509,6 @@ where
                     .map(|o| {
                         o.as_transaction_output(&self.factories)
                             .expect("Failed to convert to Transaction Output")
-                            .clone()
                     })
                     .collect(),
             )
@@ -1562,7 +1558,7 @@ where
         .await?;
 
         use crate::testnet_utils::make_input;
-        let (_ti, uo) = make_input(&mut OsRng, amount + 1 * T, &self.factories);
+        let (_ti, uo) = make_input(&mut OsRng, amount + 1000 * uT, &self.factories);
 
         fake_oms.add_output(uo).await?;
 

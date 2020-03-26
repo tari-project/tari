@@ -83,7 +83,7 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
             WriteOperation::Remove(k) => match k {
                 DbKey::Contact(k) => match ContactSql::find(&k.to_vec(), &(*conn)) {
                     Ok(c) => {
-                        c.clone().delete(&conn)?;
+                        c.delete(&conn)?;
                         return Ok(Some(DbValue::Contact(Box::new(Contact::try_from(c)?))));
                     },
                     Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => (),

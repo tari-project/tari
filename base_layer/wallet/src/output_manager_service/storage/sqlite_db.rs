@@ -177,7 +177,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             WriteOperation::Remove(k) => match k {
                 DbKey::SpentOutput(s) => match OutputSql::find_status(&s.to_vec(), OutputStatus::Spent, &(*conn)) {
                     Ok(o) => {
-                        o.clone().delete(&(*conn))?;
+                        o.delete(&(*conn))?;
                         return Ok(Some(DbValue::SpentOutput(Box::new(UnblindedOutput::try_from(o)?))));
                     },
                     Err(e) => {
@@ -189,7 +189,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 },
                 DbKey::UnspentOutput(k) => match OutputSql::find_status(&k.to_vec(), OutputStatus::Unspent, &(*conn)) {
                     Ok(o) => {
-                        o.clone().delete(&(*conn))?;
+                        o.delete(&(*conn))?;
                         return Ok(Some(DbValue::UnspentOutput(Box::new(UnblindedOutput::try_from(o)?))));
                     },
                     Err(e) => {
@@ -202,7 +202,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 DbKey::PendingTransactionOutputs(tx_id) => match PendingTransactionOutputSql::find(tx_id, &(*conn)) {
                     Ok(p) => {
                         let outputs = OutputSql::find_by_tx_id_and_encumbered(p.tx_id as u64, &(*conn))?;
-                        p.clone().delete(&(*conn))?;
+                        p.delete(&(*conn))?;
                         return Ok(Some(DbValue::PendingTransactionOutputs(Box::new(
                             pending_transaction_outputs_from_sql_outputs(p.tx_id as u64, &p.timestamp, outputs)?,
                         ))));
