@@ -22,6 +22,7 @@
 
 use crate::{
     base_node::{
+        comms_interface::CommsInterfaceError,
         state_machine::BaseNodeStateMachine,
         states::{ListeningInfo, StateEvent},
     },
@@ -92,6 +93,7 @@ pub enum BlockSyncError {
     ChainStorageError(ChainStorageError),
     PeerManagerError(PeerManagerError),
     ConnectionManagerError(ConnectionManagerError),
+    CommsInterfaceError(CommsInterfaceError),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -142,6 +144,10 @@ impl BlockSyncInfo {
             },
             Err(BlockSyncError::EmptyNetworkBestBlock) => {
                 warn!(target: LOG_TARGET, "An empty network best block hash was received.",);
+                StateEvent::BlockSyncFailure
+            },
+            Err(BlockSyncError::CommsInterfaceError(e)) => {
+                warn!(target: LOG_TARGET, "Unable to perform network queries: {}", e);
                 StateEvent::BlockSyncFailure
             },
             Err(e) => StateEvent::FatalError(format!("Synchronizing blocks failed. {:?}", e)),
@@ -348,12 +354,18 @@ async fn request_block<B: BlockchainBackend + 'static>(
                     },
                 }
             },
-            Err(e) => {
+            Err(CommsInterfaceError::UnexpectedApiResponse) => {
+                debug!(target: LOG_TARGET, "Remote node provided an unexpected api response.",);
+                ban_sync_peer(shared, sync_peers, sync_peer.clone()).await?;
+            },
+            Err(CommsInterfaceError::RequestTimedOut) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Failed to fetch blocks from peer: {:?}. Retrying.", e,
+                    "Failed to fetch blocks from peer: {:?}. Retrying.",
+                    CommsInterfaceError::RequestTimedOut,
                 );
             },
+            Err(e) => return Err(BlockSyncError::CommsInterfaceError(e)),
         }
         debug!(target: LOG_TARGET, "Retrying block download. Attempt {}", attempt);
     }
@@ -409,12 +421,18 @@ async fn request_headers<B: BlockchainBackend + 'static>(
                     ban_sync_peer(shared, sync_peers, sync_peer.clone()).await?;
                 }
             },
-            Err(e) => {
+            Err(CommsInterfaceError::UnexpectedApiResponse) => {
+                debug!(target: LOG_TARGET, "Remote node provided an unexpected api response.",);
+                ban_sync_peer(shared, sync_peers, sync_peer.clone()).await?;
+            },
+            Err(CommsInterfaceError::RequestTimedOut) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Failed to fetch header from peer: {:?}. Retrying.", e,
+                    "Failed to fetch header from peer: {:?}. Retrying.",
+                    CommsInterfaceError::RequestTimedOut,
                 );
             },
+            Err(e) => return Err(BlockSyncError::CommsInterfaceError(e)),
         }
         debug!(target: LOG_TARGET, "Retrying header download. Attempt {}", attempt);
     }
