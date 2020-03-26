@@ -79,7 +79,7 @@ pub fn get_rincewind_genesis_block_raw() -> Block {
         vec![TransactionOutput {
             features: OutputFeatures {
                 flags: OutputFlags::COINBASE_OUTPUT,
-                maturity: 1,
+                maturity: 60,
             },
             commitment: Commitment::from_hex(
                 "feba9eeee21bb01aea86cfa52ea3c905647e3785040581dd9c1f6c89510e6548",
@@ -108,7 +108,7 @@ pub fn get_rincewind_genesis_block_raw() -> Block {
             prev_hash: vec![
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             ],
-            timestamp: 1_584_713_013.into(),
+            timestamp: 1_585_216_800.into(), // Thursday, 26 March 2020 12:00:00 GMT+02:00
             output_mr: from_hex("fab84d9d797c272b33011caa78718f93c3d5fc44c7d35bbf138613440fca2c79").unwrap(),
             range_proof_mr: from_hex("63a36ba139a884434702dffccec348b02ba886d3851a19732d8d111a54e17d56").unwrap(),
             kernel_mr: from_hex("b097af173dc852862f48af67aa57f48c47d20bc608d77b46a3018999bffba911").unwrap(),
