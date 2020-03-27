@@ -38,7 +38,7 @@ use crate::{
 };
 use log::*;
 use std::sync::Arc;
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 pub const LOG_TARGET: &str = "c::mp::mempool";
 
@@ -171,13 +171,19 @@ where T: BlockchainBackend
     pub fn process_reorg(&self, removed_blocks: Vec<Block>, new_blocks: Vec<Block>) -> Result<(), MempoolError> {
         debug!(target: LOG_TARGET, "Mempool processing reorg");
         for block in &removed_blocks {
-            trace!(target: LOG_TARGET, "Mempool processing reorg removed block: {}", block);
+            trace!(
+                target: LOG_TARGET,
+                "Mempool processing reorg removed block {} ({})",
+                block.header.height,
+                block.header.hash().to_hex(),
+            );
         }
         for block in &new_blocks {
             trace!(
                 target: LOG_TARGET,
-                "Mempool processing reorg added new block: {}",
-                block
+                "Mempool processing reorg added new block {} ({})",
+                block.header.height,
+                block.header.hash().to_hex(),
             );
         }
 
