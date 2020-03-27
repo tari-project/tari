@@ -329,19 +329,16 @@ where
                 response = discovery_process_futures.select_next_some() => {
                     match response {
                         Ok((message_tag, outbound_tx)) => {
-                            self.db
-                                .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx.clone())
-                                .await?;
-                            self.pending_outbound_message_results.insert(message_tag, outbound_tx.clone());
-                            let _ = self.event_publisher
-                                .send(TransactionEvent::TransactionSendDiscoveryComplete(outbound_tx.tx_id, true))
-                                .await;
                             info!(
                                 target: LOG_TARGET,
                                 "Discovery process completed for TxId: {} with Message Tag: {} now waiting for MessageSent event",
                                 outbound_tx.tx_id,
                                 message_tag,
                             );
+                            self.db
+                                .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx.clone())
+                                .await?;
+                            self.pending_outbound_message_results.insert(message_tag.clone(), outbound_tx);
                         },
                         Err(TransactionServiceError::DiscoveryProcessFailed(tx_id)) => {
                             if let Err(e) = self.output_manager_service.cancel_transaction(tx_id).await {
@@ -475,6 +472,9 @@ where
             Some(outbound_tx) => {
                 // If the message was successfully sent then add it to the pending transaction list
                 if result {
+                    self.output_manager_service
+                        .confirm_pending_transaction(outbound_tx.tx_id)
+                        .await?;
                     info!(
                         target: LOG_TARGET,
                         "Pending Outbound Transaction TxId: {:?} was successfully sent with Message Tag: {:?}",
@@ -488,8 +488,23 @@ where
                         message_tag,
                         outbound_tx.tx_id
                     );
-
-                    self.db.remove_pending_outbound_transaction(outbound_tx.tx_id).await?;
+                    if let Err(e) = self.db.remove_pending_outbound_transaction(outbound_tx.tx_id).await {
+                        error!(
+                            target: LOG_TARGET,
+                            "Failed to remove pending transaction TX_ID: {} after failed sending attempt with error \
+                             {:?}",
+                            outbound_tx.tx_id,
+                            e
+                        );
+                    }
+                    if let Err(e) = self.output_manager_service.cancel_transaction(outbound_tx.tx_id).await {
+                        error!(
+                            target: LOG_TARGET,
+                            "Failed to Cancel TX_ID: {} after failed sending attempt with error {:?}",
+                            outbound_tx.tx_id,
+                            e
+                        );
+                    }
                 }
 
                 let _ = self
@@ -563,11 +578,9 @@ where
                         message,
                         timestamp: Utc::now().naive_utc(),
                     };
-
                     self.db
                         .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx.clone())
                         .await?;
-
                     self.pending_outbound_message_results
                         .insert(tags[0].clone(), outbound_tx);
                 },
@@ -761,7 +774,7 @@ where
                 amount,
                 receiver_protocol: rtp.clone(),
                 status: TransactionStatus::Pending,
-                message: data.message,
+                message: data.message.clone(),
                 timestamp: Utc::now().naive_utc(),
             };
             self.db
@@ -771,6 +784,10 @@ where
             info!(
                 target: LOG_TARGET,
                 "Transaction with TX_ID = {} received from {}. Reply Sent", tx_id, source_pubkey,
+            );
+            info!(
+                target: LOG_TARGET,
+                "Transaction (TX_ID: {}) - Amount: {} - Message: {}", tx_id, amount, data.message
             );
 
             self.event_publisher

@@ -119,6 +119,10 @@ where
             Some(km) => km,
         };
 
+        // Clear any encumberances for transactions that were being negotiated but did not complete to become official
+        // Pending Transactions.
+        db.clear_short_term_encumberances().await?;
+
         Ok(OutputManagerService {
             config,
             outbound_message_service,
@@ -224,6 +228,10 @@ where
                 .prepare_transaction_to_send(amount, fee_per_gram, lock_height, message)
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
+            OutputManagerRequest::ConfirmPendingTransaction(tx_id) => self
+                .confirm_encumberance(tx_id)
+                .await
+                .map(|_| OutputManagerResponse::PendingTransactionConfirmed),
             OutputManagerRequest::ConfirmTransaction((tx_id, spent_outputs, received_outputs)) => self
                 .confirm_transaction(tx_id, &spent_outputs, &received_outputs)
                 .await
@@ -573,6 +581,14 @@ where
             .await?;
 
         Ok(stp)
+    }
+
+    /// Confirm that a transaction has finished being negotiated between parties so the short-term encumberance can be
+    /// made official
+    pub async fn confirm_encumberance(&mut self, tx_id: u64) -> Result<(), OutputManagerError> {
+        self.db.confirm_encumbered_outputs(tx_id).await?;
+
+        Ok(())
     }
 
     /// Confirm that a received or sent transaction and its outputs have been detected on the base chain. The inputs and

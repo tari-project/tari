@@ -82,11 +82,10 @@ table! {
 table! {
     pending_transaction_outputs (tx_id) {
         tx_id -> BigInt,
+        short_term -> Integer,
         timestamp -> Timestamp,
     }
 }
-
-joinable!(outputs -> pending_transaction_outputs (tx_id));
 
 allow_tables_to_appear_in_same_query!(
     coinbase_transactions,

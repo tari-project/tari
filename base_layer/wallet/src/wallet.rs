@@ -140,8 +140,8 @@ where
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
                     auto_ping_interval: Some(Duration::from_secs(30)),
-                    enable_auto_join: false,
-                    enable_auto_stored_message_request: false,
+                    enable_auto_join: true,
+                    enable_auto_stored_message_request: true,
                     refresh_neighbours_interval: Default::default(),
                 },
                 Arc::clone(&subscription_factory),
