@@ -4186,16 +4186,6 @@ mod test {
             let ffi_inbound_txs = wallet_get_pending_inbound_transactions(&mut (*alice_wallet), error_ptr);
             assert_eq!(pending_inbound_transactions_get_length(ffi_inbound_txs, error_ptr), 6);
 
-            let id_inbound = pending_inbound_transactions_get_at(&mut (*ffi_inbound_txs), 0, error_ptr);
-            let id_inbound_get = wallet_get_pending_inbound_transaction_by_id(
-                &mut (*alice_wallet),
-                (&mut (*id_inbound)).tx_id,
-                error_ptr,
-            );
-            assert_eq!((*id_inbound), (*id_inbound_get));
-            pending_inbound_transaction_destroy(&mut (*id_inbound));
-            pending_inbound_transaction_destroy(&mut (*id_inbound_get));
-
             let mut found_pending = false;
             for i in 0..pending_inbound_transactions_get_length(ffi_inbound_txs, error_ptr) {
                 let pending_tx = pending_inbound_transactions_get_at(ffi_inbound_txs, i, error_ptr);
@@ -4209,16 +4199,6 @@ mod test {
             // `wallet_test_generate_data(...)` creates 9 completed outbound transactions that are not mined
             let ffi_outbound_txs = wallet_get_pending_outbound_transactions(&mut (*alice_wallet), error_ptr);
             assert_eq!(pending_outbound_transactions_get_length(ffi_outbound_txs, error_ptr), 9);
-
-            let id_outbound = pending_outbound_transactions_get_at(&mut (*ffi_outbound_txs), 0, error_ptr);
-            let id_outbound_get = wallet_get_pending_outbound_transaction_by_id(
-                &mut (*alice_wallet),
-                (&mut (*id_outbound)).tx_id,
-                error_ptr,
-            );
-            assert_eq!((*id_outbound), (*id_outbound_get));
-            pending_outbound_transaction_destroy(&mut (*id_outbound));
-            pending_outbound_transaction_destroy(&mut (*id_outbound_get));
 
             let mut found_broadcast = false;
             for i in 0..pending_outbound_transactions_get_length(ffi_outbound_txs, error_ptr) {
@@ -4263,12 +4243,43 @@ mod test {
             let ffi_completed_txs = wallet_get_completed_transactions(&mut (*alice_wallet), error_ptr);
             assert_eq!(completed_transactions_get_length(ffi_completed_txs, error_ptr), 1);
 
-            let id_completed = completed_transactions_get_at(&mut (*ffi_completed_txs), 0, error_ptr);
-            let id_completed_get =
-                wallet_get_completed_transaction_by_id(&mut (*alice_wallet), (&mut (*id_completed)).tx_id, error_ptr);
-            assert_eq!((*id_completed), (*id_completed_get));
-            completed_transaction_destroy(&mut (*id_completed));
-            completed_transaction_destroy(&mut (*id_completed_get));
+            for x in 0..completed_transactions_get_length(ffi_completed_txs, error_ptr) {
+                let id_completed = completed_transactions_get_at(&mut (*ffi_completed_txs), x, error_ptr);
+                let id_completed_get = wallet_get_completed_transaction_by_id(
+                    &mut (*alice_wallet),
+                    (&mut (*id_completed)).tx_id,
+                    error_ptr,
+                );
+                if (&mut (*id_completed)).status == TransactionStatus::Mined {
+                    assert_eq!((*id_completed), (*id_completed_get));
+                    assert_eq!((*id_completed_get).status, TransactionStatus::Mined);
+                } else {
+                    assert_eq!(id_completed_get, ptr::null_mut());
+                    let pk_compare = wallet_get_public_key(&mut (*alice_wallet), error_ptr);
+                    if (&mut (*pk_compare)).as_bytes() == (&mut (*id_completed)).destination_public_key.as_bytes() {
+                        let id_inbound_get = wallet_get_pending_inbound_transaction_by_id(
+                            &mut (*alice_wallet),
+                            (&mut (*id_completed_get)).tx_id,
+                            error_ptr,
+                        );
+                        assert_ne!(id_inbound_get, ptr::null_mut());
+                        assert_ne!((&mut (*id_inbound_get)).status, TransactionStatus::Mined);
+                        pending_inbound_transaction_destroy(&mut (*id_inbound_get));
+                    } else {
+                        let id_outbound_get = wallet_get_pending_outbound_transaction_by_id(
+                            &mut (*alice_wallet),
+                            (&mut (*id_completed_get)).tx_id,
+                            error_ptr,
+                        );
+                        assert_ne!(id_outbound_get, ptr::null_mut());
+                        assert_ne!((&mut (*id_outbound_get)).status, TransactionStatus::Mined);
+                        pending_outbound_transaction_destroy(&mut (*id_outbound_get));
+                    }
+                    public_key_destroy(&mut (*pk_compare));
+                }
+                completed_transaction_destroy(&mut (*id_completed));
+                completed_transaction_destroy(&mut (*id_completed_get));
+            }
 
             // TODO: Test transaction collection and transaction methods
             let completed_transactions: std::collections::HashMap<
