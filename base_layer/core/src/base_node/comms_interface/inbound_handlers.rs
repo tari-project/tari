@@ -44,7 +44,7 @@ use std::sync::Arc;
 use strum_macros::Display;
 use tari_broadcast_channel::Publisher;
 use tari_comms::types::CommsPublicKey;
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 use tokio::sync::RwLock;
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
@@ -258,6 +258,11 @@ where T: BlockchainBackend + 'static
                 BlockAddResult::ChainReorg(_) => true,
             };
             if propagate {
+                debug!(
+                    target: LOG_TARGET,
+                    "Propagate block ({}) to network.",
+                    block.hash().to_hex()
+                );
                 let exclude_peers = source_peer.into_iter().collect();
                 self.outbound_nci.propagate_block(block.clone(), exclude_peers).await?;
             }

@@ -315,7 +315,7 @@ where B: BlockchainBackend + 'static
 }
 
 async fn handle_incoming_request<B: BlockchainBackend + 'static>(
-    inbound_handlers: MempoolInboundHandlers<B>,
+    mut inbound_handlers: MempoolInboundHandlers<B>,
     mut outbound_message_service: OutboundMessageRequester,
     domain_request_msg: DomainMessage<proto::MempoolServiceRequest>,
 ) -> Result<(), MempoolServiceError>

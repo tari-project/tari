@@ -1571,6 +1571,7 @@ fn transaction_mempool_broadcast() {
     match mempool_service_request.request {
         MempoolRequest::GetStats => assert!(false, "Invalid Mempool Service Request variant"),
         MempoolRequest::GetTxStateWithExcessSig(excess_sig) => assert_eq!(excess_sig, kernel_sig),
+        MempoolRequest::SubmitTransaction(_) => assert!(false, "Invalid Mempool Service Request variant"),
     }
 
     let mempool_response = MempoolProto::MempoolServiceResponse {
@@ -1974,6 +1975,7 @@ fn transaction_base_node_monitoring() {
     match mempool_service_request.request {
         MempoolRequest::GetStats => assert!(false, "Invalid Mempool Service Request variant"),
         MempoolRequest::GetTxStateWithExcessSig(excess_sig) => assert_eq!(excess_sig, kernel_sig),
+        MempoolRequest::SubmitTransaction(_) => assert!(false, "Invalid Mempool Service Request variant"),
     }
 
     let mempool_response = MempoolProto::MempoolServiceResponse {
