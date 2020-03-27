@@ -680,7 +680,7 @@ impl Parser {
 }
 
 fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
-    EmojiId::str_to_pubkey(key)
+    EmojiId::str_to_pubkey(&key.trim().replace('|', ""))
         .or_else(|_| CommsPublicKey::from_hex(key))
         .ok()
 }
