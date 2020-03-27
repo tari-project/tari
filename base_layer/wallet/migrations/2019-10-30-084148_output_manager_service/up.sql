@@ -9,6 +9,7 @@ CREATE TABLE outputs (
 
 CREATE TABLE pending_transaction_outputs (
     tx_id INTEGER PRIMARY KEY NOT NULL,
+    short_term INTEGER NOT NULL,
     timestamp DATETIME NOT NULL
 );
 

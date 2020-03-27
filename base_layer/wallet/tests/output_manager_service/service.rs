@@ -46,10 +46,11 @@ use tari_core::{
     },
     transactions::{
         fee::Fee,
-        tari_amount::MicroTari,
-        transaction::{KernelFeatures, OutputFeatures, TransactionOutput, UnblindedOutput},
+        tari_amount::{uT, MicroTari},
+        transaction::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
         transaction_protocol::single_receiver::SingleReceiverTransactionProtocol,
         types::{CryptoFactories, PrivateKey, RangeProof},
+        SenderTransactionProtocol,
     },
 };
 use tari_crypto::{
@@ -125,6 +126,30 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     )
 }
 
+async fn complete_transaction(mut stp: SenderTransactionProtocol, mut oms: OutputManagerHandle) -> Transaction {
+    let factories = CryptoFactories::default();
+
+    let sender_tx_id = stp.get_tx_id().unwrap();
+    // Is there change? Unlikely not to be but the random amounts MIGHT produce a no change output situation
+    if stp.get_amount_to_self().unwrap() > MicroTari::from(0) {
+        let pt = oms.get_pending_transactions().await.unwrap();
+        assert_eq!(pt.len(), 1);
+        assert_eq!(
+            pt.get(&sender_tx_id).unwrap().outputs_to_be_received[0].value,
+            stp.get_amount_to_self().unwrap()
+        );
+    }
+    let msg = stp.build_single_round_message().unwrap();
+    let b = TestParams::new(&mut OsRng);
+    let recv_info =
+        SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, OutputFeatures::default(), &factories)
+            .unwrap();
+    stp.add_single_recipient_info(recv_info.clone(), &factories.range_proof)
+        .unwrap();
+    stp.finalize(KernelFeatures::empty(), &factories).unwrap();
+    stp.get_transaction().unwrap().clone()
+}
+
 fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
 
@@ -152,37 +177,13 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
         runtime.block_on(oms.add_output(uo)).unwrap();
     }
 
-    let mut stp = runtime
+    let stp = runtime
         .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None, "".to_string()))
         .unwrap();
 
     let sender_tx_id = stp.get_tx_id().unwrap();
-    let mut num_change = 0;
-    // Is there change? Unlikely not to be but the random amounts MIGHT produce a no change output situation
-    if stp.get_amount_to_self().unwrap() > MicroTari::from(0) {
-        let pt = runtime.block_on(oms.get_pending_transactions()).unwrap();
-        assert_eq!(pt.len(), 1);
-        assert_eq!(
-            pt.get(&sender_tx_id).unwrap().outputs_to_be_received[0].value,
-            stp.get_amount_to_self().unwrap()
-        );
-        num_change = 1;
-    }
 
-    let msg = stp.build_single_round_message().unwrap();
-
-    let b = TestParams::new(&mut OsRng);
-
-    let recv_info =
-        SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, OutputFeatures::default(), &factories)
-            .unwrap();
-
-    stp.add_single_recipient_info(recv_info.clone(), &factories.range_proof)
-        .unwrap();
-
-    stp.finalize(KernelFeatures::empty(), &factories).unwrap();
-
-    let tx = stp.get_transaction().unwrap();
+    let tx = runtime.block_on(complete_transaction(stp, oms.clone()));
 
     runtime
         .block_on(oms.confirm_transaction(sender_tx_id, tx.body.inputs().clone(), tx.body.outputs().clone()))
@@ -195,7 +196,7 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
     );
     assert_eq!(
         runtime.block_on(oms.get_unspent_outputs()).unwrap().len(),
-        num_outputs + 1 - runtime.block_on(oms.get_spent_outputs()).unwrap().len() + num_change
+        num_outputs + 1 - runtime.block_on(oms.get_spent_outputs()).unwrap().len() + tx.body.outputs().len() - 1
     );
 
     if let DbValue::KeyManagerState(km) = backend.fetch(&DbKey::KeyManagerState).unwrap().unwrap() {
@@ -802,4 +803,81 @@ fn test_startup_utxo_scan() {
 
     let invalid_txs = runtime.block_on(oms.get_invalid_outputs()).unwrap();
     assert_eq!(invalid_txs.len(), 3);
+}
+
+fn sending_transaction_with_short_term_clear<T: Clone + OutputManagerBackend + 'static>(backend: T) {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+
+    let (mut oms, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
+
+    let available_balance = 10_000 * uT;
+    let (_ti, uo) = make_input(&mut OsRng.clone(), available_balance, &factories.commitment);
+    runtime.block_on(oms.add_output(uo.clone())).unwrap();
+
+    // Check that funds are encumbered and then unencumbered if the pending tx is not confirmed before restart
+    let _stp = runtime
+        .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None, "".to_string()))
+        .unwrap();
+
+    let balance = runtime.block_on(oms.get_balance()).unwrap();
+    let expected_change = balance.pending_incoming_balance;
+    assert_eq!(balance.pending_outgoing_balance, available_balance);
+
+    drop(oms);
+    let (mut oms, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
+
+    let balance = runtime.block_on(oms.get_balance()).unwrap();
+    assert_eq!(balance.available_balance, available_balance);
+
+    // Check that a unconfirm Pending Transaction can be cancelled
+    let stp = runtime
+        .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None, "".to_string()))
+        .unwrap();
+    let sender_tx_id = stp.get_tx_id().unwrap();
+
+    let balance = runtime.block_on(oms.get_balance()).unwrap();
+    assert_eq!(balance.pending_outgoing_balance, available_balance);
+    runtime.block_on(oms.cancel_transaction(sender_tx_id)).unwrap();
+
+    let balance = runtime.block_on(oms.get_balance()).unwrap();
+    assert_eq!(balance.available_balance, available_balance);
+
+    // Check that is the pending tx is confirmed that the encumberance persists after restart
+    let stp = runtime
+        .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None, "".to_string()))
+        .unwrap();
+    let sender_tx_id = stp.get_tx_id().unwrap();
+    runtime.block_on(oms.confirm_pending_transaction(sender_tx_id)).unwrap();
+
+    drop(oms);
+    let (mut oms, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
+
+    let balance = runtime.block_on(oms.get_balance()).unwrap();
+    assert_eq!(balance.pending_outgoing_balance, available_balance);
+
+    let tx = runtime.block_on(complete_transaction(stp, oms.clone()));
+
+    runtime
+        .block_on(oms.confirm_transaction(sender_tx_id, tx.body.inputs().clone(), tx.body.outputs().clone()))
+        .unwrap();
+
+    let balance = runtime.block_on(oms.get_balance()).unwrap();
+    assert_eq!(balance.available_balance, expected_change);
+}
+
+#[test]
+fn sending_transaction_with_short_term_clear_memory_db() {
+    sending_transaction_with_short_term_clear(OutputManagerMemoryDatabase::new());
+}
+
+#[test]
+fn sending_transaction_with_short_term_clear_sqlite_db() {
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    sending_transaction_with_short_term_clear(OutputManagerSqliteDatabase::new(connection));
 }

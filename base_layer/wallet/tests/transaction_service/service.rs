@@ -452,8 +452,6 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
         Duration::from_secs(1),
     );
 
-    let alice_event_stream = alice_ts.get_event_stream_fused();
-
     // Add some funds to Alices wallet
     let (_utxo, uo1a) = make_input(&mut OsRng, MicroTari(5500), &factories.commitment);
     runtime.block_on(alice_oms.add_output(uo1a)).unwrap();
@@ -472,7 +470,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
             bob_node_identity.public_key().clone(),
             value_a_to_b_1,
             MicroTari::from(20),
-            "".to_string(),
+            "a to b 1".to_string(),
         ))
         .unwrap();
     runtime
@@ -480,7 +478,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
             carol_node_identity.public_key().clone(),
             value_a_to_c_1,
             MicroTari::from(20),
-            "".to_string(),
+            "a to c 1".to_string(),
         ))
         .unwrap();
     let alice_completed_tx = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
@@ -506,9 +504,6 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
         Duration::from_secs(1),
     );
 
-    let bob_event_stream = bob_ts.get_event_stream_fused();
-    let carol_event_stream = carol_ts.get_event_stream_fused();
-
     let (_utxo, uo2) = make_input(&mut OsRng, MicroTari(3500), &factories.commitment);
     runtime.block_on(bob_oms.add_output(uo2)).unwrap();
     let (_utxo, uo3) = make_input(&mut OsRng, MicroTari(4500), &factories.commitment);
@@ -519,7 +514,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
             alice_node_identity.public_key().clone(),
             value_b_to_a_1,
             MicroTari::from(20),
-            "".to_string(),
+            "b to a 1".to_string(),
         ))
         .unwrap();
     runtime
@@ -527,22 +522,87 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
             bob_node_identity.public_key().clone(),
             value_a_to_b_2,
             MicroTari::from(20),
-            "".to_string(),
+            "a to b 2".to_string(),
         ))
         .unwrap();
-    let result =
-        runtime.block_on(async { collect_stream!(alice_event_stream, take = 8, timeout = Duration::from_secs(30)) });
 
-    assert_eq!(
-        result.iter().fold(0, |acc, x| match &**x {
-            TransactionEvent::ReceivedTransactionReply(_) => acc + 1,
-            _ => acc,
-        }),
-        3
-    );
+    let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
-    let _result =
-        runtime.block_on(async { collect_stream!(bob_event_stream, take = 6, timeout = Duration::from_secs(30)) });
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(90)).fuse();
+        let mut tx_reply = 0;
+        let mut finalized = 0;
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                    if let TransactionEvent::ReceivedTransactionReply(_) = &*event{
+                        tx_reply+=1;
+                    }
+                     if let TransactionEvent::ReceivedFinalizedTransaction(_) = &*event{
+                        finalized+=1;
+                    }
+                    if tx_reply == 3 && finalized ==1 {
+                        break;
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert_eq!(tx_reply, 3);
+        assert_eq!(finalized, 1);
+    });
+
+    let mut bob_event_stream = bob_ts.get_event_stream_fused();
+
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(90)).fuse();
+        let mut tx_reply = 0;
+        let mut finalized = 0;
+        loop {
+            futures::select! {
+                event = bob_event_stream.select_next_some() => {
+                    if let TransactionEvent::ReceivedTransactionReply(_) = &*event{
+                        tx_reply+=1;
+                    }
+                     if let TransactionEvent::ReceivedFinalizedTransaction(_) = &*event{
+                        finalized+=1;
+                    }
+                    if tx_reply == 1 && finalized == 2 {
+                        break;
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert_eq!(tx_reply, 1);
+        assert_eq!(finalized, 2);
+    });
+
+    let mut carol_event_stream = carol_ts.get_event_stream_fused();
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(90)).fuse();
+        let mut finalized = 0;
+        loop {
+            futures::select! {
+                event = carol_event_stream.select_next_some() => {
+                     if let TransactionEvent::ReceivedFinalizedTransaction(_) = &*event{
+                        finalized+=1;
+                    }
+                    if finalized == 1 {
+                        break;
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert_eq!(finalized, 1);
+    });
 
     let alice_pending_outbound = runtime.block_on(alice_ts.get_pending_outbound_transactions()).unwrap();
     let alice_completed_tx = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
@@ -552,8 +612,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
     let bob_completed_tx = runtime.block_on(bob_ts.get_completed_transactions()).unwrap();
     assert_eq!(bob_pending_outbound.len(), 0);
     assert_eq!(bob_completed_tx.len(), 3);
-    let _ =
-        runtime.block_on(async { collect_stream!(carol_event_stream, take = 2, timeout = Duration::from_secs(30)) });
+
     let carol_pending_inbound = runtime.block_on(carol_ts.get_pending_inbound_transactions()).unwrap();
     let carol_completed_tx = runtime.block_on(carol_ts.get_completed_transactions()).unwrap();
     assert_eq!(carol_pending_inbound.len(), 0);
@@ -1195,10 +1254,6 @@ fn discovery_async_return_test() {
             0u64
         },
     };
-    let event = runtime.block_on(alice_event_stream.next()).unwrap();
-    unpack_enum!(TransactionEvent::TransactionSendDiscoveryComplete(txid, is_success) = &*event);
-    assert_eq!(txid, &tx_id2);
-    assert!(is_success);
 
     let event = runtime.block_on(alice_event_stream.next()).unwrap();
     unpack_enum!(TransactionEvent::TransactionSendResult(txid, is_success) = &*event);
@@ -2173,4 +2228,113 @@ fn query_all_completed_transactions_on_startup() {
             _ => false,
         })
         .is_some());
+}
+
+#[test]
+fn test_failed_tx_send_timeout() {
+    let _ = env_logger::try_init();
+    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let mut runtime = create_runtime();
+
+    let factories = CryptoFactories::default();
+    // Alice's parameters
+    let alice_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
+
+    // Bob's parameters
+    let bob_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
+
+    let base_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
+
+    log::info!(
+        "manage_single_transaction: Alice: '{}', Bob: '{}', Base: '{}'",
+        alice_node_identity.node_id().short_str(),
+        bob_node_identity.node_id().short_str(),
+        base_node_identity.node_id().short_str()
+    );
+
+    let (mut alice_ts, mut alice_oms, _alice_comms) = setup_transaction_service(
+        &mut runtime,
+        alice_node_identity.clone(),
+        vec![bob_node_identity.clone()],
+        factories.clone(),
+        TransactionMemoryDatabase::new(),
+        temp_dir.path().to_str().unwrap().to_string().clone(),
+        Duration::from_secs(0),
+    );
+    runtime
+        .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
+        .unwrap();
+
+    let (mut bob_ts, _bob_oms, bob_comms) = setup_transaction_service(
+        &mut runtime,
+        bob_node_identity.clone(),
+        vec![alice_node_identity.clone()],
+        factories.clone(),
+        TransactionMemoryDatabase::new(),
+        temp_dir.path().to_str().unwrap().to_string(),
+        Duration::from_secs(0),
+    );
+    runtime
+        .block_on(bob_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
+        .unwrap();
+
+    runtime
+        .block_on(
+            bob_comms
+                .connection_manager()
+                .dial_peer(alice_node_identity.node_id().clone()),
+        )
+        .unwrap();
+
+    runtime.block_on(bob_comms.shutdown());
+    runtime.block_on(async { delay_for(Duration::from_secs(10)).await });
+
+    let balance = 2500 * uT;
+    let value_sent = MicroTari::from(1000);
+    let (_utxo, uo1) = make_input(&mut OsRng, balance, &factories.commitment);
+
+    runtime.block_on(alice_oms.add_output(uo1)).unwrap();
+    let message = "TAKE MAH MONEYS!".to_string();
+    runtime
+        .block_on(alice_ts.send_transaction(
+            bob_node_identity.public_key().clone(),
+            value_sent,
+            MicroTari::from(20),
+            message.clone(),
+        ))
+        .unwrap();
+
+    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(180)).fuse();
+        let mut returned = false;
+        let mut result = true;
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                    if let TransactionEvent::TransactionSendResult(_, success) = (*event).clone() {
+                        returned = true;
+                        result = success;
+                        break;
+                    }
+                },
+                () = delay => {
+                log::error!("This select loop timed out");
+                    break;
+                },
+            }
+        }
+        assert!(returned, "Did not receive event");
+        assert!(!result, "Send should have failed");
+    });
+
+    let current_balance = runtime.block_on(alice_oms.get_balance()).unwrap();
+    assert_eq!(current_balance.available_balance, balance);
 }

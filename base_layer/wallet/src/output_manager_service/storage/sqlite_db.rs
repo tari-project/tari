@@ -163,7 +163,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     if PendingTransactionOutputSql::find(tx_id, &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    PendingTransactionOutputSql::new(p.tx_id, p.timestamp).commit(&(*conn))?;
+                    PendingTransactionOutputSql::new(p.tx_id, true, p.timestamp).commit(&(*conn))?;
                     for o in p.outputs_to_be_spent {
                         OutputSql::new(o.clone(), OutputStatus::EncumberedToBeSpent, Some(p.tx_id)).commit(&(*conn))?;
                     }
@@ -265,7 +265,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn encumber_outputs(
+    fn short_term_encumber_outputs(
         &self,
         tx_id: u64,
         outputs_to_send: &[UnblindedOutput],
@@ -283,7 +283,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             outputs_to_be_spent.push(output);
         }
 
-        PendingTransactionOutputSql::new(tx_id, Utc::now().naive_utc()).commit(&(*conn))?;
+        PendingTransactionOutputSql::new(tx_id, true, Utc::now().naive_utc()).commit(&(*conn))?;
 
         for o in outputs_to_be_spent {
             o.update(
@@ -297,6 +297,41 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         if let Some(co) = change_output {
             OutputSql::new(co, OutputStatus::EncumberedToBeReceived, Some(tx_id)).commit(&(*conn))?;
+        }
+
+        Ok(())
+    }
+
+    fn confirm_encumbered_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
+        let conn = acquire_lock!(self.database_connection);
+
+        match PendingTransactionOutputSql::find(tx_id, &(*conn)) {
+            Ok(p) => {
+                p.clear_short_term(&(*conn))?;
+            },
+            Err(e) => {
+                match e {
+                    OutputManagerStorageError::DieselError(DieselError::NotFound) => {
+                        return Err(OutputManagerStorageError::ValueNotFound(
+                            DbKey::PendingTransactionOutputs(tx_id),
+                        ))
+                    },
+                    e => return Err(e),
+                };
+            },
+        }
+
+        Ok(())
+    }
+
+    fn clear_short_term_encumberances(&self) -> Result<(), OutputManagerStorageError> {
+        let conn = acquire_lock!(self.database_connection);
+
+        let pending_transaction_outputs = PendingTransactionOutputSql::index_short_term(&(*conn))?;
+        drop(conn);
+
+        for pto in pending_transaction_outputs.iter() {
+            self.cancel_pending_transaction(pto.tx_id as u64)?;
         }
 
         Ok(())
@@ -619,12 +654,14 @@ impl From<UpdateOutput> for UpdateOutputSql {
 #[table_name = "pending_transaction_outputs"]
 struct PendingTransactionOutputSql {
     tx_id: i64,
+    short_term: i32,
     timestamp: NaiveDateTime,
 }
 impl PendingTransactionOutputSql {
-    pub fn new(tx_id: TxId, timestamp: NaiveDateTime) -> Self {
+    pub fn new(tx_id: TxId, short_term: bool, timestamp: NaiveDateTime) -> Self {
         Self {
             tx_id: tx_id as i64,
+            short_term: short_term as i32,
             timestamp,
         }
     }
@@ -648,6 +685,14 @@ impl PendingTransactionOutputSql {
 
     pub fn index(conn: &SqliteConnection) -> Result<Vec<PendingTransactionOutputSql>, OutputManagerStorageError> {
         Ok(pending_transaction_outputs::table.load::<PendingTransactionOutputSql>(conn)?)
+    }
+
+    pub fn index_short_term(
+        conn: &SqliteConnection,
+    ) -> Result<Vec<PendingTransactionOutputSql>, OutputManagerStorageError> {
+        Ok(pending_transaction_outputs::table
+            .filter(pending_transaction_outputs::short_term.eq(1i32))
+            .load::<PendingTransactionOutputSql>(conn)?)
     }
 
     pub fn index_older(
@@ -677,6 +722,33 @@ impl PendingTransactionOutputSql {
 
         Ok(())
     }
+
+    /// This function is used to update an existing record to set fields to null
+    pub fn clear_short_term(
+        &self,
+        conn: &SqliteConnection,
+    ) -> Result<PendingTransactionOutputSql, OutputManagerStorageError>
+    {
+        let num_updated = diesel::update(
+            pending_transaction_outputs::table.filter(pending_transaction_outputs::tx_id.eq(&self.tx_id)),
+        )
+        .set(UpdatePendingTransactionOutputSql { short_term: Some(0i32) })
+        .execute(conn)?;
+
+        if num_updated == 0 {
+            return Err(OutputManagerStorageError::UnexpectedResult(
+                "Database update error".to_string(),
+            ));
+        }
+
+        Ok(PendingTransactionOutputSql::find(self.tx_id as u64, conn)?)
+    }
+}
+
+#[derive(AsChangeset)]
+#[table_name = "pending_transaction_outputs"]
+pub struct UpdatePendingTransactionOutputSql {
+    short_term: Option<i32>,
 }
 
 #[derive(Clone, Debug, Queryable, Insertable)]
@@ -897,11 +969,11 @@ mod test {
 
         let tx_id = 44u64;
 
-        PendingTransactionOutputSql::new(tx_id, Utc::now().naive_utc())
+        PendingTransactionOutputSql::new(tx_id, true, Utc::now().naive_utc())
             .commit(&conn)
             .unwrap();
 
-        PendingTransactionOutputSql::new(11u64, Utc::now().naive_utc())
+        PendingTransactionOutputSql::new(11u64, true, Utc::now().naive_utc())
             .commit(&conn)
             .unwrap();
 
@@ -941,6 +1013,7 @@ mod test {
 
         PendingTransactionOutputSql::new(
             12u64,
+            true,
             Utc::now().naive_utc() - ChronoDuration::from_std(Duration::from_millis(600_000)).unwrap(),
         )
         .commit(&conn)

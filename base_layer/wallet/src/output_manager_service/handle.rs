@@ -45,6 +45,7 @@ pub enum OutputManagerRequest {
     AddOutput(UnblindedOutput),
     GetRecipientKey((u64, MicroTari)),
     GetCoinbaseKey((u64, MicroTari, u64)),
+    ConfirmPendingTransaction(u64),
     ConfirmTransaction((u64, Vec<TransactionInput>, Vec<TransactionOutput>)),
     PrepareToSendTransaction((MicroTari, MicroTari, Option<u64>, String)),
     CancelTransaction(u64),
@@ -66,6 +67,7 @@ impl fmt::Display for OutputManagerRequest {
             Self::GetRecipientKey(v) => f.write_str(&format!("GetRecipientKey ({})", v.0)),
             Self::GetCoinbaseKey(v) => f.write_str(&format!("GetCoinbaseKey ({})", v.0)),
             Self::ConfirmTransaction(v) => f.write_str(&format!("ConfirmTransaction ({})", v.0)),
+            Self::ConfirmPendingTransaction(v) => f.write_str(&format!("ConfirmPendingTransaction ({})", v)),
             Self::PrepareToSendTransaction((_, _, _, msg)) => {
                 f.write_str(&format!("PrepareToSendTransaction ({})", msg))
             },
@@ -88,6 +90,7 @@ pub enum OutputManagerResponse {
     OutputAdded,
     RecipientKeyGenerated(PrivateKey),
     OutputConfirmed,
+    PendingTransactionConfirmed,
     TransactionConfirmed,
     TransactionToSend(SenderTransactionProtocol),
     TransactionCancelled,
@@ -194,6 +197,17 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::TransactionToSend(stp) => Ok(stp),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn confirm_pending_transaction(&mut self, tx_id: u64) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::ConfirmPendingTransaction(tx_id))
+            .await??
+        {
+            OutputManagerResponse::PendingTransactionConfirmed => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
