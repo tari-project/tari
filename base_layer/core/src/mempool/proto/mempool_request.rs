@@ -39,6 +39,7 @@ impl TryInto<MempoolRequest> for ProtoMempoolRequest {
             GetTxStateWithExcessSig(excess_sig) => MempoolRequest::GetTxStateWithExcessSig(
                 excess_sig.try_into().map_err(|err: ByteArrayError| err.to_string())?,
             ),
+            SubmitTransaction(tx) => MempoolRequest::SubmitTransaction(tx.try_into()?),
         };
         Ok(request)
     }
@@ -50,6 +51,7 @@ impl From<MempoolRequest> for ProtoMempoolRequest {
         match request {
             GetStats => ProtoMempoolRequest::GetStats(true),
             GetTxStateWithExcessSig(excess_sig) => ProtoMempoolRequest::GetTxStateWithExcessSig(excess_sig.into()),
+            SubmitTransaction(tx) => ProtoMempoolRequest::SubmitTransaction(tx.into()),
         }
     }
 }

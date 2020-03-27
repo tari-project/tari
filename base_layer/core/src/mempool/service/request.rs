@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{base_node::RequestKey, transactions::types::Signature};
+use crate::{
+    base_node::RequestKey,
+    transactions::{transaction::Transaction, types::Signature},
+};
 use core::fmt::{Display, Error, Formatter};
 use serde::{Deserialize, Serialize};
 use tari_crypto::tari_utilities::hex::Hex;
@@ -30,6 +33,7 @@ use tari_crypto::tari_utilities::hex::Hex;
 pub enum MempoolRequest {
     GetStats,
     GetTxStateWithExcessSig(Signature),
+    SubmitTransaction(Transaction),
 }
 
 impl Display for MempoolRequest {
@@ -39,6 +43,10 @@ impl Display for MempoolRequest {
             MempoolRequest::GetTxStateWithExcessSig(sig) => {
                 f.write_str(&format!("GetTxStateWithExcessSig ({})", sig.get_signature().to_hex()))
             },
+            MempoolRequest::SubmitTransaction(tx) => f.write_str(&format!(
+                "SubmitTransaction ({})",
+                tx.body.kernels()[0].excess_sig.get_signature().to_hex()
+            )),
         }
     }
 }

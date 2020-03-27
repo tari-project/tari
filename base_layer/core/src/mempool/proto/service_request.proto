@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 import "types.proto";
+import "transaction.proto";
 
 package tari.mempool;
 
@@ -12,5 +13,7 @@ message MempoolServiceRequest {
         bool get_stats = 2;
         // Indicates a GetTxStateWithExcessSig request.
         tari.types.Signature get_tx_state_with_excess_sig = 3;
+        // Indicates a SubmitTransaction request.
+        tari.types.Transaction submit_transaction = 4;
     }
 }

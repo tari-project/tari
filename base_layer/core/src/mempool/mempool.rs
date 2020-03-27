@@ -121,7 +121,7 @@ where T: BlockchainBackend
                 self.pending_pool.insert(tx)?;
                 Ok(TxStorageResponse::PendingPool)
             },
-            _ => Err(MempoolError::ValidationError),
+            _ => Ok(TxStorageResponse::NotStored),
         }
     }
 
