@@ -225,6 +225,17 @@ where
         reply_tx: oneshot::Sender<SendMessageResponse>,
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
     {
+        if params
+            .broadcast_strategy
+            .direct_public_key()
+            .filter(|pk| *pk == self.node_identity.public_key())
+            .is_some()
+        {
+            warn!(target: LOG_TARGET, "Attempt to send a message to ourselves");
+            let _ = reply_tx.send(SendMessageResponse::Failed);
+            return Err(DhtOutboundError::SendToOurselves);
+        }
+
         let FinalSendMessageParams {
             broadcast_strategy,
             destination,
@@ -235,16 +246,6 @@ where
             force_origin,
             dht_header,
         } = params;
-
-        if broadcast_strategy
-            .direct_public_key()
-            .filter(|pk| *pk == self.node_identity.public_key())
-            .is_some()
-        {
-            warn!(target: LOG_TARGET, "Attempt to send a message to ourselves");
-            let _ = reply_tx.send(SendMessageResponse::Failed);
-            return Err(DhtOutboundError::SendToOurselves);
-        }
 
         match self.select_peers(broadcast_strategy.clone()).await {
             Ok(mut peers) => {

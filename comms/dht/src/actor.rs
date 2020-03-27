@@ -62,6 +62,7 @@ use tari_comms::{
 };
 use tari_crypto::tari_utilities::ByteArray;
 use tari_shutdown::ShutdownSignal;
+use tari_storage::IterationResult;
 use ttl_cache::TtlCache;
 
 const LOG_TARGET: &str = "comms::dht::actor";
@@ -297,12 +298,7 @@ impl<'a> DhtActor<'a> {
         outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .closest(
-                        node_identity.node_id().clone(),
-                        num_neighbouring_nodes,
-                        Vec::new(),
-                        PeerFeatures::MESSAGE_PROPAGATION,
-                    )
+                    .neighbours(Vec::new())
                     .with_dht_message_type(DhtMessageType::Join)
                     .force_origin()
                     .finish(),
@@ -366,17 +362,16 @@ impl<'a> DhtActor<'a> {
                     .map_err(Into::into)
             },
             Flood => {
-                // Send to all known Communication Node peers
+                // Send to all known peers
                 peer_manager.flood_peers().await.map_err(Into::into)
             },
             Closest(closest_request) => {
                 Self::select_closest_peers_for_propagation(
                     &config,
-                    peer_manager,
+                    &peer_manager,
                     &closest_request.node_id,
                     closest_request.n,
                     &closest_request.excluded_peers,
-                    |peer| peer.has_features(closest_request.peer_features),
                 )
                 .await
             },
@@ -385,19 +380,53 @@ impl<'a> DhtActor<'a> {
                 peer_manager.random_peers(n).await.map_err(Into::into)
             },
             // TODO: This is a common and expensive search - values here should be cached
-            Neighbours(exclude, features) => {
+            Neighbours(exclude, include_all_communication_clients) => {
                 // Send to a random set of peers of size n that are Communication Nodes
-                Self::select_closest_peers_for_propagation(
+                let mut candidates = Self::select_closest_peers_for_propagation(
                     &config,
-                    peer_manager,
+                    &peer_manager,
                     node_identity.node_id(),
                     config.num_neighbouring_nodes,
-                    &*exclude,
-                    |peer| peer.has_features(features),
+                    &exclude,
                 )
-                .await
+                .await?;
+
+                if include_all_communication_clients {
+                    Self::add_all_communication_client_nodes(&peer_manager, &exclude, &mut candidates).await?;
+                }
+
+                Ok(candidates)
             },
         }
+    }
+
+    async fn add_all_communication_client_nodes(
+        peer_manager: &PeerManager,
+        excluded_peers: &[CommsPublicKey],
+        list: &mut Vec<Peer>,
+    ) -> Result<(), DhtActorError>
+    {
+        peer_manager
+            .for_each(|peer| {
+                if peer.features != PeerFeatures::COMMUNICATION_CLIENT {
+                    return IterationResult::Continue;
+                }
+
+                if peer.is_banned() || peer.is_offline() {
+                    return IterationResult::Continue;
+                }
+
+                if excluded_peers.contains(&peer.public_key) {
+                    return IterationResult::Continue;
+                }
+
+                list.push(peer);
+
+                IterationResult::Continue
+            })
+            .await?;
+
+        Ok(())
     }
 
     /// Selects at least `n` MESSAGE_PROPAGATION peers (assuming that many are known) that are closest to `node_id` as
@@ -407,22 +436,20 @@ impl<'a> DhtActor<'a> {
     ///
     /// This ensures that peers are selected which are able to propagate the message further while still allowing
     /// clients to propagate to non-propagation nodes if required (e.g. Discovery messages)
-    async fn select_closest_peers_for_propagation<F>(
+    async fn select_closest_peers_for_propagation(
         config: &DhtConfig,
-        peer_manager: Arc<PeerManager>,
+        peer_manager: &PeerManager,
         node_id: &NodeId,
         n: usize,
         excluded_peers: &[CommsPublicKey],
-        mut filter_predicate: F,
     ) -> Result<Vec<Peer>, DhtActorError>
-    where
-        F: FnMut(&Peer) -> bool + Send,
     {
         // TODO: This query is expensive. We can probably cache a list of neighbouring peers which are online
         // Fetch to all n nearest neighbour Communication Nodes
         // which are eligible for connection.
         // Currently that means:
         // - The peer isn't banned,
+        // - it has the required features
         // - it didn't recently fail to connect, and
         // - it is not in the exclusion list in closest_request
         let mut connect_ineligable_count = 0;
@@ -440,19 +467,15 @@ impl<'a> DhtActor<'a> {
                     return false;
                 }
 
-                if !filter_predicate(&peer) {
-                    trace!(
-                        target: LOG_TARGET,
-                        "[{}] does NOT match the filter predicate",
-                        peer.node_id
-                    );
+                if !peer.features.contains(PeerFeatures::MESSAGE_PROPAGATION) {
+                    trace!(target: LOG_TARGET, "[{}] is not a propagation node", peer.node_id);
                     filtered_out_node_count += 1;
                     return false;
                 }
 
                 let is_connect_eligible = {
                     !peer.is_offline() &&
-                    // Check this peer was recently connectable
+                        // Check this peer was recently connectable
                         (peer.connection_stats.failed_attempts() <= config.broadcast_cooldown_max_attempts ||
                         peer.connection_stats
                             .time_since_last_failure()
@@ -480,17 +503,7 @@ impl<'a> DhtActor<'a> {
                 true
             })
             .sort_by(PeerQuerySortBy::DistanceFrom(&node_id))
-            .until(|peers| {
-                // We have at least num_neighbouring_nodes nodes that have the `MESSAGE_PROPAGATION` feature.
-                // Because nodes without this feature do not propagate messages, we need to ensure that the message
-                // is sent to enough nodes with this feature
-                peers.len() >= n &&
-                    peers
-                        .iter()
-                        .filter(|p| p.features.contains(PeerFeatures::MESSAGE_PROPAGATION))
-                        .count() >=
-                        n
-            });
+            .limit(n);
 
         let peers = peer_manager.perform_query(query).await?;
         let total_excluded = banned_count + connect_ineligable_count + excluded_count + filtered_out_node_count;
@@ -629,16 +642,13 @@ mod test {
         runtime::Handle::current().spawn(actor.run());
 
         let peers = requester
-            .select_peers(BroadcastStrategy::Neighbours(
-                Vec::new(),
-                PeerFeatures::MESSAGE_PROPAGATION,
-            ))
+            .select_peers(BroadcastStrategy::Neighbours(Vec::new(), false))
             .await
             .unwrap();
 
         assert_eq!(peers.len(), 1);
         let peers = requester
-            .select_peers(BroadcastStrategy::Neighbours(Vec::new(), PeerFeatures::empty()))
+            .select_peers(BroadcastStrategy::Neighbours(Vec::new(), true))
             .await
             .unwrap();
 

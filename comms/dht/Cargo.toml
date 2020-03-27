@@ -16,6 +16,7 @@ test-mocks = []
 tari_comms = { version = "^0.0", path = "../"}
 tari_crypto = { version = "^0.3" }
 tari_shutdown = { version = "^0.0", path = "../../infrastructure/shutdown"}
+tari_storage = { version = "^0.0", path = "../../infrastructure/storage"}
 
 bitflags = "1.2.0"
 bytes = "0.4.12"
@@ -38,12 +39,12 @@ pin-project = "0.4"
 
 [dev-dependencies]
 tari_test_utils = { version = "^0.0", path = "../../infrastructure/test_utils"}
-tari_storage = { version = "^0.0", path = "../../infrastructure/storage"}
 
+env_logger = "0.7.0"
 futures-test = { version = "0.3.0-alpha.19", package = "futures-test-preview" }
 lmdb-zero = "0.4.4"
+prettytable-rs = "0.8.0"
 tempdir = "0.3.7"
-env_logger = "0.7.0"
 tokio-macros = "0.2.3"
 
 # tower-filter dependencies
