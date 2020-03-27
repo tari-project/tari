@@ -144,6 +144,10 @@ impl PeerConnection {
         !self.request_tx.is_closed()
     }
 
+    pub fn reference_count(&self) -> usize {
+        Arc::strong_count(&self.peer_node_id)
+    }
+
     pub async fn open_substream(
         &mut self,
         protocol_id: &ProtocolId,
@@ -399,5 +403,36 @@ impl<TSubstream> fmt::Debug for NegotiatedSubstream<TSubstream> {
             .field("protocol", &format!("{:?}", self.protocol))
             .field("stream", &"...".to_string())
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn reference_count() {
+        let conn = PeerConnection::new(
+            1,
+            mpsc::channel(0).0,
+            Default::default(),
+            Multiaddr::empty(),
+            ConnectionDirection::Outbound,
+        );
+
+        assert_eq!(conn.reference_count(), 1);
+        let clone = conn.clone();
+
+        assert_eq!(conn.reference_count(), 2);
+        assert_eq!(clone.reference_count(), 2);
+
+        let clone2 = conn.clone();
+        assert_eq!(conn.reference_count(), 3);
+        assert_eq!(clone.reference_count(), 3);
+        assert_eq!(clone2.reference_count(), 3);
+
+        drop(clone2);
+        drop(clone);
+        assert_eq!(conn.reference_count(), 1);
     }
 }
