@@ -48,9 +48,7 @@ pub struct ListeningInfo;
 impl ListeningInfo {
     pub async fn next_event<B: BlockchainBackend>(&mut self, shared: &mut BaseNodeStateMachine<B>) -> StateEvent {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
-
-        let mut metadata_event_stream = shared.metadata_event_stream.clone().fuse();
-        while let Some(metadata_event) = metadata_event_stream.next().await {
+        while let Some(metadata_event) = shared.metadata_event_stream.next().await {
             match &*metadata_event {
                 ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata_list) => {
                     if !peer_metadata_list.is_empty() {
