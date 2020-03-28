@@ -223,6 +223,7 @@ fn test_block_sync() {
             max_block_request_retry_attempts: 20,
             max_add_block_retry_attempts: 3,
             header_request_size: 5,
+            block_request_size: 1,
         },
     };
     let shutdown = Shutdown::new();
@@ -299,6 +300,7 @@ fn test_lagging_block_sync() {
             max_block_request_retry_attempts: 20,
             max_add_block_retry_attempts: 3,
             header_request_size: 5,
+            block_request_size: 1,
         },
     };
     let shutdown = Shutdown::new();
@@ -392,6 +394,7 @@ fn test_block_sync_recovery() {
             max_block_request_retry_attempts: 20,
             max_add_block_retry_attempts: 3,
             header_request_size: 5,
+            block_request_size: 1,
         },
     };
     let shutdown = Shutdown::new();
@@ -485,6 +488,7 @@ fn test_forked_block_sync() {
             max_block_request_retry_attempts: 20,
             max_add_block_retry_attempts: 3,
             header_request_size: 5,
+            block_request_size: 1,
         },
     };
     let shutdown = Shutdown::new();
@@ -632,6 +636,7 @@ fn test_sync_peer_banning() {
             max_block_request_retry_attempts: 20,
             max_add_block_retry_attempts: 3,
             header_request_size: 5,
+            block_request_size: 1,
         },
     };
     let shutdown = Shutdown::new();
