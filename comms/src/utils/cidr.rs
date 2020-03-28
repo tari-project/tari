@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,30 +20,32 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod dial_state;
-mod dialer;
-mod listener;
+use std::str::FromStr;
 
-mod common;
-pub use common::validate_peer_addresses;
+pub fn parse_cidrs<'a, I: IntoIterator<Item = T>, T: AsRef<str>>(cidr_strs: I) -> Result<Vec<cidr::AnyIpCidr>, String> {
+    let (success, failed) = cidr_strs
+        .into_iter()
+        .map(|s| ::cidr::AnyIpCidr::from_str(s.as_ref()))
+        .partition::<Vec<_>, _>(Result::is_ok);
 
-mod types;
-pub use types::ConnectionDirection;
+    if failed.len() > 0 {
+        return Err(format!("Invalid CIDR strings: {:?}", failed));
+    }
 
-mod requester;
-pub use requester::{ConnectionManagerRequest, ConnectionManagerRequester};
-
-mod manager;
-pub use manager::{ConnectionManager, ConnectionManagerConfig, ConnectionManagerEvent};
-
-mod error;
-pub use error::{ConnectionManagerError, PeerConnectionError};
-
-mod peer_connection;
-pub use peer_connection::{NegotiatedSubstream, PeerConnection, PeerConnectionRequest};
-
-mod liveness;
-mod wire_mode;
+    Ok(success.into_iter().map(Result::unwrap).collect())
+}
 
 #[cfg(test)]
-mod tests;
+mod test {
+    use super::*;
+
+    #[test]
+    fn parse() {
+        let cidrs = ["127.0.0.1/32", "2620:0:0:0::0/16"];
+        let cidrs = parse_cidrs(&cidrs).unwrap();
+        assert_eq!(cidrs[0].network_length(), Some(32));
+        assert_eq!(cidrs[1].network_length(), Some(16));
+        let cidrs = ["127.0.0.1/32", "127.0-0.1/32", "127.0.0.1?32", "2620:0:2d0:200::7/32"];
+        parse_cidrs(&cidrs).unwrap_err();
+    }
+}

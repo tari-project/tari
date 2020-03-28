@@ -78,6 +78,8 @@ pub enum ConnectionManagerError {
     PeerOffline,
     #[error(msg_embedded, no_from, non_std)]
     InvalidMultiaddr(String),
+    /// Failed to send wire format byte
+    WireFormatSendFailed,
 }
 
 impl From<yamux::ConnectionError> for ConnectionManagerError {

@@ -29,6 +29,7 @@ use crate::{
     multiplexing::{IncomingSubstreams, Yamux},
     peer_manager::NodeId,
     protocol::{ProtocolId, ProtocolNegotiation},
+    runtime,
     types::CommsSubstream,
 };
 use futures::{
@@ -47,7 +48,6 @@ use std::{
     },
 };
 use tari_shutdown::Shutdown;
-use tokio::runtime;
 
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 
@@ -56,7 +56,6 @@ const PEER_REQUEST_BUFFER_SIZE: usize = 64;
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 pub fn create(
-    executor: runtime::Handle,
     connection: Yamux,
     peer_addr: Multiaddr,
     peer_node_id: NodeId,
@@ -82,7 +81,7 @@ pub fn create(
         event_notifier,
         our_supported_protocols,
     );
-    executor.spawn(peer_actor.run());
+    runtime::current_executor().spawn(peer_actor.run());
 
     Ok(peer_conn)
 }

@@ -34,6 +34,12 @@
 # ban them for 10 days.
 #blacklist_ban_period = 1440
 
+# The number of liveness sessions to allow. Liveness sessions can be established by liveness monitors over TCP by
+# sending a 0x50 (P) as the first byte. Any messages sent must be followed by newline message no longer than
+# 50 characters. That message will be echoed back.
+# liveness_max_sessions = 0
+# liveness_whitelist_cidrs = ["127.0.0.1/32"]
+
 
 ########################################################################################################################
 #                                                                                                                      #

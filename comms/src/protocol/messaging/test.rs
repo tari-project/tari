@@ -80,7 +80,6 @@ async fn spawn_messaging_protocol() -> (
     let (events_tx, events_rx) = broadcast::channel(100);
 
     let msg_proto = MessagingProtocol::new(
-        rt_handle.clone(),
         requester,
         peer_manager.clone(),
         node_identity.clone(),

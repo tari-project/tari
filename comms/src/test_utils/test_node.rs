@@ -26,6 +26,7 @@ use crate::{
     noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
     protocol::Protocols,
+    runtime,
     transports::MemoryTransport,
 };
 use futures::channel::mpsc;
@@ -33,7 +34,7 @@ use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_shutdown::ShutdownSignal;
 use tari_storage::HashmapDatabase;
-use tokio::{runtime, sync::broadcast};
+use tokio::sync::broadcast;
 
 #[derive(Clone, Debug)]
 pub struct TestNodeConfig {
@@ -67,7 +68,6 @@ impl Default for TestNodeConfig {
 }
 
 pub fn build_connection_manager(
-    executor: runtime::Handle,
     config: TestNodeConfig,
     peer_manager: Arc<PeerManager>,
     protocols: Protocols<yamux::Stream>,
@@ -82,7 +82,6 @@ pub fn build_connection_manager(
 
     let connection_manager = ConnectionManager::new(
         config.connection_manager_config,
-        executor.clone(),
         config.transport,
         noise_config,
         ConstantBackoff::new(config.dial_backoff_duration),
@@ -94,7 +93,7 @@ pub fn build_connection_manager(
         shutdown,
     );
 
-    executor.spawn(connection_manager.run());
+    runtime::current_executor().spawn(connection_manager.run());
 
     requester
 }

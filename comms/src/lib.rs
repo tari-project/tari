@@ -28,6 +28,7 @@ mod consts;
 mod multiplexing;
 mod noise;
 mod proto;
+mod runtime;
 
 pub mod backoff;
 pub mod bounded_executor;

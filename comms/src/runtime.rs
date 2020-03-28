@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,30 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod dial_state;
-mod dialer;
-mod listener;
+use tokio::runtime;
 
-mod common;
-pub use common::validate_peer_addresses;
-
-mod types;
-pub use types::ConnectionDirection;
-
-mod requester;
-pub use requester::{ConnectionManagerRequest, ConnectionManagerRequester};
-
-mod manager;
-pub use manager::{ConnectionManager, ConnectionManagerConfig, ConnectionManagerEvent};
-
-mod error;
-pub use error::{ConnectionManagerError, PeerConnectionError};
-
-mod peer_connection;
-pub use peer_connection::{NegotiatedSubstream, PeerConnection, PeerConnectionRequest};
-
-mod liveness;
-mod wire_mode;
-
-#[cfg(test)]
-mod tests;
+/// Return the current tokio executor. Panics if the tokio runtime is not started.
+#[inline]
+pub fn current_executor() -> runtime::Handle {
+    runtime::Handle::current()
+}

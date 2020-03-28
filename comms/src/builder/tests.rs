@@ -31,6 +31,7 @@ use crate::{
     pipeline,
     pipeline::SinkService,
     protocol::{messaging::MessagingEvent, ProtocolEvent, Protocols},
+    runtime,
     test_utils::node_identity::build_node_identity,
     transports::MemoryTransport,
     types::CommsSubstream,
@@ -41,7 +42,6 @@ use futures::{channel::mpsc, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
 use std::{collections::HashSet, convert::identity, hash::Hash, sync::Arc, time::Duration};
 use tari_storage::HashmapDatabase;
 use tari_test_utils::{collect_stream, unpack_enum};
-use tokio::runtime;
 
 async fn spawn_node(
     protocols: Protocols<CommsSubstream>,
@@ -58,7 +58,7 @@ async fn spawn_node(
     let comms_node = CommsBuilder::new()
         // These calls are just to get rid of unused function warnings. 
         // <IrrelevantCalls>
-        .with_executor(runtime::Handle::current())
+        .with_executor(runtime::current_executor())
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
         .on_shutdown(|| {})
         // </IrrelevantCalls>
@@ -290,7 +290,7 @@ async fn peer_to_peer_messaging_simultaneous() {
         .unwrap();
 
     // Simultaneously send messages between the two nodes
-    let rt_handle = runtime::Handle::current();
+    let rt_handle = runtime::current_executor();
     let handle1 = rt_handle.spawn(async move {
         for i in 0..NUM_MSGS {
             let outbound_msg = OutboundMessage::new(

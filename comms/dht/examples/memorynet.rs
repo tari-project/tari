@@ -490,9 +490,9 @@ impl TestNode {
     {
         let conn_man_event_sub = comms.subscribe_connection_manager_events();
         let messaging_events = comms.subscribe_messaging_events();
-        let spawner = runtime::Handle::current();
+        let executor = runtime::Handle::current();
 
-        spawner.spawn(
+        executor.spawn(
             conn_man_event_sub
                 .filter(|r| future::ready(r.is_ok()))
                 .map(Result::unwrap)
@@ -503,7 +503,7 @@ impl TestNode {
 
         let node_id = comms.node_identity().node_id().clone();
 
-        spawner.spawn(
+        executor.spawn(
             messaging_events
                 .filter(|r| future::ready(r.is_ok()))
                 .map(Result::unwrap)
