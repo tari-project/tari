@@ -775,7 +775,7 @@ fn add_block<T: BlockchainBackend>(
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let block_hash = block.hash();
-    if db.contains(&DbKey::BlockHash(block_hash.clone()))? || db.contains(&DbKey::OrphanBlock(block_hash))? {
+    if db.contains(&DbKey::BlockHash(block_hash.clone()))? {
         return Ok(BlockAddResult::BlockExists);
     }
 
