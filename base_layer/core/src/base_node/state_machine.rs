@@ -104,10 +104,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         match (state, event) {
             (Starting(s), Initialized) => Listening(s.into()),
             (BlockSync(s, _, _), BlocksSynchronized) => Listening(s.into()),
-            (BlockSync(s, _, _), BlockSyncFailure) => Listening(s.into()),
+            (BlockSync(s, _, _), BlockSyncFailure) => Waiting(s.into()),
             (Listening(s), FallenBehind(Lagging(network_tip, sync_peers))) => {
                 BlockSync(s.into(), network_tip, sync_peers)
             },
+            (Waiting(s), Continue) => Listening(s.into()),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
             (_, UserQuit) => Shutdown(states::Shutdown::with_reason("Shutdown initiated by user".to_string())),
             (s, e) => {
@@ -163,6 +164,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             Starting(s) => s.next_event(shared_state).await,
             BlockSync(s, network_tip, sync_peers) => s.next_event(shared_state, network_tip, sync_peers).await,
             Listening(s) => s.next_event(shared_state).await,
+            Waiting(s) => s.next_event().await,
             Shutdown(_) => unreachable!("called get_next_state_event while in Shutdown state"),
         }
     }

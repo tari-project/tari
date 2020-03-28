@@ -23,15 +23,11 @@
 use crate::{
     base_node::{
         chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
-        states::{
-            helpers::{best_metadata, determine_sync_mode},
-            StateEvent,
-            StateEvent::FatalError,
-            SyncStatus,
-        },
+        states::{StateEvent, StateEvent::FatalError, SyncStatus},
         BaseNodeStateMachine,
     },
     chain_storage::{BlockchainBackend, ChainMetadata},
+    proof_of_work::Difficulty,
 };
 use futures::stream::StreamExt;
 use log::*;
@@ -52,7 +48,7 @@ impl ListeningInfo {
         let mut metadata_event_stream = shared.metadata_event_stream.clone().fuse();
         while let Some(metadata_event) = metadata_event_stream.next().await {
             match &*metadata_event {
-                ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata_list) => {
+                ChainMetadataEvent::PeerChainMetadataReceived(ref peer_metadata_list) => {
                     if !peer_metadata_list.is_empty() {
                         info!(target: LOG_TARGET, "Loading local blockchain metadata.");
                         let local = match shared.db.get_metadata() {
@@ -63,11 +59,7 @@ impl ListeningInfo {
                             },
                         };
                         // Find the best network metadata and set of sync peers with the best tip.
-                        let metadata_list = peer_metadata_list
-                            .iter()
-                            .map(|peer_metadata| peer_metadata.chain_metadata.clone())
-                            .collect::<Vec<_>>();
-                        let best_metadata = best_metadata(metadata_list);
+                        let best_metadata = best_metadata(peer_metadata_list.as_slice());
                         let sync_peers = find_sync_peers(&best_metadata, &peer_metadata_list);
                         if let SyncStatus::Lagging(network_tip, sync_peers) =
                             determine_sync_mode(&local, best_metadata, sync_peers, LOG_TARGET)
@@ -96,4 +88,71 @@ fn find_sync_peers(best_metadata: &ChainMetadata, peer_metadata_list: &Vec<PeerC
         }
     }
     sync_peers
+}
+
+/// Determine the best metadata from a set of metadata received from the network.
+fn best_metadata(metadata_list: &[PeerChainMetadata]) -> ChainMetadata {
+    // TODO: Use heuristics to weed out outliers / dishonest nodes.
+    metadata_list
+        .into_iter()
+        .fold(ChainMetadata::default(), |best, current| {
+            if current
+                .chain_metadata
+                .accumulated_difficulty
+                .unwrap_or(Difficulty::min()) >=
+                best.accumulated_difficulty.unwrap_or_else(|| 0.into())
+            {
+                current.chain_metadata.clone()
+            } else {
+                best
+            }
+        })
+}
+
+/// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
+fn determine_sync_mode(
+    local: &ChainMetadata,
+    network: ChainMetadata,
+    sync_peers: Vec<NodeId>,
+    log_target: &str,
+) -> SyncStatus
+{
+    use crate::base_node::states::SyncStatus::*;
+    match network.accumulated_difficulty {
+        None => {
+            info!(
+                target: log_target,
+                "The rest of the network doesn't appear to have any up-to-date chain data, so we're going to assume \
+                 we're at the tip"
+            );
+            UpToDate
+        },
+        Some(network_tip_accum_difficulty) => {
+            let local_tip_accum_difficulty = local.accumulated_difficulty.unwrap_or_else(|| 0.into());
+            if local_tip_accum_difficulty < network_tip_accum_difficulty {
+                info!(
+                    target: log_target,
+                    "Our local blockchain accumulated difficulty is a little behind that of the network. We're at \
+                     block #{} with an accumulated difficulty of {}, and the network chain tip is at #{} with an \
+                     accumulated difficulty of {}",
+                    local.height_of_longest_chain.unwrap_or(0),
+                    local_tip_accum_difficulty,
+                    network.height_of_longest_chain.unwrap_or(0),
+                    network_tip_accum_difficulty,
+                );
+                Lagging(network, sync_peers)
+            } else {
+                info!(
+                    target: log_target,
+                    "Our local blockchain is up-to-date. We're at block #{} with an accumulated difficulty of {} and \
+                     the network chain tip is at #{} with an accumulated difficulty of {}",
+                    local.height_of_longest_chain.unwrap_or(0),
+                    local_tip_accum_difficulty,
+                    network.height_of_longest_chain.unwrap_or(0),
+                    network_tip_accum_difficulty,
+                );
+                UpToDate
+            }
+        },
+    }
 }
