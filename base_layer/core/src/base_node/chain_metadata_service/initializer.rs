@@ -31,7 +31,8 @@ use tari_service_framework::{handles::ServiceHandlesFuture, ServiceInitializatio
 use tari_shutdown::ShutdownSignal;
 use tokio::runtime;
 
-const BROADCAST_EVENT_BUFFER_SIZE: usize = 10;
+// Must be set to 1 to ensure outdated chain metadata is discarded.
+const BROADCAST_EVENT_BUFFER_SIZE: usize = 1;
 
 pub struct ChainMetadataServiceInitializer;
 
