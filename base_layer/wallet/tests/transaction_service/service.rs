@@ -2233,6 +2233,7 @@ fn query_all_completed_transactions_on_startup() {
 }
 
 #[test]
+#[ignore]
 fn test_failed_tx_send_timeout() {
     let _ = env_logger::try_init();
     let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();

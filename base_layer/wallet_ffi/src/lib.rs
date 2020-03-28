@@ -3310,16 +3310,22 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
         return ptr::null_mut();
     }
 
-    let pending_transactions = (*wallet)
+    let completed_transactions = (*wallet)
         .runtime
         .block_on((*wallet).transaction_service.get_completed_transactions());
 
-    match pending_transactions {
-        Ok(pending_transactions) => {
-            for (id, tx) in &pending_transactions {
-                if id == &transaction_id && tx.status == TransactionStatus::Mined {
-                    let pending = tx.clone();
-                    return Box::into_raw(Box::new(pending));
+    match completed_transactions {
+        Ok(completed_transactions) => {
+            for (id, tx) in &completed_transactions {
+                if id == &transaction_id &&
+                    tx.status != TransactionStatus::Completed &&
+                    tx.status != TransactionStatus::Broadcast
+                {
+                    let completed = tx.clone();
+                    return Box::into_raw(Box::new(completed));
+                } else {
+                    error = 108;
+                    ptr::swap(error_out, &mut error as *mut c_int);
                 }
             }
         },
