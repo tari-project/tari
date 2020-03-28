@@ -147,6 +147,7 @@ where TBackend: TransactionBackend + Clone + 'static
     pending_outbound_message_results: HashMap<MessageTag, OutboundTransaction>,
 }
 
+#[allow(clippy::too_many_arguments)]
 impl<TTxStream, TTxReplyStream, TTxFinalizedStream, MReplyStream, BNResponseStream, TBackend>
     TransactionService<TTxStream, TTxReplyStream, TTxFinalizedStream, MReplyStream, BNResponseStream, TBackend>
 where

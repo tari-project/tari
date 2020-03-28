@@ -315,7 +315,7 @@ where
         let mut output_hashes = HashMap::new();
         for uo in unspent_outputs.iter() {
             let hash = uo.as_transaction_output(&self.factories)?.hash();
-            if queried_hashes.iter().find(|h| &&hash == h).is_some() {
+            if queried_hashes.iter().any(|h| &hash == h) {
                 output_hashes.insert(hash.clone(), uo.clone());
             }
         }
@@ -667,7 +667,7 @@ where
             // TODO: We should pass in the current height and group
             // all funds less than the current height as maturity 0
             UTXOSelectionStrategy::MaturityThenSmallest => {
-                let mut new_uo = uo.clone();
+                let mut new_uo = uo;
                 new_uo.sort_by(|a, b| match a.features.maturity.cmp(&b.features.maturity) {
                     Ordering::Equal => a.value.cmp(&b.value),
                     Ordering::Less => Ordering::Less,

@@ -70,7 +70,7 @@ impl WalletBackend for WalletSqliteDatabase {
         match op {
             WriteOperation::Insert(kvp) => match kvp {
                 DbKeyValuePair::Peer(k, p) => {
-                    if let Ok(_) = PeerSql::find(&k.to_vec(), &(*conn)) {
+                    if PeerSql::find(&k.to_vec(), &(*conn)).is_ok() {
                         return Err(WalletStorageError::DuplicateContact);
                     }
                     PeerSql::try_from(p)?.commit(&conn)?;
@@ -79,7 +79,7 @@ impl WalletBackend for WalletSqliteDatabase {
             WriteOperation::Remove(k) => match k {
                 DbKey::Peer(k) => match PeerSql::find(&k.to_vec(), &(*conn)) {
                     Ok(p) => {
-                        p.clone().delete(&conn)?;
+                        p.delete(&conn)?;
                         return Ok(Some(DbValue::Peer(Box::new(Peer::try_from(p)?))));
                     },
                     Err(WalletStorageError::DieselError(DieselError::NotFound)) => (),

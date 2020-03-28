@@ -79,6 +79,7 @@ impl MicroTari {
     }
 }
 
+#[allow(clippy::identity_op)]
 impl Display for MicroTari {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         if *self < 1 * T {
