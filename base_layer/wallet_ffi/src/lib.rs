@@ -134,6 +134,7 @@ use std::{
     path::PathBuf,
     slice,
     sync::Arc,
+    time::Duration,
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -2129,7 +2130,10 @@ pub unsafe extern "C" fn comms_config_create(
                         peer_database_name: database_name_string,
                         max_concurrent_inbound_tasks: 100,
                         outbound_buffer_size: 100,
-                        dht: DhtConfig::default(),
+                        dht: DhtConfig {
+                            discovery_request_timeout: Duration::from_secs(30),
+                            ..Default::default()
+                        },
                         // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
                         //       docstring for more info.
                         allow_test_addresses: true,

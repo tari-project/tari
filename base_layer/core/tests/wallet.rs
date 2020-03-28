@@ -285,7 +285,7 @@ fn wallet_base_node_integration_test() {
     let transaction = transaction.expect("Transaction must be present");
 
     // Setup and start the miner
-    let shutdown = Shutdown::new();
+    let mut shutdown = Shutdown::new();
     let mut miner = Miner::new(shutdown.to_signal(), consensus_manager, &base_node.local_nci, 1);
     miner.enable_mining_flag().store(true, Ordering::Relaxed);
     let (mut state_event_sender, state_event_receiver): (Publisher<_>, Subscriber<_>) = bounded(1);
@@ -342,5 +342,6 @@ fn wallet_base_node_integration_test() {
 
     alice_wallet.shutdown();
     bob_wallet.shutdown();
+    let _ = shutdown.trigger();
     runtime.block_on(base_node.comms.shutdown());
 }

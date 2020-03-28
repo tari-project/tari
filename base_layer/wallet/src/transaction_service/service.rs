@@ -20,24 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    output_manager_service::{handle::OutputManagerHandle, TxId},
-    transaction_service::{
-        config::TransactionServiceConfig,
-        error::TransactionServiceError,
-        handle::{TransactionEvent, TransactionServiceRequest, TransactionServiceResponse},
-        storage::database::{
-            CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
-            PendingCoinbaseTransaction,
-            TransactionBackend,
-            TransactionDatabase,
-            TransactionStatus,
-        },
-    },
-    util::futures::StateDelay,
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+    time::Duration,
 };
+
 use chrono::Utc;
 use futures::{
     channel::oneshot,
@@ -50,13 +39,13 @@ use futures::{
 };
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{
-    collections::HashMap,
-    convert::{TryFrom, TryInto},
-    sync::Arc,
-    time::Duration,
-};
 use tari_broadcast_channel::Publisher;
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::SecretKey,
+    tari_utilities::{hash::Hashable, hex::Hex},
+};
+
 use tari_comms::{
     message::MessageTag,
     peer_manager::NodeIdentity,
@@ -83,7 +72,6 @@ use tari_core::{
         TxStorageResponse,
     },
     transactions::{
-        proto as TransactionProto,
         tari_amount::MicroTari,
         transaction::{KernelFeatures, OutputFeatures, OutputFlags, Transaction, TransactionOutput},
         transaction_protocol::{
@@ -95,9 +83,27 @@ use tari_core::{
         ReceiverTransactionProtocol,
     },
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey, tari_utilities::hash::Hashable};
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
+
+use crate::{
+    output_manager_service::{handle::OutputManagerHandle, TxId},
+    transaction_service::{
+        config::TransactionServiceConfig,
+        error::TransactionServiceError,
+        handle::{TransactionEvent, TransactionServiceRequest, TransactionServiceResponse},
+        storage::database::{
+            CompletedTransaction,
+            InboundTransaction,
+            OutboundTransaction,
+            PendingCoinbaseTransaction,
+            TransactionBackend,
+            TransactionDatabase,
+            TransactionStatus,
+        },
+    },
+    util::futures::StateDelay,
+};
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
 
@@ -145,6 +151,7 @@ where TBackend: TransactionBackend + Clone + 'static
     factories: CryptoFactories,
     base_node_public_key: Option<CommsPublicKey>,
     pending_outbound_message_results: HashMap<MessageTag, OutboundTransaction>,
+    pending_transaction_mined_queries: HashMap<TxId, TransactionMinedRequestResult>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -195,6 +202,7 @@ where
             factories,
             base_node_public_key: None,
             pending_outbound_message_results: HashMap::new(),
+            pending_transaction_mined_queries: HashMap::new(),
         }
     }
 
@@ -1093,32 +1101,22 @@ where
         if completed_tx.status != TransactionStatus::Completed || completed_tx.transaction.body.kernels().is_empty() {
             return Err(TransactionServiceError::InvalidCompletedTransaction);
         }
-
         match self.base_node_public_key.clone() {
             None => return Err(TransactionServiceError::NoBaseNodeKeysProvided),
             Some(pk) => {
                 info!(
                     target: LOG_TARGET,
-                    "Attempting to Broadcast TxId: {} to Mempool", completed_tx.tx_id
+                    "Attempting to Broadcast Transaction (TxId: {} and Kernel Excess: {}) to Mempool",
+                    completed_tx.tx_id,
+                    completed_tx.transaction.body.kernels()[0].excess.to_hex()
                 );
-                // Broadcast Transaction
-                self.outbound_message_service
-                    .send_direct(
-                        pk.clone(),
-                        OutboundEncryption::EncryptForPeer,
-                        OutboundDomainMessage::new(
-                            TariMessageType::NewTransaction,
-                            TransactionProto::types::Transaction::from(completed_tx.transaction.clone()),
-                        ),
-                    )
-                    .await?;
+                trace!(target: LOG_TARGET, "{}", completed_tx.transaction);
 
                 // Send  Mempool Request
-                let tx_excess_sig = completed_tx.transaction.body.kernels()[0].excess_sig.clone();
                 let mempool_request = MempoolProto::MempoolServiceRequest {
                     request_key: completed_tx.tx_id,
-                    request: Some(MempoolProto::mempool_service_request::Request::GetTxStateWithExcessSig(
-                        tx_excess_sig.into(),
+                    request: Some(MempoolProto::mempool_service_request::Request::SubmitTransaction(
+                        completed_tx.transaction.into(),
                     )),
                 };
                 self.outbound_message_service
@@ -1173,7 +1171,10 @@ where
         let completed_tx = self.db.get_completed_transaction(tx_id.clone()).await?;
 
         if completed_tx.status == TransactionStatus::Completed {
-            info!(target: LOG_TARGET, "Mempool broadcast timed out for TX_ID: {}", tx_id);
+            info!(
+                target: LOG_TARGET,
+                "Mempool broadcast timed out for Transaction with TX_ID: {}", tx_id
+            );
 
             self.broadcast_completed_transaction_to_mempool(
                 tx_id,
@@ -1201,47 +1202,92 @@ where
         let response = MempoolServiceResponse::try_from(response).unwrap();
         let tx_id = response.request_key;
         match response.response {
-            MempoolResponse::Stats(_) => Err(TransactionServiceError::InvalidMessageError(
-                "Mempool Response of invalid type".to_string(),
-            )),
-            MempoolResponse::TxStorage(ts) => match ts {
-                TxStorageResponse::NotStored => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Mempool response received for TxId: {:?} but requested transaction was not found in mempool",
-                        tx_id
-                    );
-                    Ok(())
-                },
-                // Any other variant of this enum means the transaction has been received by the base_node and is in one
-                // of the various mempools
-                _ => {
-                    let completed_tx = self.db.get_completed_transaction(response.request_key.clone()).await?;
-                    // If this transaction is still in the Completed State it should be upgraded to the Broadcast state
-                    if completed_tx.status == TransactionStatus::Completed {
-                        info!(
-                            target: LOG_TARGET,
-                            "Completed Transaction with TxId: {} detected as Broadcast to Base Node Mempool", tx_id
-                        );
-                        self.db.broadcast_completed_transaction(tx_id.clone()).await?;
-                        // Start monitoring the base node to see if this Tx has been mined
-                        self.send_transaction_mined_request(
-                            tx_id.clone(),
-                            self.config.base_node_mined_timeout,
-                            mined_request_timeout_futures,
-                        )
-                        .await?;
+            MempoolResponse::Stats(_) => {
+                return Err(TransactionServiceError::InvalidMessageError(
+                    "Mempool Response of invalid type".to_string(),
+                ))
+            },
+            MempoolResponse::TxStorage(ts) => {
+                let completed_tx = self.db.get_completed_transaction(response.request_key.clone()).await?;
 
-                        self.event_publisher
-                            .send(TransactionEvent::TransactionBroadcast(tx_id))
-                            .await
-                            .map_err(|_| TransactionServiceError::EventStreamError)?;
-                    }
+                match completed_tx.status {
+                    TransactionStatus::Completed => match ts {
+                        // Getting this response means the Mempool Rejected this transaction so it will be cancelled.
+                        TxStorageResponse::NotStored => {
+                            // If this transaction is still in the Completed State it should be upgraded to the
+                            // Broadcast state
+                            error!(
+                                target: LOG_TARGET,
+                                "Mempool response received for TxId: {:?}. Transaction was REJECTED. Cancelling \
+                                 transaction.",
+                                tx_id
+                            );
+                            if let Err(e) = self.output_manager_service.cancel_transaction(completed_tx.tx_id).await {
+                                error!(
+                                    target: LOG_TARGET,
+                                    "Failed to Cancel outputs for TX_ID: {} after failed sending attempt with error \
+                                     {:?}",
+                                    completed_tx.tx_id,
+                                    e
+                                );
+                            }
+                            if let Err(e) = self.db.cancel_completed_transaction(completed_tx.tx_id).await {
+                                error!(
+                                    target: LOG_TARGET,
+                                    "Failed to Cancel TX_ID: {} after failed sending attempt with error {:?}",
+                                    completed_tx.tx_id,
+                                    e
+                                );
+                            }
+                            self.event_publisher
+                                .send(TransactionEvent::TransactionSendDiscoveryComplete(tx_id, false))
+                                .await
+                                .map_err(|_| TransactionServiceError::EventStreamError)?;
+                        },
+                        // Any other variant of this enum means the transaction has been received by the base_node and
+                        // is in one of the various mempools
+                        _ => {
+                            // If this transaction is still in the Completed State it should be upgraded to the
+                            // Broadcast state
 
-                    Ok(())
-                },
+                            info!(
+                                target: LOG_TARGET,
+                                "Completed Transaction (TxId: {} and Kernel Excess: {}) detected as Broadcast to Base \
+                                 Node Mempool",
+                                tx_id,
+                                completed_tx.transaction.body.kernels()[0].excess.to_hex()
+                            );
+                            self.db.broadcast_completed_transaction(tx_id.clone()).await?;
+                            // Start monitoring the base node to see if this Tx has been mined
+                            self.send_transaction_mined_request(
+                                tx_id.clone(),
+                                self.config.base_node_mined_timeout,
+                                mined_request_timeout_futures,
+                            )
+                            .await?;
+
+                            self.event_publisher
+                                .send(TransactionEvent::TransactionBroadcast(tx_id))
+                                .await
+                                .map_err(|_| TransactionServiceError::EventStreamError)?;
+                        },
+                    },
+                    TransactionStatus::Broadcast => {
+                        if let Some(result) = self.pending_transaction_mined_queries.get_mut(&completed_tx.tx_id) {
+                            match ts {
+                                TxStorageResponse::NotStored => result.mempool_response = Some(false),
+                                _ => result.mempool_response = Some(true),
+                            }
+                            if result.is_complete() {
+                                self.handle_transaction_mined_request_result(&completed_tx.tx_id).await;
+                            }
+                        }
+                    },
+                    _ => (),
+                }
             },
         }
+        Ok(())
     }
 
     /// Send a request to the Base Node to see if the specified transaction has been mined yet. This function will send
@@ -1276,6 +1322,23 @@ where
                     hashes.len(),
                 );
 
+                // Send a request to the mempool to find the state of the Tx there
+                let tx_excess_sig = completed_tx.transaction.body.kernels()[0].excess_sig.clone();
+                let mempool_request = MempoolProto::MempoolServiceRequest {
+                    request_key: completed_tx.tx_id,
+                    request: Some(MempoolProto::mempool_service_request::Request::GetTxStateWithExcessSig(
+                        tx_excess_sig.into(),
+                    )),
+                };
+                self.outbound_message_service
+                    .send_direct(
+                        pk.clone(),
+                        OutboundEncryption::EncryptForPeer,
+                        OutboundDomainMessage::new(TariMessageType::MempoolRequest, mempool_request),
+                    )
+                    .await?;
+
+                // Ask the base node if the outputs are in the chain
                 let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
                 let service_request = BaseNodeProto::BaseNodeServiceRequest {
                     request_key: tx_id,
@@ -1290,7 +1353,9 @@ where
                     .await?;
                 // Start Timeout
                 let state_timeout = StateDelay::new(timeout, completed_tx.tx_id);
-
+                let _ = self
+                    .pending_transaction_mined_queries
+                    .insert(tx_id, TransactionMinedRequestResult::default());
                 mined_request_timeout_futures.push(state_timeout.delay().boxed());
             },
         }
@@ -1330,6 +1395,43 @@ where
         Ok(())
     }
 
+    /// Handle the result of receiving all the stages needed to complete a Transaction Mined request
+    pub async fn handle_transaction_mined_request_result(&mut self, tx_id: &TxId) {
+        if let Some(result) = self.pending_transaction_mined_queries.remove(tx_id) {
+            // If the transaction is not in mempool AND not mined then the Tx was reorged out and will never appear
+            // in the chain and should be cancelled
+            if result.mempool_response == Some(false) && result.chain_response == Some(false) {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) has left the Mempool while not being Mined. It will be cancelled.", tx_id,
+                );
+                let _ = self
+                    .output_manager_service
+                    .cancel_transaction(tx_id.clone())
+                    .await
+                    .map_err(|e| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Failed to Cancel outputs for TX_ID: {} after failed sending attempt with error {:?}",
+                            tx_id,
+                            e
+                        );
+                    });
+                let _ = self.db.cancel_completed_transaction(tx_id.clone()).await.map_err(|e| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to Cancel TX_ID: {} after failed sending attempt with error {:?}", tx_id, e
+                    );
+                });
+                let _ = self
+                    .event_publisher
+                    .send(TransactionEvent::TransactionSendDiscoveryComplete(tx_id.clone(), false))
+                    .await
+                    .map_err(|e| error!(target: LOG_TARGET, "Failed send event {:?}", e));
+            }
+        }
+    }
+
     /// Handle an incoming basenode response message
     pub async fn handle_base_node_response(
         &mut self,
@@ -1365,6 +1467,16 @@ where
                     completed_tx.transaction.body.outputs().len(),
                     response.len(),
                 );
+
+                if completed_tx.status == TransactionStatus::Broadcast {
+                    if let Some(result) = self.pending_transaction_mined_queries.get_mut(&completed_tx.tx_id) {
+                        result.chain_response = Some(false);
+
+                        if result.is_complete() {
+                            self.handle_transaction_mined_request_result(&completed_tx.tx_id).await;
+                        }
+                    }
+                }
             } else {
                 let mut check = true;
 
@@ -1714,5 +1826,19 @@ async fn transaction_send_discovery_process_completion(
         Ok((mt, updated_outbound_tx))
     } else {
         Err(TransactionServiceError::DiscoveryProcessFailed(tx_id))
+    }
+}
+
+/// This struct holds the responses of a multistage base node monitoring request to see if a Transaction has been mined.
+/// This is used to keep track of the status of the transaction in both the mempool and chain.
+#[derive(Debug, Default)]
+struct TransactionMinedRequestResult {
+    mempool_response: Option<bool>,
+    chain_response: Option<bool>,
+}
+
+impl TransactionMinedRequestResult {
+    fn is_complete(&self) -> bool {
+        self.mempool_response.is_some() && self.chain_response.is_some()
     }
 }

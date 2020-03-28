@@ -292,6 +292,16 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             TransactionStatus::Mined
         );
     }
+
+    let completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
+    let num_completed_txs = completed_txs.len();
+
+    runtime
+        .block_on(db.cancel_completed_transaction(completed_txs[&1].tx_id))
+        .unwrap();
+
+    let completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
+    assert_eq!(completed_txs.len(), num_completed_txs - 1);
 }
 
 #[test]

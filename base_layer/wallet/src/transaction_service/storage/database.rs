@@ -528,6 +528,14 @@ where T: TransactionBackend + 'static
         Ok(())
     }
 
+    pub async fn cancel_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.write(WriteOperation::Remove(DbKey::CompletedTransaction(tx_id))))
+            .await
+            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        Ok(())
+    }
+
     /// Indicated that the specified completed transaction has been broadcast into the mempool
     pub async fn broadcast_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
