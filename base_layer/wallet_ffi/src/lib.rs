@@ -2234,25 +2234,22 @@ pub unsafe extern "C" fn wallet_create(
     let factories = CryptoFactories::default();
     let w;
 
-    match logging_path_string {
-        Some(path) => {
-            let logfile = FileAppender::builder()
-                .encoder(Box::new(PatternEncoder::new(
-                    "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}",
-                )))
-                .append(false)
-                .build(path.as_str())
-                .unwrap();
+    if let Some(path) = logging_path_string {
+        let logfile = FileAppender::builder()
+            .encoder(Box::new(PatternEncoder::new(
+                "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}",
+            )))
+            .append(false)
+            .build(path.as_str())
+            .unwrap();
 
-            let lconfig = Config::builder()
-                .appender(Appender::builder().build("logfile", Box::new(logfile)))
-                .build(Root::builder().appender("logfile").build(LevelFilter::Debug))
-                .unwrap();
+        let lconfig = Config::builder()
+            .appender(Appender::builder().build("logfile", Box::new(logfile)))
+            .build(Root::builder().appender("logfile").build(LevelFilter::Debug))
+            .unwrap();
 
-            log4rs::init_config(lconfig).expect("Should be able to start logging");
-            debug!(target: LOG_TARGET, "Logging started");
-        },
-        _ => (),
+        log4rs::init_config(lconfig).expect("Should be able to start logging");
+        debug!(target: LOG_TARGET, "Logging started");
     }
 
     match runtime {
@@ -3381,7 +3378,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
                     (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed)
                 {
                     let completed = tx.clone();
-                    let pending_tx = TariPendingInboundTransaction::from(completed).clone();
+                    let pending_tx = TariPendingInboundTransaction::from(completed);
                     return Box::into_raw(Box::new(pending_tx));
                 }
             }
@@ -3453,7 +3450,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
                     (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed)
                 {
                     let completed = tx.clone();
-                    let pending_tx = TariPendingOutboundTransaction::from(completed).clone();
+                    let pending_tx = TariPendingOutboundTransaction::from(completed);
                     return Box::into_raw(Box::new(pending_tx));
                 }
             }

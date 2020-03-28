@@ -78,6 +78,7 @@ where TBackend: TransactionBackend + 'static
     shutdown_signal: Option<ShutdownSignal>,
 }
 
+#[allow(clippy::too_many_arguments)]
 impl<TBackend> CallbackHandler<TBackend>
 where TBackend: TransactionBackend + 'static
 {
