@@ -24,7 +24,7 @@ use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
 use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, MemoryDatabase},
+    chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError},
     consensus::{ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, Network},
     proof_of_work::Difficulty,
     transactions::{
@@ -233,8 +233,8 @@ pub fn append_block<B: BlockchainBackend>(
 
 /// Generate a new block using the given transaction schema and add it to the provided database.
 /// The blocks and UTXO vectors are also updated with the info from the new block.
-pub fn generate_new_block(
-    db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
+pub fn generate_new_block<B: BlockchainBackend>(
+    db: &BlockchainDatabase<B>,
     blocks: &mut Vec<Block>,
     outputs: &mut Vec<Vec<UnblindedOutput>>,
     schemas: Vec<TransactionSchema>,
@@ -314,8 +314,8 @@ pub fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_d
 /// correct MMR roots.
 /// This function is not able to determine the unblinded outputs of a transaction, so if you are mixing using this
 /// with [generate_new_block], you must update the unblinded UTXO vector  yourself.
-pub fn generate_block(
-    db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
+pub fn generate_block<B: BlockchainBackend>(
+    db: &BlockchainDatabase<B>,
     blocks: &mut Vec<Block>,
     transactions: Vec<Transaction>,
     consensus_constants: &ConsensusConstants,

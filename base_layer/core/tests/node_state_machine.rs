@@ -41,7 +41,7 @@ use helpers::{
         BaseNodeBuilder,
     },
 };
-use rand::{rngs::OsRng, thread_rng, RngCore};
+use rand::{rngs::OsRng, RngCore};
 use std::{thread, time::Duration};
 use tari_core::{
     base_node::{

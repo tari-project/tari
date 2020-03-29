@@ -929,10 +929,10 @@ fn rewind_to_height<T: BlockchainBackend>(
     if height == chain_height {
         return Ok(removed_blocks); // Rewind unnecessary, already on correct height
     }
-
     let steps_back = (chain_height - height) as usize;
     let mut txn = DbTransaction::new();
-    for rewind_height in (height + 1)..=chain_height {
+    // Rewind operation must be performed in reverse from tip to height+1.
+    for rewind_height in ((height + 1)..=chain_height).rev() {
         // Reconstruct block at height and add to orphan block pool
         let orphaned_block = fetch_block(&**db, rewind_height)?.block().clone();
         removed_blocks.push(orphaned_block.clone());
@@ -968,13 +968,10 @@ fn rewind_to_height<T: BlockchainBackend>(
     txn.rewind_rp_mmr(steps_back);
     commit(db, txn)?;
 
-    let last_block = fetch_block(&**db, height)?.block().clone();
-    let pow = ProofOfWork::new_from_difficulty(
-        &last_block.header.pow,
-        ProofOfWork::achieved_difficulty(&last_block.header),
-    );
+    let last_header = fetch_header_writeguard(db, height)?.clone();
+    let pow = ProofOfWork::new_from_difficulty(&last_header.pow, ProofOfWork::achieved_difficulty(&last_header));
     let pow = pow.total_accumulated_difficulty();
-    update_metadata(metadata, db, height, last_block.hash(), pow)?;
+    update_metadata(metadata, db, height, last_header.hash(), pow)?;
 
     Ok(removed_blocks)
 }
