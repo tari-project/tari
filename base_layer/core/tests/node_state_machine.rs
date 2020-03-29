@@ -41,8 +41,8 @@ use helpers::{
         BaseNodeBuilder,
     },
 };
-use rand::{rngs::OsRng, RngCore};
-use std::time::Duration;
+use rand::{rngs::OsRng, thread_rng, RngCore};
+use std::{thread, time::Duration};
 use tari_core::{
     base_node::{
         chain_metadata_service::PeerChainMetadata,
@@ -174,6 +174,7 @@ fn test_event_channel() {
     runtime
         .block_on(mock.publish_chain_metadata(&node_id, &chain_metadata))
         .expect("Could not publish metadata");
+    thread::sleep(Duration::from_millis(50));
     runtime.block_on(async {
         let mut fused = rx.fuse();
         let event = fused.next().await;

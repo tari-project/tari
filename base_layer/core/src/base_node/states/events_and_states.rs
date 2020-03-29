@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::states::{BlockSyncInfo, ListeningInfo, Shutdown, Starting},
+    base_node::states::{BlockSyncInfo, ListeningInfo, Shutdown, Starting, Waiting},
     chain_storage::ChainMetadata,
     proof_of_work::Difficulty,
 };
@@ -34,6 +34,8 @@ pub enum BaseNodeState {
     BlockSync(BlockSyncInfo, ChainMetadata, Vec<NodeId>),
     // The best network chain metadata
     Listening(ListeningInfo),
+    // We're in a paused state, and will return to Listening after a timeout
+    Waiting(Waiting),
     Shutdown(Shutdown),
 }
 
@@ -46,6 +48,7 @@ pub enum StateEvent {
     FallenBehind(SyncStatus),
     NetworkSilence,
     FatalError(String),
+    Continue,
     UserQuit,
 }
 
@@ -86,6 +89,7 @@ impl Display for StateEvent {
             BlockSyncFailure => f.write_str("Block Synchronization Failure"),
             FallenBehind(s) => write!(f, "Fallen behind main chain - {}", s),
             NetworkSilence => f.write_str("Network Silence"),
+            Continue => f.write_str("Continuing"),
             FatalError(e) => write!(f, "Fatal Error - {}", e),
             UserQuit => f.write_str("User Termination"),
         }
@@ -99,6 +103,7 @@ impl Display for BaseNodeState {
             Self::BlockSync(_, _, _) => "Synchronizing blocks",
             Self::Listening(_) => "Listening",
             Self::Shutdown(_) => "Shutting down",
+            Self::Waiting(_) => "Waiting",
         };
         f.write_str(s)
     }
