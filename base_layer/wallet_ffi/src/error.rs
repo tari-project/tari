@@ -108,12 +108,6 @@ impl From<WalletError> for LibWalletError {
                 code: 101,
                 message: format!("{:?}", w),
             },
-            WalletError::TransactionServiceError(TransactionServiceError::OutputManagerError(
-                OutputManagerError::NotEnoughFunds,
-            )) => Self {
-                code: 101,
-                message: format!("{:?}", w),
-            },
             WalletError::OutputManagerError(OutputManagerError::IncompleteTransaction) => Self {
                 code: 102,
                 message: format!("{:?}", w),
@@ -129,19 +123,7 @@ impl From<WalletError> for LibWalletError {
                 message: format!("{:?}", w),
             },
             WalletError::OutputManagerError(OutputManagerError::OutputManagerStorageError(
-                OutputManagerStorageError::DuplicateOutput,
-            )) => Self {
-                code: 103,
-                message: format!("{:?}", w),
-            },
-            WalletError::OutputManagerError(OutputManagerError::OutputManagerStorageError(
                 OutputManagerStorageError::ValuesNotFound,
-            )) => Self {
-                code: 104,
-                message: format!("{:?}", w),
-            },
-            WalletError::ContactsServiceError(ContactsServiceError::ContactsServiceStorageError(
-                ContactsServiceStorageError::ValuesNotFound,
             )) => Self {
                 code: 104,
                 message: format!("{:?}", w),
@@ -164,14 +146,32 @@ impl From<WalletError> for LibWalletError {
                 code: 108,
                 message: format!("{:?}", w),
             },
+            WalletError::OutputManagerError(OutputManagerError::NoBaseNodeKeysProvided) => Self {
+                code: 109,
+                message: format!("{:?}", w),
+            },
+            WalletError::ContactsServiceError(ContactsServiceError::ContactsServiceStorageError(
+                ContactsServiceStorageError::ValuesNotFound,
+            )) => Self {
+                code: 110,
+                message: format!("{:?}", w),
+            },
             WalletError::TransactionServiceError(TransactionServiceError::TransactionStorageError(
                 TransactionStorageError::ValueNotFound(_),
             )) => Self {
-                code: 108,
+                code: 111,
                 message: format!("{:?}", w),
             },
-            WalletError::OutputManagerError(OutputManagerError::NoBaseNodeKeysProvided) => Self {
-                code: 109,
+            WalletError::OutputManagerError(OutputManagerError::OutputManagerStorageError(
+                OutputManagerStorageError::DuplicateOutput,
+            )) => Self {
+                code: 112,
+                message: format!("{:?}", w),
+            },
+            WalletError::TransactionServiceError(TransactionServiceError::OutputManagerError(
+                OutputManagerError::NotEnoughFunds,
+            )) => Self {
+                code: 113,
                 message: format!("{:?}", w),
             },
             // Transaction Service Errors
