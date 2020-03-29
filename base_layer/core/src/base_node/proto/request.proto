@@ -28,6 +28,8 @@ message BaseNodeServiceRequest {
         tari.core.NewBlockTemplate get_new_block = 10;
         // Indicates a GetTargetDifficulty request.
         uint64 get_target_difficulty = 11;
+        // Get headers in best chain following any headers in this list
+        FetchHeadersAfter fetch_headers_after = 12;
     }
 }
 
@@ -37,4 +39,9 @@ message BlockHeights {
 
 message HashOutputs {
     repeated bytes outputs = 1;
+}
+
+message FetchHeadersAfter {
+    repeated bytes hashes = 1;
+    bytes stopping_hash = 2;
 }

@@ -48,6 +48,7 @@ use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 use tokio::sync::RwLock;
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
+const MAX_HEADERS_PER_RESPONSE: u32 = 100;
 
 /// Events that can be published on the Validated Block Event Stream
 #[derive(Debug, Clone, Display)]
@@ -123,6 +124,33 @@ where T: BlockchainBackend + 'static
                     }
                 }
                 Ok(NodeCommsResponse::BlockHeaders(block_headers))
+            },
+            NodeCommsRequest::FetchHeadersAfter(header_hashes, stopping_hash) => {
+                // Send from genesis block if none match
+                let mut starting_block = async_db::fetch_header(self.blockchain_db.clone(), 0).await?;
+                // Find first header that matches
+                for header_hash in header_hashes {
+                    if let Ok(from_block) =
+                        async_db::fetch_header_with_block_hash(self.blockchain_db.clone(), header_hash.clone()).await
+                    {
+                        starting_block = from_block;
+                        break;
+                    }
+                }
+                let mut headers = vec![];
+                for i in 1..MAX_HEADERS_PER_RESPONSE {
+                    if let Ok(header) =
+                        async_db::fetch_header(self.blockchain_db.clone(), starting_block.height + i as u64).await
+                    {
+                        let hash = header.hash();
+                        headers.push(header);
+                        if &hash == stopping_hash {
+                            break;
+                        }
+                    }
+                }
+
+                Ok(NodeCommsResponse::FetchHeadersAfterResponse(headers))
             },
             NodeCommsRequest::FetchUtxos(utxo_hashes) => {
                 let mut utxos = Vec::<TransactionOutput>::new();

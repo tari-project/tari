@@ -98,6 +98,11 @@
 # peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
 peer_seeds = []
 
+
+# Determines the method of syncing blocks when the node is lagging. If you are not struggling with syncing, then
+# it is recommended to leave this setting as it. Available values are ViaBestChainMetadata and ViaRandomPeer.
+#block_sync_strategy="ViaBestChainMetadata"
+
 # Configure the number of threads to spawn for long-running tasks, like block and transaction validation. A good choice
 # for this value is somewhere between n/2 and n - 1, where n is the number of cores on your machine.
 #blocking_threads = 4

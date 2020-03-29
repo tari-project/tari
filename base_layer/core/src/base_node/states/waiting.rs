@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node::states::{BlockSyncInfo, ListeningInfo, StateEvent};
+use crate::base_node::states::{BlockSyncStrategy, ListeningInfo, StateEvent};
 use log::info;
 use std::time::Duration;
 use tokio::time::delay_for;
@@ -50,9 +50,9 @@ impl Waiting {
     }
 }
 
-/// Moving from state BlockSyncInfo -> Waiting. A default timeout of 5 minutes
-impl From<BlockSyncInfo> for Waiting {
-    fn from(_: BlockSyncInfo) -> Self {
+/// Moving from state BlockSyncStrategy -> Waiting. A default timeout of 5 minutes
+impl From<BlockSyncStrategy> for Waiting {
+    fn from(_: BlockSyncStrategy) -> Self {
         Waiting {
             timeout: Duration::from_secs(5 * 60),
         }

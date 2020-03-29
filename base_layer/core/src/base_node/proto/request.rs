@@ -20,7 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::base_node::{base_node_service_request::Request as ProtoNodeCommsRequest, BlockHeights, HashOutputs};
+use super::base_node::{
+    base_node_service_request::Request as ProtoNodeCommsRequest,
+    BlockHeights,
+    FetchHeadersAfter as ProtoFetchHeadersAfter,
+    HashOutputs,
+};
 use crate::{base_node::comms_interface as ci, proof_of_work::PowAlgorithm, transactions::types::HashOutput};
 use std::convert::{TryFrom, TryInto};
 
@@ -36,6 +41,9 @@ impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchKernels(hash_outputs) => ci::NodeCommsRequest::FetchKernels(hash_outputs.outputs),
             FetchHeaders(block_heights) => ci::NodeCommsRequest::FetchHeaders(block_heights.heights),
             FetchHeadersWithHashes(block_hashes) => ci::NodeCommsRequest::FetchHeadersWithHashes(block_hashes.outputs),
+            FetchHeadersAfter(request) => {
+                ci::NodeCommsRequest::FetchHeadersAfter(request.hashes, request.stopping_hash)
+            },
             FetchUtxos(hash_outputs) => ci::NodeCommsRequest::FetchUtxos(hash_outputs.outputs),
             FetchBlocks(block_heights) => ci::NodeCommsRequest::FetchBlocks(block_heights.heights),
             FetchBlocksWithHashes(block_hashes) => ci::NodeCommsRequest::FetchBlocksWithHashes(block_hashes.outputs),
@@ -57,6 +65,12 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchKernels(hash_outputs) => ProtoNodeCommsRequest::FetchKernels(hash_outputs.into()),
             FetchHeaders(block_heights) => ProtoNodeCommsRequest::FetchHeaders(block_heights.into()),
             FetchHeadersWithHashes(block_hashes) => ProtoNodeCommsRequest::FetchHeadersWithHashes(block_hashes.into()),
+            FetchHeadersAfter(hashes, stopping_hash) => {
+                ProtoNodeCommsRequest::FetchHeadersAfter(ProtoFetchHeadersAfter {
+                    hashes: hashes.into(),
+                    stopping_hash: stopping_hash.into(),
+                })
+            },
             FetchUtxos(hash_outputs) => ProtoNodeCommsRequest::FetchUtxos(hash_outputs.into()),
             FetchBlocks(block_heights) => ProtoNodeCommsRequest::FetchBlocks(block_heights.into()),
             FetchBlocksWithHashes(block_hashes) => ProtoNodeCommsRequest::FetchBlocksWithHashes(block_hashes.into()),
