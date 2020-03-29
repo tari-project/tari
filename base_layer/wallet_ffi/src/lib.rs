@@ -3319,18 +3319,14 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
 
     match completed_transactions {
         Ok(completed_transactions) => {
-            for (id, tx) in &completed_transactions {
-                if id == &transaction_id &&
-                    tx.status != TransactionStatus::Completed &&
-                    tx.status != TransactionStatus::Broadcast
-                {
+            if let Some(tx) = completed_transactions.get(&transaction_id) {
+                if tx.status != TransactionStatus::Completed && tx.status != TransactionStatus::Broadcast {
                     let completed = tx.clone();
                     return Box::into_raw(Box::new(completed));
-                } else {
-                    error = 108;
-                    ptr::swap(error_out, &mut error as *mut c_int);
                 }
             }
+            error = 108;
+            ptr::swap(error_out, &mut error as *mut c_int);
         },
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
@@ -3379,10 +3375,8 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
 
     match completed_transactions {
         Ok(completed_transactions) => {
-            for (id, tx) in &completed_transactions {
-                if id == &transaction_id &&
-                    (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed)
-                {
+            if let Some(tx) = completed_transactions.get(&transaction_id) {
+                if tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed {
                     let completed = tx.clone();
                     let pending_tx = TariPendingInboundTransaction::from(completed);
                     return Box::into_raw(Box::new(pending_tx));
@@ -3397,12 +3391,12 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
 
     match pending_transactions {
         Ok(pending_transactions) => {
-            for (id, tx) in &pending_transactions {
-                if id == &transaction_id {
-                    let pending = tx.clone();
-                    return Box::into_raw(Box::new(pending));
-                }
+            if let Some(tx) = pending_transactions.get(&transaction_id) {
+                let pending = tx.clone();
+                return Box::into_raw(Box::new(pending));
             }
+            error = 108;
+            ptr::swap(error_out, &mut error as *mut c_int);
         },
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
@@ -3451,10 +3445,8 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
 
     match completed_transactions {
         Ok(completed_transactions) => {
-            for (id, tx) in &completed_transactions {
-                if id == &transaction_id &&
-                    (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed)
-                {
+            if let Some(tx) = completed_transactions.get(&transaction_id) {
+                if tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed {
                     let completed = tx.clone();
                     let pending_tx = TariPendingOutboundTransaction::from(completed);
                     return Box::into_raw(Box::new(pending_tx));
@@ -3469,12 +3461,12 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
 
     match pending_transactions {
         Ok(pending_transactions) => {
-            for (id, tx) in &pending_transactions {
-                if id == &transaction_id {
-                    let pending = tx.clone();
-                    return Box::into_raw(Box::new(pending));
-                }
+            if let Some(tx) = pending_transactions.get(&transaction_id) {
+                let pending = tx.clone();
+                return Box::into_raw(Box::new(pending));
             }
+            error = 108;
+            ptr::swap(error_out, &mut error as *mut c_int);
         },
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;

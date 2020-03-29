@@ -359,7 +359,7 @@ where
     ) -> Result<(), OutputManagerError>
     {
         if self.pending_utxo_query_keys.remove(&query_key).is_some() {
-            debug!(target: LOG_TARGET, "UTXO Query {} timed out", query_key);
+            error!(target: LOG_TARGET, "UTXO Query {} timed out", query_key);
             self.query_unspent_outputs_status(utxo_query_timeout_futures).await?;
             // TODO Remove this once this bug is fixed
             trace!(target: LOG_TARGET, "Finished queueing new Base Node query timeout");
