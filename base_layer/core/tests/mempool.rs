@@ -269,7 +269,6 @@ fn test_retrieve() {
     assert!(retrieved_txs.contains(&tx[2]));
     assert!(retrieved_txs.contains(&tx[3]));
     let stats = mempool.stats().unwrap();
-    println!("After block 1: {:?}", stats);
     assert_eq!(stats.unconfirmed_txs, 7);
     assert_eq!(stats.timelocked_txs, 1);
     assert_eq!(stats.published_txs, 0);

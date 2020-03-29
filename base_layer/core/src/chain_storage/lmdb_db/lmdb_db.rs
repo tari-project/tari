@@ -176,49 +176,7 @@ where D: Digest + Send + Sync
         })
     }
 
-    // Applies all MMR transactions excluding CreateMmrCheckpoint and RewindMmr on the header_mmr, utxo_mmr,
-    // range_proof_mmr and kernel_mmr. CreateMmrCheckpoint and RewindMmr txns will be performed after the the storage
-    // txns have been successfully applied.
-    // NOTE: Do not call this without having a lock on self.transaction_write_lock
-    fn apply_mmr_txs(&mut self, tx: &DbTransaction) -> Result<(), ChainStorageError> {
-        for op in tx.operations.iter() {
-            match op {
-                WriteOperation::Insert(insert) => match insert {
-                    DbKeyValuePair::BlockHeader(_, _) => {},
-                    DbKeyValuePair::UnspentOutput(k, v, update_mmr) => {
-                        if *update_mmr {
-                            self.curr_utxo_checkpoint.push_addition(k.clone());
-                            let proof_hash = v.proof().hash();
-                            self.curr_range_proof_checkpoint.push_addition(proof_hash.clone());
-                        }
-                    },
-                    DbKeyValuePair::TransactionKernel(k, _, update_mmr) => {
-                        if *update_mmr {
-                            self.curr_kernel_checkpoint.push_addition(k.clone());
-                        }
-                    },
-                    _ => {},
-                },
-                WriteOperation::Spend(key) => match key {
-                    DbKey::UnspentOutput(hash) => {
-                        let index_result: Option<usize> = lmdb_get(&self.env, &self.txos_hash_to_index_db, &hash)?;
-                        match index_result {
-                            Some(index) => {
-                                self.curr_utxo_checkpoint.push_deletion(index as u32);
-                            },
-                            None => return Err(ChainStorageError::UnspendableInput),
-                        }
-                    },
-                    _ => return Err(ChainStorageError::InvalidOperation("Only UTXOs can be spent".into())),
-                },
-                _ => {},
-            }
-        }
-        Ok(())
-    }
-
     // Perform the RewindMmr and CreateMmrCheckpoint operations after MMR txns and storage txns have been applied.
-    // NOTE: Make sure you have a write lock on transaction_write_lock
     fn commit_mmrs(&mut self, tx: DbTransaction) -> Result<(), ChainStorageError> {
         for op in tx.operations.into_iter() {
             match op {
@@ -305,7 +263,6 @@ where D: Digest + Send + Sync
     }
 
     // Reset any mmr txns that have been applied.
-    // Note: Make sure you have a write lock on transaction_write_lock
     fn reset_mmrs(&mut self) -> Result<(), ChainStorageError> {
         debug!(target: LOG_TARGET, "Reset mmrs called");
         self.kernel_mmr.reset()?;
@@ -314,9 +271,11 @@ where D: Digest + Send + Sync
         Ok(())
     }
 
-    // Perform all the storage txns, excluding any MMR operations. Only when all the txns can successfully be applied is
-    // the changes committed to the backend databases.
-    fn apply_storage_txs(&self, tx: &DbTransaction) -> Result<(), ChainStorageError> {
+    // Perform all the storage txns and all MMR transactions excluding CreateMmrCheckpoint and RewindMmr on the
+    // header_mmr, utxo_mmr, range_proof_mmr and kernel_mmr. Only when all the txns can successfully be applied is the
+    // changes committed to the backend databases. CreateMmrCheckpoint and RewindMmr txns will be performed after these
+    // txns have been successfully applied.
+    fn apply_mmr_and_storage_txs(&mut self, tx: &DbTransaction) -> Result<(), ChainStorageError> {
         let txn = WriteTransaction::new(self.env.clone()).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
         {
             for op in tx.operations.iter() {
@@ -330,14 +289,22 @@ where D: Digest + Send + Sync
                             lmdb_insert(&txn, &self.block_hashes_db, &hash, &k)?;
                             lmdb_insert(&txn, &self.headers_db, &k, &v)?;
                         },
-                        DbKeyValuePair::UnspentOutput(k, v, _) => {
+                        DbKeyValuePair::UnspentOutput(k, v, update_mmr) => {
+                            if *update_mmr {
+                                self.curr_utxo_checkpoint.push_addition(k.clone());
+                                let proof_hash = v.proof().hash();
+                                self.curr_range_proof_checkpoint.push_addition(proof_hash.clone());
+                            }
                             let proof_hash = v.proof().hash();
                             if let Some(index) = self.find_range_proof_leaf_index(proof_hash)? {
                                 lmdb_insert(&txn, &self.utxos_db, &k, &v)?;
                                 lmdb_insert(&txn, &self.txos_hash_to_index_db, &k, &index)?;
                             }
                         },
-                        DbKeyValuePair::TransactionKernel(k, v, _) => {
+                        DbKeyValuePair::TransactionKernel(k, v, update_mmr) => {
+                            if *update_mmr {
+                                self.curr_kernel_checkpoint.push_addition(k.clone());
+                            }
                             lmdb_insert(&txn, &self.kernels_db, &k, &v)?;
                         },
                         DbKeyValuePair::OrphanBlock(k, v) => {
@@ -378,6 +345,14 @@ where D: Digest + Send + Sync
                     },
                     WriteOperation::Spend(key) => match key {
                         DbKey::UnspentOutput(hash) => {
+                            let index_result: Option<usize> = lmdb_get(&self.env, &self.txos_hash_to_index_db, &hash)?;
+                            match index_result {
+                                Some(index) => {
+                                    self.curr_utxo_checkpoint.push_deletion(index as u32);
+                                },
+                                None => return Err(ChainStorageError::UnspendableInput),
+                            }
+
                             let utxo_result: Option<TransactionOutput> = lmdb_get(&self.env, &self.utxos_db, &hash)?;
                             match utxo_result {
                                 Some(utxo) => {
@@ -503,16 +478,8 @@ impl<D> BlockchainBackend for LMDBDatabase<D>
 where D: Digest + Send + Sync
 {
     fn write(&mut self, tx: DbTransaction) -> Result<(), ChainStorageError> {
-        // Prevent other threads from running a transaction at the same time
-        // let _lock = self.lock_for_write()?;
-        match self.apply_mmr_txs(&tx) {
-            Ok(_) => match self.apply_storage_txs(&tx) {
-                Ok(_) => self.commit_mmrs(tx),
-                Err(e) => {
-                    self.reset_mmrs()?;
-                    Err(e)
-                },
-            },
+        match self.apply_mmr_and_storage_txs(&tx) {
+            Ok(_) => self.commit_mmrs(tx),
             Err(e) => {
                 self.reset_mmrs()?;
                 Err(e)

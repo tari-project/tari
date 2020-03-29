@@ -21,7 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::helpers::{
-    block_builders::{append_block, generate_new_block, generate_new_block_with_achieved_difficulty},
+    block_builders::{
+        append_block,
+        create_genesis_block,
+        generate_new_block,
+        generate_new_block_with_achieved_difficulty,
+        generate_new_block_with_coinbase,
+    },
     sample_blockchains::create_new_blockchain,
 };
 use croaring::Bitmap;
@@ -40,7 +46,7 @@ use tari_core::{
         MmrTree,
         Validators,
     },
-    consensus::{ConsensusManagerBuilder, Network},
+    consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     helpers::{create_mem_db, create_orphan_block},
     proof_of_work::Difficulty,
     transactions::{
@@ -50,7 +56,7 @@ use tari_core::{
     },
     tx,
     txn_schema,
-    validation::mocks::MockValidator,
+    validation::{block_validators::StatelessBlockValidator, mocks::MockValidator},
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_mmr::{MmrCacheConfig, MutableMmr};
@@ -879,4 +885,125 @@ fn restore_metadata() {
     let metadata = db.get_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(1));
     assert_eq!(metadata.best_block, Some(block_hash));
+}
+
+#[test]
+fn invalid_block() {
+    let factories = CryptoFactories::default();
+    let network = Network::LocalNet;
+    let consensus_constants = ConsensusConstantsBuilder::new(network)
+        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .build();
+    let (block0, output) = create_genesis_block(&factories, &consensus_constants);
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants.clone())
+        .with_block(block0.clone())
+        .build();
+    let validators = Validators::new(
+        MockValidator::new(true),
+        StatelessBlockValidator::new(&consensus_manager.consensus_constants()),
+    );
+    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
+    let mut store = BlockchainDatabase::new(db, &consensus_manager, validators).unwrap();
+    let mut blocks = vec![block0];
+    let mut outputs = vec![vec![output]];
+    let block0_hash = blocks[0].hash();
+    let metadata = store.get_metadata().unwrap();
+    let utxo_root0 = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
+    let kernel_root0 = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
+    let rp_root0 = store.fetch_mmr_root(MmrTree::RangeProof).unwrap();
+    assert_eq!(metadata.height_of_longest_chain, Some(0));
+    assert_eq!(metadata.best_block, Some(block0_hash.clone()));
+    assert_eq!(store.fetch_block(0).unwrap().block().hash(), block0_hash);
+    assert!(store.fetch_block(1).is_err());
+
+    // Block 1
+    let txs = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![10 * T, 5 * T, 10 * T, 15 * T]
+    )];
+    let coinbase_value = consensus_manager.emission_schedule().block_reward(1);
+    assert_eq!(
+        generate_new_block_with_coinbase(
+            &mut store,
+            &factories,
+            &mut blocks,
+            &mut outputs,
+            txs,
+            coinbase_value,
+            &consensus_manager.consensus_constants()
+        ),
+        Ok(BlockAddResult::Ok)
+    );
+    let block1_hash = blocks[1].hash();
+    let metadata = store.get_metadata().unwrap();
+    let utxo_root1 = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
+    let kernel_root1 = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
+    let rp_root1 = store.fetch_mmr_root(MmrTree::RangeProof).unwrap();
+    assert_eq!(metadata.height_of_longest_chain, Some(1));
+    assert_eq!(metadata.best_block, Some(block1_hash.clone()));
+    assert_eq!(store.fetch_block(0).unwrap().block().hash(), block0_hash);
+    assert_eq!(store.fetch_block(1).unwrap().block().hash(), block1_hash);
+    assert!(store.fetch_block(2).is_err());
+    assert_ne!(utxo_root0, utxo_root1);
+    assert_ne!(kernel_root0, kernel_root1);
+    assert_ne!(rp_root0, rp_root1);
+
+    // Invalid Block 2 - Double spends genesis block output
+    let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![20 * T, 20 * T])];
+    let coinbase_value = consensus_manager.emission_schedule().block_reward(2);
+    assert_eq!(
+        generate_new_block_with_coinbase(
+            &mut store,
+            &factories,
+            &mut blocks,
+            &mut outputs,
+            txs,
+            coinbase_value,
+            &consensus_manager.consensus_constants()
+        ),
+        Err(ChainStorageError::UnspendableInput)
+    );
+    let metadata = store.get_metadata().unwrap();
+    let utxo_root2 = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
+    let kernel_root2 = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
+    let rp_root2 = store.fetch_mmr_root(MmrTree::RangeProof).unwrap();
+    assert_eq!(metadata.height_of_longest_chain, Some(1));
+    assert_eq!(metadata.best_block, Some(block1_hash.clone()));
+    assert_eq!(store.fetch_block(0).unwrap().block().hash(), block0_hash);
+    assert_eq!(store.fetch_block(1).unwrap().block().hash(), block1_hash);
+    assert!(store.fetch_block(2).is_err());
+    assert_eq!(utxo_root1, utxo_root2);
+    assert_eq!(kernel_root1, kernel_root2);
+    assert_eq!(rp_root1, rp_root2);
+
+    // Valid Block 2
+    let txs = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![4 * T, 4 * T])];
+    let coinbase_value = consensus_manager.emission_schedule().block_reward(2);
+    assert_eq!(
+        generate_new_block_with_coinbase(
+            &mut store,
+            &factories,
+            &mut blocks,
+            &mut outputs,
+            txs,
+            coinbase_value,
+            &consensus_manager.consensus_constants()
+        ),
+        Ok(BlockAddResult::Ok)
+    );
+    let block2_hash = blocks[2].hash();
+    let metadata = store.get_metadata().unwrap();
+    let utxo_root2 = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
+    let kernel_root2 = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
+    let rp_root2 = store.fetch_mmr_root(MmrTree::RangeProof).unwrap();
+    assert_eq!(metadata.height_of_longest_chain, Some(2));
+    assert_eq!(metadata.best_block, Some(block2_hash.clone()));
+    assert_eq!(store.fetch_block(0).unwrap().block().hash(), block0_hash);
+    assert_eq!(store.fetch_block(1).unwrap().block().hash(), block1_hash);
+    assert_eq!(store.fetch_block(2).unwrap().block().hash(), block2_hash);
+    assert!(store.fetch_block(3).is_err());
+    assert_ne!(utxo_root1, utxo_root2);
+    assert_ne!(kernel_root1, kernel_root2);
+    assert_ne!(rp_root1, rp_root2);
 }

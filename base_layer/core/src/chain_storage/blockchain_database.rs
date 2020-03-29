@@ -401,7 +401,7 @@ where T: BlockchainBackend
     /// Returns the transaction kernel with the given hash.
     pub fn fetch_kernel(&self, hash: HashOutput) -> Result<TransactionKernel, ChainStorageError> {
         let db = self.db_read_access()?;
-        fetch_kernel(db.deref(), hash)
+        fetch_kernel(&*db, hash)
     }
 
     /// Returns the block header at the given block height.
@@ -413,7 +413,7 @@ where T: BlockchainBackend
     /// Returns the block header corresponding` to the provided BlockHash
     pub fn fetch_header_with_block_hash(&self, hash: HashOutput) -> Result<BlockHeader, ChainStorageError> {
         let db = self.db_read_access()?;
-        fetch_header_with_block_hash(db.deref(), hash)
+        fetch_header_with_block_hash(&*db, hash)
     }
 
     pub fn fetch_tip_header(&self) -> Result<BlockHeader, ChainStorageError> {
@@ -424,19 +424,19 @@ where T: BlockchainBackend
     /// Returns the UTXO with the given hash.
     pub fn fetch_utxo(&self, hash: HashOutput) -> Result<TransactionOutput, ChainStorageError> {
         let db = self.db_read_access()?;
-        fetch_utxo(db.deref(), hash)
+        fetch_utxo(&*db, hash)
     }
 
     /// Returns the STXO with the given hash.
     pub fn fetch_stxo(&self, hash: HashOutput) -> Result<TransactionOutput, ChainStorageError> {
         let db = self.db_read_access()?;
-        fetch_stxo(db.deref(), hash)
+        fetch_stxo(&*db, hash)
     }
 
     /// Returns the orphan block with the given hash.
     pub fn fetch_orphan(&self, hash: HashOutput) -> Result<Block, ChainStorageError> {
         let db = self.db_read_access()?;
-        fetch_orphan(db.deref(), hash)
+        fetch_orphan(&*db, hash)
     }
 
     /// Returns true if the given UTXO, represented by its hash exists in the UTXO set.
@@ -551,17 +551,15 @@ where T: BlockchainBackend
     /// * The height is beyond the current chain tip.
     /// * The height is lower than the block at the pruning horizon.
     pub fn fetch_block(&self, height: u64) -> Result<HistoricalBlock, ChainStorageError> {
-        let metadata = self.metadata_read_access()?;
         let db = self.db_read_access()?;
-        fetch_block(&metadata, db.deref(), height)
+        fetch_block(&*db, height)
     }
 
     /// Attempt to fetch the block corresponding to the provided hash from the main chain, if it cannot be found then
     /// the block will be searched in the orphan block pool.
     pub fn fetch_block_with_hash(&self, hash: HashOutput) -> Result<Option<HistoricalBlock>, ChainStorageError> {
-        let metadata = self.metadata_read_access()?.clone();
         let db = self.db_read_access()?;
-        fetch_block_with_hash(&metadata, db.deref(), hash)
+        fetch_block_with_hash(&*db, hash)
     }
 
     /// Atomically commit the provided transaction to the database backend. This function does not update the metadata.
@@ -814,17 +812,8 @@ fn is_at_chain_tip<T: BlockchainBackend>(
     Ok(block.header.prev_hash == parent_hash && block.header.height == best_block.height + 1)
 }
 
-fn fetch_block<T: BlockchainBackend>(
-    metadata: &ChainMetadata,
-    db: &T,
-    height: u64,
-) -> Result<HistoricalBlock, ChainStorageError>
-{
-    let tip_height = check_for_valid_height(db.deref(), height)?;
-    // We can't actually provide full block beyond the pruning horizon
-    if height < metadata.horizon_block(tip_height) {
-        return Err(ChainStorageError::BeyondPruningHorizon);
-    }
+fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBlock, ChainStorageError> {
+    let tip_height = check_for_valid_height(&*db, height)?;
     let header = fetch_header_impl(db, height)?;
     let kernel_cp = fetch_checkpoint(db, MmrTree::Kernel, height)?;
     let (kernel_hashes, _) = kernel_cp.into_parts();
@@ -843,13 +832,12 @@ fn fetch_block<T: BlockchainBackend>(
 }
 
 fn fetch_block_with_hash<T: BlockchainBackend>(
-    metadata: &ChainMetadata,
     db: &T,
     hash: HashOutput,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError>
 {
     if let Ok(header) = fetch_header_with_block_hash(db, hash.clone()) {
-        return Ok(Some(fetch_block(metadata, db, header.height)?));
+        return Ok(Some(fetch_block(db, header.height)?));
     }
     if let Ok(block) = fetch_orphan(db, hash) {
         return Ok(Some(HistoricalBlock::new(block, 0, vec![])));
@@ -946,7 +934,7 @@ fn rewind_to_height<T: BlockchainBackend>(
     let mut txn = DbTransaction::new();
     for rewind_height in (height + 1)..=chain_height {
         // Reconstruct block at height and add to orphan block pool
-        let orphaned_block = fetch_block(metadata, &**db, rewind_height)?.block().clone();
+        let orphaned_block = fetch_block(&**db, rewind_height)?.block().clone();
         removed_blocks.push(orphaned_block.clone());
         txn.insert_orphan(orphaned_block);
 
@@ -980,7 +968,7 @@ fn rewind_to_height<T: BlockchainBackend>(
     txn.rewind_rp_mmr(steps_back);
     commit(db, txn)?;
 
-    let last_block = fetch_block(metadata, &**db, height)?.block().clone();
+    let last_block = fetch_block(&**db, height)?.block().clone();
     let pow = ProofOfWork::new_from_difficulty(
         &last_block.header.pow,
         ProofOfWork::achieved_difficulty(&last_block.header),
