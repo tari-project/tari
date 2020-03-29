@@ -494,8 +494,8 @@ where
                     error!(
                         target: LOG_TARGET,
                         "Pending Outbound Transaction TxId: {:?} with Message Tag {:?} could not be sent",
+                        outbound_tx.tx_id,
                         message_tag,
-                        outbound_tx.tx_id
                     );
                     if let Err(e) = self.db.remove_pending_outbound_transaction(outbound_tx.tx_id).await {
                         error!(
@@ -1279,7 +1279,7 @@ where
                                 _ => result.mempool_response = Some(true),
                             }
                             if result.is_complete() {
-                                self.handle_transaction_mined_request_result(&completed_tx.tx_id).await;
+                                self.handle_transaction_mined_request_result(completed_tx.tx_id).await;
                             }
                         }
                     },
@@ -1396,8 +1396,8 @@ where
     }
 
     /// Handle the result of receiving all the stages needed to complete a Transaction Mined request
-    pub async fn handle_transaction_mined_request_result(&mut self, tx_id: &TxId) {
-        if let Some(result) = self.pending_transaction_mined_queries.remove(tx_id) {
+    pub async fn handle_transaction_mined_request_result(&mut self, tx_id: TxId) {
+        if let Some(result) = self.pending_transaction_mined_queries.remove(&tx_id) {
             // If the transaction is not in mempool AND not mined then the Tx was reorged out and will never appear
             // in the chain and should be cancelled
             if result.mempool_response == Some(false) && result.chain_response == Some(false) {
@@ -1407,7 +1407,7 @@ where
                 );
                 let _ = self
                     .output_manager_service
-                    .cancel_transaction(tx_id.clone())
+                    .cancel_transaction(tx_id)
                     .await
                     .map_err(|e| {
                         error!(
@@ -1417,7 +1417,7 @@ where
                             e
                         );
                     });
-                let _ = self.db.cancel_completed_transaction(tx_id.clone()).await.map_err(|e| {
+                let _ = self.db.cancel_completed_transaction(tx_id).await.map_err(|e| {
                     error!(
                         target: LOG_TARGET,
                         "Failed to Cancel TX_ID: {} after failed sending attempt with error {:?}", tx_id, e
@@ -1425,7 +1425,7 @@ where
                 });
                 let _ = self
                     .event_publisher
-                    .send(TransactionEvent::TransactionSendDiscoveryComplete(tx_id.clone(), false))
+                    .send(TransactionEvent::TransactionSendDiscoveryComplete(tx_id, false))
                     .await
                     .map_err(|e| error!(target: LOG_TARGET, "Failed send event {:?}", e));
             }
@@ -1473,7 +1473,7 @@ where
                         result.chain_response = Some(false);
 
                         if result.is_complete() {
-                            self.handle_transaction_mined_request_result(&completed_tx.tx_id).await;
+                            self.handle_transaction_mined_request_result(completed_tx.tx_id).await;
                         }
                     }
                 }
