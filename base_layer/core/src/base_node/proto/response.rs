@@ -53,6 +53,10 @@ impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
                 let headers = try_convert_all(headers.headers)?;
                 ci::NodeCommsResponse::BlockHeaders(headers)
             },
+            FetchHeadersAfterResponse(headers) => {
+                let headers = try_convert_all(headers.headers)?;
+                ci::NodeCommsResponse::FetchHeadersAfterResponse(headers)
+            },
             TransactionOutputs(outputs) => {
                 let outputs = try_convert_all(outputs.outputs)?;
                 ci::NodeCommsResponse::TransactionOutputs(outputs)
@@ -82,6 +86,10 @@ impl From<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
             BlockHeaders(headers) => {
                 let block_headers = headers.into_iter().map(Into::into).collect();
                 ProtoNodeCommsResponse::BlockHeaders(block_headers)
+            },
+            FetchHeadersAfterResponse(headers) => {
+                let block_headers = headers.into_iter().map(Into::into).collect();
+                ProtoNodeCommsResponse::FetchHeadersAfterResponse(block_headers)
             },
             TransactionOutputs(outputs) => {
                 let outputs = outputs.into_iter().map(Into::into).collect();

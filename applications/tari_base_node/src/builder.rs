@@ -462,13 +462,19 @@ where
         .get_handle::<ChainMetadataHandle>()
         .expect("Problem getting chain metadata interface handle.");
     debug!(target: LOG_TARGET, "Creating base node state machine.");
+    let mut state_machine_config = BaseNodeStateMachineConfig::default();
+    state_machine_config.block_sync_config.sync_strategy = config
+        .block_sync_strategy
+        .parse()
+        .expect("Problem reading block sync strategy from config");
+
     let node = BaseNodeStateMachine::new(
         &db,
         &outbound_interface,
         base_node_comms.peer_manager(),
         base_node_comms.connection_manager(),
         chain_metadata_service.get_event_stream(),
-        BaseNodeStateMachineConfig::default(),
+        state_machine_config,
         interrupt_signal,
     );
 

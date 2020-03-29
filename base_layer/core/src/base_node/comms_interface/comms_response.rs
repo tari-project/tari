@@ -39,4 +39,5 @@ pub enum NodeCommsResponse {
     NewBlockTemplate(NewBlockTemplate),
     NewBlock(Block),
     TargetDifficulty(Difficulty),
+    FetchHeadersAfterResponse(Vec<BlockHeader>),
 }

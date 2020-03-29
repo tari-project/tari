@@ -99,15 +99,17 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
 
     /// Describe the Finite State Machine for the base node. This function describes _every possible_ state
     /// transition for the node given its current state and an event that gets triggered.
-    pub fn transition(state: BaseNodeState, event: StateEvent) -> BaseNodeState {
+    pub fn transition(&self, state: BaseNodeState, event: StateEvent) -> BaseNodeState {
         use crate::base_node::states::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
         match (state, event) {
             (Starting(s), Initialized) => Listening(s.into()),
             (BlockSync(s, _, _), BlocksSynchronized) => Listening(s.into()),
             (BlockSync(s, _, _), BlockSyncFailure) => Waiting(s.into()),
-            (Listening(s), FallenBehind(Lagging(network_tip, sync_peers))) => {
-                BlockSync(s.into(), network_tip, sync_peers)
-            },
+            (Listening(_), FallenBehind(Lagging(network_tip, sync_peers))) => BlockSync(
+                self.config.block_sync_config.sync_strategy.clone(),
+                network_tip,
+                sync_peers,
+            ),
             (Waiting(s), Continue) => Listening(s.into()),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
             (_, UserQuit) => Shutdown(states::Shutdown::with_reason("Shutdown initiated by user".to_string())),
@@ -152,7 +154,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
                 target: LOG_TARGET,
                 "=== Base Node event in State [{}]:  {:?}", state, next_event
             );
-            state = BaseNodeStateMachine::<B>::transition(state, next_event);
+            state = self.transition(state, next_event);
         }
     }
 

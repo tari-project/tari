@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::states::{BlockSyncInfo, ListeningInfo, Shutdown, Starting, Waiting},
+    base_node::states::{BlockSyncStrategy, ListeningInfo, Shutdown, Starting, Waiting},
     chain_storage::ChainMetadata,
     proof_of_work::Difficulty,
 };
@@ -31,7 +31,7 @@ use tari_comms::peer_manager::NodeId;
 #[derive(Clone, Debug, PartialEq)]
 pub enum BaseNodeState {
     Starting(Starting),
-    BlockSync(BlockSyncInfo, ChainMetadata, Vec<NodeId>),
+    BlockSync(BlockSyncStrategy, ChainMetadata, Vec<NodeId>),
     // The best network chain metadata
     Listening(ListeningInfo),
     // We're in a paused state, and will return to Listening after a timeout

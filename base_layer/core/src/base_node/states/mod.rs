@@ -59,13 +59,15 @@
 mod block_sync;
 mod error;
 mod events_and_states;
+mod forward_block_sync;
 mod listening;
 mod shutdown_state;
 mod starting_state;
 mod waiting;
 
-pub use block_sync::{BlockSyncConfig, BlockSyncInfo};
+pub use block_sync::{BestChainMetadataBlockSyncInfo, BlockSyncConfig, BlockSyncStrategy};
 pub use events_and_states::{BaseNodeState, StateEvent, SyncStatus};
+pub use forward_block_sync::ForwardBlockSyncInfo;
 pub use listening::ListeningInfo;
 pub use shutdown_state::Shutdown;
 pub use starting_state::Starting;

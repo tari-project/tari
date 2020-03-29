@@ -24,7 +24,7 @@ use crate::{
     base_node::{
         comms_interface::CommsInterfaceError,
         state_machine::BaseNodeStateMachine,
-        states::{ListeningInfo, StateEvent},
+        states::{ForwardBlockSyncInfo, ListeningInfo, StateEvent},
     },
     blocks::{
         blockheader::{BlockHash, BlockHeader},
@@ -36,6 +36,7 @@ use core::cmp::min;
 use derive_error::Error;
 use log::*;
 use rand::seq::SliceRandom;
+use std::str::FromStr;
 use tari_comms::{
     connection_manager::ConnectionManagerError,
     peer_manager::{NodeId, PeerManagerError},
@@ -62,6 +63,7 @@ const BLOCK_REQUEST_SIZE: usize = 5;
 /// Configuration for the Block Synchronization.
 #[derive(Clone, Copy)]
 pub struct BlockSyncConfig {
+    pub sync_strategy: BlockSyncStrategy,
     pub random_sync_peer_with_chain: bool,
     pub max_metadata_request_retry_attempts: usize,
     pub max_header_request_retry_attempts: usize,
@@ -74,6 +76,7 @@ pub struct BlockSyncConfig {
 impl Default for BlockSyncConfig {
     fn default() -> Self {
         Self {
+            sync_strategy: BlockSyncStrategy::ViaBestChainMetadata(BestChainMetadataBlockSyncInfo),
             random_sync_peer_with_chain: RANDOM_SYNC_PEER_WITH_CHAIN,
             max_metadata_request_retry_attempts: MAX_METADATA_REQUEST_RETRY_ATTEMPTS,
             max_header_request_retry_attempts: MAX_HEADER_REQUEST_RETRY_ATTEMPTS,
@@ -81,6 +84,63 @@ impl Default for BlockSyncConfig {
             max_add_block_retry_attempts: MAX_ADD_BLOCK_RETRY_ATTEMPTS,
             header_request_size: HEADER_REQUEST_SIZE,
             block_request_size: BLOCK_REQUEST_SIZE,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum BlockSyncStrategy {
+    ViaBestChainMetadata(BestChainMetadataBlockSyncInfo),
+    ViaRandomPeer(ForwardBlockSyncInfo),
+}
+
+impl FromStr for BlockSyncStrategy {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "ViaBestChainMetadata" => Ok(Self::ViaBestChainMetadata(BestChainMetadataBlockSyncInfo)),
+            "ViaRandomPeer" => Ok(Self::ViaRandomPeer(ForwardBlockSyncInfo)),
+            _ => Err("Unrecognized value for BlockSyncStrategy. Available values \
+                      are:ViaBestChainMetadata,ViaRandomPeer"
+                .to_string()),
+        }
+    }
+}
+
+impl BlockSyncStrategy {
+    pub async fn next_event<B: BlockchainBackend + 'static>(
+        &mut self,
+        shared: &mut BaseNodeStateMachine<B>,
+        network_tip: &ChainMetadata,
+        sync_peers: &mut Vec<NodeId>,
+    ) -> StateEvent
+    {
+        match self {
+            BlockSyncStrategy::ViaBestChainMetadata(sync) => sync.next_event(shared, network_tip, sync_peers).await,
+            BlockSyncStrategy::ViaRandomPeer(sync) => sync.next_event(shared).await,
+        }
+    }
+}
+
+/// State management for BlockSync -> Listening.
+impl From<BlockSyncStrategy> for ListeningInfo {
+    fn from(_old_state: BlockSyncStrategy) -> Self {
+        ListeningInfo {}
+    }
+}
+
+impl PartialEq for BlockSyncStrategy {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            BlockSyncStrategy::ViaBestChainMetadata(_) => match other {
+                BlockSyncStrategy::ViaBestChainMetadata(_) => true,
+                _ => false,
+            },
+            BlockSyncStrategy::ViaRandomPeer(_) => match other {
+                BlockSyncStrategy::ViaRandomPeer(_) => true,
+                _ => false,
+            },
         }
     }
 }
@@ -100,10 +160,10 @@ pub enum BlockSyncError {
     CommsInterfaceError(CommsInterfaceError),
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct BlockSyncInfo;
+#[derive(Clone, Debug, PartialEq, Copy)]
+pub struct BestChainMetadataBlockSyncInfo;
 
-impl BlockSyncInfo {
+impl BestChainMetadataBlockSyncInfo {
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
@@ -528,19 +588,4 @@ async fn ban_all_sync_peers<B: BlockchainBackend + 'static>(
         ban_sync_peer(shared, sync_peers, sync_peers[0].clone()).await?;
     }
     Ok(())
-}
-
-/// State management for BlockSync -> Listening.
-impl From<BlockSyncInfo> for ListeningInfo {
-    fn from(_old_state: BlockSyncInfo) -> Self {
-        ListeningInfo {}
-    }
-}
-
-/// State management for Listening -> BlockSync. This change happens when a node has been temporarily disconnected
-/// from the network, or a reorg has occurred.
-impl From<ListeningInfo> for BlockSyncInfo {
-    fn from(_old: ListeningInfo) -> Self {
-        BlockSyncInfo {}
-    }
 }
