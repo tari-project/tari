@@ -254,8 +254,8 @@ pub fn generate_new_block(
     generate_block(db, blocks, txns, consensus_constants)
 }
 
-pub fn generate_new_block_with_achieved_difficulty(
-    db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
+pub fn generate_new_block_with_achieved_difficulty<B: BlockchainBackend>(
+    db: &mut BlockchainDatabase<B>,
     blocks: &mut Vec<Block>,
     outputs: &mut Vec<Vec<UnblindedOutput>>,
     schemas: Vec<TransactionSchema>,
@@ -278,8 +278,8 @@ pub fn generate_new_block_with_achieved_difficulty(
 
 /// Generate a new block using the given transaction schema and coinbase value and add it to the provided database.
 /// The blocks and UTXO vectors are also updated with the info from the new block.
-pub fn generate_new_block_with_coinbase(
-    db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
+pub fn generate_new_block_with_coinbase<B: BlockchainBackend>(
+    db: &mut BlockchainDatabase<B>,
     factories: &CryptoFactories,
     blocks: &mut Vec<Block>,
     outputs: &mut Vec<Vec<UnblindedOutput>>,
@@ -330,8 +330,8 @@ pub fn generate_block(
     result
 }
 
-pub fn generate_block_with_achieved_difficulty(
-    db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
+pub fn generate_block_with_achieved_difficulty<B: BlockchainBackend>(
+    db: &mut BlockchainDatabase<B>,
     blocks: &mut Vec<Block>,
     transactions: Vec<Transaction>,
     achieved_difficulty: Difficulty,
@@ -351,8 +351,8 @@ pub fn generate_block_with_achieved_difficulty(
 
 /// Generate a block and add it to the database using the provided transactions and coinbase. The header will be updated
 /// with the correct MMR roots.
-pub fn generate_block_with_coinbase(
-    db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
+pub fn generate_block_with_coinbase<B: BlockchainBackend>(
+    db: &mut BlockchainDatabase<B>,
     blocks: &mut Vec<Block>,
     transactions: Vec<Transaction>,
     coinbase_utxo: TransactionOutput,
