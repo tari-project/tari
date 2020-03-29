@@ -227,8 +227,8 @@ where D: Digest + Send + Sync
                         self.kernel_checkpoints
                             .push(curr_checkpoint)
                             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-
                         self.curr_kernel_checkpoint.clear();
+
                         self.kernel_mmr
                             .update()
                             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
@@ -238,8 +238,8 @@ where D: Digest + Send + Sync
                         self.utxo_checkpoints
                             .push(curr_checkpoint)
                             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-
                         self.curr_utxo_checkpoint.clear();
+
                         self.utxo_mmr
                             .update()
                             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
@@ -249,8 +249,8 @@ where D: Digest + Send + Sync
                         self.range_proof_checkpoints
                             .push(curr_checkpoint)
                             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-
                         self.curr_range_proof_checkpoint.clear();
+
                         self.range_proof_mmr
                             .update()
                             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
@@ -285,23 +285,31 @@ where D: Digest + Send + Sync
                             lmdb_replace(&txn, &self.metadata_db, &(k.clone() as u32), &v)?;
                         },
                         DbKeyValuePair::BlockHeader(k, v) => {
+                            if lmdb_exists(&self.env, &self.headers_db, &k)? {
+                                return Err(ChainStorageError::InvalidOperation("Duplicate key".to_string()));
+                            }
                             let hash = v.hash();
                             lmdb_insert(&txn, &self.block_hashes_db, &hash, &k)?;
                             lmdb_insert(&txn, &self.headers_db, &k, &v)?;
                         },
                         DbKeyValuePair::UnspentOutput(k, v, update_mmr) => {
-                            if *update_mmr {
-                                self.curr_utxo_checkpoint.push_addition(k.clone());
-                                let proof_hash = v.proof().hash();
-                                self.curr_range_proof_checkpoint.push_addition(proof_hash.clone());
+                            if lmdb_exists(&self.env, &self.utxos_db, &k)? {
+                                return Err(ChainStorageError::InvalidOperation("Duplicate key".to_string()));
                             }
                             let proof_hash = v.proof().hash();
+                            if *update_mmr {
+                                self.curr_utxo_checkpoint.push_addition(k.clone());
+                                self.curr_range_proof_checkpoint.push_addition(proof_hash.clone());
+                            }
                             if let Some(index) = self.find_range_proof_leaf_index(proof_hash)? {
                                 lmdb_insert(&txn, &self.utxos_db, &k, &v)?;
                                 lmdb_insert(&txn, &self.txos_hash_to_index_db, &k, &index)?;
                             }
                         },
                         DbKeyValuePair::TransactionKernel(k, v, update_mmr) => {
+                            if lmdb_exists(&self.env, &self.kernels_db, &k)? {
+                                return Err(ChainStorageError::InvalidOperation("Duplicate key".to_string()));
+                            }
                             if *update_mmr {
                                 self.curr_kernel_checkpoint.push_addition(k.clone());
                             }

@@ -460,39 +460,46 @@ fn rewind_to_height() {
 
     // Block 1
     let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![6 * T, 3 * T])];
-    generate_new_block(
-        &mut db,
-        &mut blocks,
-        &mut outputs,
-        schema,
-        &consensus_manager.consensus_constants(),
-    )
-    .unwrap();
+    assert_eq!(
+        generate_new_block(
+            &mut db,
+            &mut blocks,
+            &mut outputs,
+            schema,
+            &consensus_manager.consensus_constants(),
+        ),
+        Ok(BlockAddResult::Ok)
+    );
     // Block 2
     let schema = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![3 * T, 1 * T])];
-    generate_new_block(
-        &mut db,
-        &mut blocks,
-        &mut outputs,
-        schema,
-        &consensus_manager.consensus_constants(),
-    )
-    .unwrap();
+    assert_eq!(
+        generate_new_block(
+            &mut db,
+            &mut blocks,
+            &mut outputs,
+            schema,
+            &consensus_manager.consensus_constants(),
+        ),
+        Ok(BlockAddResult::Ok)
+    );
     // Block 3
     let schema = vec![
         txn_schema!(from: vec![outputs[2][0].clone()], to: vec![2 * T, 500_000 * uT]),
         txn_schema!(from: vec![outputs[1][1].clone()], to: vec![500_000 * uT]),
     ];
-    generate_new_block(
-        &mut db,
-        &mut blocks,
-        &mut outputs,
-        schema,
-        &consensus_manager.consensus_constants(),
-    )
-    .unwrap();
+    assert_eq!(
+        generate_new_block(
+            &mut db,
+            &mut blocks,
+            &mut outputs,
+            schema,
+            &consensus_manager.consensus_constants(),
+        ),
+        Ok(BlockAddResult::Ok)
+    );
 
     assert!(db.rewind_to_height(3).is_ok());
+    assert_eq!(db.get_height(), Ok(Some(3)));
     // Check MMRs are correct
     let mmr_check = blocks[3].header.kernel_mr.clone();
     let mmr = db.fetch_mmr_root(MmrTree::Kernel).unwrap();
@@ -505,7 +512,9 @@ fn rewind_to_height() {
     assert_eq!(mmr, mmr_check);
     // Invalid rewind
     assert!(db.rewind_to_height(4).is_err());
+    assert_eq!(db.get_height(), Ok(Some(3)));
     assert!(db.rewind_to_height(1).is_ok());
+    assert_eq!(db.get_height(), Ok(Some(1)));
     // Check MMRs are correct
     let mmr_check = blocks[1].header.kernel_mr.clone();
     let mmr = db.fetch_mmr_root(MmrTree::Kernel).unwrap();

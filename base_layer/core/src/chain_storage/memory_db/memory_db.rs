@@ -183,9 +183,6 @@ where D: Digest + Send + Sync
                         db.kernels.insert(k, *v);
                     },
                     DbKeyValuePair::OrphanBlock(k, v) => {
-                        if db.orphans.contains_key(&k) {
-                            return Err(ChainStorageError::InvalidOperation("Duplicate key".to_string()));
-                        }
                         db.orphans.insert(k, *v);
                     },
                 },
