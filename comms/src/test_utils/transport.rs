@@ -28,7 +28,6 @@ use crate::{
     transports::{MemoryTransport, Transport},
 };
 use futures::{future, StreamExt};
-use tokio::runtime::Handle;
 
 pub async fn build_connected_sockets() -> (Multiaddr, MemorySocket, MemorySocket) {
     let (mut listener, addr) = MemoryTransport
@@ -41,14 +40,13 @@ pub async fn build_connected_sockets() -> (Multiaddr, MemorySocket, MemorySocket
 }
 
 pub async fn build_multiplexed_connections() -> (Multiaddr, Yamux, Yamux) {
-    let rt_handle = Handle::current();
     let (addr, socket_out, socket_in) = build_connected_sockets().await;
 
-    let muxer_out = Yamux::upgrade_connection(rt_handle.clone(), socket_out, ConnectionDirection::Outbound)
+    let muxer_out = Yamux::upgrade_connection(socket_out, ConnectionDirection::Outbound)
         .await
         .unwrap();
 
-    let muxer_in = Yamux::upgrade_connection(rt_handle, socket_in, ConnectionDirection::Inbound)
+    let muxer_in = Yamux::upgrade_connection(socket_in, ConnectionDirection::Inbound)
         .await
         .unwrap();
 

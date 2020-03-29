@@ -145,6 +145,16 @@ where
         self
     }
 
+    pub fn with_listener_liveness_max_sessions(mut self, max_sessions: usize) -> Self {
+        self.connection_manager_config.liveness_max_sessions = max_sessions;
+        self
+    }
+
+    pub fn with_listener_liveness_whitelist_cidrs(mut self, cidrs: Vec<cidr::AnyIpCidr>) -> Self {
+        self.connection_manager_config.liveness_cidr_whitelist = cidrs;
+        self
+    }
+
     /// The maximum number of connection tasks that will be spawned at the same time. Once this limit is reached, peers
     /// attempting to connect will have to wait for another connection attempt to complete.
     pub fn with_max_simultaneous_inbound_connects(mut self, max_simultaneous_inbound_connects: usize) -> Self {
@@ -223,7 +233,6 @@ where
 
     fn make_messaging(
         &self,
-        executor: runtime::Handle,
         conn_man_requester: ConnectionManagerRequester,
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
@@ -240,7 +249,6 @@ where
         let (inbound_message_tx, inbound_message_rx) = mpsc::channel(consts::INBOUND_MESSAGE_BUFFER_SIZE);
         let (event_tx, _) = broadcast::channel(consts::MESSAGING_EVENTS_BUFFER_SIZE);
         let messaging = MessagingProtocol::new(
-            executor,
             conn_man_requester,
             peer_manager,
             node_identity,
@@ -267,7 +275,6 @@ where
 
     fn make_connection_manager(
         &mut self,
-        executor: runtime::Handle,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         protocols: Protocols<CommsSubstream>,
@@ -281,7 +288,6 @@ where
 
         ConnectionManager::new(
             config,
-            executor,
             self.transport.take().expect("transport has already been taken"),
             noise_config,
             backoff,
@@ -298,11 +304,6 @@ where
     pub fn build(mut self) -> Result<BuiltCommsNode<TTransport>, CommsBuilderError> {
         debug!(target: LOG_TARGET, "Building comms");
         let node_identity = self.node_identity.take().ok_or(CommsBuilderError::NodeIdentityNotSet)?;
-        let executor = self
-            .executor
-            .take()
-            .or_else(|| Some(runtime::Handle::current()))
-            .unwrap();
 
         let peer_manager = self.make_peer_manager()?;
 
@@ -315,7 +316,6 @@ where
 
         let (messaging, messaging_proto_tx, messaging_request_tx, inbound_message_rx, messaging_event_tx) = self
             .make_messaging(
-                executor.clone(),
                 connection_manager_requester.clone(),
                 peer_manager.clone(),
                 node_identity.clone(),
@@ -331,7 +331,6 @@ where
 
         //---------------------------------- ConnectionManager --------------------------------------------//
         let connection_manager = self.make_connection_manager(
-            executor.clone(),
             node_identity.clone(),
             peer_manager.clone(),
             protocols,
@@ -340,7 +339,6 @@ where
         );
 
         Ok(BuiltCommsNode {
-            executor,
             connection_manager,
             connection_manager_requester,
             connection_manager_event_tx,

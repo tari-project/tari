@@ -811,6 +811,8 @@ async fn setup_base_node_comms(
         dht: Default::default(),
         // TODO: This should be false unless testing locally - make this configurable
         allow_test_addresses: true,
+        listener_liveness_whitelist_cidrs: config.listener_liveness_whitelist_cidrs.clone(),
+        listener_liveness_max_sessions: config.listnener_liveness_max_sessions,
     };
     let (comms, dht) = initialize_comms(comms_config, publisher)
         .await
@@ -848,6 +850,8 @@ async fn setup_wallet_comms(
         dht: Default::default(),
         // TODO: This should be false unless testing locally - make this configurable
         allow_test_addresses: true,
+        listener_liveness_whitelist_cidrs: Vec::new(),
+        listener_liveness_max_sessions: 0,
     };
     let (comms, dht) = initialize_comms(comms_config, publisher)
         .await

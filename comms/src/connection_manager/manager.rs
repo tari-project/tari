@@ -33,6 +33,7 @@ use crate::{
     noise::NoiseConfig,
     peer_manager::{NodeId, NodeIdentity},
     protocol::{ProtocolEvent, ProtocolId, Protocols},
+    runtime,
     transports::Transport,
     types::DEFAULT_LISTENER_ADDRESS,
     PeerManager,
@@ -50,7 +51,7 @@ use multiaddr::Multiaddr;
 use std::{collections::HashMap, fmt, sync::Arc};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use time::Duration;
-use tokio::{runtime, sync::broadcast, task, time};
+use tokio::{sync::broadcast, task, time};
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
 
@@ -116,6 +117,12 @@ pub struct ConnectionManagerConfig {
     /// Set to true to allow peers to send loopback, local-link and other addresses normally not considered valid for
     /// peer-to-peer comms. Default: false
     pub allow_test_addresses: bool,
+    /// The maximum time to wait for the first byte before closing the connection. Default: 7s
+    pub time_to_first_byte: Duration,
+    /// The number of liveness check sessions to allow. Default: 0
+    pub liveness_max_sessions: usize,
+    /// CIDR blocks that whitelist liveness checks. Default: Localhost only (127.0.0.1/32)
+    pub liveness_cidr_whitelist: Vec<cidr::AnyIpCidr>,
 }
 
 impl Default for ConnectionManagerConfig {
@@ -132,12 +139,14 @@ impl Default for ConnectionManagerConfig {
             // This must always be true for internal crate tests
             #[cfg(test)]
             allow_test_addresses: true,
+            liveness_max_sessions: 0,
+            time_to_first_byte: Duration::from_secs(7),
+            liveness_cidr_whitelist: vec![cidr::AnyIpCidr::V4("127.0.0.1/32".parse().unwrap())],
         }
     }
 }
 
 pub struct ConnectionManager<TTransport, TBackoff> {
-    executor: runtime::Handle,
     config: ConnectionManagerConfig,
     request_rx: Fuse<mpsc::Receiver<ConnectionManagerRequest>>,
     internal_event_rx: Fuse<mpsc::Receiver<ConnectionManagerEvent>>,
@@ -164,7 +173,6 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: ConnectionManagerConfig,
-        executor: runtime::Handle,
         transport: TTransport,
         noise_config: NoiseConfig,
         backoff: TBackoff,
@@ -183,7 +191,6 @@ where
         let supported_protocols = protocols.get_supported_protocols();
 
         let listener = PeerListener::new(
-            executor.clone(),
             config.clone(),
             transport.clone(),
             noise_config.clone(),
@@ -195,7 +202,6 @@ where
         );
 
         let dialer = Dialer::new(
-            executor.clone(),
             config.clone(),
             Arc::clone(&node_identity),
             peer_manager.clone(),
@@ -209,7 +215,6 @@ where
         );
 
         Self {
-            executor,
             config,
             shutdown_signal: Some(shutdown_signal),
             request_rx: request_rx.fuse(),
@@ -292,18 +297,18 @@ where
         let listener = self
             .listener
             .take()
-            .expect("ConnnectionManager initialized without a Listener");
+            .expect("ConnectionManager initialized without a listener");
 
-        self.executor.spawn(listener.run());
+        runtime::current_executor().spawn(listener.run());
     }
 
     fn run_dialer(&mut self) {
         let dialer = self
             .dialer
             .take()
-            .expect("ConnnectionManager initialized without an Establisher");
+            .expect("ConnectionManager initialized without a dialer");
 
-        self.executor.spawn(dialer.run());
+        runtime::current_executor().spawn(dialer.run());
     }
 
     async fn handle_request(&mut self, request: ConnectionManagerRequest) {
@@ -524,7 +529,7 @@ where
             linger.as_millis()
         );
 
-        self.executor.spawn(async move {
+        runtime::current_executor().spawn(async move {
             debug!(
                 target: LOG_TARGET,
                 "Waiting for linger period ({}ms) to expire...",

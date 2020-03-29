@@ -28,6 +28,7 @@ use crate::{
         dial_state::DialState,
         manager::{ConnectionManagerConfig, ConnectionManagerEvent},
         peer_connection,
+        wire_mode::WireMode,
     },
     multiaddr::Multiaddr,
     multiplexing::Yamux,
@@ -45,6 +46,7 @@ use futures::{
     stream::{Fuse, FuturesUnordered},
     AsyncRead,
     AsyncWrite,
+    AsyncWriteExt,
     FutureExt,
     SinkExt,
     StreamExt,
@@ -53,7 +55,7 @@ use log::*;
 use std::{collections::HashMap, sync::Arc};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{runtime, time};
+use tokio::time;
 
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
 
@@ -71,7 +73,6 @@ pub(crate) enum DialerRequest {
 }
 
 pub struct Dialer<TTransport, TBackoff> {
-    executor: runtime::Handle,
     config: ConnectionManagerConfig,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
@@ -94,7 +95,6 @@ where
 {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
-        executor: runtime::Handle,
         config: ConnectionManagerConfig,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
@@ -108,7 +108,6 @@ where
     ) -> Self
     {
         Self {
-            executor,
             config,
             node_identity,
             peer_manager,
@@ -279,7 +278,6 @@ where
         let dial_state = DialState::new(peer, reply_tx, cancel_signal);
         let node_identity = Arc::clone(&self.node_identity);
         let peer_manager = self.peer_manager.clone();
-        let executor = self.executor.clone();
         let conn_man_notifier = self.conn_man_notifier.clone();
         let supported_protocols = self.supported_protocols.clone();
         let noise_config = self.noise_config.clone();
@@ -302,7 +300,6 @@ where
                         };
 
                     let upgrade_fut = Self::perform_socket_upgrade_procedure(
-                        executor,
                         peer_manager,
                         node_identity,
                         socket,
@@ -346,7 +343,6 @@ where
 
     #[allow(clippy::too_many_arguments)]
     async fn perform_socket_upgrade_procedure(
-        executor: runtime::Handle,
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         socket: NoiseSocket<TTransport::Output>,
@@ -359,7 +355,7 @@ where
     {
         static CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Outbound;
 
-        let mut muxer = Yamux::upgrade_connection(executor.clone(), socket, CONNECTION_DIRECTION)
+        let mut muxer = Yamux::upgrade_connection(socket, CONNECTION_DIRECTION)
             .await
             .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
 
@@ -399,7 +395,6 @@ where
         );
 
         peer_connection::create(
-            executor,
             muxer,
             dialed_addr,
             peer_node_id,
@@ -490,7 +485,7 @@ where
                     );
 
                     let dial_fut = async move {
-                        let socket = transport
+                        let mut socket = transport
                             .dial(address.clone())
                             .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))?
                             .await
@@ -499,6 +494,11 @@ where
                             target: LOG_TARGET,
                             "Socket established on '{}'. Performing noise upgrade protocol", address
                         );
+
+                        socket
+                            .write(&[WireMode::Comms as u8])
+                            .await
+                            .map_err(|_| ConnectionManagerError::WireFormatSendFailed)?;
                         let noise_socket = noise_config
                             .upgrade_socket(socket, ConnectionDirection::Outbound)
                             .await?;

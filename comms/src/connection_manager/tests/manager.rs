@@ -59,7 +59,6 @@ async fn connect_to_nonexistent_peer() {
 
     let connection_manager = ConnectionManager::new(
         Default::default(),
-        rt_handle.clone(),
         MemoryTransport,
         noise_config,
         ConstantBackoff::new(Duration::from_secs(1)),
@@ -89,7 +88,6 @@ async fn connect_to_nonexistent_peer() {
 #[r#async::test_basic]
 async fn dial_success() {
     const TEST_PROTO: ProtocolId = ProtocolId::from_static(b"/test/valid");
-    let rt_handle = Handle::current();
     let shutdown = Shutdown::new();
 
     let node_identity1 = build_node_identity(PeerFeatures::empty());
@@ -101,7 +99,6 @@ async fn dial_success() {
     // Setup connection manager 1
     let peer_manager1 = build_peer_manager();
     let mut conn_man1 = build_connection_manager(
-        rt_handle.clone(),
         TestNodeConfig {
             node_identity: node_identity1.clone(),
             ..Default::default()
@@ -115,7 +112,6 @@ async fn dial_success() {
 
     let peer_manager2 = build_peer_manager();
     let mut conn_man2 = build_connection_manager(
-        rt_handle,
         TestNodeConfig {
             node_identity: node_identity2.clone(),
             ..Default::default()
@@ -190,14 +186,12 @@ where
 
 #[r#async::test_basic]
 async fn dial_offline_peer() {
-    let rt_handle = Handle::current();
     let shutdown = Shutdown::new();
 
     let node_identity = build_node_identity(PeerFeatures::empty());
 
     let peer_manager = build_peer_manager();
     let mut conn_man = build_connection_manager(
-        rt_handle.clone(),
         TestNodeConfig {
             node_identity: node_identity.clone(),
             ..Default::default()
@@ -238,7 +232,6 @@ async fn dial_offline_peer() {
 
 #[r#async::test_basic]
 async fn simultaneous_dial_events() {
-    let rt_handle = Handle::current();
     let mut shutdown = Shutdown::new();
 
     let node_identities = ordered_node_identities(2);
@@ -246,7 +239,6 @@ async fn simultaneous_dial_events() {
     // Setup connection manager 1
     let peer_manager1 = build_peer_manager();
     let mut conn_man1 = build_connection_manager(
-        rt_handle.clone(),
         TestNodeConfig {
             node_identity: node_identities[0].clone(),
             ..Default::default()
@@ -261,7 +253,6 @@ async fn simultaneous_dial_events() {
 
     let peer_manager2 = build_peer_manager();
     let mut conn_man2 = build_connection_manager(
-        rt_handle,
         TestNodeConfig {
             node_identity: node_identities[1].clone(),
             ..Default::default()

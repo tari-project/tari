@@ -138,6 +138,8 @@ pub fn create_wallet(
             ..Default::default()
         },
         allow_test_addresses: true,
+        listener_liveness_whitelist_cidrs: Vec::new(),
+        listener_liveness_max_sessions: 0,
     };
 
     let config = WalletConfig {

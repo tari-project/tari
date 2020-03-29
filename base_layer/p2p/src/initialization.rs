@@ -36,6 +36,7 @@ use tari_comms::{
     pipeline::SinkService,
     tor,
     transports::{MemoryTransport, SocksTransport, TcpWithTorTransport, Transport},
+    utils::cidr::parse_cidrs,
     CommsBuilder,
     CommsBuilderError,
     CommsNode,
@@ -50,6 +51,8 @@ const LOG_TARGET: &str = "b::p2p::initialization";
 pub enum CommsInitializationError {
     CommsBuilderError(CommsBuilderError),
     HiddenServiceBuilderError(tor::HiddenServiceBuilderError),
+    #[error(non_std, no_from, msg_embedded)]
+    InvalidLivenessCidrs(String),
 }
 
 /// Configuration for a comms node
@@ -73,6 +76,12 @@ pub struct CommsConfig {
     /// addresses, loopback, local-link (i.e addresses used in local tests) will not be accepted from peers. This
     /// should always be false for non-test nodes.
     pub allow_test_addresses: bool,
+    /// The maximum number of liveness sessions allowed for the connection listener.
+    /// Liveness sessions can be used by third party tooling to determine node liveness.
+    /// A value of 0 will disallow any liveness sessions.
+    pub listener_liveness_max_sessions: usize,
+    /// CIDR for addresses allowed to enter into liveness check mode on the listener.
+    pub listener_liveness_whitelist_cidrs: Vec<String>,
 }
 
 /// Initialize Tari Comms configured for tests
@@ -109,6 +118,7 @@ where
         .allow_test_addresses()
         .with_transport(MemoryTransport)
         .with_listener_address(node_identity.public_address())
+        .with_listener_liveness_max_sessions(1)
         .with_node_identity(node_identity)
         .with_peer_storage(peer_database)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
@@ -266,7 +276,12 @@ where
     let peer_database = datastore.get_handle(&config.peer_database_name).unwrap();
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
+    let listener_liveness_whitelist_cidrs = parse_cidrs(&config.listener_liveness_whitelist_cidrs)
+        .map_err(CommsInitializationError::InvalidLivenessCidrs)?;
+
     let comms = builder
+        .with_listener_liveness_max_sessions(config.listener_liveness_max_sessions)
+        .with_listener_liveness_whitelist_cidrs(listener_liveness_whitelist_cidrs)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
         .with_peer_storage(peer_database)
         .build()?;

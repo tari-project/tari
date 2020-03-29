@@ -31,6 +31,7 @@ use crate::{
         ProtocolEvent,
         ProtocolNotification,
     },
+    runtime::current_executor,
     types::CommsSubstream,
     PeerManager,
 };
@@ -119,7 +120,6 @@ pub struct MessagingProtocol {
 impl MessagingProtocol {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        executor: runtime::Handle,
         connection_manager_requester: ConnectionManagerRequester,
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
@@ -135,7 +135,7 @@ impl MessagingProtocol {
             mpsc::channel(INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE);
         let (retry_queue_tx, retry_queue_rx) = mpsc::unbounded();
         Self {
-            executor,
+            executor: current_executor(),
             connection_manager_requester,
             peer_manager,
             node_identity,

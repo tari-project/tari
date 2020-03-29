@@ -142,6 +142,7 @@ where
                     None,
                 )
                 .await?;
+            peer_manager.set_offline(&pubkey, false).await?;
         } else {
             peer_manager
                 .add_peer(Peer::new(

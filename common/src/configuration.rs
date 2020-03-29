@@ -26,11 +26,12 @@ use config::{Config, Environment};
 use log::*;
 use multiaddr::{Multiaddr, Protocol};
 use std::{
+    convert::TryInto,
     error::Error,
     fmt::{Display, Formatter, Result as FormatResult},
     fs,
     net::IpAddr,
-    num::NonZeroU16,
+    num::{NonZeroU16, TryFromIntError},
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -253,6 +254,8 @@ pub enum CommsTransport {
 pub struct GlobalConfig {
     pub network: Network,
     pub comms_transport: CommsTransport,
+    pub listnener_liveness_max_sessions: usize,
+    pub listener_liveness_whitelist_cidrs: Vec<String>,
     pub data_dir: PathBuf,
     pub db_type: DatabaseType,
     pub core_threads: usize,
@@ -389,9 +392,25 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
         .into();
 
+    let key = "common.liveness_max_sessions";
+    let liveness_max_sessions = cfg
+        .get_int(key)
+        .map_err(|e| ConfigurationError::new(key, &e.to_string()))?
+        .try_into()
+        .map_err(|e: TryFromIntError| ConfigurationError::new(&key, &e.to_string()))?;
+
+    let key = "common.liveness_whitelist_cidrs";
+    let liveness_whitelist_cidrs = cfg
+        .get_array(key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        .map(|values| values.iter().map(ToString::to_string).collect())
+        .or_else(|_| Ok(vec!["127.0.0.1/32".to_string()]))?;
+
     Ok(GlobalConfig {
         network,
         comms_transport,
+        listnener_liveness_max_sessions: liveness_max_sessions,
+        listener_liveness_whitelist_cidrs: liveness_whitelist_cidrs,
         data_dir,
         db_type,
         core_threads,
@@ -519,6 +538,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("common.message_cache_size", 10).unwrap();
     cfg.set_default("common.message_cache_ttl", 1440).unwrap();
     cfg.set_default("common.peer_whitelist", Vec::<String>::new()).unwrap();
+    cfg.set_default("common.liveness_max_sessions", 0).unwrap();
     cfg.set_default(
         "common.peer_database ",
         default_subdir("peers", Some(&bootstrap.base_path)),

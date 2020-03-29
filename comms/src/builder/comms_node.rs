@@ -30,6 +30,7 @@ use crate::{
     peer_manager::{NodeIdentity, PeerManager},
     pipeline,
     protocol::{messaging, messaging::MessagingProtocol},
+    runtime,
     tor,
     transports::Transport,
 };
@@ -37,7 +38,7 @@ use futures::{channel::mpsc, AsyncRead, AsyncWrite, StreamExt};
 use log::*;
 use std::{fmt, sync::Arc, time::Duration};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{runtime, sync::broadcast, time};
+use tokio::{sync::broadcast, time};
 use tower::Service;
 
 const LOG_TARGET: &str = "comms::node";
@@ -53,7 +54,6 @@ pub struct BuiltCommsNode<
     pub connection_manager_requester: ConnectionManagerRequester,
     pub connection_manager_event_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
     pub messaging_pipeline: Option<pipeline::Config<TInPipe, TOutPipe, TOutReq>>,
-    pub executor: runtime::Handle,
     pub node_identity: Arc<NodeIdentity>,
     pub messaging: MessagingProtocol,
     pub messaging_event_tx: messaging::MessagingEventSender,
@@ -98,7 +98,6 @@ where
             messaging: self.messaging,
             messaging_event_tx: self.messaging_event_tx,
             inbound_message_rx: self.inbound_message_rx,
-            executor: self.executor,
             shutdown: self.shutdown,
             messaging_request_tx: self.messaging_request_tx,
             hidden_service: self.hidden_service,
@@ -133,7 +132,6 @@ where
             messaging_pipeline,
             messaging_request_tx,
             inbound_message_rx,
-            executor,
             node_identity,
             shutdown,
             peer_manager,
@@ -163,6 +161,7 @@ where
         let events_stream = connection_manager_event_tx.subscribe();
         let conn_man_shutdown_signal = connection_manager.complete_signal();
 
+        let executor = runtime::current_executor();
         executor.spawn(connection_manager.run());
 
         // Spawn messaging protocol
@@ -189,7 +188,6 @@ where
             peer_manager,
             messaging_event_tx,
             hidden_service,
-            executor,
             complete_signals: vec![messaging_signal, conn_man_shutdown_signal],
         })
     }
@@ -202,11 +200,6 @@ where
     /// Return a cloned atomic reference of the NodeIdentity
     pub fn node_identity(&self) -> Arc<NodeIdentity> {
         Arc::clone(&self.node_identity)
-    }
-
-    /// Return a cloned atomic reference of the NodeIdentity
-    pub fn executor(&self) -> &runtime::Handle {
-        &self.executor
     }
 
     /// Return a subscription to OMS events. This will emit events sent _after_ this subscription was created.
@@ -246,8 +239,6 @@ pub struct CommsNode {
     messaging_event_tx: messaging::MessagingEventSender,
     /// The resolved Ip-Tcp listening address.
     listening_addr: Multiaddr,
-    /// The executor handle used to run the comms stack
-    executor: runtime::Handle,
     /// `Some` if the comms node is configured to run via a hidden service, otherwise `None`
     hidden_service: Option<tor::HiddenService>,
     /// The 'reciprocal' shutdown signals for each comms service
@@ -267,11 +258,6 @@ impl CommsNode {
     /// Return a cloned atomic reference of the NodeIdentity
     pub fn node_identity(&self) -> Arc<NodeIdentity> {
         Arc::clone(&self.node_identity)
-    }
-
-    /// Return a cloned atomic reference of the NodeIdentity
-    pub fn executor(&self) -> &runtime::Handle {
-        &self.executor
     }
 
     /// Return the Ip/Tcp address that this node is listening on

@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::runtime::current_executor;
 use std::{future::Future, sync::Arc};
 use tokio::{runtime, sync::Semaphore, task::JoinHandle};
 
@@ -38,6 +39,10 @@ impl BoundedExecutor {
             inner: executor,
             semaphore: Arc::new(Semaphore::new(num_permits)),
         }
+    }
+
+    pub fn from_current(num_permits: usize) -> Self {
+        Self::new(current_executor(), num_permits)
     }
 
     /// Spawn a future onto the Tokio runtime asynchronously blocking if there are too many

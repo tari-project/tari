@@ -56,7 +56,6 @@ async fn listen() -> Result<(), Box<dyn Error>> {
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config = NoiseConfig::new(node_identity.clone());
     let listener = PeerListener::new(
-        rt_handle.clone(),
         ConnectionManagerConfig {
             listener_address: "/memory/0".parse()?,
             ..Default::default()
@@ -99,7 +98,6 @@ async fn smoke() {
     let supported_protocols = vec![expected_proto.clone()];
     let peer_manager1 = build_peer_manager();
     let listener = PeerListener::new(
-        rt_handle.clone(),
         ConnectionManagerConfig {
             listener_address: "/memory/0".parse().unwrap(),
             ..Default::default()
@@ -120,7 +118,6 @@ async fn smoke() {
     let (mut request_tx, request_rx) = mpsc::channel(1);
     let peer_manager2 = build_peer_manager();
     let dialer = Dialer::new(
-        rt_handle.clone(),
         ConnectionManagerConfig::default(),
         node_identity2.clone(),
         peer_manager2.clone().into(),

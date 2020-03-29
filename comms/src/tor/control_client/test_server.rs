@@ -24,11 +24,11 @@ use crate::{
     compat::IoCompat,
     memsocket::MemorySocket,
     multiaddr::Multiaddr,
+    runtime,
     test_utils::transport::build_connected_sockets,
 };
 use futures::{lock::Mutex, stream, SinkExt, StreamExt};
 use std::sync::Arc;
-use tokio::runtime;
 use tokio_util::codec::{Framed, LinesCodec};
 
 pub async fn spawn() -> (Multiaddr, State, MemorySocket) {
@@ -36,7 +36,7 @@ pub async fn spawn() -> (Multiaddr, State, MemorySocket) {
 
     let server = TorControlPortTestServer::new(socket_in);
     let state = server.get_shared_state();
-    runtime::Handle::current().spawn(server.run());
+    runtime::current_executor().spawn(server.run());
 
     (addr, state, socket_out)
 }

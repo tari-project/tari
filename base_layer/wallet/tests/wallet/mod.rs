@@ -97,6 +97,8 @@ fn test_wallet() {
             outbound_buffer_size: 100,
             dht: Default::default(),
             allow_test_addresses: true,
+            listener_liveness_whitelist_cidrs: Vec::new(),
+            listener_liveness_max_sessions: 0,
         };
         let comms_config2 = CommsConfig {
             node_identity: Arc::new(bob_identity.clone()),
@@ -110,6 +112,8 @@ fn test_wallet() {
             outbound_buffer_size: 100,
             dht: Default::default(),
             allow_test_addresses: true,
+            listener_liveness_whitelist_cidrs: Vec::new(),
+            listener_liveness_max_sessions: 0,
         };
         let config1 = WalletConfig {
             comms_config: comms_config1,
@@ -242,6 +246,8 @@ fn test_import_utxo() {
         outbound_buffer_size: 100,
         dht: Default::default(),
         allow_test_addresses: true,
+        listener_liveness_whitelist_cidrs: Vec::new(),
+        listener_liveness_max_sessions: 0,
     };
     let config = WalletConfig {
         comms_config,
@@ -310,6 +316,8 @@ fn test_data_generation() {
             ..Default::default()
         },
         allow_test_addresses: true,
+        listener_liveness_whitelist_cidrs: Vec::new(),
+        listener_liveness_max_sessions: 0,
     };
 
     let config = WalletConfig {
