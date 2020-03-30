@@ -369,7 +369,6 @@ where
                     }
                 },
                 message_event = message_event_receiver.select_next_some() => {
-                   trace!(target: LOG_TARGET, "Handling Message Event");
                    match message_event {
                    Ok(event) => {
                        let _ = self.handle_message_event((*event).clone()).await.or_else(|resp| {
@@ -399,7 +398,6 @@ where
                     break;
                 }
             }
-            trace!(target: LOG_TARGET, "Select Loop end");
         }
         Ok(())
     }

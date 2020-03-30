@@ -179,6 +179,7 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
     runtime: &mut Runtime,
     factories: CryptoFactories,
     backend: T,
+    mined_request_timeout: Option<Duration>,
 ) -> (
     TransactionServiceHandle,
     OutputManagerHandle,
@@ -227,7 +228,7 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
     let ts_service = TransactionService::new(
         TransactionServiceConfig {
             mempool_broadcast_timeout: Duration::from_secs(5),
-            base_node_mined_timeout: Duration::from_secs(5),
+            base_node_mined_timeout: mined_request_timeout.unwrap_or(Duration::from_secs(5)),
             ..Default::default()
         },
         TransactionDatabase::new(backend),
@@ -680,9 +681,9 @@ fn test_sending_repeated_tx_ids<T: TransactionBackend + Clone + 'static>(alice_b
         _,
         _,
         _,
-    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend);
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend, None);
     let (_bob_ts, mut bob_output_manager, _bob_outbound_service, _bob_tx_sender, _bob_tx_ack_sender, _, _, _, _) =
-        setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend);
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend, None);
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
     let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment);
@@ -770,7 +771,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
         _,
         _,
         _,
-    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend);
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend, None);
 
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
@@ -863,7 +864,7 @@ fn finalize_tx_with_nonexistent_txid<T: TransactionBackend + Clone + 'static>(al
         _,
         _,
         _,
-    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend);
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend, None);
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
     let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng));
@@ -921,13 +922,13 @@ fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(al
         _,
         _,
         _,
-    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend);
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend, None);
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
     let (_bob_ts, mut bob_output_manager, _bob_outbound_service, _bob_tx_sender, _bob_tx_ack_sender, _, _, _, _) =
-        setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend);
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend, None);
 
     let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment);
 
@@ -1025,13 +1026,13 @@ fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alic
         _,
         _,
         _,
-    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend);
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend, None);
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
     let (_bob_ts, mut bob_output_manager, _bob_outbound_service, _bob_tx_sender, _bob_tx_ack_sender, _, _, _, _) =
-        setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend);
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend, None);
 
     let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment);
 
@@ -1285,7 +1286,7 @@ fn test_coinbase<T: TransactionBackend + Clone + 'static>(backend: T) {
         _,
         _,
         _,
-    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend);
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, None);
 
     let balance = runtime.block_on(alice_output_manager.get_balance()).unwrap();
     assert_eq!(balance.pending_incoming_balance, MicroTari(0));
@@ -1413,7 +1414,7 @@ fn transaction_mempool_broadcast() {
         mut alice_mempool_response_sender,
         _,
         _,
-    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new());
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
 
     runtime
         .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
@@ -1429,7 +1430,7 @@ fn transaction_mempool_broadcast() {
         _,
         _,
         _,
-    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new());
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
 
     runtime
         .block_on(bob_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
@@ -1680,7 +1681,7 @@ fn broadcast_all_completed_transactions_on_startup() {
     .unwrap();
 
     let (mut alice_ts, _, _, _, _, _, _, _, _) =
-        setup_transaction_service_no_comms(&mut runtime, factories.clone(), db);
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), db, None);
 
     runtime
         .block_on(alice_ts.set_base_node_public_key(PublicKey::default()))
@@ -1741,10 +1742,10 @@ fn transaction_base_node_monitoring() {
         mut alice_mempool_response_sender,
         mut alice_base_node_response_sender,
         _,
-    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new());
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
 
     let (mut bob_ts, _, bob_outbound_service, mut bob_tx_sender, _, _, _, _, _) =
-        setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new());
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
 
     runtime
         .block_on(bob_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
@@ -2164,7 +2165,7 @@ fn query_all_completed_transactions_on_startup() {
     .unwrap();
 
     let (mut alice_ts, _, _, _, _, _, _, _, _) =
-        setup_transaction_service_no_comms(&mut runtime, factories.clone(), db);
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), db, None);
 
     runtime
         .block_on(alice_ts.set_base_node_public_key(PublicKey::default()))
@@ -2304,6 +2305,7 @@ fn test_failed_tx_send_timeout() {
 
 #[test]
 fn transaction_cancellation_when_not_in_mempool() {
+    let _ = env_logger::try_init();
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
@@ -2326,10 +2328,19 @@ fn transaction_cancellation_when_not_in_mempool() {
         mut alice_mempool_response_sender,
         mut alice_base_node_response_sender,
         _,
-    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new());
+    ) = setup_transaction_service_no_comms(
+        &mut runtime,
+        factories.clone(),
+        TransactionMemoryDatabase::new(),
+        Some(Duration::from_secs(20)),
+    );
 
-    let (mut bob_ts, _, bob_outbound_service, mut bob_tx_sender, _, _, _, _, _) =
-        setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new());
+    let (mut bob_ts, _, bob_outbound_service, mut bob_tx_sender, _, _, _, _, _) = setup_transaction_service_no_comms(
+        &mut runtime,
+        factories.clone(),
+        TransactionMemoryDatabase::new(),
+        Some(Duration::from_secs(20)),
+    );
 
     runtime
         .block_on(bob_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
@@ -2377,7 +2388,7 @@ fn transaction_cancellation_when_not_in_mempool() {
         collect_stream!(
             bob_ts.get_event_stream_fused(),
             take = 1,
-            timeout = Duration::from_secs(20)
+            timeout = Duration::from_secs(30)
         )
     });
     let call = bob_outbound_service.pop_call().unwrap();
@@ -2477,6 +2488,17 @@ fn transaction_cancellation_when_not_in_mempool() {
         )))
         .unwrap();
 
+    let mempool_response = MempoolProto::MempoolServiceResponse {
+        request_key: tx_id,
+        response: Some(MempoolResponse::TxStorage(TxStorageResponse::NotStored).into()),
+    };
+    let base_node_response = BaseNodeProto::BaseNodeServiceResponse {
+        request_key: tx_id.clone(),
+        response: Some(BaseNodeResponseProto::TransactionOutputs(
+            BaseNodeProto::TransactionOutputs { outputs: vec![] },
+        )),
+    };
+
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
     runtime.block_on(async {
         let mut delay = delay_for(Duration::from_secs(60)).fuse();
@@ -2499,32 +2521,19 @@ fn transaction_cancellation_when_not_in_mempool() {
         assert!(timeouts >= 1);
     });
 
-    let base_node_response = BaseNodeProto::BaseNodeServiceResponse {
-        request_key: tx_id.clone(),
-        response: Some(BaseNodeResponseProto::TransactionOutputs(
-            BaseNodeProto::TransactionOutputs { outputs: vec![] },
-        )),
-    };
-    runtime
-        .block_on(alice_base_node_response_sender.send(create_dummy_message(
-            base_node_response,
-            base_node_identity.public_key(),
-        )))
-        .unwrap();
-
     let balance = runtime.block_on(alice_output_manager.get_balance()).unwrap();
-
     assert_eq!(balance.available_balance, MicroTari(0));
-
-    let mempool_response = MempoolProto::MempoolServiceResponse {
-        request_key: tx_id,
-        response: Some(MempoolResponse::TxStorage(TxStorageResponse::NotStored).into()),
-    };
 
     runtime
         .block_on(
             alice_mempool_response_sender.send(create_dummy_message(mempool_response, base_node_identity.public_key())),
         )
+        .unwrap();
+    runtime
+        .block_on(alice_base_node_response_sender.send(create_dummy_message(
+            base_node_response,
+            base_node_identity.public_key(),
+        )))
         .unwrap();
 
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
