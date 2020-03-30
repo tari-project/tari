@@ -102,11 +102,9 @@ where T: BlockchainBackend
         // We dont care about tx's that appeared in valid blocks. Those tx's will time out in orphan pool and remove
         // them selves.
         for (tx_key, tx) in self.txs_by_signature.iter() {
-            match self.validator.validate(
-                &tx,
-                &self.blockchain_db.db_read_access()?,
-                &self.blockchain_db.metadata_read_access()?,
-            ) {
+            let (db, metadata) = self.blockchain_db.db_and_metadata_read_access()?;
+
+            match self.validator.validate(&tx, &db, &metadata) {
                 Ok(()) => {
                     trace!(
                         target: LOG_TARGET,
