@@ -21,5 +21,5 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-pub const VERSION: &str = "0.0.9";
+pub const VERSION: &str = "0.0.10.build-8560aab9";
 pub const AUTHOR: &str = "The Tari Community";
