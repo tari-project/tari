@@ -47,9 +47,11 @@ where F: FnOnce(&mut TestRuntime) {
     }
 }
 
+type BoxedJoinFuture = Pin<Box<dyn Future<Output = Result<(), JoinError>>>>;
+
 pub struct TestRuntime {
     inner: Runtime,
-    handles: Vec<Pin<Box<dyn Future<Output = Result<(), JoinError>>>>>,
+    handles: Vec<BoxedJoinFuture>,
 }
 
 impl TestRuntime {

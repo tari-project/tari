@@ -25,15 +25,10 @@ mod helpers;
 
 use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, executor::block_on, StreamExt};
 use tari_broadcast_channel::bounded;
+use tari_comms::peer_manager::NodeId;
 use tari_core::{
     base_node::{
-        comms_interface::{
-            CommsInterfaceError,
-            InboundNodeCommsHandlers,
-            NodeCommsRequest,
-            NodeCommsRequestType,
-            NodeCommsResponse,
-        },
+        comms_interface::{CommsInterfaceError, InboundNodeCommsHandlers, NodeCommsRequest, NodeCommsResponse},
         OutboundNodeCommsInterface,
     },
     blocks::{BlockBuilder, BlockHeader},
@@ -54,11 +49,8 @@ use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_test_utils::runtime::test_async;
 
 async fn test_request_responder(
-    receiver: &mut Receiver<
-        (NodeCommsRequest, NodeCommsRequestType),
-        Result<Vec<NodeCommsResponse>, CommsInterfaceError>,
-    >,
-    response: Vec<NodeCommsResponse>,
+    receiver: &mut Receiver<(NodeCommsRequest, Option<NodeId>), Result<NodeCommsResponse, CommsInterfaceError>>,
+    response: NodeCommsResponse,
 )
 {
     let req_context = receiver.next().await.unwrap();
@@ -71,11 +63,8 @@ fn new_mempool() -> (
 ) {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager);
-    let mempool_validator = MempoolValidators::new(
-        TxInputAndMaturityValidator::new(store.clone()),
-        TxInputAndMaturityValidator::new(store.clone()),
-    );
+    let store = create_mem_db(&consensus_manager);
+    let mempool_validator = MempoolValidators::new(TxInputAndMaturityValidator {}, TxInputAndMaturityValidator {});
     let mempool = Mempool::new(store.clone(), MempoolConfig::default(), mempool_validator);
     (mempool, store)
 }
@@ -87,20 +76,13 @@ fn outbound_get_metadata() {
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
-        let metadata1 = ChainMetadata::new(5, vec![0u8], 3);
-        let metadata2 = ChainMetadata::new(6, vec![1u8], 4);
-        let metadata_response: Vec<NodeCommsResponse> = vec![
-            NodeCommsResponse::ChainMetadata(metadata1.clone()),
-            NodeCommsResponse::ChainMetadata(metadata2.clone()),
-        ];
+        let metadata = ChainMetadata::new(5, vec![0u8], 3, 5.into());
+        let metadata_response = NodeCommsResponse::ChainMetadata(metadata.clone());
         let (received_metadata, _) = futures::join!(
             outbound_nci.get_metadata(),
             test_request_responder(&mut request_receiver, metadata_response)
         );
-        let received_metadata = received_metadata.unwrap();
-        assert_eq!(received_metadata.len(), 2);
-        assert!(received_metadata.contains(&metadata1));
-        assert!(received_metadata.contains(&metadata2));
+        assert_eq!(received_metadata.unwrap(), metadata);
     });
 }
 
@@ -110,7 +92,7 @@ fn inbound_get_metadata() {
 
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let diff_adj_manager = DiffAdjManager::new(store.clone(), &consensus_manager.consensus_constants()).unwrap();
+    let diff_adj_manager = DiffAdjManager::new(&consensus_manager.consensus_constants()).unwrap();
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
     let (request_sender, _) = reply_channel::unbounded();
@@ -149,7 +131,7 @@ fn outbound_fetch_kernels() {
     block_on(async {
         let kernel = create_test_kernel(5.into(), 0);
         let hash = kernel.hash();
-        let kernel_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::TransactionKernels(vec![kernel.clone()])];
+        let kernel_response = NodeCommsResponse::TransactionKernels(vec![kernel.clone()]);
         let (received_kernels, _) = futures::join!(
             outbound_nci.fetch_kernels(vec![hash]),
             test_request_responder(&mut request_receiver, kernel_response)
@@ -165,7 +147,7 @@ fn inbound_fetch_kernels() {
     let (mempool, store) = new_mempool();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let diff_adj_manager = DiffAdjManager::new(store.clone(), &consensus_manager.consensus_constants()).unwrap();
+    let diff_adj_manager = DiffAdjManager::new(&consensus_manager.consensus_constants()).unwrap();
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
     let (request_sender, _) = reply_channel::unbounded();
@@ -209,7 +191,7 @@ fn outbound_fetch_headers() {
     block_on(async {
         let mut header = BlockHeader::new(0);
         header.height = 0;
-        let header_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::BlockHeaders(vec![header.clone()])];
+        let header_response = NodeCommsResponse::BlockHeaders(vec![header.clone()]);
         let (received_headers, _) = futures::join!(
             outbound_nci.fetch_headers(vec![0]),
             test_request_responder(&mut request_receiver, header_response)
@@ -228,7 +210,7 @@ fn inbound_fetch_headers() {
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
         .build();
-    let diff_adj_manager = DiffAdjManager::new(store.clone(), &consensus_manager.consensus_constants()).unwrap();
+    let diff_adj_manager = DiffAdjManager::new(&consensus_manager.consensus_constants()).unwrap();
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
     assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
     let (request_sender, _) = reply_channel::unbounded();
@@ -268,7 +250,7 @@ fn outbound_fetch_utxos() {
     block_on(async {
         let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
         let hash = utxo.hash();
-        let utxo_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::TransactionOutputs(vec![utxo.clone()])];
+        let utxo_response = NodeCommsResponse::TransactionOutputs(vec![utxo.clone()]);
         let (received_utxos, _) = futures::join!(
             outbound_nci.fetch_utxos(vec![hash]),
             test_request_responder(&mut request_receiver, utxo_response)
@@ -289,7 +271,7 @@ fn inbound_fetch_utxos() {
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
         .build();
-    let diff_adj_manager = DiffAdjManager::new(store.clone(), &consensus_manager.consensus_constants()).unwrap();
+    let diff_adj_manager = DiffAdjManager::new(&consensus_manager.consensus_constants()).unwrap();
     assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();
@@ -331,9 +313,9 @@ fn outbound_fetch_blocks() {
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
     block_on(async {
-        let gb = BlockBuilder::new(&consensus_constants).build();
+        let gb = BlockBuilder::new(consensus_constants.blockchain_version()).build();
         let block = HistoricalBlock::new(gb, 0, Vec::new());
-        let block_response: Vec<NodeCommsResponse> = vec![NodeCommsResponse::HistoricalBlocks(vec![block.clone()])];
+        let block_response = NodeCommsResponse::HistoricalBlocks(vec![block.clone()]);
         let (received_blocks, _) = futures::join!(
             outbound_nci.fetch_blocks(vec![0]),
             test_request_responder(&mut request_receiver, block_response)
@@ -353,7 +335,7 @@ fn inbound_fetch_blocks() {
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
         .build();
-    let diff_adj_manager = DiffAdjManager::new(store.clone(), &consensus_manager.consensus_constants()).unwrap();
+    let diff_adj_manager = DiffAdjManager::new(&consensus_manager.consensus_constants()).unwrap();
     assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();

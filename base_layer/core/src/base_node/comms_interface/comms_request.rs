@@ -29,16 +29,6 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 
-/// NodeCommsRequestType is used to specify the amount of peers that need to be queried before a request can be
-/// finalized.
-#[derive(Debug, Serialize, Deserialize)]
-pub enum NodeCommsRequestType {
-    /// Send the request to a single remote base node
-    Single,
-    /// Send the request to a number of remote base nodes and accumulate all the responses.
-    Many,
-}
-
 /// A container for the parameters required for a FetchMmrState request.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MmrStateRequest {
@@ -53,6 +43,8 @@ pub enum NodeCommsRequest {
     GetChainMetadata,
     FetchKernels(Vec<HashOutput>),
     FetchHeaders(Vec<u64>),
+    FetchHeadersWithHashes(Vec<HashOutput>),
+    FetchHeadersAfter(Vec<HashOutput>, HashOutput),
     FetchUtxos(Vec<HashOutput>),
     FetchBlocks(Vec<u64>),
     FetchBlocksWithHashes(Vec<HashOutput>),
@@ -67,11 +59,13 @@ impl Display for NodeCommsRequest {
             NodeCommsRequest::GetChainMetadata => f.write_str("GetChainMetadata"),
             NodeCommsRequest::FetchKernels(v) => f.write_str(&format!("FetchKernels (n={})", v.len())),
             NodeCommsRequest::FetchHeaders(v) => f.write_str(&format!("FetchHeaders (n={})", v.len())),
+            NodeCommsRequest::FetchHeadersWithHashes(v) => f.write_str(&format!("FetchHeaders (n={})", v.len())),
+            NodeCommsRequest::FetchHeadersAfter(v, _hash) => f.write_str(&format!("FetchHeadersAfter (n={})", v.len())),
             NodeCommsRequest::FetchUtxos(v) => f.write_str(&format!("FetchUtxos (n={})", v.len())),
             NodeCommsRequest::FetchBlocks(v) => f.write_str(&format!("FetchBlocks (n={})", v.len())),
             NodeCommsRequest::FetchBlocksWithHashes(v) => f.write_str(&format!("FetchBlocks (n={})", v.len())),
             NodeCommsRequest::GetNewBlockTemplate => f.write_str("GetNewBlockTemplate"),
-            NodeCommsRequest::GetNewBlock(b) => f.write_str(&format!("GetNewBlock (Block Height={}", b.header.height)),
+            NodeCommsRequest::GetNewBlock(b) => f.write_str(&format!("GetNewBlock (Block Height={})", b.header.height)),
             NodeCommsRequest::GetTargetDifficulty(algo) => f.write_str(&format!("GetTargetDifficulty ({})", algo)),
         }
     }

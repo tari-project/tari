@@ -9,6 +9,8 @@
 #![recursion_limit = "512"]
 // Allow `type Future = impl Future`
 #![feature(type_alias_impl_trait)]
+// Required to use `Ip4Addr::is_global`. Stabilisation imminent https://github.com/rust-lang/rust/issues/27709
+#![feature(ip)]
 
 #[macro_use]
 extern crate lazy_static;
@@ -16,18 +18,23 @@ extern crate lazy_static;
 #[macro_use]
 mod macros;
 
-mod connection_manager;
+pub mod connection_manager;
+pub use connection_manager::{validate_peer_addresses, ConnectionManagerEvent, PeerConnection, PeerConnectionError};
+
+pub mod peer_manager;
+pub use peer_manager::{NodeIdentity, PeerManager};
+
 mod consts;
 mod multiplexing;
 mod noise;
 mod proto;
-pub mod protocol;
+mod runtime;
 
 pub mod backoff;
 pub mod bounded_executor;
 pub mod compat;
 pub mod memsocket;
-pub mod peer_manager;
+pub mod protocol;
 #[macro_use]
 pub mod message;
 pub mod net_address;
@@ -45,8 +52,9 @@ pub use builder::{BuiltCommsNode, CommsBuilder, CommsBuilderError, CommsNode};
 // Re-exports
 pub use bytes::Bytes;
 
-#[cfg(test)]
-pub(crate) mod test_utils;
+// TODO: Test utils should be part of a `tari_comms_test` crate
+// #[cfg(test)]
+pub mod test_utils;
 
 pub mod multiaddr {
     // Re-export so that client code does not have to have multiaddr as a dependency

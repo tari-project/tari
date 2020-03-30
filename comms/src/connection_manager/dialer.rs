@@ -28,11 +28,12 @@ use crate::{
         dial_state::DialState,
         manager::{ConnectionManagerConfig, ConnectionManagerEvent},
         peer_connection,
+        wire_mode::WireMode,
     },
     multiaddr::Multiaddr,
     multiplexing::Yamux,
     noise::{NoiseConfig, NoiseSocket},
-    peer_manager::{AsyncPeerManager, NodeId, NodeIdentity, Peer},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
     protocol::ProtocolId,
     transports::Transport,
     types::CommsPublicKey,
@@ -45,6 +46,7 @@ use futures::{
     stream::{Fuse, FuturesUnordered},
     AsyncRead,
     AsyncWrite,
+    AsyncWriteExt,
     FutureExt,
     SinkExt,
     StreamExt,
@@ -53,7 +55,7 @@ use log::*;
 use std::{collections::HashMap, sync::Arc};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{runtime, time};
+use tokio::time;
 
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
 
@@ -71,9 +73,8 @@ pub(crate) enum DialerRequest {
 }
 
 pub struct Dialer<TTransport, TBackoff> {
-    executor: runtime::Handle,
     config: ConnectionManagerConfig,
-    peer_manager: AsyncPeerManager,
+    peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     transport: TTransport,
     noise_config: NoiseConfig,
@@ -92,11 +93,11 @@ where
     TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
     TBackoff: Backoff + Send + Sync + 'static,
 {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
-        executor: runtime::Handle,
         config: ConnectionManagerConfig,
         node_identity: Arc<NodeIdentity>,
-        peer_manager: AsyncPeerManager,
+        peer_manager: Arc<PeerManager>,
         transport: TTransport,
         noise_config: NoiseConfig,
         backoff: TBackoff,
@@ -107,7 +108,6 @@ where
     ) -> Self
     {
         Self {
-            executor,
             config,
             node_identity,
             peer_manager,
@@ -129,7 +129,7 @@ where
             .shutdown
             .take()
             .expect("Establisher initialized without a shutdown");
-        debug!(target: LOG_TARGET, "Connection establisher started");
+        debug!(target: LOG_TARGET, "Connection dialer started");
         loop {
             futures::select! {
                 request = self.request_rx.select_next_some() => self.handle_request(&mut pending_dials, request),
@@ -137,7 +137,7 @@ where
                     self.handle_dial_result(dial_state, dial_result).await;
                 }
                 _ = shutdown => {
-                    info!(target: LOG_TARGET, "Connection establisher shutting down because the shutdown signal was received");
+                    info!(target: LOG_TARGET, "Connection dialer shutting down because the shutdown signal was received");
                     self.cancel_all_dials();
                     break;
                 }
@@ -147,18 +147,10 @@ where
 
     fn handle_request(&mut self, pending_dials: &mut DialFuturesUnordered, request: DialerRequest) {
         use DialerRequest::*;
+        trace!(target: LOG_TARGET, "Connection dialer got request: {:?}", request);
         match request {
             Dial(peer, reply_tx) => {
-                if !peer.is_persisted() {
-                    log_if_error_fmt!(
-                        target: LOG_TARGET,
-                        reply_tx.send(Err(ConnectionManagerError::PeerNotPersisted)),
-                        "Failed to send dial result for peer '{}'",
-                        peer.node_id.short_str()
-                    );
-                    return;
-                }
-                self.handle_dial_peer_request(pending_dials, *peer, reply_tx);
+                self.handle_dial_peer_request(pending_dials, peer, reply_tx);
             },
             CancelPendingDial(peer_id) => {
                 if let Some(mut s) = self.cancel_signals.remove(&peer_id) {
@@ -211,7 +203,7 @@ where
             Err(err) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Failed to dialed peer '{}' because '{:?}'", peer_id_short_str, err
+                    "Failed to dial peer '{}' because '{:?}'", peer_id_short_str, err
                 );
                 self.notify_connection_manager(ConnectionManagerEvent::PeerConnectFailed(
                     Box::new(node_id.clone()),
@@ -265,15 +257,12 @@ where
     fn handle_dial_peer_request(
         &mut self,
         pending_dials: &mut DialFuturesUnordered,
-        peer: Peer,
+        peer: Box<Peer>,
         reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
     )
     {
         if self.is_pending_dial(&peer.node_id) {
-            let entry = self
-                .pending_dial_requests
-                .entry(peer.node_id.clone())
-                .or_insert(Vec::new());
+            let entry = self.pending_dial_requests.entry(peer.node_id).or_insert_with(Vec::new);
             entry.push(reply_tx);
             return;
         }
@@ -289,10 +278,10 @@ where
         let dial_state = DialState::new(peer, reply_tx, cancel_signal);
         let node_identity = Arc::clone(&self.node_identity);
         let peer_manager = self.peer_manager.clone();
-        let executor = self.executor.clone();
         let conn_man_notifier = self.conn_man_notifier.clone();
         let supported_protocols = self.supported_protocols.clone();
         let noise_config = self.noise_config.clone();
+        let allow_test_addresses = self.config.allow_test_addresses;
 
         let dial_fut = async move {
             let (dial_state, dial_result) =
@@ -311,7 +300,6 @@ where
                         };
 
                     let upgrade_fut = Self::perform_socket_upgrade_procedure(
-                        executor,
                         peer_manager,
                         node_identity,
                         socket,
@@ -319,6 +307,7 @@ where
                         authenticated_public_key,
                         conn_man_notifier,
                         supported_protocols,
+                        allow_test_addresses,
                     );
                     futures::pin_mut!(upgrade_fut);
                     let either = future::select(upgrade_fut, cancel_signal).await;
@@ -352,20 +341,21 @@ where
         Ok(authenticated_public_key)
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn perform_socket_upgrade_procedure(
-        executor: runtime::Handle,
-        peer_manager: AsyncPeerManager,
+        peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         socket: NoiseSocket<TTransport::Output>,
         dialed_addr: Multiaddr,
         authenticated_public_key: CommsPublicKey,
         conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
         our_supported_protocols: Vec<ProtocolId>,
+        allow_test_addresses: bool,
     ) -> Result<PeerConnection, ConnectionManagerError>
     {
         static CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Outbound;
 
-        let mut muxer = Yamux::upgrade_connection(executor.clone(), socket, CONNECTION_DIRECTION)
+        let mut muxer = Yamux::upgrade_connection(socket, CONNECTION_DIRECTION)
             .await
             .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
 
@@ -374,7 +364,13 @@ where
             "Starting peer identity exchange for peer with public key '{}'",
             authenticated_public_key
         );
-        let peer_identity = common::perform_identity_exchange(&mut muxer, &node_identity, CONNECTION_DIRECTION).await?;
+        let peer_identity = common::perform_identity_exchange(
+            &mut muxer,
+            &node_identity,
+            CONNECTION_DIRECTION,
+            &our_supported_protocols,
+        )
+        .await?;
 
         debug!(
             target: LOG_TARGET,
@@ -383,8 +379,13 @@ where
         );
         trace!(target: LOG_TARGET, "{:?}", peer_identity);
 
-        let peer_node_id =
-            common::validate_and_add_peer_from_peer_identity(&peer_manager, authenticated_public_key, peer_identity)?;
+        let peer_node_id = common::validate_and_add_peer_from_peer_identity(
+            &peer_manager,
+            authenticated_public_key,
+            peer_identity,
+            allow_test_addresses,
+        )
+        .await?;
 
         debug!(
             target: LOG_TARGET,
@@ -394,7 +395,6 @@ where
         );
 
         peer_connection::create(
-            executor,
             muxer,
             dialed_addr,
             peer_node_id,
@@ -453,7 +453,7 @@ where
                 },
                 // Delayed dial was cancelled
                 _ = cancel_signal => {
-                    debug!(target: LOG_TARGET, "[Attempt {}] Connecting to peer '{}'...", current_state.num_attempts(), current_state.peer.node_id.short_str());
+                    debug!(target: LOG_TARGET, "[Attempt {}] Connection attempt cancelled for peer '{}'", current_state.num_attempts(), current_state.peer.node_id.short_str());
                     break (current_state, Err(ConnectionManagerError::DialCancelled));
                 }
             }
@@ -485,7 +485,7 @@ where
                     );
 
                     let dial_fut = async move {
-                        let socket = transport
+                        let mut socket = transport
                             .dial(address.clone())
                             .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))?
                             .await
@@ -494,10 +494,14 @@ where
                             target: LOG_TARGET,
                             "Socket established on '{}'. Performing noise upgrade protocol", address
                         );
+
+                        socket
+                            .write(&[WireMode::Comms as u8])
+                            .await
+                            .map_err(|_| ConnectionManagerError::WireFormatSendFailed)?;
                         let noise_socket = noise_config
                             .upgrade_socket(socket, ConnectionDirection::Outbound)
-                            .await
-                            .map_err(|err| ConnectionManagerError::NoiseError(err.to_string()))?;
+                            .await?;
                         Result::<_, ConnectionManagerError>::Ok(noise_socket)
                     };
 

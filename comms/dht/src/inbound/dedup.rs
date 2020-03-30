@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{actor::DhtRequester, inbound::DhtInboundMessage, PipelineError};
+use crate::{actor::DhtRequester, inbound::DhtInboundMessage};
 use digest::Input;
 use futures::{task::Context, Future};
 use log::*;
 use std::task::Poll;
-use tari_comms::types::Challenge;
+use tari_comms::{pipeline::PipelineError, types::Challenge};
 use tari_crypto::tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -53,7 +53,7 @@ impl<S> DedupMiddleware<S> {
 impl<S> Service<DhtInboundMessage> for DedupMiddleware<S>
 where
     S: Service<DhtInboundMessage, Response = ()> + Clone + 'static,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     type Error = PipelineError;
     type Response = ();
@@ -72,7 +72,7 @@ where
 impl<S> DedupMiddleware<S>
 where
     S: Service<DhtInboundMessage, Response = ()>,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     pub async fn process_message(
         next_service: S,
@@ -82,7 +82,11 @@ where
     {
         trace!(target: LOG_TARGET, "Checking inbound message cache for duplicates");
         let hash = Self::hash_message(&message);
-        if dht_requester.insert_message_hash(hash).await? {
+        if dht_requester
+            .insert_message_hash(hash)
+            .await
+            .map_err(PipelineError::from_debug)?
+        {
             warn!(
                 target: LOG_TARGET,
                 "Received duplicate message from peer {} (origin={:?}). Message discarded.",
@@ -95,7 +99,7 @@ where
             );
             return Ok(());
         }
-        next_service.oneshot(message).await.map_err(Into::into)
+        next_service.oneshot(message).await.map_err(PipelineError::from_debug)
     }
 
     fn hash_message(message: &DhtInboundMessage) -> Vec<u8> {

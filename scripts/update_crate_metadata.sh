@@ -13,7 +13,7 @@ function update_versions {
    infrastructure/storage
    infrastructure/test_utils
    base_layer/core
-   base_layer/keymanager
+   base_layer/key_manager
    base_layer/mmr
    base_layer/p2p
    base_layer/service_framework

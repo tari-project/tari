@@ -94,6 +94,12 @@ impl TryFrom<&[u8]> for NodeDistance {
     }
 }
 
+impl fmt::Display for NodeDistance {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", to_hex(&self.0))
+    }
+}
+
 /// A Node Identity is used as a unique identifier for a node in the Tari communications network.
 #[derive(Clone, Debug, Eq, Deserialize, Serialize, Default)]
 pub struct NodeId(NodeIdArray);
@@ -179,6 +185,20 @@ impl ByteArray for NodeId {
     /// Return the NodeId as a byte array
     fn as_bytes(&self) -> &[u8] {
         self.0.as_ref()
+    }
+}
+
+impl ByteArray for Box<NodeId> {
+    /// Try and convert the given byte array to a NodeId. Any failures (incorrect array length,
+    /// implementation-specific checks, etc) return a [ByteArrayError](enum.ByteArrayError.html).
+    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
+        let node_id = NodeId::try_from(bytes).map_err(|err| ByteArrayError::ConversionError(format!("{:?}", err)))?;
+        Ok(Box::new(node_id))
+    }
+
+    /// Return the NodeId as a byte array
+    fn as_bytes(&self) -> &[u8] {
+        &self.as_ref().0
     }
 }
 

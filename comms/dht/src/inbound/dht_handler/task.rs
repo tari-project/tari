@@ -27,10 +27,9 @@ use crate::{
     inbound::{error::DhtInboundError, message::DecryptedDhtMessage},
     outbound::{OutboundMessageRequester, SendMessageParams},
     proto::{
-        dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage},
+        dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage, RejectMessage},
         envelope::DhtMessageType,
     },
-    PipelineError,
 };
 use log::*;
 use std::sync::Arc;
@@ -38,6 +37,7 @@ use tari_comms::{
     message::MessageExt,
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
+    pipeline::PipelineError,
     types::CommsPublicKey,
 };
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
@@ -58,7 +58,7 @@ pub struct ProcessDhtMessage<S> {
 impl<S> ProcessDhtMessage<S>
 where
     S: Service<DecryptedDhtMessage, Response = ()>,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     pub fn new(
         config: DhtConfig,
@@ -89,26 +89,38 @@ where
 
         // If this message failed to decrypt, this middleware is not interested in it
         if message.decryption_failed() {
-            self.next_service.oneshot(message).await.map_err(Into::into)?;
+            self.next_service
+                .oneshot(message)
+                .await
+                .map_err(PipelineError::from_debug)?;
             return Ok(());
         }
 
         match message.dht_header.message_type {
-            DhtMessageType::Join => self.handle_join(message).await?,
-            DhtMessageType::Discovery => self.handle_discover(message).await?,
-            DhtMessageType::DiscoveryResponse => self.handle_discover_response(message).await?,
-            DhtMessageType::RejectMsg => self.handle_message_reject(message).await?,
+            DhtMessageType::Join => self.handle_join(message).await.map_err(PipelineError::from_debug)?,
+            DhtMessageType::Discovery => self.handle_discover(message).await.map_err(PipelineError::from_debug)?,
+            DhtMessageType::DiscoveryResponse => self
+                .handle_discover_response(message)
+                .await
+                .map_err(PipelineError::from_debug)?,
+            DhtMessageType::RejectMsg => self
+                .handle_message_reject(message)
+                .await
+                .map_err(PipelineError::from_debug)?,
             // Not a DHT message, call downstream middleware
             _ => {
                 trace!(target: LOG_TARGET, "Passing message onto next service");
-                self.next_service.oneshot(message).await.map_err(Into::into)?
+                self.next_service
+                    .oneshot(message)
+                    .await
+                    .map_err(PipelineError::from_debug)?
             },
         }
 
         Ok(())
     }
 
-    fn add_or_update_peer(
+    async fn add_or_update_peer(
         &self,
         pubkey: &CommsPublicKey,
         node_id: NodeId,
@@ -118,26 +130,33 @@ where
     {
         let peer_manager = &self.peer_manager;
         // Add peer or modify existing peer using received join request
-        if peer_manager.exists(pubkey) {
-            peer_manager.update_peer(
-                pubkey,
-                Some(node_id),
-                Some(net_addresses),
-                None,
-                Some(peer_features),
-                None,
-            )?;
+        if peer_manager.exists(pubkey).await {
+            peer_manager
+                .update_peer(
+                    pubkey,
+                    Some(node_id),
+                    Some(net_addresses),
+                    None,
+                    Some(peer_features),
+                    None,
+                    None,
+                )
+                .await?;
+            peer_manager.set_offline(&pubkey, false).await?;
         } else {
-            peer_manager.add_peer(Peer::new(
-                pubkey.clone(),
-                node_id,
-                net_addresses.into(),
-                PeerFlags::default(),
-                peer_features,
-            ))?;
+            peer_manager
+                .add_peer(Peer::new(
+                    pubkey.clone(),
+                    node_id,
+                    net_addresses.into(),
+                    PeerFlags::default(),
+                    peer_features,
+                    &[],
+                ))
+                .await?;
         }
 
-        let peer = peer_manager.find_by_public_key(&pubkey)?;
+        let peer = peer_manager.find_by_public_key(&pubkey).await?;
 
         Ok(peer)
     }
@@ -193,12 +212,14 @@ where
 
         let node_id = self.validate_raw_node_id(&origin.public_key, &join_msg.node_id)?;
 
-        let origin_peer = self.add_or_update_peer(
-            &origin.public_key,
-            node_id,
-            addresses,
-            PeerFeatures::from_bits_truncate(join_msg.peer_features),
-        )?;
+        let origin_peer = self
+            .add_or_update_peer(
+                &origin.public_key,
+                node_id,
+                addresses,
+                PeerFeatures::from_bits_truncate(join_msg.peer_features),
+            )
+            .await?;
 
         // DO NOT propagate this peer if this node has banned them
         if origin_peer.is_banned() {
@@ -216,11 +237,13 @@ where
         // If it was not forwarded then we assume the source peer already has this node's details in
         // it's peer list.
         if source_peer.public_key != origin_peer.public_key &&
-            self.peer_manager.in_network_region(
-                &origin_peer.node_id,
-                self.node_identity.node_id(),
-                self.config.num_neighbouring_nodes,
-            )?
+            self.peer_manager
+                .in_network_region(
+                    &origin_peer.node_id,
+                    self.node_identity.node_id(),
+                    self.config.num_neighbouring_nodes,
+                )
+                .await?
         {
             trace!(
                 target: LOG_TARGET,
@@ -240,10 +263,12 @@ where
         self.outbound_service
             .send_raw(
                 SendMessageParams::new()
-                    .closest(origin_peer.node_id, self.config.num_neighbouring_nodes, vec![
-                        origin.public_key.clone(),
-                        source_peer.public_key.clone(),
-                    ])
+                    .closest(
+                        origin_peer.node_id,
+                        self.config.num_neighbouring_nodes,
+                        vec![origin.public_key.clone(), source_peer.public_key.clone()],
+                        PeerFeatures::MESSAGE_PROPAGATION,
+                    )
                     .with_dht_header(dht_header)
                     .finish(),
                 body.to_encoded_bytes()?,
@@ -254,10 +279,19 @@ where
     }
 
     async fn handle_message_reject(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
+        let body = message
+            .decryption_result
+            .expect("already checked that this message decrypted successfully");
+
+        let reject_msg = body
+            .decode_part::<RejectMessage>(0)?
+            .ok_or_else(|| DhtInboundError::InvalidMessageBody)?;
+
         trace!(
             target: LOG_TARGET,
-            "Received Message reject from {}",
-            message.source_peer.public_key
+            "Received {} from '{}'",
+            message.source_peer.node_id.short_str(),
+            reject_msg,
         );
 
         // TODO: Perhaps we'll need some way to let the larger system know that the message was explicitly rejected
@@ -305,10 +339,9 @@ where
             DhtInboundError::OriginRequired("Origin header required for Discovery message".to_string())
         })?;
 
-        trace!(
+        info!(
             target: LOG_TARGET,
-            "Received Discover Message from {}",
-            origin.public_key,
+            "Received discovery message from '{}'", origin.public_key,
         );
 
         let addresses = discover_msg
@@ -322,12 +355,14 @@ where
         }
 
         let node_id = self.validate_raw_node_id(&origin.public_key, &discover_msg.node_id)?;
-        let origin_peer = self.add_or_update_peer(
-            &origin.public_key,
-            node_id,
-            addresses,
-            PeerFeatures::from_bits_truncate(discover_msg.peer_features),
-        )?;
+        let origin_peer = self
+            .add_or_update_peer(
+                &origin.public_key,
+                node_id,
+                addresses,
+                PeerFeatures::from_bits_truncate(discover_msg.peer_features),
+            )
+            .await?;
 
         // Don't send a join request to the origin peer if they are banned
         if origin_peer.is_banned() {
@@ -353,12 +388,12 @@ where
             peer_features: self.node_identity.features().bits(),
         };
 
-        trace!("Sending direct join request to {}", dest_public_key);
+        trace!(target: LOG_TARGET, "Sending direct join request to {}", dest_public_key);
         self.outbound_service
             .send_message_no_header(
                 SendMessageParams::new()
                     .direct_public_key(dest_public_key.clone())
-                    .with_destination(NodeDestination::PublicKey(dest_public_key))
+                    .with_destination(NodeDestination::PublicKey(Box::new(dest_public_key)))
                     .with_dht_message_type(DhtMessageType::Join)
                     .force_origin()
                     .finish(),
@@ -384,7 +419,7 @@ where
             nonce,
         };
 
-        trace!("Sending discovery response to {}", dest_public_key);
+        trace!(target: LOG_TARGET, "Sending discovery response to {}", dest_public_key);
         self.outbound_service
             .send_message_no_header(
                 SendMessageParams::new()

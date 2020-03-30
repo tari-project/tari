@@ -20,11 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::node_id::deserialize_node_id_from_hex;
+use super::{
+    connection_stats::PeerConnectionStats,
+    node_id::{deserialize_node_id_from_hex, NodeId},
+    peer_id::PeerId,
+    PeerFeatures,
+};
 use crate::{
     consts::PEER_OFFLINE_COOLDOWN_PERIOD,
     net_address::MultiaddressesWithStats,
-    peer_manager::{connection_stats::PeerConnectionStats, node_id::NodeId, peer_id::PeerId, PeerFeatures},
+    protocol::ProtocolId,
     types::CommsPublicKey,
 };
 use bitflags::bitflags;
@@ -37,7 +42,8 @@ use tari_crypto::tari_utilities::hex::serialize_to_hex;
 bitflags! {
     #[derive(Default, Deserialize, Serialize)]
     pub struct PeerFlags: u8 {
-        const BANNED = 0b0000_0001;
+        const BANNED = 0x01;
+        const OFFLINE = 0x02;
     }
 }
 
@@ -52,26 +58,38 @@ pub struct PeerIdentity {
 /// describing the status of the Peer.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Peer {
+    /// The local id of the peer. If this is None, the peer has never been persisted
     id: Option<PeerId>,
+    /// Public key of the peer
     pub public_key: CommsPublicKey,
+    /// NodeId of the peer
     #[serde(serialize_with = "serialize_to_hex")]
     #[serde(deserialize_with = "deserialize_node_id_from_hex")]
     pub node_id: NodeId,
+    /// Peer's addresses
     pub addresses: MultiaddressesWithStats,
+    /// Flags for the peer. Indicates if the peer is banned.
     pub flags: PeerFlags,
+    /// Features supported by the peer
     pub features: PeerFeatures,
+    /// Connection statics for the peer
     pub connection_stats: PeerConnectionStats,
+    /// Protocols supported by the peer. This should not be considered a definitive list of supported protocols and is
+    /// used as information for more efficient protocol negotiation.
+    pub supported_protocols: Vec<ProtocolId>,
+    /// Timestamp of when the peer was added to this nodes peer list
     pub added_at: NaiveDateTime,
 }
 
 impl Peer {
-    /// Constructs a new peer
-    pub fn new(
+    /// Constructs a new peer.
+    pub fn new<'p, P: IntoIterator<Item = &'p ProtocolId>>(
         public_key: CommsPublicKey,
         node_id: NodeId,
         addresses: MultiaddressesWithStats,
         flags: PeerFlags,
         features: PeerFeatures,
+        supported_protocols: P,
     ) -> Peer
     {
         Peer {
@@ -83,6 +101,7 @@ impl Peer {
             features,
             connection_stats: Default::default(),
             added_at: Utc::now().naive_utc(),
+            supported_protocols: supported_protocols.into_iter().cloned().collect(),
         }
     }
 
@@ -100,14 +119,30 @@ impl Peer {
         self.id.is_some()
     }
 
+    /// Returns a slice of Protocols _known to be_ supported by the peer. This should not be considered a definitive
+    /// list of supported protocols
+    pub fn supported_protocols(&self) -> &[ProtocolId] {
+        &self.supported_protocols
+    }
+
     /// Returns true if the last connection attempt has failed within the constant
     /// [PEER_OFFLINE_COOLDOWN_PERIOD](crate::consts::PEER_OFFLINE_COOLDOWN_PERIOD).
-    pub fn is_offline(&self) -> bool {
+    pub fn is_recently_offline(&self) -> bool {
         self.connection_stats.failed_attempts() > 1 &&
             self.connection_stats
                 .time_since_last_failure()
                 .map(|last_failure| last_failure <= PEER_OFFLINE_COOLDOWN_PERIOD)
                 .unwrap_or(false)
+    }
+
+    /// Returns true if the peer is marked as offline
+    pub fn is_offline(&self) -> bool {
+        self.flags.contains(PeerFlags::OFFLINE)
+    }
+
+    /// TODO: Remove once we don't have to sync wallet and base node db
+    pub fn unset_id(&mut self) {
+        self.id = None;
     }
 
     pub(super) fn set_id(&mut self, id: PeerId) {
@@ -127,22 +162,26 @@ impl Peer {
         flags: Option<PeerFlags>,
         features: Option<PeerFeatures>,
         connection_stats: Option<PeerConnectionStats>,
+        supported_protocols: Option<Vec<ProtocolId>>,
     )
     {
         if let Some(new_node_id) = node_id {
             self.node_id = new_node_id
-        };
+        }
         if let Some(new_net_addresses) = net_addresses {
             self.addresses.update_net_addresses(new_net_addresses)
-        };
+        }
         if let Some(new_flags) = flags {
             self.flags = new_flags
-        };
+        }
         if let Some(new_features) = features {
             self.features = new_features;
         }
         if let Some(connection_stats) = connection_stats {
             self.connection_stats = connection_stats;
+        }
+        if let Some(supported_protocols) = supported_protocols {
+            self.supported_protocols = supported_protocols;
         }
     }
 
@@ -161,9 +200,14 @@ impl Peer {
         self.flags.contains(PeerFlags::BANNED)
     }
 
-    /// Changes the ban flag bit of the peer
+    /// Changes the BANNED flag bit of the peer
     pub fn set_banned(&mut self, ban_flag: bool) {
         self.flags.set(PeerFlags::BANNED, ban_flag);
+    }
+
+    /// Changes the OFFLINE flag bit of the peer
+    pub fn set_offline(&mut self, is_offline: bool) {
+        self.flags.set(PeerFlags::OFFLINE, is_offline);
     }
 }
 
@@ -171,9 +215,21 @@ impl Peer {
 impl Display for Peer {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.write_str(&format!(
-            "[{}]: {}",
-            self.id.map(|v| v.to_string()).unwrap_or("NoID".to_string()),
+            "{}[{}] PK={} {} {:?} {}",
+            if self.is_banned() { "BANNED " } else { "" },
+            self.node_id.short_str(),
             self.public_key,
+            self.addresses
+                .address_iter()
+                .next()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "<none>".to_string()),
+            match self.features {
+                PeerFeatures::COMMUNICATION_NODE => "BASE_NODE".to_string(),
+                PeerFeatures::COMMUNICATION_CLIENT => "WALLET".to_string(),
+                f => format!("{:?}", f),
+            },
+            self.connection_stats,
         ))
     }
 }
@@ -181,7 +237,7 @@ impl Display for Peer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{net_address::MultiaddressesWithStats, peer_manager::NodeId, types::CommsPublicKey};
+    use crate::{net_address::MultiaddressesWithStats, peer_manager::NodeId, protocol, types::CommsPublicKey};
     use serde_json::Value;
     use tari_crypto::{
         keys::PublicKey,
@@ -195,7 +251,7 @@ mod test {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let addresses = MultiaddressesWithStats::from("/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap());
-        let mut peer: Peer = Peer::new(pk, node_id, addresses, PeerFlags::default(), PeerFeatures::empty());
+        let mut peer: Peer = Peer::new(pk, node_id, addresses, PeerFlags::default(), PeerFeatures::empty(), &[]);
         assert_eq!(peer.is_banned(), false);
         peer.set_banned(true);
         assert_eq!(peer.is_banned(), true);
@@ -215,6 +271,7 @@ mod test {
             MultiaddressesWithStats::from(net_address1.clone()),
             PeerFlags::default(),
             PeerFeatures::empty(),
+            &[],
         );
 
         let (_sk, public_key2) = RistrettoPublicKey::random_keypair(&mut rng);
@@ -228,6 +285,7 @@ mod test {
             Some(PeerFlags::BANNED),
             Some(PeerFeatures::MESSAGE_PROPAGATION),
             Some(PeerConnectionStats::new()),
+            Some(vec![protocol::IDENTITY_PROTOCOL.clone()]),
         );
 
         assert_eq!(peer.public_key, public_key1);
@@ -249,6 +307,7 @@ mod test {
             .any(|net_address_with_stats| net_address_with_stats.address == net_address3));
         assert_eq!(peer.flags, PeerFlags::BANNED);
         assert_eq!(peer.has_features(PeerFeatures::MESSAGE_PROPAGATION), true);
+        assert_eq!(peer.supported_protocols, vec![protocol::IDENTITY_PROTOCOL.clone()]);
     }
 
     #[test]
@@ -263,6 +322,7 @@ mod test {
             "/ip4/127.0.0.1/tcp/9000".parse::<Multiaddr>().unwrap().into(),
             PeerFlags::empty(),
             PeerFeatures::empty(),
+            &[],
         );
 
         let json = peer.to_json().unwrap();

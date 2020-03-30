@@ -32,14 +32,14 @@ pub enum ConnectionDirection {
 }
 
 impl ConnectionDirection {
-    pub fn is_inbound(&self) -> bool {
+    pub fn is_inbound(self) -> bool {
         match self {
             ConnectionDirection::Inbound => true,
             _ => false,
         }
     }
 
-    pub fn is_outbound(&self) -> bool {
+    pub fn is_outbound(self) -> bool {
         match self {
             ConnectionDirection::Outbound => true,
             _ => false,

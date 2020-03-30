@@ -27,6 +27,7 @@ use crate::{
 use std::sync::{Arc, RwLock};
 use tari_comms::peer_manager::Peer;
 
+#[derive(Default)]
 pub struct InnerDatabase {
     peers: Vec<Peer>,
 }

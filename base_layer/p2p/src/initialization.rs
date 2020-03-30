@@ -26,14 +26,17 @@ use crate::{
 };
 use derive_error::Error;
 use futures::{channel::mpsc, AsyncRead, AsyncWrite, Sink};
+use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use std::{error::Error, iter, sync::Arc, time::Duration};
+use std::{error::Error, iter, path::PathBuf, sync::Arc, time::Duration};
 use tari_comms::{
     backoff::ConstantBackoff,
     peer_manager::NodeIdentity,
     pipeline,
+    pipeline::SinkService,
     tor,
-    transports::{MemoryTransport, SocksTransport, TcpTransport, Transport},
+    transports::{MemoryTransport, SocksTransport, TcpWithTorTransport, Transport},
+    utils::cidr::parse_cidrs,
     CommsBuilder,
     CommsBuilderError,
     CommsNode,
@@ -42,17 +45,21 @@ use tari_comms_dht::{Dht, DhtBuilder, DhtConfig};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tower::ServiceBuilder;
 
+const LOG_TARGET: &str = "b::p2p::initialization";
+
 #[derive(Debug, Error)]
 pub enum CommsInitializationError {
     CommsBuilderError(CommsBuilderError),
     HiddenServiceBuilderError(tor::HiddenServiceBuilderError),
+    #[error(non_std, no_from, msg_embedded)]
+    InvalidLivenessCidrs(String),
 }
 
 /// Configuration for a comms node
 #[derive(Clone)]
 pub struct CommsConfig {
     /// Path to the LMDB data files.
-    pub datastore_path: String,
+    pub datastore_path: PathBuf,
     /// Name to use for the peer database
     pub peer_database_name: String,
     /// The maximum number of concurrent Inbound tasks allowed before back-pressure is applied to peers
@@ -65,6 +72,16 @@ pub struct CommsConfig {
     pub node_identity: Arc<NodeIdentity>,
     /// The type of transport to use
     pub transport_type: TransportType,
+    /// Set to true to allow peers to provide test addresses (loopback, memory etc.). If set to false, memory
+    /// addresses, loopback, local-link (i.e addresses used in local tests) will not be accepted from peers. This
+    /// should always be false for non-test nodes.
+    pub allow_test_addresses: bool,
+    /// The maximum number of liveness sessions allowed for the connection listener.
+    /// Liveness sessions can be used by third party tooling to determine node liveness.
+    /// A value of 0 will disallow any liveness sessions.
+    pub listener_liveness_max_sessions: usize,
+    /// CIDR for addresses allowed to enter into liveness check mode on the listener.
+    pub listener_liveness_whitelist_cidrs: Vec<String>,
 }
 
 /// Initialize Tari Comms configured for tests
@@ -98,8 +115,10 @@ where
     //---------------------------------- Comms --------------------------------------------//
 
     let comms = CommsBuilder::new()
+        .allow_test_addresses()
         .with_transport(MemoryTransport)
         .with_listener_address(node_identity.public_address())
+        .with_listener_liveness_max_sessions(1)
         .with_node_identity(node_identity)
         .with_peer_storage(peer_database)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
@@ -112,6 +131,7 @@ where
         comms.node_identity(),
         comms.peer_manager(),
         outbound_tx,
+        comms.connection_manager_requester(),
         comms.shutdown_signal(),
     )
     .local_test()
@@ -131,7 +151,7 @@ where
                 .with_inbound_pipeline(
                     ServiceBuilder::new()
                         .layer(dht.inbound_middleware_layer())
-                        .service(connector),
+                        .service(SinkService::new(connector)),
                 )
                 .finish(),
         )
@@ -150,46 +170,69 @@ where
     TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
-    let builder = CommsBuilder::new().with_node_identity(config.node_identity.clone());
+    let mut builder = CommsBuilder::new().with_node_identity(config.node_identity.clone());
+
+    if config.allow_test_addresses {
+        builder = builder.allow_test_addresses();
+    }
 
     match &config.transport_type {
         TransportType::Memory { listener_address } => {
+            debug!(target: LOG_TARGET, "Building in-memory comms stack");
             let comms = builder
                 .with_transport(MemoryTransport)
                 .with_listener_address(listener_address.clone());
             configure_comms_and_dht(comms, config, connector).await
         },
-        TransportType::Tcp { listener_address } => {
+        TransportType::Tcp {
+            listener_address,
+            tor_socks_config,
+        } => {
+            debug!(target: LOG_TARGET, "Building TCP comms stack");
+            let mut transport = TcpWithTorTransport::new();
+            if let Some(config) = tor_socks_config {
+                transport.set_tor_socks_proxy(config.clone());
+            }
             let comms = builder
-                .with_transport(TcpTransport::default())
+                .with_transport(transport)
                 .with_listener_address(listener_address.clone());
             configure_comms_and_dht(comms, config, connector).await
         },
         TransportType::Tor(tor_config) => {
+            debug!(
+                target: LOG_TARGET,
+                "Building TOR comms stack with configuration: {:?}", tor_config
+            );
             let hidden_service = initialize_hidden_service(tor_config.clone()).await?;
+            debug!(
+                target: LOG_TARGET,
+                "Created hidden service {}",
+                hidden_service.get_onion_address()
+            );
             let comms = builder.configure_from_hidden_service(hidden_service);
+            debug!(target: LOG_TARGET, "Comms stack configured");
 
             let (comms, dht) = configure_comms_and_dht(comms, config, connector).await?;
+            debug!(target: LOG_TARGET, "DHT configured");
             // Set the public address to the onion address that comms is using
             comms
                 .node_identity()
                 .set_public_address(
                     comms
                         .hidden_service()
-                        .expect("hidden_service is must be set because a tor hidden service is set")
-                        .get_onion_address()
-                        .clone(),
+                        .expect("hidden_service must be set because a tor hidden service is set")
+                        .get_onion_address(),
                 )
                 .expect("Poisoned NodeIdentity");
             Ok((comms, dht))
         },
         TransportType::Socks {
-            proxy_address,
+            socks_config,
             listener_address,
-            authentication,
         } => {
+            debug!(target: LOG_TARGET, "Building SOCKS5 comms stack");
             let comms = builder
-                .with_transport(SocksTransport::new(proxy_address.clone(), authentication.clone()))
+                .with_transport(SocksTransport::new(socks_config.clone()))
                 .with_listener_address(listener_address.clone());
             configure_comms_and_dht(comms, config, connector).await
         },
@@ -200,6 +243,7 @@ async fn initialize_hidden_service(config: TorConfig) -> Result<tor::HiddenServi
     let mut builder = tor::HiddenServiceBuilder::new()
         .with_hs_flags(tor::HsFlags::DETACH)
         .with_port_mapping(config.port_mapping)
+        .with_socks_address_override(config.socks_address_override)
         .with_socks_authentication(config.socks_auth)
         .with_control_server_auth(config.control_server_auth)
         .with_control_server_address(config.control_server_addr);
@@ -232,7 +276,15 @@ where
     let peer_database = datastore.get_handle(&config.peer_database_name).unwrap();
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
-    let comms = builder.with_peer_storage(peer_database).build()?;
+    let listener_liveness_whitelist_cidrs = parse_cidrs(&config.listener_liveness_whitelist_cidrs)
+        .map_err(CommsInitializationError::InvalidLivenessCidrs)?;
+
+    let comms = builder
+        .with_listener_liveness_max_sessions(config.listener_liveness_max_sessions)
+        .with_listener_liveness_whitelist_cidrs(listener_liveness_whitelist_cidrs)
+        .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
+        .with_peer_storage(peer_database)
+        .build()?;
 
     // Create outbound channel
     let (outbound_tx, outbound_rx) = mpsc::channel(config.outbound_buffer_size);
@@ -241,6 +293,7 @@ where
         comms.node_identity(),
         comms.peer_manager(),
         outbound_tx,
+        comms.connection_manager_requester(),
         comms.shutdown_signal(),
     )
     .with_config(config.dht)
@@ -259,7 +312,7 @@ where
                 .with_inbound_pipeline(
                     ServiceBuilder::new()
                         .layer(dht.inbound_middleware_layer())
-                        .service(connector),
+                        .service(SinkService::new(connector)),
                 )
                 .finish(),
         )

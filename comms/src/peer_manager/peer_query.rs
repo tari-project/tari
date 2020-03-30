@@ -24,7 +24,7 @@ use crate::peer_manager::{peer_id::PeerId, NodeId, Peer, PeerManagerError};
 use std::cmp::min;
 use tari_storage::{IterationResult, KeyValueStore};
 
-type Predicate<'a> = Box<dyn FnMut(&Peer) -> bool + 'a>;
+type Predicate<'a, A> = Box<dyn FnMut(&A) -> bool + Send + 'a>;
 
 /// Sort options for `PeerQuery`
 #[derive(Debug, Clone)]
@@ -44,9 +44,10 @@ impl Default for PeerQuerySortBy<'_> {
 /// Represents a query which can be performed on the peer database
 #[derive(Default)]
 pub struct PeerQuery<'a> {
-    select_predicate: Option<Predicate<'a>>,
+    select_predicate: Option<Predicate<'a, Peer>>,
     limit: Option<usize>,
     sort_by: PeerQuerySortBy<'a>,
+    until_predicate: Option<Predicate<'a, [Peer]>>,
 }
 
 impl<'a> PeerQuery<'a> {
@@ -58,7 +59,7 @@ impl<'a> PeerQuery<'a> {
     /// Set the selection predicate. This predicate should return `true` to include a `Peer`
     /// in the result set.
     pub fn select_where<F>(mut self, select_predicate: F) -> Self
-    where F: FnMut(&Peer) -> bool + 'a {
+    where F: FnMut(&Peer) -> bool + Send + 'a {
         self.select_predicate = Some(Box::new(select_predicate));
         self
     }
@@ -72,6 +73,12 @@ impl<'a> PeerQuery<'a> {
     /// Sort by the given `PeerSortBy` criteria
     pub fn sort_by(mut self, sort_by: PeerQuerySortBy<'a>) -> Self {
         self.sort_by = sort_by;
+        self
+    }
+
+    pub fn until<F>(mut self, until_predicate: F) -> Self
+    where F: FnMut(&[Peer]) -> bool + Send + 'a {
+        self.until_predicate = Some(Box::new(until_predicate));
         self
     }
 
@@ -94,6 +101,14 @@ impl<'a> PeerQuery<'a> {
             .as_mut()
             .map(|predicate| (predicate)(peer))
             .unwrap_or(true)
+    }
+
+    /// Returns true if the result collector should stop early, otherwise false
+    fn should_stop(&mut self, peers: &[Peer]) -> bool {
+        self.until_predicate
+            .as_mut()
+            .map(|predicate| (predicate)(peers))
+            .unwrap_or(false)
     }
 }
 
@@ -157,6 +172,10 @@ where DS: KeyValueStore<PeerId, Peer>
                 .ok_or(PeerManagerError::PeerNotFoundError)?;
 
             selected_peers.push(peer);
+
+            if self.query.should_stop(&selected_peers) {
+                break;
+            }
         }
 
         Ok(selected_peers)
@@ -170,7 +189,7 @@ where DS: KeyValueStore<PeerId, Peer>
 
         self.store
             .for_each_ok(|(_, peer)| {
-                if self.query.within_limit(selected_peers.len()) {
+                if self.query.within_limit(selected_peers.len()) && !self.query.should_stop(&selected_peers) {
                     if self.query.is_selected(&peer) {
                         selected_peers.push(peer);
                     }
@@ -213,6 +232,7 @@ mod test {
             net_addresses,
             PeerFlags::default(),
             PeerFeatures::MESSAGE_PROPAGATION,
+            &[],
         );
         peer.set_banned(ban_flag);
         peer
@@ -296,6 +316,55 @@ mod test {
 
         assert_eq!(peers.len(), 2);
         assert!(peers.iter().all(|peer| peer.is_banned()));
+
+        let peers = PeerQuery::new()
+            .select_where(|peer| !peer.is_banned())
+            .limit(100)
+            .executor(&db)
+            .get_results()
+            .unwrap();
+
+        assert_eq!(peers.len(), 5);
+        assert!(peers.iter().all(|peer| !peer.is_banned()));
+    }
+
+    #[test]
+    fn select_where_until_query() {
+        // Create peer manager with random peers
+        let mut sample_peers = Vec::new();
+        // Create 20 peers were the 1st and last one is bad
+        let _rng = rand::rngs::OsRng;
+        sample_peers.push(create_test_peer(true));
+        let db = HashmapDatabase::new();
+        let mut id_counter = 0;
+
+        repeat_with(|| create_test_peer(true)).take(3).for_each(|peer| {
+            db.insert(id_counter, peer).unwrap();
+            id_counter += 1;
+        });
+
+        repeat_with(|| create_test_peer(false)).take(5).for_each(|peer| {
+            db.insert(id_counter, peer).unwrap();
+            id_counter += 1;
+        });
+
+        let peers = PeerQuery::new()
+            .select_where(|peer| !peer.is_banned())
+            .until(|peers| peers.len() == 2)
+            .executor(&db)
+            .get_results()
+            .unwrap();
+
+        assert_eq!(peers.len(), 2);
+        assert!(peers.iter().all(|peer| !peer.is_banned()));
+
+        let peers = PeerQuery::new()
+            .until(|peers| peers.len() == 100)
+            .executor(&db)
+            .get_results()
+            .unwrap();
+
+        assert_eq!(peers.len(), 8);
     }
 
     #[test]
@@ -332,7 +401,7 @@ mod test {
         db.for_each_ok(|(_, current_peer)| {
             // Exclude selected peers
             if !peers.contains(&current_peer) {
-                // Every selected peer's distance from node_id is less than every other peer's distance from node_id
+                // Every selected peer'a distance from node_id is less than every other peer'a distance from node_id
                 for selected_peer in &peers {
                     assert!(selected_peer.node_id.distance(&node_id) <= current_peer.node_id.distance(&node_id));
                 }

@@ -37,7 +37,7 @@ const LOG_TARGET: &str = "comms::protocol::messaging::outbound";
 pub struct OutboundMessaging {
     conn_man_requester: ConnectionManagerRequester,
     node_identity: Arc<NodeIdentity>,
-    request_rx: mpsc::Receiver<OutboundMessage>,
+    request_rx: mpsc::UnboundedReceiver<OutboundMessage>,
     messaging_events_tx: mpsc::Sender<MessagingEvent>,
     peer_node_id: NodeId,
 }
@@ -47,7 +47,7 @@ impl OutboundMessaging {
         conn_man_requester: ConnectionManagerRequester,
         node_identity: Arc<NodeIdentity>,
         messaging_events_tx: mpsc::Sender<MessagingEvent>,
-        request_rx: mpsc::Receiver<OutboundMessage>,
+        request_rx: mpsc::UnboundedReceiver<OutboundMessage>,
         peer_node_id: NodeId,
     ) -> Self
     {
@@ -118,7 +118,7 @@ impl OutboundMessaging {
         mut conn: PeerConnection,
     ) -> Result<NegotiatedSubstream<CommsSubstream>, MessagingProtocolError>
     {
-        match conn.open_substream(MESSAGING_PROTOCOL).await {
+        match conn.open_substream(&MESSAGING_PROTOCOL).await {
             Ok(substream) => Ok(substream),
             Err(err) => {
                 error!(
@@ -217,7 +217,7 @@ impl OutboundMessaging {
             self.node_identity.secret_key(),
             self.node_identity.public_key(),
             body.clone(),
-            flags.clone(),
+            *flags,
         )?;
         let body = envelope.to_encoded_bytes()?;
 

@@ -34,7 +34,7 @@ use derive_error::Error;
 use multiaddr::Multiaddr;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
-use std::sync::RwLock;
+use std::{fmt, sync::RwLock};
 use tari_crypto::{
     keys::{PublicKey, SecretKey},
     tari_utilities::hex::serialize_to_hex,
@@ -143,24 +143,25 @@ impl NodeIdentity {
     }
 
     #[inline]
-    pub fn features(&self) -> &PeerFeatures {
-        &self.features
+    pub fn features(&self) -> PeerFeatures {
+        self.features
     }
 
     #[inline]
     pub fn has_peer_features(&self, peer_features: PeerFeatures) -> bool {
         self.features().contains(peer_features)
     }
-}
 
-impl From<NodeIdentity> for Peer {
-    fn from(node_identity: NodeIdentity) -> Peer {
+    /// Returns a Peer with the same public key, node id, public address and features as represented in this
+    /// NodeIdentity. _NOTE: PeerFlags and supported_protocols are empty._
+    pub fn to_peer(&self) -> Peer {
         Peer::new(
-            node_identity.public_key,
-            node_identity.node_id,
-            node_identity.public_address.read().unwrap().clone().into(),
+            self.public_key().clone(),
+            self.node_id().clone(),
+            self.public_address().into(),
             PeerFlags::empty(),
-            node_identity.features,
+            self.features(),
+            &[],
         )
     }
 }
@@ -174,5 +175,16 @@ impl Clone for NodeIdentity {
             secret_key: self.secret_key.clone(),
             public_address: RwLock::new(self.public_address()),
         }
+    }
+}
+
+impl fmt::Display for NodeIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Public Key: {}", self.public_key)?;
+        writeln!(f, "Node ID: {}", self.node_id)?;
+        writeln!(f, "Public Address: {}", acquire_read_lock!(self.public_address))?;
+        writeln!(f, "Features: {:?}", self.features)?;
+
+        Ok(())
     }
 }

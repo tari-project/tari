@@ -20,39 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use super::controller::HiddenServiceControllerError;
 use crate::{
     multiaddr::Multiaddr,
     socks,
     tor::{
-        client::commands::{AddOnionFlag, AddOnionResponse},
+        hidden_service::controller::HiddenServiceController,
         Authentication,
         HiddenService,
         PortMapping,
-        TorClientError,
-        TorControlPortClient,
         TorIdentity,
     },
-    utils::multiaddr::socketaddr_to_multiaddr,
 };
 use bitflags::bitflags;
 use derive_error::Error;
-use futures::{AsyncRead, AsyncWrite};
 use log::*;
-use std::net::SocketAddr;
 
 const LOG_TARGET: &str = "comms::tor::hidden_service";
 
 #[derive(Debug, Error)]
 pub enum HiddenServiceBuilderError {
-    /// Failed to parse SOCKS address returned by control port
-    FailedToParseSocksAddress,
     /// The proxied port mapping was not provided. Use `with_proxied_port_mapping` to set it.
     ProxiedPortMappingNotProvided,
     /// The control server address was not provided. Use `with_control_server_address` to set it.
     TorControlServerAddressNotProvided,
-    TorClientError(TorClientError),
-    /// The given tor service id is not a valid detached service id
-    InvalidDetachedServiceId,
+    HiddenServiceControllerError(HiddenServiceControllerError),
 }
 
 bitflags! {
@@ -70,6 +62,7 @@ bitflags! {
 pub struct HiddenServiceBuilder {
     identity: Option<TorIdentity>,
     port_mapping: Option<PortMapping>,
+    socks_addr_override: Option<Multiaddr>,
     control_server_addr: Option<Multiaddr>,
     control_server_auth: Authentication,
     socks_auth: socks::Authentication,
@@ -99,6 +92,13 @@ impl HiddenServiceBuilder {
     /// Configuration flags for the hidden service
     setter!(with_hs_flags, hs_flags, HsFlags);
 
+    /// The address of the SOCKS5 server. If an address is None, the hidden service builder will use the SOCKS
+    /// listener address as given by the tor control port.
+    pub fn with_socks_address_override(mut self, socks_addr_override: Option<Multiaddr>) -> Self {
+        self.socks_addr_override = socks_addr_override;
+        self
+    }
+
     /// Set the PortMapping to use when creating this hidden service. A PortMapping maps a Tor port to a proxied address
     /// (usually local). An error will result if this is not provided.
     pub fn with_port_mapping<P: Into<PortMapping>>(mut self, port_mapping: P) -> Self {
@@ -124,101 +124,19 @@ impl HiddenServiceBuilder {
             proxied_port_mapping
         );
 
-        let mut client = TorControlPortClient::connect(control_server_addr).await?;
-        client.authenticate(&self.control_server_auth).await?;
-
-        // Get configured SOCK5 address from Tor
-        let socks_addr = client
-            .get_info("net/listeners/socks")
-            .await?
-            .parse::<SocketAddr>()
-            .map(|addr| socketaddr_to_multiaddr(&addr))
-            .map_err(|_| HiddenServiceBuilderError::FailedToParseSocksAddress)?;
-
-        let proxied_addr = socketaddr_to_multiaddr(proxied_port_mapping.proxied_address());
-
-        // Initialize a onion hidden service - either from the given private key or by creating a new one
-        let onion_private_key;
-        let add_onion_resp = match self.identity {
-            Some(identity) => {
-                onion_private_key = identity.private_key.clone();
-                Self::ensure_onion(&mut client, identity, proxied_port_mapping, self.hs_flags).await?
-            },
-            None => {
-                let resp = client.add_onion(vec![], proxied_port_mapping, None).await?;
-                onion_private_key = resp
-                    .private_key
-                    .clone()
-                    .expect("Tor server MUST return private key according to spec");
-                resp
-            },
+        let controller = HiddenServiceController {
+            client: None,
+            control_server_addr,
+            control_server_auth: self.control_server_auth,
+            socks_address_override: self.socks_addr_override,
+            proxied_port_mapping,
+            socks_auth: self.socks_auth,
+            hs_flags: self.hs_flags,
+            identity: self.identity,
         };
 
-        debug!(
-            target: LOG_TARGET,
-            "Added hidden service with service id '{}' on port '{}'",
-            add_onion_resp.service_id,
-            add_onion_resp.onion_port
-        );
+        let hidden_service = controller.start_hidden_service().await?;
 
-        Ok(HiddenService {
-            socks_addr,
-            socks_auth: self.socks_auth,
-            service_id: add_onion_resp.service_id,
-            onion_port: add_onion_resp.onion_port,
-            private_key: onion_private_key,
-            proxied_addr,
-            client,
-        })
-    }
-
-    async fn ensure_onion<TSocket>(
-        client: &mut TorControlPortClient<TSocket>,
-        identity: TorIdentity,
-        port_mapping: PortMapping,
-        hs_flags: HsFlags,
-    ) -> Result<AddOnionResponse, HiddenServiceBuilderError>
-    where
-        TSocket: AsyncRead + AsyncWrite + Unpin,
-    {
-        let mut flags = Vec::new();
-        if hs_flags.contains(HsFlags::DETACH) {
-            flags.push(AddOnionFlag::Detach);
-        }
-
-        let result = client
-            .add_onion_from_private_key(&identity.private_key, flags, port_mapping.clone(), None)
-            .await;
-
-        match result {
-            Ok(resp) => Ok(resp),
-            Err(TorClientError::OnionAddressCollision) => {
-                debug!(target: LOG_TARGET, "Onion address is already registered.");
-
-                let detached_str = client.get_info("onions/detached").await?;
-                debug!(
-                    target: LOG_TARGET,
-                    "Comparing active detached service IDs '{}' to expected service id '{}'",
-                    detached_str.replace('\n', ", "),
-                    identity.service_id
-                );
-                let mut detached = detached_str.split('\n');
-
-                if detached.all(|svc_id| svc_id != identity.service_id) {
-                    return Err(HiddenServiceBuilderError::InvalidDetachedServiceId);
-                }
-
-                Ok(AddOnionResponse {
-                    // TODO(sdbondi): This could be a different ORPort than the one requested in port mapping, I was not
-                    //                able to find a way to find the port mapping for the service.
-                    //                Setting the onion_port to be the same as the original port may cause
-                    //                confusion/break "just works"(tm)
-                    onion_port: identity.onion_port,
-                    service_id: identity.service_id,
-                    private_key: Some(identity.private_key),
-                })
-            },
-            Err(err) => Err(err.into()),
-        }
+        Ok(hidden_service)
     }
 }

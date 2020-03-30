@@ -32,7 +32,7 @@ pub struct DialState {
     /// Number of dial attempts
     attempts: usize,
     /// This peer being dialed
-    pub peer: Peer,
+    pub peer: Box<Peer>,
     /// Cancel signal
     cancel_signal: ShutdownSignal,
     /// Reply channel for a connection result
@@ -42,7 +42,7 @@ pub struct DialState {
 impl DialState {
     /// Create a new DialState for the given NodeId
     pub fn new(
-        peer: Peer,
+        peer: Box<Peer>,
         reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
         cancel_signal: ShutdownSignal,
     ) -> Self

@@ -59,9 +59,9 @@ pub enum SocksError {
     InvalidReservedByte,
     /// Unknown address type
     UnknownAddressType,
-    /// Invalid authentication values. It contains the detailed error message.
-    #[error(no_from, non_std)]
-    InvalidAuthValues(&'static str),
+    // Invalid authentication values.
+    #[error(msg_embedded, no_from, non_std)]
+    InvalidAuthValues(String),
     /// Password auth failure
     #[error(no_from, non_std)]
     PasswordAuthFailure(u8),

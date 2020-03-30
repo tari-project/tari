@@ -24,7 +24,7 @@ use rand::{rngs::OsRng, RngCore};
 use std::fmt;
 
 /// Represents a tag for a message
-#[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, Default)]
 pub struct MessageTag(u64);
 
 impl MessageTag {
@@ -35,6 +35,6 @@ impl MessageTag {
 
 impl fmt::Display for MessageTag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "MessageTag({})", self.0)
+        write!(f, "Tag#{}", self.0)
     }
 }

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::messaging::{
+use super::protocol::{
     MessagingEvent,
     MessagingEventReceiver,
     MessagingProtocol,
@@ -30,19 +30,16 @@ use super::messaging::{
 use crate::{
     message::{InboundMessage, MessageExt, MessageFlags, MessageTag, OutboundMessage},
     net_address::MultiaddressesWithStats,
-    peer_manager::{AsyncPeerManager, NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     proto::envelope::Envelope,
     protocol::{messaging::SendFailReason, ProtocolEvent, ProtocolNotification},
     test_utils::{
-        create_connection_manager_mock,
-        create_peer_connection_mock_pair,
+        mocks::{create_connection_manager_mock, create_peer_connection_mock_pair, ConnectionManagerMockState},
         node_id,
         node_identity::build_node_identity,
-        peer_manager::build_peer_manager,
         transport,
-        ConnectionManagerMockState,
     },
-    types::{CommsPublicKey, CommsSubstream},
+    types::{CommsDatabase, CommsPublicKey, CommsSubstream},
 };
 use bytes::Bytes;
 use futures::{channel::mpsc, SinkExt, StreamExt};
@@ -56,9 +53,10 @@ use tokio::{runtime::Handle, sync::broadcast, time};
 use tokio_macros as runtime;
 
 const TEST_MSG1: Bytes = Bytes::from_static(b"TEST_MSG1");
+const MAX_ATTEMPTS: usize = 2;
 
 async fn spawn_messaging_protocol() -> (
-    AsyncPeerManager,
+    Arc<PeerManager>,
     Arc<NodeIdentity>,
     ConnectionManagerMockState,
     mpsc::Sender<ProtocolNotification<CommsSubstream>>,
@@ -74,15 +72,14 @@ async fn spawn_messaging_protocol() -> (
     let mock_state = mock.get_shared_state();
     rt_handle.spawn(mock.run());
 
-    let peer_manager: AsyncPeerManager = build_peer_manager().into();
+    let peer_manager = PeerManager::new(CommsDatabase::new()).map(Arc::new).unwrap();
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_CLIENT);
     let (proto_tx, proto_rx) = mpsc::channel(10);
-    let (request_tx, request_rx) = mpsc::channel(10);
+    let (request_tx, request_rx) = mpsc::channel(100);
     let (inbound_msg_tx, inbound_msg_rx) = mpsc::channel(100);
     let (events_tx, events_rx) = broadcast::channel(100);
 
     let msg_proto = MessagingProtocol::new(
-        rt_handle.clone(),
         requester,
         peer_manager.clone(),
         node_identity.clone(),
@@ -90,7 +87,7 @@ async fn spawn_messaging_protocol() -> (
         request_rx,
         events_tx,
         inbound_msg_tx,
-        0,
+        MAX_ATTEMPTS,
         shutdown.to_signal(),
     );
     rt_handle.spawn(msg_proto.run());
@@ -121,6 +118,7 @@ async fn new_inbound_substream_handling() {
             MultiaddressesWithStats::default(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
+            &[],
         ))
         .await
         .unwrap();
@@ -132,13 +130,13 @@ async fn new_inbound_substream_handling() {
     let stream_ours = muxer_ours.get_yamux_control().open_stream().await.unwrap();
     proto_tx
         .send(ProtocolNotification::new(
-            MESSAGING_PROTOCOL.into(),
+            MESSAGING_PROTOCOL.clone(),
             ProtocolEvent::NewInboundSubstream(Box::new(expected_node_id.clone()), stream_ours),
         ))
         .await
         .unwrap();
 
-    let stream_theirs = muxer_theirs.incoming_mut().next().await.unwrap().unwrap();
+    let stream_theirs = muxer_theirs.incoming_mut().next().await.unwrap();
     let mut framed_theirs = MessagingProtocol::framed(stream_theirs);
 
     let envelope = Envelope::construct_signed(&sk, &pk, TEST_MSG1, MessageFlags::empty()).unwrap();
@@ -209,8 +207,8 @@ async fn send_message_dial_failed() {
     assert_eq!(out_msg.tag, expected_out_msg_tag);
 
     let calls = conn_manager_mock.take_calls().await;
-    assert_eq!(calls.len(), 1);
-    assert!(calls[0].starts_with("DialPeer"));
+    assert_eq!(calls.len(), MAX_ATTEMPTS);
+    assert!(calls.iter().all(|evt| evt.starts_with("DialPeer")));
 }
 
 #[runtime::test_basic]
@@ -255,7 +253,7 @@ async fn send_message_substream_bulk_failure() {
     for _ in 0..NUM_MSGS - 1 {
         let event = event_tx.next().await.unwrap().unwrap();
         unpack_enum!(MessagingEvent::SendMessageFailed(out_msg, reason) = &*event);
-        unpack_enum!(SendFailReason::SubstreamSendFailed = reason);
+        unpack_enum!(SendFailReason::SubstreamOpenFailed = reason);
         assert_eq!(out_msg.tag, expected_out_msg_tags.remove(0));
     }
 }
@@ -269,7 +267,7 @@ async fn many_concurrent_send_message_requests() {
     let node_id2 = node_id::random();
 
     let (conn1, peer_conn_mock1, _, peer_conn_mock2) =
-        create_peer_connection_mock_pair(1, node_id1.clone(), node_id2.clone()).await;
+        create_peer_connection_mock_pair(1, node_id1, node_id2.clone()).await;
 
     // Add mock peer connection to connection manager mock for node 2
     conn_man_mock.add_active_connection(node_id2.clone(), conn1).await;
@@ -301,4 +299,33 @@ async fn many_concurrent_send_message_requests() {
 
     // Got a single call to create a substream
     assert_eq!(peer_conn_mock1.call_count(), 1);
+}
+
+#[runtime::test_basic]
+async fn many_concurrent_send_message_requests_that_fail() {
+    const NUM_MSGS: usize = 100;
+    let (_, _, _, _, mut request_tx, _, events_rx, _shutdown) = spawn_messaging_protocol().await;
+
+    let node_id2 = node_id::random();
+
+    // Send many messages to node
+    let mut msg_tags = Vec::with_capacity(NUM_MSGS);
+    for _ in 0..NUM_MSGS {
+        let out_msg = OutboundMessage::new(node_id2.clone(), MessageFlags::NONE, TEST_MSG1);
+        msg_tags.push(out_msg.tag);
+        request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
+    }
+
+    // Check that we got message success events
+    let events = collect_stream!(events_rx, take = NUM_MSGS, timeout = Duration::from_secs(10));
+    assert_eq!(events.len(), NUM_MSGS);
+    for event in events {
+        let event = event.unwrap();
+        unpack_enum!(MessagingEvent::SendMessageFailed(out_msg, reason) = &*event);
+        unpack_enum!(SendFailReason::PeerDialFailed = reason);
+        // Assert that each tag is emitted only once
+        let index = msg_tags.iter().position(|t| t == &out_msg.tag).unwrap();
+        msg_tags.remove(index);
+    }
+    assert_eq!(msg_tags.len(), 0);
 }

@@ -22,11 +22,15 @@
 
 use crate::{
     broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
-    envelope::{DhtMessageHeader, NodeDestination},
+    envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     outbound::OutboundEncryption,
     proto::envelope::DhtMessageType,
 };
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use std::{fmt, fmt::Display};
+use tari_comms::{
+    peer_manager::{NodeId, PeerFeatures},
+    types::CommsPublicKey,
+};
 
 /// Configuration for outbound messages.
 ///
@@ -60,6 +64,7 @@ pub struct FinalSendMessageParams {
     pub is_discovery_enabled: bool,
     pub force_origin: bool,
     pub dht_message_type: DhtMessageType,
+    pub dht_message_flags: DhtMessageFlags,
     pub dht_header: Option<DhtMessageHeader>,
 }
 
@@ -70,10 +75,21 @@ impl Default for FinalSendMessageParams {
             destination: Default::default(),
             encryption: Default::default(),
             dht_message_type: Default::default(),
+            dht_message_flags: Default::default(),
             force_origin: false,
             is_discovery_enabled: true,
             dht_header: None,
         }
+    }
+}
+
+impl Display for FinalSendMessageParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "BroadcastStrategy: {}, Destination: {}",
+            self.broadcast_strategy, self.destination
+        )
     }
 }
 
@@ -84,29 +100,44 @@ impl SendMessageParams {
 
     /// Set broadcast_strategy to DirectPublicKey
     pub fn direct_public_key(&mut self, public_key: CommsPublicKey) -> &mut Self {
-        self.params_mut().broadcast_strategy = BroadcastStrategy::DirectPublicKey(public_key);
+        self.params_mut().broadcast_strategy = BroadcastStrategy::DirectPublicKey(Box::new(public_key));
         self
     }
 
     /// Set broadcast_strategy to DirectNodeId
     pub fn direct_node_id(&mut self, node_id: NodeId) -> &mut Self {
-        self.params_mut().broadcast_strategy = BroadcastStrategy::DirectNodeId(node_id);
+        self.params_mut().broadcast_strategy = BroadcastStrategy::DirectNodeId(Box::new(node_id));
         self
     }
 
-    /// Set broadcast_strategy to Closest
-    pub fn closest(&mut self, node_id: NodeId, n: usize, excluded_peers: Vec<CommsPublicKey>) -> &mut Self {
+    /// Set broadcast_strategy to Closest.`excluded_peers` are excluded. Only Peers which have all `features` are
+    /// included.
+    pub fn closest(
+        &mut self,
+        node_id: NodeId,
+        n: usize,
+        excluded_peers: Vec<CommsPublicKey>,
+        peer_features: PeerFeatures,
+    ) -> &mut Self
+    {
         self.params_mut().broadcast_strategy = BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
             excluded_peers,
             node_id,
+            peer_features,
             n,
         }));
         self
     }
 
-    /// Set broadcast_strategy to Neighbours
+    /// Set broadcast_strategy to Neighbours. `excluded_peers` are excluded. Only Peers that have
+    /// `PeerFeatures::MESSAGE_PROPAGATION` are included.
     pub fn neighbours(&mut self, excluded_peers: Vec<CommsPublicKey>) -> &mut Self {
-        self.params_mut().broadcast_strategy = BroadcastStrategy::Neighbours(excluded_peers);
+        self.params_mut().broadcast_strategy = BroadcastStrategy::Neighbours(excluded_peers, false);
+        self
+    }
+
+    pub fn neighbours_include_clients(&mut self, excluded_peers: Vec<CommsPublicKey>) -> &mut Self {
+        self.params_mut().broadcast_strategy = BroadcastStrategy::Neighbours(excluded_peers, true);
         self
     }
 
@@ -143,6 +174,12 @@ impl SendMessageParams {
     /// Set the DHT message type
     pub fn with_dht_message_type(&mut self, message_type: DhtMessageType) -> &mut Self {
         self.params_mut().dht_message_type = message_type;
+        self
+    }
+
+    /// Add a `DhtMessageFlag` to the header
+    pub fn add_message_flag(&mut self, flag: DhtMessageFlags) -> &mut Self {
+        self.params_mut().dht_message_flags |= flag;
         self
     }
 

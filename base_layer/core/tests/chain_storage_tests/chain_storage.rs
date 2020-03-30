@@ -21,7 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::helpers::{
-    block_builders::{append_block, generate_new_block, generate_new_block_with_achieved_difficulty},
+    block_builders::{
+        append_block,
+        create_genesis_block,
+        generate_new_block,
+        generate_new_block_with_achieved_difficulty,
+        generate_new_block_with_coinbase,
+    },
     sample_blockchains::create_new_blockchain,
 };
 use croaring::Bitmap;
@@ -40,7 +46,7 @@ use tari_core::{
         MmrTree,
         Validators,
     },
-    consensus::{ConsensusManagerBuilder, Network},
+    consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     helpers::{create_mem_db, create_orphan_block},
     proof_of_work::Difficulty,
     transactions::{
@@ -50,7 +56,7 @@ use tari_core::{
     },
     tx,
     txn_schema,
-    validation::mocks::MockValidator,
+    validation::{block_validators::StatelessBlockValidator, mocks::MockValidator},
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_mmr::{MmrCacheConfig, MutableMmr};
@@ -64,7 +70,7 @@ fn init_log() {
 fn fetch_nonexistent_kernel() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let h = vec![0u8; 32];
     assert_eq!(
         store.fetch_kernel(h.clone()),
@@ -76,7 +82,7 @@ fn fetch_nonexistent_kernel() {
 fn insert_and_fetch_kernel() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let kernel = create_test_kernel(5.into(), 0);
     let hash = kernel.hash();
 
@@ -90,7 +96,7 @@ fn insert_and_fetch_kernel() {
 fn fetch_nonexistent_header() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     assert_eq!(
         store.fetch_header(1),
         Err(ChainStorageError::ValueNotFound(DbKey::BlockHeader(1)))
@@ -101,7 +107,7 @@ fn fetch_nonexistent_header() {
 fn insert_and_fetch_header() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let mut header = BlockHeader::new(0);
     header.height = 42;
 
@@ -121,7 +127,7 @@ fn insert_and_fetch_utxo() {
     let factories = CryptoFactories::default();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
     let hash = utxo.hash();
     assert_eq!(store.is_utxo(hash.clone()).unwrap(), false);
@@ -136,7 +142,7 @@ fn insert_and_fetch_utxo() {
 fn insert_and_fetch_orphan() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let txs = vec![
         (tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0,
         (tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0,
@@ -153,7 +159,7 @@ fn insert_and_fetch_orphan() {
 fn multiple_threads() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     // Save a kernel in thread A
     let store_a = store.clone();
     let a = thread::spawn(move || {
@@ -188,7 +194,7 @@ fn utxo_and_rp_merkle_root() {
     let network = Network::LocalNet;
     let gen_block = genesis_block::get_rincewind_genesis_block_raw();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(gen_block).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let factories = CryptoFactories::default();
     let block0 = store.fetch_block(0).unwrap().block().clone();
 
@@ -222,7 +228,7 @@ fn utxo_and_rp_merkle_root() {
 fn kernel_merkle_root() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let block0 = store.fetch_block(0).unwrap().block().clone();
 
     let kernel1 = create_test_kernel(100.into(), 0);
@@ -251,7 +257,7 @@ fn utxo_and_rp_future_merkle_root() {
     let network = Network::LocalNet;
     let gen_block = genesis_block::get_rincewind_genesis_block_raw();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(gen_block).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let factories = CryptoFactories::default();
 
     let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
@@ -293,7 +299,7 @@ fn kernel_future_merkle_root() {
     let network = Network::LocalNet;
     let gen_block = genesis_block::get_rincewind_genesis_block_raw();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(gen_block).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
 
     let kernel1 = create_test_kernel(100.into(), 0);
     let kernel2 = create_test_kernel(200.into(), 0);
@@ -321,7 +327,7 @@ fn utxo_and_rp_mmr_proof() {
     let network = Network::LocalNet;
     let gen_block = genesis_block::get_rincewind_genesis_block_raw();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(gen_block).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let factories = CryptoFactories::default();
 
     let (utxo1, _) = create_utxo(MicroTari(5_000), &factories, None);
@@ -349,7 +355,7 @@ fn utxo_and_rp_mmr_proof() {
 fn kernel_mmr_proof() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
 
     let kernel1 = create_test_kernel(100.into(), 0);
     let kernel2 = create_test_kernel(200.into(), 1);
@@ -392,13 +398,20 @@ fn add_multiple_blocks() {
     // Create new database with genesis block
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let metadata = store.get_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(0));
     let block0 = store.fetch_block(0).unwrap().block().clone();
     assert_eq!(metadata.best_block, Some(block0.hash()));
     // Add another block
-    let block1 = append_block(&store, &block0, vec![], &consensus_manager.consensus_constants()).unwrap();
+    let block1 = append_block(
+        &store,
+        &block0,
+        vec![],
+        &consensus_manager.consensus_constants(),
+        1.into(),
+    )
+    .unwrap();
     let metadata = store.get_metadata().unwrap();
     let hash = block1.hash();
     assert_eq!(metadata.height_of_longest_chain, Some(1));
@@ -421,7 +434,14 @@ fn test_checkpoints() {
         to: vec![MicroTari(5_000), MicroTari(6_000)]
     );
     let (txn, _, _) = spend_utxos(txn);
-    let block1 = append_block(&db, &blocks[0], vec![txn], &consensus_manager.consensus_constants()).unwrap();
+    let block1 = append_block(
+        &db,
+        &blocks[0],
+        vec![txn],
+        &consensus_manager.consensus_constants(),
+        1.into(),
+    )
+    .unwrap();
     // Get the checkpoint
     let block_a = db.fetch_block(0).unwrap();
     assert_eq!(block_a.confirmations(), 2);
@@ -440,39 +460,46 @@ fn rewind_to_height() {
 
     // Block 1
     let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![6 * T, 3 * T])];
-    generate_new_block(
-        &mut db,
-        &mut blocks,
-        &mut outputs,
-        schema,
-        &consensus_manager.consensus_constants(),
-    )
-    .unwrap();
+    assert_eq!(
+        generate_new_block(
+            &mut db,
+            &mut blocks,
+            &mut outputs,
+            schema,
+            &consensus_manager.consensus_constants(),
+        ),
+        Ok(BlockAddResult::Ok)
+    );
     // Block 2
     let schema = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![3 * T, 1 * T])];
-    generate_new_block(
-        &mut db,
-        &mut blocks,
-        &mut outputs,
-        schema,
-        &consensus_manager.consensus_constants(),
-    )
-    .unwrap();
+    assert_eq!(
+        generate_new_block(
+            &mut db,
+            &mut blocks,
+            &mut outputs,
+            schema,
+            &consensus_manager.consensus_constants(),
+        ),
+        Ok(BlockAddResult::Ok)
+    );
     // Block 3
     let schema = vec![
         txn_schema!(from: vec![outputs[2][0].clone()], to: vec![2 * T, 500_000 * uT]),
         txn_schema!(from: vec![outputs[1][1].clone()], to: vec![500_000 * uT]),
     ];
-    generate_new_block(
-        &mut db,
-        &mut blocks,
-        &mut outputs,
-        schema,
-        &consensus_manager.consensus_constants(),
-    )
-    .unwrap();
+    assert_eq!(
+        generate_new_block(
+            &mut db,
+            &mut blocks,
+            &mut outputs,
+            schema,
+            &consensus_manager.consensus_constants(),
+        ),
+        Ok(BlockAddResult::Ok)
+    );
 
     assert!(db.rewind_to_height(3).is_ok());
+    assert_eq!(db.get_height(), Ok(Some(3)));
     // Check MMRs are correct
     let mmr_check = blocks[3].header.kernel_mr.clone();
     let mmr = db.fetch_mmr_root(MmrTree::Kernel).unwrap();
@@ -485,7 +512,9 @@ fn rewind_to_height() {
     assert_eq!(mmr, mmr_check);
     // Invalid rewind
     assert!(db.rewind_to_height(4).is_err());
+    assert_eq!(db.get_height(), Ok(Some(3)));
     assert!(db.rewind_to_height(1).is_ok());
+    assert_eq!(db.get_height(), Ok(Some(1)));
     // Check MMRs are correct
     let mmr_check = blocks[1].header.kernel_mr.clone();
     let mmr = db.fetch_mmr_root(MmrTree::Kernel).unwrap();
@@ -538,7 +567,7 @@ fn handle_tip_reorg() {
     let consensus_manager_fork = ConsensusManagerBuilder::new(network)
         .with_block(blocks[0].clone())
         .build();
-    let mut orphan_store = create_mem_db(consensus_manager_fork.clone());
+    let mut orphan_store = create_mem_db(&consensus_manager_fork);
     orphan_store.add_block(blocks[1].clone()).unwrap();
     let mut orphan_blocks = vec![blocks[0].clone(), blocks[1].clone()];
     let mut orphan_outputs = vec![outputs[0].clone(), outputs[1].clone()];
@@ -630,7 +659,7 @@ fn handle_reorg() {
     let consensus_manager_fork = ConsensusManagerBuilder::new(network)
         .with_block(blocks[0].clone())
         .build();
-    let mut orphan1_store = create_mem_db(consensus_manager_fork); // GB
+    let mut orphan1_store = create_mem_db(&consensus_manager_fork); // GB
     orphan1_store.add_block(blocks[1].clone()).unwrap(); // A1
     let mut orphan1_blocks = vec![blocks[0].clone(), blocks[1].clone()];
     let mut orphan1_outputs = vec![outputs[0].clone(), outputs[1].clone()];
@@ -675,7 +704,7 @@ fn handle_reorg() {
     let consensus_manager_fork2 = ConsensusManagerBuilder::new(network)
         .with_block(blocks[0].clone())
         .build();
-    let mut orphan2_store = create_mem_db(consensus_manager_fork2); // GB
+    let mut orphan2_store = create_mem_db(&consensus_manager_fork2); // GB
     orphan2_store.add_block(blocks[1].clone()).unwrap(); // A1
     orphan2_store.add_block(orphan1_blocks[2].clone()).unwrap(); // B2
     orphan2_store.add_block(orphan1_blocks[3].clone()).unwrap(); // B3
@@ -728,17 +757,16 @@ fn store_and_retrieve_blocks() {
     let network = Network::LocalNet;
     let rules = ConsensusManagerBuilder::new(network).build();
     let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
-    let mut store = BlockchainDatabase::new(db, rules.clone()).unwrap();
-    store.set_validators(validators);
+    let store = BlockchainDatabase::new(db, &rules, validators).unwrap();
 
     let block0 = store.fetch_block(0).unwrap().block().clone();
-    let block1 = append_block(&store, &block0, vec![], &rules.consensus_constants()).unwrap();
-    let block2 = append_block(&store, &block1, vec![], &rules.consensus_constants()).unwrap();
+    let block1 = append_block(&store, &block0, vec![], &rules.consensus_constants(), 1.into()).unwrap();
+    let block2 = append_block(&store, &block1, vec![], &rules.consensus_constants(), 1.into()).unwrap();
     assert_eq!(*store.fetch_block(0).unwrap().block(), block0);
     assert_eq!(*store.fetch_block(1).unwrap().block(), block1);
     assert_eq!(*store.fetch_block(2).unwrap().block(), block2);
 
-    let block3 = append_block(&store, &block2, vec![], &rules.consensus_constants()).unwrap();
+    let block3 = append_block(&store, &block2, vec![], &rules.consensus_constants(), 1.into()).unwrap();
     assert_eq!(*store.fetch_block(0).unwrap().block(), block0);
     assert_eq!(*store.fetch_block(1).unwrap().block(), block1);
     assert_eq!(*store.fetch_block(2).unwrap().block(), block2);
@@ -752,11 +780,10 @@ fn store_and_retrieve_chain_and_orphan_blocks_with_hashes() {
     let network = Network::LocalNet;
     let rules = ConsensusManagerBuilder::new(network).build();
     let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
-    let mut store = BlockchainDatabase::new(db, rules.clone()).unwrap();
-    store.set_validators(validators);
+    let store = BlockchainDatabase::new(db, &rules, validators).unwrap();
 
     let block0 = store.fetch_block(0).unwrap().block().clone();
-    let block1 = append_block(&store, &block0, vec![], &rules.consensus_constants()).unwrap();
+    let block1 = append_block(&store, &block0, vec![], &rules.consensus_constants(), 1.into()).unwrap();
     let orphan = create_orphan_block(10, vec![], &rules.consensus_constants());
     let mut txn = DbTransaction::new();
     txn.insert_orphan(orphan.clone());
@@ -774,7 +801,7 @@ fn store_and_retrieve_chain_and_orphan_blocks_with_hashes() {
 fn total_kernel_excess() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let block0 = store.fetch_block(0).unwrap().block().clone();
 
     let kernel1 = create_test_kernel(100.into(), 0);
@@ -798,7 +825,7 @@ fn total_kernel_excess() {
 fn total_kernel_offset() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let block0 = store.fetch_block(0).unwrap().block().clone();
 
     let header2 = BlockHeader::from_previous(&block0.header);
@@ -821,7 +848,7 @@ fn total_utxo_commitment() {
     let network = Network::LocalNet;
     let gen_block = genesis_block::get_rincewind_genesis_block_raw();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(gen_block).build();
-    let store = create_mem_db(consensus_manager.clone());
+    let store = create_mem_db(&consensus_manager);
     let block0 = store.fetch_block(0).unwrap().block().clone();
 
     let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
@@ -850,11 +877,10 @@ fn restore_metadata() {
     let path = create_temporary_data_path();
     {
         let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
-        let mut db = BlockchainDatabase::new(db, rules.clone()).unwrap();
-        db.set_validators(validators.clone());
+        let db = BlockchainDatabase::new(db, &rules, validators.clone()).unwrap();
 
         let block0 = db.fetch_block(0).unwrap().block().clone();
-        let block1 = append_block(&db, &block0, vec![], &rules.consensus_constants()).unwrap();
+        let block1 = append_block(&db, &block0, vec![], &rules.consensus_constants(), 1.into()).unwrap();
         db.add_block(block1.clone()).unwrap();
         block_hash = block1.hash();
         let metadata = db.get_metadata().unwrap();
@@ -863,10 +889,130 @@ fn restore_metadata() {
     }
     // Restore blockchain db
     let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
-    let mut db = BlockchainDatabase::new(db, rules.clone()).unwrap();
-    db.set_validators(validators);
+    let db = BlockchainDatabase::new(db, &rules, validators).unwrap();
 
     let metadata = db.get_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(1));
     assert_eq!(metadata.best_block, Some(block_hash));
+}
+
+#[test]
+fn invalid_block() {
+    let factories = CryptoFactories::default();
+    let network = Network::LocalNet;
+    let consensus_constants = ConsensusConstantsBuilder::new(network)
+        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .build();
+    let (block0, output) = create_genesis_block(&factories, &consensus_constants);
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants.clone())
+        .with_block(block0.clone())
+        .build();
+    let validators = Validators::new(
+        MockValidator::new(true),
+        StatelessBlockValidator::new(&consensus_manager.consensus_constants()),
+    );
+    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
+    let mut store = BlockchainDatabase::new(db, &consensus_manager, validators).unwrap();
+    let mut blocks = vec![block0];
+    let mut outputs = vec![vec![output]];
+    let block0_hash = blocks[0].hash();
+    let metadata = store.get_metadata().unwrap();
+    let utxo_root0 = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
+    let kernel_root0 = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
+    let rp_root0 = store.fetch_mmr_root(MmrTree::RangeProof).unwrap();
+    assert_eq!(metadata.height_of_longest_chain, Some(0));
+    assert_eq!(metadata.best_block, Some(block0_hash.clone()));
+    assert_eq!(store.fetch_block(0).unwrap().block().hash(), block0_hash);
+    assert!(store.fetch_block(1).is_err());
+
+    // Block 1
+    let txs = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![10 * T, 5 * T, 10 * T, 15 * T]
+    )];
+    let coinbase_value = consensus_manager.emission_schedule().block_reward(1);
+    assert_eq!(
+        generate_new_block_with_coinbase(
+            &mut store,
+            &factories,
+            &mut blocks,
+            &mut outputs,
+            txs,
+            coinbase_value,
+            &consensus_manager.consensus_constants()
+        ),
+        Ok(BlockAddResult::Ok)
+    );
+    let block1_hash = blocks[1].hash();
+    let metadata = store.get_metadata().unwrap();
+    let utxo_root1 = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
+    let kernel_root1 = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
+    let rp_root1 = store.fetch_mmr_root(MmrTree::RangeProof).unwrap();
+    assert_eq!(metadata.height_of_longest_chain, Some(1));
+    assert_eq!(metadata.best_block, Some(block1_hash.clone()));
+    assert_eq!(store.fetch_block(0).unwrap().block().hash(), block0_hash);
+    assert_eq!(store.fetch_block(1).unwrap().block().hash(), block1_hash);
+    assert!(store.fetch_block(2).is_err());
+    assert_ne!(utxo_root0, utxo_root1);
+    assert_ne!(kernel_root0, kernel_root1);
+    assert_ne!(rp_root0, rp_root1);
+
+    // Invalid Block 2 - Double spends genesis block output
+    let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![20 * T, 20 * T])];
+    let coinbase_value = consensus_manager.emission_schedule().block_reward(2);
+    assert_eq!(
+        generate_new_block_with_coinbase(
+            &mut store,
+            &factories,
+            &mut blocks,
+            &mut outputs,
+            txs,
+            coinbase_value,
+            &consensus_manager.consensus_constants()
+        ),
+        Err(ChainStorageError::UnspendableInput)
+    );
+    let metadata = store.get_metadata().unwrap();
+    let utxo_root2 = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
+    let kernel_root2 = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
+    let rp_root2 = store.fetch_mmr_root(MmrTree::RangeProof).unwrap();
+    assert_eq!(metadata.height_of_longest_chain, Some(1));
+    assert_eq!(metadata.best_block, Some(block1_hash.clone()));
+    assert_eq!(store.fetch_block(0).unwrap().block().hash(), block0_hash);
+    assert_eq!(store.fetch_block(1).unwrap().block().hash(), block1_hash);
+    assert!(store.fetch_block(2).is_err());
+    assert_eq!(utxo_root1, utxo_root2);
+    assert_eq!(kernel_root1, kernel_root2);
+    assert_eq!(rp_root1, rp_root2);
+
+    // Valid Block 2
+    let txs = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![4 * T, 4 * T])];
+    let coinbase_value = consensus_manager.emission_schedule().block_reward(2);
+    assert_eq!(
+        generate_new_block_with_coinbase(
+            &mut store,
+            &factories,
+            &mut blocks,
+            &mut outputs,
+            txs,
+            coinbase_value,
+            &consensus_manager.consensus_constants()
+        ),
+        Ok(BlockAddResult::Ok)
+    );
+    let block2_hash = blocks[2].hash();
+    let metadata = store.get_metadata().unwrap();
+    let utxo_root2 = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
+    let kernel_root2 = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
+    let rp_root2 = store.fetch_mmr_root(MmrTree::RangeProof).unwrap();
+    assert_eq!(metadata.height_of_longest_chain, Some(2));
+    assert_eq!(metadata.best_block, Some(block2_hash.clone()));
+    assert_eq!(store.fetch_block(0).unwrap().block().hash(), block0_hash);
+    assert_eq!(store.fetch_block(1).unwrap().block().hash(), block1_hash);
+    assert_eq!(store.fetch_block(2).unwrap().block().hash(), block2_hash);
+    assert!(store.fetch_block(3).is_err());
+    assert_ne!(utxo_root1, utxo_root2);
+    assert_ne!(kernel_root1, kernel_root2);
+    assert_ne!(rp_root1, rp_root2);
 }

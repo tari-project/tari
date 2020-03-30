@@ -31,16 +31,16 @@ mod consts;
 mod miner;
 /// Parser module used to control user commands
 mod parser;
+mod utils;
 
 use crate::builder::{create_new_base_node_identity, load_identity};
 use log::*;
 use parser::Parser;
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
+use std::{path::PathBuf, sync::Arc};
 use tari_common::{load_configuration, GlobalConfig};
+use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
+use tari_shutdown::Shutdown;
 use tokio::runtime::Runtime;
 
 pub const LOG_TARGET: &str = "base_node::app";
@@ -59,15 +59,6 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), ExitCodes> {
-    // Create the tari data directory
-    if let Err(e) = tari_common::dir_utils::create_data_directory() {
-        println!(
-            "We couldn't create a default Tari data directory and have to quit now. This makes us sad :(\n {}",
-            e.to_string()
-        );
-        return Err(ExitCodes::ConfigError);
-    }
-
     // Parse and validate command-line arguments
     let arguments = cli::parse_cli_args();
 
@@ -77,88 +68,86 @@ fn main_inner() -> Result<(), ExitCodes> {
     }
 
     // Load and apply configuration file
-    let cfg = match load_configuration(&arguments.bootstrap) {
-        Ok(cfg) => cfg,
-        Err(s) => {
-            error!(target: LOG_TARGET, "{}", s);
-            return Err(ExitCodes::ConfigError);
-        },
-    };
+    let cfg = load_configuration(&arguments.bootstrap).map_err(|err| {
+        error!(target: LOG_TARGET, "{}", err);
+        ExitCodes::ConfigError
+    })?;
 
     // Populate the configuration struct
-    let node_config = match GlobalConfig::convert_from(cfg) {
-        Ok(c) => c,
-        Err(e) => {
-            error!(target: LOG_TARGET, "The configuration file has an error. {}", e);
-            return Err(ExitCodes::ConfigError);
-        },
-    };
+    let node_config = GlobalConfig::convert_from(cfg).map_err(|err| {
+        error!(target: LOG_TARGET, "The configuration file has an error. {}", err);
+        ExitCodes::ConfigError
+    })?;
 
-    trace!(target: LOG_TARGET, "Configuration file: {:?}", node_config);
-
-    // Load or create the Node identity
-    let node_identity = match load_identity(&node_config.identity_file) {
-        Ok(id) => id,
-        Err(e) => {
-            if !arguments.create_id {
-                error!(
-                    target: LOG_TARGET,
-                    "Node identity information not found. {}. You can update the configuration file to point to a \
-                     valid node identity file, or re-run the node with the --create_id flag to create a new identity.",
-                    e
-                );
-                return Err(ExitCodes::ConfigError);
-            }
-            debug!(target: LOG_TARGET, "Node id not found. {}. Creating new ID", e);
-            match create_new_base_node_identity(node_config.public_address.clone()) {
-                Ok(id) => {
-                    info!(
-                        target: LOG_TARGET,
-                        "New node identity [{}] with public key {} has been created.",
-                        id.node_id(),
-                        id.public_key()
-                    );
-                    id
-                },
-                Err(e) => {
-                    error!(target: LOG_TARGET, "Could not create new node id. {}.", e);
-                    return Err(ExitCodes::ConfigError);
-                },
-            }
-        },
-    };
+    trace!(target: LOG_TARGET, "Using configuration: {:?}", node_config);
 
     // Set up the Tokio runtime
-    let mut rt = match setup_runtime(&node_config) {
-        Ok(rt) => rt,
-        Err(s) => {
-            error!(target: LOG_TARGET, "{}", s);
-            return Err(ExitCodes::UnknownError);
-        },
-    };
+    let mut rt = setup_runtime(&node_config).map_err(|err| {
+        error!(target: LOG_TARGET, "{}", err);
+        ExitCodes::UnknownError
+    })?;
+
+    // Load or create the Node identity
+    let wallet_identity = setup_node_identity(
+        &node_config.wallet_identity_file,
+        &node_config.public_address,
+        arguments.create_id ||
+            // If the base node identity exists, we want to be sure that the wallet identity exists
+            node_config.identity_file.exists(),
+        PeerFeatures::COMMUNICATION_CLIENT,
+    )?;
+    let node_identity = setup_node_identity(
+        &node_config.identity_file,
+        &node_config.public_address,
+        arguments.create_id,
+        PeerFeatures::COMMUNICATION_NODE,
+    )?;
 
     // Build, node, build!
-    let ctx = rt.block_on(async {
-        builder::configure_and_initialize_node(&node_config, node_identity)
-            .await
-            .map_err(|err| {
-                error!(target: LOG_TARGET, "{}", err);
-                ExitCodes::UnknownError
-            })
-    })?;
+    let shutdown = Shutdown::new();
+    let ctx = rt
+        .block_on(builder::configure_and_initialize_node(
+            &node_config,
+            node_identity,
+            wallet_identity,
+            shutdown.to_signal(),
+        ))
+        .map_err(|err| {
+            error!(target: LOG_TARGET, "{}", err);
+            ExitCodes::UnknownError
+        })?;
+
+    // Exit if create_id or init arguments were run
+    if arguments.create_id {
+        info!(
+            target: LOG_TARGET,
+            "Node ID created at '{}'. Done.",
+            node_config.identity_file.to_string_lossy()
+        );
+        return Ok(());
+    }
+
+    if arguments.init {
+        info!(target: LOG_TARGET, "Default configuration created. Done.");
+        return Ok(());
+    }
+
     // Run, node, run!
     let parser = Parser::new(rt.handle().clone(), &ctx);
-    let flag = ctx.interrupt_flag();
     let base_node_handle = rt.spawn(ctx.run(rt.handle().clone()));
+
     info!(
         target: LOG_TARGET,
         "Node has been successfully configured and initialized. Starting CLI loop."
     );
-    cli_loop(parser, flag);
+
+    cli_loop(parser, shutdown);
+
     match rt.block_on(base_node_handle) {
         Ok(_) => info!(target: LOG_TARGET, "Node shutdown successfully."),
         Err(e) => error!(target: LOG_TARGET, "Node has crashed: {}", e),
     }
+
     println!("Goodbye!");
     Ok(())
 }
@@ -166,23 +155,25 @@ fn main_inner() -> Result<(), ExitCodes> {
 fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
     let num_core_threads = config.core_threads;
     let num_blocking_threads = config.blocking_threads;
+    let num_mining_threads = config.num_mining_threads;
 
     debug!(
         target: LOG_TARGET,
-        "Configuring the node to run on {} core threads and {} blocking worker threads.",
+        "Configuring the node to run on {} core threads, {} blocking worker threads and {} mining threads.",
         num_core_threads,
-        num_blocking_threads
+        num_blocking_threads,
+        num_mining_threads
     );
     tokio::runtime::Builder::new()
         .threaded_scheduler()
         .enable_all()
-        .max_threads(num_core_threads + num_blocking_threads)
+        .max_threads(num_core_threads + num_blocking_threads + num_mining_threads)
         .core_threads(num_core_threads)
         .build()
         .map_err(|e| format!("There was an error while building the node runtime. {}", e.to_string()))
 }
 
-fn cli_loop(parser: Parser, shutdown_flag: Arc<AtomicBool>) {
+fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
     let cli_config = Config::builder()
         .history_ignore_space(true)
         .completion_type(CompletionType::List)
@@ -197,18 +188,19 @@ fn cli_loop(parser: Parser, shutdown_flag: Arc<AtomicBool>) {
             Ok(line) => {
                 rustyline.add_history_entry(line.as_str());
                 if let Some(p) = rustyline.helper_mut().as_deref_mut() {
-                    p.handle_command(&line)
+                    p.handle_command(&line, &mut shutdown)
                 }
             },
             Err(ReadlineError::Interrupted) => {
                 // shutdown section. Will shutdown all interfaces when ctrl-c was pressed
-                println!("CTRL-C received");
-                println!("Shutting down");
+                println!("The node is shutting down because Ctrl+C was received...");
                 info!(
                     target: LOG_TARGET,
                     "Termination signal received from user. Shutting node down."
                 );
-                shutdown_flag.store(true, Ordering::SeqCst);
+                if shutdown.trigger().is_err() {
+                    error!(target: LOG_TARGET, "Shutdown signal failed to trigger");
+                };
                 break;
             },
             Err(err) => {
@@ -216,8 +208,50 @@ fn cli_loop(parser: Parser, shutdown_flag: Arc<AtomicBool>) {
                 break;
             },
         }
-        if shutdown_flag.load(Ordering::Relaxed) {
+        if shutdown.is_triggered() {
             break;
         };
+    }
+}
+
+fn setup_node_identity(
+    identity_file: &PathBuf,
+    public_address: &Multiaddr,
+    create_id: bool,
+    peer_features: PeerFeatures,
+) -> Result<Arc<NodeIdentity>, ExitCodes>
+{
+    match load_identity(identity_file) {
+        Ok(id) => Ok(Arc::new(id)),
+        Err(e) => {
+            if !create_id {
+                error!(
+                    target: LOG_TARGET,
+                    "Node identity information not found. {}. You can update the configuration file to point to a \
+                     valid node identity file, or re-run the node with the --create_id flag to create a new identity.",
+                    e
+                );
+                return Err(ExitCodes::ConfigError);
+            }
+
+            debug!(target: LOG_TARGET, "Node id not found. {}. Creating new ID", e);
+
+            match create_new_base_node_identity(identity_file, public_address.clone(), peer_features) {
+                Ok(id) => {
+                    info!(
+                        target: LOG_TARGET,
+                        "New node identity [{}] with public key {} has been created at {}.",
+                        id.node_id(),
+                        id.public_key(),
+                        identity_file.to_string_lossy(),
+                    );
+                    Ok(Arc::new(id))
+                },
+                Err(e) => {
+                    error!(target: LOG_TARGET, "Could not create new node id. {:?}.", e);
+                    Err(ExitCodes::ConfigError)
+                },
+            }
+        },
     }
 }

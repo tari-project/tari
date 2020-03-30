@@ -34,6 +34,7 @@ use std::{
     convert::TryFrom,
     sync::Arc,
 };
+use tari_crypto::tari_utilities::hex::Hex;
 
 pub const LOG_TARGET: &str = "c::mp::pending_pool::pending_pool_storage";
 
@@ -91,7 +92,12 @@ impl PendingPoolStorage {
     pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<(), PendingPoolError> {
         let tx_key = tx.body.kernels()[0].excess_sig.clone();
         if !self.txs_by_signature.contains_key(&tx_key) {
-            trace!(target: LOG_TARGET, "Inserting tx into pending pool: {:?}", tx_key,);
+            debug!(
+                target: LOG_TARGET,
+                "Inserting tx into pending pool: {}",
+                tx_key.get_signature().to_hex()
+            );
+            trace!(target: LOG_TARGET, "Transaction inserted: {}", tx);
             let prioritized_tx = TimelockedTransaction::try_from((*tx).clone())?;
             if self.txs_by_signature.len() >= self.config.storage_capacity {
                 if prioritized_tx.fee_priority < *self.lowest_fee_priority() {

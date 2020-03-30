@@ -56,6 +56,8 @@ pub enum WalletStorageError {
     ConversionError,
     /// Could not find all values specified for batch operation
     ValuesNotFound,
+    /// Db Path does not exist
+    DbPathDoesNotExist,
     SerdeJsonError(SerdeJsonError),
     R2d2Error,
     DieselError(DieselError),
@@ -68,4 +70,6 @@ pub enum WalletStorageError {
     UnexpectedResult(String),
     #[error(msg_embedded, non_std, no_from)]
     BlockingTaskSpawnError(String),
+    /// The storage path was invalid unicode or not supported by the host OS
+    InvalidUnicodePath,
 }

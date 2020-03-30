@@ -22,7 +22,7 @@
 use crate::multiaddr::{Multiaddr, Protocol};
 use std::{
     io,
-    net::{IpAddr, SocketAddr},
+    net::{IpAddr, SocketAddr, ToSocketAddrs},
 };
 
 /// Convert a multiaddr to a socket address required for `TcpStream`
@@ -43,6 +43,22 @@ pub fn multiaddr_to_socketaddr(addr: &Multiaddr) -> io::Result<SocketAddr> {
     }
 
     match (network_proto, transport_proto) {
+        (Protocol::Dns4(domain), Protocol::Tcp(port)) => {
+            let addr = format!("{}:{}", domain, port);
+            addr.to_socket_addrs()
+                .map_err(|_e| io::Error::new(io::ErrorKind::InvalidInput, format!("Invalid domain '{}'", domain)))?
+                .collect::<Vec<SocketAddr>>()
+                .first()
+                .map_or_else(
+                    || {
+                        Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            format!("Invalid domain '{}'", domain),
+                        ))
+                    },
+                    |h| Ok(*h),
+                )
+        },
         (Protocol::Ip4(host), Protocol::Tcp(port)) => Ok((host, port).into()),
         (Protocol::Ip6(host), Protocol::Tcp(port)) => Ok((host, port).into()),
         _ => Err(io::Error::new(
@@ -78,6 +94,14 @@ mod test {
 
         expect_success("/ip4/254.0.1.2/tcp/1234", "254.0.1.2");
         expect_success("/ip6/::1/tcp/1234", "::1");
+        expect_success("/dns4/taridns.dyn-ip.me/tcp/1234", "127.0.0.1");
+    }
+
+    #[test]
+    fn multiaddr_dns_to_socketaddr_ok() {
+        let addr = Multiaddr::from_str("/dns4/localhost/tcp/1234").unwrap();
+        let sock_addr = super::multiaddr_to_socketaddr(&addr).unwrap();
+        assert!(sock_addr.ip().is_loopback());
     }
 
     #[test]
@@ -91,6 +115,7 @@ mod test {
         expect_fail("/ip4/254.0.1.2/tcp/1234/quic");
         expect_fail("/ip4/254.0.1.2");
         expect_fail("/p2p/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC");
+        expect_fail("/dns4/doesntexist.theresnotldlikethis/tcp/1234")
     }
 
     #[test]

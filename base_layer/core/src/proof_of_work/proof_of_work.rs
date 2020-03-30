@@ -136,18 +136,30 @@ impl ProofOfWork {
     /// Replaces the `next` proof of work's difficulty with the sum of this proof of work's total cumulative
     /// difficulty and the provided `added_difficulty`.
     pub fn add_difficulty(&mut self, prev: &ProofOfWork, added_difficulty: Difficulty) {
-        let (m, b) = match prev.pow_algo {
+        let pow = ProofOfWork::new_from_difficulty(prev, added_difficulty);
+        self.accumulated_blake_difficulty = pow.accumulated_blake_difficulty;
+        self.accumulated_monero_difficulty = pow.accumulated_monero_difficulty;
+    }
+
+    /// Creates anew proof of work from the provided proof of work difficulty with the sum of this proof of work's total
+    /// cumulative difficulty and the provided `added_difficulty`.
+    pub fn new_from_difficulty(pow: &ProofOfWork, added_difficulty: Difficulty) -> ProofOfWork {
+        let (m, b) = match pow.pow_algo {
             PowAlgorithm::Monero => (
-                prev.accumulated_monero_difficulty + added_difficulty,
-                prev.accumulated_blake_difficulty,
+                pow.accumulated_monero_difficulty + added_difficulty,
+                pow.accumulated_blake_difficulty,
             ),
             PowAlgorithm::Blake => (
-                prev.accumulated_monero_difficulty,
-                prev.accumulated_blake_difficulty + added_difficulty,
+                pow.accumulated_monero_difficulty,
+                pow.accumulated_blake_difficulty + added_difficulty,
             ),
         };
-        self.accumulated_blake_difficulty = b;
-        self.accumulated_monero_difficulty = m;
+        ProofOfWork {
+            accumulated_monero_difficulty: m,
+            accumulated_blake_difficulty: b,
+            pow_algo: pow.pow_algo,
+            pow_data: pow.pow_data.clone(),
+        }
     }
 
     /// Compare the difficulties of this and another proof of work, without knowing anything about scaling factors.

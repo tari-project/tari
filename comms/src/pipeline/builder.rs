@@ -31,7 +31,7 @@ use tower::Service;
 const DEFAULT_MAX_CONCURRENT_TASKS: usize = 50;
 const DEFAULT_OUTBOUND_BUFFER_SIZE: usize = 50;
 
-type MpscSinkService = SinkService<mpsc::Sender<OutboundMessage>>;
+type OutboundMessageSinkService = SinkService<mpsc::Sender<OutboundMessage>>;
 
 #[derive(Default)]
 pub struct Builder<TInSvc, TOutSvc, TOutReq> {
@@ -39,7 +39,7 @@ pub struct Builder<TInSvc, TOutSvc, TOutReq> {
     outbound_buffer_size: usize,
     inbound: Option<TInSvc>,
     outbound_rx: Option<mpsc::Receiver<TOutReq>>,
-    outbound_pipeline_factory: Option<Box<dyn FnOnce(MpscSinkService) -> TOutSvc>>,
+    outbound_pipeline_factory: Option<Box<dyn FnOnce(OutboundMessageSinkService) -> TOutSvc>>,
 }
 
 impl Builder<(), (), ()> {
@@ -68,7 +68,7 @@ impl<TInSvc, TOutSvc, TOutReq> Builder<TInSvc, TOutSvc, TOutReq> {
     pub fn with_outbound_pipeline<F, S, R>(self, receiver: mpsc::Receiver<R>, factory: F) -> Builder<TInSvc, S, R>
     where
         // Factory function takes in a SinkService and returns a new composed service
-        F: FnOnce(MpscSinkService) -> S + 'static,
+        F: FnOnce(OutboundMessageSinkService) -> S + 'static,
         S: Service<R> + Clone + Send + 'static,
     {
         Builder {

@@ -39,13 +39,7 @@ use crate::{
     },
 };
 use blake2::Digest;
-use log::{LevelFilter, *};
-use log4rs::{
-    append::file::FileAppender,
-    config::{Appender, Config, Root},
-    encode::pattern::PatternEncoder,
-    Handle as LogHandle,
-};
+use log::*;
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -76,13 +70,13 @@ use tari_p2p::{
 use tari_service_framework::StackBuilder;
 use tokio::runtime::Runtime;
 
-const LOG_TARGET: &str = "base_layer::wallet";
+const LOG_TARGET: &str = "wallet";
 
 #[derive(Clone)]
 pub struct WalletConfig {
     pub comms_config: CommsConfig,
-    pub logging_path: Option<String>,
     pub factories: CryptoFactories,
+    pub transaction_service_config: Option<TransactionServiceConfig>,
 }
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
@@ -102,7 +96,6 @@ where
     pub contacts_service: ContactsServiceHandle,
     pub db: WalletDatabase<T>,
     pub runtime: Runtime,
-    pub log_handle: Option<LogHandle>,
     pub factories: CryptoFactories,
     #[cfg(feature = "test_harness")]
     pub transaction_backend: U,
@@ -127,24 +120,6 @@ where
         contacts_backend: W,
     ) -> Result<Wallet<T, U, V, W>, WalletError>
     {
-        let mut log_handle = None;
-        if let Some(path) = config.logging_path {
-            let logfile = FileAppender::builder()
-                .encoder(Box::new(PatternEncoder::new(
-                    "{d(%Y-%m-%d %H:%M:%S.%f)} [{M}#{L}] [{t}] {l:5} {m} (({T}:{I})){n}",
-                )))
-                .append(false)
-                .build(path.as_str())
-                .unwrap();
-
-            let config = Config::builder()
-                .appender(Appender::builder().build("logfile", Box::new(logfile)))
-                .build(Root::builder().appender("logfile").build(LevelFilter::Debug))
-                .unwrap();
-
-            log_handle = Some(log4rs::init_config(config)?);
-        }
-
         let db = WalletDatabase::new(wallet_backend);
         let base_node_peers = runtime.block_on(db.get_peers())?;
 
@@ -165,8 +140,8 @@ where
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
                     auto_ping_interval: Some(Duration::from_secs(30)),
-                    enable_auto_join: false,
-                    enable_auto_stored_message_request: false,
+                    enable_auto_join: true,
+                    enable_auto_stored_message_request: true,
                     refresh_neighbours_interval: Default::default(),
                 },
                 Arc::clone(&subscription_factory),
@@ -179,7 +154,7 @@ where
                 factories.clone(),
             ))
             .add_initializer(TransactionServiceInitializer::new(
-                TransactionServiceConfig::default(),
+                config.transaction_service_config.unwrap_or_default(),
                 subscription_factory.clone(),
                 comms.subscribe_messaging_events(),
                 transaction_backend,
@@ -218,7 +193,6 @@ where
             contacts_service: contacts_handle,
             db,
             runtime,
-            log_handle,
             factories,
             #[cfg(feature = "test_harness")]
             transaction_backend: transaction_backend_handle,
@@ -244,24 +218,24 @@ where
             vec![address].into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
+            &[],
         );
 
         let existing_peers = self.runtime.block_on(self.db.get_peers())?;
-        self.runtime.block_on(self.db.save_peer(peer.clone()))?;
         // Remove any peers in db to only persist a single peer at a time.
         for p in existing_peers {
             let _ = self.runtime.block_on(self.db.remove_peer(p.public_key.clone()))?;
         }
+        self.runtime.block_on(self.db.save_peer(peer.clone()))?;
 
-        self.comms.peer_manager().add_peer(peer.clone())?;
+        self.runtime
+            .block_on(self.comms.peer_manager().add_peer(peer.clone()))?;
         self.runtime.block_on(
             self.transaction_service
                 .set_base_node_public_key(peer.public_key.clone()),
         )?;
-        self.runtime.block_on(
-            self.output_manager_service
-                .set_base_node_public_key(peer.public_key.clone()),
-        )?;
+        self.runtime
+            .block_on(self.output_manager_service.set_base_node_public_key(peer.public_key))?;
 
         Ok(())
     }
@@ -326,9 +300,10 @@ where
 
     /// Have all the wallet components that need to start a sync process with the set base node to confirm the wallets
     /// state is accurately reflected on the blockchain
-    pub fn sync_with_base_node(&mut self) -> Result<(), WalletError> {
-        self.runtime
+    pub fn sync_with_base_node(&mut self) -> Result<u64, WalletError> {
+        let request_key = self
+            .runtime
             .block_on(self.output_manager_service.sync_with_base_node())?;
-        Ok(())
+        Ok(request_key)
     }
 }

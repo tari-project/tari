@@ -12,4 +12,6 @@ message ChainMetadata {
     // The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
     // tracked (i.e. the database is in full archival mode).
     uint64 pruning_horizon = 4;
+    // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
+    google.protobuf.UInt64Value accumulated_difficulty = 5;
 }

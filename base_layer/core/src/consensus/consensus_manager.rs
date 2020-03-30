@@ -30,13 +30,13 @@ use crate::{
         },
         Block,
     },
-    chain_storage::{BlockchainBackend, ChainStorageError},
+    chain_storage::{BlockchainBackend, ChainMetadata, ChainStorageError},
     consensus::{emission::EmissionSchedule, network::Network, ConsensusConstants},
     proof_of_work::{DiffAdjManager, DiffAdjManagerError, Difficulty, DifficultyAdjustmentError, PowAlgorithm},
     transactions::tari_amount::MicroTari,
 };
 use derive_error::Error;
-use std::sync::{Arc, RwLock, RwLockReadGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable};
 
 #[derive(Debug, Error, Clone, PartialEq)]
@@ -59,15 +59,11 @@ pub enum ConsensusManagerError {
 /// This is the consensus manager struct. This manages all state-full consensus code.
 /// The inside is wrapped inside of an ARC so that it can safely and cheaply be cloned.
 /// The code is multi-thread safe and so only one instance is required. Inner objects are wrapped inside of RwLocks.
-pub struct ConsensusManager<B>
-where B: BlockchainBackend
-{
-    inner: Arc<ConsensusManagerInner<B>>,
+pub struct ConsensusManager {
+    inner: Arc<ConsensusManagerInner>,
 }
 
-impl<B> ConsensusManager<B>
-where B: BlockchainBackend
-{
+impl ConsensusManager {
     /// Returns the genesis block for the selected network.
     pub fn get_genesis_block(&self) -> Block {
         match self.inner.network {
@@ -97,7 +93,7 @@ where B: BlockchainBackend
     }
 
     /// This moves over a difficulty adjustment manager to the ConsensusManager to control.
-    pub fn set_diff_manager(&self, diff_manager: DiffAdjManager<B>) -> Result<(), ConsensusManagerError> {
+    pub fn set_diff_manager(&self, diff_manager: DiffAdjManager) -> Result<(), ConsensusManagerError> {
         let mut lock = self
             .inner
             .diff_adj_manager
@@ -109,7 +105,7 @@ where B: BlockchainBackend
 
     /// This returns the difficulty adjustment manager back. This can safely be cloned as the Difficulty adjustment
     /// manager wraps an ARC in side of it.
-    pub fn get_diff_manager(&self) -> Result<DiffAdjManager<B>, ConsensusManagerError> {
+    pub fn get_diff_manager(&self) -> Result<DiffAdjManager, ConsensusManagerError> {
         match self.access_diff_adj()?.as_ref() {
             Some(v) => Ok(v.clone()),
             None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
@@ -117,45 +113,91 @@ where B: BlockchainBackend
     }
 
     /// Returns the estimated target difficulty for the specified PoW algorithm at the chain tip.
-    pub fn get_target_difficulty(&self, pow_algo: PowAlgorithm) -> Result<Difficulty, ConsensusManagerError> {
+    pub fn get_target_difficulty<B: BlockchainBackend>(
+        &self,
+        metadata: &RwLockReadGuard<ChainMetadata>,
+        db: &RwLockReadGuard<B>,
+        pow_algo: PowAlgorithm,
+    ) -> Result<Difficulty, ConsensusManagerError>
+    {
         match self.access_diff_adj()?.as_ref() {
             Some(v) => v
-                .get_target_difficulty(pow_algo)
+                .get_target_difficulty(metadata, db, pow_algo)
                 .map_err(ConsensusManagerError::DifficultyAdjustmentManagerError),
             None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
         }
     }
 
     /// Returns the estimated target difficulty for the specified PoW algorithm and provided height.
-    pub fn get_target_difficulty_with_height(
+    pub fn get_target_difficulty_with_height<B: BlockchainBackend>(
         &self,
+        db: &RwLockReadGuard<B>,
         pow_algo: PowAlgorithm,
         height: u64,
     ) -> Result<Difficulty, ConsensusManagerError>
     {
         match self.access_diff_adj()?.as_ref() {
             Some(v) => v
-                .get_target_difficulty_at_height(pow_algo, height)
+                .get_target_difficulty_at_height(db, pow_algo, height)
+                .map_err(ConsensusManagerError::DifficultyAdjustmentManagerError),
+            None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
+        }
+    }
+
+    pub fn get_target_difficulty_with_height_writeguard<B: BlockchainBackend>(
+        &self,
+        db: &RwLockWriteGuard<B>,
+        pow_algo: PowAlgorithm,
+        height: u64,
+    ) -> Result<Difficulty, ConsensusManagerError>
+    {
+        match self.access_diff_adj()?.as_ref() {
+            Some(v) => v
+                .get_target_difficulty_at_height_writeguard(db, pow_algo, height)
                 .map_err(ConsensusManagerError::DifficultyAdjustmentManagerError),
             None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
         }
     }
 
     /// Returns the median timestamp of the past 11 blocks at the chain tip.
-    pub fn get_median_timestamp(&self) -> Result<EpochTime, ConsensusManagerError> {
+    pub fn get_median_timestamp<B: BlockchainBackend>(
+        &self,
+        metadata: &RwLockReadGuard<ChainMetadata>,
+        db: &RwLockReadGuard<B>,
+    ) -> Result<EpochTime, ConsensusManagerError>
+    {
         match self.access_diff_adj()?.as_ref() {
             Some(v) => v
-                .get_median_timestamp()
+                .get_median_timestamp(metadata, db)
                 .map_err(ConsensusManagerError::DifficultyAdjustmentManagerError),
             None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
         }
     }
 
     /// Returns the median timestamp of the past 11 blocks at the provided height.
-    pub fn get_median_timestamp_at_height(&self, height: u64) -> Result<EpochTime, ConsensusManagerError> {
+    pub fn get_median_timestamp_at_height<B: BlockchainBackend>(
+        &self,
+        db: &RwLockReadGuard<B>,
+        height: u64,
+    ) -> Result<EpochTime, ConsensusManagerError>
+    {
         match self.access_diff_adj()?.as_ref() {
             Some(v) => v
-                .get_median_timestamp_at_height(height)
+                .get_median_timestamp_at_height(db, height)
+                .map_err(ConsensusManagerError::DifficultyAdjustmentManagerError),
+            None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
+        }
+    }
+
+    pub fn get_median_timestamp_at_height_writeguard<B: BlockchainBackend>(
+        &self,
+        db: &RwLockWriteGuard<B>,
+        height: u64,
+    ) -> Result<EpochTime, ConsensusManagerError>
+    {
+        match self.access_diff_adj()?.as_ref() {
+            Some(v) => v
+                .get_median_timestamp_at_height_writeguard(db, height)
                 .map_err(ConsensusManagerError::DifficultyAdjustmentManagerError),
             None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
         }
@@ -168,7 +210,7 @@ where B: BlockchainBackend
     }
 
     // Inner helper function to access to the difficulty adjustment manager
-    fn access_diff_adj(&self) -> Result<RwLockReadGuard<Option<DiffAdjManager<B>>>, ConsensusManagerError> {
+    fn access_diff_adj(&self) -> Result<RwLockReadGuard<Option<DiffAdjManager>>, ConsensusManagerError> {
         self.inner
             .diff_adj_manager
             .read()
@@ -181,9 +223,7 @@ where B: BlockchainBackend
     }
 }
 
-impl<B> Clone for ConsensusManager<B>
-where B: BlockchainBackend
-{
+impl Clone for ConsensusManager {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -192,11 +232,9 @@ where B: BlockchainBackend
 }
 
 /// This is the used to control all consensus values.
-struct ConsensusManagerInner<B>
-where B: BlockchainBackend
-{
+struct ConsensusManagerInner {
     /// Difficulty adjustment manager for the blockchain
-    pub diff_adj_manager: RwLock<Option<DiffAdjManager<B>>>,
+    pub diff_adj_manager: RwLock<Option<DiffAdjManager>>,
     /// This is the inner struct used to control all consensus values.
     pub consensus_constants: ConsensusConstants,
 
@@ -209,11 +247,9 @@ where B: BlockchainBackend
 }
 
 /// Constructor for the consensus manager struct
-pub struct ConsensusManagerBuilder<B>
-where B: BlockchainBackend
-{
+pub struct ConsensusManagerBuilder {
     /// Difficulty adjustment manager for the blockchain
-    pub diff_adj_manager: Option<DiffAdjManager<B>>,
+    pub diff_adj_manager: Option<DiffAdjManager>,
     /// This is the inner struct used to control all consensus values.
     pub consensus_constants: Option<ConsensusConstants>,
     /// The configured chain network.
@@ -222,9 +258,7 @@ where B: BlockchainBackend
     pub gen_block: Option<Block>,
 }
 
-impl<B> ConsensusManagerBuilder<B>
-where B: BlockchainBackend
-{
+impl ConsensusManagerBuilder {
     /// Creates a new ConsensusManagerBuilder with the specified network
     pub fn new(network: Network) -> Self {
         ConsensusManagerBuilder {
@@ -242,7 +276,7 @@ where B: BlockchainBackend
     }
 
     /// Adds in a difficulty adjustment manager to be used to be used
-    pub fn with_difficulty_adjustment_manager(mut self, difficulty_adj: DiffAdjManager<B>) -> Self {
+    pub fn with_difficulty_adjustment_manager(mut self, difficulty_adj: DiffAdjManager) -> Self {
         self.diff_adj_manager = Some(difficulty_adj);
         self
     }
@@ -254,7 +288,7 @@ where B: BlockchainBackend
     }
 
     /// Builds a consensus manager
-    pub fn build(self) -> ConsensusManager<B> {
+    pub fn build(self) -> ConsensusManager {
         let consensus_constants = self
             .consensus_constants
             .unwrap_or(self.network.create_consensus_constants());

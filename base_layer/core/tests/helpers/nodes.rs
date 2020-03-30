@@ -22,9 +22,9 @@
 
 use futures::Sink;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
-use std::{error::Error, iter, sync::Arc};
+use std::{error::Error, iter, sync::Arc, time::Duration};
 use tari_comms::{
-    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    peer_manager::{NodeIdentity, PeerFeatures},
     transports::MemoryTransport,
     CommsNode,
 };
@@ -49,19 +49,24 @@ use tari_core::{
     },
     proof_of_work::DiffAdjManager,
     transactions::types::HashDigest,
-    validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator, Validation},
+    validation::{
+        mocks::MockValidator,
+        transaction_validators::TxInputAndMaturityValidator,
+        StatelessValidation,
+        ValidationWriteGuard,
+    },
 };
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::{
     comms_connector::{pubsub_connector, InboundDomainConnector, PeerMessage},
-    initialization::{initialize_comms, CommsConfig},
+    initialization::initialize_local_test_comms,
     services::{
         comms_outbound::CommsOutboundServiceInitializer,
-        liveness::{LivenessConfig, LivenessInitializer},
+        liveness::{LivenessConfig, LivenessHandle, LivenessInitializer},
     },
-    transport::TransportType,
 };
 use tari_service_framework::StackBuilder;
+use tari_test_utils::async_assert_eventually;
 use tokio::runtime::Runtime;
 
 /// The NodeInterfaces is used as a container for providing access to all the services and interfaces of a single node.
@@ -74,6 +79,7 @@ pub struct NodeInterfaces {
     pub blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
     pub mempool: Mempool<MemoryDatabase<HashDigest>>,
     pub chain_metadata_handle: ChainMetadataHandle,
+    pub liveness_handle: LivenessHandle,
     pub comms: CommsNode,
 }
 
@@ -88,7 +94,7 @@ pub struct BaseNodeBuilder {
     mempool_service_config: Option<MempoolServiceConfig>,
     liveness_service_config: Option<LivenessConfig>,
     validators: Option<Validators<MemoryDatabase<HashDigest>>>,
-    consensus_manager: Option<ConsensusManager<MemoryDatabase<HashDigest>>>,
+    consensus_manager: Option<ConsensusManager>,
     network: Network,
 }
 
@@ -153,8 +159,8 @@ impl BaseNodeBuilder {
 
     pub fn with_validators(
         mut self,
-        block: impl Validation<Block, MemoryDatabase<HashDigest>> + 'static,
-        orphan: impl Validation<Block, MemoryDatabase<HashDigest>> + 'static,
+        block: impl ValidationWriteGuard<Block, MemoryDatabase<HashDigest>> + 'static,
+        orphan: impl StatelessValidation<Block> + 'static,
     ) -> Self
     {
         let validators = Validators::new(block, orphan);
@@ -163,18 +169,13 @@ impl BaseNodeBuilder {
     }
 
     /// Set the configuration of the Consensus Manager
-    pub fn with_consensus_manager(mut self, consensus_manager: ConsensusManager<MemoryDatabase<HashDigest>>) -> Self {
+    pub fn with_consensus_manager(mut self, consensus_manager: ConsensusManager) -> Self {
         self.consensus_manager = Some(consensus_manager);
         self
     }
 
     /// Build the test base node and start its services.
-    pub fn start(
-        self,
-        runtime: &mut Runtime,
-        data_path: &str,
-    ) -> (NodeInterfaces, ConsensusManager<MemoryDatabase<HashDigest>>)
-    {
+    pub fn start(self, runtime: &mut Runtime, data_path: &str) -> (NodeInterfaces, ConsensusManager) {
         let mmr_cache_config = self.mmr_cache_config.unwrap_or(MmrCacheConfig { rewind_hist_len: 10 });
         let validators = self
             .validators
@@ -183,35 +184,37 @@ impl BaseNodeBuilder {
             .consensus_manager
             .unwrap_or(ConsensusManagerBuilder::new(self.network).build());
         let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
-        let mut blockchain_db = BlockchainDatabase::new(db, consensus_manager.clone()).unwrap();
-        blockchain_db.set_validators(validators);
-        let mempool_validator = MempoolValidators::new(
-            TxInputAndMaturityValidator::new(blockchain_db.clone()),
-            TxInputAndMaturityValidator::new(blockchain_db.clone()),
-        );
+        let blockchain_db = BlockchainDatabase::new(db, &consensus_manager, validators).unwrap();
+        let mempool_validator = MempoolValidators::new(TxInputAndMaturityValidator {}, TxInputAndMaturityValidator {});
         let mempool = Mempool::new(
             blockchain_db.clone(),
             self.mempool_config.unwrap_or(MempoolConfig::default()),
             mempool_validator,
         );
-        let diff_adj_manager =
-            DiffAdjManager::new(blockchain_db.clone(), &consensus_manager.consensus_constants()).unwrap();
+        let diff_adj_manager = DiffAdjManager::new(&consensus_manager.consensus_constants()).unwrap();
         consensus_manager.set_diff_manager(diff_adj_manager).unwrap();
         let node_identity = self.node_identity.unwrap_or(random_node_identity());
-        let (outbound_nci, local_nci, outbound_mp_interface, outbound_message_service, chain_metadata_handle, comms) =
-            setup_base_node_services(
-                runtime,
-                node_identity.clone(),
-                self.peers.unwrap_or(Vec::new()),
-                blockchain_db.clone(),
-                mempool.clone(),
-                consensus_manager.clone(),
-                self.base_node_service_config
-                    .unwrap_or(BaseNodeServiceConfig::default()),
-                self.mempool_service_config.unwrap_or(MempoolServiceConfig::default()),
-                self.liveness_service_config.unwrap_or(LivenessConfig::default()),
-                data_path,
-            );
+        let (
+            outbound_nci,
+            local_nci,
+            outbound_mp_interface,
+            outbound_message_service,
+            chain_metadata_handle,
+            liveness_handle,
+            comms,
+        ) = setup_base_node_services(
+            runtime,
+            node_identity.clone(),
+            self.peers.unwrap_or(Vec::new()),
+            blockchain_db.clone(),
+            mempool.clone(),
+            consensus_manager.clone(),
+            self.base_node_service_config
+                .unwrap_or(BaseNodeServiceConfig::default()),
+            self.mempool_service_config.unwrap_or(MempoolServiceConfig::default()),
+            self.liveness_service_config.unwrap_or(LivenessConfig::default()),
+            data_path,
+        );
 
         (
             NodeInterfaces {
@@ -223,6 +226,7 @@ impl BaseNodeBuilder {
                 blockchain_db,
                 mempool,
                 chain_metadata_handle,
+                liveness_handle,
                 comms,
             },
             consensus_manager,
@@ -234,11 +238,7 @@ impl BaseNodeBuilder {
 pub fn create_network_with_2_base_nodes(
     runtime: &mut Runtime,
     data_path: &str,
-) -> (
-    NodeInterfaces,
-    NodeInterfaces,
-    ConsensusManager<MemoryDatabase<HashDigest>>,
-)
+) -> (NodeInterfaces, NodeInterfaces, ConsensusManager)
 {
     let alice_node_identity = random_node_identity();
     let bob_node_identity = random_node_identity();
@@ -250,9 +250,30 @@ pub fn create_network_with_2_base_nodes(
         .start(runtime, data_path);
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity)
-        .with_peers(vec![alice_node_identity])
+        // Alice will call Bob, otherwise Bob may connect
+        // first and result in a DialCancelled
+        // .with_peers(vec![alice_node_identity])
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
+
+    // Wait for peers to connect
+    runtime.block_on(async {
+        let _ = alice_node
+            .comms
+            .connection_manager()
+            .dial_peer(bob_node.node_identity.node_id().clone())
+            .await;
+        async_assert_eventually!(
+            bob_node
+                .comms
+                .peer_manager()
+                .exists(alice_node.node_identity.public_key())
+                .await,
+            expect = true,
+            max_attempts = 20,
+            interval = Duration::from_millis(1000)
+        );
+    });
 
     (alice_node, bob_node, consensus_manager)
 }
@@ -264,13 +285,9 @@ pub fn create_network_with_2_base_nodes_with_config(
     mmr_cache_config: MmrCacheConfig,
     mempool_service_config: MempoolServiceConfig,
     liveness_service_config: LivenessConfig,
-    consensus_manager: ConsensusManager<MemoryDatabase<HashDigest>>,
+    consensus_manager: ConsensusManager,
     data_path: &str,
-) -> (
-    NodeInterfaces,
-    NodeInterfaces,
-    ConsensusManager<MemoryDatabase<HashDigest>>,
-)
+) -> (NodeInterfaces, NodeInterfaces, ConsensusManager)
 {
     let alice_node_identity = random_node_identity();
     let bob_node_identity = random_node_identity();
@@ -286,7 +303,9 @@ pub fn create_network_with_2_base_nodes_with_config(
         .start(runtime, data_path);
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity)
-        .with_peers(vec![alice_node_identity])
+        // Alice will call Bob, otherwise Bob may connect
+        // first and result in a DialCancelled
+        // .with_peers(vec![alice_node_identity])
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
@@ -294,12 +313,24 @@ pub fn create_network_with_2_base_nodes_with_config(
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
 
-    let _ = runtime.block_on(
-        alice_node
+    // Wait for peers to connect
+    runtime.block_on(async {
+        let _ = alice_node
             .comms
             .connection_manager()
-            .dial_peer(bob_node.node_identity.node_id().clone()),
-    );
+            .dial_peer(bob_node.node_identity.node_id().clone())
+            .await;
+        async_assert_eventually!(
+            bob_node
+                .comms
+                .peer_manager()
+                .exists(alice_node.node_identity.public_key())
+                .await,
+            expect = true,
+            max_attempts = 20,
+            interval = Duration::from_millis(1000)
+        );
+    });
 
     (alice_node, bob_node, consensus_manager)
 }
@@ -308,12 +339,7 @@ pub fn create_network_with_2_base_nodes_with_config(
 pub fn create_network_with_3_base_nodes(
     runtime: &mut Runtime,
     data_path: &str,
-) -> (
-    NodeInterfaces,
-    NodeInterfaces,
-    NodeInterfaces,
-    ConsensusManager<MemoryDatabase<HashDigest>>,
-)
+) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces, ConsensusManager)
 {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
@@ -336,14 +362,9 @@ pub fn create_network_with_3_base_nodes_with_config(
     mmr_cache_config: MmrCacheConfig,
     mempool_service_config: MempoolServiceConfig,
     liveness_service_config: LivenessConfig,
-    consensus_manager: ConsensusManager<MemoryDatabase<HashDigest>>,
+    consensus_manager: ConsensusManager,
     data_path: &str,
-) -> (
-    NodeInterfaces,
-    NodeInterfaces,
-    NodeInterfaces,
-    ConsensusManager<MemoryDatabase<HashDigest>>,
-)
+) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces, ConsensusManager)
 {
     let alice_node_identity = random_node_identity();
     let bob_node_identity = random_node_identity();
@@ -361,7 +382,7 @@ pub fn create_network_with_3_base_nodes_with_config(
         .start(runtime, data_path);
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity.clone())
-        .with_peers(vec![alice_node_identity.clone(), carol_node_identity.clone()])
+        .with_peers(vec![carol_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
@@ -370,7 +391,6 @@ pub fn create_network_with_3_base_nodes_with_config(
         .start(runtime, data_path);
     let (carol_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(carol_node_identity.clone())
-        .with_peers(vec![alice_node_identity, bob_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
@@ -388,7 +408,37 @@ pub fn create_network_with_3_base_nodes_with_config(
         let mut conn_man = bob_node.comms.connection_manager();
         let _ = conn_man.dial_peer(carol_node.node_identity.node_id().clone()).await;
 
-        // All node have an existing connection
+        // All nodes have an existing connection
+        async_assert_eventually!(
+            bob_node
+                .comms
+                .peer_manager()
+                .exists(alice_node.node_identity.public_key())
+                .await,
+            expect = true,
+            max_attempts = 20,
+            interval = Duration::from_millis(1000)
+        );
+        async_assert_eventually!(
+            carol_node
+                .comms
+                .peer_manager()
+                .exists(alice_node.node_identity.public_key())
+                .await,
+            expect = true,
+            max_attempts = 20,
+            interval = Duration::from_millis(1000)
+        );
+        async_assert_eventually!(
+            carol_node
+                .comms
+                .peer_manager()
+                .exists(bob_node.node_identity.public_key())
+                .await,
+            expect = true,
+            max_attempts = 20,
+            interval = Duration::from_millis(1000)
+        );
     });
 
     (alice_node, bob_node, carol_node, consensus_manager)
@@ -422,34 +472,12 @@ where
     TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
-    let transport_type = TransportType::Memory {
-        listener_address: node_identity.public_address(),
-    };
-    let comms_config = CommsConfig {
-        node_identity,
-        transport_type,
-        datastore_path: data_path.to_string(),
-        peer_database_name: random_string(8),
-        max_concurrent_inbound_tasks: 10,
-        outbound_buffer_size: 10,
-        dht: Default::default(),
-    };
-
-    let (comms, dht) = initialize_comms(comms_config, publisher).await.unwrap();
+    let (comms, dht) = initialize_local_test_comms(node_identity, publisher, data_path, Duration::from_secs(2 * 60))
+        .await
+        .unwrap();
 
     for p in peers {
-        let addr = p.public_address();
-        comms
-            .async_peer_manager()
-            .add_peer(Peer::new(
-                p.public_key().clone(),
-                p.node_id().clone(),
-                addr.into(),
-                PeerFlags::empty(),
-                p.features().clone(),
-            ))
-            .await
-            .unwrap();
+        comms.peer_manager().add_peer(p.to_peer()).await.unwrap();
     }
 
     (comms, dht)
@@ -462,7 +490,7 @@ fn setup_base_node_services(
     peers: Vec<Arc<NodeIdentity>>,
     blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
     mempool: Mempool<MemoryDatabase<HashDigest>>,
-    consensus_manager: ConsensusManager<MemoryDatabase<HashDigest>>,
+    consensus_manager: ConsensusManager,
     base_node_service_config: BaseNodeServiceConfig,
     mempool_service_config: MempoolServiceConfig,
     liveness_service_config: LivenessConfig,
@@ -473,6 +501,7 @@ fn setup_base_node_services(
     OutboundMempoolServiceInterface,
     OutboundMessageRequester,
     ChainMetadataHandle,
+    LivenessHandle,
     CommsNode,
 )
 {
@@ -509,6 +538,7 @@ fn setup_base_node_services(
         handles.get_handle::<OutboundMempoolServiceInterface>().unwrap(),
         handles.get_handle::<OutboundMessageRequester>().unwrap(),
         handles.get_handle::<ChainMetadataHandle>().unwrap(),
+        handles.get_handle::<LivenessHandle>().unwrap(),
         comms,
     )
 }

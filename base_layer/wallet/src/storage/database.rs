@@ -183,7 +183,7 @@ mod test {
     use crate::{
         error::WalletStorageError,
         storage::{
-            connection_manager::run_migration_and_create_connection_pool,
+            connection_manager::run_migration_and_create_sqlite_connection,
             database::{DbKey, WalletBackend, WalletDatabase},
             memory_db::WalletMemoryDatabase,
             sqlite_db::WalletSqliteDatabase,
@@ -215,6 +215,7 @@ mod test {
                 "/ip4/1.2.3.4/tcp/9000".parse::<Multiaddr>().unwrap().into(),
                 PeerFlags::empty(),
                 PeerFeatures::COMMUNICATION_NODE,
+                &[],
             );
 
             peers.push(peer);
@@ -266,8 +267,8 @@ mod test {
             .to_str()
             .unwrap()
             .to_string();
-        let connection_pool = run_migration_and_create_connection_pool(&format!("{}{}", db_folder, db_name)).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name)).unwrap();
 
-        test_database_crud(WalletSqliteDatabase::new(connection_pool));
+        test_database_crud(WalletSqliteDatabase::new(connection));
     }
 }

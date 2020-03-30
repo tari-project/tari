@@ -26,12 +26,12 @@ use config::{Config, Environment};
 use log::*;
 use multiaddr::{Multiaddr, Protocol};
 use std::{
-    convert::TryFrom,
-    env,
+    convert::TryInto,
     error::Error,
     fmt::{Display, Formatter, Result as FormatResult},
+    fs,
     net::IpAddr,
-    num::NonZeroU16,
+    num::{NonZeroU16, TryFromIntError},
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -46,7 +46,7 @@ pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, String>
         "Loading configuration file from  {}",
         bootstrap.config.to_str().unwrap_or("[??]")
     );
-    let mut cfg = default_config();
+    let mut cfg = default_config(bootstrap);
     // Load the configuration file
     let filename = bootstrap
         .config
@@ -65,12 +65,10 @@ pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, String>
     }
 }
 
-/// Installs a new configuration file template, copied from `tari_config_sample.toml` to the given path.
-/// When bundled as a binary, the config sample file must be bundled in `./config`.
-pub fn install_default_config_file(path: &Path) -> Result<u64, std::io::Error> {
-    let mut source = env::current_dir()?;
-    source.push(Path::new("config/tari_config_sample.toml"));
-    std::fs::copy(source, path)
+/// Installs a new configuration file template, copied from `rincewind-simple.toml` to the given path.
+pub fn install_default_config_file(path: &Path) -> Result<(), std::io::Error> {
+    let source = include_str!("../presets/rincewind-simple.toml");
+    fs::write(path, source)
 }
 
 //---------------------------------------------       Network type        ------------------------------------------//
@@ -80,20 +78,17 @@ pub enum Network {
     Rincewind,
 }
 
-impl TryFrom<String> for Network {
-    type Error = ConfigurationError;
+impl FromStr for Network {
+    type Err = ConfigurationError;
 
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        let val = value.to_lowercase();
-        if &val == "rincewind" {
-            Ok(Self::Rincewind)
-        } else if &val == "mainnet" {
-            Ok(Self::MainNet)
-        } else {
-            Err(ConfigurationError::new(
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.to_lowercase().as_str() {
+            "rincewind" => Ok(Self::Rincewind),
+            "mainnet" => Ok(Self::MainNet),
+            invalid => Err(ConfigurationError::new(
                 "network",
-                &format!("Invalid network option: {}", value),
-            ))
+                &format!("Invalid network option: {}", invalid),
+            )),
         }
     }
 }
@@ -228,12 +223,17 @@ impl FromStr for SocksAuthentication {
 pub enum CommsTransport {
     /// Use TCP to join the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
     /// e.g. tor onion addresses will not be contactable.
-    Tcp { listener_address: Multiaddr },
+    Tcp {
+        listener_address: Multiaddr,
+        tor_socks_address: Option<Multiaddr>,
+        tor_socks_auth: Option<SocksAuthentication>,
+    },
     /// Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
     /// onion v2, onion v3 and dns addresses.
     TorHiddenService {
         /// The address of the control server
         control_server_address: Multiaddr,
+        socks_address_override: Option<Multiaddr>,
         /// The address used to receive proxied traffic from the tor proxy to the Tari node. This port must be
         /// available
         forward_address: Multiaddr,
@@ -243,8 +243,8 @@ pub enum CommsTransport {
     /// Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
     Socks5 {
         proxy_address: Multiaddr,
-        listener_address: Multiaddr,
         auth: SocksAuthentication,
+        listener_address: Multiaddr,
     },
 }
 
@@ -254,6 +254,8 @@ pub enum CommsTransport {
 pub struct GlobalConfig {
     pub network: Network,
     pub comms_transport: CommsTransport,
+    pub listnener_liveness_max_sessions: usize,
+    pub listener_liveness_whitelist_cidrs: Vec<String>,
     pub data_dir: PathBuf,
     pub db_type: DatabaseType,
     pub core_threads: usize,
@@ -261,18 +263,23 @@ pub struct GlobalConfig {
     pub identity_file: PathBuf,
     pub public_address: Multiaddr,
     pub peer_seeds: Vec<String>,
-    pub peer_db_path: String,
+    pub peer_db_path: PathBuf,
+    pub block_sync_strategy: String,
     pub enable_mining: bool,
-    pub wallet_file: String,
-    pub tor_identity_file: String,
+    pub num_mining_threads: usize,
+    pub tor_identity_file: PathBuf,
+    pub wallet_db_file: PathBuf,
+    pub wallet_identity_file: PathBuf,
+    pub wallet_tor_identity_file: PathBuf,
+    pub wallet_peer_db_path: PathBuf,
 }
 
 impl GlobalConfig {
     pub fn convert_from(mut cfg: Config) -> Result<Self, ConfigurationError> {
         let network = cfg
             .get_str("base_node.network")
-            .map_err(|e| ConfigurationError::new("base_node.network", &e.to_string()))?;
-        let network = Network::try_from(network)?;
+            .map_err(|e| ConfigurationError::new("base_node.network", &e.to_string()))?
+            .parse()?;
 
         // Add in settings from the environment (with a prefix of TARI_NODE)
         // Eg.. `TARI_NODE_DEBUG=1 ./target/app` would set the `debug` key
@@ -282,56 +289,67 @@ impl GlobalConfig {
     }
 }
 
-/// Returns an OS-dependent string of the data subdirectory
-pub fn sub_dir(data_dir: &Path, sub_dir: &str) -> Result<String, ConfigurationError> {
-    let mut dir = data_dir.to_path_buf();
-    dir.push(sub_dir);
-    dir.to_str()
-        .map(String::from)
-        .ok_or_else(|| ConfigurationError::new("data_dir", "Not a valid UTF-8 string"))
-}
-
 fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, ConfigurationError> {
     let net_str = network.to_string().to_lowercase();
+
     let key = config_string(&net_str, "db_type");
     let db_type = cfg
         .get_str(&key)
         .map(|s| s.to_lowercase())
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+
     let key = config_string(&net_str, "data_dir");
-    let data_dir = cfg
+    let data_dir: PathBuf = cfg
         .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
-    let data_dir = PathBuf::from(data_dir);
-    let db_type = if &db_type == "memory" {
-        DatabaseType::Memory
-    } else if &db_type == "lmdb" {
-        let path = sub_dir(&data_dir, "db")?;
-        DatabaseType::LMDB(PathBuf::from(path))
-    } else {
-        return Err(ConfigurationError::new("base_node.db_type", "Invalid option"));
-    };
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .into();
+
+    let db_type = match db_type.as_str() {
+        "memory" => Ok(DatabaseType::Memory),
+        "lmdb" => Ok(DatabaseType::LMDB(data_dir.join("db"))),
+        invalid_opt => Err(ConfigurationError::new(
+            "base_node.db_type",
+            &format!("Invalid option: {}", invalid_opt),
+        )),
+    }?;
+
     // Thread counts
     let key = config_string(&net_str, "core_threads");
     let core_threads = cfg
         .get_int(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+
     let key = config_string(&net_str, "blocking_threads");
     let blocking_threads = cfg
         .get_int(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
-    // Node id path
+
+    // NodeIdentity path
     let key = config_string(&net_str, "identity_file");
     let identity_file = cfg
         .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
-    let identity_file = PathBuf::from(identity_file);
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .into();
+
+    // Wallet identity path
+    let key = config_string(&net_str, "wallet_identity_file");
+    let wallet_identity_file = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .into();
+
+    let key = config_string(&net_str, "wallet_tor_identity_file");
+    let wallet_tor_identity_file = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .into();
 
     // Tor private key persistence
     let key = config_string(&net_str, "tor_identity_file");
     let tor_identity_file = cfg
         .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .into();
 
     // Transport
     let comms_transport = network_transport_config(&cfg, &net_str)?;
@@ -354,7 +372,13 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let peer_seeds = peer_seeds.into_iter().map(|v| v.into_str().unwrap()).collect();
 
     // Peer DB path
-    let peer_db_path = sub_dir(&data_dir, "peer_db")?;
+    let peer_db_path = data_dir.join("peer_db");
+    let wallet_peer_db_path = data_dir.join("wallet_peer_db");
+
+    let key = config_string(&net_str, "block_sync_strategy");
+    let block_sync_strategy = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
     // set base node mining
     let key = config_string(&net_str, "enable_mining");
@@ -362,15 +386,37 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .get_bool(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as bool;
 
+    let key = config_string(&net_str, "num_mining_threads");
+    let num_mining_threads = cfg
+        .get_int(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+
     // set wallet_file
     let key = "wallet.wallet_file".to_string();
-    let wallet_file = cfg
+    let wallet_db_file = cfg
         .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as String;
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .into();
+
+    let key = "common.liveness_max_sessions";
+    let liveness_max_sessions = cfg
+        .get_int(key)
+        .map_err(|e| ConfigurationError::new(key, &e.to_string()))?
+        .try_into()
+        .map_err(|e: TryFromIntError| ConfigurationError::new(&key, &e.to_string()))?;
+
+    let key = "common.liveness_whitelist_cidrs";
+    let liveness_whitelist_cidrs = cfg
+        .get_array(key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        .map(|values| values.iter().map(ToString::to_string).collect())
+        .or_else(|_| Ok(vec!["127.0.0.1/32".to_string()]))?;
 
     Ok(GlobalConfig {
         network,
         comms_transport,
+        listnener_liveness_max_sessions: liveness_max_sessions,
+        listener_liveness_whitelist_cidrs: liveness_whitelist_cidrs,
         data_dir,
         db_type,
         core_threads,
@@ -379,9 +425,14 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         public_address,
         peer_seeds,
         peer_db_path,
+        block_sync_strategy,
         enable_mining,
-        wallet_file,
+        num_mining_threads,
         tor_identity_file,
+        wallet_identity_file,
+        wallet_db_file,
+        wallet_tor_identity_file,
+        wallet_peer_db_path,
     })
 }
 
@@ -405,8 +456,16 @@ fn network_transport_config(cfg: &Config, network: &str) -> Result<CommsTranspor
         "tcp" => {
             let key = config_string(network, "tcp_listener_address");
             let listener_address = get_conf_multiaddr(&key)?;
+            let key = config_string(network, "tcp_tor_socks_address");
+            let tor_socks_address = get_conf_multiaddr(&key).ok();
+            let key = config_string(network, "tcp_tor_socks_auth");
+            let tor_socks_auth = get_conf_str(&key).ok().and_then(|auth_str| auth_str.parse().ok());
 
-            Ok(CommsTransport::Tcp { listener_address })
+            Ok(CommsTransport::Tcp {
+                listener_address,
+                tor_socks_auth,
+                tor_socks_address,
+            })
         },
         "tor" => {
             let key = config_string(network, "tor_control_address");
@@ -425,9 +484,19 @@ fn network_transport_config(cfg: &Config, network: &str) -> Result<CommsTranspor
                 .get::<NonZeroU16>(&key)
                 .map_err(|err| ConfigurationError::new(&key, &err.to_string()))?;
 
+            let key = config_string(network, "tor_socks_address_override");
+            let socks_address_override = match get_conf_str(&key).ok() {
+                Some(addr) => Some(
+                    addr.parse::<Multiaddr>()
+                        .map_err(|err| ConfigurationError::new(&key, &err.to_string()))?,
+                ),
+                None => None,
+            };
+
             Ok(CommsTransport::TorHiddenService {
                 control_server_address,
                 auth,
+                socks_address_override,
                 forward_address,
                 onion_port,
             })
@@ -436,7 +505,7 @@ fn network_transport_config(cfg: &Config, network: &str) -> Result<CommsTranspor
             let key = config_string(network, "socks5_proxy_address");
             let proxy_address = get_conf_multiaddr(&key)?;
 
-            let key = config_string(network, "socks5_listener_address");
+            let key = config_string(network, "socks5_auth");
             let auth_str = get_conf_str(&key)?;
             let auth = auth_str
                 .parse()
@@ -468,7 +537,7 @@ fn config_string(network: &str, key: &str) -> String {
 ///
 /// The `Config` object that is returned holds _all_ the default values possible in the `~/.tari.config.toml` file.
 /// These will typically be overridden by userland settings in envars, the config file, or the command line.
-pub fn default_config() -> Config {
+pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     let mut cfg = Config::new();
     let local_ip_addr = get_local_ip().unwrap_or_else(|| "/ip4/1.2.3.4".parse().unwrap());
 
@@ -476,35 +545,58 @@ pub fn default_config() -> Config {
     cfg.set_default("common.message_cache_size", 10).unwrap();
     cfg.set_default("common.message_cache_ttl", 1440).unwrap();
     cfg.set_default("common.peer_whitelist", Vec::<String>::new()).unwrap();
-    cfg.set_default("common.peer_database ", default_subdir("peers"))
-        .unwrap();
+    cfg.set_default("common.liveness_max_sessions", 0).unwrap();
+    cfg.set_default(
+        "common.peer_database ",
+        default_subdir("peers", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
     cfg.set_default("common.blacklist_ban_period ", 1440).unwrap();
 
     // Wallet settings
     cfg.set_default("wallet.grpc_enabled", false).unwrap();
     cfg.set_default("wallet.grpc_address", "tcp://127.0.0.1:18040").unwrap();
-    cfg.set_default("wallet.wallet_file", default_subdir("wallet/wallet.dat"))
-        .unwrap();
+    cfg.set_default(
+        "wallet.wallet_file",
+        default_subdir("wallet/wallet.dat", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
 
-    // Base Node settings
+    //---------------------------------- Mainnet Defaults --------------------------------------------//
+
     cfg.set_default("base_node.network", "mainnet").unwrap();
 
     // Mainnet base node defaults
     cfg.set_default("base_node.mainnet.db_type", "lmdb").unwrap();
     cfg.set_default("base_node.mainnet.peer_seeds", Vec::<String>::new())
         .unwrap();
+    cfg.set_default("base_node.mainnet.block_sync_strategy", "ViaBestChainMetadata")
+        .unwrap();
     cfg.set_default("base_node.mainnet.blocking_threads", 4).unwrap();
     cfg.set_default("base_node.mainnet.core_threads", 6).unwrap();
-    cfg.set_default("base_node.mainnet.data_dir", default_subdir("mainnet/"))
-        .unwrap();
+    cfg.set_default(
+        "base_node.mainnet.data_dir",
+        default_subdir("mainnet/", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
     cfg.set_default(
         "base_node.mainnet.identity_file",
-        default_subdir("mainnet/node_id.json"),
+        default_subdir("mainnet/node_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.mainnet.tor_identity_file",
-        default_subdir("mainnet/tor.json"),
+        default_subdir("mainnet/tor.json", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
+    cfg.set_default(
+        "base_node.mainnet.wallet_identity_file",
+        default_subdir("mainnet/wallet-identity.json", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
+    cfg.set_default(
+        "base_node.mainnet.wallet_tor_identity_file",
+        default_subdir("mainnet/wallet-tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
@@ -516,23 +608,40 @@ pub fn default_config() -> Config {
     cfg.set_default("base_node.mainnet.grpc_address", "tcp://127.0.0.1:18041")
         .unwrap();
     cfg.set_default("base_node.mainnet.enable_mining", false).unwrap();
+    cfg.set_default("base_node.mainnet.num_mining_threads", 1).unwrap();
 
-    // Rincewind base node defaults
+    //---------------------------------- Rincewind Defaults --------------------------------------------//
+
     cfg.set_default("base_node.rincewind.db_type", "lmdb").unwrap();
     cfg.set_default("base_node.rincewind.peer_seeds", Vec::<String>::new())
         .unwrap();
+    cfg.set_default("base_node.rincewind.block_sync_strategy", "ViaBestChainMetadata")
+        .unwrap();
     cfg.set_default("base_node.rincewind.blocking_threads", 4).unwrap();
     cfg.set_default("base_node.rincewind.core_threads", 4).unwrap();
-    cfg.set_default("base_node.rincewind.data_dir", default_subdir("rincewind/"))
-        .unwrap();
+    cfg.set_default(
+        "base_node.rincewind.data_dir",
+        default_subdir("rincewind/", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
     cfg.set_default(
         "base_node.rincewind.tor_identity_file",
-        default_subdir("rincewind/tor.json"),
+        default_subdir("rincewind/tor.json", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
+    cfg.set_default(
+        "base_node.rincewind.wallet_identity_file",
+        default_subdir("rincewind/wallet-identity.json", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
+    cfg.set_default(
+        "base_node.rincewind.wallet_tor_identity_file",
+        default_subdir("rincewind/wallet-tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.rincewind.identity_file",
-        default_subdir("rincewind/node_id.json"),
+        default_subdir("rincewind/node_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
@@ -544,6 +653,7 @@ pub fn default_config() -> Config {
     cfg.set_default("base_node.rincewind.grpc_address", "tcp://127.0.0.1:18141")
         .unwrap();
     cfg.set_default("base_node.rincewind.enable_mining", false).unwrap();
+    cfg.set_default("base_node.rincewind.num_mining_threads", 1).unwrap();
 
     set_transport_defaults(&mut cfg);
 
@@ -562,6 +672,7 @@ fn set_transport_defaults(cfg: &mut Config) {
     cfg.set_default("base_node.mainnet.tor_control_auth", "none").unwrap();
     cfg.set_default("base_node.mainnet.tor_forward_address", "/ip4/127.0.0.1/tcp/18141")
         .unwrap();
+    cfg.set_default("base_node.mainnet.tor_onion_port", "18141").unwrap();
 
     cfg.set_default("base_node.mainnet.socks5_proxy_address", "/ip4/0.0.0.0/tcp/9050")
         .unwrap();
@@ -580,6 +691,7 @@ fn set_transport_defaults(cfg: &mut Config) {
     cfg.set_default("base_node.rincewind.tor_control_auth", "none").unwrap();
     cfg.set_default("base_node.rincewind.tor_forward_address", "/ip4/127.0.0.1/tcp/18041")
         .unwrap();
+    cfg.set_default("base_node.rincewind.tor_onion_port", "18141").unwrap();
 
     cfg.set_default("base_node.rincewind.socks5_proxy_address", "/ip4/0.0.0.0/tcp/9150")
         .unwrap();

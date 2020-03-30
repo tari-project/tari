@@ -56,6 +56,7 @@ fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
         net_address.into(),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
+        &[],
     )
 }
 
@@ -88,33 +89,41 @@ fn test_wallet() {
             node_identity: Arc::new(alice_identity.clone()),
             transport_type: TransportType::Tcp {
                 listener_address: alice_identity.public_address(),
+                tor_socks_config: None,
             },
-            datastore_path: dir_path.to_str().unwrap().to_string(),
+            datastore_path: dir_path.to_path_buf(),
             peer_database_name: random_string(8),
             max_concurrent_inbound_tasks: 100,
             outbound_buffer_size: 100,
             dht: Default::default(),
+            allow_test_addresses: true,
+            listener_liveness_whitelist_cidrs: Vec::new(),
+            listener_liveness_max_sessions: 0,
         };
         let comms_config2 = CommsConfig {
             node_identity: Arc::new(bob_identity.clone()),
             transport_type: TransportType::Tcp {
                 listener_address: bob_identity.public_address(),
+                tor_socks_config: None,
             },
-            datastore_path: dir_path.to_str().unwrap().to_string(),
+            datastore_path: dir_path.to_path_buf(),
             peer_database_name: random_string(8),
             max_concurrent_inbound_tasks: 100,
             outbound_buffer_size: 100,
             dht: Default::default(),
+            allow_test_addresses: true,
+            listener_liveness_whitelist_cidrs: Vec::new(),
+            listener_liveness_max_sessions: 0,
         };
         let config1 = WalletConfig {
             comms_config: comms_config1,
-            logging_path: None,
             factories: factories.clone(),
+            transaction_service_config: None,
         };
         let config2 = WalletConfig {
             comms_config: comms_config2,
-            logging_path: None,
             factories: factories.clone(),
+            transaction_service_config: None,
         };
         let runtime_node1 = Runtime::new().unwrap();
         let runtime_node2 = Runtime::new().unwrap();
@@ -127,7 +136,7 @@ fn test_wallet() {
             ContactsServiceMemoryDatabase::new(),
         )
         .unwrap();
-        let bob_wallet = Wallet::new(
+        let mut bob_wallet = Wallet::new(
             config2,
             runtime_node2,
             WalletMemoryDatabase::new(),
@@ -138,21 +147,19 @@ fn test_wallet() {
         .unwrap();
 
         alice_wallet
-            .comms
-            .peer_manager()
-            .add_peer(create_peer(
+            .runtime
+            .block_on(alice_wallet.comms.peer_manager().add_peer(create_peer(
                 bob_identity.public_key().clone(),
                 bob_identity.public_address(),
-            ))
+            )))
             .unwrap();
 
         bob_wallet
-            .comms
-            .peer_manager()
-            .add_peer(create_peer(
+            .runtime
+            .block_on(bob_wallet.comms.peer_manager().add_peer(create_peer(
                 alice_identity.public_key().clone(),
                 alice_identity.public_address(),
-            ))
+            )))
             .unwrap();
 
         alice_wallet
@@ -180,14 +187,9 @@ fn test_wallet() {
             ))
             .unwrap();
 
-        let result_stream = runtime.block_on(async {
-            collect_stream!(
-                alice_event_stream.map(|i| (*i).clone()),
-                take = 2,
-                timeout = Duration::from_secs(10)
-            )
-        });
-        let received_transaction_reply_count = result_stream.iter().fold(0, |acc, x| match x {
+        let result_stream = runtime
+            .block_on(async { collect_stream!(alice_event_stream, take = 2, timeout = Duration::from_secs(10)) });
+        let received_transaction_reply_count = result_stream.iter().fold(0, |acc, x| match &**x {
             TransactionEvent::ReceivedTransactionReply(_) => acc + 1,
             _ => acc,
         });
@@ -236,17 +238,21 @@ fn test_import_utxo() {
         node_identity: Arc::new(alice_identity.clone()),
         transport_type: TransportType::Tcp {
             listener_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
+            tor_socks_config: None,
         },
-        datastore_path: temp_dir.path().to_str().unwrap().to_string(),
+        datastore_path: temp_dir.path().to_path_buf(),
         peer_database_name: random_string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
         dht: Default::default(),
+        allow_test_addresses: true,
+        listener_liveness_whitelist_cidrs: Vec::new(),
+        listener_liveness_max_sessions: 0,
     };
     let config = WalletConfig {
         comms_config,
-        logging_path: None,
         factories: factories.clone(),
+        transaction_service_config: None,
     };
     let runtime_node = Runtime::new().unwrap();
     let mut alice_wallet = Wallet::new(
@@ -301,7 +307,7 @@ fn test_data_generation() {
         transport_type: TransportType::Memory {
             listener_address: "/memory/0".parse().unwrap(),
         },
-        datastore_path: temp_dir.path().to_str().unwrap().to_string(),
+        datastore_path: temp_dir.path().to_path_buf(),
         peer_database_name: random_string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
@@ -309,12 +315,15 @@ fn test_data_generation() {
             discovery_request_timeout: Duration::from_millis(500),
             ..Default::default()
         },
+        allow_test_addresses: true,
+        listener_liveness_whitelist_cidrs: Vec::new(),
+        listener_liveness_max_sessions: 0,
     };
 
     let config = WalletConfig {
         comms_config,
         factories,
-        logging_path: None,
+        transaction_service_config: None,
     };
 
     let transaction_backend = TransactionMemoryDatabase::new();
@@ -329,7 +338,7 @@ fn test_data_generation() {
     )
     .unwrap();
 
-    generate_wallet_test_data(&mut wallet, temp_dir.path().to_str().unwrap(), transaction_backend).unwrap();
+    generate_wallet_test_data(&mut wallet, temp_dir.path(), transaction_backend).unwrap();
 
     let contacts = wallet.runtime.block_on(wallet.contacts_service.get_contacts()).unwrap();
     assert!(contacts.len() > 0);

@@ -130,9 +130,11 @@ mod dht;
 pub use dht::Dht;
 
 mod discovery;
+pub use discovery::DhtDiscoveryRequester;
+
+mod logging_middleware;
 mod proto;
 mod tower_filter;
-mod utils;
 
 pub mod broadcast_strategy;
 pub mod domain_message;
@@ -140,5 +142,3 @@ pub mod envelope;
 pub mod inbound;
 pub mod outbound;
 pub mod store_forward;
-
-pub type PipelineError = Box<dyn std::error::Error + Send + Sync>;

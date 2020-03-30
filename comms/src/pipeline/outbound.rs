@@ -72,7 +72,7 @@ where
                     let pipeline = self.config.pipeline.clone();
                     self.executor.spawn(async move {
                         if let Err(err) = pipeline.oneshot(msg).await {
-                            error!(target: LOG_TARGET, "Outbound pipeline error: {:?}", err);
+                            error!(target: LOG_TARGET, "Outbound pipeline returned an error: '{:?}'", err);
                         }
                     });
                 },

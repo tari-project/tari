@@ -34,6 +34,8 @@ use std::{
     convert::TryFrom,
     sync::Arc,
 };
+use tari_crypto::tari_utilities::hex::Hex;
+
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
 /// UnconfirmedPool makes use of UnconfirmedPoolStorage to provide thread save access to its Hashmap and BTreeMap.
@@ -77,7 +79,12 @@ impl UnconfirmedPoolStorage {
     pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<(), UnconfirmedPoolError> {
         let tx_key = tx.body.kernels()[0].excess_sig.clone();
         if !self.txs_by_signature.contains_key(&tx_key) {
-            trace!(target: LOG_TARGET, "Inserting tx into unconfirmed pool: {:?}", tx_key,);
+            debug!(
+                target: LOG_TARGET,
+                "Inserting tx into unconfirmed pool: {}",
+                tx_key.get_signature().to_hex()
+            );
+            trace!(target: LOG_TARGET, "Transaction inserted: {}", tx);
             let prioritized_tx = PrioritizedTransaction::try_from((*tx).clone())?;
             if self.txs_by_signature.len() >= self.config.storage_capacity {
                 if prioritized_tx.priority < *self.lowest_priority() {

@@ -25,38 +25,30 @@ use crate::{
     schema::peers,
     storage::database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
 };
-use diesel::{
-    prelude::*,
-    r2d2::{ConnectionManager, Pool, PooledConnection},
-    result::Error as DieselError,
-    SqliteConnection,
+use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
+use std::{
+    convert::TryFrom,
+    sync::{Arc, Mutex},
 };
-use std::convert::TryFrom;
 use tari_comms::peer_manager::Peer;
 use tari_crypto::tari_utilities::ByteArray;
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 pub struct WalletSqliteDatabase {
-    database_connection_pool: Pool<ConnectionManager<SqliteConnection>>,
+    database_connection: Arc<Mutex<SqliteConnection>>,
 }
 impl WalletSqliteDatabase {
-    pub fn new(database_connection_pool: Pool<ConnectionManager<SqliteConnection>>) -> Self {
-        Self {
-            database_connection_pool,
-        }
+    pub fn new(database_connection: Arc<Mutex<SqliteConnection>>) -> Self {
+        Self { database_connection }
     }
 }
 
 impl WalletBackend for WalletSqliteDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, WalletStorageError> {
-        let conn = self
-            .database_connection_pool
-            .clone()
-            .get()
-            .map_err(|_| WalletStorageError::R2d2Error)?;
+        let conn = acquire_lock!(self.database_connection);
 
         let result = match key {
-            DbKey::Peer(pk) => match PeerSql::find(&pk.to_vec(), &conn) {
+            DbKey::Peer(pk) => match PeerSql::find(&pk.to_vec(), &(*conn)) {
                 Ok(c) => Some(DbValue::Peer(Box::new(Peer::try_from(c)?))),
                 Err(WalletStorageError::DieselError(DieselError::NotFound)) => None,
                 Err(e) => return Err(e),
@@ -73,25 +65,21 @@ impl WalletBackend for WalletSqliteDatabase {
     }
 
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, WalletStorageError> {
-        let conn = self
-            .database_connection_pool
-            .clone()
-            .get()
-            .map_err(|_| WalletStorageError::R2d2Error)?;
+        let conn = acquire_lock!(self.database_connection);
 
         match op {
             WriteOperation::Insert(kvp) => match kvp {
                 DbKeyValuePair::Peer(k, p) => {
-                    if let Ok(_) = PeerSql::find(&k.to_vec(), &conn) {
+                    if PeerSql::find(&k.to_vec(), &(*conn)).is_ok() {
                         return Err(WalletStorageError::DuplicateContact);
                     }
                     PeerSql::try_from(p)?.commit(&conn)?;
                 },
             },
             WriteOperation::Remove(k) => match k {
-                DbKey::Peer(k) => match PeerSql::find(&k.to_vec(), &conn) {
+                DbKey::Peer(k) => match PeerSql::find(&k.to_vec(), &(*conn)) {
                     Ok(p) => {
-                        p.clone().delete(&conn)?;
+                        p.delete(&conn)?;
                         return Ok(Some(DbValue::Peer(Box::new(Peer::try_from(p)?))));
                     },
                     Err(WalletStorageError::DieselError(DieselError::NotFound)) => (),
@@ -115,38 +103,24 @@ struct PeerSql {
 
 impl PeerSql {
     /// Write this struct to the database
-    pub fn commit(
-        &self,
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<(), WalletStorageError>
-    {
+    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), WalletStorageError> {
         diesel::insert_into(peers::table).values(self.clone()).execute(conn)?;
         Ok(())
     }
 
     /// Return all peers
-    pub fn index(
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<Vec<PeerSql>, WalletStorageError> {
+    pub fn index(conn: &SqliteConnection) -> Result<Vec<PeerSql>, WalletStorageError> {
         Ok(peers::table.load::<PeerSql>(conn)?)
     }
 
     /// Find a particular Peer, if it exists
-    pub fn find(
-        public_key: &[u8],
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<PeerSql, WalletStorageError>
-    {
+    pub fn find(public_key: &[u8], conn: &SqliteConnection) -> Result<PeerSql, WalletStorageError> {
         Ok(peers::table
             .filter(peers::public_key.eq(public_key))
             .first::<PeerSql>(conn)?)
     }
 
-    pub fn delete(
-        &self,
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<(), WalletStorageError>
-    {
+    pub fn delete(&self, conn: &SqliteConnection) -> Result<(), WalletStorageError> {
         let num_deleted = diesel::delete(peers::table.filter(peers::public_key.eq(&self.public_key))).execute(conn)?;
 
         if num_deleted == 0 {

@@ -25,7 +25,7 @@ use crate::{
         comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
         OutboundNodeCommsInterface,
     },
-    blocks::{blockheader::BlockHeader, Block, BlockBuilder, NewBlockTemplate},
+    blocks::{blockheader::BlockHeader, Block, NewBlockTemplate},
     chain_storage::{
         async_db,
         BlockAddResult,
@@ -35,33 +35,36 @@ use crate::{
         HistoricalBlock,
     },
     consensus::ConsensusManager,
-    mempool::Mempool,
+    mempool::{async_mempool, Mempool},
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 use futures::SinkExt;
 use log::*;
+use std::sync::Arc;
 use strum_macros::Display;
 use tari_broadcast_channel::Publisher;
 use tari_comms::types::CommsPublicKey;
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
+use tokio::sync::RwLock;
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
+const MAX_HEADERS_PER_RESPONSE: u32 = 100;
 
 /// Events that can be published on the Validated Block Event Stream
 #[derive(Debug, Clone, Display)]
 pub enum BlockEvent {
-    Verified((Block, BlockAddResult)),
-    Invalid((Block, ChainStorageError)),
+    Verified((Box<Block>, BlockAddResult)),
+    Invalid((Box<Block>, ChainStorageError)),
 }
 
 /// The InboundNodeCommsInterface is used to handle all received inbound requests from remote nodes.
 pub struct InboundNodeCommsHandlers<T>
-where T: BlockchainBackend
+where T: BlockchainBackend + 'static
 {
-    event_publisher: Publisher<BlockEvent>,
+    event_publisher: Arc<RwLock<Publisher<BlockEvent>>>,
     blockchain_db: BlockchainDatabase<T>,
     mempool: Mempool<T>,
-    consensus_manager: ConsensusManager<T>,
+    consensus_manager: ConsensusManager,
     outbound_nci: OutboundNodeCommsInterface,
 }
 
@@ -73,12 +76,12 @@ where T: BlockchainBackend + 'static
         event_publisher: Publisher<BlockEvent>,
         blockchain_db: BlockchainDatabase<T>,
         mempool: Mempool<T>,
-        consensus_manager: ConsensusManager<T>,
+        consensus_manager: ConsensusManager,
         outbound_nci: OutboundNodeCommsInterface,
     ) -> Self
     {
         Self {
-            event_publisher,
+            event_publisher: Arc::new(RwLock::new(event_publisher)),
             blockchain_db,
             mempool,
             consensus_manager,
@@ -110,6 +113,44 @@ where T: BlockchainBackend + 'static
                     }
                 }
                 Ok(NodeCommsResponse::BlockHeaders(block_headers))
+            },
+            NodeCommsRequest::FetchHeadersWithHashes(block_hashes) => {
+                let mut block_headers = Vec::<BlockHeader>::new();
+                for block_hash in block_hashes {
+                    if let Ok(block_header) =
+                        async_db::fetch_header_with_block_hash(self.blockchain_db.clone(), block_hash.clone()).await
+                    {
+                        block_headers.push(block_header);
+                    }
+                }
+                Ok(NodeCommsResponse::BlockHeaders(block_headers))
+            },
+            NodeCommsRequest::FetchHeadersAfter(header_hashes, stopping_hash) => {
+                // Send from genesis block if none match
+                let mut starting_block = async_db::fetch_header(self.blockchain_db.clone(), 0).await?;
+                // Find first header that matches
+                for header_hash in header_hashes {
+                    if let Ok(from_block) =
+                        async_db::fetch_header_with_block_hash(self.blockchain_db.clone(), header_hash.clone()).await
+                    {
+                        starting_block = from_block;
+                        break;
+                    }
+                }
+                let mut headers = vec![];
+                for i in 1..MAX_HEADERS_PER_RESPONSE {
+                    if let Ok(header) =
+                        async_db::fetch_header(self.blockchain_db.clone(), starting_block.height + i as u64).await
+                    {
+                        let hash = header.hash();
+                        headers.push(header);
+                        if &hash == stopping_hash {
+                            break;
+                        }
+                    }
+                }
+
+                Ok(NodeCommsResponse::FetchHeadersAfterResponse(headers))
             },
             NodeCommsRequest::FetchUtxos(utxo_hashes) => {
                 let mut utxos = Vec::<TransactionOutput>::new();
@@ -168,26 +209,23 @@ where T: BlockchainBackend + 'static
                     .ok_or_else(|| CommsInterfaceError::UnexpectedApiResponse)?;
                 let best_block_header =
                     async_db::fetch_header_with_block_hash(self.blockchain_db.clone(), best_block_hash).await?;
-                let header = BlockHeader::from_previous(&best_block_header);
+                let mut header = BlockHeader::from_previous(&best_block_header);
+                header.version = self.consensus_manager.consensus_constants().blockchain_version();
 
-                let transactions = self
-                    .mempool
-                    .retrieve(
-                        self.consensus_manager
-                            .consensus_constants()
-                            .get_max_block_transaction_weight(),
-                    )
-                    .map_err(|e| CommsInterfaceError::MempoolError(e.to_string()))?
-                    .iter()
-                    .map(|tx| (**tx).clone())
-                    .collect();
+                let transactions = async_mempool::retrieve(
+                    self.mempool.clone(),
+                    self.consensus_manager
+                        .consensus_constants()
+                        .get_max_block_transaction_weight(),
+                )
+                .await
+                .map_err(|e| CommsInterfaceError::MempoolError(e.to_string()))?
+                .iter()
+                .map(|tx| (**tx).clone())
+                .collect();
 
-                let block_template = NewBlockTemplate::from(
-                    BlockBuilder::new(&self.consensus_manager.consensus_constants())
-                        .with_header(header)
-                        .with_transactions(transactions)
-                        .build(),
-                );
+                let block_template =
+                    NewBlockTemplate::from(header.into_builder().with_transactions(transactions).build());
                 trace!(target: LOG_TARGET, "New block template requested {}", block_template);
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
@@ -195,9 +233,12 @@ where T: BlockchainBackend + 'static
                 let block = async_db::calculate_mmr_roots(self.blockchain_db.clone(), block_template.clone()).await?;
                 Ok(NodeCommsResponse::NewBlock(block))
             },
-            NodeCommsRequest::GetTargetDifficulty(pow_algo) => Ok(NodeCommsResponse::TargetDifficulty(
-                self.consensus_manager.get_target_difficulty(*pow_algo)?,
-            )),
+            NodeCommsRequest::GetTargetDifficulty(pow_algo) => {
+                let (db, metadata) = &self.blockchain_db.db_and_metadata_read_access()?;
+                Ok(NodeCommsResponse::TargetDifficulty(
+                    self.consensus_manager.get_target_difficulty(metadata, db, *pow_algo)?,
+                ))
+            },
         }
     }
 
@@ -210,22 +251,28 @@ where T: BlockchainBackend + 'static
     {
         debug!(
             target: LOG_TARGET,
-            "Block received from remote peer or local services: {:?}", source_peer
+            "Block received from {}",
+            source_peer
+                .as_ref()
+                .map(|p| format!("remote peer: {}", p))
+                .unwrap_or_else(|| "local services".to_string())
         );
         trace!(target: LOG_TARGET, "Block: {}", block);
-        let add_block_result = self.blockchain_db.add_block(block.clone());
+        let add_block_result = async_db::add_block(self.blockchain_db.clone(), block.clone()).await;
         // Create block event on block event stream
         let block_event = match add_block_result.clone() {
             Ok(block_add_result) => {
                 debug!(target: LOG_TARGET, "Block event created: {:?}", block_add_result);
-                BlockEvent::Verified((block.clone(), block_add_result))
+                BlockEvent::Verified((Box::new(block.clone()), block_add_result))
             },
             Err(e) => {
                 error!(target: LOG_TARGET, "Block validation failed: {:?}", e);
-                BlockEvent::Invalid((block.clone(), e))
+                BlockEvent::Invalid((Box::new(block.clone()), e))
             },
         };
         self.event_publisher
+            .write()
+            .await
             .send(block_event)
             .await
             .map_err(|_| CommsInterfaceError::EventStreamError)?;
@@ -238,10 +285,30 @@ where T: BlockchainBackend + 'static
                 BlockAddResult::ChainReorg(_) => true,
             };
             if propagate {
-                let exclude_peers = source_peer.map_or_else(|| vec![], |comms_public_key| vec![comms_public_key]);
+                debug!(
+                    target: LOG_TARGET,
+                    "Propagate block ({}) to network.",
+                    block.hash().to_hex()
+                );
+                let exclude_peers = source_peer.into_iter().collect();
                 self.outbound_nci.propagate_block(block.clone(), exclude_peers).await?;
             }
         }
         Ok(())
+    }
+}
+
+impl<T> Clone for InboundNodeCommsHandlers<T>
+where T: BlockchainBackend + 'static
+{
+    fn clone(&self) -> Self {
+        // All members use Arc's internally so calling clone should be cheap.
+        Self {
+            event_publisher: self.event_publisher.clone(),
+            blockchain_db: self.blockchain_db.clone(),
+            mempool: self.mempool.clone(),
+            consensus_manager: self.consensus_manager.clone(),
+            outbound_nci: self.outbound_nci.clone(),
+        }
     }
 }

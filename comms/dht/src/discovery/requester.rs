@@ -39,7 +39,7 @@ use tokio::time;
 pub struct DiscoverPeerRequest {
     /// The public key of the peer to be discovered. The message will be encrypted with a DH shared
     /// secret using this public key.
-    pub dest_public_key: CommsPublicKey,
+    pub dest_public_key: Box<CommsPublicKey>,
     /// The node id of the peer to be discovered, if it is known. Providing the `NodeId` allows
     /// discovery requests to reach their destination more quickly.
     pub dest_node_id: Option<NodeId>,
@@ -103,7 +103,7 @@ impl DhtDiscoveryRequester {
 
     pub async fn discover_peer(
         &mut self,
-        dest_public_key: CommsPublicKey,
+        dest_public_key: Box<CommsPublicKey>,
         dest_node_id: Option<NodeId>,
         destination: NodeDestination,
     ) -> Result<Peer, DhtDiscoveryError>

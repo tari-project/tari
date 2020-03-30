@@ -22,8 +22,8 @@
 
 use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, BlockEvent, NodeCommsRequest, NodeCommsResponse},
-    blocks::{Block, NewBlockTemplate},
-    chain_storage::ChainMetadata,
+    blocks::{Block, BlockHeader, NewBlockTemplate},
+    chain_storage::{ChainMetadata, HistoricalBlock},
     proof_of_work::{Difficulty, PowAlgorithm},
 };
 use futures::{stream::Fuse, StreamExt};
@@ -67,6 +67,30 @@ impl LocalNodeCommsInterface {
     pub async fn get_metadata(&mut self) -> Result<ChainMetadata, CommsInterfaceError> {
         match self.request_sender.call(NodeCommsRequest::GetChainMetadata).await?? {
             NodeCommsResponse::ChainMetadata(metadata) => Ok(metadata),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Request the block header of the current tip at the block height
+    pub async fn get_blocks(&mut self, block_heights: Vec<u64>) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchBlocks(block_heights))
+            .await??
+        {
+            NodeCommsResponse::HistoricalBlocks(blocks) => Ok(blocks),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Request the block header of the current tip at the block height
+    pub async fn get_header(&mut self, block_heights: Vec<u64>) -> Result<Vec<BlockHeader>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchHeaders(block_heights))
+            .await??
+        {
+            NodeCommsResponse::BlockHeaders(headers) => Ok(headers),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

@@ -39,25 +39,33 @@ use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{collections::HashMap, sync::Arc};
 use tari_comms::{
+    connection_manager::{ConnectionManagerError, ConnectionManagerRequester},
     log_if_error,
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     types::CommsPublicKey,
+    validate_peer_addresses,
+    ConnectionManagerEvent,
 };
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &str = "comms::dht::discovery_service";
 
+/// The number of consecutive times that attempts to connect should
+/// fail before marking the peer as offline
+const MAX_FAILED_ATTEMPTS_MARK_PEER_OFFLINE: usize = 10;
+
 struct DiscoveryRequestState {
     reply_tx: oneshot::Sender<Result<Peer, DhtDiscoveryError>>,
-    public_key: CommsPublicKey,
+    public_key: Box<CommsPublicKey>,
 }
 
 pub struct DhtDiscoveryService {
     config: DhtConfig,
     node_identity: Arc<NodeIdentity>,
     outbound_requester: OutboundMessageRequester,
+    connection_manager: ConnectionManagerRequester,
     peer_manager: Arc<PeerManager>,
     request_rx: Option<mpsc::Receiver<DhtDiscoveryRequest>>,
     shutdown_signal: Option<ShutdownSignal>,
@@ -70,6 +78,7 @@ impl DhtDiscoveryService {
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_requester: OutboundMessageRequester,
+        connection_manager: ConnectionManagerRequester,
         request_rx: mpsc::Receiver<DhtDiscoveryRequest>,
         shutdown_signal: ShutdownSignal,
     ) -> Self
@@ -77,6 +86,7 @@ impl DhtDiscoveryService {
         Self {
             config,
             outbound_requester,
+            connection_manager,
             node_identity,
             peer_manager,
             shutdown_signal: Some(shutdown_signal),
@@ -98,11 +108,20 @@ impl DhtDiscoveryService {
             .expect("DiscoveryService initialized without request_rx")
             .fuse();
 
+        let mut connection_events = self.connection_manager.get_event_subscription().fuse();
+
         loop {
             futures::select! {
                 request = request_rx.select_next_some() => {
                     trace!(target: LOG_TARGET, "Received request '{}'", request);
                     self.handle_request(request).await;
+                },
+
+                event = connection_events.select_next_some() => {
+                    if let Ok(event) = event {
+                        trace!(target: LOG_TARGET, "Received connection manager event '{}'", event);
+                        self.handle_connection_manager_event(&event).await;
+                    }
                 },
 
                 _ = shutdown_signal => {
@@ -125,7 +144,53 @@ impl DhtDiscoveryService {
                 );
             },
 
-            NotifyDiscoveryResponseReceived(discovery_msg) => self.handle_discovery_response(*discovery_msg),
+            NotifyDiscoveryResponseReceived(discovery_msg) => self.handle_discovery_response(*discovery_msg).await,
+        }
+    }
+
+    async fn handle_connection_manager_event(&mut self, event: &ConnectionManagerEvent) {
+        use ConnectionManagerEvent::*;
+        match event {
+            // The connection manager could not dial the peer on any address
+            PeerConnectFailed(node_id, ConnectionManagerError::DialConnectFailedAllAddresses) => {
+                // Send out a discovery for that peer without keeping track of it as an inflight discovery
+                match self.peer_manager.find_by_node_id(node_id).await {
+                    Ok(peer) => {
+                        if peer.connection_stats.failed_attempts() > MAX_FAILED_ATTEMPTS_MARK_PEER_OFFLINE {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Deleting stale peer '{}' because this node failed to connect to them {} times",
+                                peer.node_id.short_str(),
+                                MAX_FAILED_ATTEMPTS_MARK_PEER_OFFLINE
+                            );
+                            if let Err(err) = self.peer_manager.set_offline(&peer.public_key, true).await {
+                                error!(target: LOG_TARGET, "Failed to mark peer as offline because '{:?}'", err);
+                            }
+                        } else {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Attempting to discover peer '{}' because we failed to connect on all addresses for \
+                                 the peer",
+                                peer.node_id.short_str()
+                            );
+                            // Attempt to discover them
+                            let request = DiscoverPeerRequest {
+                                dest_public_key: Box::new(peer.public_key),
+                                // TODO: This should be the node region, not the node id
+                                dest_node_id: Some(peer.node_id),
+                                destination: Default::default(),
+                            };
+                            // Don't need to be notified for this discovery
+                            let (reply_tx, _) = oneshot::channel();
+                            if let Err(err) = self.initiate_peer_discovery(request, reply_tx).await {
+                                error!(target: LOG_TARGET, "Error sending discovery message: {:?}", err);
+                            }
+                        }
+                    },
+                    Err(err) => error!(target: LOG_TARGET, "{:?}", err),
+                }
+            },
+            _ => {},
         }
     }
 
@@ -139,7 +204,7 @@ impl DhtDiscoveryService {
             }
 
             // Requests for this public key are collected
-            if &request.public_key == public_key {
+            if &*request.public_key == public_key {
                 requests.push(request);
                 continue;
             }
@@ -152,7 +217,7 @@ impl DhtDiscoveryService {
         requests
     }
 
-    fn handle_discovery_response(&mut self, discovery_msg: DiscoveryResponseMessage) {
+    async fn handle_discovery_response(&mut self, discovery_msg: DiscoveryResponseMessage) {
         trace!(
             target: LOG_TARGET,
             "Received discovery response message from {}",
@@ -167,7 +232,7 @@ impl DhtDiscoveryService {
         ) {
             let DiscoveryRequestState { public_key, reply_tx } = request;
 
-            let result = self.validate_then_add_peer(&public_key, discovery_msg);
+            let result = self.validate_then_add_peer(&public_key, discovery_msg).await;
 
             // Resolve any other pending discover requests if the peer was found
             if let Ok(peer) = &result {
@@ -182,7 +247,7 @@ impl DhtDiscoveryService {
         }
     }
 
-    fn validate_then_add_peer(
+    async fn validate_then_add_peer(
         &mut self,
         public_key: &CommsPublicKey,
         discovery_msg: DiscoveryResponseMessage,
@@ -196,12 +261,17 @@ impl DhtDiscoveryService {
             .filter_map(|addr| addr.parse().ok())
             .collect::<Vec<_>>();
 
-        let peer = self.add_or_update_peer(
-            &public_key,
-            node_id,
-            addresses,
-            PeerFeatures::from_bits_truncate(discovery_msg.peer_features),
-        )?;
+        validate_peer_addresses(&addresses, self.config.network.is_localtest())
+            .map_err(|err| DhtDiscoveryError::InvalidPeerMultiaddr(err.to_string()))?;
+
+        let peer = self
+            .add_or_update_peer(
+                &public_key,
+                node_id,
+                addresses,
+                PeerFeatures::from_bits_truncate(discovery_msg.peer_features),
+            )
+            .await?;
 
         Ok(peer)
     }
@@ -220,12 +290,12 @@ impl DhtDiscoveryService {
         if expected_node_id == node_id {
             Ok(expected_node_id)
         } else {
-            // TODO: Misbehaviour
+            // TODO: Misbehaviour #banheuristic
             Err(DhtDiscoveryError::InvalidNodeId)
         }
     }
 
-    fn add_or_update_peer(
+    async fn add_or_update_peer(
         &self,
         pubkey: &CommsPublicKey,
         node_id: NodeId,
@@ -234,26 +304,35 @@ impl DhtDiscoveryService {
     ) -> Result<Peer, DhtDiscoveryError>
     {
         let peer_manager = &self.peer_manager;
-        if peer_manager.exists(pubkey) {
-            peer_manager.update_peer(
-                pubkey,
-                Some(node_id),
-                Some(net_addresses),
-                None,
-                Some(peer_features),
-                None,
-            )?;
+        if peer_manager.exists(pubkey).await {
+            peer_manager
+                .update_peer(
+                    pubkey,
+                    Some(node_id),
+                    Some(net_addresses),
+                    None,
+                    Some(peer_features),
+                    None,
+                    None,
+                )
+                .await?;
         } else {
-            peer_manager.add_peer(Peer::new(
-                pubkey.clone(),
-                node_id,
-                net_addresses.into(),
-                PeerFlags::default(),
-                peer_features,
-            ))?;
+            peer_manager
+                .add_peer(Peer::new(
+                    pubkey.clone(),
+                    node_id,
+                    net_addresses.into(),
+                    PeerFlags::default(),
+                    peer_features,
+                    // We don't know which protocols the peer supports. This is ok because:
+                    // 1) supported protocols are considered "extra" information and are not needed for p2p comms, and
+                    // 2) when a connection is established with this node, supported protocols information is obtained
+                    &[],
+                ))
+                .await?;
         }
 
-        let peer = peer_manager.find_by_public_key(&pubkey)?;
+        let peer = peer_manager.find_by_public_key(&pubkey).await?;
 
         Ok(peer)
     }
@@ -318,7 +397,7 @@ impl DhtDiscoveryService {
                 // ... if the destination is undisclosed or a public key, send discover to our closest peers
                 NodeDestination::Unknown | NodeDestination::PublicKey(_) => Some(self.node_identity.node_id().clone()),
                 // otherwise, send it to the closest peers to the given NodeId destination we know
-                NodeDestination::NodeId(node_id) => Some(node_id.clone()),
+                NodeDestination::NodeId(node_id) => Some(*node_id.clone()),
             })
             .expect("cannot fail");
 
@@ -336,7 +415,12 @@ impl DhtDiscoveryService {
         self.outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .closest(network_location_node_id, self.config.num_neighbouring_nodes, Vec::new())
+                    .closest(
+                        network_location_node_id,
+                        self.config.num_neighbouring_nodes,
+                        Vec::new(),
+                        PeerFeatures::empty(),
+                    )
                     .with_destination(destination)
                     .with_encryption(OutboundEncryption::EncryptFor(dest_public_key))
                     .with_dht_message_type(DhtMessageType::Discovery)
@@ -358,6 +442,7 @@ mod test {
         test_utils::{make_node_identity, make_peer_manager},
     };
     use std::time::Duration;
+    use tari_comms::test_utils::mocks::create_connection_manager_mock;
     use tari_shutdown::Shutdown;
     use tari_test_utils::runtime;
 
@@ -370,6 +455,7 @@ mod test {
             let oms_mock_state = outbound_mock.get_state();
             rt.spawn(outbound_mock.run());
 
+            let (connection_manager, _) = create_connection_manager_mock(1);
             let (sender, receiver) = mpsc::channel(10);
             // Requester which timeout instantly
             let mut requester = DhtDiscoveryRequester::new(sender, Duration::from_millis(1));
@@ -380,13 +466,14 @@ mod test {
                 node_identity,
                 peer_manager,
                 outbound_requester,
+                connection_manager,
                 receiver,
                 shutdown.to_signal(),
             );
 
             rt.spawn(service.run());
 
-            let dest_public_key = CommsPublicKey::default();
+            let dest_public_key = Box::new(CommsPublicKey::default());
             let result = rt.block_on(requester.discover_peer(dest_public_key.clone(), None, NodeDestination::Unknown));
 
             assert!(result.unwrap_err().is_timeout());

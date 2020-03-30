@@ -20,15 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 #[derive(Clone)]
 pub struct OutputManagerServiceConfig {
-    pub base_node_query_timeout_in_secs: u64,
+    pub base_node_query_timeout: Duration,
 }
 
 impl Default for OutputManagerServiceConfig {
     fn default() -> Self {
         Self {
-            base_node_query_timeout_in_secs: 30,
+            base_node_query_timeout: Duration::from_secs(30),
         }
     }
 }

@@ -20,6 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::proto::envelope::Network;
+use std::fmt;
+
 #[path = "tari.dht.envelope.rs"]
 pub mod envelope;
 
@@ -31,3 +34,36 @@ pub mod store_forward;
 
 #[path = "tari.dht.message_header.rs"]
 pub mod message_header;
+
+//---------------------------------- Network impl --------------------------------------------//
+
+impl envelope::Network {
+    pub fn is_mainnet(self) -> bool {
+        match self {
+            Network::MainNet => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_testnet(self) -> bool {
+        match self {
+            Network::TestNet => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_localtest(self) -> bool {
+        match self {
+            Network::LocalTest => true,
+            _ => false,
+        }
+    }
+}
+
+//---------------------------------- RejectMessage --------------------------------------------//
+
+impl fmt::Display for dht::RejectMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "RejectMessage(Reason = {})", self.reason)
+    }
+}

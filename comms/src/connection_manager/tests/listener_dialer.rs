@@ -56,7 +56,6 @@ async fn listen() -> Result<(), Box<dyn Error>> {
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config = NoiseConfig::new(node_identity.clone());
     let listener = PeerListener::new(
-        rt_handle.clone(),
         ConnectionManagerConfig {
             listener_address: "/memory/0".parse()?,
             ..Default::default()
@@ -99,7 +98,6 @@ async fn smoke() {
     let supported_protocols = vec![expected_proto.clone()];
     let peer_manager1 = build_peer_manager();
     let listener = PeerListener::new(
-        rt_handle.clone(),
         ConnectionManagerConfig {
             listener_address: "/memory/0".parse().unwrap(),
             ..Default::default()
@@ -120,7 +118,6 @@ async fn smoke() {
     let (mut request_tx, request_rx) = mpsc::channel(1);
     let peer_manager2 = build_peer_manager();
     let dialer = Dialer::new(
-        rt_handle.clone(),
         ConnectionManagerConfig::default(),
         node_identity2.clone(),
         peer_manager2.clone().into(),
@@ -145,6 +142,7 @@ async fn smoke() {
         vec![address].into(),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
+        &[],
     );
     peer.set_id_for_test(1);
 
@@ -158,7 +156,10 @@ async fn smoke() {
 
     // Open a substream
     {
-        let mut out_stream = outbound_peer_conn.open_substream("/tari/test-proto").await.unwrap();
+        let mut out_stream = outbound_peer_conn
+            .open_substream(&ProtocolId::from_static(b"/tari/test-proto"))
+            .await
+            .unwrap();
         out_stream.stream.write_all(b"HELLO").await.unwrap();
         out_stream.stream.flush().await.unwrap();
     }
@@ -183,8 +184,8 @@ async fn smoke() {
 
     shutdown.trigger().unwrap();
 
-    let peer2 = peer_manager1.find_by_node_id(node_identity2.node_id()).unwrap();
-    let peer1 = peer_manager2.find_by_node_id(node_identity1.node_id()).unwrap();
+    let peer2 = peer_manager1.find_by_node_id(node_identity2.node_id()).await.unwrap();
+    let peer1 = peer_manager2.find_by_node_id(node_identity1.node_id()).await.unwrap();
 
     assert_eq!(&peer1.public_key, node_identity1.public_key());
     assert_eq!(&peer2.public_key, node_identity2.public_key());

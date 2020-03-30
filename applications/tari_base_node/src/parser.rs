@@ -21,8 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::LOG_TARGET;
-use crate::builder::NodeContainer;
+use crate::{builder::NodeContainer, utils};
 use log::*;
+use qrcode::{render::unicode, QrCode};
 use rustyline::{
     completion::Completer,
     error::ReadlineError,
@@ -38,29 +39,47 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    time::{Duration, Instant},
 };
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_comms::types::CommsPublicKey;
+use tari_comms::{
+    connection_manager::ConnectionManagerRequester,
+    peer_manager::{PeerFeatures, PeerManager, PeerQuery},
+    types::CommsPublicKey,
+    NodeIdentity,
+};
+use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
     base_node::LocalNodeCommsInterface,
-    tari_utilities::hex::Hex,
+    tari_utilities::{hex::Hex, Hashable},
     transactions::tari_amount::{uT, MicroTari},
 };
+use tari_shutdown::Shutdown;
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
-    transaction_service::handle::TransactionServiceHandle,
+    transaction_service::{error::TransactionServiceError, handle::TransactionServiceHandle},
+    util::emoji::EmojiId,
 };
-use tokio::runtime;
+use tokio::{runtime, time};
 
 /// Enum representing commands used by the basenode
 #[derive(Clone, PartialEq, Debug, Display, EnumIter, EnumString)]
-#[strum(serialize_all = "snake_case")]
+#[strum(serialize_all = "kebab_case")]
 pub enum BaseNodeCommand {
     Help,
     GetBalance,
     SendTari,
     GetChainMetadata,
+    ListPeers,
+    BanPeer,
+    UnbanPeer,
+    ListConnections,
+    ListHeaders,
+    DiscoverPeer,
+    GetBlock,
+    Whoami,
+    ToggleMining,
     Quit,
     Exit,
 }
@@ -69,12 +88,17 @@ pub enum BaseNodeCommand {
 #[derive(Helper, Validator, Highlighter)]
 pub struct Parser {
     executor: runtime::Handle,
-    shutdown_flag: Arc<AtomicBool>,
+    wallet_node_identity: Arc<NodeIdentity>,
+    discovery_service: DhtDiscoveryRequester,
+    base_node_identity: Arc<NodeIdentity>,
+    peer_manager: Arc<PeerManager>,
+    connection_manager: ConnectionManagerRequester,
     commands: Vec<String>,
     hinter: HistoryHinter,
     wallet_output_service: OutputManagerHandle,
     node_service: LocalNodeCommsInterface,
     wallet_transaction_service: TransactionServiceHandle,
+    enable_miner: Arc<AtomicBool>,
 }
 
 // This will go through all instructions and look for potential matches
@@ -82,18 +106,18 @@ impl Completer for Parser {
     type Candidate = String;
 
     fn complete(&self, line: &str, pos: usize, _ctx: &Context<'_>) -> Result<(usize, Vec<String>), ReadlineError> {
-        let mut completions: Vec<String> = Vec::new();
-        for command in &self.commands {
-            if command.starts_with(line) {
-                completions.push(command.to_string());
-            }
-        }
+        let completions = self
+            .commands
+            .iter()
+            .filter(|cmd| cmd.starts_with(line))
+            .cloned()
+            .collect();
 
         Ok((pos, completions))
     }
 
-    fn update(&self, line: &mut LineBuffer, start: usize, elected: &str) {
-        line.update(elected, start);
+    fn update(&self, line: &mut LineBuffer, _: usize, elected: &str) {
+        line.update(elected, elected.len());
     }
 }
 
@@ -109,83 +133,150 @@ impl Parser {
     pub fn new(executor: runtime::Handle, ctx: &NodeContainer) -> Self {
         Parser {
             executor,
-            shutdown_flag: ctx.interrupt_flag(),
+            wallet_node_identity: ctx.wallet_node_identity(),
+            discovery_service: ctx.base_node_dht().discovery_service_requester(),
+            base_node_identity: ctx.base_node_identity(),
+            peer_manager: ctx.base_node_comms().peer_manager(),
+            connection_manager: ctx.base_node_comms().connection_manager(),
             commands: BaseNodeCommand::iter().map(|x| x.to_string()).collect(),
             hinter: HistoryHinter {},
             wallet_output_service: ctx.output_manager(),
             node_service: ctx.local_node(),
             wallet_transaction_service: ctx.wallet_transaction_service(),
+            enable_miner: ctx.miner_enabled(),
         }
     }
 
     /// This will parse the provided command and execute the task
-    pub fn handle_command(&mut self, command_str: &str) {
-        let commands: Vec<&str> = command_str.split(' ').collect();
-        let command = BaseNodeCommand::from_str(commands[0]);
+    pub fn handle_command(&mut self, command_str: &str, shutdown: &mut Shutdown) {
+        if command_str.trim().is_empty() {
+            return;
+        }
+        let mut args = command_str.split_whitespace();
+        let command = BaseNodeCommand::from_str(args.next().unwrap_or(&"help"));
         if command.is_err() {
-            println!(
-                "Received: {}, this is not a valid command, please enter a valid command",
-                command_str
-            );
+            println!("{} is not a valid command, please enter a valid command", command_str);
             println!("Enter help or press tab for available commands");
             return;
         }
         let command = command.unwrap();
-        let help_command = if commands.len() == 2 {
-            Some(BaseNodeCommand::from_str(commands[1]).unwrap_or(BaseNodeCommand::Help))
-        } else {
-            None
-        };
-        if help_command != Some(BaseNodeCommand::Help) {
-            return self.process_command(command, commands);
-        }
-        match command {
-            BaseNodeCommand::Help => {
-                println!("Available commands are: ");
-                let joined = self.commands.join(", ");
-                println!("{}", joined);
-            },
-            BaseNodeCommand::GetBalance => {
-                println!("This command gets your balance");
-            },
-            BaseNodeCommand::SendTari => {
-                println!("This command sends an amount of Tari to a address call this command via:");
-                println!("send_tari [amount of tari to send] [public key to send to]");
-            },
-            BaseNodeCommand::GetChainMetadata => {
-                println!("This command gets your base node chain meta data");
-            },
-            BaseNodeCommand::Exit | BaseNodeCommand::Quit => {
-                println!("This command exits the base node");
-            },
-        }
+        self.process_command(command, args, shutdown);
     }
 
     // Function to process commands
-    fn process_command(&mut self, command: BaseNodeCommand, command_arg: Vec<&str>) {
+    fn process_command<'a, I: Iterator<Item = &'a str>>(
+        &mut self,
+        command: BaseNodeCommand,
+        args: I,
+        shutdown: &mut Shutdown,
+    )
+    {
+        use BaseNodeCommand::*;
         match command {
-            BaseNodeCommand::Help => {
-                println!("Available commands are: ");
-                let joined = self.commands.join(", ");
-                println!("{}", joined);
+            Help => {
+                self.print_help(args);
             },
-            BaseNodeCommand::GetBalance => {
+            GetBalance => {
                 self.process_get_balance();
             },
-            BaseNodeCommand::SendTari => {
-                self.process_send_tari(command_arg);
+            SendTari => {
+                self.process_send_tari(args);
             },
-            BaseNodeCommand::GetChainMetadata => {
+            GetChainMetadata => {
                 self.process_get_chain_meta();
             },
-            BaseNodeCommand::Exit | BaseNodeCommand::Quit => {
-                println!("quit received");
-                println!("Shutting down");
+            DiscoverPeer => {
+                self.process_discover_peer(args);
+            },
+            ListPeers => {
+                self.process_list_peers(args);
+            },
+            BanPeer => {
+                self.process_ban_peer(args, true);
+            },
+            UnbanPeer => {
+                self.process_ban_peer(args, false);
+            },
+            ListConnections => {
+                self.process_list_connections();
+            },
+            ListHeaders => {
+                self.process_list_headers(args);
+            },
+            ToggleMining => {
+                self.process_toggle_mining();
+            },
+            GetBlock => {
+                self.process_get_block(args);
+            },
+            Whoami => {
+                self.process_whoami();
+            },
+            Exit | Quit => {
+                println!("Shutting down...");
                 info!(
                     target: LOG_TARGET,
                     "Termination signal received from user. Shutting node down."
                 );
-                self.shutdown_flag.store(true, Ordering::SeqCst);
+                let _ = shutdown.trigger();
+            },
+        }
+    }
+
+    fn print_help<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+        let help_for = BaseNodeCommand::from_str(args.next().unwrap_or_default()).unwrap_or(BaseNodeCommand::Help);
+        use BaseNodeCommand::*;
+        match help_for {
+            Help => {
+                println!("Available commands are: ");
+                let joined = self.commands.join(", ");
+                println!("{}", joined);
+            },
+            GetBalance => {
+                println!("Gets your balance");
+            },
+            SendTari => {
+                println!("Sends an amount of Tari to a address call this command via:");
+                println!("send-tari [amount of tari to send] [destination public key or emoji id] [optional: msg]");
+            },
+            GetChainMetadata => {
+                println!("Gets your base node chain meta data");
+            },
+            DiscoverPeer => {
+                println!("Attempt to discover a peer on the Tari network");
+            },
+            ListPeers => {
+                println!("Lists the peers that this node knows about");
+            },
+            BanPeer => {
+                println!("Bans a peer");
+            },
+            UnbanPeer => {
+                println!("Removes the peer ban");
+            },
+            ListConnections => {
+                println!("Lists the peer connections currently held by this node");
+            },
+            ListHeaders => {
+                println!("List the amount of headers, can be called in the following two ways: ");
+                println!("list-headers [first header height] [last header height]");
+                println!("list-headers [number of headers starting from the chain tip back]");
+            },
+            ToggleMining => {
+                println!("Enable or disable the miner on this node, calling this command will toggle the state");
+            },
+            GetBlock => {
+                println!("View a block of a height, call this command via:");
+                println!("get-block [height of the block]");
+            },
+            Whoami => {
+                println!(
+                    "Display identity information about this node, including: public key, node ID and the public \
+                     address"
+                );
+            },
+            Exit | Quit => {
+                println!("Exits the base node");
             },
         }
     }
@@ -197,10 +288,10 @@ impl Parser {
             match handler.get_balance().await {
                 Err(e) => {
                     println!("Something went wrong");
-                    warn!(target: LOG_TARGET, "Error communicating with wallet: {}", e.to_string(),);
+                    warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
                     return;
                 },
-                Ok(data) => println!("Current balance is: {}", data),
+                Ok(data) => println!("Balances:\n{}", data),
             };
         });
     }
@@ -210,59 +301,386 @@ impl Parser {
         let mut handler = self.node_service.clone();
         self.executor.spawn(async move {
             match handler.get_metadata().await {
-                Err(e) => {
-                    println!("Something went wrong");
-                    warn!(
-                        target: LOG_TARGET,
-                        "Error communicating with base node: {}",
-                        e.to_string(),
-                    );
+                Err(err) => {
+                    println!("Failed to retrieve chain metadata: {:?}", err);
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err);
                     return;
                 },
-                Ok(data) => println!("Current meta data is is: {}", data),
+                Ok(data) => println!("{}", data),
             };
         });
     }
 
-    // Function to process  the send transaction function
-    fn process_send_tari(&mut self, command_arg: Vec<&str>) {
-        if command_arg.len() != 3 {
-            println!("Command entered wrong, please enter in the following format: ");
-            println!("send_tari [amount of tari to send] [public key to send to]");
-            return;
-        }
-        let amount = command_arg[1].parse::<u64>();
-        if amount.is_err() {
-            println!("please enter a valid amount of tari");
-            return;
-        }
-        let amount: MicroTari = amount.unwrap().into();
-        let dest_pubkey = CommsPublicKey::from_hex(command_arg[2]);
-        if dest_pubkey.is_err() {
-            println!("please enter a valid destination pub_key");
-            return;
-        }
-        let dest_pubkey = dest_pubkey.unwrap();
-        let fee_per_gram = 25 * uT;
-        let mut handler = self.wallet_transaction_service.clone();
-        self.executor.spawn(async move {
-            match handler
-                .send_transaction(
-                    dest_pubkey.clone(),
-                    amount,
-                    fee_per_gram,
-                    "coinbase reward from mining".into(),
-                )
-                .await
-            {
-                Err(e) => {
-                    println!("Something went wrong sending funds");
-                    println!("{:?}", e);
-                    warn!(target: LOG_TARGET, "Error communicating with wallet: {}", e.to_string(),);
+    fn process_get_block<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
+        let command_arg = args.take(4).collect::<Vec<&str>>();
+        let height = if command_arg.len() == 1 {
+            match command_arg[0].parse::<u64>().ok() {
+                Some(height) => height,
+                None => {
+                    println!("Invalid block height provided. Height must be an integer.");
                     return;
                 },
-                Ok(_) => println!("Send {} Tari to {} ", amount, dest_pubkey),
+            }
+        } else {
+            println!("Invalid command, please enter as follows:");
+            println!("get-block [height of the block]");
+            println!("e.g. get-block 10");
+            return;
+        };
+        let mut handler = self.node_service.clone();
+        self.executor.spawn(async move {
+            match handler.get_blocks(vec![height]).await {
+                Err(err) => {
+                    println!("Failed to retrieve blocks: {:?}", err);
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err,);
+                    return;
+                },
+                Ok(mut data) => match data.pop() {
+                    Some(historical_block) => println!("{}", historical_block.block),
+                    None => println!("Block not found at height {}", height),
+                },
             };
         });
     }
+
+    fn process_discover_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
+        let mut dht = self.discovery_service.clone();
+
+        let dest_pubkey = match args.next().and_then(parse_emoji_id_or_public_key) {
+            Some(v) => Box::new(v),
+            None => {
+                println!("Please enter a valid destination public key or emoji id");
+                println!("discover-peer [hex public key or emoji id]");
+                return;
+            },
+        };
+
+        self.executor.spawn(async move {
+            let start = Instant::now();
+            println!("🌎 Peer discovery started.");
+            match dht.discover_peer(dest_pubkey, None, NodeDestination::Unknown).await {
+                Ok(p) => {
+                    let end = Instant::now();
+                    println!("⚡️ Discovery succeeded in {}ms!", (end - start).as_millis());
+                    println!("This peer was found:");
+                    println!("{}", p);
+                },
+                Err(err) => {
+                    println!("💀 Discovery failed: '{:?}'", err);
+                },
+            }
+        });
+    }
+
+    fn process_list_peers<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
+        let peer_manager = self.peer_manager.clone();
+        let filter = args.next().map(ToOwned::to_owned);
+
+        self.executor.spawn(async move {
+            let mut query = PeerQuery::new();
+            if let Some(f) = filter {
+                let filter = f.to_lowercase();
+                query = query.select_where(move |p| match filter.as_str() {
+                    "basenode" | "basenodes" | "base_node" | "base-node" | "bn" => {
+                        p.features == PeerFeatures::COMMUNICATION_NODE
+                    },
+                    "wallet" | "wallets" | "w" => p.features == PeerFeatures::COMMUNICATION_CLIENT,
+                    _ => false,
+                })
+            }
+            match peer_manager.perform_query(query).await {
+                Ok(peers) => {
+                    let num_peers = peers.len();
+                    println!(
+                        "{}",
+                        peers
+                            .into_iter()
+                            .fold(String::new(), |acc, p| format!("{}\n{}", acc, p))
+                    );
+                    println!("{} peer(s) known by this node", num_peers);
+                },
+                Err(err) => {
+                    println!("Failed to list peers: {:?}", err);
+                    error!(target: LOG_TARGET, "Could not list peers: {:?}", err);
+                    return;
+                },
+            }
+        });
+    }
+
+    fn process_ban_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I, is_banned: bool) {
+        let peer_manager = self.peer_manager.clone();
+        let mut connection_manager = self.connection_manager.clone();
+
+        let public_key = match args.next().and_then(parse_emoji_id_or_public_key) {
+            Some(v) => Box::new(v),
+            None => {
+                println!("Please enter a valid destination public key or emoji id");
+                println!("ban-peer/unban-peer [hex public key or emoji id]");
+                return;
+            },
+        };
+
+        self.executor.spawn(async move {
+            match peer_manager.set_banned(&public_key, is_banned).await {
+                Ok(node_id) => {
+                    if is_banned {
+                        match connection_manager.disconnect_peer(node_id).await {
+                            Ok(_) => {
+                                println!("Peer was banned.");
+                            },
+                            Err(err) => {
+                                println!(
+                                    "Peer was banned but an error occurred when disconnecting them: {:?}",
+                                    err
+                                );
+                            },
+                        }
+                    } else {
+                        println!("Peer ban was removed.");
+                    }
+                },
+                Err(err) => {
+                    println!("Failed to ban/unban peer: {:?}", err);
+                    error!(target: LOG_TARGET, "Could not ban/unban peer: {:?}", err);
+                    return;
+                },
+            }
+        });
+    }
+
+    fn process_list_connections(&self) {
+        let mut connection_manager = self.connection_manager.clone();
+        self.executor.spawn(async move {
+            match connection_manager.get_active_connections().await {
+                Ok(conns) if conns.is_empty() => {
+                    println!("No active peer connections.");
+                },
+                Ok(conns) => {
+                    let num_connections = conns.len();
+                    println!(
+                        "{}",
+                        conns
+                            .into_iter()
+                            .fold(String::new(), |acc, p| format!("{}\n{}", acc, p))
+                    );
+                    println!("{} active connection(s)", num_connections);
+                },
+                Err(err) => {
+                    println!("Failed to list connections: {:?}", err);
+                    error!(target: LOG_TARGET, "Could not list connections: {:?}", err);
+                    return;
+                },
+            }
+        });
+    }
+
+    fn process_toggle_mining(&mut self) {
+        let new_state = !self.enable_miner.load(Ordering::SeqCst);
+        self.enable_miner.store(new_state, Ordering::SeqCst);
+        if new_state {
+            println!("Mining is ON");
+        } else {
+            println!("Mining is OFF");
+        }
+        debug!(target: LOG_TARGET, "Mining state is now switched to {}", new_state);
+    }
+
+    fn process_list_headers<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
+        let command_arg = args.take(4).collect::<Vec<&str>>();
+        if (command_arg.is_empty()) || (command_arg.len() > 2) {
+            println!("Command entered incorrectly, please use the following formats: ");
+            println!("list-headers [first header height] [last header height]");
+            println!("list-headers [amount of headers from top]");
+            return;
+        }
+        let height = if command_arg.len() == 2 {
+            let height = command_arg[1].parse::<u64>();
+            if height.is_err() {
+                println!("Invalid number provided");
+                return;
+            };
+            Some(height.unwrap())
+        } else {
+            None
+        };
+        let start = command_arg[0].parse::<u64>();
+        if start.is_err() {
+            println!("Invalid number provided");
+            return;
+        };
+        let counter = if command_arg.len() == 2 {
+            let start = start.unwrap();
+            let temp_height = height.clone().unwrap();
+            if temp_height <= start {
+                println!("start hight should be bigger than the end height");
+                return;
+            }
+            (temp_height - start) as usize
+        } else {
+            start.unwrap() as usize
+        };
+
+        let mut handler = self.node_service.clone();
+        self.executor.spawn(async move {
+            let mut height = if let Some(v) = height {
+                v
+            } else {
+                match handler.get_metadata().await {
+                    Err(err) => {
+                        println!("Failed to retrieve chain height: {:?}", err);
+                        warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                        0
+                    },
+                    Ok(data) => data.height_of_longest_chain.unwrap_or(0),
+                }
+            };
+            let mut headers = Vec::new();
+            headers.push(height);
+            while (headers.len() <= counter) && (height > 0) {
+                height -= 1;
+                headers.push(height);
+            }
+            let headers = match handler.get_header(headers).await {
+                Err(err) => {
+                    println!("Failed to retrieve headers: {:?}", err);
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                    return;
+                },
+                Ok(data) => data,
+            };
+            for header in headers {
+                println!("\n\nHeader hash: {}", header.hash().to_hex());
+                println!("{}", header);
+            }
+        });
+    }
+
+    fn process_whoami(&self) {
+        println!("======== Wallet ==========");
+        println!("{}", self.wallet_node_identity);
+        let emoji_id = EmojiId::from_pubkey(&self.wallet_node_identity.public_key());
+        println!("Emoji ID: {}", emoji_id);
+        println!();
+        // TODO: Pass the network in as a var
+        let qr_link = format!(
+            "tari://rincewind/pubkey/{}",
+            &self.wallet_node_identity.public_key().to_hex()
+        );
+        let code = QrCode::new(qr_link).unwrap();
+        let image = code
+            .render::<unicode::Dense1x2>()
+            .dark_color(unicode::Dense1x2::Dark)
+            .light_color(unicode::Dense1x2::Light)
+            .build();
+        println!("{}", image);
+        println!();
+        println!("======== Base Node ==========");
+        println!("{}", self.base_node_identity);
+    }
+
+    // Function to process  the send transaction function
+    fn process_send_tari<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
+        let amount = args.next().and_then(|v| v.parse::<u64>().ok());
+        if amount.is_none() {
+            println!("Please enter a valid amount of tari");
+            return;
+        }
+        let amount: MicroTari = amount.unwrap().into();
+
+        let key = match args.next() {
+            Some(k) => k.to_string(),
+            None => {
+                println!("Command entered incorrectly, please use the following format: ");
+                println!("send_tari [amount of tari to send] [public key or emoji id to send to]");
+                return;
+            },
+        };
+
+        let dest_pubkey = match parse_emoji_id_or_public_key(&key) {
+            Some(v) => v,
+            None => {
+                println!("Please enter a valid destination public key or emoji id");
+                return;
+            },
+        };
+
+        // Use the rest of the command line as my message
+        let msg = args.collect::<Vec<&str>>().join(" ");
+
+        let fee_per_gram = 25 * uT;
+        let mut txn_service = self.wallet_transaction_service.clone();
+        self.executor.spawn(async move {
+            let event_stream = txn_service.get_event_stream_fused();
+            match txn_service
+                .send_transaction(dest_pubkey.clone(), amount, fee_per_gram, msg)
+                .await
+            {
+                Err(TransactionServiceError::OutboundSendDiscoveryInProgress(tx_id)) => {
+                    println!(
+                        "No peer found matching that public key. Attempting to discover the peer on the network. 🌎"
+                    );
+                    let start = Instant::now();
+                    match time::timeout(
+                        Duration::from_secs(120),
+                        utils::wait_for_discovery_transaction_event(event_stream, tx_id),
+                    )
+                    .await
+                    {
+                        Ok(true) => {
+                            let end = Instant::now();
+                            println!(
+                                "Discovery succeeded for peer {} after {}ms",
+                                dest_pubkey,
+                                (end - start).as_millis()
+                            );
+                            debug!(
+                                target: LOG_TARGET,
+                                "Discovery succeeded for peer {} after {}ms",
+                                dest_pubkey,
+                                (end - start).as_millis()
+                            );
+                        },
+                        Ok(false) => {
+                            let end = Instant::now();
+                            println!(
+                                "Discovery failed for peer {} after {}ms",
+                                dest_pubkey,
+                                (end - start).as_millis()
+                            );
+                            println!("The peer may be offline. Please try again later.");
+
+                            debug!(
+                                target: LOG_TARGET,
+                                "Discovery failed for peer {} after {}ms",
+                                dest_pubkey,
+                                (end - start).as_millis()
+                            );
+                        },
+                        Err(_) => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Discovery timed out before the node was discovered."
+                            );
+                            println!("Discovery timed out before the node was discovered.");
+                            println!("The peer may be offline. Please try again later.");
+                        },
+                    }
+                },
+                Err(e) => {
+                    println!("Something went wrong sending funds");
+                    println!("{:?}", e);
+                    warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
+                    return;
+                },
+                Ok(_) => println!("Sending {} Tari to {} ", amount, dest_pubkey),
+            };
+        });
+    }
+}
+
+fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
+    EmojiId::str_to_pubkey(&key.trim().replace('|', ""))
+        .or_else(|_| CommsPublicKey::from_hex(key))
+        .ok()
 }

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection_manager::ConnectionDirection;
+use crate::{connection_manager::ConnectionDirection, runtime};
 use futures::{
     channel::mpsc,
     future,
@@ -34,11 +34,10 @@ use futures::{
 use log::*;
 use std::{io, pin::Pin, task::Poll};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::runtime;
 use yamux::Mode;
 
-type IncomingRx = mpsc::Receiver<Result<yamux::Stream, yamux::ConnectionError>>;
-type IncomingTx = mpsc::Sender<Result<yamux::Stream, yamux::ConnectionError>>;
+type IncomingRx = mpsc::Receiver<yamux::Stream>;
+type IncomingTx = mpsc::Sender<yamux::Stream>;
 
 pub type Control = yamux::Control;
 
@@ -54,14 +53,8 @@ const RECEIVE_WINDOW: u32 = 4 * 1024 * 1024; // 4MB
 
 impl Yamux {
     /// Upgrade the underlying socket to use yamux
-    pub async fn upgrade_connection<TSocket>(
-        executor: runtime::Handle,
-        socket: TSocket,
-        direction: ConnectionDirection,
-    ) -> io::Result<Self>
-    where
-        TSocket: AsyncRead + AsyncWrite + Send + Unpin + 'static,
-    {
+    pub async fn upgrade_connection<TSocket>(socket: TSocket, direction: ConnectionDirection) -> io::Result<Self>
+    where TSocket: AsyncRead + AsyncWrite + Send + Unpin + 'static {
         let mode = match direction {
             ConnectionDirection::Inbound => Mode::Server,
             ConnectionDirection::Outbound => Mode::Client,
@@ -81,25 +74,20 @@ impl Yamux {
         let connection = yamux::Connection::new(socket, config, mode);
         let control = connection.control();
 
-        let incoming = Self::spawn_incoming_stream_worker(executor, connection);
+        let incoming = Self::spawn_incoming_stream_worker(connection);
 
         Ok(Self { control, incoming })
     }
 
-    // yamux@0.4.0 requires the incoming substream stream be polled in order to make progress on requests from it's
+    // yamux@0.4 requires the incoming substream stream be polled in order to make progress on requests from it's
     // Control api. Here we spawn off a worker which will do this job
-    fn spawn_incoming_stream_worker<TSocket>(
-        executor: runtime::Handle,
-        connection: yamux::Connection<TSocket>,
-    ) -> IncomingSubstreams
-    where
-        TSocket: AsyncRead + AsyncWrite + Unpin + Send + 'static,
-    {
+    fn spawn_incoming_stream_worker<TSocket>(connection: yamux::Connection<TSocket>) -> IncomingSubstreams
+    where TSocket: AsyncRead + AsyncWrite + Unpin + Send + 'static {
         let shutdown = Shutdown::new();
         let (incoming_tx, incoming_rx) = mpsc::channel(10);
         let stream = yamux::into_stream(connection).boxed();
         let incoming = IncomingWorker::new(stream, incoming_tx, shutdown.to_signal());
-        executor.spawn(incoming.run());
+        runtime::current_executor().spawn(incoming.run());
         IncomingSubstreams::new(incoming_rx, shutdown)
     }
 
@@ -131,7 +119,7 @@ impl IncomingSubstreams {
 }
 
 impl Stream for IncomingSubstreams {
-    type Item = Result<yamux::Stream, yamux::ConnectionError>;
+    type Item = yamux::Stream;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         Pin::new(&mut self.inner).poll_next(cx)
@@ -146,7 +134,7 @@ impl Drop for IncomingSubstreams {
 
 struct IncomingWorker<S> {
     inner: S,
-    sender: mpsc::Sender<Result<yamux::Stream, yamux::ConnectionError>>,
+    sender: mpsc::Sender<yamux::Stream>,
     shutdown_signal: Option<ShutdownSignal>,
 }
 
@@ -166,19 +154,38 @@ where S: Stream<Item = Result<yamux::Stream, yamux::ConnectionError>> + Unpin
         loop {
             let either = future::select(self.inner.next(), signal.take().expect("cannot fail")).await;
             match either {
-                Either::Left((Some(substream_result), sig)) => {
-                    signal = Some(sig);
-                    let _ = self.sender.send(substream_result).await;
+                Either::Left((Some(Err(err)), _)) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Incoming peer substream task received an error because '{}'", err
+                    );
+                    break;
                 },
+                // Received a substream result
+                Either::Left((Some(Ok(stream)), sig)) => {
+                    signal = Some(sig);
+                    if let Err(err) = self.sender.send(stream).await {
+                        if err.is_disconnected() {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Incoming peer substream task is shutting down because the internal stream sender \
+                                 channel was closed"
+                            );
+                            break;
+                        }
+                    }
+                },
+                // The substream closed
                 Either::Left((None, _)) => {
-                    trace!(
+                    debug!(
                         target: LOG_TARGET,
                         "Incoming peer substream task is shutting down because the stream ended"
                     );
                     break;
                 },
+                // The shutdown signal was received
                 Either::Right((_, _)) => {
-                    trace!(
+                    debug!(
                         target: LOG_TARGET,
                         "Incoming peer substream task is shutting down because the shutdown signal was received"
                     );
@@ -186,6 +193,8 @@ where S: Stream<Item = Result<yamux::Stream, yamux::ConnectionError>> + Unpin
                 },
             }
         }
+
+        self.sender.close_channel();
     }
 }
 
@@ -206,7 +215,7 @@ mod test {
         let msg = b"The Way of Kings";
         let rt_handle = Handle::current();
 
-        let dialer = Yamux::upgrade_connection(rt_handle.clone(), dialer, ConnectionDirection::Outbound)
+        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound)
             .await
             .unwrap();
         let mut dialer_control = dialer.get_yamux_control();
@@ -219,14 +228,13 @@ mod test {
             substream.close().await.unwrap();
         });
 
-        let mut listener = Yamux::upgrade_connection(rt_handle.clone(), listener, ConnectionDirection::Inbound)
+        let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)
             .await?
             .incoming();
         let mut substream = listener
             .next()
             .await
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no substream"))?
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no substream"))?;
 
         let mut buf = Vec::new();
         let _ = future::select(substream.read_to_end(&mut buf), listener.next()).await;
@@ -241,7 +249,7 @@ mod test {
         let msg = b"Words of Radiance";
         let rt_handle = Handle::current();
 
-        let dialer = Yamux::upgrade_connection(rt_handle.clone(), dialer, ConnectionDirection::Outbound).await?;
+        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound).await?;
         let mut dialer_control = dialer.get_yamux_control();
 
         rt_handle.spawn(async move {
@@ -255,10 +263,10 @@ mod test {
             assert_eq!(buf, b"");
         });
 
-        let mut incoming = Yamux::upgrade_connection(rt_handle.clone(), listener, ConnectionDirection::Inbound)
+        let mut incoming = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)
             .await?
             .incoming();
-        let mut substream = incoming.next().await.unwrap().unwrap();
+        let mut substream = incoming.next().await.unwrap();
         rt_handle.spawn(async move {
             incoming.next().await;
         });
@@ -288,7 +296,7 @@ mod test {
 
         let (dialer, listener) = MemorySocket::new_pair();
 
-        let dialer = Yamux::upgrade_connection(rt_handle.clone(), dialer, ConnectionDirection::Outbound).await?;
+        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound).await?;
         let mut dialer_control = dialer.get_yamux_control();
         // The incoming stream must be polled for the control to work
         rt_handle.spawn(async move {
@@ -309,10 +317,10 @@ mod test {
             assert_eq!(buf, vec![0xAAu8; MSG_LEN]);
         });
 
-        let mut incoming = Yamux::upgrade_connection(rt_handle.clone(), listener, ConnectionDirection::Inbound)
+        let mut incoming = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)
             .await?
             .incoming();
-        let mut substream = incoming.next().await.unwrap().unwrap();
+        let mut substream = incoming.next().await.unwrap();
         rt_handle.spawn(async move {
             incoming.next().await;
         });

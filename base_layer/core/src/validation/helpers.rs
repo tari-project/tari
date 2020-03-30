@@ -22,7 +22,7 @@
 
 use crate::{
     blocks::blockheader::{BlockHeader, BlockHeaderValidationError},
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
+    chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
     proof_of_work::PowError,
     validation::ValidationError,
@@ -30,38 +30,23 @@ use crate::{
 use log::*;
 use tari_crypto::tari_utilities::hash::Hashable;
 pub const LOG_TARGET: &str = "c::val::helpers";
-
-/// This function tests that the block timestamp is greater than the median timestamp at the chain tip.
-pub fn check_median_timestamp_at_chain_tip<B: BlockchainBackend>(
-    block_header: &BlockHeader,
-    db: BlockchainDatabase<B>,
-    rules: ConsensusManager<B>,
-) -> Result<(), ValidationError>
-{
-    let tip_height = db
-        .get_metadata()
-        .or_else(|e| {
-            error!(target: LOG_TARGET, "validation failed to get metadata {:?}.", e);
-            Err(e)
-        })
-        .map_err(|e| ValidationError::CustomError(e.to_string()))?
-        .height_of_longest_chain
-        .unwrap_or(0);
-    check_median_timestamp(&block_header, tip_height, rules)
-}
+use std::sync::RwLockWriteGuard;
+use tari_crypto::tari_utilities::hex::Hex;
 
 /// This function tests that the block timestamp is greater than the median timestamp at the specified height.
 pub fn check_median_timestamp<B: BlockchainBackend>(
+    db: &RwLockWriteGuard<B>,
     block_header: &BlockHeader,
     height: u64,
-    rules: ConsensusManager<B>,
+    rules: ConsensusManager,
 ) -> Result<(), ValidationError>
 {
+    trace!(target: LOG_TARGET, "Checking timestamp is not too far in the past",);
     if block_header.height == 0 || rules.get_genesis_block_hash() == block_header.hash() {
         return Ok(()); // Its the genesis block, so we dont have to check median
     }
     let median_timestamp = rules
-        .get_median_timestamp_at_height(height)
+        .get_median_timestamp_at_height_writeguard(db, height)
         .or_else(|e| {
             error!(target: LOG_TARGET, "Validation could not get median timestamp");
 
@@ -69,6 +54,13 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
         })
         .map_err(|_| ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestamp))?;
     if block_header.timestamp < median_timestamp {
+        warn!(
+            target: LOG_TARGET,
+            "Block header timestamp {} is less than median timestamp: {} for block:{}",
+            block_header.timestamp,
+            median_timestamp,
+            block_header.hash().to_hex()
+        );
         return Err(ValidationError::BlockHeaderError(
             BlockHeaderValidationError::InvalidTimestamp,
         ));
@@ -76,37 +68,23 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
     Ok(())
 }
 
-/// Calculates the achieved and target difficulties at the chain tip and compares them.
-pub fn check_achieved_difficulty_at_chain_tip<B: BlockchainBackend>(
-    block_header: &BlockHeader,
-    db: BlockchainDatabase<B>,
-    rules: ConsensusManager<B>,
-) -> Result<(), ValidationError>
-{
-    let tip_height = db
-        .get_metadata()
-        .or_else(|e| {
-            error!(target: LOG_TARGET, "Validation could not get achieved difficultly");
-            Err(e)
-        })
-        .map_err(|e| ValidationError::CustomError(e.to_string()))?
-        .height_of_longest_chain
-        .unwrap_or(0);
-    check_achieved_difficulty(&block_header, tip_height, rules)
-}
-
 /// Calculates the achieved and target difficulties at the specified height and compares them.
 pub fn check_achieved_difficulty<B: BlockchainBackend>(
+    db: &RwLockWriteGuard<B>,
     block_header: &BlockHeader,
     height: u64,
-    rules: ConsensusManager<B>,
+    rules: ConsensusManager,
 ) -> Result<(), ValidationError>
 {
+    trace!(
+        target: LOG_TARGET,
+        "Checking block has acheived the required difficulty",
+    );
     let achieved = block_header.achieved_difficulty();
     let mut target = 1.into();
     if block_header.height > 0 || rules.get_genesis_block_hash() != block_header.hash() {
         target = rules
-            .get_target_difficulty_with_height(block_header.pow.pow_algo, height)
+            .get_target_difficulty_with_height_writeguard(db, block_header.pow.pow_algo, height)
             .or_else(|e| {
                 error!(target: LOG_TARGET, "Validation could not get achieved difficulty");
                 Err(e)
@@ -118,6 +96,13 @@ pub fn check_achieved_difficulty<B: BlockchainBackend>(
             })?;
     }
     if achieved < target {
+        warn!(
+            target: LOG_TARGET,
+            "Proof of work for {} was below the target difficulty. Achieved: {}, Target:{}",
+            block_header.hash().to_hex(),
+            achieved,
+            target
+        );
         return Err(ValidationError::BlockHeaderError(
             BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyTooLow),
         ));

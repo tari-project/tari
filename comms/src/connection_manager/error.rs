@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    noise,
     peer_manager::PeerManagerError,
     protocol::{IdentityProtocolError, ProtocolError},
 };
@@ -30,6 +31,8 @@ use futures::channel::mpsc;
 #[derive(Debug, Error, Clone)]
 pub enum ConnectionManagerError {
     PeerManagerError(PeerManagerError),
+    #[error(msg_embedded, no_from, non_std)]
+    PeerConnectionError(String),
     /// Cannot connect to peers which are not persisted in the peer manager database.
     PeerNotPersisted,
     /// Failed to send request to ConnectionManagerActor. Channel closed.
@@ -73,11 +76,27 @@ pub enum ConnectionManagerError {
     DialCancelled,
     /// The peer is offline and will not be dialed
     PeerOffline,
+    #[error(msg_embedded, no_from, non_std)]
+    InvalidMultiaddr(String),
+    /// Failed to send wire format byte
+    WireFormatSendFailed,
 }
 
 impl From<yamux::ConnectionError> for ConnectionManagerError {
     fn from(err: yamux::ConnectionError) -> Self {
         ConnectionManagerError::YamuxConnectionError(err.to_string())
+    }
+}
+
+impl From<noise::NoiseError> for ConnectionManagerError {
+    fn from(err: noise::NoiseError) -> Self {
+        ConnectionManagerError::NoiseError(err.to_friendly_string())
+    }
+}
+
+impl From<PeerConnectionError> for ConnectionManagerError {
+    fn from(err: PeerConnectionError) -> Self {
+        ConnectionManagerError::PeerConnectionError(err.to_string())
     }
 }
 

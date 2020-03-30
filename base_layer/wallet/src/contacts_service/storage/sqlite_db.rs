@@ -27,38 +27,30 @@ use crate::{
     },
     schema::contacts,
 };
-use diesel::{
-    prelude::*,
-    r2d2::{ConnectionManager, Pool, PooledConnection},
-    result::Error as DieselError,
-    SqliteConnection,
+use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
+use std::{
+    convert::TryFrom,
+    sync::{Arc, Mutex},
 };
-use std::convert::TryFrom;
 use tari_core::transactions::types::PublicKey;
 use tari_crypto::tari_utilities::ByteArray;
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 pub struct ContactsServiceSqliteDatabase {
-    database_connection_pool: Pool<ConnectionManager<SqliteConnection>>,
+    database_connection: Arc<Mutex<SqliteConnection>>,
 }
 impl ContactsServiceSqliteDatabase {
-    pub fn new(database_connection_pool: Pool<ConnectionManager<SqliteConnection>>) -> Self {
-        Self {
-            database_connection_pool,
-        }
+    pub fn new(database_connection: Arc<Mutex<SqliteConnection>>) -> Self {
+        Self { database_connection }
     }
 }
 
 impl ContactsBackend for ContactsServiceSqliteDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ContactsServiceStorageError> {
-        let conn = self
-            .database_connection_pool
-            .clone()
-            .get()
-            .map_err(|_| ContactsServiceStorageError::R2d2Error)?;
+        let conn = acquire_lock!(self.database_connection);
 
         let result = match key {
-            DbKey::Contact(pk) => match ContactSql::find(&pk.to_vec(), &conn) {
+            DbKey::Contact(pk) => match ContactSql::find(&pk.to_vec(), &(*conn)) {
                 Ok(c) => Some(DbValue::Contact(Box::new(Contact::try_from(c)?))),
                 Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => None,
                 Err(e) => return Err(e),
@@ -75,17 +67,13 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
     }
 
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, ContactsServiceStorageError> {
-        let conn = self
-            .database_connection_pool
-            .clone()
-            .get()
-            .map_err(|_| ContactsServiceStorageError::R2d2Error)?;
+        let conn = acquire_lock!(self.database_connection);
 
         match op {
             WriteOperation::Upsert(kvp) => match kvp {
-                DbKeyValuePair::Contact(k, c) => match ContactSql::find(&k.to_vec(), &conn) {
+                DbKeyValuePair::Contact(k, c) => match ContactSql::find(&k.to_vec(), &(*conn)) {
                     Ok(found_c) => {
-                        let _ = found_c.update(UpdateContact { alias: Some(c.alias) }, &conn)?;
+                        let _ = found_c.update(UpdateContact { alias: Some(c.alias) }, &(*conn))?;
                     },
                     Err(_) => {
                         ContactSql::from(c).commit(&conn)?;
@@ -93,9 +81,9 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
                 },
             },
             WriteOperation::Remove(k) => match k {
-                DbKey::Contact(k) => match ContactSql::find(&k.to_vec(), &conn) {
+                DbKey::Contact(k) => match ContactSql::find(&k.to_vec(), &(*conn)) {
                     Ok(c) => {
-                        c.clone().delete(&conn)?;
+                        c.delete(&conn)?;
                         return Ok(Some(DbValue::Contact(Box::new(Contact::try_from(c)?))));
                     },
                     Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => (),
@@ -119,11 +107,7 @@ struct ContactSql {
 
 impl ContactSql {
     /// Write this struct to the database
-    pub fn commit(
-        &self,
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<(), ContactsServiceStorageError>
-    {
+    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), ContactsServiceStorageError> {
         diesel::insert_into(contacts::table)
             .values(self.clone())
             .execute(conn)?;
@@ -131,28 +115,18 @@ impl ContactSql {
     }
 
     /// Return all contacts
-    pub fn index(
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<Vec<ContactSql>, ContactsServiceStorageError> {
+    pub fn index(conn: &SqliteConnection) -> Result<Vec<ContactSql>, ContactsServiceStorageError> {
         Ok(contacts::table.load::<ContactSql>(conn)?)
     }
 
     /// Find a particular Contact, if it exists
-    pub fn find(
-        public_key: &[u8],
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<ContactSql, ContactsServiceStorageError>
-    {
+    pub fn find(public_key: &[u8], conn: &SqliteConnection) -> Result<ContactSql, ContactsServiceStorageError> {
         Ok(contacts::table
             .filter(contacts::public_key.eq(public_key))
             .first::<ContactSql>(conn)?)
     }
 
-    pub fn delete(
-        &self,
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<(), ContactsServiceStorageError>
-    {
+    pub fn delete(&self, conn: &SqliteConnection) -> Result<(), ContactsServiceStorageError> {
         let num_deleted =
             diesel::delete(contacts::table.filter(contacts::public_key.eq(&self.public_key))).execute(conn)?;
 
@@ -166,7 +140,7 @@ impl ContactSql {
     pub fn update(
         &self,
         updated_contact: UpdateContact,
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+        conn: &SqliteConnection,
     ) -> Result<ContactSql, ContactsServiceStorageError>
     {
         let num_updated = diesel::update(contacts::table.filter(contacts::public_key.eq(&self.public_key)))
@@ -217,7 +191,7 @@ mod test {
         database::Contact,
         sqlite_db::{ContactSql, UpdateContact},
     };
-    use diesel::{r2d2::ConnectionManager, Connection, SqliteConnection};
+    use diesel::{Connection, SqliteConnection};
     use rand::rngs::OsRng;
     use std::convert::TryFrom;
     use tari_core::transactions::types::{PrivateKey, PublicKey};
@@ -239,10 +213,6 @@ mod test {
 
             embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
 
-            let manager = ConnectionManager::<SqliteConnection>::new(db_path);
-            let pool = diesel::r2d2::Pool::builder().max_size(1).build(manager).unwrap();
-
-            let conn = pool.get().unwrap();
             conn.execute("PRAGMA foreign_keys = ON").unwrap();
 
             let names = ["Alice".to_string(), "Bob".to_string(), "Carol".to_string()];

@@ -514,7 +514,7 @@ pub struct Handshake<TSocket> {
 impl<TSocket> Handshake<TSocket> {
     pub fn new(socket: TSocket, state: HandshakeState) -> Self {
         Self {
-            socket: NoiseSocket::new(socket, state.into()),
+            socket: NoiseSocket::new(socket, Box::new(state).into()),
         }
     }
 }
@@ -525,7 +525,20 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     /// Perform a Single Round-Trip noise IX handshake returning the underlying [NoiseSocket]
     /// (switched to transport mode) upon success.
     pub async fn handshake_1rt(mut self) -> io::Result<NoiseSocket<TSocket>> {
-        // The Dialer
+        match self.perform_handshake().await {
+            Ok(_) => self.finish(),
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Noise handshake failed because '{:?}'. Closing socket.", err
+                );
+                self.socket.close().await?;
+                Err(err)
+            },
+        }
+    }
+
+    pub async fn perform_handshake(&mut self) -> io::Result<()> {
         if self.socket.state.is_initiator() {
             // -> e, s
             self.send().await?;
@@ -542,7 +555,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             self.flush().await?;
         }
 
-        self.finish()
+        Ok(())
     }
 
     async fn send(&mut self) -> io::Result<usize> {
@@ -573,8 +586,8 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
 #[derive(Debug)]
 enum NoiseState {
-    HandshakeState(HandshakeState),
-    TransportState(TransportState),
+    HandshakeState(Box<HandshakeState>),
+    TransportState(Box<TransportState>),
 }
 
 macro_rules! proxy_state_method {
@@ -607,20 +620,20 @@ impl NoiseState {
 
     pub fn into_transport_mode(self) -> Result<Self, snow::Error> {
         match self {
-            NoiseState::HandshakeState(state) => Ok(NoiseState::TransportState(state.into_transport_mode()?)),
+            NoiseState::HandshakeState(state) => Ok(NoiseState::TransportState(Box::new(state.into_transport_mode()?))),
             _ => Err(snow::Error::State(StateProblem::HandshakeAlreadyFinished)),
         }
     }
 }
 
-impl From<HandshakeState> for NoiseState {
-    fn from(state: HandshakeState) -> Self {
+impl From<Box<HandshakeState>> for NoiseState {
+    fn from(state: Box<HandshakeState>) -> Self {
         NoiseState::HandshakeState(state)
     }
 }
 
-impl From<TransportState> for NoiseState {
-    fn from(state: TransportState) -> Self {
+impl From<Box<TransportState>> for NoiseState {
+    fn from(state: Box<TransportState>) -> Self {
         NoiseState::TransportState(state)
     }
 }
@@ -650,8 +663,8 @@ mod test {
 
         let (dialer_socket, listener_socket) = MemorySocket::new_pair();
         let (dialer, listener) = (
-            NoiseSocket::new(dialer_socket, dialer_session.into()),
-            NoiseSocket::new(listener_socket, listener_session.into()),
+            NoiseSocket::new(dialer_socket, Box::new(dialer_session).into()),
+            NoiseSocket::new(listener_socket, Box::new(listener_session).into()),
         );
 
         Ok((
@@ -750,6 +763,33 @@ mod test {
             let mut buf_receive = [0; MAX_PAYLOAD_LENGTH];
             b.read_exact(&mut buf_receive).await?;
             assert_eq!(&buf_receive[..], &buf_send[..]);
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn unexpected_eof() -> io::Result<()> {
+        // Current thread runtime stack overflows, so the full tokio runtime is used here
+        let mut rt = Runtime::new().unwrap();
+        rt.block_on(async move {
+            let ((_dialer_keypair, dialer), (_listener_keypair, listener)) = build_test_connection().await.unwrap();
+
+            let (mut a, mut b) = perform_handshake(dialer, listener).await?;
+
+            let buf_send = [1; MAX_PAYLOAD_LENGTH];
+            a.write_all(&buf_send).await?;
+            a.flush().await?;
+
+            a.socket.close().await.unwrap();
+            drop(a);
+
+            let mut buf_receive = [0; MAX_PAYLOAD_LENGTH];
+            b.read_exact(&mut buf_receive).await.unwrap();
+            assert_eq!(&buf_receive[..], &buf_send[..]);
+
+            let err = b.read_exact(&mut buf_receive).await.unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
 
             Ok(())
         })

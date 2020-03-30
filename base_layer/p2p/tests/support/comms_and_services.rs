@@ -22,10 +22,7 @@
 
 use futures::Sink;
 use std::{error::Error, sync::Arc, time::Duration};
-use tari_comms::{
-    peer_manager::{NodeIdentity, Peer, PeerFlags},
-    CommsNode,
-};
+use tari_comms::{peer_manager::NodeIdentity, CommsNode};
 use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::{InboundDomainConnector, PeerMessage},
@@ -46,20 +43,10 @@ where
         .await
         .unwrap();
 
-    let peer_manager = comms.async_peer_manager();
+    let peer_manager = comms.peer_manager();
 
     for p in peers {
-        let addr = p.public_address().clone();
-        peer_manager
-            .add_peer(Peer::new(
-                p.public_key().clone(),
-                p.node_id().clone(),
-                addr.into(),
-                PeerFlags::default(),
-                p.features().clone(),
-            ))
-            .await
-            .unwrap();
+        peer_manager.add_peer(p.to_peer()).await.unwrap();
     }
 
     (comms, dht)

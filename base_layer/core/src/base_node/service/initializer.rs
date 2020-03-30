@@ -53,7 +53,7 @@ use tari_service_framework::{
 use tari_shutdown::ShutdownSignal;
 use tokio::runtime;
 
-const LOG_TARGET: &str = "base_node::service::initializer";
+const LOG_TARGET: &str = "c::bn::service::initializer";
 
 /// Initializer for the Base Node service handle and service future.
 pub struct BaseNodeServiceInitializer<T>
@@ -62,7 +62,7 @@ where T: BlockchainBackend
     inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
     blockchain_db: BlockchainDatabase<T>,
     mempool: Mempool<T>,
-    consensus_manager: ConsensusManager<T>,
+    consensus_manager: ConsensusManager,
     config: BaseNodeServiceConfig,
 }
 
@@ -74,7 +74,7 @@ where T: BlockchainBackend
         inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
         blockchain_db: BlockchainDatabase<T>,
         mempool: Mempool<T>,
-        consensus_manager: ConsensusManager<T>,
+        consensus_manager: ConsensusManager,
         config: BaseNodeServiceConfig,
     ) -> Self
     {
@@ -178,7 +178,6 @@ where T: BlockchainBackend + 'static
             self.consensus_manager.clone(),
             outbound_nci.clone(),
         );
-        let executer_clone = executor.clone(); // Give BaseNodeService access to the executor
         let config = self.config;
 
         // Register handle to OutboundNodeCommsInterface before waiting for handles to be ready
@@ -201,8 +200,7 @@ where T: BlockchainBackend + 'static
                 local_request_stream,
                 local_block_stream,
             );
-            let service =
-                BaseNodeService::new(executer_clone, outbound_message_service, inbound_nch, config).start(streams);
+            let service = BaseNodeService::new(outbound_message_service, inbound_nch, config).start(streams);
             futures::pin_mut!(service);
             future::select(service, shutdown).await;
             info!(target: LOG_TARGET, "Base Node Service shutdown");

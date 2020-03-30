@@ -21,32 +21,31 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::error::WalletStorageError;
-use diesel::{
-    r2d2::{ConnectionManager, Pool},
-    Connection,
-    SqliteConnection,
+use diesel::{Connection, SqliteConnection};
+use std::{
+    io,
+    path::Path,
+    sync::{Arc, Mutex},
 };
-use std::{io, path::Path, time::Duration};
 
-pub type WalletConnection = Pool<ConnectionManager<SqliteConnection>>;
-const DATABASE_CONNECTION_TIMEOUT_MS: u64 = 2000;
+pub type WalletDbConnection = Arc<Mutex<SqliteConnection>>;
 
-pub fn run_migration_and_create_connection_pool(db_path: &str) -> Result<WalletConnection, WalletStorageError> {
-    let db_exists = Path::new(db_path).exists();
+pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
+    db_path: P,
+) -> Result<WalletDbConnection, WalletStorageError> {
+    let db_exists = db_path.as_ref().exists();
+    let path_str = db_path
+        .as_ref()
+        .to_str()
+        .ok_or_else(|| WalletStorageError::InvalidUnicodePath)?;
+    let connection = SqliteConnection::establish(path_str)?;
+    connection.execute("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 60000;")?;
+
     if !db_exists {
-        let connection = SqliteConnection::establish(db_path)?;
-        connection.execute("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 60000;")?;
-
         embed_migrations!("./migrations");
         embedded_migrations::run_with_output(&connection, &mut io::stdout())
             .map_err(|err| WalletStorageError::DatabaseMigrationError(format!("Database migration failed {}", err)))?;
     }
 
-    let manager = ConnectionManager::<SqliteConnection>::new(db_path);
-    Ok(diesel::r2d2::Pool::builder()
-        .connection_timeout(Duration::from_millis(DATABASE_CONNECTION_TIMEOUT_MS))
-        .idle_timeout(Some(Duration::from_millis(DATABASE_CONNECTION_TIMEOUT_MS)))
-        .max_size(1)
-        .build(manager)
-        .map_err(|_| WalletStorageError::R2d2Error)?)
+    Ok(Arc::new(Mutex::new(connection)))
 }

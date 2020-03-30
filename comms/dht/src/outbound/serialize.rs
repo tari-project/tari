@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{outbound::message::DhtOutboundMessage, proto::envelope::DhtEnvelope, PipelineError};
+use crate::{outbound::message::DhtOutboundMessage, proto::envelope::DhtEnvelope};
 use futures::{task::Context, Future};
 use log::*;
 use rand::rngs::OsRng;
@@ -28,6 +28,7 @@ use std::{sync::Arc, task::Poll};
 use tari_comms::{
     message::{MessageExt, OutboundMessage},
     peer_manager::NodeIdentity,
+    pipeline::PipelineError,
     utils::signature,
     Bytes,
 };
@@ -54,7 +55,7 @@ impl<S> SerializeMiddleware<S> {
 impl<S> Service<DhtOutboundMessage> for SerializeMiddleware<S>
 where
     S: Service<OutboundMessage, Response = ()> + Clone + 'static,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     type Error = PipelineError;
     type Response = ();
@@ -73,7 +74,7 @@ where
 impl<S> SerializeMiddleware<S>
 where
     S: Service<OutboundMessage, Response = ()>,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     pub async fn serialize(
         next_service: S,
@@ -108,8 +109,9 @@ where
         } else {
             // Sign the body if the origin public key was previously specified.
             if let Some(origin) = dht_header.origin.as_mut() {
-                let signature = signature::sign(&mut OsRng, node_identity.secret_key().clone(), &body)?;
-                origin.signature = signature.to_binary()?;
+                let signature = signature::sign(&mut OsRng, node_identity.secret_key().clone(), &body)
+                    .map_err(PipelineError::from_debug)?;
+                origin.signature = signature.to_binary().map_err(PipelineError::from_debug)?;
                 trace!(
                     target: LOG_TARGET,
                     "Signed message {:?}: {}",
@@ -121,7 +123,7 @@ where
 
         let envelope = DhtEnvelope::new(dht_header.into(), body);
 
-        let body = Bytes::from(envelope.to_encoded_bytes()?);
+        let body = Bytes::from(envelope.to_encoded_bytes().map_err(PipelineError::from_debug)?);
 
         next_service
             .oneshot(OutboundMessage::with_tag(
@@ -131,7 +133,7 @@ where
                 body,
             ))
             .await
-            .map_err(Into::into)
+            .map_err(PipelineError::from_debug)
     }
 }
 
@@ -188,6 +190,7 @@ mod test {
                 MultiaddressesWithStats::new(vec![]),
                 PeerFlags::empty(),
                 PeerFeatures::COMMUNICATION_NODE,
+                &[],
             ),
             make_dht_header(&node_identity, &body, DhtMessageFlags::empty()),
             OutboundEncryption::None,

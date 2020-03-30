@@ -50,14 +50,21 @@ pub trait OutputManagerBackend: Send + Sync {
     /// `outputs_to_be_received` from a `PendingTransactionOutputs` record into the `unspent_outputs` and
     /// `spent_outputs` collections.
     fn confirm_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
-    /// This method encumbers the specified outputs into a `PendingTransactionOutputs` record. This reserves these
-    /// outputs until the transaction is confirmed or cancelled
-    fn encumber_outputs(
+    /// This method encumbers the specified outputs into a `PendingTransactionOutputs` record. This is a short term
+    /// encumberance in case the app is closed or crashes before transaction neogtiation is complete. These will be
+    /// cleared on startup of the service.
+    fn short_term_encumber_outputs(
         &self,
         tx_id: TxId,
         outputs_to_send: &[UnblindedOutput],
         change_output: Option<UnblindedOutput>,
     ) -> Result<(), OutputManagerStorageError>;
+    /// This method confirms that a transaction negotiation is complete and outputs can be fully encumbered. This
+    /// reserves these outputs until the transaction is confirmed or cancelled
+    fn confirm_encumbered_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
+    /// Clear all pending transaction encumberances marked as short term. These are the result of an unfinished
+    /// transaction negotiation
+    fn clear_short_term_encumberances(&self) -> Result<(), OutputManagerStorageError>;
     /// This method must take all the `outputs_to_be_spent` from the specified transaction and move them back into the
     /// `UnspentOutputs` pool.
     fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
@@ -220,7 +227,6 @@ where T: OutputManagerBackend + 'static
         })
         .await
         .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
-
         if let DbValue::UnspentOutputs(uo) = unspent_outputs {
             if let DbValue::AllPendingTransactionOutputs(pto) = pending_txs {
                 let available_balance = uo.iter().fold(MicroTari::from(0), |acc, x| acc + x.value);
@@ -324,7 +330,7 @@ where T: OutputManagerBackend + 'static
     }
 
     /// This method is called when a transaction is built to be sent. It will encumber unspent outputs against a pending
-    /// transaction
+    /// transaction in the short term.
     pub async fn encumber_outputs(
         &self,
         tx_id: TxId,
@@ -333,7 +339,29 @@ where T: OutputManagerBackend + 'static
     ) -> Result<(), OutputManagerStorageError>
     {
         let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.encumber_outputs(tx_id, &outputs_to_send, change_output))
+        tokio::task::spawn_blocking(move || {
+            db_clone.short_term_encumber_outputs(tx_id, &outputs_to_send, change_output)
+        })
+        .await
+        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
+        .and_then(|inner_result| inner_result)
+    }
+
+    /// This method is called when a transaction is finished being negotiated. This will fully encumber the outputs
+    /// against a pending transaction.
+    pub async fn confirm_encumbered_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.confirm_encumbered_outputs(tx_id))
+            .await
+            .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
+            .and_then(|inner_result| inner_result)
+    }
+
+    /// Clear all pending transaction encumberances marked as short term. These are the result of an unfinished
+    /// transaction negotiation
+    pub async fn clear_short_term_encumberances(&self) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.clear_short_term_encumberances())
             .await
             .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
             .and_then(|inner_result| inner_result)

@@ -23,6 +23,7 @@
 
 use std::{
     env,
+    fs,
     path::{Path, PathBuf},
 };
 
@@ -63,11 +64,9 @@ pub fn initialize_logging(config_file: &Path) -> bool {
 }
 
 /// Installs a new default logfile configuration, copied from `log4rs-sample.yml` to the given path.
-/// When bundled as a binary, the config sample file must be bundled in `common/config`.
-pub fn install_default_logfile_config(path: &Path) -> Result<u64, std::io::Error> {
-    let mut source = env::current_dir()?;
-    source.push(Path::new("common/logging/log4rs-sample.yml"));
-    std::fs::copy(source, path)
+pub fn install_default_logfile_config(path: &Path) -> Result<(), std::io::Error> {
+    let source = include_str!("../logging/log4rs-sample.yml");
+    fs::write(path, source)
 }
 
 /// Log an error if an `Err` is returned from the `$expr`. If the given expression is `Ok(v)`,
@@ -125,13 +124,29 @@ macro_rules! log_if_error_fmt {
 
 #[cfg(test)]
 mod test {
-    use crate::logging::get_log_configuration_path;
+    #[cfg(target_os = "windows")]
+    pub const PATH_SEPARATOR: &str = "\\";
+    #[cfg(not(target_os = "windows"))]
+    pub const PATH_SEPARATOR: &str = "/";
+
+    use crate::{dir_utils, logging::get_log_configuration_path};
     use std::{env, path::PathBuf};
 
     #[test]
     fn get_log_configuration_path_cli() {
         let path = get_log_configuration_path(Some(PathBuf::from("~/my-tari")));
         assert_eq!(path.to_str().unwrap(), "~/my-tari");
+    }
+
+    #[test]
+    fn get_log_configuration_path_default() {
+        let path = get_log_configuration_path(Some(PathBuf::from(
+            &dir_utils::default_subdir("", None).trim_end_matches(PATH_SEPARATOR),
+        )));
+        assert_eq!(
+            path.to_str().unwrap(),
+            dir_utils::default_subdir("", None).trim_end_matches(PATH_SEPARATOR)
+        );
     }
 
     #[test]

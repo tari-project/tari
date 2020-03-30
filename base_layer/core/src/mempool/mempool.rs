@@ -38,13 +38,14 @@ use crate::{
 };
 use log::*;
 use std::sync::Arc;
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 pub const LOG_TARGET: &str = "c::mp::mempool";
 
 /// Struct containing the validators the mempool needs to run, It forces the correct amount of validators are given
 pub struct MempoolValidators<B: BlockchainBackend> {
-    mempool: Box<dyn Validation<Transaction, B>>,
-    orphan: Box<dyn Validation<Transaction, B>>,
+    mempool: Validator<Transaction, B>,
+    orphan: Validator<Transaction, B>,
 }
 
 impl<B: BlockchainBackend> MempoolValidators<B> {
@@ -59,7 +60,7 @@ impl<B: BlockchainBackend> MempoolValidators<B> {
         }
     }
 
-    pub fn into_validators(self) -> (Box<dyn Validation<Transaction, B>>, Box<dyn Validation<Transaction, B>>) {
+    pub fn into_validators(self) -> (Validator<Transaction, B>, Validator<Transaction, B>) {
         (self.mempool, self.orphan)
     }
 }
@@ -86,7 +87,7 @@ where T: BlockchainBackend
         let (mempool_validator, orphan_validator) = validators.into_validators();
         Self {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool_config),
-            orphan_pool: OrphanPool::new(config.orphan_pool_config, orphan_validator),
+            orphan_pool: OrphanPool::new(config.orphan_pool_config, orphan_validator, blockchain_db.clone()),
             pending_pool: PendingPool::new(config.pending_pool_config),
             reorg_pool: ReorgPool::new(config.reorg_pool_config),
             blockchain_db,
@@ -96,18 +97,33 @@ where T: BlockchainBackend
 
     /// Insert an unconfirmed transaction into the Mempool. The transaction *MUST* have passed through the validation
     /// pipeline already and will thus always be internally consistent by this stage
-    pub fn insert(&self, tx: Arc<Transaction>) -> Result<(), MempoolError> {
+    pub fn insert(&self, tx: Arc<Transaction>) -> Result<TxStorageResponse, MempoolError> {
+        debug!(
+            target: LOG_TARGET,
+            "Inserting tx into mempool: {}",
+            tx.body.kernels()[0].excess_sig.get_signature().to_hex()
+        );
         // The transaction is already internally consistent
-        match self.validator.validate(&tx) {
-            Ok(()) => self.unconfirmed_pool.insert(tx)?,
-            Err(ValidationError::UnknownInputs) => self.orphan_pool.insert(tx)?,
-            Err(ValidationError::MaturityError) => self.pending_pool.insert(tx)?,
-            _ => return Err(MempoolError::ValidationError),
-        };
-        Ok(())
+        let (db, metadata) = self.blockchain_db.db_and_metadata_read_access()?;
+
+        match self.validator.validate(&tx, &db, &metadata) {
+            Ok(()) => {
+                self.unconfirmed_pool.insert(tx)?;
+                Ok(TxStorageResponse::UnconfirmedPool)
+            },
+            Err(ValidationError::UnknownInputs) => {
+                self.orphan_pool.insert(tx)?;
+                Ok(TxStorageResponse::OrphanPool)
+            },
+            Err(ValidationError::MaturityError) => {
+                self.pending_pool.insert(tx)?;
+                Ok(TxStorageResponse::PendingPool)
+            },
+            _ => Ok(TxStorageResponse::NotStored),
+        }
     }
 
-    /// Insert a set of new transactions into the UTxPool.
+    // Insert a set of new transactions into the UTxPool.
     fn insert_txs(&self, txs: Vec<Arc<Transaction>>) -> Result<(), MempoolError> {
         for tx in txs {
             self.insert(tx)?;
@@ -116,18 +132,18 @@ where T: BlockchainBackend
     }
 
     /// Update the Mempool based on the received published block.
-    pub fn process_published_block(&self, published_block: &Block) -> Result<(), MempoolError> {
+    pub fn process_published_block(&self, published_block: Block) -> Result<(), MempoolError> {
         trace!(target: LOG_TARGET, "Mempool processing new block: {}", published_block);
         // Move published txs to ReOrgPool and discard double spends
         self.reorg_pool.insert_txs(
             self.unconfirmed_pool
-                .remove_published_and_discard_double_spends(published_block)?,
+                .remove_published_and_discard_double_spends(&published_block)?,
         )?;
 
         // Move txs with valid input UTXOs and expired time-locks to UnconfirmedPool and discard double spends
         self.unconfirmed_pool.insert_txs(
             self.pending_pool
-                .remove_unlocked_and_discard_double_spends(published_block)?,
+                .remove_unlocked_and_discard_double_spends(&published_block)?,
         )?;
 
         // Move txs with recently expired time-locks that have input UTXOs that have recently become valid to the
@@ -140,8 +156,8 @@ where T: BlockchainBackend
         Ok(())
     }
 
-    /// Update the Mempool based on the received set of published blocks.
-    pub fn process_published_blocks(&self, published_blocks: &[Block]) -> Result<(), MempoolError> {
+    // Update the Mempool based on the received set of published blocks.
+    fn process_published_blocks(&self, published_blocks: Vec<Block>) -> Result<(), MempoolError> {
         for published_block in published_blocks {
             self.process_published_block(published_block)?;
         }
@@ -153,13 +169,19 @@ where T: BlockchainBackend
     pub fn process_reorg(&self, removed_blocks: Vec<Block>, new_blocks: Vec<Block>) -> Result<(), MempoolError> {
         debug!(target: LOG_TARGET, "Mempool processing reorg");
         for block in &removed_blocks {
-            trace!(target: LOG_TARGET, "Mempool processing reorg removed block: {}", block);
+            trace!(
+                target: LOG_TARGET,
+                "Mempool processing reorg removed block {} ({})",
+                block.header.height,
+                block.header.hash().to_hex(),
+            );
         }
         for block in &new_blocks {
             trace!(
                 target: LOG_TARGET,
-                "Mempool processing reorg added new block: {}",
-                block
+                "Mempool processing reorg added new block {} ({})",
+                block.header.height,
+                block.header.hash().to_hex(),
             );
         }
 
@@ -167,7 +189,7 @@ where T: BlockchainBackend
             self.reorg_pool
                 .remove_reorged_txs_and_discard_double_spends(removed_blocks, &new_blocks)?,
         )?;
-        self.process_published_blocks(&new_blocks)?;
+        self.process_published_blocks(new_blocks)?;
         Ok(())
     }
 
@@ -186,14 +208,14 @@ where T: BlockchainBackend
     }
 
     /// Check if the specified transaction is stored in the Mempool.
-    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> Result<TxStorageResponse, MempoolError> {
-        if self.unconfirmed_pool.has_tx_with_excess_sig(excess_sig)? {
+    pub fn has_tx_with_excess_sig(&self, excess_sig: Signature) -> Result<TxStorageResponse, MempoolError> {
+        if self.unconfirmed_pool.has_tx_with_excess_sig(&excess_sig)? {
             Ok(TxStorageResponse::UnconfirmedPool)
-        } else if self.orphan_pool.has_tx_with_excess_sig(excess_sig)? {
+        } else if self.orphan_pool.has_tx_with_excess_sig(&excess_sig)? {
             Ok(TxStorageResponse::OrphanPool)
-        } else if self.pending_pool.has_tx_with_excess_sig(excess_sig)? {
+        } else if self.pending_pool.has_tx_with_excess_sig(&excess_sig)? {
             Ok(TxStorageResponse::PendingPool)
-        } else if self.reorg_pool.has_tx_with_excess_sig(excess_sig)? {
+        } else if self.reorg_pool.has_tx_with_excess_sig(&excess_sig)? {
             Ok(TxStorageResponse::ReorgPool)
         } else {
             Ok(TxStorageResponse::NotStored)

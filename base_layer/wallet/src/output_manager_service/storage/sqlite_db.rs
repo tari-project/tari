@@ -39,41 +39,36 @@ use crate::{
 use chrono::{Duration as ChronoDuration, NaiveDateTime, Utc};
 #[cfg(test)]
 use diesel::expression::dsl::not;
-use diesel::{
-    prelude::*,
-    r2d2::{ConnectionManager, Pool, PooledConnection},
-    result::Error as DieselError,
-    SqliteConnection,
+use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
+use std::{
+    collections::HashMap,
+    convert::TryFrom,
+    sync::{Arc, Mutex},
+    time::Duration,
 };
-use std::{collections::HashMap, convert::TryFrom, time::Duration};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
     types::PrivateKey,
 };
 use tari_crypto::tari_utilities::ByteArray;
+
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
 pub struct OutputManagerSqliteDatabase {
-    database_connection_pool: Pool<ConnectionManager<SqliteConnection>>,
+    database_connection: Arc<Mutex<SqliteConnection>>,
 }
 impl OutputManagerSqliteDatabase {
-    pub fn new(database_connection_pool: Pool<ConnectionManager<SqliteConnection>>) -> Self {
-        Self {
-            database_connection_pool,
-        }
+    pub fn new(database_connection: Arc<Mutex<SqliteConnection>>) -> Self {
+        Self { database_connection }
     }
 }
 impl OutputManagerBackend for OutputManagerSqliteDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError> {
-        let conn = self
-            .database_connection_pool
-            .clone()
-            .get()
-            .map_err(|_| OutputManagerStorageError::R2d2Error)?;
+        let conn = acquire_lock!(self.database_connection);
 
         let result = match key {
-            DbKey::SpentOutput(k) => match OutputSql::find_status(&k.to_vec(), OutputStatus::Spent, &conn) {
+            DbKey::SpentOutput(k) => match OutputSql::find_status(&k.to_vec(), OutputStatus::Spent, &(*conn)) {
                 Ok(o) => Some(DbValue::SpentOutput(Box::new(UnblindedOutput::try_from(o)?))),
                 Err(e) => {
                     match e {
@@ -83,7 +78,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     None
                 },
             },
-            DbKey::UnspentOutput(k) => match OutputSql::find_status(&k.to_vec(), OutputStatus::Unspent, &conn) {
+            DbKey::UnspentOutput(k) => match OutputSql::find_status(&k.to_vec(), OutputStatus::Unspent, &(*conn)) {
                 Ok(o) => Some(DbValue::UnspentOutput(Box::new(UnblindedOutput::try_from(o)?))),
                 Err(e) => {
                     match e {
@@ -93,9 +88,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     None
                 },
             },
-            DbKey::PendingTransactionOutputs(tx_id) => match PendingTransactionOutputSql::find(*tx_id, &conn) {
+            DbKey::PendingTransactionOutputs(tx_id) => match PendingTransactionOutputSql::find(*tx_id, &(*conn)) {
                 Ok(p) => {
-                    let outputs = OutputSql::find_by_tx_id_and_encumbered(*tx_id, &conn)?;
+                    let outputs = OutputSql::find_by_tx_id_and_encumbered(*tx_id, &(*conn))?;
                     Some(DbValue::PendingTransactionOutputs(Box::new(
                         pending_transaction_outputs_from_sql_outputs(p.tx_id as u64, &p.timestamp, outputs)?,
                     )))
@@ -109,22 +104,22 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 },
             },
             DbKey::UnspentOutputs => Some(DbValue::UnspentOutputs(
-                OutputSql::index_status(OutputStatus::Unspent, &conn)?
+                OutputSql::index_status(OutputStatus::Unspent, &(*conn))?
                     .iter()
                     .map(|o| UnblindedOutput::try_from(o.clone()))
                     .collect::<Result<Vec<_>, _>>()?,
             )),
             DbKey::SpentOutputs => Some(DbValue::SpentOutputs(
-                OutputSql::index_status(OutputStatus::Spent, &conn)?
+                OutputSql::index_status(OutputStatus::Spent, &(*conn))?
                     .iter()
                     .map(|o| UnblindedOutput::try_from(o.clone()))
                     .collect::<Result<Vec<_>, _>>()?,
             )),
             DbKey::AllPendingTransactionOutputs => {
-                let pending_sql_txs = PendingTransactionOutputSql::index(&conn)?;
+                let pending_sql_txs = PendingTransactionOutputSql::index(&(*conn))?;
                 let mut pending_txs = HashMap::new();
                 for p_tx in pending_sql_txs {
-                    let outputs = OutputSql::find_by_tx_id_and_encumbered(p_tx.tx_id as u64, &conn)?;
+                    let outputs = OutputSql::find_by_tx_id_and_encumbered(p_tx.tx_id as u64, &(*conn))?;
                     pending_txs.insert(
                         p_tx.tx_id as u64,
                         pending_transaction_outputs_from_sql_outputs(p_tx.tx_id as u64, &p_tx.timestamp, outputs)?,
@@ -132,12 +127,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 }
                 Some(DbValue::AllPendingTransactionOutputs(pending_txs))
             },
-            DbKey::KeyManagerState => match KeyManagerStateSql::get_state(&conn).ok() {
+            DbKey::KeyManagerState => match KeyManagerStateSql::get_state(&(*conn)).ok() {
                 None => None,
                 Some(km) => Some(DbValue::KeyManagerState(KeyManagerState::try_from(km)?)),
             },
             DbKey::InvalidOutputs => Some(DbValue::InvalidOutputs(
-                OutputSql::index_status(OutputStatus::Invalid, &conn)?
+                OutputSql::index_status(OutputStatus::Invalid, &(*conn))?
                     .iter()
                     .map(|o| UnblindedOutput::try_from(o.clone()))
                     .collect::<Result<Vec<_>, _>>()?,
@@ -148,44 +143,41 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError> {
-        let conn = self
-            .database_connection_pool
-            .clone()
-            .get()
-            .map_err(|_| OutputManagerStorageError::R2d2Error)?;
+        let conn = acquire_lock!(self.database_connection);
 
         match op {
             WriteOperation::Insert(kvp) => match kvp {
                 DbKeyValuePair::SpentOutput(k, o) => {
-                    if let Ok(_) = OutputSql::find(&k.to_vec(), &conn) {
+                    if OutputSql::find(&k.to_vec(), &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    OutputSql::new(*o, OutputStatus::Spent, None).commit(&conn)?
+                    OutputSql::new(*o, OutputStatus::Spent, None).commit(&(*conn))?
                 },
                 DbKeyValuePair::UnspentOutput(k, o) => {
-                    if let Ok(_) = OutputSql::find(&k.to_vec(), &conn) {
+                    if OutputSql::find(&k.to_vec(), &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    OutputSql::new(*o, OutputStatus::Unspent, None).commit(&conn)?
+                    OutputSql::new(*o, OutputStatus::Unspent, None).commit(&(*conn))?
                 },
                 DbKeyValuePair::PendingTransactionOutputs(tx_id, p) => {
-                    if let Ok(_) = PendingTransactionOutputSql::find(tx_id, &conn) {
+                    if PendingTransactionOutputSql::find(tx_id, &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    PendingTransactionOutputSql::new(p.tx_id, p.timestamp).commit(&conn)?;
+                    PendingTransactionOutputSql::new(p.tx_id, true, p.timestamp).commit(&(*conn))?;
                     for o in p.outputs_to_be_spent {
-                        OutputSql::new(o.clone(), OutputStatus::EncumberedToBeSpent, Some(p.tx_id)).commit(&conn)?;
+                        OutputSql::new(o.clone(), OutputStatus::EncumberedToBeSpent, Some(p.tx_id)).commit(&(*conn))?;
                     }
                     for o in p.outputs_to_be_received {
-                        OutputSql::new(o.clone(), OutputStatus::EncumberedToBeReceived, Some(p.tx_id)).commit(&conn)?;
+                        OutputSql::new(o.clone(), OutputStatus::EncumberedToBeReceived, Some(p.tx_id))
+                            .commit(&(*conn))?;
                     }
                 },
-                DbKeyValuePair::KeyManagerState(km) => KeyManagerStateSql::set_state(km, &conn)?,
+                DbKeyValuePair::KeyManagerState(km) => KeyManagerStateSql::set_state(km, &(*conn))?,
             },
             WriteOperation::Remove(k) => match k {
-                DbKey::SpentOutput(s) => match OutputSql::find_status(&s.to_vec(), OutputStatus::Spent, &conn) {
+                DbKey::SpentOutput(s) => match OutputSql::find_status(&s.to_vec(), OutputStatus::Spent, &(*conn)) {
                     Ok(o) => {
-                        o.clone().delete(&conn)?;
+                        o.delete(&(*conn))?;
                         return Ok(Some(DbValue::SpentOutput(Box::new(UnblindedOutput::try_from(o)?))));
                     },
                     Err(e) => {
@@ -195,9 +187,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         };
                     },
                 },
-                DbKey::UnspentOutput(k) => match OutputSql::find_status(&k.to_vec(), OutputStatus::Unspent, &conn) {
+                DbKey::UnspentOutput(k) => match OutputSql::find_status(&k.to_vec(), OutputStatus::Unspent, &(*conn)) {
                     Ok(o) => {
-                        o.clone().delete(&conn)?;
+                        o.delete(&(*conn))?;
                         return Ok(Some(DbValue::UnspentOutput(Box::new(UnblindedOutput::try_from(o)?))));
                     },
                     Err(e) => {
@@ -207,10 +199,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         };
                     },
                 },
-                DbKey::PendingTransactionOutputs(tx_id) => match PendingTransactionOutputSql::find(tx_id, &conn) {
+                DbKey::PendingTransactionOutputs(tx_id) => match PendingTransactionOutputSql::find(tx_id, &(*conn)) {
                     Ok(p) => {
-                        let outputs = OutputSql::find_by_tx_id_and_encumbered(p.tx_id as u64, &conn)?;
-                        p.clone().delete(&conn)?;
+                        let outputs = OutputSql::find_by_tx_id_and_encumbered(p.tx_id as u64, &(*conn))?;
+                        p.delete(&(*conn))?;
                         return Ok(Some(DbValue::PendingTransactionOutputs(Box::new(
                             pending_transaction_outputs_from_sql_outputs(p.tx_id as u64, &p.timestamp, outputs)?,
                         ))));
@@ -234,15 +226,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn confirm_transaction(&self, tx_id: u64) -> Result<(), OutputManagerStorageError> {
-        let conn = self
-            .database_connection_pool
-            .clone()
-            .get()
-            .map_err(|_| OutputManagerStorageError::R2d2Error)?;
+        let conn = acquire_lock!(self.database_connection);
 
-        match PendingTransactionOutputSql::find(tx_id, &conn) {
+        match PendingTransactionOutputSql::find(tx_id, &(*conn)) {
             Ok(p) => {
-                let outputs = OutputSql::find_by_tx_id_and_encumbered(tx_id, &conn)?;
+                let outputs = OutputSql::find_by_tx_id_and_encumbered(tx_id, &(*conn))?;
 
                 for o in outputs {
                     if o.status == (OutputStatus::EncumberedToBeReceived as i32) {
@@ -251,7 +239,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                                 status: Some(OutputStatus::Unspent),
                                 tx_id: None,
                             },
-                            &conn,
+                            &(*conn),
                         )?;
                     } else if o.status == (OutputStatus::EncumberedToBeSpent as i32) {
                         o.update(
@@ -259,12 +247,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                                 status: Some(OutputStatus::Spent),
                                 tx_id: None,
                             },
-                            &conn,
+                            &(*conn),
                         )?;
                     }
                 }
 
-                p.delete(&conn)?;
+                p.delete(&(*conn))?;
             },
             Err(e) => {
                 match e {
@@ -277,29 +265,25 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn encumber_outputs(
+    fn short_term_encumber_outputs(
         &self,
         tx_id: u64,
         outputs_to_send: &[UnblindedOutput],
         change_output: Option<UnblindedOutput>,
     ) -> Result<(), OutputManagerStorageError>
     {
-        let conn = self
-            .database_connection_pool
-            .clone()
-            .get()
-            .map_err(|_| OutputManagerStorageError::R2d2Error)?;
+        let conn = acquire_lock!(self.database_connection);
 
         let mut outputs_to_be_spent = Vec::new();
         for i in outputs_to_send {
-            let output = OutputSql::find(&i.spending_key.to_vec(), &conn)?;
+            let output = OutputSql::find(&i.spending_key.to_vec(), &(*conn))?;
             if output.status == (OutputStatus::Spent as i32) {
                 return Err(OutputManagerStorageError::OutputAlreadySpent);
             }
             outputs_to_be_spent.push(output);
         }
 
-        PendingTransactionOutputSql::new(tx_id, Utc::now().naive_utc()).commit(&conn)?;
+        PendingTransactionOutputSql::new(tx_id, true, Utc::now().naive_utc()).commit(&(*conn))?;
 
         for o in outputs_to_be_spent {
             o.update(
@@ -307,44 +291,75 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     status: Some(OutputStatus::EncumberedToBeSpent),
                     tx_id: Some(tx_id),
                 },
-                &conn,
+                &(*conn),
             )?;
         }
 
         if let Some(co) = change_output {
-            OutputSql::new(co, OutputStatus::EncumberedToBeReceived, Some(tx_id)).commit(&conn)?;
+            OutputSql::new(co, OutputStatus::EncumberedToBeReceived, Some(tx_id)).commit(&(*conn))?;
+        }
+
+        Ok(())
+    }
+
+    fn confirm_encumbered_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
+        let conn = acquire_lock!(self.database_connection);
+
+        match PendingTransactionOutputSql::find(tx_id, &(*conn)) {
+            Ok(p) => {
+                p.clear_short_term(&(*conn))?;
+            },
+            Err(e) => {
+                match e {
+                    OutputManagerStorageError::DieselError(DieselError::NotFound) => {
+                        return Err(OutputManagerStorageError::ValueNotFound(
+                            DbKey::PendingTransactionOutputs(tx_id),
+                        ))
+                    },
+                    e => return Err(e),
+                };
+            },
+        }
+
+        Ok(())
+    }
+
+    fn clear_short_term_encumberances(&self) -> Result<(), OutputManagerStorageError> {
+        let conn = acquire_lock!(self.database_connection);
+
+        let pending_transaction_outputs = PendingTransactionOutputSql::index_short_term(&(*conn))?;
+        drop(conn);
+
+        for pto in pending_transaction_outputs.iter() {
+            self.cancel_pending_transaction(pto.tx_id as u64)?;
         }
 
         Ok(())
     }
 
     fn cancel_pending_transaction(&self, tx_id: u64) -> Result<(), OutputManagerStorageError> {
-        let conn = self
-            .database_connection_pool
-            .clone()
-            .get()
-            .map_err(|_| OutputManagerStorageError::R2d2Error)?;
+        let conn = acquire_lock!(self.database_connection);
 
-        match PendingTransactionOutputSql::find(tx_id, &conn) {
+        match PendingTransactionOutputSql::find(tx_id, &(*conn)) {
             Ok(p) => {
-                let outputs = OutputSql::find_by_tx_id_and_encumbered(tx_id, &conn)?;
+                let outputs = OutputSql::find_by_tx_id_and_encumbered(tx_id, &(*conn))?;
 
                 for o in outputs {
                     if o.status == (OutputStatus::EncumberedToBeReceived as i32) {
-                        o.delete(&conn)?;
+                        o.delete(&(*conn))?;
                     } else if o.status == (OutputStatus::EncumberedToBeSpent as i32) {
                         o.update(
                             UpdateOutput {
                                 status: Some(OutputStatus::Unspent),
                                 tx_id: None,
                             },
-                            &conn,
+                            &(*conn),
                         )?;
-                        o.update_null(NullOutputSql { tx_id: None }, &conn)?;
+                        o.update_null(NullOutputSql { tx_id: None }, &(*conn))?;
                     }
                 }
 
-                p.delete(&conn)?;
+                p.delete(&(*conn))?;
             },
             Err(e) => {
                 match e {
@@ -362,15 +377,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn timeout_pending_transactions(&self, period: Duration) -> Result<(), OutputManagerStorageError> {
-        let conn = self
-            .database_connection_pool
-            .clone()
-            .get()
-            .map_err(|_| OutputManagerStorageError::R2d2Error)?;
+        let conn = acquire_lock!(self.database_connection);
 
         let older_pending_txs = PendingTransactionOutputSql::index_older(
             Utc::now().naive_utc() - ChronoDuration::from_std(period)?,
-            &conn,
+            &(*conn),
         )?;
         drop(conn);
         for ptx in older_pending_txs {
@@ -380,31 +391,22 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn increment_key_index(&self) -> Result<(), OutputManagerStorageError> {
-        let conn = self
-            .database_connection_pool
-            .clone()
-            .get()
-            .map_err(|_| OutputManagerStorageError::R2d2Error)?;
+        let conn = acquire_lock!(self.database_connection);
 
-        KeyManagerStateSql::increment_index(&conn)?;
+        KeyManagerStateSql::increment_index(&(*conn))?;
 
         Ok(())
     }
 
     fn invalidate_unspent_output(&self, output: &UnblindedOutput) -> Result<(), OutputManagerStorageError> {
-        let conn = self
-            .database_connection_pool
-            .get()
-            .map_err(|_| OutputManagerStorageError::R2d2Error)?;
-
+        let conn = acquire_lock!(self.database_connection);
         let output = OutputSql::find(&output.spending_key.to_vec(), &conn)?;
-
         let _ = output.update(
             UpdateOutput {
                 status: Some(OutputStatus::Invalid),
                 tx_id: None,
             },
-            &conn,
+            &(*conn),
         )?;
 
         Ok(())
@@ -487,20 +489,14 @@ impl OutputSql {
     }
 
     /// Write this struct to the database
-    pub fn commit(
-        &self,
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<(), OutputManagerStorageError>
-    {
+    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
         diesel::insert_into(outputs::table).values(self.clone()).execute(conn)?;
         Ok(())
     }
 
     /// Return all unencumbered outputs
     #[cfg(test)]
-    pub fn index(
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+    pub fn index(conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(not(outputs::status.eq(OutputStatus::EncumberedToBeReceived as i32)))
             .filter(not(outputs::status.eq(OutputStatus::EncumberedToBeSpent as i32)))
@@ -510,18 +506,14 @@ impl OutputSql {
     /// Return all outputs with a given status
     pub fn index_status(
         status: OutputStatus,
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+        conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError>
     {
         Ok(outputs::table.filter(outputs::status.eq(status as i32)).load(conn)?)
     }
 
     /// Find a particular Output, if it exists
-    pub fn find(
-        spending_key: &[u8],
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<OutputSql, OutputManagerStorageError>
-    {
+    pub fn find(spending_key: &[u8], conn: &SqliteConnection) -> Result<OutputSql, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::spending_key.eq(spending_key))
             .first::<OutputSql>(conn)?)
@@ -530,7 +522,7 @@ impl OutputSql {
     /// Find outputs via tx_id that are encumbered. Any outputs that are encumbered cannot be marked as spent.
     pub fn find_by_tx_id_and_encumbered(
         tx_id: TxId,
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+        conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError>
     {
         Ok(outputs::table
@@ -547,7 +539,7 @@ impl OutputSql {
     pub fn find_status(
         spending_key: &[u8],
         status: OutputStatus,
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+        conn: &SqliteConnection,
     ) -> Result<OutputSql, OutputManagerStorageError>
     {
         Ok(outputs::table
@@ -556,11 +548,7 @@ impl OutputSql {
             .first::<OutputSql>(conn)?)
     }
 
-    pub fn delete(
-        &self,
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<(), OutputManagerStorageError>
-    {
+    pub fn delete(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
         let num_deleted =
             diesel::delete(outputs::table.filter(outputs::spending_key.eq(&self.spending_key))).execute(conn)?;
 
@@ -574,7 +562,7 @@ impl OutputSql {
     pub fn update(
         &self,
         updated_output: UpdateOutput,
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+        conn: &SqliteConnection,
     ) -> Result<OutputSql, OutputManagerStorageError>
     {
         let num_updated = diesel::update(outputs::table.filter(outputs::spending_key.eq(&self.spending_key)))
@@ -594,7 +582,7 @@ impl OutputSql {
     pub fn update_null(
         &self,
         updated_null: NullOutputSql,
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+        conn: &SqliteConnection,
     ) -> Result<OutputSql, OutputManagerStorageError>
     {
         let num_updated = diesel::update(outputs::table.filter(outputs::spending_key.eq(&self.spending_key)))
@@ -666,21 +654,19 @@ impl From<UpdateOutput> for UpdateOutputSql {
 #[table_name = "pending_transaction_outputs"]
 struct PendingTransactionOutputSql {
     tx_id: i64,
+    short_term: i32,
     timestamp: NaiveDateTime,
 }
 impl PendingTransactionOutputSql {
-    pub fn new(tx_id: TxId, timestamp: NaiveDateTime) -> Self {
+    pub fn new(tx_id: TxId, short_term: bool, timestamp: NaiveDateTime) -> Self {
         Self {
             tx_id: tx_id as i64,
+            short_term: short_term as i32,
             timestamp,
         }
     }
 
-    pub fn commit(
-        &self,
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<(), OutputManagerStorageError>
-    {
+    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
         diesel::insert_into(pending_transaction_outputs::table)
             .values(self.clone())
             .execute(conn)?;
@@ -689,7 +675,7 @@ impl PendingTransactionOutputSql {
 
     pub fn find(
         tx_id: TxId,
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+        conn: &SqliteConnection,
     ) -> Result<PendingTransactionOutputSql, OutputManagerStorageError>
     {
         Ok(pending_transaction_outputs::table
@@ -697,15 +683,21 @@ impl PendingTransactionOutputSql {
             .first::<PendingTransactionOutputSql>(conn)?)
     }
 
-    pub fn index(
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<Vec<PendingTransactionOutputSql>, OutputManagerStorageError> {
+    pub fn index(conn: &SqliteConnection) -> Result<Vec<PendingTransactionOutputSql>, OutputManagerStorageError> {
         Ok(pending_transaction_outputs::table.load::<PendingTransactionOutputSql>(conn)?)
+    }
+
+    pub fn index_short_term(
+        conn: &SqliteConnection,
+    ) -> Result<Vec<PendingTransactionOutputSql>, OutputManagerStorageError> {
+        Ok(pending_transaction_outputs::table
+            .filter(pending_transaction_outputs::short_term.eq(1i32))
+            .load::<PendingTransactionOutputSql>(conn)?)
     }
 
     pub fn index_older(
         timestamp: NaiveDateTime,
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+        conn: &SqliteConnection,
     ) -> Result<Vec<PendingTransactionOutputSql>, OutputManagerStorageError>
     {
         Ok(pending_transaction_outputs::table
@@ -713,11 +705,7 @@ impl PendingTransactionOutputSql {
             .load::<PendingTransactionOutputSql>(conn)?)
     }
 
-    pub fn delete(
-        &self,
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<(), OutputManagerStorageError>
-    {
+    pub fn delete(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
         let num_deleted = diesel::delete(
             pending_transaction_outputs::table.filter(pending_transaction_outputs::tx_id.eq(&self.tx_id)),
         )
@@ -727,13 +715,40 @@ impl PendingTransactionOutputSql {
             return Err(OutputManagerStorageError::ValuesNotFound);
         }
 
-        let outputs = OutputSql::find_by_tx_id_and_encumbered(self.tx_id as u64, &conn)?;
+        let outputs = OutputSql::find_by_tx_id_and_encumbered(self.tx_id as u64, &(*conn))?;
         for o in outputs {
-            o.delete(&conn)?;
+            o.delete(&(*conn))?;
         }
 
         Ok(())
     }
+
+    /// This function is used to update an existing record to set fields to null
+    pub fn clear_short_term(
+        &self,
+        conn: &SqliteConnection,
+    ) -> Result<PendingTransactionOutputSql, OutputManagerStorageError>
+    {
+        let num_updated = diesel::update(
+            pending_transaction_outputs::table.filter(pending_transaction_outputs::tx_id.eq(&self.tx_id)),
+        )
+        .set(UpdatePendingTransactionOutputSql { short_term: Some(0i32) })
+        .execute(conn)?;
+
+        if num_updated == 0 {
+            return Err(OutputManagerStorageError::UnexpectedResult(
+                "Database update error".to_string(),
+            ));
+        }
+
+        Ok(PendingTransactionOutputSql::find(self.tx_id as u64, conn)?)
+    }
+}
+
+#[derive(AsChangeset)]
+#[table_name = "pending_transaction_outputs"]
+pub struct UpdatePendingTransactionOutputSql {
+    short_term: Option<i32>,
 }
 
 #[derive(Clone, Debug, Queryable, Insertable)]
@@ -772,20 +787,14 @@ impl TryFrom<KeyManagerStateSql> for KeyManagerState {
 }
 
 impl KeyManagerStateSql {
-    fn commit(
-        &self,
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<(), OutputManagerStorageError>
-    {
+    fn commit(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
         diesel::insert_into(key_manager_states::table)
             .values(self.clone())
             .execute(conn)?;
         Ok(())
     }
 
-    pub fn get_state(
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<KeyManagerStateSql, OutputManagerStorageError> {
+    pub fn get_state(conn: &SqliteConnection) -> Result<KeyManagerStateSql, OutputManagerStorageError> {
         Ok(key_manager_states::table
             .first::<KeyManagerStateSql>(conn)
             .map_err(|_| OutputManagerStorageError::KeyManagerNotInitialized)?)
@@ -793,7 +802,7 @@ impl KeyManagerStateSql {
 
     pub fn set_state(
         key_manager_state: KeyManagerState,
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
+        conn: &SqliteConnection,
     ) -> Result<(), OutputManagerStorageError>
     {
         match KeyManagerStateSql::get_state(conn) {
@@ -818,9 +827,7 @@ impl KeyManagerStateSql {
         Ok(())
     }
 
-    pub fn increment_index(
-        conn: &PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<usize, OutputManagerStorageError> {
+    pub fn increment_index(conn: &SqliteConnection) -> Result<usize, OutputManagerStorageError> {
         Ok(match KeyManagerStateSql::get_state(conn) {
             Ok(km) => {
                 let current_index = (km.primary_key_index + 1) as usize;
@@ -875,7 +882,7 @@ mod test {
         sqlite_db::{KeyManagerStateSql, OutputSql, OutputStatus, PendingTransactionOutputSql, UpdateOutput},
     };
     use chrono::{Duration as ChronoDuration, Utc};
-    use diesel::{r2d2::ConnectionManager, Connection, SqliteConnection};
+    use diesel::{Connection, SqliteConnection};
     use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng, RngCore};
     use std::{convert::TryFrom, iter, time::Duration};
     use tari_core::transactions::{
@@ -910,10 +917,6 @@ mod test {
 
         embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
 
-        let manager = ConnectionManager::<SqliteConnection>::new(db_path);
-        let pool = diesel::r2d2::Pool::builder().max_size(1).build(manager).unwrap();
-
-        let conn = pool.get().unwrap();
         conn.execute("PRAGMA foreign_keys = ON").unwrap();
 
         let mut outputs = Vec::new();
@@ -966,22 +969,11 @@ mod test {
 
         let tx_id = 44u64;
 
-        assert!(OutputSql::find(&outputs[0].spending_key, &conn)
-            .unwrap()
-            .update(
-                UpdateOutput {
-                    status: None,
-                    tx_id: Some(tx_id),
-                },
-                &conn,
-            )
-            .is_err());
-
-        PendingTransactionOutputSql::new(tx_id, Utc::now().naive_utc())
+        PendingTransactionOutputSql::new(tx_id, true, Utc::now().naive_utc())
             .commit(&conn)
             .unwrap();
 
-        PendingTransactionOutputSql::new(11u64, Utc::now().naive_utc())
+        PendingTransactionOutputSql::new(11u64, true, Utc::now().naive_utc())
             .commit(&conn)
             .unwrap();
 
@@ -1021,6 +1013,7 @@ mod test {
 
         PendingTransactionOutputSql::new(
             12u64,
+            true,
             Utc::now().naive_utc() - ChronoDuration::from_std(Duration::from_millis(600_000)).unwrap(),
         )
         .commit(&conn)
@@ -1049,10 +1042,6 @@ mod test {
 
         embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
 
-        let manager = ConnectionManager::<SqliteConnection>::new(db_path);
-        let pool = diesel::r2d2::Pool::builder().max_size(1).build(manager).unwrap();
-
-        let conn = pool.get().unwrap();
         conn.execute("PRAGMA foreign_keys = ON").unwrap();
 
         assert!(KeyManagerStateSql::get_state(&conn).is_err());

@@ -35,6 +35,9 @@
 mod builder;
 pub use builder::{Builder, Config, PipelineBuilderError};
 
+mod error;
+pub use error::PipelineError;
+
 mod sink;
 pub use sink::SinkService;
 
@@ -43,3 +46,6 @@ pub(crate) use inbound::Inbound;
 
 mod outbound;
 pub(crate) use outbound::Outbound;
+
+mod translate_sink;
+pub use translate_sink::TranslateSink;

@@ -20,12 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use super::PipelineError;
 use futures::{task::Context, Future, Sink, SinkExt};
-use log::*;
 use std::{error::Error, pin::Pin, task::Poll};
 use tower::Service;
-
-const LOG_TARGET: &str = "comms::pipeline::sink";
 
 /// A service which forwards and messages it gets to the given Sink
 #[derive(Clone)]
@@ -42,20 +40,17 @@ where
     TSink: Sink<T> + Unpin + Clone + 'static,
     TSink::Error: Error + Send + Sync + 'static,
 {
-    // A boxed error gives the most flexibility when building a pipeline. Using TSink::Error, in practise, requires a
-    // conversion between the error being used for other services and TSink::Error.
-    type Error = Box<dyn std::error::Error + Send + Sync>;
+    type Error = PipelineError;
     type Response = ();
 
     type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.0).poll_ready(cx).map_err(Into::into)
+        Pin::new(&mut self.0).poll_ready(cx).map_err(PipelineError::from_debug)
     }
 
     fn call(&mut self, item: T) -> Self::Future {
         let mut sink = self.0.clone();
-        trace!(target: LOG_TARGET, "Sending item to sink");
-        async move { sink.send(item).await.map_err(Into::into) }
+        async move { sink.send(item).await.map_err(PipelineError::from_debug) }
     }
 }

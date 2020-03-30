@@ -22,6 +22,7 @@
 
 use crate::{
     blocks::{blockheader::BlockHash, Block, BlockHeader},
+    proof_of_work::Difficulty,
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::HashOutput,
@@ -29,11 +30,22 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
+use strum_macros::Display;
 use tari_crypto::tari_utilities::{hex::to_hex, Hashable};
 
 #[derive(Debug)]
 pub struct DbTransaction {
     pub operations: Vec<WriteOperation>,
+}
+
+impl Display for DbTransaction {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        fmt.write_str("Db transaction: \n")?;
+        for write_op in &self.operations {
+            fmt.write_str(&format!("{}\n", write_op))?;
+        }
+        Ok(())
+    }
 }
 
 impl Default for DbTransaction {
@@ -157,7 +169,7 @@ impl DbTransaction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Display)]
 pub enum WriteOperation {
     Insert(DbKeyValuePair),
     Delete(DbKey),
@@ -196,7 +208,7 @@ pub enum MetadataKey {
 pub enum MetadataValue {
     ChainHeight(Option<u64>),
     BestBlock(Option<BlockHash>),
-    AccumulatedWork(u64),
+    AccumulatedWork(Option<Difficulty>),
     PruningHorizon(u64),
 }
 

@@ -20,23 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-cfg_if! {
-    if #[cfg(feature = "base_node")] {
+#[cfg(feature = "base_node")]
 mod error;
+#[cfg(feature = "base_node")]
 mod inbound_handlers;
+#[cfg(feature = "base_node")]
 mod initializer;
+#[cfg(feature = "base_node")]
+mod local_service;
+#[cfg(feature = "base_node")]
 mod outbound_interface;
+#[cfg(feature = "base_node")]
 mod service;
+
 // Public re-exports
+#[cfg(feature = "base_node")]
 pub use error::MempoolServiceError;
+#[cfg(feature = "base_node")]
 pub use initializer::MempoolServiceInitializer;
+#[cfg(feature = "base_node")]
 pub use outbound_interface::OutboundMempoolServiceInterface;
+#[cfg(feature = "base_node")]
 pub use service::MempoolService;
-    }
-}
 
 mod request;
 mod response;
 
-pub use request::{MempoolRequest, MempoolServiceRequest, RequestKey};
+pub use request::{MempoolRequest, MempoolServiceRequest};
 pub use response::{MempoolResponse, MempoolServiceResponse};

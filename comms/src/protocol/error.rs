@@ -31,9 +31,24 @@ pub enum ProtocolError {
     ProtocolIdTooLong,
     /// Protocol negotiation failed because the peer did not accept any protocols
     ProtocolOutboundNegotiationFailed,
+    /// Protocol negotiation failed because the peer did not offer any protocols supported by this node
+    ProtocolInboundNegotiationFailed,
+    /// Optimistic protocol negotiation failed because the peer did not offer a protocol supported by this node
+    ProtocolOptimisticNegotiationFailed,
     /// Protocol negotiation terminated by peer
     ProtocolNegotiationTerminatedByPeer,
     /// Protocol was not registered
     ProtocolNotRegistered,
     SendError(mpsc::SendError),
+}
+
+impl ProtocolError {
+    pub fn to_friendly_string(&self) -> String {
+        use ProtocolError::*;
+        match self {
+            IoError(err) => format!("IoError: {:?}", err),
+            SendError(err) => format!("SendError: {:?}", err),
+            err => format!("{}", err),
+        }
+    }
 }

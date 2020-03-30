@@ -22,7 +22,7 @@
 
 use crate::{
     backoff::ConstantBackoff,
-    builder::builder::{CommsBuilder, CommsNode},
+    builder::CommsBuilder,
     connection_manager::ConnectionManagerEvent,
     memsocket,
     message::{InboundMessage, OutboundMessage},
@@ -31,16 +31,17 @@ use crate::{
     pipeline,
     pipeline::SinkService,
     protocol::{messaging::MessagingEvent, ProtocolEvent, Protocols},
+    runtime,
     test_utils::node_identity::build_node_identity,
     transports::MemoryTransport,
     types::CommsSubstream,
+    CommsNode,
 };
 use bytes::Bytes;
 use futures::{channel::mpsc, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
 use std::{collections::HashSet, convert::identity, hash::Hash, sync::Arc, time::Duration};
 use tari_storage::HashmapDatabase;
 use tari_test_utils::{collect_stream, unpack_enum};
-use tokio::runtime;
 
 async fn spawn_node(
     protocols: Protocols<CommsSubstream>,
@@ -57,7 +58,7 @@ async fn spawn_node(
     let comms_node = CommsBuilder::new()
         // These calls are just to get rid of unused function warnings. 
         // <IrrelevantCalls>
-        .with_executor(runtime::Handle::current())
+        .with_executor(runtime::current_executor())
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
         .on_shutdown(|| {})
         // </IrrelevantCalls>
@@ -117,13 +118,14 @@ async fn peer_to_peer_custom_protocols() {
     let node_identity1 = comms_node1.node_identity();
     let node_identity2 = comms_node2.node_identity();
     comms_node1
-        .async_peer_manager()
+        .peer_manager()
         .add_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
             node_identity2.public_address().clone().into(),
             Default::default(),
             Default::default(),
+            &[TEST_PROTOCOL, ANOTHER_TEST_PROTOCOL],
         ))
         .await
         .unwrap();
@@ -145,11 +147,11 @@ async fn peer_to_peer_custom_protocols() {
     unpack_enum!(ConnectionManagerEvent::PeerConnected(_conn) = &*next_event);
 
     // Let's speak both our test protocols
-    let mut negotiated_substream1 = conn1.open_substream(TEST_PROTOCOL).await.unwrap();
+    let mut negotiated_substream1 = conn1.open_substream(&TEST_PROTOCOL).await.unwrap();
     assert_eq!(negotiated_substream1.protocol, TEST_PROTOCOL);
     negotiated_substream1.stream.write_all(TEST_MSG).await.unwrap();
 
-    let mut negotiated_substream2 = conn2.open_substream(ANOTHER_TEST_PROTOCOL).await.unwrap();
+    let mut negotiated_substream2 = conn2.open_substream(&ANOTHER_TEST_PROTOCOL).await.unwrap();
     assert_eq!(negotiated_substream2.protocol, ANOTHER_TEST_PROTOCOL);
     negotiated_substream2.stream.write_all(ANOTHER_TEST_MSG).await.unwrap();
 
@@ -188,13 +190,14 @@ async fn peer_to_peer_messaging() {
     let node_identity1 = comms_node1.node_identity();
     let node_identity2 = comms_node2.node_identity();
     comms_node1
-        .async_peer_manager()
+        .peer_manager()
         .add_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
             node_identity2.public_address().clone().into(),
             Default::default(),
             Default::default(),
+            &[],
         ))
         .await
         .unwrap();
@@ -259,33 +262,35 @@ async fn peer_to_peer_messaging_simultaneous() {
     let o1 = outbound_tx1.clone();
     let o2 = outbound_tx2.clone();
 
-    let node_identity1 = comms_node1.node_identity();
-    let node_identity2 = comms_node2.node_identity();
+    let node_identity1 = comms_node1.node_identity().clone();
+    let node_identity2 = comms_node2.node_identity().clone();
     comms_node1
-        .async_peer_manager()
+        .peer_manager()
         .add_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
             node_identity2.public_address().clone().into(),
             Default::default(),
             Default::default(),
+            &[],
         ))
         .await
         .unwrap();
     comms_node2
-        .async_peer_manager()
+        .peer_manager()
         .add_peer(Peer::new(
             node_identity1.public_key().clone(),
             node_identity1.node_id().clone(),
             node_identity1.public_address().clone().into(),
             Default::default(),
             Default::default(),
+            &[],
         ))
         .await
         .unwrap();
 
     // Simultaneously send messages between the two nodes
-    let rt_handle = runtime::Handle::current();
+    let rt_handle = runtime::current_executor();
     let handle1 = rt_handle.spawn(async move {
         for i in 0..NUM_MSGS {
             let outbound_msg = OutboundMessage::new(

@@ -25,12 +25,13 @@ use crate::{
     outbound::message_params::FinalSendMessageParams,
 };
 use futures::channel::oneshot;
-use std::fmt;
+use std::{fmt, fmt::Display};
 use tari_comms::{
     message::{MessageFlags, MessageTag},
     peer_manager::Peer,
     types::CommsPublicKey,
 };
+use tari_crypto::tari_utilities::hex::Hex;
 
 /// Determines if an outbound message should be Encrypted and, if so, for which public key
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,7 +39,7 @@ pub enum OutboundEncryption {
     /// Message should not be encrypted
     None,
     /// Message should be encrypted using a shared secret derived from the given public key
-    EncryptFor(CommsPublicKey),
+    EncryptFor(Box<CommsPublicKey>),
     // TODO: Remove this option as it is redundant (message encryption only needed for forwarded private messages)
     /// Message should be encrypted using a shared secret derived from the destination peer's
     /// public key. Each message sent according to the broadcast strategy will be encrypted for
@@ -61,6 +62,16 @@ impl OutboundEncryption {
         match self {
             None => false,
             EncryptFor(_) | EncryptForPeer => true,
+        }
+    }
+}
+
+impl Display for OutboundEncryption {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            OutboundEncryption::None => write!(f, "None"),
+            OutboundEncryption::EncryptFor(ref key) => write!(f, "EncryptFor:{}", key.to_hex()),
+            OutboundEncryption::EncryptForPeer => write!(f, "EncryptForPeer"),
         }
     }
 }
@@ -160,5 +171,22 @@ impl DhtOutboundMessage {
             comms_flags,
             body,
         }
+    }
+}
+
+impl fmt::Display for DhtOutboundMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "\n---- DhtOutboundMessage ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {} \nFlags: \
+             {:?}\nEncryption: {}\n{}\n----",
+            self.body.len(),
+            self.dht_header.message_type,
+            self.destination_peer,
+            self.dht_header,
+            self.comms_flags,
+            self.encryption,
+            self.tag
+        )
     }
 }

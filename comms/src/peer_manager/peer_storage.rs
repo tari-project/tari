@@ -31,6 +31,7 @@ use crate::{
         PeerManagerError,
         PeerQuery,
     },
+    protocol::ProtocolId,
     types::{CommsDatabase, CommsPublicKey},
 };
 use log::*;
@@ -113,6 +114,7 @@ where DS: KeyValueStore<PeerId, Peer>
 
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exist, the stored version will be replaced with the newly provided peer.
+    #[allow(clippy::too_many_arguments)]
     pub fn update_peer(
         &mut self,
         public_key: &CommsPublicKey,
@@ -121,6 +123,7 @@ where DS: KeyValueStore<PeerId, Peer>
         flags: Option<PeerFlags>,
         peer_features: Option<PeerFeatures>,
         connection_stats: Option<PeerConnectionStats>,
+        supported_protocols: Option<Vec<ProtocolId>>,
     ) -> Result<(), PeerManagerError>
     {
         match self.public_key_index.get(public_key).copied() {
@@ -129,10 +132,11 @@ where DS: KeyValueStore<PeerId, Peer>
                     .peer_db
                     .get(&peer_key)
                     .map_err(PeerManagerError::DatabaseError)?
-                    .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+                    .expect("Public key index and peer database are out of sync!");
+
                 trace!(target: LOG_TARGET, "Updating peer '{}'", stored_peer.node_id);
 
-                let must_update_node_id = node_id.is_some();
+                let must_update_node_id = node_id.as_ref().filter(|n| *n != &stored_peer.node_id).is_some();
                 if must_update_node_id {
                     trace!(
                         target: LOG_TARGET,
@@ -141,7 +145,14 @@ where DS: KeyValueStore<PeerId, Peer>
                         node_id.as_ref().expect("already checked").short_str()
                     );
                 }
-                stored_peer.update(node_id, net_addresses, flags, peer_features, connection_stats);
+                stored_peer.update(
+                    node_id,
+                    net_addresses,
+                    flags,
+                    peer_features,
+                    connection_stats,
+                    supported_protocols,
+                );
 
                 let public_key = stored_peer.public_key.clone();
                 let node_id = stored_peer.node_id.clone();
@@ -151,13 +162,21 @@ where DS: KeyValueStore<PeerId, Peer>
                     .map_err(PeerManagerError::DatabaseError)?;
 
                 if must_update_node_id {
+                    trace!(target: LOG_TARGET, "Must update node id for peer '{}'", node_id);
                     self.remove_index_links(peer_key);
                     self.add_index_links(peer_key, public_key, node_id);
                 }
 
                 Ok(())
             },
-            None => Err(PeerManagerError::PeerNotFoundError),
+            None => {
+                trace!(
+                    target: LOG_TARGET,
+                    "Peer not found because the public key '{}' could not be found in the index",
+                    public_key
+                );
+                Err(PeerManagerError::PeerNotFoundError)
+            },
         }
     }
 
@@ -197,10 +216,11 @@ where DS: KeyValueStore<PeerId, Peer>
             .node_id_index
             .get(node_id)
             .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
-        self.peer_db
+        Ok(self
+            .peer_db
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)
+            .expect("public_key index and peer database are out of sync"))
     }
 
     /// Find the peer with the provided PublicKey
@@ -209,10 +229,11 @@ where DS: KeyValueStore<PeerId, Peer>
             .public_key_index
             .get(public_key)
             .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
-        self.peer_db
+        Ok(self
+            .peer_db
             .get(peer_key)
             .map_err(PeerManagerError::DatabaseError)?
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)
+            .expect("public_key index and peer database are out of sync"))
     }
 
     /// Check if a peer exist using the specified public_key
@@ -251,14 +272,27 @@ where DS: KeyValueStore<PeerId, Peer>
         query.executor(&self.peer_db).get_results()
     }
 
+    /// Return all peers
+    pub fn all(&self) -> Result<Vec<Peer>, PeerManagerError> {
+        let mut peers = Vec::with_capacity(self.peer_db.size()?);
+        self.peer_db.for_each_ok(|(_, peer)| {
+            peers.push(peer);
+            IterationResult::Continue
+        })?;
+        Ok(peers)
+    }
+
     /// Compile a list of all known peers
     pub fn flood_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_db
-            .filter_take(PEER_MANAGER_MAX_FLOOD_PEERS, |(_, peer)| {
-                !peer.is_banned() && peer.has_features(PeerFeatures::MESSAGE_PROPAGATION)
-            })
+            .filter_take(PEER_MANAGER_MAX_FLOOD_PEERS, |(_, peer)| !peer.is_banned())
             .map(|pairs| pairs.into_iter().map(|(_, peer)| peer).collect())
             .map_err(PeerManagerError::DatabaseError)
+    }
+
+    pub fn for_each<F>(&self, mut f: F) -> Result<(), PeerManagerError>
+    where F: FnMut(Peer) -> IterationResult {
+        self.peer_db.for_each_ok(|(_, peer)| f(peer)).map_err(Into::into)
     }
 
     /// Compile a list of peers
@@ -376,11 +410,11 @@ where DS: KeyValueStore<PeerId, Peer>
         Ok(region2node_dist <= dists[last_index])
     }
 
-    /// Enables Thread safe access - Changes the ban flag bit of the peer
-    pub fn set_banned(&mut self, node_id: &NodeId, ban_flag: bool) -> Result<(), PeerManagerError> {
+    /// Changes the ban flag bit of the peer
+    pub fn set_banned(&mut self, public_key: &CommsPublicKey, ban_flag: bool) -> Result<NodeId, PeerManagerError> {
         let peer_key = *self
-            .node_id_index
-            .get(&node_id)
+            .public_key_index
+            .get(&public_key)
             .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peer_db
@@ -388,9 +422,30 @@ where DS: KeyValueStore<PeerId, Peer>
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
         peer.set_banned(ban_flag);
+        let node_id = peer.node_id.clone();
         self.peer_db
             .insert(peer_key, peer)
-            .map_err(PeerManagerError::DatabaseError)
+            .map_err(PeerManagerError::DatabaseError)?;
+        Ok(node_id)
+    }
+
+    /// Changes the OFFLINE flag bit of the peer
+    pub fn set_offline(&mut self, public_key: &CommsPublicKey, ban_flag: bool) -> Result<NodeId, PeerManagerError> {
+        let peer_key = *self
+            .public_key_index
+            .get(&public_key)
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+        let mut peer: Peer = self
+            .peer_db
+            .get(&peer_key)
+            .map_err(PeerManagerError::DatabaseError)?
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+        peer.set_offline(ban_flag);
+        let node_id = peer.node_id.clone();
+        self.peer_db
+            .insert(peer_key, peer)
+            .map_err(PeerManagerError::DatabaseError)?;
+        Ok(node_id)
     }
 
     /// Enables Thread safe access - Adds a new net address to the peer if it doesn't yet exist
@@ -439,13 +494,27 @@ mod test {
         let mut net_addresses = MultiaddressesWithStats::from(net_address1.clone());
         net_addresses.add_net_address(&net_address2);
         net_addresses.add_net_address(&net_address3);
-        let peer1 = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), PeerFeatures::empty());
+        let peer1 = Peer::new(
+            pk,
+            node_id,
+            net_addresses,
+            PeerFlags::default(),
+            PeerFeatures::empty(),
+            &[],
+        );
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_address4 = "/ip4/9.10.11.12/tcp/7000".parse::<Multiaddr>().unwrap();
         let net_addresses = MultiaddressesWithStats::from(net_address4.clone());
-        let peer2: Peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), PeerFeatures::empty());
+        let peer2: Peer = Peer::new(
+            pk,
+            node_id,
+            net_addresses,
+            PeerFlags::default(),
+            PeerFeatures::empty(),
+            &[],
+        );
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
@@ -453,7 +522,14 @@ mod test {
         let net_address6 = "/ip4/17.18.19.20/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_addresses = MultiaddressesWithStats::from(net_address5.clone());
         net_addresses.add_net_address(&net_address6);
-        let peer3 = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), PeerFeatures::empty());
+        let peer3 = Peer::new(
+            pk,
+            node_id,
+            net_addresses,
+            PeerFlags::default(),
+            PeerFeatures::empty(),
+            &[],
+        );
 
         // Create new datastore with a peer database
         let mut db = Some(HashmapDatabase::new());
@@ -494,13 +570,27 @@ mod test {
         let mut net_addresses = MultiaddressesWithStats::from(net_address1.clone());
         net_addresses.add_net_address(&net_address2);
         net_addresses.add_net_address(&net_address3);
-        let peer1 = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), PeerFeatures::empty());
+        let peer1 = Peer::new(
+            pk,
+            node_id,
+            net_addresses,
+            PeerFlags::default(),
+            PeerFeatures::empty(),
+            &[],
+        );
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_address4 = "/ip4/9.10.11.12/tcp/7000".parse::<Multiaddr>().unwrap();
         let net_addresses = MultiaddressesWithStats::from(net_address4.clone());
-        let peer2: Peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), PeerFeatures::empty());
+        let peer2: Peer = Peer::new(
+            pk,
+            node_id,
+            net_addresses,
+            PeerFlags::default(),
+            PeerFeatures::empty(),
+            &[],
+        );
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
@@ -508,7 +598,14 @@ mod test {
         let net_address6 = "/ip4/17.18.19.20/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_addresses = MultiaddressesWithStats::from(net_address5.clone());
         net_addresses.add_net_address(&net_address6);
-        let peer3 = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), PeerFeatures::empty());
+        let peer3 = Peer::new(
+            pk,
+            node_id,
+            net_addresses,
+            PeerFlags::default(),
+            PeerFeatures::empty(),
+            &[],
+        );
         // Test adding and searching for peers
         assert!(peer_storage.add_peer(peer1.clone()).is_ok());
         assert!(peer_storage.add_peer(peer2.clone()).is_ok());

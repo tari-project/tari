@@ -23,10 +23,9 @@
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
 use tari_core::{
-    blocks::{Block, BlockBuilder, BlockHeader, NewBlockTemplate},
-    chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, MemoryDatabase},
+    blocks::{Block, BlockHeader, NewBlockTemplate},
+    chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError},
     consensus::{ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, Network},
-    helpers::MockBackend,
     proof_of_work::Difficulty,
     transactions::{
         helpers::{
@@ -57,7 +56,7 @@ use tari_mmr::MutableMmr;
 
 const MAINNET: Network = Network::MainNet;
 
-fn create_coinbase(
+pub fn create_coinbase(
     factories: &CryptoFactories,
     value: MicroTari,
     maturity_height: u64,
@@ -84,23 +83,18 @@ fn genesis_template(
     consensus_constants: &ConsensusConstants,
 ) -> (NewBlockTemplate, UnblindedOutput)
 {
-    let header = BlockHeader::new(0);
+    let header = BlockHeader::new(consensus_constants.blockchain_version());
     let (utxo, kernel, output) = create_coinbase(factories, coinbase_value, consensus_constants.coinbase_lock_height());
-    let block = NewBlockTemplate::from(
-        BlockBuilder::new(consensus_constants)
-            .with_header(header)
-            .with_coinbase_utxo(utxo, kernel)
-            .build(),
-    );
+    let block = NewBlockTemplate::from(header.into_builder().with_coinbase_utxo(utxo, kernel).build());
     (block, output)
 }
 
 // This is a helper function to generate and print out a block that can be used as the genesis block.
 pub fn create_act_gen_block() {
     let network = MAINNET;
-    let consensus_manager: ConsensusManager<MockBackend> = ConsensusManagerBuilder::new(network).build();
+    let consensus_manager: ConsensusManager = ConsensusManagerBuilder::new(network).build();
     let factories = CryptoFactories::default();
-    let mut header = BlockHeader::new(0);
+    let mut header = BlockHeader::new(consensus_manager.consensus_constants().blockchain_version());
     let value = consensus_manager.emission_schedule().supply_at_block(0);
     let (mut utxo, key) = create_utxo(value, &factories, None);
     utxo.features = OutputFeatures::create_coinbase(1);
@@ -119,10 +113,7 @@ pub fn create_act_gen_block() {
     header.kernel_mr = kern;
     header.output_mr = utxo_hash;
     header.range_proof_mr = rp;
-    let block = BlockBuilder::new(&consensus_manager.consensus_constants())
-        .with_header(header)
-        .with_coinbase_utxo(utxo, kernel)
-        .build();
+    let block = header.into_builder().with_coinbase_utxo(utxo, kernel).build();
     println!("{}", &block);
     dbg!(&key.to_hex());
     dbg!(&block.body.outputs()[0].proof.to_hex());
@@ -194,16 +185,12 @@ pub fn create_genesis_block_with_utxos(
 pub fn chain_block(
     prev_block: &Block,
     transactions: Vec<Transaction>,
-    consensus_constants: &ConsensusConstants,
+    constants: &ConsensusConstants,
 ) -> NewBlockTemplate
 {
-    let header = BlockHeader::from_previous(&prev_block.header);
-    NewBlockTemplate::from(
-        BlockBuilder::new(consensus_constants)
-            .with_header(header)
-            .with_transactions(transactions)
-            .build(),
-    )
+    let mut header = BlockHeader::from_previous(&prev_block.header);
+    header.version = constants.blockchain_version();
+    NewBlockTemplate::from(header.into_builder().with_transactions(transactions).build())
 }
 
 /// Create a new block using the provided coinbase and transactions that adds to the blockchain given in `prev_block`.
@@ -212,13 +199,14 @@ pub fn chain_block_with_coinbase(
     transactions: Vec<Transaction>,
     coinbase_utxo: TransactionOutput,
     coinbase_kernel: TransactionKernel,
-    consensus_constants: &ConsensusConstants,
+    constants: &ConsensusConstants,
 ) -> NewBlockTemplate
 {
-    let header = BlockHeader::from_previous(&prev_block.header);
+    let mut header = BlockHeader::from_previous(&prev_block.header);
+    header.version = constants.blockchain_version();
     NewBlockTemplate::from(
-        BlockBuilder::new(consensus_constants)
-            .with_header(header)
+        header
+            .into_builder()
             .with_transactions(transactions)
             .with_coinbase_utxo(coinbase_utxo, coinbase_kernel)
             .build(),
@@ -232,20 +220,21 @@ pub fn append_block<B: BlockchainBackend>(
     prev_block: &Block,
     txns: Vec<Transaction>,
     consensus_constants: &ConsensusConstants,
+    achieved_difficulty: Difficulty,
 ) -> Result<Block, ChainStorageError>
 {
     let template = chain_block(prev_block, txns, consensus_constants);
     let mut block = db.calculate_mmr_roots(template)?;
     block.header.nonce = OsRng.next_u64();
-    find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
+    find_header_with_achieved_difficulty(&mut block.header, achieved_difficulty);
     db.add_block(block.clone())?;
     Ok(block)
 }
 
 /// Generate a new block using the given transaction schema and add it to the provided database.
 /// The blocks and UTXO vectors are also updated with the info from the new block.
-pub fn generate_new_block(
-    db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
+pub fn generate_new_block<B: BlockchainBackend>(
+    db: &BlockchainDatabase<B>,
     blocks: &mut Vec<Block>,
     outputs: &mut Vec<Vec<UnblindedOutput>>,
     schemas: Vec<TransactionSchema>,
@@ -265,8 +254,8 @@ pub fn generate_new_block(
     generate_block(db, blocks, txns, consensus_constants)
 }
 
-pub fn generate_new_block_with_achieved_difficulty(
-    db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
+pub fn generate_new_block_with_achieved_difficulty<B: BlockchainBackend>(
+    db: &mut BlockchainDatabase<B>,
     blocks: &mut Vec<Block>,
     outputs: &mut Vec<Vec<UnblindedOutput>>,
     schemas: Vec<TransactionSchema>,
@@ -289,8 +278,8 @@ pub fn generate_new_block_with_achieved_difficulty(
 
 /// Generate a new block using the given transaction schema and coinbase value and add it to the provided database.
 /// The blocks and UTXO vectors are also updated with the info from the new block.
-pub fn generate_new_block_with_coinbase(
-    db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
+pub fn generate_new_block_with_coinbase<B: BlockchainBackend>(
+    db: &mut BlockchainDatabase<B>,
     factories: &CryptoFactories,
     blocks: &mut Vec<Block>,
     outputs: &mut Vec<Vec<UnblindedOutput>>,
@@ -325,8 +314,8 @@ pub fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_d
 /// correct MMR roots.
 /// This function is not able to determine the unblinded outputs of a transaction, so if you are mixing using this
 /// with [generate_new_block], you must update the unblinded UTXO vector  yourself.
-pub fn generate_block(
-    db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
+pub fn generate_block<B: BlockchainBackend>(
+    db: &BlockchainDatabase<B>,
     blocks: &mut Vec<Block>,
     transactions: Vec<Transaction>,
     consensus_constants: &ConsensusConstants,
@@ -341,8 +330,8 @@ pub fn generate_block(
     result
 }
 
-pub fn generate_block_with_achieved_difficulty(
-    db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
+pub fn generate_block_with_achieved_difficulty<B: BlockchainBackend>(
+    db: &mut BlockchainDatabase<B>,
     blocks: &mut Vec<Block>,
     transactions: Vec<Transaction>,
     achieved_difficulty: Difficulty,
@@ -362,8 +351,8 @@ pub fn generate_block_with_achieved_difficulty(
 
 /// Generate a block and add it to the database using the provided transactions and coinbase. The header will be updated
 /// with the correct MMR roots.
-pub fn generate_block_with_coinbase(
-    db: &mut BlockchainDatabase<MemoryDatabase<HashDigest>>,
+pub fn generate_block_with_coinbase<B: BlockchainBackend>(
+    db: &mut BlockchainDatabase<B>,
     blocks: &mut Vec<Block>,
     transactions: Vec<Transaction>,
     coinbase_utxo: TransactionOutput,

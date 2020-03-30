@@ -36,7 +36,7 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
 };
 use tari_wallet::{
-    storage::connection_manager::run_migration_and_create_connection_pool,
+    storage::connection_manager::run_migration_and_create_sqlite_connection,
     transaction_service::storage::{
         database::{
             CompletedTransaction,
@@ -88,6 +88,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             amount: amounts[i].clone(),
             fee: stp.clone().get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
+            status: TransactionStatus::Pending,
             message: messages[i].clone(),
             timestamp: Utc::now().naive_utc(),
         });
@@ -135,6 +136,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount: amounts[i].clone(),
             receiver_protocol: rtp.clone(),
+            status: TransactionStatus::Pending,
             message: messages[i].clone(),
             timestamp: Utc::now().naive_utc(),
         });
@@ -290,6 +292,16 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             TransactionStatus::Mined
         );
     }
+
+    let completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
+    let num_completed_txs = completed_txs.len();
+
+    runtime
+        .block_on(db.cancel_completed_transaction(completed_txs[&1].tx_id))
+        .unwrap();
+
+    let completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
+    assert_eq!(completed_txs.len(), num_completed_txs - 1);
 }
 
 #[test]
@@ -303,6 +315,7 @@ pub fn test_transaction_service_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
-    test_db_backend(TransactionServiceSqliteDatabase::new(connection_pool));
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    test_db_backend(TransactionServiceSqliteDatabase::new(connection));
 }

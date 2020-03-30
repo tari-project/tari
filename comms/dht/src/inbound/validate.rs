@@ -27,12 +27,11 @@ use crate::{
         dht::{RejectMessage, RejectMessageReason},
         envelope::{DhtMessageType, Network},
     },
-    PipelineError,
 };
 use futures::{task::Context, Future};
 use log::*;
 use std::task::Poll;
-use tari_comms::message::MessageExt;
+use tari_comms::{message::MessageExt, pipeline::PipelineError};
 use tari_crypto::tari_utilities::ByteArray;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -62,7 +61,7 @@ impl<S> ValidateMiddleware<S> {
 impl<S> Service<DhtInboundMessage> for ValidateMiddleware<S>
 where
     S: Service<DhtInboundMessage, Response = ()> + Clone + 'static,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     type Error = PipelineError;
     type Response = ();
@@ -86,7 +85,7 @@ where
 impl<S> ValidateMiddleware<S>
 where
     S: Service<DhtInboundMessage, Response = ()>,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     pub async fn process_message(
         next_service: S,
@@ -101,7 +100,7 @@ where
             target_network
         );
         if message.dht_header.network == target_network {
-            next_service.oneshot(message).await.map_err(Into::into)?;
+            next_service.oneshot(message).await.map_err(PipelineError::from_debug)?;
         } else {
             debug!(
                 target: LOG_TARGET,
@@ -123,9 +122,11 @@ where
                             .unwrap_or_default(),
                         reason: RejectMessageReason::UnsupportedNetwork as i32,
                     }
-                    .to_encoded_bytes()?,
+                    .to_encoded_bytes()
+                    .map_err(PipelineError::from_debug)?,
                 )
-                .await?;
+                .await
+                .map_err(PipelineError::from_debug)?;
         }
 
         Ok(())

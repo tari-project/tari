@@ -60,18 +60,7 @@ where
         .unwrap();
 
     for p in peers {
-        let addr = p.public_address();
-        comms
-            .async_peer_manager()
-            .add_peer(Peer::new(
-                p.public_key().clone(),
-                p.node_id().clone(),
-                addr.into(),
-                PeerFlags::empty(),
-                PeerFeatures::COMMUNICATION_NODE,
-            ))
-            .await
-            .unwrap();
+        comms.peer_manager().add_peer(p.to_peer()).await.unwrap();
     }
 
     (comms, dht)
@@ -84,6 +73,7 @@ pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainM
         Vec::<Multiaddr>::new().into(),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
+        &[],
     );
     DomainMessage {
         dht_header: DhtMessageHeader {

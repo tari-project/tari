@@ -23,7 +23,7 @@
 #[allow(dead_code)]
 mod helpers;
 
-use futures::{future, future::Either, join, stream::FusedStream, FutureExt, Stream, StreamExt};
+use futures::join;
 use helpers::{
     block_builders::{
         append_block,
@@ -32,7 +32,9 @@ use helpers::{
         create_genesis_block_with_utxos,
         generate_block,
     },
+    event_stream::event_stream_next,
     nodes::{
+        create_network_with_2_base_nodes,
         create_network_with_2_base_nodes_with_config,
         create_network_with_3_base_nodes,
         create_network_with_3_base_nodes_with_config,
@@ -58,7 +60,7 @@ use tari_core::{
         types::CryptoFactories,
     },
     txn_schema,
-    validation::block_validators::StatelessValidator,
+    validation::{block_validators::StatelessBlockValidator, mocks::MockValidator},
 };
 use tari_crypto::tari_utilities::hash::Hashable;
 use tari_mmr::MmrCacheConfig;
@@ -93,9 +95,7 @@ fn request_response_get_metadata() {
 
     runtime.block_on(async {
         let received_metadata = alice_node.outbound_nci.get_metadata().await.unwrap();
-        assert_eq!(received_metadata.len(), 2);
-        assert_eq!(received_metadata[0].height_of_longest_chain, Some(0));
-        assert_eq!(received_metadata[1].height_of_longest_chain, Some(0));
+        assert_eq!(received_metadata.height_of_longest_chain, Some(0));
 
         alice_node.comms.shutdown().await;
         bob_node.comms.shutdown().await;
@@ -144,6 +144,45 @@ fn request_and_response_fetch_headers() {
         alice_node.comms.shutdown().await;
         bob_node.comms.shutdown().await;
         carol_node.comms.shutdown().await;
+    });
+}
+
+#[test]
+fn request_and_response_fetch_headers_with_hashes() {
+    let mut runtime = Runtime::new().unwrap();
+    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let (mut alice_node, bob_node, _consensus_manager) =
+        create_network_with_2_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
+
+    let mut header1 = BlockHeader::new(0);
+    header1.height = 1;
+    let header2 = BlockHeader::from_previous(&header1);
+    let hash1 = header1.hash();
+    let hash2 = header2.hash();
+    let mut txn = DbTransaction::new();
+    txn.insert_header(header1.clone());
+    txn.insert_header(header2.clone());
+    assert!(bob_node.blockchain_db.commit(txn).is_ok());
+
+    runtime.block_on(async {
+        let received_headers = alice_node
+            .outbound_nci
+            .fetch_headers_with_hashes(vec![hash1.clone()])
+            .await
+            .unwrap();
+        assert_eq!(received_headers.len(), 1);
+        assert!(received_headers.contains(&header1));
+
+        let received_headers = alice_node
+            .outbound_nci
+            .fetch_headers_with_hashes(vec![hash1, hash2])
+            .await
+            .unwrap();
+        assert_eq!(received_headers.len(), 2);
+        assert!(received_headers.contains(&header1) && (received_headers.contains(&header2)));
+
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
     });
 }
 
@@ -336,16 +375,6 @@ fn request_and_response_fetch_blocks_with_hashes() {
     });
 }
 
-pub async fn event_stream_next<TStream>(mut stream: TStream, timeout: Duration) -> Option<TStream::Item>
-where TStream: Stream + FusedStream + Unpin {
-    let either = future::select(stream.select_next_some(), tokio::time::delay_for(timeout).fuse()).await;
-
-    match either {
-        Either::Left((v, _)) => Some(v),
-        Either::Right(_) => None,
-    }
-}
-
 #[test]
 fn propagate_and_forward_valid_block() {
     let mut runtime = Runtime::new().unwrap();
@@ -397,7 +426,14 @@ fn propagate_and_forward_valid_block() {
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
 
-    let block1 = append_block(&alice_node.blockchain_db, &block0, vec![], &rules.consensus_constants()).unwrap();
+    let block1 = append_block(
+        &alice_node.blockchain_db,
+        &block0,
+        vec![],
+        &rules.consensus_constants(),
+        1.into(),
+    )
+    .unwrap();
     let block1_hash = block1.hash();
 
     runtime.block_on(async {
@@ -466,7 +502,8 @@ fn propagate_and_forward_invalid_block() {
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let stateless_validator = StatelessValidator::new(&rules.consensus_constants());
+    let stateless_block_validator = StatelessBlockValidator::new(&rules.consensus_constants());
+    let mock_validator = MockValidator::new(true);
     let (mut alice_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone(), carol_node_identity.clone()])
@@ -476,13 +513,13 @@ fn propagate_and_forward_invalid_block() {
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![alice_node_identity.clone(), dan_node_identity.clone()])
         .with_consensus_manager(rules)
-        .with_validators(stateless_validator.clone(), stateless_validator.clone())
+        .with_validators(mock_validator.clone(), stateless_block_validator.clone())
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
     let (carol_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(carol_node_identity.clone())
         .with_peers(vec![alice_node_identity, dan_node_identity.clone()])
         .with_consensus_manager(rules)
-        .with_validators(stateless_validator.clone(), stateless_validator)
+        .with_validators(mock_validator.clone(), stateless_block_validator)
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
     let (dan_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(dan_node_identity)
@@ -491,7 +528,14 @@ fn propagate_and_forward_invalid_block() {
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
 
     // Make block 1 invalid
-    let mut block1 = append_block(&alice_node.blockchain_db, &block0, vec![], &rules.consensus_constants()).unwrap();
+    let mut block1 = append_block(
+        &alice_node.blockchain_db,
+        &block0,
+        vec![],
+        &rules.consensus_constants(),
+        1.into(),
+    )
+    .unwrap();
     block1.header.height = 0;
     let block1_hash = block1.hash();
     runtime.block_on(async {
@@ -551,13 +595,15 @@ fn service_request_timeout() {
     );
 
     runtime.block_on(async {
+        // Bob should not be reachable
+        bob_node.comms.shutdown().await;
+
         assert_eq!(
             alice_node.outbound_nci.get_metadata().await,
             Err(CommsInterfaceError::RequestTimedOut)
         );
 
         alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }
 
@@ -570,8 +616,8 @@ fn local_get_metadata() {
         BaseNodeBuilder::new(network).start(&mut runtime, temp_dir.path().to_str().unwrap());
     let db = &node.blockchain_db;
     let block0 = db.fetch_block(0).unwrap().block().clone();
-    let block1 = append_block(db, &block0, vec![], &consensus_manager.consensus_constants()).unwrap();
-    let block2 = append_block(db, &block1, vec![], &consensus_manager.consensus_constants()).unwrap();
+    let block1 = append_block(db, &block0, vec![], &consensus_manager.consensus_constants(), 1.into()).unwrap();
+    let block2 = append_block(db, &block1, vec![], &consensus_manager.consensus_constants(), 1.into()).unwrap();
 
     runtime.block_on(async {
         let metadata = node.local_nci.get_metadata().await.unwrap();

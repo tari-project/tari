@@ -47,7 +47,7 @@ where T: Serialize {
     bincode::serialize_into(&mut buf, data)
         .or_else(|e| {
             error!(target: LOG_TARGET, "Could not serialize lmdb: {:?}", e);
-            return Err(e);
+            Err(e)
         })
         .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
     Ok(buf)
@@ -58,7 +58,7 @@ where T: DeserializeOwned {
     bincode::deserialize(buf_bytes)
         .or_else(|e| {
             error!(target: LOG_TARGET, "Could not deserialize lmdb: {:?}", e);
-            return Err(e);
+            Err(e)
         })
         .map_err(|e| error::Error::ValRejected(e.to_string()))
 }

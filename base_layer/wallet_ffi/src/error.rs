@@ -47,9 +47,14 @@ pub enum InterfaceError {
     AllocationError,
     /// An error because the supplied position was out of range
     PositionInvalidError,
-    /// An error has occured when trying to create the tokio runtime
+    /// An error has occurred when trying to create the tokio runtime
     #[error(non_std, no_from)]
     TokioError(String),
+    /// An error has occurred when attempting to deserialize input data
+    #[error(non_std, no_from)]
+    DeserializationError(String),
+    /// Emoji ID is invalid
+    InvalidEmojiId,
 }
 
 /// This struct is meant to hold an error for use by FFI client applications. The error has an integer code and string
@@ -80,6 +85,14 @@ impl From<InterfaceError> for LibWalletError {
                 code: 4,
                 message: format!("{:?}", v),
             },
+            InterfaceError::DeserializationError(_) => Self {
+                code: 5,
+                message: format!("{:?}", v),
+            },
+            InterfaceError::InvalidEmojiId => Self {
+                code: 6,
+                message: format!("{:?}", v),
+            },
         }
     }
 }
@@ -92,12 +105,6 @@ impl From<WalletError> for LibWalletError {
         match w {
             // Output Manager Service Errors
             WalletError::OutputManagerError(OutputManagerError::NotEnoughFunds) => Self {
-                code: 101,
-                message: format!("{:?}", w),
-            },
-            WalletError::TransactionServiceError(TransactionServiceError::OutputManagerError(
-                OutputManagerError::NotEnoughFunds,
-            )) => Self {
                 code: 101,
                 message: format!("{:?}", w),
             },
@@ -116,19 +123,7 @@ impl From<WalletError> for LibWalletError {
                 message: format!("{:?}", w),
             },
             WalletError::OutputManagerError(OutputManagerError::OutputManagerStorageError(
-                OutputManagerStorageError::DuplicateOutput,
-            )) => Self {
-                code: 103,
-                message: format!("{:?}", w),
-            },
-            WalletError::OutputManagerError(OutputManagerError::OutputManagerStorageError(
                 OutputManagerStorageError::ValuesNotFound,
-            )) => Self {
-                code: 104,
-                message: format!("{:?}", w),
-            },
-            WalletError::ContactsServiceError(ContactsServiceError::ContactsServiceStorageError(
-                ContactsServiceStorageError::ValuesNotFound,
             )) => Self {
                 code: 104,
                 message: format!("{:?}", w),
@@ -151,14 +146,32 @@ impl From<WalletError> for LibWalletError {
                 code: 108,
                 message: format!("{:?}", w),
             },
+            WalletError::OutputManagerError(OutputManagerError::NoBaseNodeKeysProvided) => Self {
+                code: 109,
+                message: format!("{:?}", w),
+            },
+            WalletError::ContactsServiceError(ContactsServiceError::ContactsServiceStorageError(
+                ContactsServiceStorageError::ValuesNotFound,
+            )) => Self {
+                code: 110,
+                message: format!("{:?}", w),
+            },
             WalletError::TransactionServiceError(TransactionServiceError::TransactionStorageError(
                 TransactionStorageError::ValueNotFound(_),
             )) => Self {
-                code: 108,
+                code: 111,
                 message: format!("{:?}", w),
             },
-            WalletError::OutputManagerError(OutputManagerError::NoBaseNodeKeysProvided) => Self {
-                code: 109,
+            WalletError::OutputManagerError(OutputManagerError::OutputManagerStorageError(
+                OutputManagerStorageError::DuplicateOutput,
+            )) => Self {
+                code: 112,
+                message: format!("{:?}", w),
+            },
+            WalletError::TransactionServiceError(TransactionServiceError::OutputManagerError(
+                OutputManagerError::NotEnoughFunds,
+            )) => Self {
+                code: 113,
                 message: format!("{:?}", w),
             },
             // Transaction Service Errors
@@ -278,7 +291,7 @@ impl From<NodeIdentityError> for LibWalletError {
             },
             NodeIdentityError::NodeIdError(NodeIdError::DigestError) => Self {
                 code: 704,
-                message: format!("{:?}", n).to_string(),
+                message: format!("{:?}", n),
             },
         }
     }

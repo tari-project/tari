@@ -31,10 +31,12 @@ use super::{
 use crate::{
     backoff::Backoff,
     noise::NoiseConfig,
-    peer_manager::{AsyncPeerManager, NodeId, NodeIdentity},
+    peer_manager::{NodeId, NodeIdentity},
     protocol::{ProtocolEvent, ProtocolId, Protocols},
+    runtime,
     transports::Transport,
     types::DEFAULT_LISTENER_ADDRESS,
+    PeerManager,
 };
 use futures::{
     channel::{mpsc, oneshot},
@@ -49,12 +51,12 @@ use multiaddr::Multiaddr;
 use std::{collections::HashMap, fmt, sync::Arc};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use time::Duration;
-use tokio::{runtime, sync::broadcast, task, time};
+use tokio::{sync::broadcast, task, time};
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
 
 const EVENT_CHANNEL_SIZE: usize = 32;
-const ESTABLISHER_CHANNEL_SIZE: usize = 32;
+const DIALER_REQUEST_CHANNEL_SIZE: usize = 32;
 
 #[derive(Debug)]
 pub enum ConnectionManagerEvent {
@@ -112,6 +114,15 @@ pub struct ConnectionManagerConfig {
     pub max_simultaneous_inbound_connects: usize,
     /// The period of time to keep the peer connection around before disconnecting. Default: 3s
     pub disconnect_linger: Duration,
+    /// Set to true to allow peers to send loopback, local-link and other addresses normally not considered valid for
+    /// peer-to-peer comms. Default: false
+    pub allow_test_addresses: bool,
+    /// The maximum time to wait for the first byte before closing the connection. Default: 7s
+    pub time_to_first_byte: Duration,
+    /// The number of liveness check sessions to allow. Default: 0
+    pub liveness_max_sessions: usize,
+    /// CIDR blocks that whitelist liveness checks. Default: Localhost only (127.0.0.1/32)
+    pub liveness_cidr_whitelist: Vec<cidr::AnyIpCidr>,
 }
 
 impl Default for ConnectionManagerConfig {
@@ -123,19 +134,26 @@ impl Default for ConnectionManagerConfig {
             max_dial_attempts: 3,
             max_simultaneous_inbound_connects: 20,
             disconnect_linger: Duration::from_secs(3),
+            #[cfg(not(test))]
+            allow_test_addresses: false,
+            // This must always be true for internal crate tests
+            #[cfg(test)]
+            allow_test_addresses: true,
+            liveness_max_sessions: 0,
+            time_to_first_byte: Duration::from_secs(7),
+            liveness_cidr_whitelist: vec![cidr::AnyIpCidr::V4("127.0.0.1/32".parse().unwrap())],
         }
     }
 }
 
 pub struct ConnectionManager<TTransport, TBackoff> {
-    executor: runtime::Handle,
     config: ConnectionManagerConfig,
     request_rx: Fuse<mpsc::Receiver<ConnectionManagerRequest>>,
     internal_event_rx: Fuse<mpsc::Receiver<ConnectionManagerEvent>>,
     dialer_tx: mpsc::Sender<DialerRequest>,
     dialer: Option<Dialer<TTransport, TBackoff>>,
     listener: Option<PeerListener<TTransport>>,
-    peer_manager: AsyncPeerManager,
+    peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     active_connections: HashMap<NodeId, PeerConnection>,
     shutdown_signal: Option<ShutdownSignal>,
@@ -152,15 +170,15 @@ where
     TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
     TBackoff: Backoff + Send + Sync + 'static,
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: ConnectionManagerConfig,
-        executor: runtime::Handle,
         transport: TTransport,
         noise_config: NoiseConfig,
         backoff: TBackoff,
         request_rx: mpsc::Receiver<ConnectionManagerRequest>,
         node_identity: Arc<NodeIdentity>,
-        peer_manager: AsyncPeerManager,
+        peer_manager: Arc<PeerManager>,
         protocols: Protocols<yamux::Stream>,
         connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
         shutdown_signal: ShutdownSignal,
@@ -168,12 +186,11 @@ where
     {
         let (internal_event_tx, internal_event_rx) = mpsc::channel(EVENT_CHANNEL_SIZE);
 
-        let (establisher_tx, establisher_rx) = mpsc::channel(ESTABLISHER_CHANNEL_SIZE);
+        let (dialer_tx, dialer_rx) = mpsc::channel(DIALER_REQUEST_CHANNEL_SIZE);
 
         let supported_protocols = protocols.get_supported_protocols();
 
         let listener = PeerListener::new(
-            executor.clone(),
             config.clone(),
             transport.clone(),
             noise_config.clone(),
@@ -185,21 +202,19 @@ where
         );
 
         let dialer = Dialer::new(
-            executor.clone(),
             config.clone(),
             Arc::clone(&node_identity),
             peer_manager.clone(),
             transport,
             noise_config,
             backoff,
-            establisher_rx,
+            dialer_rx,
             internal_event_tx,
             supported_protocols,
             shutdown_signal.clone(),
         );
 
         Self {
-            executor,
             config,
             shutdown_signal: Some(shutdown_signal),
             request_rx: request_rx.fuse(),
@@ -207,7 +222,7 @@ where
             peer_manager,
             protocols,
             internal_event_rx: internal_event_rx.fuse(),
-            dialer_tx: establisher_tx,
+            dialer_tx,
             dialer: Some(dialer),
             listener: Some(listener),
             active_connections: Default::default(),
@@ -254,14 +269,22 @@ where
     async fn disconnect_all(&mut self) {
         let mut node_ids = Vec::with_capacity(self.active_connections.len());
         for (node_id, mut conn) in self.active_connections.drain() {
-            if log_if_error!(
-                target: LOG_TARGET,
-                conn.disconnect_silent().await,
-                "Failed to disconnect because '{error}'",
-            )
-            .is_some()
-            {
-                node_ids.push(node_id);
+            if !conn.is_connected() {
+                continue;
+            }
+
+            match conn.disconnect_silent().await {
+                Ok(_) => {
+                    node_ids.push(node_id);
+                },
+                Err(err) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "In disconnect_all: Error when disconnecting peer '{}' because '{:?}'",
+                        node_id.short_str(),
+                        err
+                    );
+                },
             }
         }
 
@@ -274,22 +297,23 @@ where
         let listener = self
             .listener
             .take()
-            .expect("ConnnectionManager initialized without a Listener");
+            .expect("ConnectionManager initialized without a listener");
 
-        self.executor.spawn(listener.run());
+        runtime::current_executor().spawn(listener.run());
     }
 
     fn run_dialer(&mut self) {
         let dialer = self
             .dialer
             .take()
-            .expect("ConnnectionManager initialized without an Establisher");
+            .expect("ConnectionManager initialized without a dialer");
 
-        self.executor.spawn(dialer.run());
+        runtime::current_executor().spawn(dialer.run());
     }
 
     async fn handle_request(&mut self, request: ConnectionManagerRequest) {
         use ConnectionManagerRequest::*;
+        trace!(target: LOG_TARGET, "Connection manager got request: {:?}", request);
         match request {
             DialPeer(node_id, is_forced, reply_tx) => match self.get_active_connection(&node_id) {
                 Some(conn) => {
@@ -322,6 +346,17 @@ where
             },
             GetActiveConnection(node_id, reply_tx) => {
                 let _ = reply_tx.send(self.active_connections.get(&node_id).map(Clone::clone));
+            },
+            GetActiveConnections(reply_tx) => {
+                let _ = reply_tx.send(self.active_connections.values().cloned().collect());
+            },
+            DisconnectPeer(node_id, reply_tx) => match self.active_connections.remove(&node_id) {
+                Some(mut conn) => {
+                    let _ = reply_tx.send(conn.disconnect().await.map_err(Into::into));
+                },
+                None => {
+                    let _ = reply_tx.send(Ok(()));
+                },
             },
         }
     }
@@ -494,19 +529,20 @@ where
             linger.as_millis()
         );
 
-        self.executor.spawn(async move {
+        runtime::current_executor().spawn(async move {
             debug!(
                 target: LOG_TARGET,
                 "Waiting for linger period ({}ms) to expire...",
                 linger.as_millis()
             );
             time::delay_for(linger).await;
-
-            match conn.disconnect_silent().await {
-                Ok(_) => {},
-                Err(err) => {
-                    error!(target: LOG_TARGET, "Failed to disconnect because '{:?}'", err);
-                },
+            if conn.is_connected() {
+                match conn.disconnect_silent().await {
+                    Ok(_) => {},
+                    Err(err) => {
+                        error!(target: LOG_TARGET, "Failed to disconnect because '{:?}'", err);
+                    },
+                }
             }
         })
     }
@@ -536,7 +572,7 @@ where
     {
         match self.peer_manager.find_by_node_id(&node_id).await {
             Ok(peer) => {
-                if !force_dial && peer.is_offline() {
+                if !force_dial && peer.is_recently_offline() {
                     debug!(
                         target: LOG_TARGET,
                         "Peer '{}' is offline (i.e. we failed to connect to them recently).",
@@ -551,23 +587,17 @@ where
                 }
 
                 if let Err(err) = self.dialer_tx.try_send(DialerRequest::Dial(Box::new(peer), reply_tx)) {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to send request to establisher because '{}'", err
-                    );
+                    error!(target: LOG_TARGET, "Failed to send request to dialer because '{}'", err);
                     // TODO: If the channel is full - we'll fail to dial. This function should block until the dial
                     //       request channel has cleared
 
-                    match err.into_inner() {
-                        DialerRequest::Dial(_, reply_tx) => {
-                            log_if_error_fmt!(
-                                target: LOG_TARGET,
-                                reply_tx.send(Err(ConnectionManagerError::EstablisherChannelError)),
-                                "Failed to send dial peer result for peer '{}'",
-                                node_id.short_str()
-                            );
-                        },
-                        _ => {},
+                    if let DialerRequest::Dial(_, reply_tx) = err.into_inner() {
+                        log_if_error_fmt!(
+                            target: LOG_TARGET,
+                            reply_tx.send(Err(ConnectionManagerError::EstablisherChannelError)),
+                            "Failed to send dial peer result for peer '{}'",
+                            node_id.short_str()
+                        );
                     }
                 }
             },

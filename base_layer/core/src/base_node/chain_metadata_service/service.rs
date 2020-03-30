@@ -23,11 +23,11 @@
 use super::{error::ChainMetadataSyncError, LOG_TARGET};
 use crate::{
     base_node::{
-        chain_metadata_service::handle::ChainMetadataEvent,
+        chain_metadata_service::handle::{ChainMetadataEvent, PeerChainMetadata},
         comms_interface::{BlockEvent, LocalNodeCommsInterface},
         proto,
     },
-    chain_storage::{BlockAddResult, ChainMetadata},
+    chain_storage::BlockAddResult,
 };
 use chrono::{NaiveDateTime, Utc};
 use futures::{stream::StreamExt, SinkExt};
@@ -132,6 +132,11 @@ impl ChainMetadataService {
             // Received a pong, check if our neighbour sent it and it contains ChainMetadata
             LivenessEvent::ReceivedPong(event) => {
                 if event.is_neighbour {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Received pong from neighbouring node '{}'.",
+                        event.node_id
+                    );
                     self.collect_chain_state_from_pong(&event.node_id, &event.metadata)?;
 
                     // All peers have responded in this round, send the chain metadata to the base node service
@@ -169,11 +174,7 @@ impl ChainMetadataService {
     }
 
     async fn flush_chain_metadata_to_event_publisher(&mut self) -> Result<(), ChainMetadataSyncError> {
-        let chain_metadata = self
-            .peer_chain_metadata
-            .drain(..)
-            .map(|peer_metadata| peer_metadata.chain_metadata)
-            .collect::<Vec<_>>();
+        let chain_metadata = self.peer_chain_metadata.drain(..).collect::<Vec<_>>();
 
         self.event_publisher
             .send(ChainMetadataEvent::PeerChainMetadataReceived(chain_metadata))
@@ -208,8 +209,9 @@ impl ChainMetadataService {
             .get(MetadataKey::ChainMetadata)
             .ok_or_else(|| ChainMetadataSyncError::NoChainMetadata)?;
 
-        debug!(target: LOG_TARGET, "Received chain metadata from NodeId '{}'", node_id);
         let chain_metadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?.into();
+        debug!(target: LOG_TARGET, "Received chain metadata from NodeId '{}'", node_id);
+        trace!(target: LOG_TARGET, "{}", chain_metadata);
 
         if let Some(pos) = self
             .peer_chain_metadata
@@ -223,20 +225,6 @@ impl ChainMetadataService {
             .push(PeerChainMetadata::new(node_id.clone(), chain_metadata));
 
         Ok(())
-    }
-}
-
-struct PeerChainMetadata {
-    node_id: NodeId,
-    chain_metadata: ChainMetadata,
-}
-
-impl PeerChainMetadata {
-    fn new(node_id: NodeId, chain_metadata: ChainMetadata) -> Self {
-        Self {
-            node_id,
-            chain_metadata,
-        }
     }
 }
 
@@ -267,6 +255,7 @@ mod test {
             height_of_longest_chain: Some(1),
             best_block: Some(vec![]),
             pruning_horizon: 64,
+            accumulated_difficulty: 1.into(),
         }
     }
 

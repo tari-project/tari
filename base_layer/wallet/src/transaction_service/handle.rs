@@ -29,7 +29,7 @@ use crate::{
     },
 };
 use futures::{stream::Fuse, StreamExt};
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 use tari_broadcast_channel::Subscriber;
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
@@ -58,6 +58,42 @@ pub enum TransactionServiceRequest {
     MineTransaction(TxId),
     #[cfg(feature = "test_harness")]
     BroadcastTransaction(TxId),
+}
+
+impl fmt::Display for TransactionServiceRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GetPendingInboundTransactions => f.write_str("GetPendingInboundTransactions"),
+            Self::GetPendingOutboundTransactions => f.write_str("GetPendingOutboundTransactions"),
+            Self::GetCompletedTransactions => f.write_str("GetCompletedTransactions"),
+            Self::SetBaseNodePublicKey(k) => f.write_str(&format!("SetBaseNodePublicKey ({})", k)),
+            Self::SendTransaction((k, v, _, msg)) => {
+                f.write_str(&format!("SendTransaction (to {}, {}, {})", k, v, msg))
+            },
+            Self::RequestCoinbaseSpendingKey((v, h)) => {
+                f.write_str(&format!("RequestCoinbaseSpendingKey ({}, maturity={})", v, h))
+            },
+            Self::CompleteCoinbaseTransaction((id, _)) => f.write_str(&format!("CompleteCoinbaseTransaction ({})", id)),
+            Self::CancelPendingCoinbaseTransaction(id) => {
+                f.write_str(&format!("CancelPendingCoinbaseTransaction ({}) ", id))
+            },
+            Self::ImportUtxo(v, k, msg) => f.write_str(&format!("ImportUtxo (from {}, {}, {})", k, v, msg)),
+            #[cfg(feature = "test_harness")]
+            Self::CompletePendingOutboundTransaction(tx) => {
+                f.write_str(&format!("CompletePendingOutboundTransaction ({})", tx.tx_id))
+            },
+            #[cfg(feature = "test_harness")]
+            Self::FinalizePendingInboundTransaction(id) => {
+                f.write_str(&format!("FinalizePendingInboundTransaction ({})", id))
+            },
+            #[cfg(feature = "test_harness")]
+            Self::AcceptTestTransaction((id, _, _)) => f.write_str(&format!("AcceptTestTransaction ({})", id)),
+            #[cfg(feature = "test_harness")]
+            Self::MineTransaction(id) => f.write_str(&format!("MineTransaction ({})", id)),
+            #[cfg(feature = "test_harness")]
+            Self::BroadcastTransaction(id) => f.write_str(&format!("BroadcastTransaction ({})", id)),
+        }
+    }
 }
 
 /// API Response enum
@@ -95,8 +131,6 @@ pub enum TransactionEvent {
     TransactionSendDiscoveryComplete(TxId, bool),
     TransactionBroadcast(TxId),
     TransactionMined(TxId),
-    TransactionSendDiscoverySuccess(TxId),
-    TransactionSendDiscoveryFailure(TxId),
     TransactionMinedRequestTimedOut(TxId),
     Error(String),
 }

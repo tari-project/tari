@@ -36,14 +36,41 @@ use crate::{
         types::HashOutput,
     },
 };
+use log::*;
+use rand::{rngs::OsRng, RngCore};
+use std::time::Instant;
 use tari_mmr::MerkleProof;
 
+const LOG_TARGET: &str = "c::bn::async_db";
+
+fn trace_log<F, R>(name: &str, f: F) -> R
+where F: FnOnce() -> R {
+    let start = Instant::now();
+    let trace_id = OsRng.next_u32();
+    trace!(
+        target: LOG_TARGET,
+        "[{}] Entered blocking thread. trace_id: '{}'",
+        name,
+        trace_id
+    );
+    let ret = f();
+    let end = Instant::now();
+    trace!(
+        target: LOG_TARGET,
+        "[{}] Exited blocking thread after {}ms. trace_id: '{}'",
+        name,
+        (end - start).as_millis(),
+        trace_id
+    );
+    ret
+}
+
 macro_rules! make_async {
-    ($fn:ident() -> $rtype:ty) => {
+    ($fn:ident() -> $rtype:ty, $name:expr) => {
         pub async fn $fn<T>(db: BlockchainDatabase<T>) -> Result<$rtype, ChainStorageError>
         where T: BlockchainBackend + 'static {
             tokio::task::spawn_blocking(move || {
-                db.$fn()
+                trace_log($name, move || db.$fn())
             })
             .await
             .or_else(|err| Err(ChainStorageError::BlockingTaskSpawnError(err.to_string())))
@@ -51,10 +78,12 @@ macro_rules! make_async {
         }
     };
 
-    ($fn:ident($($param:ident:$ptype:ty),+) -> $rtype:ty) => {
+    ($fn:ident($($param:ident:$ptype:ty),+) -> $rtype:ty, $name:expr) => {
         pub async fn $fn<T>(db: BlockchainDatabase<T>, $($param: $ptype),+) -> Result<$rtype, ChainStorageError>
         where T: BlockchainBackend + 'static {
-            tokio::task::spawn_blocking(move || db.$fn($($param),+))
+            tokio::task::spawn_blocking(move || {
+                trace_log($name, move || db.$fn($($param),+))
+            })
                 .await
                 .or_else(|err| Err(ChainStorageError::BlockingTaskSpawnError(err.to_string())))
                 .and_then(|inner_result| inner_result)
@@ -62,22 +91,22 @@ macro_rules! make_async {
     };
 }
 
-make_async!(get_metadata() -> ChainMetadata);
-make_async!(fetch_kernel(hash: HashOutput) -> TransactionKernel);
-make_async!(fetch_header_with_block_hash(hash: HashOutput) -> BlockHeader);
-make_async!(fetch_header(block_num: u64) -> BlockHeader);
-make_async!(fetch_utxo(hash: HashOutput) -> TransactionOutput);
-make_async!(fetch_stxo(hash: HashOutput) -> TransactionOutput);
-make_async!(fetch_orphan(hash: HashOutput) -> Block);
-make_async!(is_utxo(hash: HashOutput) -> bool);
-make_async!(fetch_mmr_root(tree: MmrTree) -> HashOutput);
-make_async!(fetch_mmr_only_root(tree: MmrTree) -> HashOutput);
-make_async!(calculate_mmr_root(tree: MmrTree,additions: Vec<HashOutput>,deletions: Vec<HashOutput>) -> HashOutput);
-make_async!(add_block(block: Block) -> BlockAddResult);
-make_async!(calculate_mmr_roots(template: NewBlockTemplate) -> Block);
+make_async!(get_metadata() -> ChainMetadata, "get_metadata");
+make_async!(fetch_kernel(hash: HashOutput) -> TransactionKernel, "fetch_kernel");
+make_async!(fetch_header_with_block_hash(hash: HashOutput) -> BlockHeader, "fetch_header_with_block_hash");
+make_async!(fetch_header(block_num: u64) -> BlockHeader, "fetch_header");
+make_async!(fetch_utxo(hash: HashOutput) -> TransactionOutput, "fetch_utxo");
+make_async!(fetch_stxo(hash: HashOutput) -> TransactionOutput, "fetch_stxo");
+make_async!(fetch_orphan(hash: HashOutput) -> Block, "fetch_orphan");
+make_async!(is_utxo(hash: HashOutput) -> bool, "is_utxo");
+make_async!(fetch_mmr_root(tree: MmrTree) -> HashOutput, "fetch_mmr_root");
+make_async!(fetch_mmr_only_root(tree: MmrTree) -> HashOutput, "fetch_mmr_only_root");
+make_async!(calculate_mmr_root(tree: MmrTree,additions: Vec<HashOutput>,deletions: Vec<HashOutput>) -> HashOutput, "calculate_mmr_root");
+make_async!(add_block(block: Block) -> BlockAddResult, "add_block");
+make_async!(calculate_mmr_roots(template: NewBlockTemplate) -> Block, "calculate_mmr_roots");
 
 // make_async!(is_new_best_block(block: &Block) -> bool);
-make_async!(fetch_block(height: u64) -> HistoricalBlock);
-make_async!(fetch_block_with_hash(hash: HashOutput) -> Option<HistoricalBlock>);
-make_async!(rewind_to_height(height: u64) -> Vec<Block>);
-make_async!(fetch_mmr_proof(tree: MmrTree, pos: usize) -> MerkleProof);
+make_async!(fetch_block(height: u64) -> HistoricalBlock, "fetch_block");
+make_async!(fetch_block_with_hash(hash: HashOutput) -> Option<HistoricalBlock>, "fetch_block_with_hash");
+make_async!(rewind_to_height(height: u64) -> Vec<Block>, "rewind_to_height");
+make_async!(fetch_mmr_proof(tree: MmrTree, pos: usize) -> MerkleProof, "fetch_mmr_proof");

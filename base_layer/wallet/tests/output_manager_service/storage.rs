@@ -39,7 +39,7 @@ use tari_wallet::{
             sqlite_db::OutputManagerSqliteDatabase,
         },
     },
-    storage::connection_manager::run_migration_and_create_connection_pool,
+    storage::connection_manager::run_migration_and_create_sqlite_connection,
 };
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
@@ -178,6 +178,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     runtime
         .block_on(db.encumber_outputs(2, outputs_to_encumber, Some(uo_change.clone())))
         .unwrap();
+    runtime.block_on(db.confirm_encumbered_outputs(2)).unwrap();
 
     available_balance -= total_encumbered;
     pending_incoming_balance += uo_change.clone().value;
@@ -293,8 +294,9 @@ pub fn test_output_manager_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
     let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    let connection_pool = run_migration_and_create_connection_pool(&format!("{}/{}", db_folder, db_name)).unwrap();
-    test_db_backend(OutputManagerSqliteDatabase::new(connection_pool));
+    let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
+
+    test_db_backend(OutputManagerSqliteDatabase::new(connection));
 }
 
 pub fn test_key_manager_crud<T: OutputManagerBackend + 'static>(backend: T) {
@@ -343,6 +345,91 @@ pub fn test_key_manager_crud_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
     let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    let connection_pool = run_migration_and_create_connection_pool(&format!("{}/{}", db_folder, db_name)).unwrap();
-    test_key_manager_crud(OutputManagerSqliteDatabase::new(connection_pool));
+    let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
+
+    test_key_manager_crud(OutputManagerSqliteDatabase::new(connection));
+}
+
+pub async fn test_short_term_encumberance<T: OutputManagerBackend + 'static>(backend: T) {
+    let factories = CryptoFactories::default();
+
+    let db = OutputManagerDatabase::new(backend);
+
+    // Add a pending tx
+    let mut available_balance = MicroTari(0);
+    let mut pending_tx = PendingTransactionOutputs {
+        tx_id: OsRng.next_u64(),
+        outputs_to_be_spent: vec![],
+        outputs_to_be_received: vec![],
+        timestamp: Utc::now().naive_utc() - ChronoDuration::from_std(Duration::from_millis(120_000_000)).unwrap(),
+    };
+    for i in 1..4 {
+        let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(1000 * i), &factories.commitment);
+        available_balance += uo.value.clone();
+        db.add_unspent_output(uo.clone()).await.unwrap();
+        pending_tx.outputs_to_be_spent.push(uo);
+    }
+
+    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(50), &factories.commitment);
+    pending_tx.outputs_to_be_received.push(uo);
+
+    db.encumber_outputs(
+        pending_tx.tx_id,
+        pending_tx.outputs_to_be_spent.clone(),
+        Some(pending_tx.outputs_to_be_received[0].clone()),
+    )
+    .await
+    .unwrap();
+
+    let balance = db.get_balance().await.unwrap();
+    assert_eq!(balance.available_balance, MicroTari(0));
+
+    db.clear_short_term_encumberances().await.unwrap();
+
+    let balance = db.get_balance().await.unwrap();
+    assert_eq!(available_balance, balance.available_balance);
+
+    db.encumber_outputs(
+        pending_tx.tx_id,
+        pending_tx.outputs_to_be_spent.clone(),
+        Some(pending_tx.outputs_to_be_received[0].clone()),
+    )
+    .await
+    .unwrap();
+
+    db.confirm_encumbered_outputs(pending_tx.tx_id).await.unwrap();
+    db.clear_short_term_encumberances().await.unwrap();
+
+    let balance = db.get_balance().await.unwrap();
+    assert_eq!(balance.available_balance, MicroTari(0));
+
+    db.cancel_pending_transaction_outputs(pending_tx.tx_id).await.unwrap();
+
+    db.encumber_outputs(
+        pending_tx.tx_id,
+        pending_tx.outputs_to_be_spent.clone(),
+        Some(pending_tx.outputs_to_be_received[0].clone()),
+    )
+    .await
+    .unwrap();
+
+    db.confirm_pending_transaction_outputs(pending_tx.tx_id).await.unwrap();
+
+    let balance = db.get_balance().await.unwrap();
+    assert_eq!(balance.available_balance, pending_tx.outputs_to_be_received[0].value);
+}
+
+#[tokio_macros::test]
+pub async fn test_short_term_encumberance_memory_db() {
+    test_short_term_encumberance(OutputManagerMemoryDatabase::new()).await;
+}
+
+#[tokio_macros::test]
+pub async fn test_short_term_encumberance_sqlite_db() {
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = temp_dir.path().to_str().unwrap().to_string();
+    let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
+
+    test_short_term_encumberance(OutputManagerSqliteDatabase::new(connection)).await;
 }

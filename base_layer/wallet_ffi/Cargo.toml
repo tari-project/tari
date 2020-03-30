@@ -3,7 +3,7 @@ name = "tari_wallet_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet C FFI bindings"
 license = "BSD-3-Clause"
-version = "0.0.9"
+version = "0.0.10"
 edition = "2018"
 
 [dependencies]
@@ -13,7 +13,7 @@ tari_crypto = { version = "^0.3" }
 tari_p2p = {path = "../p2p", version = "^0.0"}
 tari_wallet = { path = "../wallet", version = "^0.0", features = ["test_harness", "c_integration"]}
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0"}
-tari_utilities = "0.1.1"
+tari_utilities = "^0.1"
 
 futures =  { version = "^0.3.1", features =["compat", "std"]}
 tokio = "0.2.10"
@@ -23,6 +23,7 @@ chrono = { version = "0.4.6", features = ["serde"]}
 tari_broadcast_channel = "^0.1"
 derive-error = "0.0.4"
 log = "0.4.6"
+log4rs = {version = "0.8.3", features = ["console_appender", "file_appender", "file", "yaml_format"]}
 
 [dependencies.tari_core]
 path = "../../base_layer/core"

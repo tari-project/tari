@@ -77,7 +77,7 @@ pub fn create_blockchain_db_no_cut_through() -> (
     BlockchainDatabase<MemoryDatabase<HashDigest>>,
     Vec<Block>,
     Vec<Vec<UnblindedOutput>>,
-    ConsensusManager<MemoryDatabase<HashDigest>>,
+    ConsensusManager,
 ) {
     let network = Network::LocalNet;
     let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
@@ -160,7 +160,7 @@ pub fn create_new_blockchain(
     BlockchainDatabase<MemoryDatabase<HashDigest>>,
     Vec<Block>,
     Vec<Vec<UnblindedOutput>>,
-    ConsensusManager<MemoryDatabase<HashDigest>>,
+    ConsensusManager,
 ) {
     let factories = CryptoFactories::default();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
@@ -171,6 +171,6 @@ pub fn create_new_blockchain(
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let db = create_mem_db(consensus_manager.clone());
+    let db = create_mem_db(&consensus_manager);
     (db, vec![block0], vec![vec![output]], consensus_manager)
 }

@@ -82,7 +82,7 @@ struct TariTransportType *transport_tcp_create(const char *listener_address,int*
 // Creates a tor transport type
 struct TariTransportType *transport_tor_create(
     const char *control_server_address,
-    const char *tor_password,
+    struct ByteVector *tor_cookie,
     struct ByteVector *tor_identity,
     unsigned short tor_port,
     const char *socks_username,
@@ -135,7 +135,10 @@ struct TariPublicKey *public_key_from_hex(const char *hex,int* error_out);
 void public_key_destroy(struct TariPublicKey *pk);
 
 //Converts a TariPublicKey to char array in emoji format
-char *public_key_to_emoji_node_id(struct TariPublicKey *pk, int* error_out);
+char *public_key_to_emoji_id(struct TariPublicKey *pk, int* error_out);
+
+// Converts a char array in emoji format to a public key
+struct TariPublicKey *emoji_id_to_public_key(const char *emoji,  int* error_out);
 
 /// -------------------------------- TariPrivateKey ----------------------------------------------- ///
 
@@ -200,9 +203,11 @@ const char *completed_transaction_get_message(struct TariCompletedTransaction *t
 // | Value | Interpretation |
 // |---|---|
 // |  -1 | TxNullError |
-// |   0 | Completed |
-// |   1 | Broadcast |
-// |   2 | Mined |
+// |   0 | Completed   |
+// |   1 | Broadcast   |
+// |   2 | Mined       |
+// |   3 | Imported    |
+// |   4 | Pending     |
 int completed_transaction_get_status(struct TariCompletedTransaction *transaction,int* error_out);
 
 // Gets the TransactionID of a TariCompletedTransaction
@@ -245,6 +250,17 @@ const char *pending_outbound_transaction_get_message(struct TariPendingOutboundT
 // Gets the timestamp of a TariPendingOutboundTransaction
 unsigned long long pending_outbound_transaction_get_timestamp(struct TariPendingOutboundTransaction *transaction,int* error_out);
 
+// Gets the status of a TariPendingOutboundTransaction
+// | Value | Interpretation |
+// |---|---|
+// |  -1 | TxNullError |
+// |   0 | Completed   |
+// |   1 | Broadcast   |
+// |   2 | Mined       |
+// |   3 | Imported    |
+// |   4 | Pending     |
+int pending_outbound_transaction_get_status(struct TariPendingOutboundTransaction *transaction,int* error_out);
+
 // Frees memory for a TariPendingOutboundTactions
 void pending_outbound_transaction_destroy(struct TariPendingOutboundTransaction *transaction);
 
@@ -275,6 +291,17 @@ unsigned long long pending_inbound_transaction_get_amount(struct TariPendingInbo
 
 // Gets the timestamp of a TariPendingInboundTransaction
 unsigned long long pending_inbound_transaction_get_timestamp(struct TariPendingInboundTransaction *transaction,int* error_out);
+
+// Gets the status of a TariPendingInboundTransaction
+// | Value | Interpretation |
+// |---|---|
+// |  -1 | TxNullError |
+// |   0 | Completed   |
+// |   1 | Broadcast   |
+// |   2 | Mined       |
+// |   3 | Imported    |
+// |   4 | Pending     |
+int pending_inbound_transaction_get_status(struct TariPendingInboundTransaction *transaction,int* error_out);
 
 // Frees memory for a TariPendingInboundTransaction
 void pending_inbound_transaction_destroy(struct TariPendingInboundTransaction *transaction);
@@ -313,6 +340,7 @@ struct TariWallet *wallet_create(struct TariWalletConfig *config,
                                     void (*callback_transaction_broadcast)(struct TariCompletedTransaction*),
                                     void (*callback_transaction_mined)(struct TariCompletedTransaction*),
                                     void (*callback_discovery_process_complete)(unsigned long long, bool),
+                                    void (*callback_base_node_sync_complete)(unsigned long long, bool),
                                     int* error_out);
 
 // Signs a message
@@ -381,16 +409,16 @@ bool wallet_is_completed_transaction_outbound(struct TariWallet *wallet, struct 
 unsigned long long wallet_import_utxo(struct TariWallet *wallet, unsigned long long amount, struct TariPrivateKey *spending_key, struct TariPublicKey *source_public_key, const char *message, int* error_out);
 
 // This function will tell the wallet to query the set base node to confirm the status of wallet data.
-bool wallet_sync_with_base_node(struct TariWallet *wallet, int* error_out);
+unsigned long long wallet_sync_with_base_node(struct TariWallet *wallet, int* error_out);
 
 // Simulates the completion of a broadcasted TariPendingInboundTransaction
-bool wallet_test_broadcast_transaction(struct TariWallet *wallet, struct TariCompletedTransaction *tx, int* error_out);
+bool wallet_test_broadcast_transaction(struct TariWallet *wallet, unsigned long long tx, int* error_out);
 
 // Simulates receiving the finalized version of a TariPendingInboundTransaction
 bool wallet_test_finalize_received_transaction(struct TariWallet *wallet, struct TariPendingInboundTransaction *tx, int* error_out);
 
 // Simulates a TariCompletedTransaction that has been mined
-bool wallet_test_mine_transaction(struct TariWallet *wallet, struct TariCompletedTransaction *tx, int* error_out);
+bool wallet_test_mine_transaction(struct TariWallet *wallet, unsigned long long tx, int* error_out);
 
 // Simulates a TariPendingInboundtransaction being received
 bool wallet_test_receive_transaction(struct TariWallet *wallet,int* error_out);

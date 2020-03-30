@@ -20,24 +20,35 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transactions::types::Signature;
-use rand::RngCore;
+use crate::{
+    base_node::RequestKey,
+    transactions::{transaction::Transaction, types::Signature},
+};
+use core::fmt::{Display, Error, Formatter};
 use serde::{Deserialize, Serialize};
-
-pub type RequestKey = u64; // TODO: BaseNodeService and MempoolService uses RequestKey
-
-/// Generate a new random request key to uniquely identify a request and its corresponding responses.
-#[cfg(feature = "mempool_proto")]
-pub fn generate_request_key<R>(rng: &mut R) -> RequestKey
-where R: RngCore {
-    rng.next_u64()
-}
+use tari_crypto::tari_utilities::hex::Hex;
 
 /// API Request enum for Mempool requests.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum MempoolRequest {
     GetStats,
     GetTxStateWithExcessSig(Signature),
+    SubmitTransaction(Transaction),
+}
+
+impl Display for MempoolRequest {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        match self {
+            MempoolRequest::GetStats => f.write_str("GetStats"),
+            MempoolRequest::GetTxStateWithExcessSig(sig) => {
+                f.write_str(&format!("GetTxStateWithExcessSig ({})", sig.get_signature().to_hex()))
+            },
+            MempoolRequest::SubmitTransaction(tx) => f.write_str(&format!(
+                "SubmitTransaction ({})",
+                tx.body.kernels()[0].excess_sig.get_signature().to_hex()
+            )),
+        }
+    }
 }
 
 /// Request type for a received MempoolService request.

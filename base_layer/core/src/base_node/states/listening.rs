@@ -22,110 +22,135 @@
 
 use crate::{
     base_node::{
-        chain_metadata_service::ChainMetadataEvent,
-        states::{helpers::determine_sync_mode, StateEvent, StateEvent::FatalError, SyncStatus},
+        chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
+        states::{StateEvent, StateEvent::FatalError, SyncStatus},
         BaseNodeStateMachine,
     },
-    chain_storage::BlockchainBackend,
+    chain_storage::{BlockchainBackend, ChainMetadata},
+    proof_of_work::Difficulty,
 };
-use futures::{
-    channel::mpsc::{channel, Sender},
-    stream::StreamExt,
-    SinkExt,
-};
+use futures::stream::StreamExt;
 use log::*;
-use std::time::{Duration, Instant};
-use tokio::runtime;
+use tari_comms::peer_manager::NodeId;
 
 const LOG_TARGET: &str = "c::bn::states::listening";
 
-// The max duration that the listening state will wait between metadata events before it will start asking for metadata
-// from remote nodes.
-const LISTENING_SILENCE_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
-
-/// Configuration for the Listening state.
-#[derive(Clone, Copy, Debug)]
-pub struct ListeningConfig {
-    pub listening_silence_timeout: Duration,
-}
-
-impl Default for ListeningConfig {
-    fn default() -> Self {
-        Self {
-            listening_silence_timeout: LISTENING_SILENCE_TIMEOUT,
-        }
-    }
-}
-
 /// This state listens for chain metadata events received from the liveness and chain metadata service. Based on the
 /// received metadata, if it detects that the current node is lagging behind the network it will switch to block sync
-/// state. If no metadata is received for a prolonged period of time it will transition to the initial sync state and
-/// request chain metadata from remote nodes.
+/// state.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ListeningInfo;
 
 impl ListeningInfo {
     pub async fn next_event<B: BlockchainBackend>(&mut self, shared: &mut BaseNodeStateMachine<B>) -> StateEvent {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
-
-        let mut metadata_event_stream = shared.metadata_event_stream.clone().fuse();
-        let (timeout_event_sender, timeout_event_receiver) = channel(100);
-        let mut timeout_event_receiver = timeout_event_receiver.fuse();
-
-        // Create the initial timeout event
-        spawn_timeout_event(
-            &shared.executor,
-            timeout_event_sender.clone(),
-            shared.config.listening_config.listening_silence_timeout,
-        )
-        .await;
-        let mut last_event_time = Instant::now();
-
-        loop {
-            futures::select! {
-                metadata_event = metadata_event_stream.select_next_some() => {
-                    if let ChainMetadataEvent::PeerChainMetadataReceived(chain_metadata_list) = &*metadata_event {
-                        if let Some(network)=chain_metadata_list.first() {
-                            info!(target: LOG_TARGET, "Loading local blockchain metadata.");
-                            let local = match shared.db.get_metadata() {
-                                Ok(m) => m,
-                                Err(e) => {
-                                    let msg = format!("Could not get local blockchain metadata. {}", e.to_string());
-                                    return FatalError(msg);
-                                },
-                            };
-                            if let SyncStatus::Lagging(h)=determine_sync_mode(local,network.clone(),LOG_TARGET) {
-                                return StateEvent::FallenBehind(SyncStatus::Lagging(h));
-                            }
+        while let Some(metadata_event) = shared.metadata_event_stream.next().await {
+            match &*metadata_event {
+                ChainMetadataEvent::PeerChainMetadataReceived(ref peer_metadata_list) => {
+                    if !peer_metadata_list.is_empty() {
+                        info!(target: LOG_TARGET, "Loading local blockchain metadata.");
+                        let local = match shared.db.get_metadata() {
+                            Ok(m) => m,
+                            Err(e) => {
+                                let msg = format!("Could not get local blockchain metadata. {}", e.to_string());
+                                return FatalError(msg);
+                            },
+                        };
+                        // Find the best network metadata and set of sync peers with the best tip.
+                        let best_metadata = best_metadata(peer_metadata_list.as_slice());
+                        let sync_peers = find_sync_peers(&best_metadata, &peer_metadata_list);
+                        if let SyncStatus::Lagging(network_tip, sync_peers) =
+                            determine_sync_mode(&local, best_metadata, sync_peers, LOG_TARGET)
+                        {
+                            return StateEvent::FallenBehind(SyncStatus::Lagging(network_tip, sync_peers));
                         }
-                        last_event_time=Instant::now();
                     }
                 },
-
-                timeout_event= timeout_event_receiver.select_next_some() => {
-                    let timeout_time=Instant::now();
-                    let time_difference=timeout_time.duration_since(last_event_time);
-                    if time_difference>=shared.config.listening_config.listening_silence_timeout {
-                        return StateEvent::NetworkSilence;
-                    }
-                    else { // Timeout was early, spawn an updated timeout with correct delay
-                        let timeout_delay=shared.config.listening_config.listening_silence_timeout-time_difference;
-                        spawn_timeout_event(&shared.executor,timeout_event_sender.clone(),timeout_delay).await;
-                    }
-                },
-
-                complete => { // Shutting down as liveness metadata and timeout streams were closed
-                    return StateEvent::UserQuit;
-                }
             }
         }
+
+        debug!(
+            target: LOG_TARGET,
+            "Event listener is complete because liveness metadata and timeout streams were closed"
+        );
+        StateEvent::UserQuit
     }
 }
 
-// Spawn a timeout event that will respond on the timeout event sender once the specified time delay has been reached.
-async fn spawn_timeout_event(executor: &runtime::Handle, mut timeout_event_sender: Sender<bool>, timeout: Duration) {
-    executor.spawn(async move {
-        tokio::time::delay_for(timeout).await;
-        let _ = timeout_event_sender.send(true).await;
-    });
+// Finds the set of sync peers that have the best tip on their main chain.
+fn find_sync_peers(best_metadata: &ChainMetadata, peer_metadata_list: &Vec<PeerChainMetadata>) -> Vec<NodeId> {
+    let mut sync_peers = Vec::<NodeId>::new();
+    for peer_metadata in peer_metadata_list {
+        if peer_metadata.chain_metadata == *best_metadata {
+            sync_peers.push(peer_metadata.node_id.clone());
+        }
+    }
+    sync_peers
+}
+
+/// Determine the best metadata from a set of metadata received from the network.
+fn best_metadata(metadata_list: &[PeerChainMetadata]) -> ChainMetadata {
+    // TODO: Use heuristics to weed out outliers / dishonest nodes.
+    metadata_list
+        .into_iter()
+        .fold(ChainMetadata::default(), |best, current| {
+            if current
+                .chain_metadata
+                .accumulated_difficulty
+                .unwrap_or(Difficulty::min()) >=
+                best.accumulated_difficulty.unwrap_or_else(|| 0.into())
+            {
+                current.chain_metadata.clone()
+            } else {
+                best
+            }
+        })
+}
+
+/// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
+fn determine_sync_mode(
+    local: &ChainMetadata,
+    network: ChainMetadata,
+    sync_peers: Vec<NodeId>,
+    log_target: &str,
+) -> SyncStatus
+{
+    use crate::base_node::states::SyncStatus::*;
+    match network.accumulated_difficulty {
+        None => {
+            info!(
+                target: log_target,
+                "The rest of the network doesn't appear to have any up-to-date chain data, so we're going to assume \
+                 we're at the tip"
+            );
+            UpToDate
+        },
+        Some(network_tip_accum_difficulty) => {
+            let local_tip_accum_difficulty = local.accumulated_difficulty.unwrap_or_else(|| 0.into());
+            if local_tip_accum_difficulty < network_tip_accum_difficulty {
+                info!(
+                    target: log_target,
+                    "Our local blockchain accumulated difficulty is a little behind that of the network. We're at \
+                     block #{} with an accumulated difficulty of {}, and the network chain tip is at #{} with an \
+                     accumulated difficulty of {}",
+                    local.height_of_longest_chain.unwrap_or(0),
+                    local_tip_accum_difficulty,
+                    network.height_of_longest_chain.unwrap_or(0),
+                    network_tip_accum_difficulty,
+                );
+                Lagging(network, sync_peers)
+            } else {
+                info!(
+                    target: log_target,
+                    "Our local blockchain is up-to-date. We're at block #{} with an accumulated difficulty of {} and \
+                     the network chain tip is at #{} with an accumulated difficulty of {}",
+                    local.height_of_longest_chain.unwrap_or(0),
+                    local_tip_accum_difficulty,
+                    network.height_of_longest_chain.unwrap_or(0),
+                    network_tip_accum_difficulty,
+                );
+                UpToDate
+            }
+        },
+    }
 }

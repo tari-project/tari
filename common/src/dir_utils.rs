@@ -20,13 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io::ErrorKind, path::PathBuf};
+use std::path::PathBuf;
 
 /// Create the default data directory (`~/.tari` on OSx and Linux, for example) if it doesn't already exist
-pub fn create_data_directory() -> Result<(), std::io::Error> {
-    let mut home = dirs::home_dir().ok_or_else(|| std::io::Error::from(ErrorKind::NotFound))?;
-    home.push(".tari");
+pub fn create_data_directory(base_dir: Option<&PathBuf>) -> Result<(), std::io::Error> {
+    let home = default_path("", base_dir);
+
     if !home.exists() {
+        println!("Creating {:?}", home);
         std::fs::create_dir(home)
     } else {
         Ok(())
@@ -38,16 +39,17 @@ pub fn create_data_directory() -> Result<(), std::io::Error> {
 /// # Panics
 /// This function panics if the home folder location cannot be found or if the path value is not valid UTF-8.
 /// This is a trade-off made in favour of convenience of use.
-pub fn default_subdir(path: &str) -> String {
-    let mut home = dirs::home_dir().expect("Home folder location failed");
-    home.push(".tari");
-    home.push(path);
+pub fn default_subdir(path: &str, base_dir: Option<&PathBuf>) -> String {
+    let home = default_path(path, base_dir);
     String::from(home.to_str().expect("Invalid path value"))
 }
 
-pub fn default_path(filename: &str) -> PathBuf {
-    let mut home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-    home.push(".tari");
+pub fn default_path(filename: &str, base_path: Option<&PathBuf>) -> PathBuf {
+    let mut home = base_path.map(|base_path| base_path.clone()).unwrap_or_else(|| {
+        let mut home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        home.push(".tari");
+        home
+    });
     home.push(filename);
-    home
+    home.into()
 }

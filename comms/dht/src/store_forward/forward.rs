@@ -21,16 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    envelope::NodeDestination,
+    envelope::{DhtMessageHeader, NodeDestination},
     inbound::DecryptedDhtMessage,
     outbound::{OutboundMessageRequester, SendMessageParams},
+    proto::envelope::DhtMessageType,
     store_forward::error::StoreAndForwardError,
-    PipelineError,
 };
 use futures::{task::Context, Future};
 use log::*;
 use std::{sync::Arc, task::Poll};
-use tari_comms::{peer_manager::PeerManager, types::CommsPublicKey};
+use tari_comms::{peer_manager::PeerManager, pipeline::PipelineError, types::CommsPublicKey};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::store_forward::forward";
@@ -86,7 +86,7 @@ impl<S> ForwardMiddleware<S> {
 impl<S> Service<DecryptedDhtMessage> for ForwardMiddleware<S>
 where
     S: Service<DecryptedDhtMessage, Response = ()> + Clone + 'static,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     type Error = PipelineError;
     type Response = ();
@@ -128,17 +128,20 @@ impl<S> Forwarder<S> {
 impl<S> Forwarder<S>
 where
     S: Service<DecryptedDhtMessage, Response = ()>,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     async fn handle(mut self, message: DecryptedDhtMessage) -> Result<(), PipelineError> {
         if message.decryption_failed() {
             debug!(target: LOG_TARGET, "Decryption failed. Forwarding message");
-            self.forward(&message).await?;
+            self.forward(&message).await.map_err(PipelineError::from_debug)?;
         }
 
         // The message has been forwarded, but other middleware may be interested (i.e. StoreMiddleware)
         trace!(target: LOG_TARGET, "Passing message to next service");
-        self.next_service.oneshot(message).await.map_err(Into::into)?;
+        self.next_service
+            .oneshot(message)
+            .await
+            .map_err(PipelineError::from_debug)?;
         Ok(())
     }
 
@@ -155,8 +158,9 @@ where
             .err()
             .expect("previous check that decryption failed");
 
-        let mut message_params =
-            self.get_send_params(dht_header.destination.clone(), vec![source_peer.public_key.clone()])?;
+        let mut message_params = self
+            .get_send_params(&dht_header, vec![source_peer.public_key.clone()])
+            .await?;
 
         message_params.with_dht_header(dht_header.clone());
 
@@ -166,36 +170,52 @@ where
     }
 
     /// Selects the most appropriate broadcast strategy based on the received messages destination
-    fn get_send_params(
+    async fn get_send_params(
         &self,
-        header_dest: NodeDestination,
+        header: &DhtMessageHeader,
         excluded_peers: Vec<CommsPublicKey>,
     ) -> Result<SendMessageParams, StoreAndForwardError>
     {
         let mut params = SendMessageParams::new();
-        match header_dest {
+        // If this is a DHT Discovery message, forward this message to our closest communication node and _all_ known
+        // communication clients
+        let is_discovery = header.message_type == DhtMessageType::Discovery;
+
+        match header.destination.clone() {
             NodeDestination::Unknown => {
                 // Send to the current nodes nearest neighbours
-                params.neighbours(excluded_peers);
-            },
-            NodeDestination::PublicKey(dest_public_key) => {
-                if self.peer_manager.exists(&dest_public_key) {
-                    // Send to destination peer directly if the current node knows that peer
-                    params.direct_public_key(dest_public_key);
+                if is_discovery {
+                    params.neighbours_include_clients(excluded_peers);
                 } else {
-                    // Send to the current nodes nearest neighbours
                     params.neighbours(excluded_peers);
                 }
             },
+            NodeDestination::PublicKey(dest_public_key) => {
+                if self.peer_manager.exists(&dest_public_key).await {
+                    // Send to destination peer directly if the current node knows that peer
+                    params.direct_public_key(*dest_public_key);
+                } else {
+                    // Send to the current nodes nearest neighbours
+                    if is_discovery {
+                        params.neighbours_include_clients(excluded_peers);
+                    } else {
+                        params.neighbours(excluded_peers);
+                    }
+                }
+            },
             NodeDestination::NodeId(dest_node_id) => {
-                match self.peer_manager.find_by_node_id(&dest_node_id) {
+                match self.peer_manager.find_by_node_id(&dest_node_id).await {
                     Ok(dest_peer) => {
                         // Send to destination peer directly if the current node knows that peer
                         params.direct_public_key(dest_peer.public_key);
                     },
                     Err(_) => {
                         // Send to peers that are closest to the destination network region
-                        params.neighbours(excluded_peers);
+                        if is_discovery {
+                            params.neighbours_include_clients(excluded_peers);
+                        } else {
+                            params.neighbours(excluded_peers);
+                        }
                     },
                 }
             },

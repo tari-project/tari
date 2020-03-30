@@ -29,7 +29,7 @@ mod macros;
 pub mod net_address;
 pub mod node_identity;
 pub mod peer;
-pub mod peer_manager;
+// pub mod peer_manager;
 
 pub trait TestFactory: Default {
     type Object;

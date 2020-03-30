@@ -52,12 +52,10 @@ impl CpuBlakePow {
         target_difficulty: Difficulty,
         mut header: BlockHeader,
         stop_flag: Arc<AtomicBool>,
-        kill_flag: Arc<AtomicBool>,
     ) -> Option<BlockHeader>
     {
         let mut start = Instant::now();
         let mut nonce: u64 = OsRng.next_u64();
-        let start_nonce = nonce;
         let mut last_measured_nonce = nonce;
         // We're mining over here!
         let mut difficulty = ProofOfWork::achieved_difficulty(&header);
@@ -72,11 +70,13 @@ impl CpuBlakePow {
                     std::u64::MAX - last_measured_nonce + nonce
                 };
                 let hash_rate = hashes as f64 / start.elapsed().as_micros() as f64;
-                info!(target: LOG_TARGET, "Mining hash rate: {:.6} MH/s", hash_rate);
+                info!(target: LOG_TARGET, "Mining hash rate per thread: {:.6} MH/s", hash_rate);
                 last_measured_nonce = nonce;
                 start = Instant::now();
+
+                header.timestamp = EpochTime::now();
             }
-            if stop_flag.load(Ordering::Relaxed) || kill_flag.load(Ordering::Relaxed) {
+            if stop_flag.load(Ordering::Relaxed) {
                 info!(target: LOG_TARGET, "Mining stopped via flag");
                 return None;
             }
@@ -85,14 +85,13 @@ impl CpuBlakePow {
             } else {
                 nonce += 1;
             }
-            if nonce == start_nonce {
-                header.timestamp = EpochTime::now();
-            }
+
             header.nonce = nonce;
             difficulty = ProofOfWork::achieved_difficulty(&header);
         }
 
         debug!(target: LOG_TARGET, "Miner found nonce: {}", nonce);
+        trace!(target: LOG_TARGET, "Mined achieved difficulty: {}", difficulty);
         Some(header)
     }
 }

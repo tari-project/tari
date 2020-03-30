@@ -32,6 +32,7 @@ impl ToProtoEnum for i32 {
     }
 }
 
+#[derive(Debug)]
 pub struct OutboundDomainMessage<T> {
     inner: T,
     message_type: i32,

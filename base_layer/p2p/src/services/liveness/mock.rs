@@ -40,7 +40,7 @@ use tari_broadcast_channel::{Publisher, SendError};
 use tari_crypto::tari_utilities::acquire_write_lock;
 use tari_service_framework::{reply_channel, RequestContext};
 
-const LOG_TARGET: &str = "base_layer::p2p::liveness_mock";
+const LOG_TARGET: &str = "p2p::liveness_mock";
 
 pub fn create_p2p_liveness_mock(buf_size: usize) -> (LivenessHandle, LivenessMock) {
     let (sender, receiver) = reply_channel::unbounded();

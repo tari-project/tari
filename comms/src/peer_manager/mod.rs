@@ -78,14 +78,11 @@ pub use peer::{Peer, PeerFlags};
 mod peer_features;
 pub use peer_features::PeerFeatures;
 
-mod async_peer_manager;
-pub use async_peer_manager::AsyncPeerManager;
-
 mod peer_id;
 pub use peer_id::PeerId;
 
-mod peer_manager;
-pub use peer_manager::PeerManager;
+mod manager;
+pub use manager::PeerManager;
 
 mod peer_query;
 pub use peer_query::{PeerQuery, PeerQuerySortBy};

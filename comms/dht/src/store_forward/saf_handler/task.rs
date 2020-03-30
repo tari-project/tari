@@ -32,22 +32,20 @@ use crate::{
         store_forward::{StoredMessage, StoredMessagesRequest, StoredMessagesResponse},
     },
     store_forward::{error::StoreAndForwardError, SafStorage},
-    utils::hoist_nested_result,
-    PipelineError,
 };
 use digest::Digest;
-use futures::{future, stream, Future, FutureExt, StreamExt};
+use futures::{future, stream, Future, StreamExt};
 use log::*;
 use prost::Message;
 use std::{convert::TryInto, sync::Arc};
 use tari_comms::{
     message::EnvelopeBody,
     peer_manager::{NodeIdentity, Peer, PeerManager, PeerManagerError},
+    pipeline::PipelineError,
     types::Challenge,
     utils::signature,
 };
 use tari_crypto::tari_utilities::ByteArray;
-use tokio::{runtime, task};
 use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::store_forward";
@@ -66,6 +64,7 @@ pub struct MessageHandlerTask<S> {
 impl<S> MessageHandlerTask<S>
 where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: DhtConfig,
         next_service: S,
@@ -105,13 +104,21 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
 
         match message.dht_header.message_type {
-            DhtMessageType::SafRequestMessages => self.handle_stored_messages_request(message).await?,
+            DhtMessageType::SafRequestMessages => self
+                .handle_stored_messages_request(message)
+                .await
+                .map_err(PipelineError::from_debug)?,
 
-            DhtMessageType::SafStoredMessages => self.handle_stored_messages(message).await?,
+            DhtMessageType::SafStoredMessages => self
+                .handle_stored_messages(message)
+                .await
+                .map_err(PipelineError::from_debug)?,
             // Not a SAF message, call downstream middleware
             _ => {
                 trace!(target: LOG_TARGET, "Passing message onto next service");
-                self.next_service.oneshot(message).await?
+                if let Err(err) = self.next_service.oneshot(message).await {
+                    return Err(PipelineError::from_debug(err));
+                }
             },
         }
 
@@ -136,11 +143,15 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .decode_part::<StoredMessagesRequest>(0)?
             .ok_or_else(|| StoreAndForwardError::InvalidEnvelopeBody)?;
 
-        if !self.peer_manager.in_network_region(
-            &message.source_peer.node_id,
-            self.node_identity.node_id(),
-            self.config.saf_num_closest_nodes,
-        )? {
+        if !self
+            .peer_manager
+            .in_network_region(
+                &message.source_peer.node_id,
+                self.node_identity.node_id(),
+                self.config.saf_num_closest_nodes,
+            )
+            .await?
+        {
             debug!(
                 target: LOG_TARGET,
                 "Received store and forward message requests from node outside of this nodes network region"
@@ -307,7 +318,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let peer_manager = Arc::clone(&self.peer_manager);
         let config = self.config.clone();
         let mut dht_requester = self.dht_requester.clone();
-        task::spawn_blocking(move || {
+
+        async move {
             if message.dht_header.is_none() {
                 return Err(StoreAndForwardError::DhtHeaderNotProvided);
             }
@@ -326,13 +338,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .ok_or_else(|| StoreAndForwardError::MessageOriginRequired)?;
 
             // Check that the destination is either undisclosed
-            Self::check_destination(&config, &peer_manager, &node_identity, &dht_header)?;
+            Self::check_destination(&config, &peer_manager, &node_identity, &dht_header).await?;
             // Verify the signature
             Self::check_signature(origin, &message.encrypted_body)?;
             // Check that the message has not already been received.
             // The current thread runtime is used because calls to the DHT actor are async
-            let mut rt = runtime::Builder::new().basic_scheduler().build()?;
-            rt.block_on(Self::check_duplicate(&mut dht_requester, &message.encrypted_body))?;
+            // let mut rt = runtime::Builder::new().basic_scheduler().build()?;
+            Self::check_duplicate(&mut dht_requester, &message.encrypted_body).await?;
 
             // Attempt to decrypt the message (if applicable), and deserialize it
             let decrypted_body =
@@ -341,8 +353,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             let inbound_msg = DhtInboundMessage::new(dht_header, Arc::clone(&source_peer), message.encrypted_body);
 
             Ok(DecryptedDhtMessage::succeeded(decrypted_body, inbound_msg))
-        })
-        .map(hoist_nested_result)
+        }
     }
 
     async fn check_duplicate(dht_requester: &mut DhtRequester, body: &[u8]) -> Result<(), StoreAndForwardError> {
@@ -354,30 +365,29 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
     }
 
-    fn check_destination(
+    async fn check_destination(
         config: &DhtConfig,
         peer_manager: &PeerManager,
         node_identity: &NodeIdentity,
         dht_header: &DhtMessageHeader,
     ) -> Result<(), StoreAndForwardError>
     {
-        Some(&dht_header.destination)
-            .filter(|destination| match destination {
-                NodeDestination::Unknown => true,
-                NodeDestination::PublicKey(pk) => node_identity.public_key() == pk,
-                NodeDestination::NodeId(node_id) => {
-                    // Pass this check if the node id equals ours or is in this node's region
-                    if node_identity.node_id() == node_id {
-                        return true;
-                    }
+        let is_valid_destination = match &dht_header.destination {
+            NodeDestination::Unknown => true,
+            NodeDestination::PublicKey(pk) => node_identity.public_key() == &**pk,
+            // Pass this check if the node id equals ours or is in this node's region
+            NodeDestination::NodeId(node_id) if node_identity.node_id() == &**node_id => true,
+            NodeDestination::NodeId(node_id) => peer_manager
+                .in_network_region(node_identity.node_id(), node_id, config.num_neighbouring_nodes)
+                .await
+                .unwrap_or(false),
+        };
 
-                    peer_manager
-                        .in_network_region(node_identity.node_id(), node_id, config.num_neighbouring_nodes)
-                        .unwrap_or(false)
-                },
-            })
-            .map(|_| ())
-            .ok_or_else(|| StoreAndForwardError::InvalidDestination)
+        if is_valid_destination {
+            Ok(())
+        } else {
+            Err(StoreAndForwardError::InvalidDestination)
+        }
     }
 
     fn check_signature(origin: &DhtMessageOrigin, body: &[u8]) -> Result<(), StoreAndForwardError> {
@@ -424,7 +434,6 @@ mod test {
             service_spy,
             DhtMockState,
         },
-        PipelineError,
     };
     use chrono::Utc;
     use futures::channel::mpsc;
@@ -527,6 +536,7 @@ mod test {
         // Need to know the peer to process a stored message
         peer_manager
             .add_peer(Clone::clone(&*inbound_msg_a.source_peer))
+            .await
             .unwrap();
         let msg_b = crypt::encrypt(
             &shared_key,
@@ -541,6 +551,7 @@ mod test {
         // Need to know the peer to process a stored message
         peer_manager
             .add_peer(Clone::clone(&*inbound_msg_b.source_peer))
+            .await
             .unwrap();
 
         let msg1 = StoredMessage::new(0, inbound_msg_a.dht_header.clone(), msg_a);

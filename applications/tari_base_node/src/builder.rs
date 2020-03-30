@@ -21,23 +21,30 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::miner;
+use futures::future;
 use log::*;
 use rand::rngs::OsRng;
 use std::{
     fs,
-    path::{Path, PathBuf},
-    sync::{atomic::AtomicBool, Arc},
+    path::Path,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 use tari_common::{CommsTransport, DatabaseType, GlobalConfig, Network, SocksAuthentication, TorControlAuthentication};
 use tari_comms::{
-    multiaddr::Multiaddr,
+    multiaddr::{Multiaddr, Protocol},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     socks,
     tor,
     tor::TorIdentity,
+    transports::SocksConfig,
     utils::multiaddr::multiaddr_to_socketaddr,
     CommsNode,
+    ConnectionManagerEvent,
+    PeerManager,
 };
 use tari_comms_dht::Dht;
 use tari_core::{
@@ -58,7 +65,7 @@ use tari_core::{
         Validators,
     },
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network as NetworkType},
-    mempool::{Mempool, MempoolConfig, MempoolValidators},
+    mempool::{Mempool, MempoolConfig, MempoolServiceConfig, MempoolServiceInitializer, MempoolValidators},
     mining::Miner,
     proof_of_work::DiffAdjManager,
     tari_utilities::{hex::Hex, message_format::MessageFormat},
@@ -67,7 +74,7 @@ use tari_core::{
         types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
     },
     validation::{
-        block_validators::{FullConsensusValidator, StatelessValidator},
+        block_validators::{FullConsensusValidator, StatelessBlockValidator},
         transaction_validators::{FullTxValidator, TxInputAndMaturityValidator},
     },
 };
@@ -82,6 +89,7 @@ use tari_p2p::{
     transport::{TorConfig, TransportType},
 };
 use tari_service_framework::{handles::ServiceHandles, StackBuilder};
+use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
@@ -89,7 +97,7 @@ use tari_wallet::{
         storage::sqlite_db::OutputManagerSqliteDatabase,
         OutputManagerServiceInitializer,
     },
-    storage::connection_manager::{run_migration_and_create_connection_pool, WalletConnection},
+    storage::connection_manager::{run_migration_and_create_sqlite_connection, WalletDbConnection},
     transaction_service::{
         config::TransactionServiceConfig,
         handle::TransactionServiceHandle,
@@ -97,9 +105,9 @@ use tari_wallet::{
         TransactionServiceInitializer,
     },
 };
-use tokio::{runtime, stream::StreamExt};
+use tokio::{runtime, stream::StreamExt, sync::broadcast, task};
 
-const LOG_TARGET: &str = "base_node::initialization";
+const LOG_TARGET: &str = "c::bn::initialization";
 
 #[macro_export]
 macro_rules! using_backend {
@@ -125,10 +133,6 @@ impl NodeContainer {
         using_backend!(self, ctx, NodeContainer::run_impl(ctx, rt).await)
     }
 
-    pub fn interrupt_flag(&self) -> Arc<AtomicBool> {
-        using_backend!(self, ctx, ctx.node.get_interrupt_flag())
-    }
-
     /// Returns a handle to the wallet output manager service. This function panics if it has not been registered
     /// with the comms service
     pub fn output_manager(&self) -> OutputManagerHandle {
@@ -141,6 +145,31 @@ impl NodeContainer {
         using_backend!(self, ctx, ctx.local_node())
     }
 
+    /// Returns the CommsNode.
+    pub fn base_node_comms(&self) -> &CommsNode {
+        using_backend!(self, ctx, &ctx.base_node_comms)
+    }
+
+    /// Returns this node's identity.
+    pub fn base_node_identity(&self) -> Arc<NodeIdentity> {
+        using_backend!(self, ctx, ctx.base_node_comms.node_identity())
+    }
+
+    /// Returns the base node DHT
+    pub fn base_node_dht(&self) -> &Dht {
+        using_backend!(self, ctx, &ctx.base_node_dht)
+    }
+
+    /// Returns this node's wallet identity.
+    pub fn wallet_node_identity(&self) -> Arc<NodeIdentity> {
+        using_backend!(self, ctx, ctx.wallet_comms.node_identity())
+    }
+
+    /// Returns this node's miner enabled flag.
+    pub fn miner_enabled(&self) -> Arc<AtomicBool> {
+        using_backend!(self, ctx, ctx.miner_enabled.clone())
+    }
+
     /// Returns a handle to the wallet transaction service. This function panics if it has not been registered
     /// with the comms service
     pub fn wallet_transaction_service(&self) -> TransactionServiceHandle {
@@ -151,58 +180,62 @@ impl NodeContainer {
         info!(target: LOG_TARGET, "Tari base node has STARTED");
         let mut wallet_output_handle = ctx.output_manager();
         // Start wallet & miner
-        if let Some(mut miner) = ctx.miner.take() {
-            let mut rx = miner.get_utxo_receiver_channel();
-            rt.spawn(async move {
-                debug!(target: LOG_TARGET, "Mining wallet ready to receive coins.");
-                while let Some(utxo) = rx.next().await {
-                    match wallet_output_handle.add_output(utxo).await {
-                        Ok(_) => info!(
-                            target: LOG_TARGET,
-                            "🤑💰🤑 Newly mined coinbase output added to wallet 🤑💰🤑"
-                        ),
-                        Err(e) => warn!(target: LOG_TARGET, "Error adding output: {}", e),
-                    }
+        let mut miner = ctx.miner.take().expect("Miner was not constructed");
+        let mut rx = miner.get_utxo_receiver_channel();
+        rt.spawn(async move {
+            debug!(target: LOG_TARGET, "Mining wallet ready to receive coins.");
+            while let Some(utxo) = rx.next().await {
+                match wallet_output_handle.add_output(utxo).await {
+                    Ok(_) => info!(
+                        target: LOG_TARGET,
+                        "🤑💰🤑 Newly mined coinbase output added to wallet 🤑💰🤑"
+                    ),
+                    Err(e) => warn!(target: LOG_TARGET, "Error adding output: {}", e),
                 }
-            });
-            rt.spawn(async move {
-                debug!(target: LOG_TARGET, "Starting miner");
-                miner.mine().await;
-                debug!(target: LOG_TARGET, "Miner has shutdown");
-            });
-        }
+            }
+        });
+        rt.spawn(async move {
+            debug!(target: LOG_TARGET, "Starting miner");
+            miner.mine().await;
+            debug!(target: LOG_TARGET, "Miner has shutdown");
+        });
         info!(
             target: LOG_TARGET,
             "Starting node - It will run until a fatal error occurs or until the stop flag is activated."
         );
         ctx.node.run().await;
         info!(target: LOG_TARGET, "Initiating communications stack shutdown");
-        ctx.comms.shutdown().await
+        future::join(ctx.base_node_comms.shutdown(), ctx.wallet_comms.shutdown()).await;
     }
 }
 
 pub struct BaseNodeContext<B: BlockchainBackend> {
-    pub comms: CommsNode,
-    pub handles: Arc<ServiceHandles>,
+    pub base_node_comms: CommsNode,
+    pub base_node_dht: Dht,
+    pub wallet_comms: CommsNode,
+    pub wallet_dht: Dht,
+    pub base_node_handles: Arc<ServiceHandles>,
+    pub wallet_handles: Arc<ServiceHandles>,
     pub node: BaseNodeStateMachine<B>,
-    pub miner: Option<Miner<B>>,
+    pub miner: Option<Miner>,
+    pub miner_enabled: Arc<AtomicBool>,
 }
 
 impl<B: BlockchainBackend> BaseNodeContext<B> {
     pub fn output_manager(&self) -> OutputManagerHandle {
-        self.handles
+        self.wallet_handles
             .get_handle::<OutputManagerHandle>()
             .expect("Problem getting wallet output manager handle")
     }
 
     pub fn local_node(&self) -> LocalNodeCommsInterface {
-        self.handles
+        self.base_node_handles
             .get_handle::<LocalNodeCommsInterface>()
             .expect("Could not get local comms interface handle")
     }
 
     pub fn wallet_transaction_service(&self) -> TransactionServiceHandle {
-        self.handles
+        self.wallet_handles
             .get_handle::<TransactionServiceHandle>()
             .expect("Could not get wallet transaction service handle")
     }
@@ -238,11 +271,17 @@ pub fn load_identity(path: &Path) -> Result<NodeIdentity, String> {
 }
 
 /// Create a new node id and save it to disk
-pub fn create_new_base_node_identity(public_addr: Multiaddr) -> Result<NodeIdentity, String> {
+pub fn create_new_base_node_identity<P: AsRef<Path>>(
+    path: P,
+    public_addr: Multiaddr,
+    features: PeerFeatures,
+) -> Result<NodeIdentity, String>
+{
     let private_key = PrivateKey::random(&mut OsRng);
-    let features = PeerFeatures::COMMUNICATION_NODE;
-    NodeIdentity::new(private_key, public_addr, features)
-        .map_err(|e| format!("We were unable to construct a node identity. {}", e.to_string()))
+    let node_identity = NodeIdentity::new(private_key, public_addr, features)
+        .map_err(|e| format!("We were unable to construct a node identity. {}", e.to_string()))?;
+    save_as_json(path, &node_identity)?;
+    Ok(node_identity)
 }
 
 pub fn load_from_json<P: AsRef<Path>, T: MessageFormat>(path: P) -> Result<T, String> {
@@ -278,23 +317,40 @@ pub fn save_as_json<P: AsRef<Path>, T: MessageFormat>(path: P, object: &T) -> Re
 
 pub async fn configure_and_initialize_node(
     config: &GlobalConfig,
-    node_identity: NodeIdentity,
+    node_identity: Arc<NodeIdentity>,
+    wallet_node_identity: Arc<NodeIdentity>,
+    interrupt_signal: ShutdownSignal,
 ) -> Result<NodeContainer, String>
 {
     let network = match &config.network {
         Network::MainNet => NetworkType::MainNet,
         Network::Rincewind => NetworkType::Rincewind,
     };
-    let id = Arc::new(node_identity);
     let result = match &config.db_type {
         DatabaseType::Memory => {
             let backend = MemoryDatabase::<HashDigest>::default();
-            let ctx = build_node_context(backend, network, id, config).await?;
+            let ctx = build_node_context(
+                backend,
+                network,
+                node_identity,
+                wallet_node_identity,
+                config,
+                interrupt_signal,
+            )
+            .await?;
             NodeContainer::Memory(ctx)
         },
         DatabaseType::LMDB(p) => {
             let backend = create_lmdb_database(&p, MmrCacheConfig::default()).map_err(|e| e.to_string())?;
-            let ctx = build_node_context(backend, network, id, config).await?;
+            let ctx = build_node_context(
+                backend,
+                network,
+                node_identity,
+                wallet_node_identity,
+                config,
+                interrupt_signal,
+            )
+            .await?;
             NodeContainer::LMDB(ctx)
         },
     };
@@ -304,106 +360,184 @@ pub async fn configure_and_initialize_node(
 async fn build_node_context<B>(
     backend: B,
     network: NetworkType,
-    id: Arc<NodeIdentity>,
+    base_node_identity: Arc<NodeIdentity>,
+    wallet_node_identity: Arc<NodeIdentity>,
     config: &GlobalConfig,
+    interrupt_signal: ShutdownSignal,
 ) -> Result<BaseNodeContext<B>, String>
 where
     B: BlockchainBackend + 'static,
 {
+    //---------------------------------- Blockchain --------------------------------------------//
+
     let rules = ConsensusManagerBuilder::new(network).build();
-    let mut db = BlockchainDatabase::new(backend, rules.clone()).map_err(|e| e.to_string())?;
     let factories = CryptoFactories::default();
     let validators = Validators::new(
-        FullConsensusValidator::new(rules.clone(), factories.clone(), db.clone()),
-        StatelessValidator::new(&rules.consensus_constants()),
+        FullConsensusValidator::new(rules.clone(), factories.clone()),
+        StatelessBlockValidator::new(&rules.consensus_constants()),
     );
-    db.set_validators(validators);
-    let mempool_validator = MempoolValidators::new(
-        FullTxValidator::new(factories.clone(), db.clone()),
-        TxInputAndMaturityValidator::new(db.clone()),
-    );
+    let db = BlockchainDatabase::new(backend, &rules, validators).map_err(|e| e.to_string())?;
+    let mempool_validator =
+        MempoolValidators::new(FullTxValidator::new(factories.clone()), TxInputAndMaturityValidator {});
     let mempool = Mempool::new(db.clone(), MempoolConfig::default(), mempool_validator);
-    let diff_adj_manager = DiffAdjManager::new(db.clone(), &rules.consensus_constants()).map_err(|e| e.to_string())?;
+    let diff_adj_manager = DiffAdjManager::new(&rules.consensus_constants()).map_err(|e| e.to_string())?;
     rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
+    let handle = runtime::Handle::current();
+
+    //---------------------------------- Base Node --------------------------------------------//
+
+    let (publisher, base_node_subscriptions) = pubsub_connector(handle.clone(), 100);
+    let base_node_subscriptions = Arc::new(base_node_subscriptions);
     create_peer_db_folder(&config.peer_db_path)?;
-    let handle = runtime::Handle::current().clone();
-    let (publisher, subscription_factory) = pubsub_connector(handle, 100);
-    let comms_config = CommsConfig {
-        node_identity: id.clone(),
-        transport_type: setup_transport_type(&config),
-        datastore_path: config.peer_db_path.clone(),
-        peer_database_name: "peers".to_string(),
-        max_concurrent_inbound_tasks: 100,
-        outbound_buffer_size: 100,
-        // TODO - make this configurable
-        dht: Default::default(),
-    };
-    let (comms, dht) = setup_comms_services(comms_config, publisher).await?;
-    // Save final node identity after comms has initialized. This is required because the public_address can be changed
-    // by comms during initialization when using tor.
-    save_as_json(&config.identity_file, &*comms.node_identity())
-        .map_err(|e| format!("Failed to save node identity: {}", e))?;
-    if let Some(hs) = comms.hidden_service() {
-        save_as_json(&config.tor_identity_file, &hs.get_tor_identity())
-            .map_err(|e| format!("Failed to save tor identity: {}", e))?;
-    }
-    add_peers_to_comms(&comms, assign_peers(&config.peer_seeds))?;
-    create_wallet_folder(&config.wallet_file)?;
-    let wallet_conn = run_migration_and_create_connection_pool(&config.wallet_file)
-        .map_err(|e| format!("Could not create wallet: {}", e))?;
+    let (base_node_comms, base_node_dht) = setup_base_node_comms(base_node_identity, config, publisher).await?;
+
     debug!(target: LOG_TARGET, "Registering base node services");
-    let handles = register_services(
-        id.clone(),
-        &comms,
-        &dht,
+    let base_node_handles = register_base_node_services(
+        &base_node_comms,
+        &base_node_dht,
         db.clone(),
-        &wallet_conn,
-        subscription_factory,
+        base_node_subscriptions.clone(),
         mempool,
         rules.clone(),
-        factories,
     )
     .await;
     debug!(target: LOG_TARGET, "Base node service registration complete.");
-    let outbound_interface = handles
+
+    //---------------------------------- Wallet --------------------------------------------//
+    let (publisher, wallet_subscriptions) = pubsub_connector(handle.clone(), 100);
+    let wallet_subscriptions = Arc::new(wallet_subscriptions);
+    create_peer_db_folder(&config.wallet_peer_db_path)?;
+    let (wallet_comms, wallet_dht) = setup_wallet_comms(
+        wallet_node_identity,
+        config,
+        publisher,
+        base_node_comms.node_identity().to_peer(),
+    )
+    .await?;
+
+    task::spawn(sync_peers(
+        base_node_comms.subscribe_connection_manager_events(),
+        base_node_comms.peer_manager(),
+        wallet_comms.peer_manager(),
+    ));
+
+    create_wallet_folder(
+        &config
+            .wallet_db_file
+            .parent()
+            .expect("wallet_db_file cannot be set to a root directory"),
+    )?;
+    let wallet_conn = run_migration_and_create_sqlite_connection(&config.wallet_db_file)
+        .map_err(|e| format!("Could not create wallet: {:?}", e))?;
+
+    let wallet_handles = register_wallet_services(
+        &wallet_comms,
+        &wallet_dht,
+        &wallet_conn,
+        wallet_subscriptions,
+        factories,
+    )
+    .await;
+
+    // Set the base node for the wallet to the 'local' base node
+    let base_node_public_key = base_node_comms.node_identity().public_key().clone();
+    wallet_handles
+        .get_handle::<TransactionServiceHandle>()
+        .expect("TransactionService is not registered")
+        .set_base_node_public_key(base_node_public_key.clone())
+        .await
+        .expect("Problem setting local base node public key for transaction service.");
+    wallet_handles
+        .get_handle::<OutputManagerHandle>()
+        .expect("OutputManagerService is not registered")
+        .set_base_node_public_key(base_node_public_key)
+        .await
+        .expect("Problem setting local base node public key for output manager service.");
+
+    //---------------------------------- Base Node State Machine --------------------------------------------//
+    let outbound_interface = base_node_handles
         .get_handle::<OutboundNodeCommsInterface>()
-        .expect("Problem getting node interface handle");
-    let chain_metadata_service = handles
+        .expect("Problem getting node interface handle.");
+    let chain_metadata_service = base_node_handles
         .get_handle::<ChainMetadataHandle>()
-        .expect("Problem getting chain metadata interface handle");
+        .expect("Problem getting chain metadata interface handle.");
     debug!(target: LOG_TARGET, "Creating base node state machine.");
+    let mut state_machine_config = BaseNodeStateMachineConfig::default();
+    state_machine_config.block_sync_config.sync_strategy = config
+        .block_sync_strategy
+        .parse()
+        .expect("Problem reading block sync strategy from config");
+
     let node = BaseNodeStateMachine::new(
         &db,
         &outbound_interface,
-        runtime::Handle::current().clone(),
+        base_node_comms.peer_manager(),
+        base_node_comms.connection_manager(),
         chain_metadata_service.get_event_stream(),
-        BaseNodeStateMachineConfig::default(),
+        state_machine_config,
+        interrupt_signal,
     );
-    let miner = if config.enable_mining {
-        debug!(target: LOG_TARGET, "Configuring solo miner");
-        let event_stream = node.get_state_change_event_stream();
-        Some(miner::build_miner(
-            &handles,
-            node.get_interrupt_flag(),
-            event_stream,
-            rules,
-        ))
+
+    //---------------------------------- Mining --------------------------------------------//
+
+    let event_stream = node.get_state_change_event_stream();
+    let miner = miner::build_miner(
+        &base_node_handles,
+        node.get_interrupt_signal(),
+        event_stream,
+        rules,
+        config.num_mining_threads,
+    );
+    if config.enable_mining {
+        debug!(target: LOG_TARGET, "Enabling solo miner");
+        miner.enable_mining_flag().store(true, Ordering::Relaxed);
     } else {
         debug!(
             target: LOG_TARGET,
-            "Mining is disabled in the config file. This node will not mine for Tari"
+            "Mining is disabled in the config file. This node will not mine for Tari unless enabled in the UI"
         );
-        None
     };
+
+    let miner_enabled = miner.enable_mining_flag();
     Ok(BaseNodeContext {
-        comms,
-        handles,
+        base_node_comms,
+        base_node_dht,
+        wallet_comms,
+        wallet_dht,
+        base_node_handles,
+        wallet_handles,
         node,
-        miner,
+        miner: Some(miner),
+        miner_enabled,
     })
 }
 
-fn assign_peers(seeds: &[String]) -> Vec<Peer> {
+async fn sync_peers(
+    mut events_rx: broadcast::Receiver<Arc<ConnectionManagerEvent>>,
+    base_node_peer_manager: Arc<PeerManager>,
+    wallet_peer_manager: Arc<PeerManager>,
+)
+{
+    while let Some(Ok(event)) = events_rx.next().await {
+        if let ConnectionManagerEvent::PeerConnected(conn) = &*event {
+            if !wallet_peer_manager.exists_node_id(conn.peer_node_id()).await {
+                match base_node_peer_manager.find_by_node_id(conn.peer_node_id()).await {
+                    Ok(mut peer) => {
+                        peer.unset_id();
+                        if let Err(err) = wallet_peer_manager.add_peer(peer).await {
+                            error!(target: LOG_TARGET, "Failed to add peer to wallet: {:?}", err);
+                        }
+                    },
+                    Err(err) => {
+                        error!(target: LOG_TARGET, "Failed to find peer in base node: {:?}", err);
+                    },
+                }
+            }
+        }
+    }
+}
+
+fn parse_peer_seeds(seeds: &[String]) -> Vec<Peer> {
     info!("Adding {} peers to the peer database", seeds.len());
     let mut result = Vec::with_capacity(seeds.len());
     for s in seeds {
@@ -454,6 +588,7 @@ fn assign_peers(seeds: &[String]) -> Vec<Peer> {
             addr.into(),
             PeerFlags::default(),
             PeerFeatures::COMMUNICATION_NODE,
+            &[],
         );
         result.push(peer);
     }
@@ -461,10 +596,23 @@ fn assign_peers(seeds: &[String]) -> Vec<Peer> {
 }
 
 fn setup_transport_type(config: &GlobalConfig) -> TransportType {
+    debug!(target: LOG_TARGET, "Transport is set to '{:?}'", config.comms_transport);
+
     match config.comms_transport.clone() {
-        CommsTransport::Tcp { listener_address } => TransportType::Tcp { listener_address },
+        CommsTransport::Tcp {
+            listener_address,
+            tor_socks_address,
+            tor_socks_auth,
+        } => TransportType::Tcp {
+            listener_address,
+            tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
+                proxy_address,
+                authentication: tor_socks_auth.map(into_socks_authentication).unwrap_or_default(),
+            }),
+        },
         CommsTransport::TorHiddenService {
             control_server_address,
+            socks_address_override,
             forward_address,
             auth,
             onion_port,
@@ -493,14 +641,13 @@ fn setup_transport_type(config: &GlobalConfig) -> TransportType {
                 control_server_auth: {
                     match auth {
                         TorControlAuthentication::None => tor::Authentication::None,
-                        TorControlAuthentication::Password(password) => {
-                            tor::Authentication::HashedPassword(password.clone())
-                        },
+                        TorControlAuthentication::Password(password) => tor::Authentication::HashedPassword(password),
                     }
                 },
                 identity: identity.map(Box::new),
                 port_mapping: (onion_port, forward_addr).into(),
                 // TODO: make configurable
+                socks_address_override,
                 socks_auth: socks::Authentication::None,
             })
         },
@@ -509,123 +656,270 @@ fn setup_transport_type(config: &GlobalConfig) -> TransportType {
             listener_address,
             auth,
         } => TransportType::Socks {
-            proxy_address,
-            listener_address,
-            authentication: {
-                match auth {
-                    SocksAuthentication::None => socks::Authentication::None,
-                    SocksAuthentication::UsernamePassword(username, password) => {
-                        socks::Authentication::Password(username, password)
-                    },
-                }
+            socks_config: SocksConfig {
+                proxy_address,
+                authentication: into_socks_authentication(auth),
             },
+            listener_address,
         },
     }
 }
 
-fn create_wallet_folder(wallet_file: &str) -> Result<(), String> {
-    // sql lite for wallet, create folders for sql lite
-    let mut wallet_db_folder = PathBuf::from(wallet_file);
-    wallet_db_folder.set_extension("dat");
-    let wallet_path = PathBuf::from(wallet_db_folder.parent().expect("unable to get wallet db path"));
-    match fs::create_dir_all(wallet_path) {
+fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
+    debug!(
+        target: LOG_TARGET,
+        "Wallet transport is set to '{:?}'", config.comms_transport
+    );
+
+    let add_to_port = |addr: Multiaddr, n| -> Multiaddr {
+        addr.iter()
+            .map(|p| match p {
+                Protocol::Tcp(port) => Protocol::Tcp(port + n),
+                p => p,
+            })
+            .collect()
+    };
+
+    match config.comms_transport.clone() {
+        CommsTransport::Tcp {
+            listener_address,
+            tor_socks_address,
+            tor_socks_auth,
+        } => TransportType::Tcp {
+            listener_address: add_to_port(listener_address, 1),
+            tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
+                proxy_address,
+                authentication: tor_socks_auth.map(into_socks_authentication).unwrap_or_default(),
+            }),
+        },
+        CommsTransport::TorHiddenService {
+            control_server_address,
+            socks_address_override,
+            forward_address,
+            auth,
+            onion_port,
+        } => {
+            let tor_identity_path = Path::new(&config.wallet_tor_identity_file);
+            let identity = if tor_identity_path.exists() {
+                // If this fails, we can just use another address
+                load_from_json::<_, TorIdentity>(&tor_identity_path).ok()
+            } else {
+                None
+            };
+            info!(
+                target: LOG_TARGET,
+                "Wallet tor identity at path '{}' {:?}",
+                tor_identity_path.to_string_lossy(),
+                identity
+                    .as_ref()
+                    .map(|ident| format!("loaded for address '{}.onion'", ident.service_id))
+                    .or_else(|| Some("not found".to_string()))
+                    .unwrap()
+            );
+
+            let mut forward_addr = multiaddr_to_socketaddr(&forward_address).expect("Invalid tor forward address");
+            forward_addr.set_port(forward_addr.port() + 1);
+            TransportType::Tor(TorConfig {
+                control_server_addr: control_server_address,
+                control_server_auth: {
+                    match auth {
+                        TorControlAuthentication::None => tor::Authentication::None,
+                        TorControlAuthentication::Password(password) => tor::Authentication::HashedPassword(password),
+                    }
+                },
+                identity: identity.map(Box::new),
+
+                port_mapping: (onion_port.get() + 1, forward_addr).into(),
+                // TODO: make configurable
+                socks_address_override,
+                socks_auth: socks::Authentication::None,
+            })
+        },
+        CommsTransport::Socks5 {
+            proxy_address,
+            listener_address,
+            auth,
+        } => TransportType::Socks {
+            socks_config: SocksConfig {
+                proxy_address,
+                authentication: into_socks_authentication(auth),
+            },
+            listener_address: add_to_port(listener_address, 1),
+        },
+    }
+}
+
+fn into_socks_authentication(auth: SocksAuthentication) -> socks::Authentication {
+    match auth {
+        SocksAuthentication::None => socks::Authentication::None,
+        SocksAuthentication::UsernamePassword(username, password) => {
+            socks::Authentication::Password(username, password)
+        },
+    }
+}
+
+fn create_wallet_folder<P: AsRef<Path>>(wallet_path: P) -> Result<(), String> {
+    let path = wallet_path.as_ref();
+    match fs::create_dir_all(path) {
         Ok(_) => {
             info!(
                 target: LOG_TARGET,
-                "Wallet directory has been created in {}", wallet_file
+                "Wallet directory has been created at {}",
+                path.display()
             );
             Ok(())
         },
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-            info!(target: LOG_TARGET, "Wallet directory already exists in {}", wallet_file);
+            info!(
+                target: LOG_TARGET,
+                "Wallet directory already exists in {}",
+                path.display()
+            );
             Ok(())
         },
         Err(e) => Err(format!("Could not create wallet directory: {}", e)),
     }
 }
 
-fn create_peer_db_folder(peer_db_path: &str) -> Result<(), String> {
-    match fs::create_dir_all(peer_db_path) {
+fn create_peer_db_folder<P: AsRef<Path>>(peer_db_path: P) -> Result<(), String> {
+    let path = peer_db_path.as_ref();
+    match fs::create_dir_all(path) {
         Ok(_) => {
             info!(
                 target: LOG_TARGET,
-                "Peer database directory has been created in {}", peer_db_path
+                "Peer database directory has been created in {}",
+                path.display()
             );
             Ok(())
         },
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-            info!(target: LOG_TARGET, "Peer database already exists in {}", peer_db_path);
+            info!(target: LOG_TARGET, "Peer database already exists in {}", path.display());
             Ok(())
         },
         Err(e) => Err(format!("could not create peer db path: {}", e)),
     }
 }
 
-async fn setup_comms_services(
-    config: CommsConfig,
+async fn setup_base_node_comms(
+    node_identity: Arc<NodeIdentity>,
+    config: &GlobalConfig,
     publisher: PubsubDomainConnector,
 ) -> Result<(CommsNode, Dht), String>
 {
-    initialize_comms(config, publisher)
+    let comms_config = CommsConfig {
+        node_identity,
+        transport_type: setup_transport_type(&config),
+        datastore_path: config.peer_db_path.clone(),
+        peer_database_name: "peers".to_string(),
+        max_concurrent_inbound_tasks: 100,
+        outbound_buffer_size: 100,
+        // TODO - make this configurable
+        dht: Default::default(),
+        // TODO: This should be false unless testing locally - make this configurable
+        allow_test_addresses: true,
+        listener_liveness_whitelist_cidrs: config.listener_liveness_whitelist_cidrs.clone(),
+        listener_liveness_max_sessions: config.listnener_liveness_max_sessions,
+    };
+    let (comms, dht) = initialize_comms(comms_config, publisher)
         .await
-        .map_err(|e| format!("Could not create comms layer: {}", e))
+        .map_err(|e| format!("Could not create comms layer: {:?}", e))?;
+
+    // Save final node identity after comms has initialized. This is required because the public_address can be changed
+    // by comms during initialization when using tor.
+    save_as_json(&config.identity_file, &*comms.node_identity())
+        .map_err(|e| format!("Failed to save node identity: {:?}", e))?;
+    if let Some(hs) = comms.hidden_service() {
+        save_as_json(&config.tor_identity_file, hs.tor_identity())
+            .map_err(|e| format!("Failed to save tor identity: {:?}", e))?;
+    }
+
+    add_peers_to_comms(&comms, parse_peer_seeds(&config.peer_seeds)).await?;
+
+    Ok((comms, dht))
 }
 
-fn add_peers_to_comms(comms: &CommsNode, peers: Vec<Peer>) -> Result<(), String> {
+async fn setup_wallet_comms(
+    node_identity: Arc<NodeIdentity>,
+    config: &GlobalConfig,
+    publisher: PubsubDomainConnector,
+    base_node_peer: Peer,
+) -> Result<(CommsNode, Dht), String>
+{
+    let comms_config = CommsConfig {
+        node_identity,
+        transport_type: setup_wallet_transport_type(&config),
+        datastore_path: config.wallet_peer_db_path.clone(),
+        peer_database_name: "peers".to_string(),
+        max_concurrent_inbound_tasks: 100,
+        outbound_buffer_size: 100,
+        // TODO - make this configurable
+        dht: Default::default(),
+        // TODO: This should be false unless testing locally - make this configurable
+        allow_test_addresses: true,
+        listener_liveness_whitelist_cidrs: Vec::new(),
+        listener_liveness_max_sessions: 0,
+    };
+    let (comms, dht) = initialize_comms(comms_config, publisher)
+        .await
+        .map_err(|e| format!("Could not create comms layer: {:?}", e))?;
+
+    // Save final node identity after comms has initialized. This is required because the public_address can be changed
+    // by comms during initialization when using tor.
+    save_as_json(&config.wallet_identity_file, &*comms.node_identity())
+        .map_err(|e| format!("Failed to save node identity: {:?}", e))?;
+    if let Some(hs) = comms.hidden_service() {
+        save_as_json(&config.wallet_tor_identity_file, hs.tor_identity())
+            .map_err(|e| format!("Failed to save tor identity: {:?}", e))?;
+    }
+
+    add_peers_to_comms(&comms, vec![base_node_peer]).await?;
+
+    Ok((comms, dht))
+}
+
+async fn add_peers_to_comms(comms: &CommsNode, peers: Vec<Peer>) -> Result<(), String> {
     for p in peers {
         let peer_desc = p.to_string();
         info!(target: LOG_TARGET, "Adding seed peer [{}]", peer_desc);
         comms
             .peer_manager()
             .add_peer(p)
+            .await
             .map_err(|e| format!("Could not add peer {} to comms layer: {}", peer_desc, e))?;
     }
     Ok(())
 }
 
-async fn register_services<B>(
-    id: Arc<NodeIdentity>,
+async fn register_base_node_services<B>(
     comms: &CommsNode,
     dht: &Dht,
     db: BlockchainDatabase<B>,
-    wallet_conn: &WalletConnection,
-    subscription_factory: SubscriptionFactory,
+    subscription_factory: Arc<SubscriptionFactory>,
     mempool: Mempool<B>,
-    consensus_manager: ConsensusManager<B>,
-    factories: CryptoFactories,
+    consensus_manager: ConsensusManager,
 ) -> Arc<ServiceHandles>
 where
     B: BlockchainBackend + 'static,
 {
     let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
-    let subscription_factory = Arc::new(subscription_factory);
-    let handle = runtime::Handle::current().clone();
-    StackBuilder::new(handle, comms.shutdown_signal())
+    let mempool_config = MempoolServiceConfig::default(); // TODO - make this configurable
+    StackBuilder::new(runtime::Handle::current(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(BaseNodeServiceInitializer::new(
             subscription_factory.clone(),
             db,
-            mempool,
+            mempool.clone(),
             consensus_manager,
             node_config,
         ))
-        .add_initializer(OutputManagerServiceInitializer::new(
-            OutputManagerServiceConfig::default(),
+        .add_initializer(MempoolServiceInitializer::new(
             subscription_factory.clone(),
-            OutputManagerSqliteDatabase::new(wallet_conn.clone()),
-            factories.clone(),
-        ))
-        .add_initializer(TransactionServiceInitializer::new(
-            TransactionServiceConfig::default(),
-            subscription_factory.clone(),
-            comms.subscribe_messaging_events(),
-            TransactionServiceSqliteDatabase::new(wallet_conn.clone()),
-            id,
-            factories,
+            mempool,
+            mempool_config,
         ))
         .add_initializer(LivenessInitializer::new(
             LivenessConfig {
-                auto_ping_interval: Some(Duration::from_secs(5)),
+                auto_ping_interval: Some(Duration::from_secs(30)),
                 enable_auto_join: true,
                 enable_auto_stored_message_request: true,
                 refresh_neighbours_interval: Duration::from_secs(3 * 60),
@@ -634,6 +928,47 @@ where
             dht.dht_requester(),
         ))
         .add_initializer(ChainMetadataServiceInitializer)
+        .finish()
+        .await
+        .expect("Service initialization failed")
+}
+
+async fn register_wallet_services(
+    wallet_comms: &CommsNode,
+    wallet_dht: &Dht,
+    wallet_db_conn: &WalletDbConnection,
+    subscription_factory: Arc<SubscriptionFactory>,
+    factories: CryptoFactories,
+) -> Arc<ServiceHandles>
+{
+    StackBuilder::new(runtime::Handle::current(), wallet_comms.shutdown_signal())
+        .add_initializer(CommsOutboundServiceInitializer::new(wallet_dht.outbound_requester()))
+        .add_initializer(LivenessInitializer::new(
+            LivenessConfig{
+                auto_ping_interval: None,
+                enable_auto_join: true,
+                enable_auto_stored_message_request: true,
+                ..Default::default()
+            },
+            subscription_factory.clone(),
+            wallet_dht.dht_requester()
+
+        ))
+        // Wallet services
+        .add_initializer(OutputManagerServiceInitializer::new(
+            OutputManagerServiceConfig::default(),
+            subscription_factory.clone(),
+            OutputManagerSqliteDatabase::new(wallet_db_conn.clone()),
+            factories.clone(),
+        ))
+        .add_initializer(TransactionServiceInitializer::new(
+            TransactionServiceConfig::default(),
+            subscription_factory,
+            wallet_comms.subscribe_messaging_events(),
+            TransactionServiceSqliteDatabase::new(wallet_db_conn.clone()),
+            wallet_comms.node_identity(),
+            factories,
+        ))
         .finish()
         .await
         .expect("Service initialization failed")

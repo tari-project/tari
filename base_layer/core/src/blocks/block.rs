@@ -43,7 +43,7 @@ use derive_error::Error;
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
-use tari_crypto::tari_utilities::Hashable;
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 pub const LOG_TARGET: &str = "c::bl::block";
 
@@ -99,13 +99,21 @@ impl Block {
             if utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT) {
                 coinbase_counter += 1;
                 if utxo.features.maturity < (self.header.height + consensus_constants.coinbase_lock_height()) {
-                    debug!(target: LOG_TARGET, "Coinbase found with maturity set to low");
+                    warn!(
+                        target: LOG_TARGET,
+                        "Coinbase on {} found with maturity set too low",
+                        self.hash().to_hex()
+                    );
                     return Err(BlockValidationError::InvalidCoinbase);
                 }
             }
         }
         if coinbase_counter != 1 {
-            debug!(target: LOG_TARGET, "More then one coinbase found in block");
+            warn!(
+                target: LOG_TARGET,
+                "More then one coinbase found in block {}",
+                self.hash().to_hex()
+            );
             return Err(BlockValidationError::InvalidCoinbase);
         }
         Ok(())
@@ -113,9 +121,14 @@ impl Block {
 
     /// This function will check all stxo to ensure that feature flags where followed
     pub fn check_stxo_rules(&self) -> Result<(), BlockValidationError> {
+        trace!(
+            target: LOG_TARGET,
+            "Checking maturity on inputs on block with hash {}",
+            self.hash().to_hex()
+        );
         for input in self.body.inputs() {
             if input.features.maturity > self.header.height {
-                debug!(
+                warn!(
                     target: LOG_TARGET,
                     "Input found that has not yet matured to spending height: {}", input
                 );
@@ -159,9 +172,9 @@ pub struct BlockBuilder {
 }
 
 impl BlockBuilder {
-    pub fn new(consensus_constants: &ConsensusConstants) -> BlockBuilder {
+    pub fn new(blockchain_version: u16) -> BlockBuilder {
         BlockBuilder {
-            header: BlockHeader::new(consensus_constants.blockchain_version()),
+            header: BlockHeader::new(blockchain_version),
             inputs: Vec::new(),
             outputs: Vec::new(),
             kernels: Vec::new(),

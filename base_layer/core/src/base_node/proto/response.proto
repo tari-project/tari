@@ -26,6 +26,8 @@ message BaseNodeServiceResponse {
         tari.core.Block new_block = 8;
         // Indicates a TargetDifficulty response.
         uint64 target_difficulty = 9;
+        // Block headers in range response
+        BlockHeaders fetch_headers_after_response = 10;
     }
 }
 
@@ -44,3 +46,4 @@ message TransactionOutputs {
 message HistoricalBlocks {
     repeated tari.core.HistoricalBlock blocks = 1;
 }
+

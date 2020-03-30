@@ -23,16 +23,18 @@
 use crate::{outbound::DhtOutboundRequest, Dht, DhtConfig};
 use futures::channel::mpsc;
 use std::{sync::Arc, time::Duration};
-use tari_comms::peer_manager::{NodeIdentity, PeerManager};
+use tari_comms::{
+    connection_manager::ConnectionManagerRequester,
+    peer_manager::{NodeIdentity, PeerManager},
+};
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
 
 pub struct DhtBuilder {
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
     config: DhtConfig,
-    executor: Option<runtime::Handle>,
     outbound_tx: mpsc::Sender<DhtOutboundRequest>,
+    connection_manager: ConnectionManagerRequester,
     shutdown_signal: ShutdownSignal,
 }
 
@@ -41,6 +43,7 @@ impl DhtBuilder {
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_tx: mpsc::Sender<DhtOutboundRequest>,
+        connection_manager: ConnectionManagerRequester,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
@@ -51,19 +54,14 @@ impl DhtBuilder {
             config: Default::default(),
             node_identity,
             peer_manager,
-            executor: None,
             outbound_tx,
+            connection_manager,
             shutdown_signal,
         }
     }
 
     pub fn with_config(mut self, config: DhtConfig) -> Self {
         self.config = config;
-        self
-    }
-
-    pub fn with_executor(mut self, executor: runtime::Handle) -> Self {
-        self.executor = Some(executor);
         self
     }
 
@@ -108,10 +106,10 @@ impl DhtBuilder {
     pub fn finish(self) -> Dht {
         Dht::new(
             self.config,
-            self.executor.unwrap_or(runtime::Handle::current()),
             self.node_identity,
             self.peer_manager,
             self.outbound_tx,
+            self.connection_manager,
             self.shutdown_signal,
         )
     }

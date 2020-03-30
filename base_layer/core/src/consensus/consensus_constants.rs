@@ -22,6 +22,7 @@
 
 use crate::{
     consensus::network::Network,
+    proof_of_work::Difficulty,
     transactions::tari_amount::{uT, MicroTari, T},
 };
 use chrono::{DateTime, Duration, Utc};
@@ -42,6 +43,8 @@ pub struct ConsensusConstants {
     target_block_interval: u64,
     /// When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at
     difficulty_block_window: u64,
+    /// When doing difficulty adjustments, this is the maximum block time allowed
+    difficulty_max_block_interval: u64,
     /// Maximum transaction weight used for the construction of new blocks.
     max_block_transaction_weight: u64,
     /// The amount of PoW algorithms used by the Tari chain.
@@ -54,6 +57,8 @@ pub struct ConsensusConstants {
     pub(in crate::consensus) emission_decay: f64,
     /// This is the emission curve tail amount
     pub(in crate::consensus) emission_tail: MicroTari,
+    /// This is the initial min difficulty for the difficulty adjustment
+    min_pow_difficulty: Difficulty,
 }
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
 // algorithm count
@@ -115,26 +120,39 @@ impl ConsensusConstants {
         self.pow_algo_count * self.target_block_interval
     }
 
+    /// The maximum time a block is considered to take. Used by the difficulty adjustment algorithms
+    /// Multiplied by the PoW algorithm count.
+    pub fn get_difficulty_max_block_interval(&self) -> u64 {
+        self.pow_algo_count * self.difficulty_max_block_interval
+    }
+
     /// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward.
     pub fn get_median_timestamp_count(&self) -> usize {
         self.median_timestamp_count
+    }
+
+    // This is the min initial difficulty that can be requested for the pow
+    pub fn min_pow_difficulty(&self) -> Difficulty {
+        self.min_pow_difficulty
     }
 
     pub fn rincewind() -> Self {
         let target_block_interval = 60;
         let difficulty_block_window = 150;
         ConsensusConstants {
-            coinbase_lock_height: 1,
+            coinbase_lock_height: 60,
             blockchain_version: 1,
             future_time_limit: target_block_interval * difficulty_block_window / 20,
             target_block_interval,
             difficulty_block_window,
-            max_block_transaction_weight: 10000, // TODO: a better weight estimate should be selected
-            pow_algo_count: 2,
+            difficulty_max_block_interval: target_block_interval * 60,
+            max_block_transaction_weight: 6250,
+            pow_algo_count: 1,
             median_timestamp_count: 11,
             emission_initial: 5_538_846_115 * uT,
             emission_decay: 0.999_999_560_409_038_5,
             emission_tail: 1 * T,
+            min_pow_difficulty: 6_000_000.into(),
         }
     }
 
@@ -146,13 +164,15 @@ impl ConsensusConstants {
             blockchain_version: 1,
             future_time_limit: target_block_interval * difficulty_block_window / 20,
             target_block_interval,
+            difficulty_max_block_interval: target_block_interval * 6,
             difficulty_block_window,
-            max_block_transaction_weight: 10000, // TODO: a better weight estimate should be selected
+            max_block_transaction_weight: 6250,
             pow_algo_count: 2,
             median_timestamp_count: 11,
             emission_initial: 10_000_000.into(),
             emission_decay: 0.999,
             emission_tail: 100.into(),
+            min_pow_difficulty: 1.into(),
         }
     }
 
@@ -165,13 +185,15 @@ impl ConsensusConstants {
             blockchain_version: 1,
             future_time_limit: target_block_interval * difficulty_block_window / 20,
             target_block_interval,
+            difficulty_max_block_interval: target_block_interval * 6,
             difficulty_block_window,
-            max_block_transaction_weight: 10000,
+            max_block_transaction_weight: 6250,
             pow_algo_count: 2,
             median_timestamp_count: 11,
             emission_initial: 10_000_000.into(),
             emission_decay: 0.999,
             emission_tail: 100.into(),
+            min_pow_difficulty: 500_000_000.into(),
         }
     }
 }

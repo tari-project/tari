@@ -4,5 +4,7 @@
 //! through to functions that bootstrap entire blockchains in `sample_blockchains`.
 
 pub mod block_builders;
+pub mod chain_metadata;
+pub mod event_stream;
 pub mod nodes;
 pub mod sample_blockchains;

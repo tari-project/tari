@@ -21,16 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #[allow(dead_code)]
+#[cfg(test)]
 pub mod factories;
 
-pub mod node_id;
-pub mod node_identity;
-pub mod peer_manager;
-pub mod test_node;
+cfg_test! {
+    pub mod node_id;
+    pub mod node_identity;
+    pub mod test_node;
+}
+
+pub mod mocks;
 pub mod transport;
-
-mod connection_manager_mock;
-pub use connection_manager_mock::{create_connection_manager_mock, ConnectionManagerMockState};
-
-mod peer_connection_mock;
-pub use peer_connection_mock::{create_peer_connection_mock_pair, PeerConnectionMockState};

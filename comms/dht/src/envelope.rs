@@ -51,13 +51,21 @@ pub enum DhtMessageError {
     HeaderOmitted,
 }
 
+impl fmt::Display for DhtMessageType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Debug output works well for simple enums
+        fmt::Debug::fmt(self, f)
+    }
+}
+
 bitflags! {
     /// Used to indicate characteristics of the incoming or outgoing message, such
     /// as whether the message is encrypted.
     #[derive(Deserialize, Serialize, Default)]
     pub struct DhtMessageFlags: u32 {
-        const NONE = 0b0000_0000;
-        const ENCRYPTED = 0b0000_0001;
+        const NONE = 0x00;
+        /// Set if the message is encrypted
+        const ENCRYPTED = 0x01;
     }
 }
 
@@ -136,6 +144,16 @@ impl DhtMessageHeader {
             network,
             flags,
         }
+    }
+}
+
+impl Display for DhtMessageHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "DhtMessageHeader (Dest:{}, Origin:{:?}, Type:{:?}, Network:{:?}, Flags:{:?})",
+            self.destination, self.origin, self.message_type, self.network, self.flags
+        )
     }
 }
 
@@ -239,9 +257,9 @@ pub enum NodeDestination {
     /// the peer being sent to.
     Unknown,
     /// Destined for a particular public key
-    PublicKey(CommsPublicKey),
+    PublicKey(Box<CommsPublicKey>),
     /// Destined for a particular node id, or network region
-    NodeId(NodeId),
+    NodeId(Box<NodeId>),
 }
 
 impl NodeDestination {
@@ -277,10 +295,10 @@ impl TryFrom<Destination> for NodeDestination {
         match destination {
             Destination::Unknown(_) => Ok(NodeDestination::Unknown),
             Destination::PublicKey(pk) => {
-                CommsPublicKey::from_bytes(&pk).and_then(|pk| Ok(NodeDestination::PublicKey(pk)))
+                CommsPublicKey::from_bytes(&pk).and_then(|pk| Ok(NodeDestination::PublicKey(Box::new(pk))))
             },
             Destination::NodeId(node_id) => {
-                NodeId::from_bytes(&node_id).and_then(|node_id| Ok(NodeDestination::NodeId(node_id)))
+                NodeId::from_bytes(&node_id).and_then(|node_id| Ok(NodeDestination::NodeId(Box::new(node_id))))
             },
         }
     }

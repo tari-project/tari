@@ -1,0 +1,20 @@
+on: push
+name: Clippy
+jobs:
+  clippy_check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          components: clippy
+          override: true
+      - name: Install dependencies
+        run: |
+          sudo apt update &&
+            sudo apt install libncurses5 libncurses5-dev openssl libssl-dev pkg-config libsqlite3-0 libsqlite3-dev clang git cmake libc++-dev libc++abi-dev
+      - uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features

@@ -34,6 +34,12 @@
 # ban them for 10 days.
 #blacklist_ban_period = 1440
 
+# The number of liveness sessions to allow. Liveness sessions can be established by liveness monitors over TCP by
+# sending a 0x50 (P) as the first byte. Any messages sent must be followed by newline message no longer than
+# 50 characters. That message will be echoed back.
+# liveness_max_sessions = 0
+# liveness_whitelist_cidrs = ["127.0.0.1/32"]
+
 
 ########################################################################################################################
 #                                                                                                                      #
@@ -98,13 +104,18 @@
 # peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
 peer_seeds = []
 
+
+# Determines the method of syncing blocks when the node is lagging. If you are not struggling with syncing, then
+# it is recommended to leave this setting as it. Available values are ViaBestChainMetadata and ViaRandomPeer.
+#block_sync_strategy="ViaBestChainMetadata"
+
 # Configure the number of threads to spawn for long-running tasks, like block and transaction validation. A good choice
 # for this value is somewhere between n/2 and n - 1, where n is the number of cores on your machine.
 #blocking_threads = 4
 
 # Configure the number of threads for the overall node work-stealing scheduler. A good value here is between 3 and
 # n - blocking_threads, where n is the number of cores on your machine, and blocking_thread is set above.
- #core_threads = 4
+#core_threads = 4
 
 # The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
 # peers can find you.
@@ -125,9 +136,14 @@ peer_seeds = []
 # -------------- Transport configuration --------------
 # Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
 # e.g. tor onion addresses will not be contactable.
-#transport = "tcp"
+transport = "tcp"
 # # The address and port to listen for peer connections over TCP.
-#tcp_listener_address = "/ip4/0.0.0.0/tcp/18189"
+tcp_listener_address = "/ip4/0.0.0.0/tcp/18189"
+# Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
+# This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
+# only advertise an onion address.
+tcp_tor_socks_address = "/ip4/127.0.0.1/tcp/36050"
+tcp_tor_socks_auth = "none"
 
 # Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
 # onion v2, onion v3 and dns addresses.
@@ -140,6 +156,9 @@ peer_seeds = []
 #tor_onion_port = 18141
 # The address to which traffic on the node's onion address will be forwarded
 #tor_forward_address = "/ip4/127.0.0.1/tcp/18141"
+# Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
+# use the first address returned by the tor control port (GETINFO /net/listeners/socks).
+#tor_socks_address_override=
 
 # Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
 #transport = "socks5"
@@ -173,7 +192,7 @@ peer_seeds = []
 
 # Configure the number of threads for the overall node work-stealing scheduler. A good value here is between 3 and
 # n - blocking_threads, where n is the number of cores on your machine, and blocking_thread is set above.
- #core_threads = 6
+#core_threads = 6
 
 # Enable the gRPC server for the base node. Set this to true if you want to enable third-party wallet software
 #grpc_enabled = false
@@ -189,8 +208,11 @@ peer_seeds = []
 # Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
 # e.g. tor onion addresses will not be contactable.
 #transport = "tcp"
-# # The address and port to listen for peer connections over TCP.
+# The address and port to listen for peer connections over TCP.
 #tcp_listener_address = "/ip4/0.0.0.0/tcp/18189"
+# Address of the SOCK5 service to use to resolve tor addresses
+# tcp_tor_socks_address # disabled by default
+# tcp_tor_socks_auth = "none"
 
 # Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
 # onion v2, onion v3 and dns addresses.
@@ -203,6 +225,9 @@ peer_seeds = []
 #tor_onion_port = 18141
 # The address to which traffic on the node's onion address will be forwarded
 #tor_forward_address = "/ip4/127.0.0.1/tcp/18141"
+# Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
+# use the first address returned by the tor control port (GETINFO /net/listeners/socks).
+#tor_socks_address_override=
 
 # Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
 #transport = "socks5"

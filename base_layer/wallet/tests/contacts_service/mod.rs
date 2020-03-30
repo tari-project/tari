@@ -37,7 +37,7 @@ use tari_wallet::{
         },
         ContactsServiceInitializer,
     },
-    storage::connection_manager::run_migration_and_create_connection_pool,
+    storage::connection_manager::run_migration_and_create_sqlite_connection,
 };
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
@@ -182,6 +182,7 @@ fn contacts_service_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
     let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    let connection_pool = run_migration_and_create_connection_pool(&format!("{}/{}", db_folder, db_name)).unwrap();
-    test_contacts_service(ContactsServiceSqliteDatabase::new(connection_pool));
+    let db_path = format!("{}/{}", db_folder, db_name);
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+    test_contacts_service(ContactsServiceSqliteDatabase::new(connection));
 }

@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The tari full base node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.0.9"
+version = "0.0.10"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -26,11 +26,12 @@ config = { version = "0.9.3" }
 dirs = "2.0.2"
 futures = { version = "^0.3.1", default-features = false, features = ["alloc"]}
 log = { version = "0.4.8", features = ["std"] }
-log4rs = { version = "0.8.3", features = ["toml_format"] }
+log4rs = { version = "0.8.3", features = ["toml_format", "rolling_file_appender", "compound_policy", "size_trigger", "fixed_window_roller"] }
 rand = "0.7.2"
 serde_json = "1.0"
 tokio = { version="0.2.10", features = ["signal"] }
 rustyline = "6.0"
 rustyline-derive = "0.3"
-strum = "0.17.1"
-strum_macros = "0.17.1"
+strum = "0.18.0"
+strum_macros = "0.18.0"
+qrcode = { version = "0.12" }

@@ -21,13 +21,14 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::BlockchainBackend,
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
     mempool::orphan_pool::{error::OrphanPoolError, orphan_pool::OrphanPoolConfig},
     transactions::{transaction::Transaction, types::Signature},
     validation::{ValidationError, Validator},
 };
 use log::*;
 use std::sync::Arc;
+use tari_crypto::tari_utilities::hex::Hex;
 use ttl_cache::TtlCache;
 
 pub const LOG_TARGET: &str = "c::mp::orphan_pool::orphan_pool_storage";
@@ -42,25 +43,37 @@ where T: BlockchainBackend
     config: OrphanPoolConfig,
     txs_by_signature: TtlCache<Signature, Arc<Transaction>>,
     validator: Validator<Transaction, T>,
+    blockchain_db: BlockchainDatabase<T>,
 }
 
 impl<T> OrphanPoolStorage<T>
 where T: BlockchainBackend
 {
     /// Create a new OrphanPoolStorage with the specified configuration
-    pub fn new(config: OrphanPoolConfig, validator: Validator<Transaction, T>) -> Self {
+    pub fn new(
+        config: OrphanPoolConfig,
+        validator: Validator<Transaction, T>,
+        blockchain_db: BlockchainDatabase<T>,
+    ) -> Self
+    {
         Self {
             config,
             txs_by_signature: TtlCache::new(config.storage_capacity),
             validator,
+            blockchain_db,
         }
     }
 
     /// Insert a new transaction into the OrphanPoolStorage. Orphaned transactions will have a limited Time-to-live and
     /// will be discarded if the UTXOs they require are not created before the Time-to-live threshold is reached.
     pub fn insert(&mut self, tx: Arc<Transaction>) {
-        trace!(target: LOG_TARGET, "Adding tx to orphan pool: {:?}", tx.clone());
         let tx_key = tx.body.kernels()[0].excess_sig.clone();
+        debug!(
+            target: LOG_TARGET,
+            "Inserting tx into orphan pool: {}",
+            tx_key.get_signature().to_hex()
+        );
+        trace!(target: LOG_TARGET, "Transaction inserted: {}", tx);
         let _ = self.txs_by_signature.insert(tx_key, tx, self.config.tx_ttl);
     }
 
@@ -89,7 +102,9 @@ where T: BlockchainBackend
         // We dont care about tx's that appeared in valid blocks. Those tx's will time out in orphan pool and remove
         // them selves.
         for (tx_key, tx) in self.txs_by_signature.iter() {
-            match self.validator.validate(&tx) {
+            let (db, metadata) = self.blockchain_db.db_and_metadata_read_access()?;
+
+            match self.validator.validate(&tx, &db, &metadata) {
                 Ok(()) => {
                     trace!(
                         target: LOG_TARGET,

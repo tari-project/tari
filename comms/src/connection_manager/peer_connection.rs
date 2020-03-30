@@ -29,6 +29,7 @@ use crate::{
     multiplexing::{IncomingSubstreams, Yamux},
     peer_manager::NodeId,
     protocol::{ProtocolId, ProtocolNegotiation},
+    runtime,
     types::CommsSubstream,
 };
 use futures::{
@@ -41,10 +42,12 @@ use log::*;
 use multiaddr::Multiaddr;
 use std::{
     fmt,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 use tari_shutdown::Shutdown;
-use tokio::runtime;
 
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 
@@ -53,7 +56,6 @@ const PEER_REQUEST_BUFFER_SIZE: usize = 64;
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 pub fn create(
-    executor: runtime::Handle,
     connection: Yamux,
     peer_addr: Multiaddr,
     peer_node_id: NodeId,
@@ -79,7 +81,7 @@ pub fn create(
         event_notifier,
         our_supported_protocols,
     );
-    executor.spawn(peer_actor.run());
+    runtime::current_executor().spawn(peer_actor.run());
 
     Ok(peer_conn)
 }
@@ -101,7 +103,7 @@ pub type ConnId = usize;
 #[derive(Clone, Debug)]
 pub struct PeerConnection {
     id: ConnId,
-    peer_node_id: NodeId,
+    peer_node_id: Arc<NodeId>,
     request_tx: mpsc::Sender<PeerConnectionRequest>,
     address: Multiaddr,
     direction: ConnectionDirection,
@@ -119,7 +121,7 @@ impl PeerConnection {
         Self {
             id,
             request_tx,
-            peer_node_id,
+            peer_node_id: Arc::new(peer_node_id),
             address,
             direction,
         }
@@ -137,14 +139,22 @@ impl PeerConnection {
         self.id
     }
 
-    pub async fn open_substream<P: Into<ProtocolId>>(
+    pub fn is_connected(&self) -> bool {
+        !self.request_tx.is_closed()
+    }
+
+    pub fn reference_count(&self) -> usize {
+        Arc::strong_count(&self.peer_node_id)
+    }
+
+    pub async fn open_substream(
         &mut self,
-        protocol_id: P,
+        protocol_id: &ProtocolId,
     ) -> Result<NegotiatedSubstream<CommsSubstream>, PeerConnectionError>
     {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.request_tx
-            .send(PeerConnectionRequest::OpenSubstream(protocol_id.into(), reply_tx))
+            .send(PeerConnectionRequest::OpenSubstream(protocol_id.clone(), reply_tx))
             .await?;
         reply_rx
             .await
@@ -174,12 +184,14 @@ impl PeerConnection {
 
 impl fmt::Display for PeerConnection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        f.debug_struct("PeerConnection")
-            .field("id", &self.id)
-            .field("peer_node_id", &self.peer_node_id.short_str())
-            .field("direction", &self.direction.to_string())
-            .field("address", &self.address.to_string())
-            .finish()
+        write!(
+            f,
+            "Id = {}, Node ID = {}, Direction = {}, Peer Address = {}",
+            self.id,
+            self.peer_node_id.short_str(),
+            self.direction.to_string(),
+            self.address.to_string()
+        )
     }
 }
 
@@ -229,7 +241,7 @@ impl PeerConnectionActor {
 
                 maybe_substream = self.incoming_substreams.next() => {
                     match maybe_substream {
-                        Some(Ok(substream)) => {
+                        Some(substream) => {
                             if let Err(err) = self.handle_incoming_substream(substream).await {
                                 error!(
                                     target: LOG_TARGET,
@@ -240,12 +252,8 @@ impl PeerConnectionActor {
                                 )
                             }
                         },
-                        Some(Err(err)) => {
-                            warn!(target: LOG_TARGET, "[{}] Incoming substream error '{}'. Closing connection for peer '{}'", self, err, self.peer_node_id.short_str());
-                            self.disconnect(false).await;
-                        },
                         None => {
-                            warn!(target: LOG_TARGET, "[{}] Peer '{}' closed the connection", self, self.peer_node_id.short_str());
+                            debug!(target: LOG_TARGET, "[{}] Peer '{}' closed the connection", self, self.peer_node_id.short_str());
                             self.disconnect(false).await;
                         },
                     }
@@ -312,9 +320,15 @@ impl PeerConnectionActor {
             self.peer_node_id.short_str()
         );
         let mut stream = self.control.open_stream().await?;
-        let selected_protocol = ProtocolNegotiation::new(&mut stream)
-            .negotiate_protocol_outbound(&[protocol])
-            .await?;
+
+        let mut negotiation = ProtocolNegotiation::new(&mut stream);
+
+        let selected_protocol = if self.supported_protocols.contains(&protocol) {
+            negotiation.negotiate_protocol_outbound_optimistic(&protocol).await?
+        } else {
+            negotiation.negotiate_protocol_outbound(&[protocol]).await?
+        };
+
         Ok(NegotiatedSubstream::new(selected_protocol, stream))
     }
 
@@ -388,5 +402,36 @@ impl<TSubstream> fmt::Debug for NegotiatedSubstream<TSubstream> {
             .field("protocol", &format!("{:?}", self.protocol))
             .field("stream", &"...".to_string())
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn reference_count() {
+        let conn = PeerConnection::new(
+            1,
+            mpsc::channel(0).0,
+            Default::default(),
+            Multiaddr::empty(),
+            ConnectionDirection::Outbound,
+        );
+
+        assert_eq!(conn.reference_count(), 1);
+        let clone = conn.clone();
+
+        assert_eq!(conn.reference_count(), 2);
+        assert_eq!(clone.reference_count(), 2);
+
+        let clone2 = conn.clone();
+        assert_eq!(conn.reference_count(), 3);
+        assert_eq!(clone.reference_count(), 3);
+        assert_eq!(clone2.reference_count(), 3);
+
+        drop(clone2);
+        drop(clone);
+        assert_eq!(conn.reference_count(), 1);
     }
 }

@@ -34,13 +34,7 @@ use crate::{
 use futures::{future::BoxFuture, pin_mut, stream::FuturesUnordered, FutureExt, SinkExt, Stream, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{
-    collections::{HashMap, HashSet},
-    convert::TryFrom,
-    fmt,
-    sync::Mutex,
-    time::Duration,
-};
+use std::{cmp::Ordering, collections::HashMap, convert::TryFrom, fmt, sync::Mutex, time::Duration};
 use tari_broadcast_channel::Publisher;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
@@ -71,7 +65,7 @@ use tari_key_manager::{
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::reply_channel;
 
-const LOG_TARGET: &str = "base_layer::wallet::output_manager_service";
+const LOG_TARGET: &str = "wallet::output_manager_service";
 
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
 /// The service will assemble transactions to be sent from the wallets available outputs and provide keys to receive
@@ -89,7 +83,7 @@ where TBackend: OutputManagerBackend + 'static
     base_node_response_stream: Option<BNResponseStream>,
     factories: CryptoFactories,
     base_node_public_key: Option<CommsPublicKey>,
-    pending_utxo_query_keys: HashSet<u64>,
+    pending_utxo_query_keys: HashMap<u64, Vec<Vec<u8>>>,
     event_publisher: Publisher<OutputManagerEvent>,
 }
 
@@ -125,6 +119,10 @@ where
             Some(km) => km,
         };
 
+        // Clear any encumberances for transactions that were being negotiated but did not complete to become official
+        // Pending Transactions.
+        db.clear_short_term_encumberances().await?;
+
         Ok(OutputManagerService {
             config,
             outbound_message_service,
@@ -138,7 +136,7 @@ where
             base_node_response_stream: Some(base_node_response_stream),
             factories,
             base_node_public_key: None,
-            pending_utxo_query_keys: HashSet::new(),
+            pending_utxo_query_keys: HashMap::new(),
             event_publisher,
         })
     }
@@ -160,12 +158,13 @@ where
 
         let mut utxo_query_timeout_futures: FuturesUnordered<BoxFuture<'static, u64>> = FuturesUnordered::new();
 
-        info!("Output Manager Service started");
+        info!(target: LOG_TARGET, "Output Manager Service started");
         loop {
             futures::select! {
                 request_context = request_stream.select_next_some() => {
+                trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
-                    let _ = reply_tx.send(self.handle_request(request, &mut  utxo_query_timeout_futures).await.or_else(|resp| {
+                    let _ = reply_tx.send(self.handle_request(request, &mut utxo_query_timeout_futures).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling request: {:?}", resp);
                         Err(resp)
                     })).or_else(|resp| {
@@ -175,9 +174,10 @@ where
                 },
                  // Incoming messages from the Comms layer
                 msg = base_node_response_stream.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Handling Base Node Response");
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
                     let result = self.handle_base_node_response(inner_msg).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling base node service response : {:?}", resp);
+                        error!(target: LOG_TARGET, "Error handling base node service response from {}: {:?}", origin_public_key, resp);
                         Err(resp)
                     });
 
@@ -190,6 +190,7 @@ where
                     }
                 }
                 utxo_hash = utxo_query_timeout_futures.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Handling Base Node Sync Timeout");
                     let _ = self.handle_utxo_query_timeout(utxo_hash, &mut  utxo_query_timeout_futures).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling UTXO query timeout : {:?}", resp);
                         Err(resp)
@@ -200,8 +201,9 @@ where
                     break;
                 }
             }
+            trace!(target: LOG_TARGET, "Select Loop end");
         }
-        info!("Output Manager Service ended");
+        info!(target: LOG_TARGET, "Output Manager Service ended");
         Ok(())
     }
 
@@ -212,6 +214,7 @@ where
         utxo_query_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, u64>>,
     ) -> Result<OutputManagerResponse, OutputManagerError>
     {
+        trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
         match request {
             OutputManagerRequest::AddOutput(uo) => {
                 self.add_output(uo).await.map(|_| OutputManagerResponse::OutputAdded)
@@ -225,6 +228,10 @@ where
                 .prepare_transaction_to_send(amount, fee_per_gram, lock_height, message)
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
+            OutputManagerRequest::ConfirmPendingTransaction(tx_id) => self
+                .confirm_encumberance(tx_id)
+                .await
+                .map(|_| OutputManagerResponse::PendingTransactionConfirmed),
             OutputManagerRequest::ConfirmTransaction((tx_id, spent_outputs, received_outputs)) => self
                 .confirm_transaction(tx_id, &spent_outputs, &received_outputs)
                 .await
@@ -261,11 +268,11 @@ where
             OutputManagerRequest::SyncWithBaseNode => self
                 .query_unspent_outputs_status(utxo_query_timeout_futures)
                 .await
-                .map(|_| OutputManagerResponse::StartedBaseNodeSync),
+                .map(OutputManagerResponse::StartedBaseNodeSync),
             OutputManagerRequest::GetInvalidOutputs => self
                 .fetch_invalid_outputs()
                 .await
-                .map(|o| OutputManagerResponse::InvalidOutputs(o)),
+                .map(OutputManagerResponse::InvalidOutputs),
         }
     }
 
@@ -275,20 +282,32 @@ where
         response: BaseNodeProto::BaseNodeServiceResponse,
     ) -> Result<(), OutputManagerError>
     {
-        let request_key = response.request_key.clone();
-        let response = match response.response {
-            Some(BaseNodeResponseProto::TransactionOutputs(outputs)) => Ok(outputs.outputs),
-            _ => Err(OutputManagerError::InvalidResponseError),
-        }?;
+        let request_key = response.request_key;
+
+        let response: Vec<tari_core::transactions::proto::types::TransactionOutput> = match response.response {
+            Some(BaseNodeResponseProto::TransactionOutputs(outputs)) => outputs.outputs,
+            _ => {
+                return Ok(());
+            },
+        };
 
         // Only process requests with a request_key that we are expecting.
-        if !self.pending_utxo_query_keys.remove(&request_key) {
-            debug!(
-                target: LOG_TARGET,
-                "Ignoring Base Node Repsonse with unexpected request key"
-            );
-            return Ok(());
-        }
+        let queried_hashes: Vec<Vec<u8>> = match self.pending_utxo_query_keys.remove(&request_key) {
+            None => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Ignoring Base Node Response with unexpected request key ({}), it was not meant for this service.",
+                    request_key
+                );
+                return Ok(());
+            },
+            Some(qh) => qh,
+        };
+
+        trace!(
+            target: LOG_TARGET,
+            "Handling a Base Node Response meant for this service"
+        );
 
         // Construct a HashMap of all the unspent outputs
         let unspent_outputs: Vec<UnblindedOutput> = self.db.get_unspent_outputs().await?;
@@ -296,13 +315,15 @@ where
         let mut output_hashes = HashMap::new();
         for uo in unspent_outputs.iter() {
             let hash = uo.as_transaction_output(&self.factories)?.hash();
-            output_hashes.insert(hash.clone(), uo.clone());
+            if queried_hashes.iter().any(|h| &hash == h) {
+                output_hashes.insert(hash.clone(), uo.clone());
+            }
         }
 
         // Go through all the returned UTXOs and if they are in the hashmap remove them
         for output in response.iter() {
             let response_hash = TransactionOutput::try_from(output.clone())
-                .map_err(|e| OutputManagerError::ConversionError(e))?
+                .map_err(OutputManagerError::ConversionError)?
                 .hash();
 
             let _ = output_hashes.remove(&response_hash);
@@ -310,6 +331,10 @@ where
 
         // If there are any remaining Unspent Outputs we will move them to the invalid collection
         for (_k, v) in output_hashes {
+            warn!(
+                target: LOG_TARGET,
+                "Output with value {} not returned from Base Node query and is thus being invalidated", v.value
+            );
             self.db.invalidate_output(v).await?;
         }
 
@@ -333,10 +358,11 @@ where
         utxo_query_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, u64>>,
     ) -> Result<(), OutputManagerError>
     {
-        if self.pending_utxo_query_keys.remove(&query_key) {
-            debug!(target: LOG_TARGET, "UTXO Query {} timed out", query_key);
+        if self.pending_utxo_query_keys.remove(&query_key).is_some() {
+            error!(target: LOG_TARGET, "UTXO Query {} timed out", query_key);
             self.query_unspent_outputs_status(utxo_query_timeout_futures).await?;
-
+            // TODO Remove this once this bug is fixed
+            trace!(target: LOG_TARGET, "Finished queueing new Base Node query timeout");
             self.event_publisher
                 .send(OutputManagerEvent::BaseNodeSyncRequestTimedOut(query_key))
                 .await
@@ -350,10 +376,10 @@ where
     pub async fn query_unspent_outputs_status(
         &mut self,
         utxo_query_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, u64>>,
-    ) -> Result<(), OutputManagerError>
+    ) -> Result<u64, OutputManagerError>
     {
         match self.base_node_public_key.as_ref() {
-            None => return Err(OutputManagerError::NoBaseNodeKeysProvided),
+            None => Err(OutputManagerError::NoBaseNodeKeysProvided),
             Some(pk) => {
                 let unspent_outputs: Vec<UnblindedOutput> = self.db.get_unspent_outputs().await?;
                 let mut output_hashes = Vec::new();
@@ -364,11 +390,15 @@ where
 
                 let request_key = OsRng.next_u64();
 
-                let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs { outputs: output_hashes });
+                let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs {
+                    outputs: output_hashes.clone(),
+                });
                 let service_request = BaseNodeProto::BaseNodeServiceRequest {
-                    request_key: request_key.clone(),
+                    request_key,
                     request: Some(request),
                 };
+                // TODO Remove this once this bug is fixed
+                trace!(target: LOG_TARGET, "About to attempt to send query to base node");
                 self.outbound_message_service
                     .send_direct(
                         pk.clone(),
@@ -376,20 +406,18 @@ where
                         OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request),
                     )
                     .await?;
-
-                self.pending_utxo_query_keys.insert(request_key.clone());
-                let state_timeout = StateDelay::new(
-                    Duration::from_secs(self.config.base_node_query_timeout_in_secs),
-                    request_key.clone(),
-                );
+                // TODO Remove this once this bug is fixed
+                trace!(target: LOG_TARGET, "Query sent to Base Node");
+                self.pending_utxo_query_keys.insert(request_key, output_hashes);
+                let state_timeout = StateDelay::new(self.config.base_node_query_timeout, request_key);
                 utxo_query_timeout_futures.push(state_timeout.delay().boxed());
                 debug!(
                     target: LOG_TARGET,
                     "Output Manager Sync query ({}) sent to Base Node", request_key
                 );
+                Ok(request_key)
             },
         }
-        Ok(())
     }
 
     /// Add an unblinded output to the unspent outputs list
@@ -398,7 +426,9 @@ where
     }
 
     pub async fn get_balance(&self) -> Result<Balance, OutputManagerError> {
-        Ok(self.db.get_balance().await?)
+        let balance = self.db.get_balance().await?;
+        trace!(target: LOG_TARGET, "Balance: {:?}", balance);
+        Ok(balance)
     }
 
     /// Request a spending key to be used to accept a transaction from a sender.
@@ -492,7 +522,7 @@ where
     ) -> Result<SenderTransactionProtocol, OutputManagerError>
     {
         let outputs = self
-            .select_outputs(amount, fee_per_gram, UTXOSelectionStrategy::Smallest)
+            .select_outputs(amount, fee_per_gram, UTXOSelectionStrategy::MaturityThenSmallest)
             .await?;
         let total = outputs.iter().fold(MicroTari::from(0), |acc, x| acc + x.value);
 
@@ -510,7 +540,7 @@ where
 
         for uo in outputs.iter() {
             builder.with_input(
-                uo.as_transaction_input(&self.factories.commitment, OutputFeatures::default()),
+                uo.as_transaction_input(&self.factories.commitment, uo.clone().features),
                 uo.clone(),
             );
         }
@@ -551,6 +581,14 @@ where
             .await?;
 
         Ok(stp)
+    }
+
+    /// Confirm that a transaction has finished being negotiated between parties so the short-term encumberance can be
+    /// made official
+    pub async fn confirm_encumberance(&mut self, tx_id: u64) -> Result<(), OutputManagerError> {
+        self.db.confirm_encumbered_outputs(tx_id).await?;
+
+        Ok(())
     }
 
     /// Confirm that a received or sent transaction and its outputs have been detected on the base chain. The inputs and
@@ -624,20 +662,31 @@ where
 
         let uo = self.db.fetch_sorted_unspent_outputs().await?;
 
-        match strategy {
-            UTXOSelectionStrategy::Smallest => {
-                for o in uo.iter() {
-                    outputs.push(o.clone());
-                    total += o.value;
-                    // I am assuming that the only output will be the payment output and change if required
-                    fee_without_change = Fee::calculate(fee_per_gram, outputs.len(), 1);
-                    fee_with_change = Fee::calculate(fee_per_gram, outputs.len(), 2);
-
-                    if total == amount + fee_without_change || total >= amount + fee_with_change {
-                        break;
-                    }
-                }
+        let uo = match strategy {
+            UTXOSelectionStrategy::Smallest => uo,
+            // TODO: We should pass in the current height and group
+            // all funds less than the current height as maturity 0
+            UTXOSelectionStrategy::MaturityThenSmallest => {
+                let mut new_uo = uo;
+                new_uo.sort_by(|a, b| match a.features.maturity.cmp(&b.features.maturity) {
+                    Ordering::Equal => a.value.cmp(&b.value),
+                    Ordering::Less => Ordering::Less,
+                    Ordering::Greater => Ordering::Greater,
+                });
+                new_uo
             },
+        };
+
+        for o in uo.iter() {
+            outputs.push(o.clone());
+            total += o.value;
+            // I am assuming that the only output will be the payment output and change if required
+            fee_without_change = Fee::calculate(fee_per_gram, outputs.len(), 1);
+            fee_with_change = Fee::calculate(fee_per_gram, outputs.len(), 2);
+
+            if total == amount + fee_without_change || total >= amount + fee_with_change {
+                break;
+            }
         }
 
         if (total != amount + fee_without_change) && (total < amount + fee_with_change) {
@@ -695,9 +744,11 @@ where
 /// Different UTXO selection strategies for choosing which UTXO's are used to fulfill a transaction
 /// TODO Investigate and implement more optimal strategies
 pub enum UTXOSelectionStrategy {
-    // Start from the smallest UTXOs and work your way up until the amount is covered. Main benefit is removing small
-    // UTXOs from the blockchain, con is that it costs more in fees
+    // Start from the smallest UTXOs and work your way up until the amount is covered. Main benefit
+    // is removing small UTXOs from the blockchain, con is that it costs more in fees
     Smallest,
+    // Start from oldest maturity to reduce the likelihood of grabbing locked up UTXOs
+    MaturityThenSmallest,
 }
 
 /// This struct holds the detailed balance of the Output Manager Service.
@@ -713,9 +764,8 @@ pub struct Balance {
 
 impl fmt::Display for Balance {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "You current balance is:")?;
-        write!(f, "Available balance: {}", self.available_balance)?;
-        write!(f, "Pending incoming balance: {}", self.pending_incoming_balance)?;
+        writeln!(f, "Available balance: {}", self.available_balance)?;
+        writeln!(f, "Pending incoming balance: {}", self.pending_incoming_balance)?;
         write!(f, "Pending outgoing balance: {}", self.pending_outgoing_balance)?;
         Ok(())
     }

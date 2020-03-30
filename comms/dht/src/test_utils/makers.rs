@@ -57,6 +57,7 @@ pub fn make_peer() -> Peer {
         vec![node_identity.public_address()].into(),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
+        &[],
     )
 }
 
@@ -79,6 +80,7 @@ pub fn make_comms_inbound_message(node_identity: &NodeIdentity, message: Bytes, 
             Vec::<Multiaddr>::new().into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
+            &[],
         )),
         MessageEnvelopeHeader {
             public_key: node_identity.public_key().clone(),
@@ -120,6 +122,7 @@ pub fn make_dht_inbound_message(
             Vec::<Multiaddr>::new().into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
+            &[],
         )),
         body,
     )

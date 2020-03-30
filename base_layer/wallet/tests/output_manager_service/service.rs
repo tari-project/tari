@@ -26,7 +26,9 @@ use crate::support::{
 };
 use futures::{
     channel::{mpsc, mpsc::Sender},
+    FutureExt,
     SinkExt,
+    StreamExt,
 };
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
@@ -44,10 +46,11 @@ use tari_core::{
     },
     transactions::{
         fee::Fee,
-        tari_amount::MicroTari,
-        transaction::{KernelFeatures, OutputFeatures, TransactionOutput, UnblindedOutput},
+        tari_amount::{uT, MicroTari},
+        transaction::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
         transaction_protocol::single_receiver::SingleReceiverTransactionProtocol,
         types::{CryptoFactories, PrivateKey, RangeProof},
+        SenderTransactionProtocol,
     },
 };
 use tari_crypto::{
@@ -72,10 +75,10 @@ use tari_wallet::{
             sqlite_db::OutputManagerSqliteDatabase,
         },
     },
-    storage::connection_manager::run_migration_and_create_connection_pool,
+    storage::connection_manager::run_migration_and_create_sqlite_connection,
 };
 use tempdir::TempDir;
-use tokio::runtime::Runtime;
+use tokio::{runtime::Runtime, time::delay_for};
 
 pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     runtime: &mut Runtime,
@@ -98,7 +101,7 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(
             OutputManagerServiceConfig {
-                base_node_query_timeout_in_secs: 3,
+                base_node_query_timeout: Duration::from_secs(3),
             },
             outbound_message_requester.clone(),
             oms_request_receiver,
@@ -121,6 +124,30 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         shutdown,
         base_node_response_sender,
     )
+}
+
+async fn complete_transaction(mut stp: SenderTransactionProtocol, mut oms: OutputManagerHandle) -> Transaction {
+    let factories = CryptoFactories::default();
+
+    let sender_tx_id = stp.get_tx_id().unwrap();
+    // Is there change? Unlikely not to be but the random amounts MIGHT produce a no change output situation
+    if stp.get_amount_to_self().unwrap() > MicroTari::from(0) {
+        let pt = oms.get_pending_transactions().await.unwrap();
+        assert_eq!(pt.len(), 1);
+        assert_eq!(
+            pt.get(&sender_tx_id).unwrap().outputs_to_be_received[0].value,
+            stp.get_amount_to_self().unwrap()
+        );
+    }
+    let msg = stp.build_single_round_message().unwrap();
+    let b = TestParams::new(&mut OsRng);
+    let recv_info =
+        SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, OutputFeatures::default(), &factories)
+            .unwrap();
+    stp.add_single_recipient_info(recv_info.clone(), &factories.range_proof)
+        .unwrap();
+    stp.finalize(KernelFeatures::empty(), &factories).unwrap();
+    stp.get_transaction().unwrap().clone()
 }
 
 fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'static>(backend: T) {
@@ -150,37 +177,13 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
         runtime.block_on(oms.add_output(uo)).unwrap();
     }
 
-    let mut stp = runtime
+    let stp = runtime
         .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None, "".to_string()))
         .unwrap();
 
     let sender_tx_id = stp.get_tx_id().unwrap();
-    let mut num_change = 0;
-    // Is there change? Unlikely not to be but the random amounts MIGHT produce a no change output situation
-    if stp.get_amount_to_self().unwrap() > MicroTari::from(0) {
-        let pt = runtime.block_on(oms.get_pending_transactions()).unwrap();
-        assert_eq!(pt.len(), 1);
-        assert_eq!(
-            pt.get(&sender_tx_id).unwrap().outputs_to_be_received[0].value,
-            stp.get_amount_to_self().unwrap()
-        );
-        num_change = 1;
-    }
 
-    let msg = stp.build_single_round_message().unwrap();
-
-    let b = TestParams::new(&mut OsRng);
-
-    let recv_info =
-        SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, OutputFeatures::default(), &factories)
-            .unwrap();
-
-    stp.add_single_recipient_info(recv_info.clone(), &factories.range_proof)
-        .unwrap();
-
-    stp.finalize(KernelFeatures::empty(), &factories).unwrap();
-
-    let tx = stp.get_transaction().unwrap();
+    let tx = runtime.block_on(complete_transaction(stp, oms.clone()));
 
     runtime
         .block_on(oms.confirm_transaction(sender_tx_id, tx.body.inputs().clone(), tx.body.outputs().clone()))
@@ -193,7 +196,7 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
     );
     assert_eq!(
         runtime.block_on(oms.get_unspent_outputs()).unwrap().len(),
-        num_outputs + 1 - runtime.block_on(oms.get_spent_outputs()).unwrap().len() + num_change
+        num_outputs + 1 - runtime.block_on(oms.get_spent_outputs()).unwrap().len() + tx.body.outputs().len() - 1
     );
 
     if let DbValue::KeyManagerState(km) = backend.fetch(&DbKey::KeyManagerState).unwrap().unwrap() {
@@ -214,9 +217,9 @@ fn sending_transaction_and_confirmation_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
-    sending_transaction_and_confirmation(OutputManagerSqliteDatabase::new(connection_pool));
+    sending_transaction_and_confirmation(OutputManagerSqliteDatabase::new(connection));
 }
 
 fn send_not_enough_funds<T: OutputManagerBackend + 'static>(backend: T) {
@@ -257,9 +260,9 @@ fn send_not_enough_funds_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
-    send_not_enough_funds(OutputManagerSqliteDatabase::new(connection_pool));
+    send_not_enough_funds(OutputManagerSqliteDatabase::new(connection));
 }
 
 fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
@@ -333,9 +336,9 @@ fn send_no_change_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
-    send_no_change(OutputManagerSqliteDatabase::new(connection_pool));
+    send_no_change(OutputManagerSqliteDatabase::new(connection));
 }
 
 fn send_not_enough_for_change<T: OutputManagerBackend + 'static>(backend: T) {
@@ -378,9 +381,9 @@ fn send_not_enough_for_change_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
-    send_not_enough_for_change(OutputManagerSqliteDatabase::new(connection_pool));
+    send_not_enough_for_change(OutputManagerSqliteDatabase::new(connection));
 }
 
 fn receiving_and_confirmation<T: OutputManagerBackend + 'static>(backend: T) {
@@ -422,9 +425,9 @@ fn receiving_and_confirmation_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
-    receiving_and_confirmation(OutputManagerSqliteDatabase::new(connection_pool));
+    receiving_and_confirmation(OutputManagerSqliteDatabase::new(connection));
 }
 
 fn cancel_transaction<T: OutputManagerBackend + 'static>(backend: T) {
@@ -472,8 +475,9 @@ fn cancel_transaction_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
-    cancel_transaction(OutputManagerSqliteDatabase::new(connection_pool));
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    cancel_transaction(OutputManagerSqliteDatabase::new(connection));
 }
 
 fn timeout_transaction<T: OutputManagerBackend + 'static>(backend: T) {
@@ -526,8 +530,9 @@ fn timeout_transaction_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
-    timeout_transaction(OutputManagerSqliteDatabase::new(connection_pool));
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    timeout_transaction(OutputManagerSqliteDatabase::new(connection));
 }
 
 fn test_get_balance<T: OutputManagerBackend + 'static>(backend: T) {
@@ -578,8 +583,9 @@ fn test_get_balance_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
-    test_get_balance(OutputManagerSqliteDatabase::new(connection_pool));
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    test_get_balance(OutputManagerSqliteDatabase::new(connection));
 }
 
 fn test_confirming_received_output<T: OutputManagerBackend + 'static>(backend: T) {
@@ -616,8 +622,9 @@ fn test_confirming_received_output_sqlite_db() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection_pool = run_migration_and_create_connection_pool(&db_path).unwrap();
-    test_confirming_received_output(OutputManagerSqliteDatabase::new(connection_pool));
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    test_confirming_received_output(OutputManagerSqliteDatabase::new(connection));
 }
 
 #[test]
@@ -667,6 +674,11 @@ fn test_startup_utxo_scan() {
             }
         })
     );
+
+    let key3 = PrivateKey::random(&mut OsRng);
+    let value3 = 900;
+    let output3 = UnblindedOutput::new(MicroTari::from(value3), key3, None);
+    runtime.block_on(oms.add_output(output3.clone())).unwrap();
 
     let call = outbound_service.pop_call().unwrap();
     let envelope_body = EnvelopeBody::decode(&mut call.1.as_slice()).unwrap();
@@ -737,8 +749,9 @@ fn test_startup_utxo_scan() {
     assert_eq!(invalid_outputs[0], output2);
 
     let unspent_outputs = runtime.block_on(oms.get_unspent_outputs()).unwrap();
-    assert_eq!(unspent_outputs.len(), 1);
-    assert_eq!(unspent_outputs[0], output1);
+    assert_eq!(unspent_outputs.len(), 2);
+    assert!(unspent_outputs.iter().find(|uo| uo == &&output1).is_some());
+    assert!(unspent_outputs.iter().find(|uo| uo == &&output3).is_some());
 
     runtime.block_on(oms.sync_with_base_node()).unwrap();
 
@@ -758,7 +771,6 @@ fn test_startup_utxo_scan() {
             BaseNodeProto::TransactionOutputs { outputs: vec![].into() },
         )),
     };
-
     runtime
         .block_on(base_node_response_sender.send(create_dummy_message(
             base_node_response,
@@ -766,25 +778,106 @@ fn test_startup_utxo_scan() {
         )))
         .unwrap();
 
-    let result_stream = runtime.block_on(async {
-        collect_stream!(
-            oms.get_event_stream_fused().map(|i| (*i).clone()),
-            take = 3,
-            timeout = Duration::from_secs(60)
-        )
+    let mut event_stream = oms.get_event_stream_fused();
+
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let mut acc = 0;
+        loop {
+            futures::select! {
+                event = event_stream.select_next_some() => {
+                    if let OutputManagerEvent::ReceiveBaseNodeResponse(_) = (*event).clone() {
+                        acc += 1;
+                        if acc >= 2 {
+                            break;
+                        }
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert!(acc >= 2, "Did not receive enough responses");
     });
 
-    assert_eq!(
-        2,
-        result_stream.iter().fold(0, |acc, item| {
-            if let OutputManagerEvent::ReceiveBaseNodeResponse(_) = item {
-                acc + 1
-            } else {
-                acc
-            }
-        })
-    );
-
     let invalid_txs = runtime.block_on(oms.get_invalid_outputs()).unwrap();
-    assert_eq!(invalid_txs.len(), 2);
+    assert_eq!(invalid_txs.len(), 3);
+}
+
+fn sending_transaction_with_short_term_clear<T: Clone + OutputManagerBackend + 'static>(backend: T) {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+
+    let (mut oms, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
+
+    let available_balance = 10_000 * uT;
+    let (_ti, uo) = make_input(&mut OsRng.clone(), available_balance, &factories.commitment);
+    runtime.block_on(oms.add_output(uo.clone())).unwrap();
+
+    // Check that funds are encumbered and then unencumbered if the pending tx is not confirmed before restart
+    let _stp = runtime
+        .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None, "".to_string()))
+        .unwrap();
+
+    let balance = runtime.block_on(oms.get_balance()).unwrap();
+    let expected_change = balance.pending_incoming_balance;
+    assert_eq!(balance.pending_outgoing_balance, available_balance);
+
+    drop(oms);
+    let (mut oms, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
+
+    let balance = runtime.block_on(oms.get_balance()).unwrap();
+    assert_eq!(balance.available_balance, available_balance);
+
+    // Check that a unconfirm Pending Transaction can be cancelled
+    let stp = runtime
+        .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None, "".to_string()))
+        .unwrap();
+    let sender_tx_id = stp.get_tx_id().unwrap();
+
+    let balance = runtime.block_on(oms.get_balance()).unwrap();
+    assert_eq!(balance.pending_outgoing_balance, available_balance);
+    runtime.block_on(oms.cancel_transaction(sender_tx_id)).unwrap();
+
+    let balance = runtime.block_on(oms.get_balance()).unwrap();
+    assert_eq!(balance.available_balance, available_balance);
+
+    // Check that is the pending tx is confirmed that the encumberance persists after restart
+    let stp = runtime
+        .block_on(oms.prepare_transaction_to_send(MicroTari::from(1000), MicroTari::from(20), None, "".to_string()))
+        .unwrap();
+    let sender_tx_id = stp.get_tx_id().unwrap();
+    runtime.block_on(oms.confirm_pending_transaction(sender_tx_id)).unwrap();
+
+    drop(oms);
+    let (mut oms, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
+
+    let balance = runtime.block_on(oms.get_balance()).unwrap();
+    assert_eq!(balance.pending_outgoing_balance, available_balance);
+
+    let tx = runtime.block_on(complete_transaction(stp, oms.clone()));
+
+    runtime
+        .block_on(oms.confirm_transaction(sender_tx_id, tx.body.inputs().clone(), tx.body.outputs().clone()))
+        .unwrap();
+
+    let balance = runtime.block_on(oms.get_balance()).unwrap();
+    assert_eq!(balance.available_balance, expected_change);
+}
+
+#[test]
+fn sending_transaction_with_short_term_clear_memory_db() {
+    sending_transaction_with_short_term_clear(OutputManagerMemoryDatabase::new());
+}
+
+#[test]
+fn sending_transaction_with_short_term_clear_sqlite_db() {
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    sending_transaction_with_short_term_clear(OutputManagerSqliteDatabase::new(connection));
 }

@@ -23,10 +23,26 @@
 use crate::chain_storage::ChainMetadata;
 use futures::{stream::Fuse, StreamExt};
 use tari_broadcast_channel::Subscriber;
+use tari_comms::peer_manager::NodeId;
+
+#[derive(Debug, Clone)]
+pub struct PeerChainMetadata {
+    pub node_id: NodeId,
+    pub chain_metadata: ChainMetadata,
+}
+
+impl PeerChainMetadata {
+    pub fn new(node_id: NodeId, chain_metadata: ChainMetadata) -> Self {
+        Self {
+            node_id,
+            chain_metadata,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum ChainMetadataEvent {
-    PeerChainMetadataReceived(Vec<ChainMetadata>),
+    PeerChainMetadataReceived(Vec<PeerChainMetadata>),
 }
 
 #[derive(Clone)]

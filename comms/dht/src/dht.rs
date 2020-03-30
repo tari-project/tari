@@ -26,6 +26,7 @@ use crate::{
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
     inbound,
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
+    logging_middleware::MessageLoggingLayer,
     outbound,
     outbound::DhtOutboundRequest,
     proto::envelope::DhtMessageType,
@@ -33,17 +34,18 @@ use crate::{
     tower_filter,
     tower_filter::error::Error as FilterError,
     DhtConfig,
-    PipelineError,
 };
 use futures::{channel::mpsc, future, Future};
 use log::*;
 use std::sync::Arc;
 use tari_comms::{
+    connection_manager::ConnectionManagerRequester,
     message::{InboundMessage, OutboundMessage},
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
+    pipeline::PipelineError,
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
+use tokio::task;
 use tower::{layer::Layer, Service, ServiceBuilder};
 
 /// Responsible for starting the DHT actor, building the DHT middleware stack and as a factory
@@ -61,20 +63,22 @@ pub struct Dht {
     dht_sender: mpsc::Sender<DhtRequest>,
     /// Sender for DHT requests
     discovery_sender: mpsc::Sender<DhtDiscoveryRequest>,
+    /// Connection manager actor requester
+    connection_manager: ConnectionManagerRequester,
 }
 
 impl Dht {
     pub fn new(
         config: DhtConfig,
-        executor: runtime::Handle,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_tx: mpsc::Sender<DhtOutboundRequest>,
+        connection_manager: ConnectionManagerRequester,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
-        let (dht_sender, dht_receiver) = mpsc::channel(10);
-        let (discovery_sender, discovery_receiver) = mpsc::channel(10);
+        let (dht_sender, dht_receiver) = mpsc::channel(20);
+        let (discovery_sender, discovery_receiver) = mpsc::channel(20);
 
         let dht = Self {
             node_identity,
@@ -82,11 +86,12 @@ impl Dht {
             config,
             outbound_tx,
             dht_sender,
+            connection_manager,
             discovery_sender,
         };
 
-        executor.spawn(dht.actor(dht_receiver, shutdown_signal.clone()).run());
-        executor.spawn(dht.discovery_service(discovery_receiver, shutdown_signal).run());
+        task::spawn(dht.actor(dht_receiver, shutdown_signal.clone()).run());
+        task::spawn(dht.discovery_service(discovery_receiver, shutdown_signal).run());
 
         dht
     }
@@ -120,6 +125,7 @@ impl Dht {
             Arc::clone(&self.node_identity),
             Arc::clone(&self.peer_manager),
             self.outbound_requester(),
+            self.connection_manager.clone(),
             request_receiver,
             shutdown_signal,
         )
@@ -155,21 +161,30 @@ impl Dht {
                       + Send,
     >
     where
-        S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + Sync + 'static,
+        S: Service<DecryptedDhtMessage, Response = ()> + Clone + Send + Sync + 'static,
         S::Future: Send,
+        S::Error: std::error::Error + Send + Sync + 'static,
     {
         let saf_storage = Arc::new(store_forward::SafStorage::new(
             self.config.saf_msg_cache_storage_capacity,
         ));
-
-        ServiceBuilder::new()
+        let builder = ServiceBuilder::new()
             .layer(inbound::DeserializeLayer::new())
             .layer(inbound::ValidateLayer::new(
                 self.config.network,
                 self.outbound_requester(),
             ))
-            .layer(inbound::DedupLayer::new(self.dht_requester()))
+            .layer(inbound::DedupLayer::new(self.dht_requester()));
+
+        // FIXME: There is an unresolved stack overflow issue on windows. Seems that we've reached the limit on stack
+        //        page size. These layers are removed from windows builds for now as they are not critical to
+        //        the functioning of the node. (issue #1416)
+        #[cfg(not(target_os = "windows"))]
+        let builder = builder
             .layer(tower_filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
+            .layer(MessageLoggingLayer::new("Inbound message: "));
+
+        builder
             .layer(inbound::DecryptionLayer::new(Arc::clone(&self.node_identity)))
             .layer(store_forward::ForwardLayer::new(
                 Arc::clone(&self.peer_manager),
@@ -224,6 +239,7 @@ impl Dht {
                 self.discovery_service_requester(),
                 self.config.network,
             ))
+            .layer(MessageLoggingLayer::new("Outbound message: "))
             .layer(outbound::EncryptionLayer::new(Arc::clone(&self.node_identity)))
             .layer(outbound::SerializeLayer::new(Arc::clone(&self.node_identity)))
             .into_inner()
@@ -242,7 +258,7 @@ impl Dht {
             }
 
             match msg.dht_header.message_type {
-                DhtMessageType::SafRequestMessages | DhtMessageType::SafStoredMessages => {
+                DhtMessageType::SafRequestMessages => {
                     // TODO: #banheuristic This is an indication of node misbehaviour
                     warn!(
                         "Received store and forward message from PublicKey={}. Store and forward feature is not \
@@ -278,24 +294,32 @@ mod test {
     use tari_comms::{
         message::{MessageExt, MessageFlags},
         pipeline::SinkService,
+        test_utils::mocks::create_connection_manager_mock,
         wrap_in_envelope_body,
     };
     use tari_shutdown::Shutdown;
-    use tokio::{runtime, time};
+    use tokio::{task, time};
     use tower::{layer::Layer, Service};
 
     #[tokio_macros::test_basic]
     async fn stack_unencrypted() {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
+        let (connection_manager, _) = create_connection_manager_mock(1);
 
         // Dummy out channel, we are not testing outbound here.
         let (out_tx, _) = mpsc::channel(10);
 
         let shutdown = Shutdown::new();
-        let dht = DhtBuilder::new(Arc::clone(&node_identity), peer_manager, out_tx, shutdown.to_signal())
-            .local_test()
-            .finish();
+        let dht = DhtBuilder::new(
+            Arc::clone(&node_identity),
+            peer_manager,
+            out_tx,
+            connection_manager,
+            shutdown.to_signal(),
+        )
+        .local_test()
+        .finish();
 
         let (out_tx, mut out_rx) = mpsc::channel(10);
 
@@ -329,12 +353,20 @@ mod test {
     async fn stack_encrypted() {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
+        let (connection_manager, _) = create_connection_manager_mock(1);
 
         // Dummy out channel, we are not testing outbound here.
         let (out_tx, _) = mpsc::channel(10);
 
         let shutdown = Shutdown::new();
-        let dht = DhtBuilder::new(Arc::clone(&node_identity), peer_manager, out_tx, shutdown.to_signal()).finish();
+        let dht = DhtBuilder::new(
+            Arc::clone(&node_identity),
+            peer_manager,
+            out_tx,
+            connection_manager,
+            shutdown.to_signal(),
+        )
+        .finish();
 
         let (out_tx, mut out_rx) = mpsc::channel(10);
 
@@ -370,6 +402,7 @@ mod test {
 
         let shutdown = Shutdown::new();
 
+        let (connection_manager, _) = create_connection_manager_mock(1);
         let (next_service_tx, mut next_service_rx) = mpsc::channel(10);
         let (oms_requester, oms_mock) = create_outbound_service_mock(1);
 
@@ -378,11 +411,12 @@ mod test {
             Arc::clone(&node_identity),
             peer_manager,
             oms_requester.get_mpsc_sender(),
+            connection_manager,
             shutdown.to_signal(),
         )
         .finish();
         let oms_mock_state = oms_mock.get_state();
-        runtime::Handle::current().spawn(oms_mock.run());
+        task::spawn(oms_mock.run());
 
         let mut service = dht.inbound_middleware_layer().layer(SinkService::new(next_service_tx));
 
@@ -421,16 +455,26 @@ mod test {
         assert!(next_service_rx.try_next().is_err());
     }
 
+    // FIXME: This test is excluded for Windows builds due to an unresolved stack overflow issue (#1416)
+    #[cfg(not(target_os = "windows"))]
     #[tokio_macros::test_basic]
     async fn stack_filter_saf_message() {
         let node_identity = make_client_identity();
         let peer_manager = make_peer_manager();
+        let (connection_manager, _) = create_connection_manager_mock(1);
 
         // Dummy out channel, we are not testing outbound here.
         let (out_tx, _) = mpsc::channel(10);
 
         let shutdown = Shutdown::new();
-        let dht = DhtBuilder::new(Arc::clone(&node_identity), peer_manager, out_tx, shutdown.to_signal()).finish();
+        let dht = DhtBuilder::new(
+            Arc::clone(&node_identity),
+            peer_manager,
+            out_tx,
+            connection_manager,
+            shutdown.to_signal(),
+        )
+        .finish();
 
         let (next_service_tx, mut next_service_rx) = mpsc::channel(10);
 

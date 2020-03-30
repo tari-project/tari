@@ -92,7 +92,7 @@ async fn main() {
         .await
         .unwrap();
 
-    let json = hidden_service.get_tor_identity().to_json().unwrap();
+    let json = hidden_service.tor_identity().to_json().unwrap();
     let out_path = to_abs_path(matches.value_of("output").unwrap());
     fs::write(out_path, json).unwrap();
 }

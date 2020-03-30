@@ -26,7 +26,6 @@ use crate::{
     proto::store_forward::StoredMessage,
     store_forward::{error::StoreAndForwardError, state::SafStorage},
     DhtConfig,
-    PipelineError,
 };
 use futures::{task::Context, Future};
 use log::*;
@@ -34,6 +33,7 @@ use std::{sync::Arc, task::Poll};
 use tari_comms::{
     message::MessageExt,
     peer_manager::{NodeIdentity, PeerManager},
+    pipeline::PipelineError,
 };
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -110,7 +110,7 @@ impl<S> StoreMiddleware<S> {
 impl<S> Service<DecryptedDhtMessage> for StoreMiddleware<S>
 where
     S: Service<DecryptedDhtMessage, Response = ()> + Clone + 'static,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     type Error = PipelineError;
     type Response = ();
@@ -164,7 +164,7 @@ impl<S> StoreTask<S> {
 impl<S> StoreTask<S>
 where
     S: Service<DecryptedDhtMessage, Response = ()>,
-    S::Error: Into<PipelineError>,
+    S::Error: std::error::Error + Send + Sync + 'static,
 {
     async fn handle(mut self, message: DecryptedDhtMessage) -> Result<(), PipelineError> {
         match message.success() {
@@ -179,11 +179,14 @@ where
                     );
                     let mut storage = self.storage.take().expect("StoreTask intialized without storage");
                     let msg_clone = message.clone();
-                    tokio::task::spawn_blocking(move || storage.store(msg_clone)).await??;
+                    storage.store(msg_clone).await.map_err(PipelineError::from_debug)?;
                 }
 
                 trace!(target: LOG_TARGET, "Passing message to next service");
-                self.next_service.oneshot(message).await.map_err(Into::into)?;
+                self.next_service
+                    .oneshot(message)
+                    .await
+                    .map_err(PipelineError::from_debug)?;
             },
             None => {
                 if message.dht_header.origin.is_none() {
@@ -201,7 +204,7 @@ where
                     "Decryption failed for message. Adding to SAF storage."
                 );
                 let mut storage = self.storage.take().expect("StoreTask intialized without storage");
-                tokio::task::spawn_blocking(move || storage.store(message)).await??;
+                storage.store(message).await.map_err(PipelineError::from_debug)?;
             },
         }
 
@@ -217,7 +220,7 @@ struct InnerStorage {
 }
 
 impl InnerStorage {
-    fn store(&mut self, message: DecryptedDhtMessage) -> Result<(), StoreAndForwardError> {
+    async fn store(&mut self, message: DecryptedDhtMessage) -> Result<(), StoreAndForwardError> {
         let DecryptedDhtMessage {
             version,
             decryption_result,
@@ -244,7 +247,7 @@ impl InnerStorage {
                 );
             },
             NodeDestination::PublicKey(dest_public_key) => {
-                if peer_manager.exists(&dest_public_key) {
+                if peer_manager.exists(&dest_public_key).await {
                     self.storage.insert(
                         origin.signature.clone(),
                         StoredMessage::new(version, dht_header, body),
@@ -253,12 +256,14 @@ impl InnerStorage {
                 }
             },
             NodeDestination::NodeId(dest_node_id) => {
-                if peer_manager.exists_node_id(&dest_node_id) ||
-                    peer_manager.in_network_region(
-                        &dest_node_id,
-                        node_identity.node_id(),
-                        self.config.num_neighbouring_nodes,
-                    )?
+                if peer_manager.exists_node_id(&dest_node_id).await ||
+                    peer_manager
+                        .in_network_region(
+                            &dest_node_id,
+                            node_identity.node_id(),
+                            self.config.num_neighbouring_nodes,
+                        )
+                        .await?
                 {
                     self.storage.insert(
                         origin.signature.clone(),

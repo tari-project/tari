@@ -49,6 +49,7 @@ pub struct InnerDatabase {
     spent_outputs: Vec<UnblindedOutput>,
     invalid_outputs: Vec<UnblindedOutput>,
     pending_transactions: HashMap<TxId, PendingTransactionOutputs>,
+    short_term_pending_transactions: HashMap<TxId, PendingTransactionOutputs>,
     key_manager_state: Option<KeyManagerState>,
 }
 
@@ -59,12 +60,13 @@ impl InnerDatabase {
             spent_outputs: Vec::new(),
             invalid_outputs: Vec::new(),
             pending_transactions: HashMap::new(),
+            short_term_pending_transactions: Default::default(),
             key_manager_state: None,
         }
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct OutputManagerMemoryDatabase {
     db: Arc<RwLock<InnerDatabase>>,
 }
@@ -91,14 +93,21 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                 .iter()
                 .find(|v| &v.spending_key == k)
                 .map(|v| DbValue::UnspentOutput(Box::new(v.clone()))),
-            DbKey::PendingTransactionOutputs(tx_id) => db
-                .pending_transactions
-                .get(tx_id)
-                .map(|v| DbValue::PendingTransactionOutputs(Box::new(v.clone()))),
+            DbKey::PendingTransactionOutputs(tx_id) => {
+                let mut result = db.pending_transactions.get(tx_id);
+                if result.is_none() {
+                    result = db.short_term_pending_transactions.get(&tx_id);
+                }
+                result.map(|v| DbValue::PendingTransactionOutputs(Box::new(v.clone())))
+            },
             DbKey::UnspentOutputs => Some(DbValue::UnspentOutputs(db.unspent_outputs.clone())),
             DbKey::SpentOutputs => Some(DbValue::SpentOutputs(db.spent_outputs.clone())),
             DbKey::AllPendingTransactionOutputs => {
-                Some(DbValue::AllPendingTransactionOutputs(db.pending_transactions.clone()))
+                let mut pending_tx_outputs = db.pending_transactions.clone();
+                for (k, v) in db.short_term_pending_transactions.iter() {
+                    pending_tx_outputs.insert(k.clone(), v.clone());
+                }
+                Some(DbValue::AllPendingTransactionOutputs(pending_tx_outputs))
             },
             DbKey::KeyManagerState => db
                 .key_manager_state
@@ -169,9 +178,13 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
 
     fn confirm_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
         let mut db = acquire_write_lock!(self.db);
-        let mut pending_tx = db
-            .pending_transactions
-            .remove(&tx_id)
+
+        let mut pending_tx = db.pending_transactions.remove(&tx_id);
+        if pending_tx.is_none() {
+            pending_tx = db.short_term_pending_transactions.remove(&tx_id);
+        }
+
+        let mut pending_tx = pending_tx
             .ok_or_else(|| OutputManagerStorageError::ValueNotFound(DbKey::PendingTransactionOutputs(tx_id)))?;
 
         // Add Spent outputs
@@ -187,7 +200,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         Ok(())
     }
 
-    fn encumber_outputs(
+    fn short_term_encumber_outputs(
         &self,
         tx_id: TxId,
         outputs_to_send: &[UnblindedOutput],
@@ -215,17 +228,48 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             pending_transaction.outputs_to_be_received.push(co);
         }
 
-        db.pending_transactions.insert(tx_id, pending_transaction);
+        db.short_term_pending_transactions.insert(tx_id, pending_transaction);
 
+        Ok(())
+    }
+
+    fn confirm_encumbered_outputs(&self, tx_id: u64) -> Result<(), OutputManagerStorageError> {
+        let mut db = acquire_write_lock!(self.db);
+
+        let pending_tx = db
+            .short_term_pending_transactions
+            .remove(&tx_id)
+            .ok_or_else(|| OutputManagerStorageError::ValueNotFound(DbKey::PendingTransactionOutputs(tx_id)))?;
+
+        let _ = db.pending_transactions.insert(pending_tx.tx_id, pending_tx);
+
+        Ok(())
+    }
+
+    fn clear_short_term_encumberances(&self) -> Result<(), OutputManagerStorageError> {
+        let db = acquire_write_lock!(self.db);
+
+        let short_term_encumberances = db.short_term_pending_transactions.clone();
+
+        drop(db);
+
+        for tx_id in short_term_encumberances.keys() {
+            self.cancel_pending_transaction(tx_id.clone())?;
+        }
         Ok(())
     }
 
     fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
         let mut db = acquire_write_lock!(self.db);
-        let mut pending_tx = db
-            .pending_transactions
-            .remove(&tx_id)
+        let mut pending_tx = db.pending_transactions.remove(&tx_id);
+
+        if pending_tx.is_none() {
+            pending_tx = db.short_term_pending_transactions.remove(&tx_id);
+        }
+
+        let mut pending_tx = pending_tx
             .ok_or_else(|| OutputManagerStorageError::ValueNotFound(DbKey::PendingTransactionOutputs(tx_id)))?;
+
         for o in pending_tx.outputs_to_be_spent.drain(..) {
             db.unspent_outputs.push(o);
         }
@@ -236,11 +280,18 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
     fn timeout_pending_transactions(&self, period: Duration) -> Result<(), OutputManagerStorageError> {
         let db = acquire_write_lock!(self.db);
         let mut transactions_to_be_cancelled = Vec::new();
+
         for (tx_id, pt) in db.pending_transactions.iter() {
             if pt.timestamp + ChronoDuration::from_std(period)? < Utc::now().naive_utc() {
                 transactions_to_be_cancelled.push(tx_id.clone());
             }
         }
+        for (tx_id, pt) in db.short_term_pending_transactions.iter() {
+            if pt.timestamp + ChronoDuration::from_std(period)? < Utc::now().naive_utc() {
+                transactions_to_be_cancelled.push(tx_id.clone());
+            }
+        }
+
         drop(db);
         for t in transactions_to_be_cancelled {
             self.cancel_pending_transaction(t.clone())?;

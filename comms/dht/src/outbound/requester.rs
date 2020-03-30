@@ -34,7 +34,10 @@ use futures::{
     channel::{mpsc, oneshot},
     SinkExt,
 };
+use log::*;
 use tari_comms::{message::MessageExt, peer_manager::NodeId, types::CommsPublicKey, wrap_in_envelope_body};
+
+const LOG_TARGET: &str = "comms::dht::requests::outbound";
 
 #[derive(Clone)]
 pub struct OutboundMessageRequester {
@@ -80,7 +83,7 @@ impl OutboundMessageRequester {
         self.send_message(
             SendMessageParams::new()
                 .direct_node_id(dest_node_id.clone())
-                .with_destination(NodeDestination::NodeId(dest_node_id))
+                .with_destination(NodeDestination::NodeId(Box::new(dest_node_id)))
                 .with_encryption(encryption)
                 .finish(),
             message,
@@ -184,6 +187,14 @@ impl OutboundMessageRequester {
     where
         T: prost::Message,
     {
+        if cfg!(debug_assertions) {
+            trace!(
+                target: LOG_TARGET,
+                "Send Message: params:{} message:{:?}",
+                params,
+                message
+            );
+        }
         let body = wrap_in_envelope_body!(message.to_header(), message.into_inner())?.to_encoded_bytes()?;
         self.send_raw(params, body).await
     }
@@ -197,6 +208,9 @@ impl OutboundMessageRequester {
     where
         T: prost::Message,
     {
+        if cfg!(debug_assertions) {
+            trace!(target: LOG_TARGET, "Send Message: {} {:?}", params, message);
+        }
         let body = wrap_in_envelope_body!(message)?.to_encoded_bytes()?;
         self.send_raw(params, body).await
     }

@@ -138,7 +138,7 @@ where D: Digest
 impl<D> BlockchainBackend for MemoryDatabase<D>
 where D: Digest + Send + Sync
 {
-    fn write(&self, tx: DbTransaction) -> Result<(), ChainStorageError> {
+    fn write(&mut self, tx: DbTransaction) -> Result<(), ChainStorageError> {
         let mut db = self
             .db
             .write()
@@ -183,9 +183,6 @@ where D: Digest + Send + Sync
                         db.kernels.insert(k, *v);
                     },
                     DbKeyValuePair::OrphanBlock(k, v) => {
-                        if db.orphans.contains_key(&k) {
-                            return Err(ChainStorageError::InvalidOperation("Duplicate key".to_string()));
-                        }
                         db.orphans.insert(k, *v);
                     },
                 },
