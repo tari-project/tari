@@ -71,6 +71,22 @@ pub struct StatsResponse {
     pub total_weight: u64,
 }
 
+impl Display for StatsResponse {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(
+            fmt,
+            "Mempool stats: Total transactions: {}, Unconfirmed: {}, Orphaned: {}, Time locked: {}, Published: {}, \
+             Total Weight: {}",
+            self.total_txs,
+            self.unconfirmed_txs,
+            self.orphan_txs,
+            self.timelocked_txs,
+            self.published_txs,
+            self.total_weight
+        )
+    }
+}
+
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum TxStorageResponse {
     UnconfirmedPool,

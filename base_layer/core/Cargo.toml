@@ -71,7 +71,7 @@ env_logger = "0.7.0"
 tempdir = "0.3.7"
 tokio-macros = "0.2.4"
 tari_wallet = { path = "../../base_layer/wallet", version = "^0.0" }
-
+tokio-test = "0.2.0"
 
 [build-dependencies]
 tari_common = { version = "^0.0", path="../../common"}
