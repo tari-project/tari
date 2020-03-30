@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod error;
+#[allow(clippy::module_inception)]
 mod unconfirmed_pool;
 mod unconfirmed_pool_storage;
 

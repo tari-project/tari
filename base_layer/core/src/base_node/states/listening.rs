@@ -91,20 +91,18 @@ fn find_sync_peers(best_metadata: &ChainMetadata, peer_metadata_list: &Vec<PeerC
 /// Determine the best metadata from a set of metadata received from the network.
 fn best_metadata(metadata_list: &[PeerChainMetadata]) -> ChainMetadata {
     // TODO: Use heuristics to weed out outliers / dishonest nodes.
-    metadata_list
-        .into_iter()
-        .fold(ChainMetadata::default(), |best, current| {
-            if current
-                .chain_metadata
-                .accumulated_difficulty
-                .unwrap_or(Difficulty::min()) >=
-                best.accumulated_difficulty.unwrap_or_else(|| 0.into())
-            {
-                current.chain_metadata.clone()
-            } else {
-                best
-            }
-        })
+    metadata_list.iter().fold(ChainMetadata::default(), |best, current| {
+        if current
+            .chain_metadata
+            .accumulated_difficulty
+            .unwrap_or_else(Difficulty::min) >=
+            best.accumulated_difficulty.unwrap_or_else(|| 0.into())
+        {
+            current.chain_metadata.clone()
+        } else {
+            best
+        }
+    })
 }
 
 /// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.

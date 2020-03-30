@@ -105,11 +105,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             (Starting(s), Initialized) => Listening(s.into()),
             (BlockSync(s, _, _), BlocksSynchronized) => Listening(s.into()),
             (BlockSync(s, _, _), BlockSyncFailure) => Waiting(s.into()),
-            (Listening(_), FallenBehind(Lagging(network_tip, sync_peers))) => BlockSync(
-                self.config.block_sync_config.sync_strategy.clone(),
-                network_tip,
-                sync_peers,
-            ),
+            (Listening(_), FallenBehind(Lagging(network_tip, sync_peers))) => {
+                BlockSync(self.config.block_sync_config.sync_strategy, network_tip, sync_peers)
+            },
             (Waiting(s), Continue) => Listening(s.into()),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
             (_, UserQuit) => Shutdown(states::Shutdown::with_reason("Shutdown initiated by user".to_string())),

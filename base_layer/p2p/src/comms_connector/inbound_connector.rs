@@ -59,7 +59,7 @@ where
     fn call(&mut self, msg: DecryptedDhtMessage) -> Self::Future {
         let mut sink = self.sink.clone();
         async move {
-            let peer_message = Self::to_peer_message(msg)?;
+            let peer_message = Self::do_peer_message(msg)?;
             // If this fails there is something wrong with the sink and the pubsub middleware should not
             // continue
             sink.send(Arc::new(peer_message))
@@ -72,7 +72,7 @@ where
 }
 
 impl<TSink> InboundDomainConnector<TSink> {
-    fn to_peer_message(mut inbound_message: DecryptedDhtMessage) -> Result<PeerMessage, PipelineError> {
+    fn do_peer_message(mut inbound_message: DecryptedDhtMessage) -> Result<PeerMessage, PipelineError> {
         let envelope_body = inbound_message
             .success_mut()
             .ok_or_else(|| "Message failed to decrypt")?;
@@ -116,7 +116,7 @@ where
     }
 
     fn start_send(mut self: Pin<&mut Self>, item: DecryptedDhtMessage) -> Result<(), Self::Error> {
-        let item = Self::to_peer_message(item)?;
+        let item = Self::do_peer_message(item)?;
         Pin::new(&mut self.sink)
             .start_send(Arc::new(item))
             .map_err(PipelineError::from_debug)

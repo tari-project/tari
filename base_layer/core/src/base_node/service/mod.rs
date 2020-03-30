@@ -22,6 +22,7 @@
 
 mod error;
 mod initializer;
+#[allow(clippy::module_inception)]
 mod service;
 mod service_request;
 mod service_response;

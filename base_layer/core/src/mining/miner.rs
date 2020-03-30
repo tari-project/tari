@@ -197,6 +197,7 @@ impl Miner {
             if !self.enabled.load(Ordering::Relaxed) {
                 start_mining = false;
             }
+            #[allow(clippy::match_bool)]
             let mining_future = match start_mining {
                 true => task::spawn(self.mining()),
                 false => task::spawn(self.not_mining()),
