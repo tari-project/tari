@@ -100,6 +100,12 @@ impl<B: BlockchainBackend> ValidationWriteGuard<Block, B> for FullConsensusValid
         metadata: &RwLockWriteGuard<ChainMetadata>,
     ) -> Result<(), ValidationError>
     {
+        trace!(
+            target: LOG_TARGET,
+            "Validating block at height {} with hash: {}",
+            block.header.height,
+            block.hash().to_hex()
+        );
         check_coinbase_output(block, &self.rules.consensus_constants())?;
         check_cut_through(block)?;
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
@@ -121,6 +127,11 @@ fn check_accounting_balance(
     factories: &CryptoFactories,
 ) -> Result<(), ValidationError>
 {
+    trace!(
+        target: LOG_TARGET,
+        "Checking accounting on block with hash {}",
+        block.hash().to_hex()
+    );
     let offset = &block.header.total_kernel_offset;
     let total_coinbase = rules.calculate_coinbase_and_fees(block);
     block
@@ -138,6 +149,11 @@ fn check_accounting_balance(
 }
 
 fn check_coinbase_output(block: &Block, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
+    trace!(
+        target: LOG_TARGET,
+        "Checking coinbase output on block with hash {}",
+        block.hash().to_hex()
+    );
     block
         .check_coinbase_output(consensus_constants)
         .map_err(ValidationError::from)
@@ -149,6 +165,7 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(
     db: &RwLockWriteGuard<B>,
 ) -> Result<(), ValidationError>
 {
+    trace!(target: LOG_TARGET, "Checking input UXTOs exist",);
     for utxo in block.body.inputs() {
         if !(utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT)) &&
             !(is_utxo_writeguard(db, utxo.hash())).map_err(|e| ValidationError::CustomError(e.to_string()))?
@@ -169,6 +186,10 @@ fn check_timestamp_ftl(
     consensus_manager: &ConsensusManager,
 ) -> Result<(), ValidationError>
 {
+    trace!(
+        target: LOG_TARGET,
+        "Checking timestamp is not too far in the future (FTL)",
+    );
     if block_header.timestamp > consensus_manager.consensus_constants().ftl() {
         warn!(
             target: LOG_TARGET,
@@ -183,6 +204,7 @@ fn check_timestamp_ftl(
 }
 
 fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &RwLockWriteGuard<B>) -> Result<(), ValidationError> {
+    trace!(target: LOG_TARGET, "Checking MMR roots match",);
     let template = NewBlockTemplate::from(block.clone());
     let tmp_block =
         calculate_mmr_roots_writeguard(db, template).map_err(|e| ValidationError::CustomError(e.to_string()))?;
@@ -204,6 +226,11 @@ fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &RwLockWriteGuard<B>
 }
 
 fn check_cut_through(block: &Block) -> Result<(), ValidationError> {
+    trace!(
+        target: LOG_TARGET,
+        "Checking coinbase output on block with hash {}",
+        block.hash().to_hex()
+    );
     if !block.body.cut_through_check() {
         warn!(
             target: LOG_TARGET,

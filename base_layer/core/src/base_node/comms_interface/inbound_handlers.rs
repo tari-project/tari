@@ -233,13 +233,12 @@ where T: BlockchainBackend + 'static
                 let block = async_db::calculate_mmr_roots(self.blockchain_db.clone(), block_template.clone()).await?;
                 Ok(NodeCommsResponse::NewBlock(block))
             },
-            NodeCommsRequest::GetTargetDifficulty(pow_algo) => Ok(NodeCommsResponse::TargetDifficulty(
-                self.consensus_manager.get_target_difficulty(
-                    &self.blockchain_db.metadata_read_access()?,
-                    &self.blockchain_db.db_read_access()?,
-                    *pow_algo,
-                )?,
-            )),
+            NodeCommsRequest::GetTargetDifficulty(pow_algo) => {
+                let (db, metadata) = &self.blockchain_db.db_and_metadata_read_access()?;
+                Ok(NodeCommsResponse::TargetDifficulty(
+                    self.consensus_manager.get_target_difficulty(metadata, db, *pow_algo)?,
+                ))
+            },
         }
     }
 

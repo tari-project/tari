@@ -174,6 +174,7 @@ impl AggregateBody {
     /// Verify the signatures in all kernels contained in this aggregate body. Clients must provide an offset that
     /// will be added to the public key used in the signature verification.
     pub fn verify_kernel_signatures(&self) -> Result<(), TransactionError> {
+        trace!(target: LOG_TARGET, "Checking kernel signatures",);
         for kernel in self.kernels.iter() {
             kernel.verify_signature().or_else(|e| {
                 warn!(target: LOG_TARGET, "Kernel ({}) signature failed {:?}.", kernel, e);
@@ -206,6 +207,7 @@ impl AggregateBody {
     ) -> Result<(), TransactionError>
     {
         let total_offset = factories.commitment.commit_value(&offset, reward.0);
+
         self.verify_kernel_signatures()?;
         self.validate_kernel_sum(total_offset, &factories.commitment)?;
         self.validate_range_proofs(&factories.range_proof)
@@ -240,6 +242,7 @@ impl AggregateBody {
 
     /// Confirm that the (sum of the outputs) - (sum of inputs) = Kernel excess
     fn validate_kernel_sum(&self, offset: Commitment, factory: &CommitmentFactory) -> Result<(), TransactionError> {
+        trace!(target: LOG_TARGET, "Checking kernel total");
         let kernel_sum = self.sum_kernels(offset);
         let sum_io = self.sum_commitments(kernel_sum.fees.into(), factory);
 
@@ -253,6 +256,7 @@ impl AggregateBody {
     }
 
     fn validate_range_proofs(&self, range_proof_service: &RangeProofService) -> Result<(), TransactionError> {
+        trace!(target: LOG_TARGET, "Checking range proofs");
         for o in &self.outputs {
             if !o.verify_range_proof(&range_proof_service)? {
                 return Err(TransactionError::ValidationError(

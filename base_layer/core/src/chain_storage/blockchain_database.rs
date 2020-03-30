@@ -343,7 +343,18 @@ where T: BlockchainBackend
         })
     }
 
-    pub fn db_read_access(&self) -> Result<RwLockReadGuard<T>, ChainStorageError> {
+    pub fn db_and_metadata_read_access(
+        &self,
+    ) -> Result<(RwLockReadGuard<T>, RwLockReadGuard<ChainMetadata>), ChainStorageError> {
+        // Always get metadata first so that deadlocks can't occur.
+        let metadata = self.metadata_read_access()?;
+        let db = self.db_read_access()?;
+        Ok((db, metadata))
+    }
+
+    // Be careful about making this method public. Rather use `db_and_metadata_read_access`
+    // so that metadata and db are read in the correct order so that deadlocks don't occur
+    fn db_read_access(&self) -> Result<RwLockReadGuard<T>, ChainStorageError> {
         self.db.read().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -353,7 +364,7 @@ where T: BlockchainBackend
         })
     }
 
-    pub fn db_write_access(&self) -> Result<RwLockWriteGuard<T>, ChainStorageError> {
+    fn db_write_access(&self) -> Result<RwLockWriteGuard<T>, ChainStorageError> {
         self.db.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -1026,6 +1037,10 @@ fn handle_reorg<T: BlockchainBackend>(
     // Try and construct a path from `new_block` to the main chain:
     let reorg_chain = try_construct_fork(db, new_block.clone())?;
     if reorg_chain.is_empty() {
+        trace!(
+            target: LOG_TARGET,
+            "Could not find complete chain to orphan. No need to reorg at this time"
+        );
         return Ok(BlockAddResult::OrphanBlock);
     }
     // Try and find all orphaned chain tips that can be linked to the new orphan block, if no better orphan chain

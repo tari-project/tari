@@ -41,6 +41,7 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
     rules: ConsensusManager,
 ) -> Result<(), ValidationError>
 {
+    trace!(target: LOG_TARGET, "Checking timestamp is not too far in the past",);
     if block_header.height == 0 || rules.get_genesis_block_hash() == block_header.hash() {
         return Ok(()); // Its the genesis block, so we dont have to check median
     }
@@ -75,6 +76,10 @@ pub fn check_achieved_difficulty<B: BlockchainBackend>(
     rules: ConsensusManager,
 ) -> Result<(), ValidationError>
 {
+    trace!(
+        target: LOG_TARGET,
+        "Checking block has acheived the required difficulty",
+    );
     let achieved = block_header.achieved_difficulty();
     let mut target = 1.into();
     if block_header.height > 0 || rules.get_genesis_block_hash() != block_header.hash() {
