@@ -262,6 +262,7 @@ where
             futures::select! {
                 //Incoming request
                 request_context = request_stream.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
                     let _ = reply_tx.send(self.handle_request(request, &mut discovery_process_futures, &mut  broadcast_timeout_futures, &mut  mined_request_timeout_futures).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling request: {:?}", resp);
@@ -273,6 +274,7 @@ where
                 },
                 // Incoming messages from the Comms layer
                 msg = transaction_stream.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Handling Transaction Message");
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
                     let result  = self.accept_transaction(origin_public_key, inner_msg).await.or_else(|err| {
                         error!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {:?} for NodeID: {}", err, self.node_identity.node_id().short_str());
@@ -289,6 +291,7 @@ where
                 },
                  // Incoming messages from the Comms layer
                 msg = transaction_reply_stream.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Handling Transaction Reply Message");
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
                     let result = self.accept_recipient_reply(origin_public_key, inner_msg, &mut broadcast_timeout_futures).await.or_else(|err| {
                         error!(target: LOG_TARGET, "Failed to handle incoming Transaction Reply message: {:?} for NodeId: {}", err, self.node_identity.node_id().short_str());
@@ -305,6 +308,7 @@ where
                 },
                // Incoming messages from the Comms layer
                 msg = transaction_finalized_stream.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Handling Transaction Finalized Message");
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
                     let result = self.accept_finalized_transaction(origin_public_key, inner_msg, &mut broadcast_timeout_futures).await.or_else(|err| {
                         error!(target: LOG_TARGET, "Failed to handle incoming Transaction Finalized message: {:?} for NodeID: {}", err , self.node_identity.node_id().short_str());
@@ -321,6 +325,7 @@ where
                 },
                 // Incoming messages from the Comms layer
                 msg = mempool_response_stream.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Handling Mempool Response");
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
                     let _ = self.handle_mempool_response(inner_msg, &mut mined_request_timeout_futures).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling mempool service response: {:?}", resp);
@@ -329,6 +334,7 @@ where
                 }
                 // Incoming messages from the Comms layer
                 msg = base_node_response_stream.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Handling Base Node Response");
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
                     let _ = self.handle_base_node_response(inner_msg).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling base node service response from {}: {:?} for NodeID: {}", origin_public_key, resp, self.node_identity.node_id().short_str());
@@ -336,6 +342,7 @@ where
                     });
                 }
                 response = discovery_process_futures.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Handling Discovery Process Completion");
                     match response {
                         Ok((message_tag, outbound_tx)) => {
                             info!(
@@ -362,6 +369,7 @@ where
                     }
                 },
                 message_event = message_event_receiver.select_next_some() => {
+                   trace!(target: LOG_TARGET, "Handling Message Event");
                    match message_event {
                    Ok(event) => {
                        let _ = self.handle_message_event((*event).clone()).await.or_else(|resp| {
@@ -373,12 +381,14 @@ where
                    }
                 }
                 tx_id = broadcast_timeout_futures.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Handling Broadcast Timeout");
                     let _ = self.handle_mempool_broadcast_timeout(tx_id, &mut  broadcast_timeout_futures).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling mempool broadcast timeout : {:?}", resp);
                         Err(resp)
                     });
                 }
                 tx_id = mined_request_timeout_futures.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Handling Mined Request Timeout");
                     let _ = self.handle_transaction_mined_request_timeout(tx_id, &mut  mined_request_timeout_futures).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling transaction mined? request timeout : {:?}", resp);
                         Err(resp)
@@ -389,6 +399,7 @@ where
                     break;
                 }
             }
+            trace!(target: LOG_TARGET, "Select Loop end");
         }
         Ok(())
     }
@@ -1106,9 +1117,12 @@ where
             Some(pk) => {
                 info!(
                     target: LOG_TARGET,
-                    "Attempting to Broadcast Transaction (TxId: {} and Kernel Excess: {}) to Mempool",
+                    "Attempting to Broadcast Transaction (TxId: {} and Kernel Signature: {}) to Mempool",
                     completed_tx.tx_id,
-                    completed_tx.transaction.body.kernels()[0].excess.to_hex()
+                    completed_tx.transaction.body.kernels()[0]
+                        .excess_sig
+                        .get_signature()
+                        .to_hex()
                 );
                 trace!(target: LOG_TARGET, "{}", completed_tx.transaction);
 
@@ -1252,10 +1266,13 @@ where
 
                             info!(
                                 target: LOG_TARGET,
-                                "Completed Transaction (TxId: {} and Kernel Excess: {}) detected as Broadcast to Base \
-                                 Node Mempool",
+                                "Completed Transaction (TxId: {} and Kernel Excess Sig: {}) detected as Broadcast to \
+                                 Base Node Mempool",
                                 tx_id,
-                                completed_tx.transaction.body.kernels()[0].excess.to_hex()
+                                completed_tx.transaction.body.kernels()[0]
+                                    .excess_sig
+                                    .get_signature()
+                                    .to_hex()
                             );
                             self.db.broadcast_completed_transaction(tx_id.clone()).await?;
                             // Start monitoring the base node to see if this Tx has been mined
@@ -1273,11 +1290,16 @@ where
                         },
                     },
                     TransactionStatus::Broadcast => {
+                        info!(
+                            target: LOG_TARGET,
+                            "Mempool query for transaction Tx_ID: {} returned {:?}", completed_tx.tx_id, ts
+                        );
                         if let Some(result) = self.pending_transaction_mined_queries.get_mut(&completed_tx.tx_id) {
                             match ts {
                                 TxStorageResponse::NotStored => result.mempool_response = Some(false),
                                 _ => result.mempool_response = Some(true),
                             }
+                            debug!(target: LOG_TARGET, "Current Mempool/Mined state {:?}", result);
                             if result.is_complete() {
                                 self.handle_transaction_mined_request_result(completed_tx.tx_id).await;
                             }
@@ -1471,7 +1493,7 @@ where
                 if completed_tx.status == TransactionStatus::Broadcast {
                     if let Some(result) = self.pending_transaction_mined_queries.get_mut(&completed_tx.tx_id) {
                         result.chain_response = Some(false);
-
+                        debug!(target: LOG_TARGET, "Current Mempool/Mined state {:?}", result);
                         if result.is_complete() {
                             self.handle_transaction_mined_request_result(completed_tx.tx_id).await;
                         }
