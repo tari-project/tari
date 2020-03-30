@@ -194,7 +194,7 @@ mod test {
 
         // Create command line test data
         let matches = clap_app!(myapp =>
-            (version: "0.0.9")
+            (version: "0.0.10")
             (author: "The Tari Community")
             (about: "The reference Tari cryptocurrency base node implementation")
             (@arg base_dir: -b --base_dir +takes_value "A path to a directory to store your files")
