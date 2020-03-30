@@ -52,6 +52,7 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
     base_node::LocalNodeCommsInterface,
+    blocks::BlockHeader,
     tari_utilities::{hex::Hex, Hashable},
     transactions::tari_amount::{uT, MicroTari},
 };
@@ -76,6 +77,8 @@ pub enum BaseNodeCommand {
     UnbanPeer,
     ListConnections,
     ListHeaders,
+    CheckDb,
+    CalcTiming,
     DiscoverPeer,
     GetBlock,
     Whoami,
@@ -191,6 +194,9 @@ impl Parser {
             ListPeers => {
                 self.process_list_peers(args);
             },
+            CheckDb => {
+                self.process_check_db();
+            },
             BanPeer => {
                 self.process_ban_peer(args, true);
             },
@@ -202,6 +208,9 @@ impl Parser {
             },
             ListHeaders => {
                 self.process_list_headers(args);
+            },
+            CalcTiming => {
+                self.process_calc_timing(args);
             },
             ToggleMining => {
                 self.process_toggle_mining();
@@ -254,6 +263,9 @@ impl Parser {
             UnbanPeer => {
                 println!("Removes the peer ban");
             },
+            CheckDb => {
+                println!("Checks the blockchain database for missing blocks and headers");
+            },
             ListConnections => {
                 println!("Lists the peer connections currently held by this node");
             },
@@ -261,6 +273,9 @@ impl Parser {
                 println!("List the amount of headers, can be called in the following two ways: ");
                 println!("list-headers [first header height] [last header height]");
                 println!("list-headers [number of headers starting from the chain tip back]");
+            },
+            CalcTiming => {
+                println!("Calculates the time average time taken to mine a given range of blocks.");
             },
             ToggleMining => {
                 println!("Enable or disable the miner on this node, calling this command will toggle the state");
@@ -487,18 +502,29 @@ impl Parser {
     }
 
     fn process_list_headers<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
-        let command_arg = args.take(4).collect::<Vec<&str>>();
+        let command_arg = args.map(|arg| arg.to_string()).take(4).collect::<Vec<String>>();
         if (command_arg.is_empty()) || (command_arg.len() > 2) {
             println!("Command entered incorrectly, please use the following formats: ");
             println!("list-headers [first header height] [last header height]");
             println!("list-headers [amount of headers from top]");
             return;
         }
+        let mut handler = self.node_service.clone();
+        self.executor.spawn(async move {
+            let headers = Parser::get_headers(handler, command_arg).await;
+            for header in headers {
+                println!("\n\nHeader hash: {}", header.hash().to_hex());
+                println!("{}", header);
+            }
+        });
+    }
+
+    async fn get_headers(mut handler: LocalNodeCommsInterface, command_arg: Vec<String>) -> Vec<BlockHeader> {
         let height = if command_arg.len() == 2 {
             let height = command_arg[1].parse::<u64>();
             if height.is_err() {
                 println!("Invalid number provided");
-                return;
+                return Vec::new();
             };
             Some(height.unwrap())
         } else {
@@ -507,51 +533,118 @@ impl Parser {
         let start = command_arg[0].parse::<u64>();
         if start.is_err() {
             println!("Invalid number provided");
-            return;
+            return Vec::new();
         };
         let counter = if command_arg.len() == 2 {
             let start = start.unwrap();
             let temp_height = height.clone().unwrap();
             if temp_height <= start {
                 println!("start hight should be bigger than the end height");
-                return;
+                return Vec::new();
             }
             (temp_height - start) as usize
         } else {
             start.unwrap() as usize
         };
+        let mut height = if let Some(v) = height {
+            v
+        } else {
+            match handler.get_metadata().await {
+                Err(err) => {
+                    println!("Failed to retrieve chain height: {:?}", err);
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                    0
+                },
+                Ok(data) => data.height_of_longest_chain.unwrap_or(0),
+            }
+        };
+        let mut headers = Vec::new();
+        headers.push(height);
+        while (headers.len() <= counter) && (height > 0) {
+            height -= 1;
+            headers.push(height);
+        }
+        match handler.get_headers(headers).await {
+            Err(err) => {
+                println!("Failed to retrieve headers: {:?}", err);
+                warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                Vec::new()
+            },
+            Ok(data) => data,
+        }
+    }
+
+    fn process_calc_timing<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
+        let command_arg = args.map(|arg| arg.to_string()).take(4).collect::<Vec<String>>();
+        if (command_arg.is_empty()) || (command_arg.len() > 2) {
+            println!("Command entered incorrectly, please use the following formats: ");
+            println!("calc-timing [first header height] [last header height]");
+            println!("calc-timing [number of headers from chain tip]");
+            return;
+        }
 
         let mut handler = self.node_service.clone();
         self.executor.spawn(async move {
-            let mut height = if let Some(v) = height {
-                v
-            } else {
-                match handler.get_metadata().await {
-                    Err(err) => {
-                        println!("Failed to retrieve chain height: {:?}", err);
-                        warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
-                        0
-                    },
-                    Ok(data) => data.height_of_longest_chain.unwrap_or(0),
+            let headers = Parser::get_headers(handler, command_arg).await;
+            let mut total = 0;
+            let mut count = 0;
+            let mut max = 0;
+            let mut min = u64::MAX;
+            let mut last_header = headers[0].timestamp.as_u64();
+            for header in headers.iter().rev().skip(1) {
+                count += 1;
+                let time = if header.timestamp.as_u64() <= last_header {
+                    1
+                } else {
+                    header.timestamp.as_u64() - last_header
+                };
+                total += time;
+                if max < time {
+                    max = time;
                 }
-            };
-            let mut headers = Vec::new();
-            headers.push(height);
-            while (headers.len() <= counter) && (height > 0) {
-                height -= 1;
-                headers.push(height);
+                if min > time {
+                    min = time;
+                }
+                last_header = header.timestamp.as_u64();
             }
-            let headers = match handler.get_header(headers).await {
-                Err(err) => {
-                    println!("Failed to retrieve headers: {:?}", err);
-                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
-                    return;
-                },
-                Ok(data) => data,
-            };
-            for header in headers {
-                println!("\n\nHeader hash: {}", header.hash().to_hex());
-                println!("{}", header);
+            let avg = (total as f64) / (count as f64);
+            println!("Max time was: {}", max);
+            println!("min time was: {}", min);
+            println!("tot time was: {}", total);
+            println!("avg time was: {}", avg);
+        });
+    }
+
+    fn process_check_db(&mut self) {
+        // Todo, add calls to ask peers for missing data
+        let mut node = self.node_service.clone();
+        self.executor.spawn(async move {
+            let meta = node.get_metadata().await.expect("Could not retrieve chain meta");
+
+            let mut height = meta.height_of_longest_chain.expect("Could not retrieve chain height");
+
+            let mut current_header = node
+                .get_headers(vec![height])
+                .await
+                .expect("Could not retrieve tip header from db")
+                .pop()
+                .expect("Could not retrieve tip header from db");
+            let mut missing_blocks = Vec::new();
+            while height > 0 {
+                let block = node.get_blocks(vec![height]).await;
+                println!("searching for height: {}", height);
+                if block.is_err() {
+                    // for some apparent reason this block is missing, means we have to ask for it again
+                    missing_blocks.push(current_header.hash());
+                    println!("missing block for height {}", height);
+                };
+                height -= 1;
+                let next_header = node.get_headers(vec![height]).await;
+                if next_header.is_err() {
+                    // this header is missing, so we stop here and need to ask for this header
+                    println!("missing header for {}", height);
+                };
+                current_header = next_header.unwrap().pop().expect("Could not retrieve header from db");
             }
         });
     }
