@@ -27,10 +27,12 @@ mod inbound_handlers;
 #[cfg(feature = "base_node")]
 mod initializer;
 #[cfg(feature = "base_node")]
+mod local_service;
+#[cfg(feature = "base_node")]
 mod outbound_interface;
 #[cfg(feature = "base_node")]
 mod service;
-#[cfg(feature = "base_node")]
+
 // Public re-exports
 #[cfg(feature = "base_node")]
 pub use error::MempoolServiceError;
