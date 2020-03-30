@@ -174,19 +174,22 @@ impl Dht {
                 self.config.network,
                 self.outbound_requester(),
             ))
-            .layer(inbound::DedupLayer::new(self.dht_requester()))
+            .layer(inbound::DedupLayer::new(self.dht_requester()));
+
+        // FIXME: There is an unresolved stack overflow issue on windows. Seems that we've reached the limit on stack
+        //        page size. These layers are removed from windows builds for now as they are not critical to
+        //        the functioning of the node. (issue #1416)
+        #[cfg(not(target_os = "windows"))]
+        let builder = builder
             .layer(tower_filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
-            .layer(MessageLoggingLayer::new("Inbound message: "))
+            .layer(MessageLoggingLayer::new("Inbound message: "));
+
+        builder
             .layer(inbound::DecryptionLayer::new(Arc::clone(&self.node_identity)))
             .layer(store_forward::ForwardLayer::new(
                 Arc::clone(&self.peer_manager),
                 self.outbound_requester(),
-            ));
-
-        // FIXME: The store and forward layers are excluded for Windows builds due to an unresolved stack overflow
-        // (#1416)
-        #[cfg(not(target_os = "windows"))]
-        let builder = builder
+            ))
             .layer(store_forward::StoreLayer::new(
                 self.config.clone(),
                 Arc::clone(&self.peer_manager),
@@ -200,16 +203,15 @@ impl Dht {
                 Arc::clone(&self.node_identity),
                 Arc::clone(&self.peer_manager),
                 self.outbound_requester(),
-            ));
-
-        let builder = builder.layer(inbound::DhtHandlerLayer::new(
-            self.config.clone(),
-            Arc::clone(&self.node_identity),
-            Arc::clone(&self.peer_manager),
-            self.discovery_service_requester(),
-            self.outbound_requester(),
-        ));
-        builder.into_inner()
+            ))
+            .layer(inbound::DhtHandlerLayer::new(
+                self.config.clone(),
+                Arc::clone(&self.node_identity),
+                Arc::clone(&self.peer_manager),
+                self.discovery_service_requester(),
+                self.outbound_requester(),
+            ))
+            .into_inner()
     }
 
     /// Returns an the full DHT stack as a `tower::layer::Layer`. This can be composed with
@@ -393,8 +395,6 @@ mod test {
         assert_eq!(msg, b"secret");
     }
 
-    // FIXME: This test is excluded for Windows builds due to an unresolved stack overflow issue (#1416)
-    #[cfg(not(target_os = "windows"))]
     #[tokio_macros::test_basic]
     async fn stack_forward() {
         let node_identity = make_node_identity();
@@ -455,6 +455,8 @@ mod test {
         assert!(next_service_rx.try_next().is_err());
     }
 
+    // FIXME: This test is excluded for Windows builds due to an unresolved stack overflow issue (#1416)
+    #[cfg(not(target_os = "windows"))]
     #[tokio_macros::test_basic]
     async fn stack_filter_saf_message() {
         let node_identity = make_client_identity();
