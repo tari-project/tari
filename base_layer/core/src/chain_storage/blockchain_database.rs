@@ -1208,6 +1208,11 @@ fn try_construct_fork<T: BlockchainBackend>(
     let mut height = new_block.header.height;
     fork_chain.push_front(new_block);
     while let Ok(b) = fetch_orphan(&**db, hash.clone()) {
+        trace!(
+            target: LOG_TARGET,
+            "Checking block #{} forms a sequence to main chain or is orphaned",
+            b.header.height
+        );
         if b.header.height + 1 != height {
             // Well now. The block heights don't form a sequence, which means that we should not only stop now,
             // but remove one or both of these orphans from the pool because the blockchain is broken at this point.

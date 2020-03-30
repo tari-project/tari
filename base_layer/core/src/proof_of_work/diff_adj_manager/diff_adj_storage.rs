@@ -195,7 +195,7 @@ impl DiffAdjStorage {
 
     // Retrieves the height of the longest chain from the blockchain db
     fn get_height_of_longest_chain(
-        &mut self,
+        &self,
         metadata: &RwLockReadGuard<ChainMetadata>,
     ) -> Result<u64, DiffAdjManagerError>
     {
