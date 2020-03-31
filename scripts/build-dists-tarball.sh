@@ -170,7 +170,7 @@ done
 pushd $distDir/dist
 if [ "$osname" == "osx" ]  && [ -n "${osxsign}" ]; then
   echo "Signing OSX Binary ..."
-  codesign --force --verify --verbose --sign "${osxsign}" "${distDir}/dist/tari_base_node"
+  codesign --options runtime --force --verify --verbose --sign "${osxsign}" "${distDir}/dist/tari_base_node"
   echo "Verify signed OSX Binary ..."
   codesign --verify --deep --display --verbose=4 "${distDir}/dist/tari_base_node"
   spctl -a -v "${distDir}/dist/tari_base_node"
