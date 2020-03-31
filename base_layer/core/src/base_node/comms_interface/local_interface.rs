@@ -84,7 +84,7 @@ impl LocalNodeCommsInterface {
     }
 
     /// Request the block header of the current tip at the block height
-    pub async fn get_header(&mut self, block_heights: Vec<u64>) -> Result<Vec<BlockHeader>, CommsInterfaceError> {
+    pub async fn get_headers(&mut self, block_heights: Vec<u64>) -> Result<Vec<BlockHeader>, CommsInterfaceError> {
         match self
             .request_sender
             .call(NodeCommsRequest::FetchHeaders(block_heights))
