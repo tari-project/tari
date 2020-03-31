@@ -228,7 +228,7 @@ fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &RwLockWriteGuard<B>
 fn check_cut_through(block: &Block) -> Result<(), ValidationError> {
     trace!(
         target: LOG_TARGET,
-        "Checking coinbase output on block with hash {}",
+        "Checking cut through on block with hash {}",
         block.hash().to_hex()
     );
     if !block.body.cut_through_check() {
