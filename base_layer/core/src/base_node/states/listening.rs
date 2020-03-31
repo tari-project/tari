@@ -140,8 +140,8 @@ fn determine_sync_mode(
             } else {
                 info!(
                     target: log_target,
-                    "Our local blockchain is up-to-date. We're at block #{} with an accumulated difficulty of {} and \
-                     the network chain tip is at #{} with an accumulated difficulty of {}",
+                    "Our blockchain is up-to-date. We're at block {} with an accumulated difficulty of {} and the \
+                     network chain tip is at {} with an accumulated difficulty of {}",
                     local.height_of_longest_chain.unwrap_or(0),
                     local_tip_accum_difficulty,
                     network.height_of_longest_chain.unwrap_or(0),

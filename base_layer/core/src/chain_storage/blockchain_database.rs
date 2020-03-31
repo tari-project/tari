@@ -1035,7 +1035,7 @@ fn handle_reorg<T: BlockchainBackend>(
     // We can assume that the new block is part of the re-org chain if it exists, otherwise the re-org would have
     // happened on the previous call to this function.
     // Try and construct a path from `new_block` to the main chain:
-    let reorg_chain = try_construct_fork(db, new_block.clone())?;
+    let mut reorg_chain = try_construct_fork(db, new_block.clone())?;
     if reorg_chain.is_empty() {
         trace!(
             target: LOG_TARGET,
@@ -1046,7 +1046,7 @@ fn handle_reorg<T: BlockchainBackend>(
     // Try and find all orphaned chain tips that can be linked to the new orphan block, if no better orphan chain
     // tips can be found then the new_block is a tip.
     let new_block_hash = new_block.hash();
-    let orphan_chain_tips = find_orphan_chain_tips(db, new_block.header.height, new_block_hash);
+    let orphan_chain_tips = find_orphan_chain_tips(db, new_block.header.height, new_block_hash.clone());
     // Check the accumulated difficulty of the best fork chain compared to the main chain.
     let (fork_accum_difficulty, fork_tip_hash) = find_strongest_orphan_tip(db, orphan_chain_tips)?;
     let tip_header = db
@@ -1066,7 +1066,10 @@ fn handle_reorg<T: BlockchainBackend>(
         // that is linked with the main chain.
         let fork_tip_block = fetch_orphan(&**db, fork_tip_hash.clone())?;
         let fork_tip_header = fork_tip_block.header.clone();
-        let reorg_chain = try_construct_fork(db, fork_tip_block)?;
+        if fork_tip_hash != new_block_hash {
+            // New block is not the tip, find complete chain from tip to main chain.
+            reorg_chain = try_construct_fork(db, fork_tip_block)?;
+        }
         let added_blocks: Vec<Block> = reorg_chain.iter().map(Clone::clone).collect();
         let pow =
             ProofOfWork::new_from_difficulty(&fork_tip_header.pow, ProofOfWork::achieved_difficulty(&fork_tip_header));
@@ -1222,37 +1225,74 @@ fn try_construct_fork<T: BlockchainBackend>(
     let mut hash = new_block.header.prev_hash.clone();
     let mut height = new_block.header.height;
     fork_chain.push_front(new_block);
-    while let Ok(b) = fetch_orphan(&**db, hash.clone()) {
+
+    loop {
+        let fork_start_header = fork_chain
+            .front()
+            .expect("The new orphan block should be in the queue")
+            .header
+            .clone();
         trace!(
             target: LOG_TARGET,
-            "Checking block #{} forms a sequence to main chain or is orphaned",
-            b.header.height
+            "Checking if block {} ({}) is connected to the main chain.",
+            fork_start_header.height,
+            fork_start_header.hash().to_hex(),
         );
-        if b.header.height + 1 != height {
-            // Well now. The block heights don't form a sequence, which means that we should not only stop now,
-            // but remove one or both of these orphans from the pool because the blockchain is broken at this point.
-            info!(
-                target: LOG_TARGET,
-                "A broken blockchain sequence was detected in the database. Cleaning up and removing block with hash \
-                 {}",
-                hash.to_hex()
-            );
-            remove_orphan(db, hash)?;
-            return Err(ChainStorageError::InvalidBlock);
+        if let Ok(header) = fetch_header_with_block_hash(&**db, fork_start_header.prev_hash) {
+            if header.height + 1 == fork_start_header.height {
+                trace!(
+                    target: LOG_TARGET,
+                    "Connection with main chain found at block {} ({}).",
+                    header.height,
+                    header.hash().to_hex(),
+                );
+                return Ok(fork_chain);
+            }
         }
-        hash = b.header.prev_hash.clone();
-        height -= 1;
-        fork_chain.push_front(b);
-    }
-    // Check if the constructed fork chain is connected to the main chain.
-    let fork_start_header = fork_chain
-        .front()
-        .expect("The new orphan block should be in the queue")
-        .header
-        .clone();
-    if let Ok(header) = fetch_header_with_block_hash(&**db, fork_start_header.prev_hash) {
-        if header.height + 1 == fork_start_header.height {
-            return Ok(fork_chain);
+
+        trace!(
+            target: LOG_TARGET,
+            "Not connected, checking if fork chain can be extended.",
+        );
+        match fetch_orphan(&**db, hash.clone()) {
+            Ok(prev_block) => {
+                trace!(
+                    target: LOG_TARGET,
+                    "Checking if block {} ({}) forms a sequence with next block.",
+                    prev_block.header.height,
+                    hash.to_hex(),
+                );
+                if prev_block.header.height + 1 != height {
+                    // Well now. The block heights don't form a sequence, which means that we should not only stop now,
+                    // but remove one or both of these orphans from the pool because the blockchain is broken at this
+                    // point.
+                    info!(
+                        target: LOG_TARGET,
+                        "A broken blockchain sequence was detected, removing block {} ({}).",
+                        prev_block.header.height,
+                        hash.to_hex()
+                    );
+                    remove_orphan(db, hash)?;
+                    return Err(ChainStorageError::InvalidBlock);
+                }
+                trace!(
+                    target: LOG_TARGET,
+                    "Fork chain extended with block {} ({}).",
+                    prev_block.header.height,
+                    hash.to_hex(),
+                );
+                hash = prev_block.header.prev_hash.clone();
+                height -= 1;
+                fork_chain.push_front(prev_block);
+            },
+            Err(ChainStorageError::ValueNotFound(_)) => {
+                trace!(
+                    target: LOG_TARGET,
+                    "Fork chain extension not found and it isn't connected to the main chain.",
+                );
+                break;
+            },
+            Err(e) => return Err(e),
         }
     }
     Ok(VecDeque::new())
