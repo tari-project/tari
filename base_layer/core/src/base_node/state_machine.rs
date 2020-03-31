@@ -150,7 +150,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             let _ = self.event_sender.send(next_event.clone()).await;
             debug!(
                 target: LOG_TARGET,
-                "=== Base Node event in State [{}]:  {:?}", state, next_event
+                "=== Base Node event in State [{}]:  {}", state, next_event
             );
             state = self.transition(state, next_event);
         }

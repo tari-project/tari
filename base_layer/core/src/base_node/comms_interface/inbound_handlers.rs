@@ -262,7 +262,7 @@ where T: BlockchainBackend + 'static
         // Create block event on block event stream
         let block_event = match add_block_result.clone() {
             Ok(block_add_result) => {
-                debug!(target: LOG_TARGET, "Block event created: {:?}", block_add_result);
+                debug!(target: LOG_TARGET, "Block event created: {}", block_add_result);
                 BlockEvent::Verified((Box::new(block.clone()), block_add_result))
             },
             Err(e) => {
