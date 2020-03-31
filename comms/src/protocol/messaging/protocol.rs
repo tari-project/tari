@@ -426,16 +426,19 @@ impl MessagingProtocol {
                             );
                         }
                     },
-                    Err(err) => debug!(
-                        target: LOG_TARGET,
-                        "Failed to receive from peer '{}' because '{}'",
-                        peer.node_id.short_str(),
-                        err
-                    ),
+                    Err(err) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Failed to receive from peer '{}' because '{}'",
+                            peer.node_id.short_str(),
+                            err
+                        );
+                        break;
+                    },
                 }
             }
 
-            trace!(
+            debug!(
                 target: LOG_TARGET,
                 "Inbound messaging handler for peer '{}' has stopped",
                 peer.node_id.short_str()
