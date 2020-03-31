@@ -65,7 +65,14 @@ use tari_core::{
         Validators,
     },
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network as NetworkType},
-    mempool::{Mempool, MempoolConfig, MempoolServiceConfig, MempoolServiceInitializer, MempoolValidators},
+    mempool::{
+        service::LocalMempoolService,
+        Mempool,
+        MempoolConfig,
+        MempoolServiceConfig,
+        MempoolServiceInitializer,
+        MempoolValidators,
+    },
     mining::Miner,
     proof_of_work::DiffAdjManager,
     tari_utilities::{hex::Hex, message_format::MessageFormat},
@@ -143,6 +150,12 @@ impl NodeContainer {
     /// with the comms service
     pub fn local_node(&self) -> LocalNodeCommsInterface {
         using_backend!(self, ctx, ctx.local_node())
+    }
+
+    /// Returns a handle to the local mempool service. This function panics if it has not been registered
+    /// with the comms service
+    pub fn local_mempool(&self) -> LocalMempoolService {
+        using_backend!(self, ctx, ctx.local_mempool())
     }
 
     /// Returns the CommsNode.
@@ -231,7 +244,13 @@ impl<B: BlockchainBackend> BaseNodeContext<B> {
     pub fn local_node(&self) -> LocalNodeCommsInterface {
         self.base_node_handles
             .get_handle::<LocalNodeCommsInterface>()
-            .expect("Could not get local comms interface handle")
+            .expect("Could not get local node interface handle")
+    }
+
+    pub fn local_mempool(&self) -> LocalMempoolService {
+        self.base_node_handles
+            .get_handle::<LocalMempoolService>()
+            .expect("Could not get local mempool interface handle")
     }
 
     pub fn wallet_transaction_service(&self) -> TransactionServiceHandle {

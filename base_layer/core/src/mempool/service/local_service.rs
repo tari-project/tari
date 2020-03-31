@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::mempool::{
-    service::{MempoolRequest, MempoolResponse},
-    MempoolServiceError,
+    service::{MempoolRequest, MempoolResponse, MempoolServiceError},
+    StateResponse,
     StatsResponse,
 };
 use tari_service_framework::reply_channel::{Receiver, SenderService};
@@ -58,6 +58,13 @@ impl LocalMempoolService {
     pub async fn get_mempool_stats(&mut self) -> Result<StatsResponse, MempoolServiceError> {
         match self.request_sender.call(MempoolRequest::GetStats).await?? {
             MempoolResponse::Stats(s) => Ok(s),
+            _ => Err(MempoolServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_mempool_state(&mut self) -> Result<StateResponse, MempoolServiceError> {
+        match self.request_sender.call(MempoolRequest::GetState).await?? {
+            MempoolResponse::State(s) => Ok(s),
             _ => Err(MempoolServiceError::UnexpectedApiResponse),
         }
     }

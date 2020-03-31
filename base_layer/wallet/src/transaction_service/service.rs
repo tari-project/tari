@@ -1219,6 +1219,11 @@ where
                     "Mempool Response of invalid type".to_string(),
                 ))
             },
+            MempoolResponse::State(_) => {
+                return Err(TransactionServiceError::InvalidMessageError(
+                    "Mempool Response of invalid type".to_string(),
+                ))
+            },
             MempoolResponse::TxStorage(ts) => {
                 let completed_tx = self.db.get_completed_transaction(response.request_key.clone()).await?;
 

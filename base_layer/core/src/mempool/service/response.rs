@@ -22,7 +22,7 @@
 
 use crate::{
     base_node::RequestKey,
-    mempool::{StatsResponse, TxStorageResponse},
+    mempool::{StateResponse, StatsResponse, TxStorageResponse},
 };
 use serde::{Deserialize, Serialize};
 
@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub enum MempoolResponse {
     Stats(StatsResponse),
+    State(StateResponse),
     TxStorage(TxStorageResponse),
 }
 

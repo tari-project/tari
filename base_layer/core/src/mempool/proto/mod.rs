@@ -29,6 +29,7 @@ pub mod mempool {
 
 pub mod mempool_request;
 pub mod mempool_response;
+pub mod state_response;
 pub mod stats_response;
 pub mod tx_storage_response;
 pub use mempool::{MempoolServiceRequest, MempoolServiceResponse};

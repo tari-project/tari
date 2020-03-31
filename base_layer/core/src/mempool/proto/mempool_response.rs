@@ -37,6 +37,7 @@ impl TryInto<MempoolResponse> for ProtoMempoolResponse {
         use ProtoMempoolResponse::*;
         let response = match self {
             Stats(stats_response) => MempoolResponse::Stats(stats_response.try_into()?),
+            State(state_response) => MempoolResponse::State(state_response.try_into()?),
             TxStorage(tx_storage_response) => {
                 let tx_storage_response = ProtoTxStorageResponse::from_i32(tx_storage_response)
                     .ok_or_else(|| "Invalid or unrecognised `TxStorageResponse` enum".to_string())?;
@@ -66,6 +67,7 @@ impl From<MempoolResponse> for ProtoMempoolResponse {
         use MempoolResponse::*;
         match response {
             Stats(stats_response) => ProtoMempoolResponse::Stats(stats_response.into()),
+            State(state_response) => ProtoMempoolResponse::State(state_response.into()),
             TxStorage(tx_storage_response) => {
                 let tx_storage_response: ProtoTxStorageResponse = tx_storage_response.into();
                 ProtoMempoolResponse::TxStorage(tx_storage_response.into())

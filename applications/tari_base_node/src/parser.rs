@@ -53,6 +53,7 @@ use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
     base_node::LocalNodeCommsInterface,
     blocks::BlockHeader,
+    mempool::service::LocalMempoolService,
     tari_utilities::{hex::Hex, Hashable},
     transactions::tari_amount::{uT, MicroTari},
 };
@@ -81,6 +82,8 @@ pub enum BaseNodeCommand {
     CalcTiming,
     DiscoverPeer,
     GetBlock,
+    GetMempoolStats,
+    GetMempoolState,
     Whoami,
     ToggleMining,
     Quit,
@@ -100,6 +103,7 @@ pub struct Parser {
     hinter: HistoryHinter,
     wallet_output_service: OutputManagerHandle,
     node_service: LocalNodeCommsInterface,
+    mempool_service: LocalMempoolService,
     wallet_transaction_service: TransactionServiceHandle,
     enable_miner: Arc<AtomicBool>,
 }
@@ -145,6 +149,7 @@ impl Parser {
             hinter: HistoryHinter {},
             wallet_output_service: ctx.output_manager(),
             node_service: ctx.local_node(),
+            mempool_service: ctx.local_mempool(),
             wallet_transaction_service: ctx.wallet_transaction_service(),
             enable_miner: ctx.miner_enabled(),
         }
@@ -218,6 +223,12 @@ impl Parser {
             GetBlock => {
                 self.process_get_block(args);
             },
+            GetMempoolStats => {
+                self.process_get_mempool_stats();
+            },
+            GetMempoolState => {
+                self.process_get_mempool_state();
+            },
             Whoami => {
                 self.process_whoami();
             },
@@ -284,6 +295,12 @@ impl Parser {
                 println!("View a block of a height, call this command via:");
                 println!("get-block [height of the block]");
             },
+            GetMempoolStats => {
+                println!("Retrieves your mempools stats");
+            },
+            GetMempoolState => {
+                println!("Retrieves your mempools state");
+            },
             Whoami => {
                 println!(
                     "Display identity information about this node, including: public key, node ID and the public \
@@ -347,12 +364,43 @@ impl Parser {
             match handler.get_blocks(vec![height]).await {
                 Err(err) => {
                     println!("Failed to retrieve blocks: {:?}", err);
-                    warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err,);
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error communicating with local base node: {:?}", err,
+                    );
                     return;
                 },
                 Ok(mut data) => match data.pop() {
                     Some(historical_block) => println!("{}", historical_block.block),
                     None => println!("Block not found at height {}", height),
+                },
+            };
+        });
+    }
+
+    fn process_get_mempool_stats(&mut self) {
+        let mut handler = self.mempool_service.clone();
+        self.executor.spawn(async move {
+            match handler.get_mempool_stats().await {
+                Ok(stats) => println!("{}", stats),
+                Err(err) => {
+                    println!("Failed to retrieve mempool stats: {:?}", err);
+                    warn!(target: LOG_TARGET, "Error communicating with local mempool: {:?}", err,);
+                    return;
+                },
+            };
+        });
+    }
+
+    fn process_get_mempool_state(&mut self) {
+        let mut handler = self.mempool_service.clone();
+        self.executor.spawn(async move {
+            match handler.get_mempool_state().await {
+                Ok(state) => println!("{}", state),
+                Err(err) => {
+                    println!("Failed to retrieve mempool state: {:?}", err);
+                    warn!(target: LOG_TARGET, "Error communicating with local mempool: {:?}", err,);
+                    return;
                 },
             };
         });
