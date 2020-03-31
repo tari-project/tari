@@ -60,7 +60,7 @@ use tari_core::{
 };
 use tari_shutdown::Shutdown;
 use tari_wallet::{
-    output_manager_service::handle::OutputManagerHandle,
+    output_manager_service::{error::OutputManagerError, handle::OutputManagerHandle},
     transaction_service::{error::TransactionServiceError, handle::TransactionServiceHandle},
     util::emoji::EmojiId,
 };
@@ -558,7 +558,7 @@ impl Parser {
             println!("list-headers [amount of headers from top]");
             return;
         }
-        let mut handler = self.node_service.clone();
+        let handler = self.node_service.clone();
         self.executor.spawn(async move {
             let headers = Parser::get_headers(handler, command_arg).await;
             for header in headers {
@@ -632,7 +632,7 @@ impl Parser {
             return;
         }
 
-        let mut handler = self.node_service.clone();
+        let handler = self.node_service.clone();
         self.executor.spawn(async move {
             let headers = Parser::get_headers(handler, command_arg).await;
             let mut total = 0;
@@ -818,6 +818,9 @@ impl Parser {
                             println!("The peer may be offline. Please try again later.");
                         },
                     }
+                },
+                Err(TransactionServiceError::OutputManagerError(OutputManagerError::NotEnoughFunds)) => {
+                    println!("Not enough funds to fulfill the transaction.");
                 },
                 Err(e) => {
                     println!("Something went wrong sending funds");
