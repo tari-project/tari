@@ -154,8 +154,8 @@ mkdir $distDir/dist
 
 COPY_FILES=(
   "target/release/tari_base_node"
-  "config/presets/rincewind-simple.toml"
-  "config/tari_config_sample.toml"
+  "common/config/presets/rincewind-simple.toml"
+  "common/config/tari_config_sample.toml"
 #  "log4rs.yml"
   "common/logging/log4rs-sample.yml"
   "applications/tari_base_node/README.md"

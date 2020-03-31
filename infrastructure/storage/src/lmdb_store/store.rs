@@ -46,8 +46,9 @@ type DatabaseRef = Arc<Database<'static>>;
 /// ```
 /// # use tari_storage::lmdb_store::LMDBBuilder;
 /// # use lmdb_zero::db;
+/// # use std::env;
 /// let mut store = LMDBBuilder::new()
-///     .set_path("/tmp/")
+///     .set_path(env::temp_dir())
 ///     .set_environment_size(500)
 ///     .set_max_number_of_databases(10)
 ///     .add_database("db1", db::CREATE)
@@ -610,5 +611,25 @@ impl<'txn, 'db: 'txn> LMDBWriteTransaction<'txn, 'db> {
         let mut buf = Vec::with_capacity(size_estimate);
         bincode::serialize_into(&mut buf, value).map_err(|e| LMDBError::SerializationErr(e.to_string()))?;
         Ok(buf)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::lmdb_store::LMDBBuilder;
+    use lmdb_zero::db;
+    use std::env;
+
+    #[test]
+    fn test_lmdb_builder() {
+        let mut store = LMDBBuilder::new()
+            .set_path(env::temp_dir())
+            .set_environment_size(500)
+            .set_max_number_of_databases(10)
+            .add_database("db1", db::CREATE)
+            .add_database("db2", db::CREATE)
+            .build()
+            .unwrap();
+        assert!(&store.databases.len() == &2);
     }
 }
