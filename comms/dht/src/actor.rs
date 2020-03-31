@@ -372,6 +372,7 @@ impl<'a> DhtActor<'a> {
                     &closest_request.node_id,
                     closest_request.n,
                     &closest_request.excluded_peers,
+                    closest_request.peer_features,
                 )
                 .await
             },
@@ -388,6 +389,7 @@ impl<'a> DhtActor<'a> {
                     node_identity.node_id(),
                     config.num_neighbouring_nodes,
                     &exclude,
+                    PeerFeatures::MESSAGE_PROPAGATION,
                 )
                 .await?;
 
@@ -442,6 +444,7 @@ impl<'a> DhtActor<'a> {
         node_id: &NodeId,
         n: usize,
         excluded_peers: &[CommsPublicKey],
+        features: PeerFeatures,
     ) -> Result<Vec<Peer>, DhtActorError>
     {
         // TODO: This query is expensive. We can probably cache a list of neighbouring peers which are online
@@ -467,8 +470,13 @@ impl<'a> DhtActor<'a> {
                     return false;
                 }
 
-                if !peer.features.contains(PeerFeatures::MESSAGE_PROPAGATION) {
-                    trace!(target: LOG_TARGET, "[{}] is not a propagation node", peer.node_id);
+                if !peer.features.contains(features) {
+                    trace!(
+                        target: LOG_TARGET,
+                        "[{}] is does not have the required features {:?}",
+                        peer.node_id,
+                        features
+                    );
                     filtered_out_node_count += 1;
                     return false;
                 }

@@ -30,7 +30,11 @@ use crate::{
 use futures::{task::Context, Future};
 use log::*;
 use std::{sync::Arc, task::Poll};
-use tari_comms::{peer_manager::PeerManager, pipeline::PipelineError, types::CommsPublicKey};
+use tari_comms::{
+    peer_manager::{Peer, PeerManager},
+    pipeline::PipelineError,
+    types::CommsPublicKey,
+};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::store_forward::forward";
@@ -84,9 +88,7 @@ impl<S> ForwardMiddleware<S> {
 }
 
 impl<S> Service<DecryptedDhtMessage> for ForwardMiddleware<S>
-where
-    S: Service<DecryptedDhtMessage, Response = ()> + Clone + 'static,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + 'static
 {
     type Error = PipelineError;
     type Response = ();
@@ -126,9 +128,7 @@ impl<S> Forwarder<S> {
 }
 
 impl<S> Forwarder<S>
-where
-    S: Service<DecryptedDhtMessage, Response = ()>,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 {
     async fn handle(mut self, message: DecryptedDhtMessage) -> Result<(), PipelineError> {
         if message.decryption_failed() {
@@ -138,10 +138,7 @@ where
 
         // The message has been forwarded, but other middleware may be interested (i.e. StoreMiddleware)
         trace!(target: LOG_TARGET, "Passing message to next service");
-        self.next_service
-            .oneshot(message)
-            .await
-            .map_err(PipelineError::from_debug)?;
+        self.next_service.oneshot(message).await?;
         Ok(())
     }
 
@@ -153,14 +150,31 @@ where
             ..
         } = message;
 
+        if self.destination_matches_source(&dht_header.destination, &source_peer) {
+            // TODO: #banheuristic - the origin of this message was the destination. Two things are wrong here:
+            //       1. The origin/destination should not have forwarded this (the destination node didnt do
+            //          is_destined_for_this_node check above)
+            //       1. The source sent a message that the destination could not decrypt
+            //       The authenticated source should be banned (malicious), and origin should be temporarily banned
+            //       (bug?)
+            warn!(
+                target: LOG_TARGET,
+                "Received message from peer '{}' that is destined for that peer. Discarding message",
+                source_peer.node_id.short_str()
+            );
+            return Ok(());
+        }
+
         let body = decryption_result
             .clone()
             .err()
             .expect("previous check that decryption failed");
 
-        let mut message_params = self
-            .get_send_params(&dht_header, vec![source_peer.public_key.clone()])
-            .await?;
+        let mut excluded_peers = vec![source_peer.public_key.clone()];
+        if let Some(origin) = dht_header.origin.as_ref() {
+            excluded_peers.push(origin.public_key.clone());
+        }
+        let mut message_params = self.get_send_params(&dht_header, excluded_peers).await?;
 
         message_params.with_dht_header(dht_header.clone());
 
@@ -222,6 +236,18 @@ where
         }
 
         Ok(params)
+    }
+
+    fn destination_matches_source(&self, destination: &NodeDestination, source: &Peer) -> bool {
+        if let Some(pk) = destination.public_key() {
+            return pk == &source.public_key;
+        }
+
+        if let Some(node_id) = destination.node_id() {
+            return node_id == &source.node_id;
+        }
+
+        false
     }
 }
 

@@ -121,9 +121,7 @@ impl<S> BroadcastMiddleware<S> {
 }
 
 impl<S> Service<DhtOutboundRequest> for BroadcastMiddleware<S>
-where
-    S: Service<DhtOutboundMessage, Response = ()> + Clone,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError> + Clone
 {
     type Error = PipelineError;
     type Response = ();
@@ -157,9 +155,7 @@ struct BroadcastTask<S> {
 }
 
 impl<S> BroadcastTask<S>
-where
-    S: Service<DhtOutboundMessage, Response = ()>,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 {
     pub fn new(
         service: S,

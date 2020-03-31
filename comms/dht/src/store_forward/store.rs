@@ -108,9 +108,7 @@ impl<S> StoreMiddleware<S> {
 }
 
 impl<S> Service<DecryptedDhtMessage> for StoreMiddleware<S>
-where
-    S: Service<DecryptedDhtMessage, Response = ()> + Clone + 'static,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + 'static
 {
     type Error = PipelineError;
     type Response = ();
@@ -162,9 +160,7 @@ impl<S> StoreTask<S> {
 }
 
 impl<S> StoreTask<S>
-where
-    S: Service<DecryptedDhtMessage, Response = ()>,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 {
     async fn handle(mut self, message: DecryptedDhtMessage) -> Result<(), PipelineError> {
         match message.success() {
@@ -177,16 +173,15 @@ where
                         "Cleartext message sent from origin {}. Adding to SAF storage.",
                         message.origin_public_key()
                     );
-                    let mut storage = self.storage.take().expect("StoreTask intialized without storage");
-                    let msg_clone = message.clone();
-                    storage.store(msg_clone).await.map_err(PipelineError::from_debug)?;
+                    let mut storage = self.storage.take().expect("StoreTask initialized without storage");
+                    storage
+                        .store(message.clone())
+                        .await
+                        .map_err(PipelineError::from_debug)?;
                 }
 
                 trace!(target: LOG_TARGET, "Passing message to next service");
-                self.next_service
-                    .oneshot(message)
-                    .await
-                    .map_err(PipelineError::from_debug)?;
+                self.next_service.oneshot(message).await?;
             },
             None => {
                 if message.dht_header.origin.is_none() {
@@ -203,7 +198,7 @@ where
                     target: LOG_TARGET,
                     "Decryption failed for message. Adding to SAF storage."
                 );
-                let mut storage = self.storage.take().expect("StoreTask intialized without storage");
+                let mut storage = self.storage.take().expect("StoreTask initialized without storage");
                 storage.store(message).await.map_err(PipelineError::from_debug)?;
             },
         }

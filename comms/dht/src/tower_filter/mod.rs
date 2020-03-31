@@ -4,7 +4,6 @@
 //! Conditionally dispatch requests to the inner service based on the result of
 //! a predicate.
 
-pub mod error;
 pub mod future;
 mod layer;
 mod predicate;
@@ -12,14 +11,11 @@ mod predicate;
 pub use layer::FilterLayer;
 pub use predicate::Predicate;
 
-use error::Error;
 use future::ResponseFuture;
 use futures::ready;
 use std::task::{Context, Poll};
+use tari_comms::pipeline::PipelineError;
 use tower::Service;
-
-#[cfg(test)]
-mod test;
 
 /// Conditionally dispatch requests to the inner service based on a predicate.
 #[derive(Clone, Debug)]
@@ -37,16 +33,15 @@ impl<T, U> Filter<T, U> {
 
 impl<T, U, Request> Service<Request> for Filter<T, U>
 where
-    T: Service<Request> + Clone,
-    T::Error: Into<error::Source>,
+    T: Service<Request, Error = PipelineError> + Clone,
     U: Predicate<Request>,
 {
-    type Error = Error;
+    type Error = PipelineError;
     type Future = ResponseFuture<U::Future, T, Request>;
     type Response = T::Response;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(ready!(self.inner.poll_ready(cx)).map_err(error::Error::inner))
+        Poll::Ready(ready!(self.inner.poll_ready(cx)).map_err(PipelineError::from_debug))
     }
 
     fn call(&mut self, request: Request) -> Self::Future {

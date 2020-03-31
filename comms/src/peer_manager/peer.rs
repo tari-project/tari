@@ -146,7 +146,6 @@ impl Peer {
     }
 
     pub(super) fn set_id(&mut self, id: PeerId) {
-        debug_assert!(self.id.is_none());
         self.id = Some(id);
     }
 

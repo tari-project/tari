@@ -36,7 +36,7 @@
 //! `RUST_BACKTRACE=1 RUST_LOG=trace cargo run --example memorynet 2> /tmp/debug.log`
 
 // Size of network
-const NUM_NODES: usize = 40;
+const NUM_NODES: usize = 39;
 // Must be at least 2
 const NUM_WALLETS: usize = 8;
 
@@ -209,24 +209,33 @@ async fn main() {
         println!();
     }
 
-    drain_messaging_events(&mut messaging_events_rx, false).await;
+    let mut total_messages = 0;
+    total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
     take_a_break().await;
-    drain_messaging_events(&mut messaging_events_rx, false).await;
+    total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
 
     peer_list_summary(&wallets).await;
 
-    discovery(&wallets, &mut messaging_events_rx, false, true).await;
+    total_messages += discovery(&wallets, &mut messaging_events_rx, false, true).await;
 
     take_a_break().await;
-    drain_messaging_events(&mut messaging_events_rx, false).await;
+    total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
 
-    discovery(&wallets, &mut messaging_events_rx, true, false).await;
+    total_messages += discovery(&wallets, &mut messaging_events_rx, true, false).await;
 
     take_a_break().await;
-    drain_messaging_events(&mut messaging_events_rx, false).await;
+    total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
 
-    discovery(&wallets, &mut messaging_events_rx, false, false).await;
+    total_messages += discovery(&wallets, &mut messaging_events_rx, false, false).await;
 
+    take_a_break().await;
+    total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
+
+    let random_wallet = wallets.remove(OsRng.gen_range(0, wallets.len() - 1));
+    total_messages +=
+        do_store_and_forward_discovery(random_wallet, &wallets, messaging_events_tx, &mut messaging_events_rx).await;
+
+    println!("{} messages sent in total across the network", total_messages);
     banner!("That's it folks! Network is shutting down...");
 
     shutdown_all(nodes).await;
@@ -243,9 +252,10 @@ async fn discovery(
     messaging_events_rx: &mut MessagingEventRx,
     use_network_region: bool,
     use_destination_node_id: bool,
-)
+) -> usize
 {
     let mut successes = 0;
+    let mut total_messages = 0;
     let mut total_time = Duration::from_secs(0);
     for i in 0..wallets.len() - 1 {
         let wallet1 = wallets.get(i).unwrap();
@@ -282,13 +292,12 @@ async fn discovery(
             .await;
 
         let end = Instant::now();
-        banner!("Discovery is done.");
 
         match discovery_result {
             Ok(peer) => {
                 successes += 1;
                 total_time += end - start;
-                println!(
+                banner!(
                     "⚡️🎉😎 '{}' discovered peer '{}' ({}) in {}ms",
                     wallet1,
                     get_name(&peer.node_id),
@@ -296,12 +305,11 @@ async fn discovery(
                     (end - start).as_millis()
                 );
 
-                println!();
                 time::delay_for(Duration::from_secs(5)).await;
-                drain_messaging_events(messaging_events_rx, false).await;
+                total_messages += drain_messaging_events(messaging_events_rx, false).await;
             },
             Err(err) => {
-                println!(
+                banner!(
                     "💩 '{}' failed to discover '{}' after {}ms because '{:?}'",
                     wallet1,
                     wallet2,
@@ -309,18 +317,19 @@ async fn discovery(
                     err
                 );
 
-                println!();
                 time::delay_for(Duration::from_secs(5)).await;
-                drain_messaging_events(messaging_events_rx, true).await;
+                total_messages += drain_messaging_events(messaging_events_rx, true).await;
             },
         }
     }
 
     banner!(
-        "✨ The set of discoveries succeeded {}% of the time and took a total of {:.1}s.",
+        "✨ The set of discoveries succeeded {}% of the time and took a total of {:.1}s with {} messages sent.",
         (successes as f32 / (wallets.len() - 1) as f32) * 100.0,
-        total_time.as_secs_f32()
+        total_time.as_secs_f32(),
+        total_messages
     );
+    total_messages
 }
 
 async fn peer_list_summary<'a, I: IntoIterator<Item = T>, T: AsRef<TestNode>>(network: I) {
@@ -356,7 +365,70 @@ async fn peer_list_summary<'a, I: IntoIterator<Item = T>, T: AsRef<TestNode>>(ne
     }
 }
 
-async fn drain_messaging_events(messaging_rx: &mut MessagingEventRx, show_logs: bool) {
+async fn do_store_and_forward_discovery(
+    wallet: TestNode,
+    wallets: &[TestNode],
+    messaging_tx: MessagingEventTx,
+    messaging_rx: &mut MessagingEventRx,
+) -> usize
+{
+    println!("{} chosen at random to be discovered using store and forward", wallet);
+    let all_peers = wallet.comms.peer_manager().all().await.unwrap();
+    let node_identity = wallet.comms.node_identity().clone();
+
+    banner!("😴 {} is going offline", wallet);
+    wallet.comms.shutdown().await;
+
+    banner!(
+        "🌎 {} ({}) is going to attempt to discover {} ({})",
+        wallets[0],
+        wallets[0].comms.node_identity().public_key(),
+        get_name(node_identity.node_id()),
+        node_identity.public_key(),
+    );
+    let mut first_wallet_discovery_req = wallets[0].dht.discovery_service_requester();
+    let discovery_task = runtime::Handle::current().spawn({
+        let node_identity = node_identity.clone();
+        async move {
+            first_wallet_discovery_req
+                .discover_peer(
+                    Box::new(node_identity.public_key().clone()),
+                    Some(node_identity.node_id().clone()),
+                    node_identity.public_key().clone().into(),
+                )
+                .await
+        }
+    });
+
+    println!("Waiting a few seconds for discovery to propagate around the network...");
+    time::delay_for(Duration::from_secs(8)).await;
+
+    let mut total_messages = drain_messaging_events(messaging_rx, true).await;
+
+    banner!("🤓 {} is coming back online", get_name(node_identity.node_id()));
+    let (tx, ims_rx) = mpsc::channel(1);
+    let (comms, dht) = setup_comms_dht(node_identity, create_peer_storage(all_peers), tx).await;
+    let wallet = TestNode::new(comms, dht, None, ims_rx, messaging_tx);
+
+    let start = Instant::now();
+    wallet.dht.dht_requester().send_request_stored_messages().await.unwrap();
+
+    total_messages += match discovery_task.await.unwrap() {
+        Ok(peer) => {
+            let end = Instant::now();
+            banner!("🎉 Discovered peer {} in {}ms", peer, (end - start).as_millis());
+            drain_messaging_events(messaging_rx, false).await
+        },
+        Err(err) => {
+            banner!("💩 Failed to discovery peer using store and forward '{:?}'", err);
+            drain_messaging_events(messaging_rx, true).await
+        },
+    };
+
+    total_messages
+}
+
+async fn drain_messaging_events(messaging_rx: &mut MessagingEventRx, show_logs: bool) -> usize {
     let drain_fut = DrainBurst::new(messaging_rx);
     if show_logs {
         let messages = drain_fut.await;
@@ -383,9 +455,11 @@ async fn drain_messaging_events(messaging_rx: &mut MessagingEventRx, show_logs: 
             }
         }
         println!("{} messages sent between nodes", num_messages);
+        num_messages
     } else {
         let len = drain_fut.await.len();
         println!("📨 {} messages exchanged", len);
+        len
     }
 }
 
@@ -415,16 +489,16 @@ fn connection_manager_logger(
             PeerConnectFailed(node_id, err) => {
                 println!(
                     "'{}' failed to connect to '{}' because '{:?}'",
-                    get_name(node_id),
                     node_name,
+                    get_name(node_id),
                     err
                 );
             },
             PeerConnectWillClose(_, node_id, direction) => {
                 println!(
                     "'{}' will disconnect {} connection to '{}'",
-                    get_name(node_id),
                     direction,
+                    get_name(node_id),
                     node_name,
                 );
             },

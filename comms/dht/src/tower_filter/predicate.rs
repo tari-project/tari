@@ -1,10 +1,10 @@
-use super::error::Error;
 use std::future::Future;
+use tari_comms::pipeline::PipelineError;
 
 /// Checks a request
 pub trait Predicate<Request> {
     /// The future returned by `check`.
-    type Future: Future<Output = Result<(), Error>>;
+    type Future: Future<Output = Result<(), PipelineError>>;
 
     /// Check whether the given request should be forwarded.
     ///
@@ -15,7 +15,7 @@ pub trait Predicate<Request> {
 impl<F, T, U> Predicate<T> for F
 where
     F: Fn(&T) -> U,
-    U: Future<Output = Result<(), Error>>,
+    U: Future<Output = Result<(), PipelineError>>,
 {
     type Future = U;
 

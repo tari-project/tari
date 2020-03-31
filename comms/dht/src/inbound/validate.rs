@@ -59,9 +59,7 @@ impl<S> ValidateMiddleware<S> {
 }
 
 impl<S> Service<DhtInboundMessage> for ValidateMiddleware<S>
-where
-    S: Service<DhtInboundMessage, Response = ()> + Clone + 'static,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clone + 'static
 {
     type Error = PipelineError;
     type Response = ();
@@ -83,9 +81,7 @@ where
 }
 
 impl<S> ValidateMiddleware<S>
-where
-    S: Service<DhtInboundMessage, Response = ()>,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<DhtInboundMessage, Response = (), Error = PipelineError>
 {
     pub async fn process_message(
         next_service: S,
@@ -100,7 +96,7 @@ where
             target_network
         );
         if message.dht_header.network == target_network {
-            next_service.oneshot(message).await.map_err(PipelineError::from_debug)?;
+            next_service.oneshot(message).await?;
         } else {
             debug!(
                 target: LOG_TARGET,

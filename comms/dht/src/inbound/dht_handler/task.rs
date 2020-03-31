@@ -56,9 +56,7 @@ pub struct ProcessDhtMessage<S> {
 }
 
 impl<S> ProcessDhtMessage<S>
-where
-    S: Service<DecryptedDhtMessage, Response = ()>,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 {
     pub fn new(
         config: DhtConfig,
@@ -89,11 +87,7 @@ where
 
         // If this message failed to decrypt, this middleware is not interested in it
         if message.decryption_failed() {
-            self.next_service
-                .oneshot(message)
-                .await
-                .map_err(PipelineError::from_debug)?;
-            return Ok(());
+            return self.next_service.oneshot(message).await;
         }
 
         match message.dht_header.message_type {
@@ -110,10 +104,7 @@ where
             // Not a DHT message, call downstream middleware
             _ => {
                 trace!(target: LOG_TARGET, "Passing message onto next service");
-                self.next_service
-                    .oneshot(message)
-                    .await
-                    .map_err(PipelineError::from_debug)?
+                self.next_service.oneshot(message).await?;
             },
         }
 
@@ -250,6 +241,7 @@ where
                 "Sending Join to joining peer with public key '{}'",
                 origin_peer.public_key
             );
+
             self.send_join_direct(origin_peer.public_key).await?;
         }
 

@@ -47,9 +47,7 @@ impl<S> DhtDeserializeMiddleware<S> {
 }
 
 impl<S> Service<InboundMessage> for DhtDeserializeMiddleware<S>
-where
-    S: Service<DhtInboundMessage, Response = ()> + Clone + 'static,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clone + 'static
 {
     type Error = PipelineError;
     type Response = ();
@@ -66,9 +64,7 @@ where
 }
 
 impl<S> DhtDeserializeMiddleware<S>
-where
-    S: Service<DhtInboundMessage, Response = ()>,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<DhtInboundMessage, Response = (), Error = PipelineError>
 {
     pub async fn deserialize(next_service: S, message: InboundMessage) -> Result<(), PipelineError> {
         trace!(target: LOG_TARGET, "Deserializing InboundMessage");
@@ -84,6 +80,7 @@ where
                     if dht_envelope.is_origin_signature_valid() {
                         trace!(target: LOG_TARGET, "Origin signature validation passed.");
                     } else {
+                        // TODO: #banheuristic
                         // The origin signature is not valid, this message should never have been sent
                         warn!(
                             target: LOG_TARGET,
@@ -100,10 +97,7 @@ where
                     dht_envelope.body,
                 );
 
-                next_service
-                    .oneshot(inbound_msg)
-                    .await
-                    .map_err(PipelineError::from_debug)
+                next_service.oneshot(inbound_msg).await
             },
             Err(err) => {
                 error!(target: LOG_TARGET, "DHT deserialization failed: {}", err);
