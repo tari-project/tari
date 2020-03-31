@@ -44,6 +44,7 @@ use std::{
     ops::{Deref, DerefMut},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
+use strum_macros::Display;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     tari_utilities::{hex::Hex, Hashable},
@@ -52,7 +53,7 @@ use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof, MutableMmrLeafNodes};
 
 const LOG_TARGET: &str = "c::cs::database";
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Display)]
 pub enum BlockAddResult {
     Ok,
     BlockExists,

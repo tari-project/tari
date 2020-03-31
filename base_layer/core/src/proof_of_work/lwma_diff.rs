@@ -104,16 +104,18 @@ impl LinearWeightedMovingAverage {
             panic!("Difficulty target has overflowed");
         }
         let target = target.ceil() as u64; // difficulty difference of 1 should not matter much, but difficulty should never be below 1, ceil(0.9) = 1
-        debug!(target: LOG_TARGET, "New target difficulty: {}", target);
+        trace!(target: LOG_TARGET, "New target difficulty: {}", target);
         target.into()
     }
 }
 
 impl DifficultyAdjustment for LinearWeightedMovingAverage {
     fn add(&mut self, timestamp: EpochTime, target_difficulty: Difficulty) -> Result<(), DifficultyAdjustmentError> {
-        debug!(
+        trace!(
             target: LOG_TARGET,
-            "Adding new timestamp and difficulty requested: {:?}, {:?}", timestamp, target_difficulty
+            "Adding new timestamp and difficulty requested: {:?}, {:?}",
+            timestamp,
+            target_difficulty
         );
 
         self.timestamps.push_back(timestamp);
