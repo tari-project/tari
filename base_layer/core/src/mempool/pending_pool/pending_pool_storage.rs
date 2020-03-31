@@ -89,6 +89,7 @@ impl PendingPoolStorage {
 
     /// Insert a new transaction into the PendingPoolStorage. Low priority transactions will be removed to make space
     /// for higher priority transactions.
+    #[allow(clippy::map_entry)]
     pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<(), PendingPoolError> {
         let tx_key = tx.body.kernels()[0].excess_sig.clone();
         if !self.txs_by_signature.contains_key(&tx_key) {
@@ -105,7 +106,6 @@ impl PendingPoolStorage {
                 }
                 self.remove_tx_with_lowest_fee_priority();
             }
-
             self.txs_by_fee_priority
                 .insert(prioritized_tx.fee_priority.clone(), tx_key.clone());
             self.txs_by_timelock_priority

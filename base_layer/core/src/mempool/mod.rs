@@ -26,6 +26,7 @@ mod config;
 mod consts;
 #[cfg(feature = "base_node")]
 mod error;
+#[allow(clippy::module_inception)]
 #[cfg(feature = "base_node")]
 mod mempool;
 #[cfg(feature = "base_node")]

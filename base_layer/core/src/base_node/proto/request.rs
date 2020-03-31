@@ -66,10 +66,7 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchHeaders(block_heights) => ProtoNodeCommsRequest::FetchHeaders(block_heights.into()),
             FetchHeadersWithHashes(block_hashes) => ProtoNodeCommsRequest::FetchHeadersWithHashes(block_hashes.into()),
             FetchHeadersAfter(hashes, stopping_hash) => {
-                ProtoNodeCommsRequest::FetchHeadersAfter(ProtoFetchHeadersAfter {
-                    hashes: hashes.into(),
-                    stopping_hash: stopping_hash.into(),
-                })
+                ProtoNodeCommsRequest::FetchHeadersAfter(ProtoFetchHeadersAfter { hashes, stopping_hash })
             },
             FetchUtxos(hash_outputs) => ProtoNodeCommsRequest::FetchUtxos(hash_outputs.into()),
             FetchBlocks(block_heights) => ProtoNodeCommsRequest::FetchBlocks(block_heights.into()),

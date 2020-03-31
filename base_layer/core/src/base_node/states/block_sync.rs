@@ -379,7 +379,7 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
                 Err(e) => return Err(BlockSyncError::ChainStorageError(e)),
             }
         }
-        if block_nums.len() == 0 {
+        if block_nums.is_empty() {
             return Ok(());
         }
         info!(target: LOG_TARGET, "Retrying block add. Attempt {}", attempt);

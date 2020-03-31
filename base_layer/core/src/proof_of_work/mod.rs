@@ -24,7 +24,9 @@ mod blake_pow;
 mod diff_adj_manager;
 mod difficulty;
 mod error;
+#[allow(clippy::enum_variant_names)]
 mod monero_rx;
+#[allow(clippy::module_inception)]
 mod proof_of_work;
 
 #[cfg(test)]

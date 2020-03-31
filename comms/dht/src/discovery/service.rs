@@ -150,47 +150,44 @@ impl DhtDiscoveryService {
 
     async fn handle_connection_manager_event(&mut self, event: &ConnectionManagerEvent) {
         use ConnectionManagerEvent::*;
-        match event {
-            // The connection manager could not dial the peer on any address
-            PeerConnectFailed(node_id, ConnectionManagerError::DialConnectFailedAllAddresses) => {
-                // Send out a discovery for that peer without keeping track of it as an inflight discovery
-                match self.peer_manager.find_by_node_id(node_id).await {
-                    Ok(peer) => {
-                        if peer.connection_stats.failed_attempts() > MAX_FAILED_ATTEMPTS_MARK_PEER_OFFLINE {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Deleting stale peer '{}' because this node failed to connect to them {} times",
-                                peer.node_id.short_str(),
-                                MAX_FAILED_ATTEMPTS_MARK_PEER_OFFLINE
-                            );
-                            if let Err(err) = self.peer_manager.set_offline(&peer.public_key, true).await {
-                                error!(target: LOG_TARGET, "Failed to mark peer as offline because '{:?}'", err);
-                            }
-                        } else {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Attempting to discover peer '{}' because we failed to connect on all addresses for \
-                                 the peer",
-                                peer.node_id.short_str()
-                            );
-                            // Attempt to discover them
-                            let request = DiscoverPeerRequest {
-                                dest_public_key: Box::new(peer.public_key),
-                                // TODO: This should be the node region, not the node id
-                                dest_node_id: Some(peer.node_id),
-                                destination: Default::default(),
-                            };
-                            // Don't need to be notified for this discovery
-                            let (reply_tx, _) = oneshot::channel();
-                            if let Err(err) = self.initiate_peer_discovery(request, reply_tx).await {
-                                error!(target: LOG_TARGET, "Error sending discovery message: {:?}", err);
-                            }
+        // The connection manager could not dial the peer on any address
+        if let PeerConnectFailed(node_id, ConnectionManagerError::DialConnectFailedAllAddresses) = event {
+            // Send out a discovery for that peer without keeping track of it as an inflight discovery
+            match self.peer_manager.find_by_node_id(node_id).await {
+                Ok(peer) => {
+                    if peer.connection_stats.failed_attempts() > MAX_FAILED_ATTEMPTS_MARK_PEER_OFFLINE {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Deleting stale peer '{}' because this node failed to connect to them {} times",
+                            peer.node_id.short_str(),
+                            MAX_FAILED_ATTEMPTS_MARK_PEER_OFFLINE
+                        );
+                        if let Err(err) = self.peer_manager.set_offline(&peer.public_key, true).await {
+                            error!(target: LOG_TARGET, "Failed to mark peer as offline because '{:?}'", err);
                         }
-                    },
-                    Err(err) => error!(target: LOG_TARGET, "{:?}", err),
-                }
-            },
-            _ => {},
+                    } else {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Attempting to discover peer '{}' because we failed to connect on all addresses for the \
+                             peer",
+                            peer.node_id.short_str()
+                        );
+                        // Attempt to discover them
+                        let request = DiscoverPeerRequest {
+                            dest_public_key: Box::new(peer.public_key),
+                            // TODO: This should be the node region, not the node id
+                            dest_node_id: Some(peer.node_id),
+                            destination: Default::default(),
+                        };
+                        // Don't need to be notified for this discovery
+                        let (reply_tx, _) = oneshot::channel();
+                        if let Err(err) = self.initiate_peer_discovery(request, reply_tx).await {
+                            error!(target: LOG_TARGET, "Error sending discovery message: {:?}", err);
+                        }
+                    }
+                },
+                Err(err) => error!(target: LOG_TARGET, "{:?}", err),
+            }
         }
     }
 

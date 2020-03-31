@@ -38,11 +38,11 @@ where PK: PublicKey + DiffieHellmanSharedSecret<PK = PK> {
 }
 
 pub fn decrypt(cipher_key: &CommsPublicKey, cipher_text: &[u8]) -> Result<Vec<u8>, CipherError> {
-    ChaCha20::open_with_integral_nonce(cipher_text, cipher_key.as_bytes())
+    ChaCha20::open_with_integral_nonce(&cipher_text.to_vec(), cipher_key.as_bytes())
 }
 
-pub fn encrypt(cipher_key: &CommsPublicKey, plain_text: &Vec<u8>) -> Result<Vec<u8>, CipherError> {
-    ChaCha20::seal_with_integral_nonce(plain_text, &cipher_key.to_vec())
+pub fn encrypt(cipher_key: &CommsPublicKey, plain_text: &[u8]) -> Result<Vec<u8>, CipherError> {
+    ChaCha20::seal_with_integral_nonce(&plain_text.to_vec(), cipher_key.as_bytes())
 }
 
 #[cfg(test)]

@@ -142,7 +142,7 @@ impl PeerConnectionMock {
                     reply_tx.send(Ok(negotiated_substream)).unwrap();
                 },
                 Err(err) => {
-                    reply_tx.send(Err(err.into())).unwrap();
+                    reply_tx.send(Err(err)).unwrap();
                 },
             },
             Disconnect(_, reply_tx) => {

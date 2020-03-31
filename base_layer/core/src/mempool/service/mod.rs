@@ -30,6 +30,7 @@ mod initializer;
 mod local_service;
 #[cfg(feature = "base_node")]
 mod outbound_interface;
+#[allow(clippy::module_inception)]
 #[cfg(feature = "base_node")]
 mod service;
 

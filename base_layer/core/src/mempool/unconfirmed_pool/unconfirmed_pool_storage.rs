@@ -76,6 +76,7 @@ impl UnconfirmedPoolStorage {
     /// space for higher priority transactions. The lowest priority transactions will be removed when the maximum
     /// capacity is reached and the new transaction has a higher priority than the currently stored lowest priority
     /// transaction.
+    #[allow(clippy::map_entry)]
     pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<(), UnconfirmedPoolError> {
         let tx_key = tx.body.kernels()[0].excess_sig.clone();
         if !self.txs_by_signature.contains_key(&tx_key) {
@@ -92,7 +93,6 @@ impl UnconfirmedPoolStorage {
                 }
                 self.remove_lowest_priority_tx();
             }
-
             self.txs_by_priority
                 .insert(prioritized_tx.priority.clone(), tx_key.clone());
             self.txs_by_signature.insert(tx_key, prioritized_tx);

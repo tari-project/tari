@@ -173,13 +173,13 @@ impl OutboundNodeCommsInterface {
         node_id: Option<NodeId>,
     ) -> Result<Vec<BlockHeader>, CommsInterfaceError>
     {
-        let to_hash = to_hash.unwrap_or(HashOutput::new());
+        let to_hash = to_hash.unwrap_or_default();
         if let NodeCommsResponse::FetchHeadersAfterResponse(headers) = self
             .request_sender
             .call((NodeCommsRequest::FetchHeadersAfter(from_hash, to_hash), node_id))
             .await??
         {
-            Ok(headers.clone())
+            Ok(headers)
         } else {
             Err(CommsInterfaceError::UnexpectedApiResponse)
         }

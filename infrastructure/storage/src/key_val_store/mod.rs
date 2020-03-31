@@ -22,6 +22,7 @@
 
 pub mod error;
 pub mod hmap_database;
+#[allow(clippy::module_inception)]
 pub mod key_val_store;
 pub mod lmdb_database;
 

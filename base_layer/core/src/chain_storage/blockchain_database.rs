@@ -979,7 +979,7 @@ fn rewind_to_height<T: BlockchainBackend>(
     txn.rewind_rp_mmr(steps_back);
     commit(db, txn)?;
 
-    let last_header = fetch_header_writeguard(db, height)?.clone();
+    let last_header = fetch_header_writeguard(db, height)?;
     let pow = ProofOfWork::new_from_difficulty(&last_header.pow, ProofOfWork::achieved_difficulty(&last_header));
     let pow = pow.total_accumulated_difficulty();
     update_metadata(metadata, db, height, last_header.hash(), pow)?;

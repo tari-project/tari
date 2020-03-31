@@ -136,6 +136,7 @@ impl ConsensusConstants {
         self.min_pow_difficulty
     }
 
+    #[allow(clippy::identity_op)]
     pub fn rincewind() -> Self {
         let target_block_interval = 60;
         let difficulty_block_window = 150;
