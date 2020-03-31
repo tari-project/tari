@@ -125,7 +125,7 @@ mod test {
         std::fs::create_dir(&path).unwrap_or_default();
         LMDBBuilder::new()
             .set_path(&path)
-            .set_environment_size(10)
+            .set_environment_size(50)
             .set_max_number_of_databases(2)
             .add_database(name, lmdb_zero::db::CREATE)
             .build()

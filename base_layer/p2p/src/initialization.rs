@@ -104,7 +104,7 @@ where
     };
     let datastore = LMDBBuilder::new()
         .set_path(data_path)
-        .set_environment_size(10)
+        .set_environment_size(50)
         .set_max_number_of_databases(1)
         .add_database(&peer_database_name, lmdb_zero::db::CREATE)
         .build()
@@ -268,7 +268,7 @@ where
 {
     let datastore = LMDBBuilder::new()
         .set_path(&config.datastore_path)
-        .set_environment_size(10)
+        .set_environment_size(50)
         .set_max_number_of_databases(1)
         .add_database(&config.peer_database_name, lmdb_zero::db::CREATE)
         .build()

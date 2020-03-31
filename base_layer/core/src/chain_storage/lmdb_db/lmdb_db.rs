@@ -464,7 +464,7 @@ pub fn create_lmdb_database(
     std::fs::create_dir_all(&path).unwrap_or_default();
     let lmdb_store = LMDBBuilder::new()
         .set_path(path.to_str().unwrap())
-        .set_environment_size(15)
+        .set_environment_size(50000)
         .set_max_number_of_databases(15)
         .add_database(LMDB_DB_METADATA, flags)
         .add_database(LMDB_DB_HEADERS, flags)
