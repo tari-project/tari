@@ -58,8 +58,10 @@ pub mod proto;
 #[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod service;
 
+use crate::transactions::types::Signature;
 use core::fmt::{Display, Error, Formatter};
 use serde::{Deserialize, Serialize};
+use tari_crypto::tari_utilities::hex::Hex;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct StatsResponse {
@@ -84,6 +86,37 @@ impl Display for StatsResponse {
             self.published_txs,
             self.total_weight
         )
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct StateResponse {
+    pub unconfirmed_pool: Vec<Signature>,
+    pub orphan_pool: Vec<Signature>,
+    pub pending_pool: Vec<Signature>,
+    pub reorg_pool: Vec<Signature>,
+}
+
+impl Display for StateResponse {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        fmt.write_str("----------------- Mempool -----------------\n")?;
+        fmt.write_str("--- Unconfirmed Pool ---\n")?;
+        for excess_sig in &self.unconfirmed_pool {
+            fmt.write_str(&format!("    {}\n", excess_sig.get_signature().to_hex()))?;
+        }
+        fmt.write_str("--- Orphan Pool ---\n")?;
+        for excess_sig in &self.orphan_pool {
+            fmt.write_str(&format!("    {}\n", excess_sig.get_signature().to_hex()))?;
+        }
+        fmt.write_str("--- Pending Pool ---\n")?;
+        for excess_sig in &self.pending_pool {
+            fmt.write_str(&format!("    {}\n", excess_sig.get_signature().to_hex()))?;
+        }
+        fmt.write_str("--- Reorg Pool ---\n")?;
+        for excess_sig in &self.reorg_pool {
+            fmt.write_str(&format!("    {}\n", excess_sig.get_signature().to_hex()))?;
+        }
+        Ok(())
     }
 }
 

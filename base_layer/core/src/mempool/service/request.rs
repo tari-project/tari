@@ -32,6 +32,7 @@ use tari_crypto::tari_utilities::hex::Hex;
 #[derive(Debug, Serialize, Deserialize)]
 pub enum MempoolRequest {
     GetStats,
+    GetState,
     GetTxStateWithExcessSig(Signature),
     SubmitTransaction(Transaction),
 }
@@ -40,6 +41,7 @@ impl Display for MempoolRequest {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
             MempoolRequest::GetStats => f.write_str("GetStats"),
+            MempoolRequest::GetState => f.write_str("GetState"),
             MempoolRequest::GetTxStateWithExcessSig(sig) => {
                 f.write_str(&format!("GetTxStateWithExcessSig ({})", sig.get_signature().to_hex()))
             },

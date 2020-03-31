@@ -36,6 +36,7 @@ impl TryInto<MempoolRequest> for ProtoMempoolRequest {
         let request = match self {
             // Field was not specified
             GetStats(_) => MempoolRequest::GetStats,
+            GetState(_) => MempoolRequest::GetState,
             GetTxStateWithExcessSig(excess_sig) => MempoolRequest::GetTxStateWithExcessSig(
                 excess_sig.try_into().map_err(|err: ByteArrayError| err.to_string())?,
             ),
@@ -50,6 +51,7 @@ impl From<MempoolRequest> for ProtoMempoolRequest {
         use MempoolRequest::*;
         match request {
             GetStats => ProtoMempoolRequest::GetStats(true),
+            GetState => ProtoMempoolRequest::GetState(true),
             GetTxStateWithExcessSig(excess_sig) => ProtoMempoolRequest::GetTxStateWithExcessSig(excess_sig.into()),
             SubmitTransaction(tx) => ProtoMempoolRequest::SubmitTransaction(tx.into()),
         }

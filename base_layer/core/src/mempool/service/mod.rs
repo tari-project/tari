@@ -39,6 +39,8 @@ pub use error::MempoolServiceError;
 #[cfg(feature = "base_node")]
 pub use initializer::MempoolServiceInitializer;
 #[cfg(feature = "base_node")]
+pub use local_service::LocalMempoolService;
+#[cfg(feature = "base_node")]
 pub use outbound_interface::OutboundMempoolServiceInterface;
 #[cfg(feature = "base_node")]
 pub use service::MempoolService;

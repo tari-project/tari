@@ -111,6 +111,15 @@ impl ReorgPool {
             .len())
     }
 
+    /// Returns all transaction stored in the ReorgPool.
+    pub fn snapshot(&self) -> Result<Vec<Arc<Transaction>>, ReorgPoolError> {
+        Ok(self
+            .pool_storage
+            .write()
+            .map_err(|e| ReorgPoolError::BackendError(e.to_string()))?
+            .snapshot())
+    }
+
     /// Returns the total weight of all transactions stored in the pool.
     pub fn calculate_weight(&self) -> Result<u64, ReorgPoolError> {
         Ok(self

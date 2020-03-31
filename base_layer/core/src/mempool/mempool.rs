@@ -30,6 +30,7 @@ use crate::{
         reorg_pool::ReorgPool,
         unconfirmed_pool::UnconfirmedPool,
         MempoolConfig,
+        StateResponse,
         StatsResponse,
         TxStorageResponse,
     },
@@ -249,6 +250,40 @@ where T: BlockchainBackend
             timelocked_txs: self.pending_pool.len()?,
             published_txs: self.reorg_pool.len()?,
             total_weight: self.calculate_weight()?,
+        })
+    }
+
+    /// Gathers and returns a breakdown of all the transaction in the Mempool.
+    pub fn state(&self) -> Result<StateResponse, MempoolError> {
+        let unconfirmed_pool = self
+            .unconfirmed_pool
+            .snapshot()?
+            .iter()
+            .map(|tx| tx.body.kernels()[0].excess_sig.clone())
+            .collect::<Vec<_>>();
+        let orphan_pool = self
+            .orphan_pool
+            .snapshot()?
+            .iter()
+            .map(|tx| tx.body.kernels()[0].excess_sig.clone())
+            .collect::<Vec<_>>();
+        let pending_pool = self
+            .pending_pool
+            .snapshot()?
+            .iter()
+            .map(|tx| tx.body.kernels()[0].excess_sig.clone())
+            .collect::<Vec<_>>();
+        let reorg_pool = self
+            .reorg_pool
+            .snapshot()?
+            .iter()
+            .map(|tx| tx.body.kernels()[0].excess_sig.clone())
+            .collect::<Vec<_>>();
+        Ok(StateResponse {
+            unconfirmed_pool,
+            orphan_pool,
+            pending_pool,
+            reorg_pool,
         })
     }
 }
