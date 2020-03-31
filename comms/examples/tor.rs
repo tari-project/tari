@@ -152,7 +152,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
 {
     let datastore = LMDBBuilder::new()
         .set_path(database_path.to_str().unwrap())
-        .set_environment_size(10)
+        .set_environment_size(50)
         .set_max_number_of_databases(1)
         .add_database("peerdb", lmdb_zero::db::CREATE)
         .build()

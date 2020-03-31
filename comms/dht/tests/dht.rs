@@ -63,7 +63,7 @@ fn create_peer_storage(peers: Vec<Peer>) -> CommsDatabase {
     let database_name = random::string(8);
     let datastore = LMDBBuilder::new()
         .set_path(create_temporary_data_path().to_str().unwrap())
-        .set_environment_size(10)
+        .set_environment_size(50)
         .set_max_number_of_databases(1)
         .add_database(&database_name, lmdb_zero::db::CREATE)
         .build()

@@ -137,7 +137,7 @@ pub fn make_peer_manager() -> Arc<PeerManager> {
     let path = create_temporary_data_path();
     let datastore = LMDBBuilder::new()
         .set_path(path.to_str().unwrap())
-        .set_environment_size(10)
+        .set_environment_size(50)
         .set_max_number_of_databases(1)
         .add_database(&database_name, lmdb_zero::db::CREATE)
         .build()
