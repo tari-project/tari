@@ -2131,7 +2131,7 @@ pub unsafe extern "C" fn comms_config_create(
                         max_concurrent_inbound_tasks: 100,
                         outbound_buffer_size: 100,
                         dht: DhtConfig {
-                            discovery_request_timeout: Duration::from_secs(30),
+                            discovery_request_timeout: Duration::from_secs(60),
                             ..Default::default()
                         },
                         // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field

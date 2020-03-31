@@ -89,10 +89,15 @@ impl TransactionBackend for TransactionMemoryDatabase {
                 .pending_inbound_transactions
                 .get(t)
                 .map(|v| DbValue::PendingInboundTransaction(Box::new(v.clone()))),
-            DbKey::CompletedTransaction(t) => db
-                .completed_transactions
-                .get(t)
-                .map(|v| DbValue::CompletedTransaction(Box::new(v.clone()))),
+            DbKey::CompletedTransaction(t) => {
+                let mut result = None;
+                if let Some(v) = db.completed_transactions.get(t) {
+                    if v.status != TransactionStatus::Cancelled {
+                        result = Some(DbValue::CompletedTransaction(Box::new(v.clone())));
+                    }
+                }
+                result
+            },
             DbKey::PendingCoinbaseTransaction(t) => db
                 .pending_coinbase_transactions
                 .get(t)
@@ -106,7 +111,16 @@ impl TransactionBackend for TransactionMemoryDatabase {
             DbKey::PendingCoinbaseTransactions => Some(DbValue::PendingCoinbaseTransactions(
                 db.pending_coinbase_transactions.clone(),
             )),
-            DbKey::CompletedTransactions => Some(DbValue::CompletedTransactions(db.completed_transactions.clone())),
+            DbKey::CompletedTransactions => {
+                // Filter out cancelled transactions
+                let mut result = HashMap::new();
+                for (k, v) in db.completed_transactions.iter() {
+                    if v.status != TransactionStatus::Cancelled {
+                        result.insert(k.clone(), v.clone());
+                    }
+                }
+                Some(DbValue::CompletedTransactions(result))
+            },
         };
 
         Ok(result)
@@ -296,7 +310,27 @@ impl TransactionBackend for TransactionMemoryDatabase {
             .completed_transactions
             .get_mut(&tx_id)
             .ok_or_else(|| TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(tx_id)))?;
+
+        if completed_tx.status == TransactionStatus::Cancelled {
+            return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
+                tx_id,
+            )));
+        }
+
         completed_tx.status = TransactionStatus::Mined;
+
+        Ok(())
+    }
+
+    fn cancel_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+        let mut db = acquire_write_lock!(self.db);
+
+        let mut completed_tx = db
+            .completed_transactions
+            .get_mut(&tx_id)
+            .ok_or_else(|| TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(tx_id)))?;
+
+        completed_tx.status = TransactionStatus::Cancelled;
 
         Ok(())
     }

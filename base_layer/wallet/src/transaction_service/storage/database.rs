@@ -79,6 +79,8 @@ pub trait TransactionBackend: Send + Sync {
     fn broadcast_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Indicated that a completed transaction has been detected as mined on the base layer
     fn mine_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
+    /// Cancel Completed transaction, this will update the transaction status
+    fn cancel_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Update a completed transactions timestamp for use in test data generation
     #[cfg(feature = "test_harness")]
     fn update_completed_transaction_timestamp(
@@ -101,6 +103,8 @@ pub enum TransactionStatus {
     Imported,
     /// This transaction is still being negotiated by the parties
     Pending,
+    /// This transaction has been cancelled
+    Cancelled,
 }
 
 impl TryFrom<i32> for TransactionStatus {
@@ -113,6 +117,7 @@ impl TryFrom<i32> for TransactionStatus {
             2 => Ok(TransactionStatus::Mined),
             3 => Ok(TransactionStatus::Imported),
             4 => Ok(TransactionStatus::Pending),
+            5 => Ok(TransactionStatus::Cancelled),
             _ => Err(TransactionStorageError::ConversionError),
         }
     }
@@ -530,7 +535,7 @@ where T: TransactionBackend + 'static
 
     pub async fn cancel_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.write(WriteOperation::Remove(DbKey::CompletedTransaction(tx_id))))
+        tokio::task::spawn_blocking(move || db_clone.cancel_completed_transaction(tx_id))
             .await
             .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(())
