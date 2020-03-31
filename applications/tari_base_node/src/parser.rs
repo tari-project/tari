@@ -33,6 +33,7 @@ use rustyline::{
 };
 use rustyline_derive::{Helper, Highlighter, Validator};
 use std::{
+    io::{self, Write},
     str::FromStr,
     string::ToString,
     sync::{
@@ -678,21 +679,31 @@ impl Parser {
                 .pop()
                 .expect("Could not retrieve tip header from db");
             let mut missing_blocks = Vec::new();
+            let mut missing_headers = Vec::new();
+            print!("Searching for height: ");
             while height > 0 {
+                print!("{}", height);
+                io::stdout().flush().unwrap();
                 let block = node.get_blocks(vec![height]).await;
-                println!("searching for height: {}", height);
                 if block.is_err() {
                     // for some apparent reason this block is missing, means we have to ask for it again
-                    missing_blocks.push(current_header.hash());
-                    println!("missing block for height {}", height);
+                    missing_blocks.push((current_header.hash().to_hex(), height));
                 };
                 height -= 1;
                 let next_header = node.get_headers(vec![height]).await;
                 if next_header.is_err() {
                     // this header is missing, so we stop here and need to ask for this header
-                    println!("missing header for {}", height);
+                    missing_headers.push(height);
                 };
                 current_header = next_header.unwrap().pop().expect("Could not retrieve header from db");
+                print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
+            }
+            println!("Complete");
+            for missing_block in missing_blocks {
+                println!("Missing block at height: {} {}", missing_block.1, missing_block.0);
+            }
+            for missing_header_height in missing_headers {
+                println!("Missing header at height: {}", missing_header_height)
             }
         });
     }
