@@ -1,0 +1,8 @@
+
+# Copy env-sample to .env if need be ...
+
+# Package Signing/Notarization Envs
+#osxSigDevIDInstaller="Developer ID Installer: XXXX (XXXXXXXXXX)"
+#osxUsername="email@example.com"
+#osxPassword="@keychain:Lable"
+#osxASCProvider="XXXXXXXXX"
