@@ -690,7 +690,7 @@ impl Parser {
                 let block = node.get_blocks(vec![height]).await;
                 if block.is_err() {
                     // for some apparent reason this block is missing, means we have to ask for it again
-                    missing_blocks.push((current_header.hash().to_hex(), height));
+                    missing_blocks.push((height));
                 };
                 height -= 1;
                 let next_header = node.get_headers(vec![height]).await;
@@ -698,12 +698,11 @@ impl Parser {
                     // this header is missing, so we stop here and need to ask for this header
                     missing_headers.push(height);
                 };
-                current_header = next_header.unwrap().pop().expect("Could not retrieve header from db");
                 print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
             }
             println!("Complete");
             for missing_block in missing_blocks {
-                println!("Missing block at height: {} {}", missing_block.1, missing_block.0);
+                println!("Missing block at height: {}", missing_block);
             }
             for missing_header_height in missing_headers {
                 println!("Missing header at height: {}", missing_header_height)
