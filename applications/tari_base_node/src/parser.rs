@@ -674,13 +674,6 @@ impl Parser {
             let meta = node.get_metadata().await.expect("Could not retrieve chain meta");
 
             let mut height = meta.height_of_longest_chain.expect("Could not retrieve chain height");
-
-            let mut current_header = node
-                .get_headers(vec![height])
-                .await
-                .expect("Could not retrieve tip header from db")
-                .pop()
-                .expect("Could not retrieve tip header from db");
             let mut missing_blocks = Vec::new();
             let mut missing_headers = Vec::new();
             print!("Searching for height: ");
@@ -690,7 +683,7 @@ impl Parser {
                 let block = node.get_blocks(vec![height]).await;
                 if block.is_err() {
                     // for some apparent reason this block is missing, means we have to ask for it again
-                    missing_blocks.push((height));
+                    missing_blocks.push(height);
                 };
                 height -= 1;
                 let next_header = node.get_headers(vec![height]).await;

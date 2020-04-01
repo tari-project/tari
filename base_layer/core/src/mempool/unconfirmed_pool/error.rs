@@ -27,8 +27,5 @@ use derive_error::Error;
 pub enum UnconfirmedPoolError {
     /// The HashMap and BTreeMap are out of sync
     StorageOutofSync,
-    /// A problem has been encountered with the storage backend.
-    #[error(non_std, no_from)]
-    BackendError(String),
     PriorityError(PriorityError),
 }
