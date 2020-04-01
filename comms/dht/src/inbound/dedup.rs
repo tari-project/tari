@@ -51,9 +51,7 @@ impl<S> DedupMiddleware<S> {
 }
 
 impl<S> Service<DhtInboundMessage> for DedupMiddleware<S>
-where
-    S: Service<DhtInboundMessage, Response = ()> + Clone + 'static,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clone
 {
     type Error = PipelineError;
     type Response = ();
@@ -70,9 +68,7 @@ where
 }
 
 impl<S> DedupMiddleware<S>
-where
-    S: Service<DhtInboundMessage, Response = ()>,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<DhtInboundMessage, Response = (), Error = PipelineError>
 {
     pub async fn process_message(
         next_service: S,
@@ -99,7 +95,7 @@ where
             );
             return Ok(());
         }
-        next_service.oneshot(message).await.map_err(PipelineError::from_debug)
+        next_service.oneshot(message).await
     }
 
     fn hash_message(message: &DhtInboundMessage) -> Vec<u8> {

@@ -37,7 +37,9 @@ impl PipelineError {
 
 impl From<&str> for PipelineError {
     fn from(s: &str) -> Self {
-        Self::from_debug(s)
+        Self {
+            err_string: s.to_owned(),
+        }
     }
 }
 

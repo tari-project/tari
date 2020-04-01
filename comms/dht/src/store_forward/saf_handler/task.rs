@@ -116,9 +116,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             // Not a SAF message, call downstream middleware
             _ => {
                 trace!(target: LOG_TARGET, "Passing message onto next service");
-                if let Err(err) = self.next_service.oneshot(message).await {
-                    return Err(PipelineError::from_debug(err));
-                }
+                self.next_service.oneshot(message).await?;
             },
         }
 
@@ -330,6 +328,15 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .try_into()
                 .map_err(StoreAndForwardError::DhtMessageError)?;
 
+            if dht_header.message_type.is_dht_message() {
+                trace!(
+                    target: LOG_TARGET,
+                    "Got stored DHT message type '{}' from peer '{}'",
+                    dht_header.message_type,
+                    source_peer.node_id.short_str()
+                );
+            }
+
             let dht_flags = dht_header.flags;
 
             let origin = dht_header
@@ -342,8 +349,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             // Verify the signature
             Self::check_signature(origin, &message.encrypted_body)?;
             // Check that the message has not already been received.
-            // The current thread runtime is used because calls to the DHT actor are async
-            // let mut rt = runtime::Builder::new().basic_scheduler().build()?;
             Self::check_duplicate(&mut dht_requester, &message.encrypted_body).await?;
 
             // Attempt to decrypt the message (if applicable), and deserialize it

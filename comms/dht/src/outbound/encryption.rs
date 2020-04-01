@@ -68,9 +68,7 @@ impl<S> EncryptionService<S> {
 }
 
 impl<S> Service<DhtOutboundMessage> for EncryptionService<S>
-where
-    S: Service<DhtOutboundMessage, Response = ()> + Clone,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError> + Clone
 {
     type Error = PipelineError;
     type Response = ();
@@ -87,9 +85,7 @@ where
 }
 
 impl<S> EncryptionService<S>
-where
-    S: Service<DhtOutboundMessage, Response = ()>,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 {
     async fn handle_message(
         next_service: S,
@@ -118,7 +114,7 @@ where
             },
         };
 
-        next_service.oneshot(message).await.map_err(PipelineError::from_debug)
+        next_service.oneshot(message).await
     }
 }
 

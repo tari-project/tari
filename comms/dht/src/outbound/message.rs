@@ -184,7 +184,7 @@ impl fmt::Display for DhtOutboundMessage {
             self.dht_header.message_type,
             self.destination_peer,
             self.dht_header,
-            self.comms_flags,
+            self.dht_header.flags,
             self.encryption,
             self.tag
         )

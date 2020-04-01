@@ -1,6 +1,5 @@
 //! Future types
 
-use super::error::{self, Error};
 use futures::ready;
 use pin_project::{pin_project, project};
 use std::{
@@ -8,6 +7,7 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
+use tari_comms::pipeline::PipelineError;
 use tower::Service;
 
 /// Filtered response future
@@ -37,9 +37,8 @@ enum State<Request, U> {
 
 impl<F, T, S, Request> ResponseFuture<F, S, Request>
 where
-    F: Future<Output = Result<T, Error>>,
-    S: Service<Request>,
-    S::Error: Into<error::Source>,
+    F: Future<Output = Result<T, PipelineError>>,
+    S: Service<Request, Error = PipelineError>,
 {
     pub(crate) fn new(request: Request, check: F, service: S) -> Self {
         ResponseFuture {
@@ -52,11 +51,10 @@ where
 
 impl<F, T, S, Request> Future for ResponseFuture<F, S, Request>
 where
-    F: Future<Output = Result<T, Error>>,
-    S: Service<Request>,
-    S::Error: Into<error::Source>,
+    F: Future<Output = Result<T, PipelineError>>,
+    S: Service<Request, Error = PipelineError>,
 {
-    type Output = Result<S::Response, Error>;
+    type Output = Result<S::Response, PipelineError>;
 
     #[project]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -83,7 +81,7 @@ where
                     }
                 },
                 State::WaitResponse(response) => {
-                    return Poll::Ready(ready!(response.poll(cx)).map_err(Error::inner));
+                    return Poll::Ready(ready!(response.poll(cx)));
                 },
             }
         }

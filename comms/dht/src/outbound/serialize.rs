@@ -53,9 +53,7 @@ impl<S> SerializeMiddleware<S> {
 }
 
 impl<S> Service<DhtOutboundMessage> for SerializeMiddleware<S>
-where
-    S: Service<OutboundMessage, Response = ()> + Clone + 'static,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone + 'static
 {
     type Error = PipelineError;
     type Response = ();
@@ -72,9 +70,7 @@ where
 }
 
 impl<S> SerializeMiddleware<S>
-where
-    S: Service<OutboundMessage, Response = ()>,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<OutboundMessage, Response = (), Error = PipelineError>
 {
     pub async fn serialize(
         next_service: S,
@@ -133,7 +129,6 @@ where
                 body,
             ))
             .await
-            .map_err(PipelineError::from_debug)
     }
 }
 

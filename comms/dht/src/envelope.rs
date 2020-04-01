@@ -270,6 +270,34 @@ impl NodeDestination {
             NodeDestination::NodeId(node_id) => node_id.to_vec(),
         }
     }
+
+    pub fn public_key(&self) -> Option<&CommsPublicKey> {
+        match self {
+            NodeDestination::Unknown => None,
+            NodeDestination::PublicKey(pk) => Some(pk),
+            NodeDestination::NodeId(_) => None,
+        }
+    }
+
+    pub fn node_id(&self) -> Option<&NodeId> {
+        match self {
+            NodeDestination::Unknown => None,
+            NodeDestination::PublicKey(_) => None,
+            NodeDestination::NodeId(node_id) => Some(node_id),
+        }
+    }
+}
+
+impl PartialEq<&CommsPublicKey> for NodeDestination {
+    fn eq(&self, other: &&CommsPublicKey) -> bool {
+        self.public_key().map(|pk| pk == *other).unwrap_or(false)
+    }
+}
+
+impl PartialEq<&NodeId> for NodeDestination {
+    fn eq(&self, other: &&NodeId) -> bool {
+        self.node_id().map(|node_id| node_id == *other).unwrap_or(false)
+    }
 }
 
 impl Display for NodeDestination {
@@ -301,6 +329,18 @@ impl TryFrom<Destination> for NodeDestination {
                 NodeId::from_bytes(&node_id).and_then(|node_id| Ok(NodeDestination::NodeId(Box::new(node_id))))
             },
         }
+    }
+}
+
+impl From<CommsPublicKey> for NodeDestination {
+    fn from(pk: CommsPublicKey) -> Self {
+        NodeDestination::PublicKey(Box::new(pk))
+    }
+}
+
+impl From<NodeId> for NodeDestination {
+    fn from(node_id: NodeId) -> Self {
+        NodeDestination::NodeId(Box::new(node_id))
     }
 }
 

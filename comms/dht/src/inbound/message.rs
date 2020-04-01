@@ -26,7 +26,6 @@ use std::{
     sync::Arc,
 };
 use tari_comms::{message::EnvelopeBody, peer_manager::Peer, types::CommsPublicKey};
-use tari_crypto::tari_utilities::hex::Hex;
 
 #[derive(Debug, Clone)]
 pub struct DhtInboundMessage {
@@ -50,11 +49,11 @@ impl Display for DhtInboundMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(
             f,
-            "DhtInboundMessage (v{}, Peer:{}, Header:{}, Body:{})",
-            self.version,
+            "\n---- DhtInboundMessage ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\n----",
+            self.body.len(),
+            self.dht_header.message_type,
             self.source_peer,
             self.dht_header,
-            self.body.to_hex()
         )
     }
 }

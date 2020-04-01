@@ -32,7 +32,6 @@ use crate::{
     proto::envelope::DhtMessageType,
     store_forward,
     tower_filter,
-    tower_filter::error::Error as FilterError,
     DhtConfig,
 };
 use futures::{channel::mpsc, future, Future};
@@ -161,9 +160,8 @@ impl Dht {
                       + Send,
     >
     where
-        S: Service<DecryptedDhtMessage, Response = ()> + Clone + Send + Sync + 'static,
+        S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + Sync + 'static,
         S::Future: Send,
-        S::Error: std::error::Error + Send + Sync + 'static,
     {
         let saf_storage = Arc::new(store_forward::SafStorage::new(
             self.config.saf_msg_cache_storage_capacity,
@@ -249,7 +247,7 @@ impl Dht {
     /// supported by the node.
     fn unsupported_saf_messages_filter(
         &self,
-    ) -> impl tower_filter::Predicate<DhtInboundMessage, Future = future::Ready<Result<(), FilterError>>> + Clone + Send
+    ) -> impl tower_filter::Predicate<DhtInboundMessage, Future = future::Ready<Result<(), PipelineError>>> + Clone + Send
     {
         let node_identity = Arc::clone(&self.node_identity);
         move |msg: &DhtInboundMessage| {
@@ -265,7 +263,9 @@ impl Dht {
                          supported by this node. Discarding message.",
                         msg.source_peer.public_key
                     );
-                    future::ready(Err(FilterError::rejected()))
+                    future::ready(Err(PipelineError::from_debug(
+                        "Message filtered out because store and forward is not supported by this node",
+                    )))
                 },
                 _ => future::ready(Ok(())),
             }
