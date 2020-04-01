@@ -24,11 +24,20 @@ use crate::{
     blocks::Block,
     mempool::{
         consts::{MEMPOOL_UNCONFIRMED_POOL_STORAGE_CAPACITY, MEMPOOL_UNCONFIRMED_POOL_WEIGHT_TRANSACTION_SKIP_COUNT},
-        unconfirmed_pool::{UnconfirmedPoolError, UnconfirmedPoolStorage},
+        priority::{FeePriority, PrioritizedTransaction},
+        unconfirmed_pool::UnconfirmedPoolError,
     },
     transactions::{transaction::Transaction, types::Signature},
 };
-use std::sync::{Arc, RwLock};
+use log::*;
+use std::{
+    collections::{BTreeMap, HashMap},
+    convert::TryFrom,
+    sync::Arc,
+};
+use tari_crypto::tari_utilities::hex::Hex;
+
+pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
 /// Configuration for the UnconfirmedPool
 #[derive(Clone, Copy)]
@@ -51,110 +60,171 @@ impl Default for UnconfirmedPoolConfig {
 
 /// The Unconfirmed Transaction Pool consists of all unconfirmed transactions that are ready to be included in a block
 /// and they are prioritised according to the priority metric.
+/// The txs_by_signature HashMap is used to find a transaction using its excess_sig, this functionality is used to match
+/// transactions included in blocks with transactions stored in the pool. The txs_by_priority BTreeMap prioritise the
+/// transactions in the pool according to TXPriority, it allows transactions to be inserted in sorted order by their
+/// priority. The txs_by_priority BTreeMap makes it easier to select the set of highest priority transactions that can
+/// be included in a block. The excess_sig of a transaction is used a key to uniquely identify a specific transaction in
+/// these containers.
 pub struct UnconfirmedPool {
-    pool_storage: Arc<RwLock<UnconfirmedPoolStorage>>,
+    config: UnconfirmedPoolConfig,
+    txs_by_signature: HashMap<Signature, PrioritizedTransaction>,
+    txs_by_priority: BTreeMap<FeePriority, Signature>,
 }
 
 impl UnconfirmedPool {
     /// Create a new UnconfirmedPool with the specified configuration
     pub fn new(config: UnconfirmedPoolConfig) -> Self {
         Self {
-            pool_storage: Arc::new(RwLock::new(UnconfirmedPoolStorage::new(config))),
+            config,
+            txs_by_signature: HashMap::new(),
+            txs_by_priority: BTreeMap::new(),
+        }
+    }
+
+    fn lowest_priority(&self) -> &FeePriority {
+        self.txs_by_priority.iter().next().unwrap().0
+    }
+
+    fn remove_lowest_priority_tx(&mut self) {
+        if let Some((priority, sig)) = self.txs_by_priority.iter().next().map(|(p, s)| (p.clone(), s.clone())) {
+            self.txs_by_signature.remove(&sig);
+            self.txs_by_priority.remove(&priority);
         }
     }
 
     /// Insert a new transaction into the UnconfirmedPool. Low priority transactions will be removed to make space for
     /// higher priority transactions. The lowest priority transactions will be removed when the maximum capacity is
     /// reached and the new transaction has a higher priority than the currently stored lowest priority transaction.
-    pub fn insert(&self, transaction: Arc<Transaction>) -> Result<(), UnconfirmedPoolError> {
-        self.pool_storage
-            .write()
-            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
-            .insert(transaction)
+    #[allow(clippy::map_entry)]
+    pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<(), UnconfirmedPoolError> {
+        let tx_key = tx.body.kernels()[0].excess_sig.clone();
+        if !self.txs_by_signature.contains_key(&tx_key) {
+            debug!(
+                target: LOG_TARGET,
+                "Inserting tx into unconfirmed pool: {}",
+                tx_key.get_signature().to_hex()
+            );
+            trace!(target: LOG_TARGET, "Transaction inserted: {}", tx);
+            let prioritized_tx = PrioritizedTransaction::try_from((*tx).clone())?;
+            if self.txs_by_signature.len() >= self.config.storage_capacity {
+                if prioritized_tx.priority < *self.lowest_priority() {
+                    return Ok(());
+                }
+                self.remove_lowest_priority_tx();
+            }
+            self.txs_by_priority
+                .insert(prioritized_tx.priority.clone(), tx_key.clone());
+            self.txs_by_signature.insert(tx_key, prioritized_tx);
+        }
+        Ok(())
     }
 
-    ///  Insert a set of new transactions into the UnconfirmedPool
-    pub fn insert_txs(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), UnconfirmedPoolError> {
-        self.pool_storage
-            .write()
-            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
-            .insert_txs(transactions)
+    /// Insert a set of new transactions into the UnconfirmedPool
+    pub fn insert_txs(&mut self, txs: Vec<Arc<Transaction>>) -> Result<(), UnconfirmedPoolError> {
+        for tx in txs.into_iter() {
+            self.insert(tx)?;
+        }
+        Ok(())
     }
 
     /// Check if a transaction is available in the UnconfirmedPool
-    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> Result<bool, UnconfirmedPoolError> {
-        Ok(self
-            .pool_storage
-            .read()
-            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
-            .has_tx_with_excess_sig(excess_sig))
+    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> bool {
+        self.txs_by_signature.contains_key(excess_sig)
     }
 
     /// Returns a set of the highest priority unconfirmed transactions, that can be included in a block
     pub fn highest_priority_txs(&self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError> {
-        self.pool_storage
-            .read()
-            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
-            .highest_priority_txs(total_weight)
+        let mut selected_txs: Vec<Arc<Transaction>> = Vec::new();
+        let mut curr_weight: u64 = 0;
+        let mut curr_skip_count: usize = 0;
+        for (_, tx_key) in self.txs_by_priority.iter().rev() {
+            let ptx = self
+                .txs_by_signature
+                .get(tx_key)
+                .ok_or_else(|| UnconfirmedPoolError::StorageOutofSync)?;
+
+            if curr_weight + ptx.weight <= total_weight {
+                curr_weight += ptx.weight;
+                selected_txs.push(ptx.transaction.clone());
+            } else {
+                // Check if some the next few txs with slightly lower priority wont fit in the remaining space.
+                curr_skip_count += 1;
+                if curr_skip_count >= self.config.weight_tx_skip_count {
+                    break;
+                }
+            }
+        }
+        Ok(selected_txs)
     }
 
     /// Remove all published transactions from the UnconfirmedPool and discard all double spend transactions.
     /// Returns a list of all transactions that were removed the unconfirmed pool as a result of appearing in the block.
-    pub fn remove_published_and_discard_double_spends(
-        &self,
-        published_block: &Block,
-    ) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError>
-    {
-        Ok(self
-            .pool_storage
-            .write()
-            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
-            .remove_published_and_discard_double_spends(published_block))
+    fn discard_double_spends(&mut self, published_block: &Block) {
+        let mut removed_tx_keys: Vec<Signature> = Vec::new();
+        for (tx_key, ptx) in self.txs_by_signature.iter() {
+            for input in ptx.transaction.body.inputs() {
+                if published_block.body.inputs().contains(input) {
+                    self.txs_by_priority.remove(&ptx.priority);
+                    removed_tx_keys.push(tx_key.clone());
+                }
+            }
+        }
+
+        for tx_key in &removed_tx_keys {
+            trace!(
+                target: LOG_TARGET,
+                "Removing double spends from unconfirmed pool: {:?}",
+                tx_key
+            );
+            self.txs_by_signature.remove(&tx_key);
+        }
     }
 
-    /// Returns the total number of unconfirmed transactions stored in the UnconfirmedPool
-    pub fn len(&self) -> Result<usize, UnconfirmedPoolError> {
-        Ok(self
-            .pool_storage
-            .read()
-            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
-            .len())
+    /// Remove all published transactions from the UnconfirmedPoolStorage and discard double spends
+    pub fn remove_published_and_discard_double_spends(&mut self, published_block: &Block) -> Vec<Arc<Transaction>> {
+        let mut removed_txs: Vec<Arc<Transaction>> = Vec::new();
+        published_block.body.kernels().iter().for_each(|kernel| {
+            if let Some(ptx) = self.txs_by_signature.get(&kernel.excess_sig) {
+                self.txs_by_priority.remove(&ptx.priority);
+                removed_txs.push(self.txs_by_signature.remove(&kernel.excess_sig).unwrap().transaction);
+            }
+        });
+        // First remove published transactions before discarding double spends
+        self.discard_double_spends(published_block);
+
+        removed_txs
+    }
+
+    /// Returns the total number of unconfirmed transactions stored in the UnconfirmedPool.
+    pub fn len(&self) -> usize {
+        self.txs_by_signature.len()
     }
 
     /// Returns all transaction stored in the UnconfirmedPool.
-    pub fn snapshot(&self) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError> {
-        Ok(self
-            .pool_storage
-            .read()
-            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
-            .snapshot())
+    pub fn snapshot(&self) -> Vec<Arc<Transaction>> {
+        self.txs_by_signature
+            .iter()
+            .map(|(_, ptx)| ptx.transaction.clone())
+            .collect()
     }
 
     /// Returns the total weight of all transactions stored in the pool.
-    pub fn calculate_weight(&self) -> Result<u64, UnconfirmedPoolError> {
-        Ok(self
-            .pool_storage
-            .read()
-            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
-            .calculate_weight())
+    pub fn calculate_weight(&self) -> u64 {
+        self.txs_by_signature
+            .iter()
+            .fold(0, |weight, (_, ptx)| weight + ptx.transaction.calculate_weight())
     }
 
     #[cfg(test)]
     /// Checks the consistency status of the Hashmap and BtreeMap
-    pub fn check_status(&self) -> Result<bool, UnconfirmedPoolError> {
-        Ok(self
-            .pool_storage
-            .read()
-            .map_err(|e| UnconfirmedPoolError::BackendError(e.to_string()))?
-            .check_status())
-    }
-}
-
-impl Clone for UnconfirmedPool {
-    fn clone(&self) -> Self {
-        UnconfirmedPool {
-            pool_storage: self.pool_storage.clone(),
+    pub fn check_status(&self) -> bool {
+        if self.txs_by_priority.len() != self.txs_by_signature.len() {
+            return false;
         }
+        self.txs_by_priority
+            .iter()
+            .all(|(_, tx_key)| self.txs_by_signature.contains_key(tx_key))
     }
 }
 
@@ -171,7 +241,7 @@ mod test {
         let tx4 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(30), inputs: 3, outputs: 1).0);
         let tx5 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(50), inputs: 5, outputs: 1).0);
 
-        let unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 4,
             weight_tx_skip_count: 3,
         });
@@ -180,33 +250,23 @@ mod test {
             .unwrap();
         // Check that lowest priority tx was removed to make room for new incoming transactions
         assert_eq!(
-            unconfirmed_pool
-                .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
-                .unwrap(),
+            unconfirmed_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig),
             true
         );
         assert_eq!(
-            unconfirmed_pool
-                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
-                .unwrap(),
+            unconfirmed_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig),
             false
         );
         assert_eq!(
-            unconfirmed_pool
-                .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
-                .unwrap(),
+            unconfirmed_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig),
             true
         );
         assert_eq!(
-            unconfirmed_pool
-                .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
-                .unwrap(),
+            unconfirmed_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig),
             true
         );
         assert_eq!(
-            unconfirmed_pool
-                .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
-                .unwrap(),
+            unconfirmed_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig),
             true
         );
         // Retrieve the set of highest priority unspent transactions
@@ -219,7 +279,7 @@ mod test {
         // Note that transaction tx5 could not be included as its weight was to big to fit into the remaining allocated
         // space, the second best transaction was then included
 
-        assert!(unconfirmed_pool.check_status().unwrap());
+        assert!(unconfirmed_pool.check_status());
     }
 
     #[test]
@@ -233,7 +293,7 @@ mod test {
         let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), inputs:3, outputs: 1).0);
         let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(75), inputs:2, outputs: 1).0);
 
-        let unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 10,
             weight_tx_skip_count: 3,
         });
@@ -243,7 +303,7 @@ mod test {
         // utx6 should not be added to unconfirmed_pool as it is an unknown transactions that was included in the block
         // by another node
 
-        let snapshot_txs = unconfirmed_pool.snapshot().unwrap();
+        let snapshot_txs = unconfirmed_pool.snapshot();
         assert_eq!(snapshot_txs.len(), 5);
         assert!(snapshot_txs.contains(&tx1));
         assert!(snapshot_txs.contains(&tx2));
@@ -259,43 +319,31 @@ mod test {
         let _ = unconfirmed_pool.remove_published_and_discard_double_spends(&published_block);
 
         assert_eq!(
-            unconfirmed_pool
-                .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
-                .unwrap(),
+            unconfirmed_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig),
             false
         );
         assert_eq!(
-            unconfirmed_pool
-                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
-                .unwrap(),
+            unconfirmed_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig),
             true
         );
         assert_eq!(
-            unconfirmed_pool
-                .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
-                .unwrap(),
+            unconfirmed_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig),
             false
         );
         assert_eq!(
-            unconfirmed_pool
-                .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
-                .unwrap(),
+            unconfirmed_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig),
             true
         );
         assert_eq!(
-            unconfirmed_pool
-                .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
-                .unwrap(),
+            unconfirmed_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig),
             false
         );
         assert_eq!(
-            unconfirmed_pool
-                .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
-                .unwrap(),
+            unconfirmed_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig),
             false
         );
 
-        assert!(unconfirmed_pool.check_status().unwrap());
+        assert!(unconfirmed_pool.check_status());
     }
 
     #[test]
@@ -314,7 +362,7 @@ mod test {
         let tx5 = Arc::new(tx5);
         let tx6 = Arc::new(tx6);
 
-        let unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 10,
             weight_tx_skip_count: 3,
         });
@@ -336,47 +384,33 @@ mod test {
             &consensus_constants,
         );
 
-        let _ = unconfirmed_pool
-            .remove_published_and_discard_double_spends(&published_block)
-            .unwrap(); // Double spends are discarded
+        let _ = unconfirmed_pool.remove_published_and_discard_double_spends(&published_block); // Double spends are discarded
 
         assert_eq!(
-            unconfirmed_pool
-                .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
-                .unwrap(),
+            unconfirmed_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig),
             false
         );
         assert_eq!(
-            unconfirmed_pool
-                .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
-                .unwrap(),
+            unconfirmed_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig),
             false
         );
         assert_eq!(
-            unconfirmed_pool
-                .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
-                .unwrap(),
+            unconfirmed_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig),
             false
         );
         assert_eq!(
-            unconfirmed_pool
-                .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
-                .unwrap(),
+            unconfirmed_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig),
             true
         );
         assert_eq!(
-            unconfirmed_pool
-                .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
-                .unwrap(),
+            unconfirmed_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig),
             false
         );
         assert_eq!(
-            unconfirmed_pool
-                .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
-                .unwrap(),
+            unconfirmed_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig),
             false
         );
 
-        assert!(unconfirmed_pool.check_status().unwrap());
+        assert!(unconfirmed_pool.check_status());
     }
 }

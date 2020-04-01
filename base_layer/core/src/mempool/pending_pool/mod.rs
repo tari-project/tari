@@ -23,9 +23,7 @@
 mod error;
 #[allow(clippy::module_inception)]
 mod pending_pool;
-mod pending_pool_storage;
 
 // Public re-exports
 pub use error::PendingPoolError;
 pub use pending_pool::{PendingPool, PendingPoolConfig};
-pub use pending_pool_storage::PendingPoolStorage;

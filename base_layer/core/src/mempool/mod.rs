@@ -30,6 +30,8 @@ mod error;
 #[cfg(feature = "base_node")]
 mod mempool;
 #[cfg(feature = "base_node")]
+mod mempool_storage;
+#[cfg(feature = "base_node")]
 mod orphan_pool;
 #[cfg(feature = "base_node")]
 mod pending_pool;
