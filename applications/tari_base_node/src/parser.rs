@@ -817,10 +817,10 @@ fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
         .ok()
 }
 
-/// Given a slice of headers, calculate the maximum, minimum and average perriods between them
+/// Given a slice of headers (in reverse order), calculate the maximum, minimum and average periods between them
 fn timing_stats(headers: &[BlockHeader]) -> (u64, u64, f64) {
     let (max, min) = headers.windows(2).fold((0u64, std::u64::MAX), |(max, min), next| {
-        let delta_t = match next[1].timestamp.checked_sub(next[0].timestamp) {
+        let delta_t = match next[0].timestamp.checked_sub(next[1].timestamp) {
             Some(delta) => delta.as_u64(),
             None => 0u64,
         };
@@ -829,7 +829,7 @@ fn timing_stats(headers: &[BlockHeader]) -> (u64, u64, f64) {
         (max, min)
     });
     let avg = if headers.len() >= 2 {
-        let dt = headers.last().unwrap().timestamp - headers.first().unwrap().timestamp;
+        let dt = headers.first().unwrap().timestamp - headers.last().unwrap().timestamp;
         let n = headers.len() - 1;
         dt.as_u64() as f64 / n as f64
     } else {
@@ -845,7 +845,7 @@ mod test {
 
     #[test]
     fn test_timing_stats() {
-        let headers = vec![100u64, 210, 300, 350, 500]
+        let headers = vec![500, 350, 300, 210, 100u64]
             .into_iter()
             .map(|t| BlockHeader {
                 timestamp: EpochTime::from(t),
@@ -860,7 +860,7 @@ mod test {
 
     #[test]
     fn timing_negative_blocks() {
-        let headers = vec![100u64, 90, 150]
+        let headers = vec![150, 90, 100u64]
             .into_iter()
             .map(|t| BlockHeader {
                 timestamp: EpochTime::from(t),
