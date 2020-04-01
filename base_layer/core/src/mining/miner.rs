@@ -125,9 +125,30 @@ impl Miner {
     async fn mining(mut self) -> Result<Miner, MinerError> {
         // Lets make sure its set to mine
         debug!(target: LOG_TARGET, "Miner asking for new candidate block to mine.");
-        let mut block_template = self.get_block_template().await?;
-        let output = self.add_coinbase(&mut block_template)?;
-        let mut block = self.get_block(block_template).await?;
+        let block_template = self.get_block_template().await;
+        if block_template.is_err() {
+            error!(
+                target: LOG_TARGET,
+                "Could not get block template from basenode {:?}.", block_template
+            );
+            return Ok(self);
+        };
+        let mut block_template = block_template.unwrap();
+        let output = self.add_coinbase(&mut block_template);
+        if output.is_err() {
+            error!(
+                target: LOG_TARGET,
+                "Could not add coinbase to block template {:?}.", output
+            );
+            return Ok(self);
+        };
+        let output = output.unwrap();
+        let block = self.get_block(block_template).await;
+        if block.is_err() {
+            error!(target: LOG_TARGET, "Could not get block from basenode {:?}.", block);
+            return Ok(self);
+        };
+        let mut block = block.unwrap();
         debug!(target: LOG_TARGET, "Miner got new block to mine.");
         let difficulty = self.get_req_difficulty().await?;
         let (tx, mut rx): (Sender<Option<BlockHeader>>, Receiver<Option<BlockHeader>>) = mpsc::channel(self.threads);
@@ -151,17 +172,24 @@ impl Miner {
                 // found block, lets ensure we kill all other threads
                 self.stop_mining_flag.store(true, Ordering::Relaxed);
                 block.header = r;
-                self.send_block(block).await.or_else(|e| {
-                    error!(target: LOG_TARGET, "Could not send block to base node. {:?}.", e);
-                    Err(e)
-                })?;
+                if self
+                    .send_block(block)
+                    .await
+                    .or_else(|e| {
+                        error!(target: LOG_TARGET, "Could not send block to base node. {:?}.", e);
+                        Err(e)
+                    })
+                    .is_err()
+                {
+                    break;
+                };
                 self.utxo_sender
                     .try_send(output)
                     .or_else(|e| {
                         error!(target: LOG_TARGET, "Could not send utxo to wallet. {:?}.", e);
                         Err(e)
                     })
-                    .map_err(|e| MinerError::CommunicationError(e.to_string()))?;
+                    .map_err(|e| MinerError::CommunicationError(e.to_string()));
                 break;
             }
         }
