@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::transactions::{
+    fee::Fee,
     tari_amount::*,
     transaction::*,
     types::{BlindingFactor, Commitment, CommitmentFactory, CryptoFactories, PrivateKey, RangeProofService},
@@ -265,6 +266,11 @@ impl AggregateBody {
             }
         }
         Ok(())
+    }
+
+    /// Returns the byte size or weight of a body
+    pub fn calculate_weight(&self) -> u64 {
+        Fee::calculate_weight(self.inputs().len(), self.outputs().len())
     }
 }
 
