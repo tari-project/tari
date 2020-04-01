@@ -642,7 +642,7 @@ impl Parser {
             let mut count = 0;
             let mut max = 0;
             let mut min = std::u64::MAX;
-            let mut last_header = headers[0].timestamp.as_u64();
+            let mut last_header = headers[headers.len() - 1].timestamp.as_u64();
             for header in headers.iter().rev().skip(1) {
                 count += 1;
                 let time = if header.timestamp.as_u64() <= last_header {
