@@ -22,7 +22,7 @@
 
 use crate::{
     blocks::blockheader::BlockHash,
-    chain_storage::{fetch_header, fetch_header_writeguard, BlockchainBackend, ChainMetadata},
+    chain_storage::{fetch_header, BlockchainBackend, ChainMetadata},
     consensus::ConsensusConstants,
     proof_of_work::{
         diff_adj_manager::error::DiffAdjManagerError,
@@ -34,11 +34,7 @@ use crate::{
     },
 };
 use log::*;
-use std::{
-    cmp,
-    collections::VecDeque,
-    sync::{RwLockReadGuard, RwLockWriteGuard},
-};
+use std::{cmp, collections::VecDeque};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable};
 
 pub const LOG_TARGET: &str = "c::pow::diff_adj_manager::diff_adj_storage";
@@ -95,7 +91,7 @@ impl DiffAdjStorage {
     // or update sync needs to be performed.
     fn check_sync_state<B: BlockchainBackend>(
         &self,
-        db: &RwLockReadGuard<B>,
+        db: &B,
         block_hash: &BlockHash,
         height: u64,
     ) -> Result<UpdateState, DiffAdjManagerError>
@@ -121,43 +117,8 @@ impl DiffAdjStorage {
         })
     }
 
-    // Check if the difficulty adjustment manager is in sync with specified height. It will also check if a full sync
-    // or update sync needs to be performed.
-    fn check_sync_state_writeguard<B: BlockchainBackend>(
-        &self,
-        db: &RwLockWriteGuard<B>,
-        block_hash: &BlockHash,
-        height: u64,
-    ) -> Result<UpdateState, DiffAdjManagerError>
-    {
-        Ok(match &self.sync_data {
-            Some((sync_height, sync_block_hash)) => {
-                if *sync_block_hash != *block_hash {
-                    if height < *sync_height {
-                        UpdateState::FullSync
-                    } else {
-                        let header = fetch_header_writeguard(db, *sync_height)?;
-                        if *sync_block_hash == header.hash() {
-                            UpdateState::SyncToTip
-                        } else {
-                            UpdateState::FullSync
-                        }
-                    }
-                } else {
-                    UpdateState::Synced
-                }
-            },
-            None => UpdateState::FullSync,
-        })
-    }
-
     // Performs an update on the difficulty adjustment manager based on the detected sync state.
-    fn update<B: BlockchainBackend>(
-        &mut self,
-        db: &RwLockReadGuard<B>,
-        height: u64,
-    ) -> Result<(), DiffAdjManagerError>
-    {
+    fn update<B: BlockchainBackend>(&mut self, db: &B, height: u64) -> Result<(), DiffAdjManagerError> {
         debug!(
             target: LOG_TARGET,
             "Updating difficulty adjustment manager to height:{}", height
@@ -174,31 +135,8 @@ impl DiffAdjStorage {
         Ok(())
     }
 
-    // Performs an update on the difficulty adjustment manager based on the detected sync state.
-    fn update_writeguard<B: BlockchainBackend>(
-        &mut self,
-        db: &RwLockWriteGuard<B>,
-        height: u64,
-    ) -> Result<(), DiffAdjManagerError>
-    {
-        let block_hash = fetch_header_writeguard(db, height)?.hash();
-        match self.check_sync_state_writeguard(db, &block_hash, height)? {
-            UpdateState::FullSync => self.sync_full_history_writeguard(db, block_hash, height)?,
-            UpdateState::SyncToTip => self.sync_to_chain_tip_writeguard(db, block_hash, height)?,
-            UpdateState::Synced => debug!(
-                target: LOG_TARGET,
-                "Difficulty adjustment manager is already synced to height:{}", height
-            ),
-        };
-        Ok(())
-    }
-
     // Retrieves the height of the longest chain from the blockchain db
-    fn get_height_of_longest_chain(
-        &self,
-        metadata: &RwLockReadGuard<ChainMetadata>,
-    ) -> Result<u64, DiffAdjManagerError>
-    {
+    fn get_height_of_longest_chain(&self, metadata: &ChainMetadata) -> Result<u64, DiffAdjManagerError> {
         metadata
             .height_of_longest_chain
             .ok_or_else(|| DiffAdjManagerError::EmptyBlockchain)
@@ -207,8 +145,8 @@ impl DiffAdjStorage {
     /// Returns the estimated target difficulty for the specified PoW algorithm at the chain tip.
     pub fn get_target_difficulty<B: BlockchainBackend>(
         &mut self,
-        metadata: &RwLockReadGuard<ChainMetadata>,
-        db: &RwLockReadGuard<B>,
+        metadata: &ChainMetadata,
+        db: &B,
         pow_algo: PowAlgorithm,
     ) -> Result<Difficulty, DiffAdjManagerError>
     {
@@ -219,31 +157,12 @@ impl DiffAdjStorage {
     /// Returns the estimated target difficulty for the specified PoW algorithm and provided height.
     pub fn get_target_difficulty_at_height<B: BlockchainBackend>(
         &mut self,
-        db: &RwLockReadGuard<B>,
+        db: &B,
         pow_algo: PowAlgorithm,
         height: u64,
     ) -> Result<Difficulty, DiffAdjManagerError>
     {
         self.update(db, height)?;
-        debug!(
-            target: LOG_TARGET,
-            "Getting target difficulty at height:{} for PoW:{}", height, pow_algo
-        );
-        Ok(match pow_algo {
-            PowAlgorithm::Monero => self.monero_lwma.get_difficulty(),
-            PowAlgorithm::Blake => cmp::max(self.min_pow_difficulty, self.blake_lwma.get_difficulty()),
-        })
-    }
-
-    /// Returns the estimated target difficulty for the specified PoW algorithm and provided height.
-    pub fn get_target_difficulty_at_height_writeguard<B: BlockchainBackend>(
-        &mut self,
-        db: &RwLockWriteGuard<B>,
-        pow_algo: PowAlgorithm,
-        height: u64,
-    ) -> Result<Difficulty, DiffAdjManagerError>
-    {
-        self.update_writeguard(db, height)?;
         debug!(
             target: LOG_TARGET,
             "Getting target difficulty at height:{} for PoW:{}", height, pow_algo
@@ -257,8 +176,8 @@ impl DiffAdjStorage {
     /// Returns the median timestamp of the past 11 blocks at the chain tip.
     pub fn get_median_timestamp<B: BlockchainBackend>(
         &mut self,
-        metadata: &RwLockReadGuard<ChainMetadata>,
-        db: &RwLockReadGuard<B>,
+        metadata: &ChainMetadata,
+        db: &B,
     ) -> Result<EpochTime, DiffAdjManagerError>
     {
         let height = self.get_height_of_longest_chain(metadata)?;
@@ -268,30 +187,11 @@ impl DiffAdjStorage {
     /// Returns the median timestamp of the past 11 blocks at the provided height.
     pub fn get_median_timestamp_at_height<B: BlockchainBackend>(
         &mut self,
-        db: &RwLockReadGuard<B>,
+        db: &B,
         height: u64,
     ) -> Result<EpochTime, DiffAdjManagerError>
     {
         self.update(db, height)?;
-        let mut length = self.timestamps.len();
-        if length == 0 {
-            return Err(DiffAdjManagerError::EmptyBlockchain);
-        }
-        let mut sorted_timestamps: Vec<EpochTime> = self.timestamps.clone().into();
-        sorted_timestamps.sort();
-        trace!(target: LOG_TARGET, "sorted median timestamps: {:?}", sorted_timestamps);
-        length /= 2; // we want the median, should be index  (MEDIAN_TIMESTAMP_COUNT/2)
-        Ok(sorted_timestamps[length])
-    }
-
-    /// Returns the median timestamp of the past 11 blocks at the provided height.
-    pub fn get_median_timestamp_at_height_writeguard<B: BlockchainBackend>(
-        &mut self,
-        db: &RwLockWriteGuard<B>,
-        height: u64,
-    ) -> Result<EpochTime, DiffAdjManagerError>
-    {
-        self.update_writeguard(db, height)?;
         let mut length = self.timestamps.len();
         if length == 0 {
             return Err(DiffAdjManagerError::EmptyBlockchain);
@@ -345,7 +245,7 @@ impl DiffAdjStorage {
     // Resets the DiffAdjStorage and perform a full sync using the blockchain db.
     fn sync_full_history<B: BlockchainBackend>(
         &mut self,
-        db: &RwLockReadGuard<B>,
+        db: &B,
         best_block: BlockHash,
         height_of_longest_chain: u64,
     ) -> Result<(), DiffAdjManagerError>
@@ -372,40 +272,10 @@ impl DiffAdjStorage {
         Ok(())
     }
 
-    // Resets the DiffAdjStorage and perform a full sync using the blockchain db.
-    fn sync_full_history_writeguard<B: BlockchainBackend>(
-        &mut self,
-        db: &RwLockWriteGuard<B>,
-        best_block: BlockHash,
-        height_of_longest_chain: u64,
-    ) -> Result<(), DiffAdjManagerError>
-    {
-        self.reset();
-        debug!(
-            target: LOG_TARGET,
-            "Syncing full difficulty adjustment manager history to height:{}", height_of_longest_chain
-        );
-
-        // TODO: Store the target difficulty so that we don't have to calculate it for the whole chain
-        for height in 0..=height_of_longest_chain {
-            let header = fetch_header_writeguard(db, height)?;
-            // keep MEDIAN_TIMESTAMP_COUNT blocks for median timestamp
-            // we need to keep the last bunch
-            self.timestamps.push_back(header.timestamp);
-            if self.timestamps.len() > self.median_timestamp_count {
-                let _ = self.timestamps.remove(0);
-            }
-            self.add(header.timestamp, header.pow)?;
-        }
-        self.sync_data = Some((height_of_longest_chain, best_block));
-
-        Ok(())
-    }
-
     // The difficulty adjustment manager has fallen behind, perform an update to the chain tip.
     fn sync_to_chain_tip<B: BlockchainBackend>(
         &mut self,
-        db: &RwLockReadGuard<B>,
+        db: &B,
         best_block: BlockHash,
         height_of_longest_chain: u64,
     ) -> Result<(), DiffAdjManagerError>
@@ -419,35 +289,6 @@ impl DiffAdjStorage {
             );
             for height in (sync_height + 1)..=height_of_longest_chain {
                 let header = fetch_header(db, height)?;
-                // add new timestamps
-                self.timestamps.push_back(header.timestamp);
-                if self.timestamps.len() > self.median_timestamp_count {
-                    self.timestamps.remove(0); // remove oldest
-                }
-                self.add(header.timestamp, header.pow)?;
-            }
-            self.sync_data = Some((height_of_longest_chain, best_block));
-        }
-        Ok(())
-    }
-
-    // The difficulty adjustment manager has fallen behind, perform an update to the chain tip.
-    fn sync_to_chain_tip_writeguard<B: BlockchainBackend>(
-        &mut self,
-        db: &RwLockWriteGuard<B>,
-        best_block: BlockHash,
-        height_of_longest_chain: u64,
-    ) -> Result<(), DiffAdjManagerError>
-    {
-        if let Some((sync_height, _)) = self.sync_data {
-            debug!(
-                target: LOG_TARGET,
-                "Syncing difficulty adjustment manager from height:{} to height:{}",
-                sync_height,
-                height_of_longest_chain
-            );
-            for height in (sync_height + 1)..=height_of_longest_chain {
-                let header = fetch_header_writeguard(db, height)?;
                 // add new timestamps
                 self.timestamps.push_back(header.timestamp);
                 if self.timestamps.len() > self.median_timestamp_count {

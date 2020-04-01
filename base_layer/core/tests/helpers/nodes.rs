@@ -53,7 +53,7 @@ use tari_core::{
         mocks::MockValidator,
         transaction_validators::TxInputAndMaturityValidator,
         StatelessValidation,
-        ValidationWriteGuard,
+        Validation,
     },
 };
 use tari_mmr::MmrCacheConfig;
@@ -159,7 +159,7 @@ impl BaseNodeBuilder {
 
     pub fn with_validators(
         mut self,
-        block: impl ValidationWriteGuard<Block, MemoryDatabase<HashDigest>> + 'static,
+        block: impl Validation<Block, MemoryDatabase<HashDigest>> + 'static,
         orphan: impl StatelessValidation<Block> + 'static,
     ) -> Self
     {

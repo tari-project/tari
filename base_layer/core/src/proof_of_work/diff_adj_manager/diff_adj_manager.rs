@@ -29,7 +29,7 @@ use crate::{
         PowAlgorithm,
     },
 };
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock};
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 /// The DiffAdjManager is used to calculate the current target difficulty based on PoW recorded in the latest blocks of
@@ -49,8 +49,8 @@ impl DiffAdjManager {
     /// Returns the estimated target difficulty for the specified PoW algorithm at the chain tip.
     pub fn get_target_difficulty<B: BlockchainBackend>(
         &self,
-        metadata: &RwLockReadGuard<ChainMetadata>,
-        db: &RwLockReadGuard<B>,
+        metadata: &ChainMetadata,
+        db: &B,
         pow_algo: PowAlgorithm,
     ) -> Result<Difficulty, DiffAdjManagerError>
     {
@@ -63,7 +63,7 @@ impl DiffAdjManager {
     /// Returns the estimated target difficulty for the specified PoW algorithm and provided height.
     pub fn get_target_difficulty_at_height<B: BlockchainBackend>(
         &self,
-        db: &RwLockReadGuard<B>,
+        db: &B,
         pow_algo: PowAlgorithm,
         height: u64,
     ) -> Result<Difficulty, DiffAdjManagerError>
@@ -74,25 +74,11 @@ impl DiffAdjManager {
             .get_target_difficulty_at_height(db, pow_algo, height)
     }
 
-    /// Returns the estimated target difficulty for the specified PoW algorithm and provided height.
-    pub fn get_target_difficulty_at_height_writeguard<B: BlockchainBackend>(
-        &self,
-        db: &RwLockWriteGuard<B>,
-        pow_algo: PowAlgorithm,
-        height: u64,
-    ) -> Result<Difficulty, DiffAdjManagerError>
-    {
-        self.diff_adj_storage
-            .write()
-            .map_err(|_| DiffAdjManagerError::PoisonedAccess)?
-            .get_target_difficulty_at_height_writeguard(db, pow_algo, height)
-    }
-
     /// Returns the median timestamp of the past 11 blocks at the chain tip.
     pub fn get_median_timestamp<B: BlockchainBackend>(
         &self,
-        metadata: &RwLockReadGuard<ChainMetadata>,
-        db: &RwLockReadGuard<B>,
+        metadata: &ChainMetadata,
+        db: &B,
     ) -> Result<EpochTime, DiffAdjManagerError>
     {
         self.diff_adj_storage
@@ -104,7 +90,7 @@ impl DiffAdjManager {
     /// Returns the median timestamp of the past 11 blocks at the provided height.
     pub fn get_median_timestamp_at_height<B: BlockchainBackend>(
         &self,
-        db: &RwLockReadGuard<B>,
+        db: &B,
         height: u64,
     ) -> Result<EpochTime, DiffAdjManagerError>
     {
@@ -112,19 +98,6 @@ impl DiffAdjManager {
             .write()
             .map_err(|_| DiffAdjManagerError::PoisonedAccess)?
             .get_median_timestamp_at_height(db, height)
-    }
-
-    /// Returns the median timestamp of the past 11 blocks at the provided height.
-    pub fn get_median_timestamp_at_height_writeguard<B: BlockchainBackend>(
-        &self,
-        db: &RwLockWriteGuard<B>,
-        height: u64,
-    ) -> Result<EpochTime, DiffAdjManagerError>
-    {
-        self.diff_adj_storage
-            .write()
-            .map_err(|_| DiffAdjManagerError::PoisonedAccess)?
-            .get_median_timestamp_at_height_writeguard(db, height)
     }
 }
 

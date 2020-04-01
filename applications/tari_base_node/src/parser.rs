@@ -558,7 +558,7 @@ impl Parser {
             println!("list-headers [amount of headers from top]");
             return;
         }
-        let mut handler = self.node_service.clone();
+        let handler = self.node_service.clone();
         self.executor.spawn(async move {
             let headers = Parser::get_headers(handler, command_arg).await;
             for header in headers {
@@ -632,7 +632,7 @@ impl Parser {
             return;
         }
 
-        let mut handler = self.node_service.clone();
+        let handler = self.node_service.clone();
         self.executor.spawn(async move {
             let headers = Parser::get_headers(handler, command_arg).await;
             let mut total = 0;

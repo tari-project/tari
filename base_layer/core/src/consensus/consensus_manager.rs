@@ -36,7 +36,7 @@ use crate::{
     transactions::tari_amount::MicroTari,
 };
 use derive_error::Error;
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable};
 
 #[derive(Debug, Error, Clone, PartialEq)]
@@ -115,8 +115,8 @@ impl ConsensusManager {
     /// Returns the estimated target difficulty for the specified PoW algorithm at the chain tip.
     pub fn get_target_difficulty<B: BlockchainBackend>(
         &self,
-        metadata: &RwLockReadGuard<ChainMetadata>,
-        db: &RwLockReadGuard<B>,
+        metadata: &ChainMetadata,
+        db: &B,
         pow_algo: PowAlgorithm,
     ) -> Result<Difficulty, ConsensusManagerError>
     {
@@ -131,7 +131,7 @@ impl ConsensusManager {
     /// Returns the estimated target difficulty for the specified PoW algorithm and provided height.
     pub fn get_target_difficulty_with_height<B: BlockchainBackend>(
         &self,
-        db: &RwLockReadGuard<B>,
+        db: &B,
         pow_algo: PowAlgorithm,
         height: u64,
     ) -> Result<Difficulty, ConsensusManagerError>
@@ -144,26 +144,11 @@ impl ConsensusManager {
         }
     }
 
-    pub fn get_target_difficulty_with_height_writeguard<B: BlockchainBackend>(
-        &self,
-        db: &RwLockWriteGuard<B>,
-        pow_algo: PowAlgorithm,
-        height: u64,
-    ) -> Result<Difficulty, ConsensusManagerError>
-    {
-        match self.access_diff_adj()?.as_ref() {
-            Some(v) => v
-                .get_target_difficulty_at_height_writeguard(db, pow_algo, height)
-                .map_err(ConsensusManagerError::DifficultyAdjustmentManagerError),
-            None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
-        }
-    }
-
     /// Returns the median timestamp of the past 11 blocks at the chain tip.
     pub fn get_median_timestamp<B: BlockchainBackend>(
         &self,
-        metadata: &RwLockReadGuard<ChainMetadata>,
-        db: &RwLockReadGuard<B>,
+        metadata: &ChainMetadata,
+        db: &B,
     ) -> Result<EpochTime, ConsensusManagerError>
     {
         match self.access_diff_adj()?.as_ref() {
@@ -177,27 +162,13 @@ impl ConsensusManager {
     /// Returns the median timestamp of the past 11 blocks at the provided height.
     pub fn get_median_timestamp_at_height<B: BlockchainBackend>(
         &self,
-        db: &RwLockReadGuard<B>,
+        db: &B,
         height: u64,
     ) -> Result<EpochTime, ConsensusManagerError>
     {
         match self.access_diff_adj()?.as_ref() {
             Some(v) => v
                 .get_median_timestamp_at_height(db, height)
-                .map_err(ConsensusManagerError::DifficultyAdjustmentManagerError),
-            None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
-        }
-    }
-
-    pub fn get_median_timestamp_at_height_writeguard<B: BlockchainBackend>(
-        &self,
-        db: &RwLockWriteGuard<B>,
-        height: u64,
-    ) -> Result<EpochTime, ConsensusManagerError>
-    {
-        match self.access_diff_adj()?.as_ref() {
-            Some(v) => v
-                .get_median_timestamp_at_height_writeguard(db, height)
                 .map_err(ConsensusManagerError::DifficultyAdjustmentManagerError),
             None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
         }

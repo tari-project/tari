@@ -40,11 +40,8 @@ pub mod async_db;
 // Public API exports
 pub use blockchain_database::{
     calculate_mmr_roots,
-    calculate_mmr_roots_writeguard,
     fetch_header,
-    fetch_header_writeguard,
     is_utxo,
-    is_utxo_writeguard,
     BlockAddResult,
     BlockchainBackend,
     BlockchainDatabase,
