@@ -34,12 +34,5 @@ mod traits;
 pub mod block_validators;
 pub mod mocks;
 pub use error::ValidationError;
-pub use traits::{
-    StatelessValidation,
-    StatelessValidator,
-    Validation,
-    ValidationWriteGuard,
-    Validator,
-    ValidatorWriteGuard,
-};
+pub use traits::{StatelessValidation, StatelessValidator, Validation, Validator};
 pub mod transaction_validators;

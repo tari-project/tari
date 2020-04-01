@@ -24,10 +24,8 @@ use crate::{
     chain_storage::{BlockchainBackend, ChainMetadata},
     validation::error::ValidationError,
 };
-use std::sync::{RwLockReadGuard, RwLockWriteGuard};
 
 pub type Validator<T, B> = Box<dyn Validation<T, B>>;
-pub type ValidatorWriteGuard<T, B> = Box<dyn ValidationWriteGuard<T, B>>;
 pub type StatelessValidator<T> = Box<dyn StatelessValidation<T>>;
 
 /// The core validation trait. Multiple `Validation` implementors can be chained together in a [ValidatorPipeline] to
@@ -37,25 +35,7 @@ pub trait Validation<T, B>: Send + Sync
 where B: BlockchainBackend
 {
     /// General validation code that can run independent of external state
-    fn validate(
-        &self,
-        item: &T,
-        db: &RwLockReadGuard<B>,
-        metadata: &RwLockReadGuard<ChainMetadata>,
-    ) -> Result<(), ValidationError>;
-}
-
-/// A write guard version of the core validation trait that allows access to the db backend using a lock write guard.
-pub trait ValidationWriteGuard<T, B>: Send + Sync
-where B: BlockchainBackend
-{
-    /// General validation code that can run independent of external state
-    fn validate(
-        &self,
-        item: &T,
-        db: &RwLockWriteGuard<B>,
-        metadata: &RwLockWriteGuard<ChainMetadata>,
-    ) -> Result<(), ValidationError>;
+    fn validate(&self, item: &T, db: &B, metadata: &ChainMetadata) -> Result<(), ValidationError>;
 }
 
 /// Stateless version of the core validation trait.

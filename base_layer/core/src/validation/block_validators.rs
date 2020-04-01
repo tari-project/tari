@@ -27,18 +27,17 @@ use crate::{
         BlockValidationError,
         NewBlockTemplate,
     },
-    chain_storage::{calculate_mmr_roots_writeguard, is_utxo_writeguard, BlockchainBackend, ChainMetadata},
+    chain_storage::{calculate_mmr_roots, is_utxo, BlockchainBackend, ChainMetadata},
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{transaction::OutputFlags, types::CryptoFactories},
     validation::{
         helpers::{check_achieved_difficulty, check_median_timestamp},
         StatelessValidation,
+        Validation,
         ValidationError,
-        ValidationWriteGuard,
     },
 };
 use log::*;
-use std::sync::RwLockWriteGuard;
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 
 pub const LOG_TARGET: &str = "c::val::block_validators";
@@ -84,7 +83,7 @@ impl FullConsensusValidator {
     }
 }
 
-impl<B: BlockchainBackend> ValidationWriteGuard<Block, B> for FullConsensusValidator {
+impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Does the block satisfy the stateless checks?
     /// 1. Are all inputs currently in the UTXO set?
@@ -93,13 +92,7 @@ impl<B: BlockchainBackend> ValidationWriteGuard<Block, B> for FullConsensusValid
     /// 1. Is the block header timestamp greater than the median timestamp?
     /// 1. Is the Proof of Work valid?
     /// 1. Is the achieved difficulty of this block >= the target difficulty for this block?
-    fn validate(
-        &self,
-        block: &Block,
-        db: &RwLockWriteGuard<B>,
-        metadata: &RwLockWriteGuard<ChainMetadata>,
-    ) -> Result<(), ValidationError>
-    {
+    fn validate(&self, block: &Block, db: &B, metadata: &ChainMetadata) -> Result<(), ValidationError> {
         trace!(
             target: LOG_TARGET,
             "Validating block at height {} with hash: {}",
@@ -110,8 +103,8 @@ impl<B: BlockchainBackend> ValidationWriteGuard<Block, B> for FullConsensusValid
         check_cut_through(block)?;
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
         check_accounting_balance(block, self.rules.clone(), &self.factories)?;
-        check_inputs_are_utxos(block, &db)?;
-        check_mmr_roots(block, &db)?;
+        check_inputs_are_utxos(block, db)?;
+        check_mmr_roots(block, db)?;
         check_timestamp_ftl(&block.header, &self.rules)?;
         let tip_height = metadata.height_of_longest_chain.unwrap_or(0);
         check_median_timestamp(db, &block.header, tip_height, self.rules.clone())?;
@@ -160,15 +153,11 @@ fn check_coinbase_output(block: &Block, consensus_constants: &ConsensusConstants
 }
 
 /// This function checks that all inputs in the blocks are valid UTXO's to be spend
-fn check_inputs_are_utxos<B: BlockchainBackend>(
-    block: &Block,
-    db: &RwLockWriteGuard<B>,
-) -> Result<(), ValidationError>
-{
+fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
     trace!(target: LOG_TARGET, "Checking input UXTOs exist",);
     for utxo in block.body.inputs() {
         if !(utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT)) &&
-            !(is_utxo_writeguard(db, utxo.hash())).map_err(|e| ValidationError::CustomError(e.to_string()))?
+            !(is_utxo(db, utxo.hash())).map_err(|e| ValidationError::CustomError(e.to_string()))?
         {
             warn!(
                 target: LOG_TARGET,
@@ -203,11 +192,10 @@ fn check_timestamp_ftl(
     Ok(())
 }
 
-fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &RwLockWriteGuard<B>) -> Result<(), ValidationError> {
+fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
     trace!(target: LOG_TARGET, "Checking MMR roots match",);
     let template = NewBlockTemplate::from(block.clone());
-    let tmp_block =
-        calculate_mmr_roots_writeguard(db, template).map_err(|e| ValidationError::CustomError(e.to_string()))?;
+    let tmp_block = calculate_mmr_roots(db, template).map_err(|e| ValidationError::CustomError(e.to_string()))?;
     let tmp_header = &tmp_block.header;
     let header = &block.header;
     if header.kernel_mr != tmp_header.kernel_mr ||

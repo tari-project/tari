@@ -236,7 +236,8 @@ where T: BlockchainBackend + 'static
             NodeCommsRequest::GetTargetDifficulty(pow_algo) => {
                 let (db, metadata) = &self.blockchain_db.db_and_metadata_read_access()?;
                 Ok(NodeCommsResponse::TargetDifficulty(
-                    self.consensus_manager.get_target_difficulty(metadata, db, *pow_algo)?,
+                    self.consensus_manager
+                        .get_target_difficulty(metadata, &**db, *pow_algo)?,
                 ))
             },
         }

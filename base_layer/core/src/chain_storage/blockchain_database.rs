@@ -34,14 +34,14 @@ use crate::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::{BlindingFactor, Commitment, CommitmentFactory, HashOutput},
     },
-    validation::{StatelessValidation, StatelessValidator, ValidationError, ValidationWriteGuard, ValidatorWriteGuard},
+    validation::{StatelessValidation, StatelessValidator, Validation, ValidationError, Validator},
 };
 use croaring::Bitmap;
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,
-    ops::{Deref, DerefMut},
+    ops::DerefMut,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use strum_macros::Display;
@@ -75,16 +75,12 @@ pub struct MutableMmrState {
 /// The `GenesisBlockValidator` is used to check that the chain builds on the correct genesis block.
 /// The `ChainTipValidator` is used to check that the accounting balance and MMR states of the chain state is valid.
 pub struct Validators<B: BlockchainBackend> {
-    block: Arc<ValidatorWriteGuard<Block, B>>,
+    block: Arc<Validator<Block, B>>,
     orphan: Arc<StatelessValidator<Block>>,
 }
 
 impl<B: BlockchainBackend> Validators<B> {
-    pub fn new(
-        block: impl ValidationWriteGuard<Block, B> + 'static,
-        orphan: impl StatelessValidation<Block> + 'static,
-    ) -> Self
-    {
+    pub fn new(block: impl Validation<Block, B> + 'static, orphan: impl StatelessValidation<Block> + 'static) -> Self {
         Self {
             block: Arc::new(Box::new(block)),
             orphan: Arc::new(Box::new(orphan)),
@@ -419,7 +415,7 @@ where T: BlockchainBackend
     /// Returns the block header at the given block height.
     pub fn fetch_header(&self, block_num: u64) -> Result<BlockHeader, ChainStorageError> {
         let db = self.db_read_access()?;
-        fetch_header(&db, block_num)
+        fetch_header(&*db, block_num)
     }
 
     /// Returns the block header corresponding` to the provided BlockHash
@@ -430,7 +426,7 @@ where T: BlockchainBackend
 
     pub fn fetch_tip_header(&self) -> Result<BlockHeader, ChainStorageError> {
         let db = self.db_read_access()?;
-        fetch_tip_header(&db)
+        fetch_tip_header(&*db)
     }
 
     /// Returns the UTXO with the given hash.
@@ -454,19 +450,19 @@ where T: BlockchainBackend
     /// Returns true if the given UTXO, represented by its hash exists in the UTXO set.
     pub fn is_utxo(&self, hash: HashOutput) -> Result<bool, ChainStorageError> {
         let db = self.db_read_access()?;
-        is_utxo(&db, hash)
+        is_utxo(&*db, hash)
     }
 
     /// Calculate the Merklish root of the specified merkle mountain range.
     pub fn fetch_mmr_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError> {
         let db = self.db_read_access()?;
-        fetch_mmr_root(&db, tree)
+        fetch_mmr_root(&*db, tree)
     }
 
     /// Returns only the MMR merkle root without the state of the roaring bitmap.
     pub fn fetch_mmr_only_root(&self, tree: MmrTree) -> Result<HashOutput, ChainStorageError> {
         let db = self.db_read_access()?;
-        fetch_mmr_only_root(&db, tree)
+        fetch_mmr_only_root(&*db, tree)
     }
 
     /// Apply the current change set to a pruned copy of the merkle mountain range and calculate the resulting Merklish
@@ -487,13 +483,13 @@ where T: BlockchainBackend
     /// actually be a valid extension to the chain; only the new MMR roots are calculated
     pub fn calculate_mmr_roots(&self, template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
         let db = self.db_read_access()?;
-        calculate_mmr_roots(&db, template)
+        calculate_mmr_roots(&*db, template)
     }
 
     /// Fetch a Merklish proof for the given hash, tree and position in the MMR
     pub fn fetch_mmr_proof(&self, tree: MmrTree, pos: usize) -> Result<MerkleProof, ChainStorageError> {
         let db = self.db_read_access()?;
-        fetch_mmr_proof(&db, tree, pos)
+        fetch_mmr_proof(&*db, tree, pos)
     }
 
     /// Tries to add a block to the longest chain.
@@ -547,7 +543,7 @@ where T: BlockchainBackend
     pub fn is_at_chain_tip(&self, block: &Block) -> Result<bool, ChainStorageError> {
         let metadata = self.metadata_read_access()?;
         let db = self.db_read_access()?;
-        is_at_chain_tip(&metadata, &db, block)
+        is_at_chain_tip(&metadata, &*db, block)
     }
 
     /// Fetch a block from the blockchain database.
@@ -594,19 +590,19 @@ where T: BlockchainBackend
     /// Calculate the total kernel excess for all kernels in the chain.
     pub fn total_kernel_excess(&self) -> Result<Commitment, ChainStorageError> {
         let db = self.db_read_access()?;
-        total_kernel_excess(&db)
+        total_kernel_excess(&*db)
     }
 
     /// Calculate the total kernel offset for all the kernel offsets recorded in the headers of the chain.
     pub fn total_kernel_offset(&self) -> Result<BlindingFactor, ChainStorageError> {
         let db = self.db_read_access()?;
-        total_kernel_offset(&db)
+        total_kernel_offset(&*db)
     }
 
     /// Calculate the total sum of all the UTXO commitments in the chain.
     pub fn total_utxo_commitment(&self) -> Result<Commitment, ChainStorageError> {
         let db = self.db_read_access()?;
-        total_utxo_commitment(&db)
+        total_utxo_commitment(&*db)
     }
 }
 
@@ -648,23 +644,7 @@ fn fetch_kernel<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<Transa
     fetch!(db, hash, TransactionKernel)
 }
 
-pub fn fetch_header<T: BlockchainBackend>(
-    db: &RwLockReadGuard<T>,
-    block_num: u64,
-) -> Result<BlockHeader, ChainStorageError>
-{
-    fetch_header_impl(db.deref(), block_num)
-}
-
-fn fetch_header_impl<T: BlockchainBackend>(db: &T, block_num: u64) -> Result<BlockHeader, ChainStorageError> {
-    fetch!(db, block_num, BlockHeader)
-}
-
-pub fn fetch_header_writeguard<T: BlockchainBackend>(
-    db: &RwLockWriteGuard<T>,
-    block_num: u64,
-) -> Result<BlockHeader, ChainStorageError>
-{
+pub fn fetch_header<T: BlockchainBackend>(db: &T, block_num: u64) -> Result<BlockHeader, ChainStorageError> {
     fetch!(db, block_num, BlockHeader)
 }
 
@@ -676,7 +656,7 @@ fn fetch_header_with_block_hash<T: BlockchainBackend>(
     fetch!(db, hash, BlockHash)
 }
 
-fn fetch_tip_header<T: BlockchainBackend>(db: &RwLockReadGuard<T>) -> Result<BlockHeader, ChainStorageError> {
+fn fetch_tip_header<T: BlockchainBackend>(db: &T) -> Result<BlockHeader, ChainStorageError> {
     db.fetch_last_header()
         .or_else(|e| {
             error!(target: LOG_TARGET, "Could not fetch the tip header of the db. {:?}", e);
@@ -697,58 +677,21 @@ fn fetch_orphan<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<Block,
     fetch!(db, hash, OrphanBlock)
 }
 
-pub fn is_utxo<T: BlockchainBackend>(db: &RwLockReadGuard<T>, hash: HashOutput) -> Result<bool, ChainStorageError> {
+pub fn is_utxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, ChainStorageError> {
     let key = DbKey::UnspentOutput(hash);
     db.contains(&key)
 }
 
-pub fn is_utxo_writeguard<T: BlockchainBackend>(
-    db: &RwLockWriteGuard<T>,
-    hash: HashOutput,
-) -> Result<bool, ChainStorageError>
-{
-    let key = DbKey::UnspentOutput(hash);
-    db.contains(&key)
-}
-
-fn fetch_mmr_root<T: BlockchainBackend>(
-    db: &RwLockReadGuard<T>,
-    tree: MmrTree,
-) -> Result<HashOutput, ChainStorageError>
-{
+fn fetch_mmr_root<T: BlockchainBackend>(db: &T, tree: MmrTree) -> Result<HashOutput, ChainStorageError> {
     db.fetch_mmr_root(tree)
 }
 
-fn fetch_mmr_only_root<T: BlockchainBackend>(
-    db: &RwLockReadGuard<T>,
-    tree: MmrTree,
-) -> Result<HashOutput, ChainStorageError>
-{
+fn fetch_mmr_only_root<T: BlockchainBackend>(db: &T, tree: MmrTree) -> Result<HashOutput, ChainStorageError> {
     db.fetch_mmr_only_root(tree)
 }
 
 pub fn calculate_mmr_roots<T: BlockchainBackend>(
-    db: &RwLockReadGuard<T>,
-    template: NewBlockTemplate,
-) -> Result<Block, ChainStorageError>
-{
-    let NewBlockTemplate { header, mut body } = template;
-    // Make sure the body components are sorted. If they already are, this is a very cheap call.
-    body.sort();
-    let kernel_hashes: Vec<HashOutput> = body.kernels().iter().map(|k| k.hash()).collect();
-    let out_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.hash()).collect();
-    let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.proof().hash()).collect();
-    let inp_hashes: Vec<HashOutput> = body.inputs().iter().map(|inp| inp.hash()).collect();
-
-    let mut header = BlockHeader::from(header);
-    header.kernel_mr = db.calculate_mmr_root(MmrTree::Kernel, kernel_hashes, vec![])?;
-    header.output_mr = db.calculate_mmr_root(MmrTree::Utxo, out_hashes, inp_hashes)?;
-    header.range_proof_mr = db.calculate_mmr_root(MmrTree::RangeProof, rp_hashes, vec![])?;
-    Ok(Block { header, body })
-}
-
-pub fn calculate_mmr_roots_writeguard<T: BlockchainBackend>(
-    db: &RwLockWriteGuard<T>,
+    db: &T,
     template: NewBlockTemplate,
 ) -> Result<Block, ChainStorageError>
 {
@@ -768,19 +711,14 @@ pub fn calculate_mmr_roots_writeguard<T: BlockchainBackend>(
 }
 
 /// Fetch a Merklish proof for the given hash, tree and position in the MMR
-fn fetch_mmr_proof<T: BlockchainBackend>(
-    db: &RwLockReadGuard<T>,
-    tree: MmrTree,
-    pos: usize,
-) -> Result<MerkleProof, ChainStorageError>
-{
+fn fetch_mmr_proof<T: BlockchainBackend>(db: &T, tree: MmrTree, pos: usize) -> Result<MerkleProof, ChainStorageError> {
     db.fetch_mmr_proof(tree, pos)
 }
 
 fn add_block<T: BlockchainBackend>(
     metadata: &mut RwLockWriteGuard<ChainMetadata>,
     db: &mut RwLockWriteGuard<T>,
-    block_validator: &Arc<ValidatorWriteGuard<Block, T>>,
+    block_validator: &Arc<Validator<Block, T>>,
     block: Block,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
@@ -806,7 +744,7 @@ fn store_new_block<T: BlockchainBackend>(db: &mut RwLockWriteGuard<T>, block: Bl
 
 fn is_at_chain_tip<T: BlockchainBackend>(
     metadata: &ChainMetadata,
-    db: &RwLockReadGuard<T>,
+    db: &T,
     block: &Block,
 ) -> Result<bool, ChainStorageError>
 {
@@ -826,7 +764,7 @@ fn is_at_chain_tip<T: BlockchainBackend>(
 
 fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBlock, ChainStorageError> {
     let tip_height = check_for_valid_height(&*db, height)?;
-    let header = fetch_header_impl(db, height)?;
+    let header = fetch_header(db, height)?;
     let kernel_cp = fetch_checkpoint(db, MmrTree::Kernel, height)?;
     let (kernel_hashes, _) = kernel_cp.into_parts();
     let kernels = fetch_kernels(db, kernel_hashes)?;
@@ -980,7 +918,7 @@ fn rewind_to_height<T: BlockchainBackend>(
     txn.rewind_rp_mmr(steps_back);
     commit(db, txn)?;
 
-    let last_header = fetch_header_writeguard(db, height)?;
+    let last_header = fetch_header(&**db, height)?;
     let pow = ProofOfWork::new_from_difficulty(&last_header.pow, ProofOfWork::achieved_difficulty(&last_header));
     let pow = pow.total_accumulated_difficulty();
     update_metadata(metadata, db, height, last_header.hash(), pow)?;
@@ -993,7 +931,7 @@ fn rewind_to_height<T: BlockchainBackend>(
 fn handle_possible_reorg<T: BlockchainBackend>(
     metadata: &mut RwLockWriteGuard<ChainMetadata>,
     db: &mut RwLockWriteGuard<T>,
-    block_validator: &Arc<ValidatorWriteGuard<Block, T>>,
+    block_validator: &Arc<Validator<Block, T>>,
     block: Block,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
@@ -1029,7 +967,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
 fn handle_reorg<T: BlockchainBackend>(
     metadata: &mut RwLockWriteGuard<ChainMetadata>,
     db: &mut RwLockWriteGuard<T>,
-    block_validator: &Arc<ValidatorWriteGuard<Block, T>>,
+    block_validator: &Arc<Validator<Block, T>>,
     new_block: Block,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
@@ -1047,9 +985,9 @@ fn handle_reorg<T: BlockchainBackend>(
     // Try and find all orphaned chain tips that can be linked to the new orphan block, if no better orphan chain
     // tips can be found then the new_block is a tip.
     let new_block_hash = new_block.hash();
-    let orphan_chain_tips = find_orphan_chain_tips(db, new_block.header.height, new_block_hash.clone());
+    let orphan_chain_tips = find_orphan_chain_tips(&**db, new_block.header.height, new_block_hash.clone());
     // Check the accumulated difficulty of the best fork chain compared to the main chain.
-    let (fork_accum_difficulty, fork_tip_hash) = find_strongest_orphan_tip(db, orphan_chain_tips)?;
+    let (fork_accum_difficulty, fork_tip_hash) = find_strongest_orphan_tip(&**db, orphan_chain_tips)?;
     let tip_header = db
         .fetch_last_header()?
         .ok_or_else(|| ChainStorageError::InvalidQuery("Cannot retrieve header. Blockchain DB is empty".into()))?;
@@ -1109,7 +1047,7 @@ fn handle_reorg<T: BlockchainBackend>(
 fn reorganize_chain<T: BlockchainBackend>(
     metadata: &mut RwLockWriteGuard<ChainMetadata>,
     db: &mut RwLockWriteGuard<T>,
-    block_validator: &Arc<ValidatorWriteGuard<Block, T>>,
+    block_validator: &Arc<Validator<Block, T>>,
     height: u64,
     chain: VecDeque<Block>,
 ) -> Result<Vec<Block>, ChainStorageError>
@@ -1186,7 +1124,7 @@ fn remove_orphan<T: BlockchainBackend>(
     commit(db, txn)
 }
 
-fn total_kernel_excess<T: BlockchainBackend>(db: &RwLockReadGuard<T>) -> Result<Commitment, ChainStorageError> {
+fn total_kernel_excess<T: BlockchainBackend>(db: &T) -> Result<Commitment, ChainStorageError> {
     let mut excess = CommitmentFactory::default().zero();
     db.for_each_kernel(|pair| {
         let (_, kernel) = pair.unwrap();
@@ -1195,7 +1133,7 @@ fn total_kernel_excess<T: BlockchainBackend>(db: &RwLockReadGuard<T>) -> Result<
     Ok(excess)
 }
 
-fn total_kernel_offset<T: BlockchainBackend>(db: &RwLockReadGuard<T>) -> Result<BlindingFactor, ChainStorageError> {
+fn total_kernel_offset<T: BlockchainBackend>(db: &T) -> Result<BlindingFactor, ChainStorageError> {
     let mut offset = BlindingFactor::default();
     db.for_each_header(|pair| {
         let (_, header) = pair.unwrap();
@@ -1204,7 +1142,7 @@ fn total_kernel_offset<T: BlockchainBackend>(db: &RwLockReadGuard<T>) -> Result<
     Ok(offset)
 }
 
-fn total_utxo_commitment<T: BlockchainBackend>(db: &RwLockReadGuard<T>) -> Result<Commitment, ChainStorageError> {
+fn total_utxo_commitment<T: BlockchainBackend>(db: &T) -> Result<Commitment, ChainStorageError> {
     let mut total_commitment = CommitmentFactory::default().zero();
     db.for_each_utxo(|pair| {
         let (_, utxo) = pair.unwrap();
@@ -1300,12 +1238,7 @@ fn try_construct_fork<T: BlockchainBackend>(
 }
 
 /// Try to find all orphan chain tips that originate from the current orphan parent block.
-fn find_orphan_chain_tips<T: BlockchainBackend>(
-    db: &RwLockWriteGuard<T>,
-    parent_height: u64,
-    parent_hash: BlockHash,
-) -> Vec<BlockHash>
-{
+fn find_orphan_chain_tips<T: BlockchainBackend>(db: &T, parent_height: u64, parent_hash: BlockHash) -> Vec<BlockHash> {
     let mut tip_hashes = Vec::<BlockHash>::new();
     let mut parents = Vec::<(BlockHash, u64)>::new();
     db.for_each_orphan(|pair| {
@@ -1335,14 +1268,14 @@ fn find_orphan_chain_tips<T: BlockchainBackend>(
 
 /// Find and return the orphan chain tip with the highest accumulated difficulty.
 fn find_strongest_orphan_tip<T: BlockchainBackend>(
-    db: &RwLockWriteGuard<T>,
+    db: &T,
     orphan_chain_tips: Vec<BlockHash>,
 ) -> Result<(Difficulty, BlockHash), ChainStorageError>
 {
     let mut best_accum_difficulty = Difficulty::min();
     let mut best_tip_hash: Vec<u8> = vec![0; 32];
     for tip_hash in orphan_chain_tips {
-        let header = fetch_orphan(db.deref(), tip_hash.clone())?.header;
+        let header = fetch_orphan(db, tip_hash.clone())?.header;
         let accum_difficulty = header.total_accumulated_difficulty_inclusive();
         if accum_difficulty >= best_accum_difficulty {
             best_tip_hash = tip_hash;
