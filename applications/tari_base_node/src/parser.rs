@@ -638,32 +638,10 @@ impl Parser {
         let handler = self.node_service.clone();
         self.executor.spawn(async move {
             let headers = Parser::get_headers(handler, command_arg).await;
-            let mut total = 0;
-            let mut count = 0;
-            let mut max = 0;
-            let mut min = std::u64::MAX;
-            let mut last_header = headers[0].timestamp.as_u64();
-            for header in headers.iter().rev().skip(1) {
-                count += 1;
-                let time = if header.timestamp.as_u64() <= last_header {
-                    1
-                } else {
-                    header.timestamp.as_u64() - last_header
-                };
-                total += time;
-                if max < time {
-                    max = time;
-                }
-                if min > time {
-                    min = time;
-                }
-                last_header = header.timestamp.as_u64();
-            }
-            let avg = (total as f64) / (count as f64);
-            println!("Max time was: {}", max);
-            println!("min time was: {}", min);
-            println!("tot time was: {}", total);
-            println!("avg time was: {}", avg);
+            let (max, min, avg) = timing_stats(&headers);
+            println!("Max block time: {}", max);
+            println!("Min block time: {}", min);
+            println!("Avg block time: {}", avg);
         });
     }
 
@@ -837,4 +815,69 @@ fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
     EmojiId::str_to_pubkey(&key.trim().replace('|', ""))
         .or_else(|_| CommsPublicKey::from_hex(key))
         .ok()
+}
+
+/// Given a slice of headers, calculate the maximum, minimum and average perriods between them
+fn timing_stats(headers: &[BlockHeader]) -> (u64, u64, f64) {
+    let (max, min) = headers.windows(2).fold((0u64, std::u64::MAX), |(max, min), next| {
+        let delta_t = match next[1].timestamp.checked_sub(next[0].timestamp) {
+            Some(delta) => delta.as_u64(),
+            None => 0u64,
+        };
+        let min = min.min(delta_t);
+        let max = max.max(delta_t);
+        (max, min)
+    });
+    let avg = if headers.len() >= 2 {
+        let dt = headers.last().unwrap().timestamp - headers.first().unwrap().timestamp;
+        let n = headers.len() - 1;
+        dt.as_u64() as f64 / n as f64
+    } else {
+        0.0
+    };
+    (max, min, avg)
+}
+
+#[cfg(test)]
+mod test {
+    use crate::parser::timing_stats;
+    use tari_core::{blocks::BlockHeader, tari_utilities::epoch_time::EpochTime};
+
+    #[test]
+    fn test_timing_stats() {
+        let headers = vec![100u64, 210, 300, 350, 500]
+            .into_iter()
+            .map(|t| BlockHeader {
+                timestamp: EpochTime::from(t),
+                ..BlockHeader::default()
+            })
+            .collect::<Vec<BlockHeader>>();
+        let (max, min, avg) = timing_stats(&headers);
+        assert_eq!(max, 150);
+        assert_eq!(min, 50);
+        assert_eq!(avg, 100f64);
+    }
+
+    #[test]
+    fn timing_negative_blocks() {
+        let headers = vec![100u64, 90, 150]
+            .into_iter()
+            .map(|t| BlockHeader {
+                timestamp: EpochTime::from(t),
+                ..BlockHeader::default()
+            })
+            .collect::<Vec<BlockHeader>>();
+        let (max, min, avg) = timing_stats(&headers);
+        assert_eq!(max, 60);
+        assert_eq!(min, 0);
+        assert_eq!(avg, 25f64);
+    }
+
+    #[test]
+    fn timing_empty_list() {
+        let (max, min, avg) = timing_stats(&[]);
+        assert_eq!(max, 0);
+        assert_eq!(min, std::u64::MAX);
+        assert_eq!(avg, 0f64);
+    }
 }
