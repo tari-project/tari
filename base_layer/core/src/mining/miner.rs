@@ -183,7 +183,8 @@ impl Miner {
                 {
                     break;
                 };
-                self.utxo_sender
+                let _ = self
+                    .utxo_sender
                     .try_send(output)
                     .or_else(|e| {
                         error!(target: LOG_TARGET, "Could not send utxo to wallet. {:?}.", e);
@@ -234,10 +235,14 @@ impl Miner {
             msg = block_event.select_next_some() => {
                 match *msg {
                     BlockEvent::Verified((_, ref result)) => {
-                    if *result == BlockAddResult::Ok{
+                        //Miner does not care if the chain reorg'ed or just added a new block. Both cases means a new chain tip, so it needs to restart.
+                    match *result {
+                        BlockAddResult::Ok | BlockAddResult::ChainReorg(_) => {
                         stop_mining_flag.store(true, Ordering::Relaxed);
                         start_mining = true;
-                    };
+                    },
+                    _ => {}
+                }
                 },
                 _ => (),
                 }
