@@ -63,6 +63,8 @@ pub enum BlockValidationError {
     MismatchedMmrRoots,
     // The block contains transactions that should have been cut through.
     NoCutThrough,
+    // The block weight is above the maximum
+    BlockTooLarge,
 }
 
 /// A Tari block. Blocks are linked together into a blockchain.

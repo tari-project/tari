@@ -63,6 +63,7 @@ impl StatelessValidation<Block> for StatelessBlockValidator {
     /// 1. Are all inputs allowed to be spent (Are the feature flags satisfied)
     fn validate(&self, block: &Block) -> Result<(), ValidationError> {
         check_coinbase_output(block, &self.consensus_constants)?;
+        check_block_weight(block, &self.consensus_constants)?;
         // Check that the inputs are are allowed to be spent
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
         check_cut_through(block)?;
@@ -100,6 +101,7 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator {
             block.hash().to_hex()
         );
         check_coinbase_output(block, &self.rules.consensus_constants())?;
+        check_block_weight(block, &self.rules.consensus_constants())?;
         check_cut_through(block)?;
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
         check_accounting_balance(block, self.rules.clone(), &self.factories)?;
@@ -139,6 +141,22 @@ fn check_accounting_balance(
             );
             ValidationError::TransactionError(err)
         })
+}
+
+fn check_block_weight(block: &Block, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
+    trace!(
+        target: LOG_TARGET,
+        "Checking weight of block with hash {}",
+        block.hash().to_hex()
+    );
+    // The genesis block has a larger weight than other blocks may have so we have to exclude it here
+    if block.body.calculate_weight() <= consensus_constants.get_max_block_transaction_weight() ||
+        block.header.height == 0
+    {
+        Ok(())
+    } else {
+        Err(BlockValidationError::BlockTooLarge).map_err(ValidationError::from)
+    }
 }
 
 fn check_coinbase_output(block: &Block, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {

@@ -25,7 +25,6 @@
 
 use crate::transactions::{
     aggregated_body::AggregateBody,
-    fee::Fee,
     tari_amount::{uT, MicroTari},
     transaction_protocol::{build_challenge, TransactionMetadata},
     types::{
@@ -623,7 +622,7 @@ impl Transaction {
 
     /// Returns the byte size or weight of a transaction
     pub fn calculate_weight(&self) -> u64 {
-        Fee::calculate_weight(self.body.inputs().len(), self.body.outputs().len())
+        self.body.calculate_weight()
     }
 
     /// Returns the total fee allocated to each byte of the transaction
