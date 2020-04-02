@@ -530,8 +530,9 @@ where T: BlockchainBackend
     }
 
     fn store_new_block(&self, block: Block) -> Result<(), ChainStorageError> {
+        let mut metadata = self.metadata_write_access()?;
         let mut db = self.db_write_access()?;
-        store_new_block(&mut db, block)
+        store_new_block(&mut metadata, &mut db, block)
     }
 
     /// Returns true if the given block -- assuming everything else is valid -- would be added to the tip of the
@@ -730,16 +731,45 @@ fn add_block<T: BlockchainBackend>(
     handle_possible_reorg(metadata, db, block_validator, block)
 }
 
-fn store_new_block<T: BlockchainBackend>(db: &mut RwLockWriteGuard<T>, block: Block) -> Result<(), ChainStorageError> {
+fn store_new_block<T: BlockchainBackend>(
+    metadata: &mut RwLockWriteGuard<ChainMetadata>,
+    db: &mut RwLockWriteGuard<T>,
+    block: Block,
+) -> Result<(), ChainStorageError>
+{
     let (header, inputs, outputs, kernels) = block.dissolve();
+    let height = header.height;
+    let best_block = header.hash();
+    let accumulated_difficulty =
+        ProofOfWork::new_from_difficulty(&header.pow, ProofOfWork::achieved_difficulty(&header))
+            .total_accumulated_difficulty();
     // Build all the DB queries needed to add the block and the add it atomically
     let mut txn = DbTransaction::new();
+    // Update db metadata
+    txn.insert(DbKeyValuePair::Metadata(
+        MetadataKey::ChainHeight,
+        MetadataValue::ChainHeight(Some(height)),
+    ));
+    txn.insert(DbKeyValuePair::Metadata(
+        MetadataKey::BestBlock,
+        MetadataValue::BestBlock(Some(best_block.clone())),
+    ));
+    txn.insert(DbKeyValuePair::Metadata(
+        MetadataKey::AccumulatedWork,
+        MetadataValue::AccumulatedWork(Some(accumulated_difficulty)),
+    ));
+    // Insert block
     txn.insert_header(header);
     txn.spend_inputs(&inputs);
     outputs.iter().for_each(|utxo| txn.insert_utxo(utxo.clone(), true));
     kernels.iter().for_each(|k| txn.insert_kernel(k.clone(), true));
     txn.commit_block();
-    commit(db, txn)
+    commit(db, txn)?;
+    // Update local copy of metadata
+    metadata.height_of_longest_chain = Some(height);
+    metadata.best_block = Some(best_block);
+    metadata.accumulated_difficulty = Some(accumulated_difficulty);
+    Ok(())
 }
 
 fn is_at_chain_tip<T: BlockchainBackend>(
@@ -1010,10 +1040,6 @@ fn handle_reorg<T: BlockchainBackend>(
             reorg_chain = try_construct_fork(db, fork_tip_block)?;
         }
         let added_blocks: Vec<Block> = reorg_chain.iter().map(Clone::clone).collect();
-        let pow =
-            ProofOfWork::new_from_difficulty(&fork_tip_header.pow, ProofOfWork::achieved_difficulty(&fork_tip_header));
-        let pow = pow.total_accumulated_difficulty();
-
         let fork_height = reorg_chain
             .front()
             .expect("The new orphan block should be in the queue")
@@ -1021,7 +1047,6 @@ fn handle_reorg<T: BlockchainBackend>(
             .height -
             1;
         let removed_blocks = reorganize_chain(metadata, db, block_validator, fork_height, reorg_chain)?;
-        update_metadata(metadata, db, fork_tip_header.height, fork_tip_hash, pow)?;
         if removed_blocks.is_empty() {
             return Ok(BlockAddResult::Ok);
         } else {
@@ -1069,7 +1094,7 @@ fn reorganize_chain<T: BlockchainBackend>(
             remove_orphan(db, block.hash())?;
             break;
         }
-        store_new_block(db, block)?;
+        store_new_block(metadata, db, block)?;
     }
 
     match validation_result {
@@ -1098,7 +1123,7 @@ fn reorganize_chain<T: BlockchainBackend>(
             let mut txn = DbTransaction::new();
             for block in removed_blocks {
                 txn.delete(DbKey::OrphanBlock(block.hash()));
-                store_new_block(db, block)?;
+                store_new_block(metadata, db, block)?;
             }
             commit(db, txn)?;
             Err(ChainStorageError::ValidationError(e))
