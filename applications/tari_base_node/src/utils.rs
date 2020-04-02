@@ -24,6 +24,13 @@ use futures::{Stream, StreamExt};
 use std::sync::Arc;
 use tari_wallet::transaction_service::handle::TransactionEvent;
 
+/// Asynchronously processes the event stream checking to see if the given tx_id is present or not
+/// ## Parameters
+/// `event_stream` - The stream of events to search
+/// `expected_tx_id` - The transaction id to be searched for
+///
+/// ## Returns
+/// True if found, false otherwise
 pub async fn wait_for_discovery_transaction_event<S>(mut event_stream: S, expected_tx_id: u64) -> bool
 where S: Stream<Item = Arc<TransactionEvent>> + Unpin {
     loop {

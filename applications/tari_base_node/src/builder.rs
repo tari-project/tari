@@ -230,7 +230,14 @@ impl NodeContainer {
     }
 }
 
-pub struct BaseNodeContext<B: BlockchainBackend> {
+/// The base node context is a container for all the key structural pieces for the base node application, including the
+/// communications stack, the node state machine, the miner and handles to the various services that are registered
+/// on the comms stack.
+///
+/// `BaseNodeContext` is not intended to be ever used directly, so is a private struct. It is only ever created in the
+/// [NodeContainer] enum, which serves the purpose  of abstracting the specific `BlockchainBackend` instance away
+/// from users of the full base node stack.
+struct BaseNodeContext<B: BlockchainBackend> {
     pub base_node_comms: CommsNode,
     pub base_node_dht: Dht,
     pub wallet_comms: CommsNode,
@@ -243,24 +250,28 @@ pub struct BaseNodeContext<B: BlockchainBackend> {
 }
 
 impl<B: BlockchainBackend> BaseNodeContext<B> {
+    /// Returns a handle to the Output Manager
     pub fn output_manager(&self) -> OutputManagerHandle {
         self.wallet_handles
             .get_handle::<OutputManagerHandle>()
             .expect("Problem getting wallet output manager handle")
     }
 
+    /// Returns the handle to the Comms Interface
     pub fn local_node(&self) -> LocalNodeCommsInterface {
         self.base_node_handles
             .get_handle::<LocalNodeCommsInterface>()
             .expect("Could not get local node interface handle")
     }
 
+    /// Returns the handle to the Mempool
     pub fn local_mempool(&self) -> LocalMempoolService {
         self.base_node_handles
             .get_handle::<LocalMempoolService>()
             .expect("Could not get local mempool interface handle")
     }
 
+    /// Return the handle to the Transaciton Service
     pub fn wallet_transaction_service(&self) -> TransactionServiceHandle {
         self.wallet_handles
             .get_handle::<TransactionServiceHandle>()
@@ -270,6 +281,11 @@ impl<B: BlockchainBackend> BaseNodeContext<B> {
 
 /// Tries to construct a node identity by loading the secret key and other metadata from disk and calculating the
 /// missing fields from that information.
+/// ## Parameters
+/// `path` - Reference to a path
+///
+/// ## Returns
+/// Result containing a NodeIdentity on success, string indicates the reason on failure
 pub fn load_identity(path: &Path) -> Result<NodeIdentity, String> {
     if !path.exists() {
         return Err(format!("Identity file, {}, does not exist.", path.to_str().unwrap()));
@@ -298,6 +314,13 @@ pub fn load_identity(path: &Path) -> Result<NodeIdentity, String> {
 }
 
 /// Create a new node id and save it to disk
+/// ## Parameters
+/// `path` - Reference to path to save the file
+/// `public_addr` - Network address of the base node
+/// `peer_features` - The features enabled for the base node
+///
+/// ## Returns
+/// Result containing the node identity, string will indicate reason on error
 pub fn create_new_base_node_identity<P: AsRef<Path>>(
     path: P,
     public_addr: Multiaddr,
@@ -311,6 +334,12 @@ pub fn create_new_base_node_identity<P: AsRef<Path>>(
     Ok(node_identity)
 }
 
+/// Loads the node identity from json at the given path
+/// ## Parameters
+/// `path` - Path to file from which to load the node identity
+///
+/// ## Returns
+/// Result containing an object on success, string will indicate reason on error
 pub fn load_from_json<P: AsRef<Path>, T: MessageFormat>(path: P) -> Result<T, String> {
     if !path.as_ref().exists() {
         return Err(format!(
@@ -324,6 +353,13 @@ pub fn load_from_json<P: AsRef<Path>, T: MessageFormat>(path: P) -> Result<T, St
     Ok(object)
 }
 
+/// Saves the node identity as json at a given path, creating it if it does not already exist
+/// ## Parameters
+/// `path` - Path to save the file
+/// `object` - Data to be saved
+///
+/// ## Returns
+/// Result to check if successful or not, string will indicate reason on error
 pub fn save_as_json<P: AsRef<Path>, T: MessageFormat>(path: P, object: &T) -> Result<(), String> {
     let json = object.to_json().unwrap();
     if let Some(p) = path.as_ref().parent() {
@@ -342,6 +378,14 @@ pub fn save_as_json<P: AsRef<Path>, T: MessageFormat>(path: P, object: &T) -> Re
     Ok(())
 }
 
+/// Sets up and initializes the base node, creating the context and database
+/// ## Paramters
+/// `config` - The configuration for the base node
+/// `node_identity` - The node identity information of the base node
+/// `wallet_node_identity` - The node identity information of the base node's wallet
+/// `interrupt_signal` - The signal used to stop the application
+/// ## Returns
+/// Result containing the NodeContainer, String will contain the reason on error
 pub async fn configure_and_initialize_node(
     config: &GlobalConfig,
     node_identity: Arc<NodeIdentity>,
@@ -384,6 +428,16 @@ pub async fn configure_and_initialize_node(
     Ok(result)
 }
 
+/// Constructs the base node context, this includes settin up the consensus manager, mempool, base node, wallet, miner
+/// and state machine ## Paramters
+/// `backend` - Backend interface
+/// `network` - The NetworkType (rincewind, mainnet, local)
+/// `base_node_identity` - The node identity information of the base node
+/// `wallet_node_identity` - The node identity information of the base node's wallet
+/// `config` - The configuration for the base node
+/// `interrupt_signal` - The signal used to stop the application
+/// ## Returns
+/// Result containing the BaseNodeContext, String will contain the reason on error
 async fn build_node_context<B>(
     backend: B,
     network: NetworkType,
@@ -539,6 +593,14 @@ where
     })
 }
 
+/// Asynchronously syncs peers with base node, adding peers if the peer is not already known
+/// ## Parameters
+/// `events_rx` - The event stream
+/// `base_node_peer_manager` - The peer manager for the base node wrapped in an atomic reference counter
+/// `wallet_peer_manager` - The peer manager for the base node's wallet wrapped in an atomic reference counter
+///
+/// ## Returns
+/// Nothing is returned
 async fn sync_peers(
     mut events_rx: broadcast::Receiver<Arc<ConnectionManagerEvent>>,
     base_node_peer_manager: Arc<PeerManager>,
@@ -564,6 +626,12 @@ async fn sync_peers(
     }
 }
 
+/// Parses the seed peers from a delimited string into a list of peers
+/// ## Parameters
+/// `seeds` - A string of peers delimited by '::'
+///
+/// ## Returns
+/// A list of peers, peers which do not have a valid public key are excluded
 fn parse_peer_seeds(seeds: &[String]) -> Vec<Peer> {
     info!("Adding {} peers to the peer database", seeds.len());
     let mut result = Vec::with_capacity(seeds.len());
@@ -622,6 +690,12 @@ fn parse_peer_seeds(seeds: &[String]) -> Vec<Peer> {
     result
 }
 
+/// Creates a transport type from the given configuration
+/// /// ## Paramters
+/// `config` - The reference to the configuration in which to set up the comms stack, see [GlobalConfig]
+///
+/// ##Returns
+/// TransportType based on the configuration
 fn setup_transport_type(config: &GlobalConfig) -> TransportType {
     debug!(target: LOG_TARGET, "Transport is set to '{:?}'", config.comms_transport);
 
@@ -692,6 +766,12 @@ fn setup_transport_type(config: &GlobalConfig) -> TransportType {
     }
 }
 
+/// Creates a transport type for the base node's wallet using the provided configuration
+/// ## Paramters
+/// `config` - The reference to the configuration in which to set up the comms stack, see [GlobalConfig]
+///
+/// ##Returns
+/// TransportType based on the configuration
 fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
     debug!(
         target: LOG_TARGET,
@@ -776,6 +856,12 @@ fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
     }
 }
 
+/// Converts one socks authentication struct into another
+/// ## Parameters
+/// `auth` - Socks authentication of type SocksAuthentication
+///
+/// ## Returns
+/// Socks authentication of type socks::Authentication
 fn into_socks_authentication(auth: SocksAuthentication) -> socks::Authentication {
     match auth {
         SocksAuthentication::None => socks::Authentication::None,
@@ -785,6 +871,12 @@ fn into_socks_authentication(auth: SocksAuthentication) -> socks::Authentication
     }
 }
 
+/// Creates the storage location for the base node's wallet
+/// ## Parameters
+/// `wallet_path` - Reference to a file path
+///
+/// ## Returns
+/// A Result to determine if it was successful or not, string will indicate the reason on error
 fn create_wallet_folder<P: AsRef<Path>>(wallet_path: P) -> Result<(), String> {
     let path = wallet_path.as_ref();
     match fs::create_dir_all(path) {
@@ -808,6 +900,12 @@ fn create_wallet_folder<P: AsRef<Path>>(wallet_path: P) -> Result<(), String> {
     }
 }
 
+/// Creates the directory to store the peer database
+/// ## Parameters
+/// `peer_db_path` - Reference to a file path
+///
+/// ## Returns
+/// A Result to determine if it was successful or not, string will indicate the reason on error
 fn create_peer_db_folder<P: AsRef<Path>>(peer_db_path: P) -> Result<(), String> {
     let path = peer_db_path.as_ref();
     match fs::create_dir_all(path) {
@@ -827,6 +925,13 @@ fn create_peer_db_folder<P: AsRef<Path>>(peer_db_path: P) -> Result<(), String> 
     }
 }
 
+/// Asynchronously initializes comms for the base node
+/// ## Parameters
+/// `node_identity` - The node identity to initialize the comms stack with, see [NodeIdentity]
+/// `config` - The reference to the configuration in which to set up the comms stack, see [GlobalConfig]
+/// `publisher` - The publisher for the publish-subscribe messaging system
+/// ## Returns
+/// A Result containing the commsnode and dht on success, string will indicate the reason on error
 async fn setup_base_node_comms(
     node_identity: Arc<NodeIdentity>,
     config: &GlobalConfig,
@@ -868,6 +973,15 @@ async fn setup_base_node_comms(
     Ok((comms, dht))
 }
 
+/// Asynchronously initializes comms for the base node's wallet
+/// ## Parameters
+/// `node_identity` - The node identity to initialize the comms stack with, see [NodeIdentity]
+/// `config` - The configuration in which to set up the comms stack, see [GlobalConfig]
+/// `publisher` - The publisher for the publish-subscribe messaging system
+/// `base_node_peer` - The base node for the wallet to connect to
+/// `peers` - A list of peers to be added to the comms node, the current node identity of the comms stack is excluded if
+/// found in the list. ## Returns
+/// A Result containing the commsnode and dht on success, string will indicate the reason on error
 async fn setup_wallet_comms(
     node_identity: Arc<NodeIdentity>,
     config: &GlobalConfig,
@@ -907,6 +1021,14 @@ async fn setup_wallet_comms(
     Ok((comms, dht))
 }
 
+/// Adds a new peer to the base node
+/// ## Parameters
+/// `comms_node` - A reference to the comms node. This is the communications stack
+/// `peers` - A list of peers to be added to the comms node, the current node identity of the comms stack is excluded if
+/// found in the list.
+///
+/// ## Returns
+/// A Result to determine if the call was successful or not, string will indicate the reason on error
 async fn add_peers_to_comms(comms: &CommsNode, peers: Vec<Peer>) -> Result<(), String> {
     for p in peers {
         let peer_desc = p.to_string();
@@ -928,6 +1050,19 @@ async fn add_peers_to_comms(comms: &CommsNode, peers: Vec<Peer>) -> Result<(), S
     Ok(())
 }
 
+/// Asynchronously registers services of the base node
+///
+/// ## Parameters
+/// `comms` - A reference to the comms node. This is the communications stack
+/// `db` - The interface to the blockchain database, for all transactions stored in a block
+/// `dht` - A reference to the peer discovery service
+/// `subscription_factory` - The publish-subscribe messaging system, wrapped in an atomic reference counter
+/// `mempool` - The mempool interface, for all transactions not yet included or recently included in a block
+/// `consensus_manager` - The consensus manager for the blockchain
+/// `factories` -  Cryptographic factory based on Pederson Commitments
+///
+/// ## Returns
+/// A hashmap of handles wrapped in an atomic reference counter
 async fn register_base_node_services<B>(
     comms: &CommsNode,
     dht: &Dht,
@@ -971,6 +1106,16 @@ where
         .expect("Service initialization failed")
 }
 
+/// Asynchronously registers services for the base node's wallet
+/// ## Parameters
+/// `wallet_comms` - A reference to the comms node. This is the communications stack
+/// `wallet_dht` - A reference to the peer discovery service
+/// `wallet_db_conn` - A reference to the sqlite database connection for the transaction and output manager services
+/// `subscription_factory` - The publish-subscribe messaging system, wrapped in an atomic reference counter
+/// `factories` -  Cryptographic factory based on Pederson Commitments
+///
+/// ## Returns
+/// A hashmap of handles wrapped in an atomic reference counter
 async fn register_wallet_services(
     wallet_comms: &CommsNode,
     wallet_dht: &Dht,
