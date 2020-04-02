@@ -545,7 +545,7 @@ where
             );
         }
 
-        let fee_without_change = Fee::calculate(fee_per_gram, outputs.len(), 1);
+        let fee_without_change = Fee::calculate(fee_per_gram, 1, outputs.len(), 1);
         let mut change_key: Option<PrivateKey> = None;
         // If the input values > the amount to be sent + fees_without_change then we will need to include a change
         // output
@@ -681,8 +681,8 @@ where
             outputs.push(o.clone());
             total += o.value;
             // I am assuming that the only output will be the payment output and change if required
-            fee_without_change = Fee::calculate(fee_per_gram, outputs.len(), 1);
-            fee_with_change = Fee::calculate(fee_per_gram, outputs.len(), 2);
+            fee_without_change = Fee::calculate(fee_per_gram, 1, outputs.len(), 1);
+            fee_with_change = Fee::calculate(fee_per_gram, 1, outputs.len(), 2);
 
             if total == amount + fee_without_change || total >= amount + fee_with_change {
                 break;

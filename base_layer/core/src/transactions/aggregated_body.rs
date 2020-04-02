@@ -270,7 +270,7 @@ impl AggregateBody {
 
     /// Returns the byte size or weight of a body
     pub fn calculate_weight(&self) -> u64 {
-        Fee::calculate_weight(self.inputs().len(), self.outputs().len())
+        Fee::calculate_weight(self.kernels().len(), self.inputs().len(), self.outputs().len())
     }
 }
 

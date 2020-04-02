@@ -1718,7 +1718,7 @@ where
         fake_oms.add_output(uo).await?;
 
         let mut stp = fake_oms
-            .prepare_transaction_to_send(amount, MicroTari::from(100), None, "".to_string())
+            .prepare_transaction_to_send(amount, MicroTari::from(25), None, "".to_string())
             .await?;
 
         let msg = stp.build_single_round_message()?;

@@ -678,7 +678,7 @@ pub fn receive_test_transaction<
         .runtime
         .block_on(wallet.transaction_service.test_accept_transaction(
             OsRng.next_u64(),
-            MicroTari::from(10_000 + OsRng.next_u64() % 10_1000),
+            MicroTari::from(10_000 + OsRng.next_u64() % 101_000),
             public_key,
         ))?;
 
