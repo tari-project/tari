@@ -318,9 +318,6 @@ impl Parser {
     fn process_get_balance(&mut self) {
         let mut handler = self.wallet_output_service.clone();
         self.executor.spawn(async move {
-            // TODO perform this function more intelligently in the Output Manager
-            let _ = handler.sync_with_base_node().await;
-
             match handler.get_balance().await {
                 Err(e) => {
                     println!("Something went wrong");
@@ -735,11 +732,7 @@ impl Parser {
 
         let fee_per_gram = 25 * uT;
         let mut txn_service = self.wallet_transaction_service.clone();
-        let mut oms_handle = self.wallet_output_service.clone();
         self.executor.spawn(async move {
-            // TODO perform this function more intelligently in the Output Manager
-            let _ = oms_handle.sync_with_base_node().await;
-
             let event_stream = txn_service.get_event_stream_fused();
             match txn_service
                 .send_transaction(dest_pubkey.clone(), amount, fee_per_gram, msg)

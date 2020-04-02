@@ -112,7 +112,7 @@ use tari_wallet::{
         TransactionServiceInitializer,
     },
 };
-use tokio::{runtime, stream::StreamExt, sync::broadcast, task};
+use tokio::{runtime, stream::StreamExt, sync::broadcast, task, time::delay_for};
 
 const LOG_TARGET: &str = "c::bn::initialization";
 
@@ -199,10 +199,18 @@ impl NodeContainer {
             debug!(target: LOG_TARGET, "Mining wallet ready to receive coins.");
             while let Some(utxo) = rx.next().await {
                 match wallet_output_handle.add_output(utxo).await {
-                    Ok(_) => info!(
-                        target: LOG_TARGET,
-                        "🤑💰🤑 Newly mined coinbase output added to wallet 🤑💰🤑"
-                    ),
+                    Ok(_) => {
+                        info!(
+                            target: LOG_TARGET,
+                            "🤑💰🤑 Newly mined coinbase output added to wallet 🤑💰🤑"
+                        );
+                        // TODO Remove this when the wallet monitors the UTXO's more intelligently
+                        let mut oms_handle_clone = wallet_output_handle.clone();
+                        tokio::spawn(async move {
+                            delay_for(Duration::from_secs(240)).await;
+                            oms_handle_clone.sync_with_base_node().await;
+                        });
+                    },
                     Err(e) => warn!(target: LOG_TARGET, "Error adding output: {}", e),
                 }
             }
