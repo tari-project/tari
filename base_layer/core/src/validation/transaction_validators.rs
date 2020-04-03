@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::{is_utxo, BlockchainBackend},
+    chain_storage::{is_stxo, is_utxo, BlockchainBackend},
     transactions::{transaction::Transaction, types::CryptoFactories},
     validation::{StatelessValidation, Validation, ValidationError},
 };
@@ -136,6 +136,15 @@ fn verify_timelocks(tx: &Transaction, current_height: u64) -> Result<(), Validat
 // This function checks that all inputs exist in the provided database backend
 fn verify_inputs<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<(), ValidationError> {
     for input in tx.body.inputs() {
+        if is_stxo(db, input.hash()).map_err(|e| ValidationError::CustomError(e.to_string()))? {
+            // we dont want to log this as a node or wallet might retransmit a transaction
+            trace!(
+                target: LOG_TARGET,
+                "Transaction validation failed due to already spent input: {}",
+                input
+            );
+            return Err(ValidationError::ContainsSTxO);
+        }
         if !(is_utxo(db, input.hash())).map_err(|e| ValidationError::CustomError(e.to_string()))? {
             warn!(
                 target: LOG_TARGET,

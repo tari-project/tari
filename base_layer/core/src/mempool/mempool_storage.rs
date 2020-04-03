@@ -94,6 +94,10 @@ where T: BlockchainBackend
                 self.orphan_pool.insert(tx)?;
                 Ok(TxStorageResponse::OrphanPool)
             },
+            Err(ValidationError::ContainsSTxO) => {
+                self.reorg_pool.insert(tx)?;
+                Ok(TxStorageResponse::ReorgPool)
+            },
             Err(ValidationError::MaturityError) => {
                 self.pending_pool.insert(tx)?;
                 Ok(TxStorageResponse::PendingPool)

@@ -99,6 +99,7 @@ make_async!(fetch_utxo(hash: HashOutput) -> TransactionOutput, "fetch_utxo");
 make_async!(fetch_stxo(hash: HashOutput) -> TransactionOutput, "fetch_stxo");
 make_async!(fetch_orphan(hash: HashOutput) -> Block, "fetch_orphan");
 make_async!(is_utxo(hash: HashOutput) -> bool, "is_utxo");
+make_async!(is_stxo(hash: HashOutput) -> bool, "is_stxo");
 make_async!(fetch_mmr_root(tree: MmrTree) -> HashOutput, "fetch_mmr_root");
 make_async!(fetch_mmr_only_root(tree: MmrTree) -> HashOutput, "fetch_mmr_only_root");
 make_async!(calculate_mmr_root(tree: MmrTree,additions: Vec<HashOutput>,deletions: Vec<HashOutput>) -> HashOutput, "calculate_mmr_root");
