@@ -114,11 +114,7 @@ fn test_initial_sync() {
     let diff_adj_manager = DiffAdjManager::new(&consensus_manager.consensus_constants()).unwrap();
 
     assert_eq!(
-        diff_adj_manager.get_target_difficulty(
-            &store.metadata_read_access().unwrap(),
-            &*store.db_and_metadata_read_access().unwrap().0,
-            PowAlgorithm::Monero
-        ),
+        diff_adj_manager.get_target_difficulty(&*store.db_read_access().unwrap(), PowAlgorithm::Monero),
         Ok(calculate_accumulated_difficulty(
             &store,
             vec![2, 5, 6],
@@ -126,11 +122,7 @@ fn test_initial_sync() {
         ))
     );
     assert_eq!(
-        diff_adj_manager.get_target_difficulty(
-            &store.metadata_read_access().unwrap(),
-            &*store.db_and_metadata_read_access().unwrap().0,
-            PowAlgorithm::Blake
-        ),
+        diff_adj_manager.get_target_difficulty(&*store.db_read_access().unwrap(), PowAlgorithm::Blake),
         Ok(calculate_accumulated_difficulty(
             &store,
             vec![0, 1, 3, 4, 7],
@@ -158,11 +150,7 @@ fn test_sync_to_chain_tip() {
     create_test_pow_blockchain(&store, pow_algos, &consensus_manager.consensus_constants());
     assert_eq!(store.get_height(), Ok(Some(5)));
     assert_eq!(
-        consensus_manager.get_target_difficulty(
-            &store.metadata_read_access().unwrap(),
-            &*store.db_and_metadata_read_access().unwrap().0,
-            PowAlgorithm::Monero
-        ),
+        consensus_manager.get_target_difficulty(&*store.db_read_access().unwrap(), PowAlgorithm::Monero),
         Ok(calculate_accumulated_difficulty(
             &store,
             vec![1, 4],
@@ -170,11 +158,7 @@ fn test_sync_to_chain_tip() {
         ))
     );
     assert_eq!(
-        consensus_manager.get_target_difficulty(
-            &store.metadata_read_access().unwrap(),
-            &*store.db_and_metadata_read_access().unwrap().0,
-            PowAlgorithm::Blake
-        ),
+        consensus_manager.get_target_difficulty(&*store.db_read_access().unwrap(), PowAlgorithm::Blake),
         Ok(calculate_accumulated_difficulty(
             &store,
             vec![0, 2, 3, 5],
@@ -192,11 +176,7 @@ fn test_sync_to_chain_tip() {
     append_to_pow_blockchain(&store, tip, pow_algos, &consensus_manager.consensus_constants());
     assert_eq!(store.get_height(), Ok(Some(9)));
     assert_eq!(
-        consensus_manager.get_target_difficulty(
-            &store.metadata_read_access().unwrap(),
-            &*store.db_and_metadata_read_access().unwrap().0,
-            PowAlgorithm::Monero
-        ),
+        consensus_manager.get_target_difficulty(&*store.db_read_access().unwrap(), PowAlgorithm::Monero),
         Ok(calculate_accumulated_difficulty(
             &store,
             vec![1, 4, 7, 9],
@@ -204,11 +184,7 @@ fn test_sync_to_chain_tip() {
         ))
     );
     assert_eq!(
-        consensus_manager.get_target_difficulty(
-            &store.metadata_read_access().unwrap(),
-            &*store.db_and_metadata_read_access().unwrap().0,
-            PowAlgorithm::Blake
-        ),
+        consensus_manager.get_target_difficulty(&*store.db_read_access().unwrap(), PowAlgorithm::Blake),
         Ok(calculate_accumulated_difficulty(
             &store,
             vec![0, 2, 3, 5, 6, 8],
@@ -225,14 +201,10 @@ fn test_target_difficulty_with_height() {
     let diff_adj_manager = DiffAdjManager::new(&consensus_manager.consensus_constants()).unwrap();
     let _ = consensus_manager.set_diff_manager(diff_adj_manager);
     assert!(consensus_manager
-        .get_target_difficulty_with_height(
-            &*store.db_and_metadata_read_access().unwrap().0,
-            PowAlgorithm::Monero,
-            5
-        )
+        .get_target_difficulty_with_height(&*store.db_read_access().unwrap(), PowAlgorithm::Monero, 5)
         .is_err());
     assert!(consensus_manager
-        .get_target_difficulty_with_height(&*store.db_and_metadata_read_access().unwrap().0, PowAlgorithm::Blake, 5)
+        .get_target_difficulty_with_height(&*store.db_read_access().unwrap(), PowAlgorithm::Blake, 5)
         .is_err());
 
     let pow_algos = vec![
@@ -248,11 +220,7 @@ fn test_target_difficulty_with_height() {
     let _ = consensus_manager.set_diff_manager(diff_adj_manager);
 
     assert_eq!(
-        consensus_manager.get_target_difficulty_with_height(
-            &*store.db_and_metadata_read_access().unwrap().0,
-            PowAlgorithm::Monero,
-            5
-        ),
+        consensus_manager.get_target_difficulty_with_height(&*store.db_read_access().unwrap(), PowAlgorithm::Monero, 5),
         Ok(calculate_accumulated_difficulty(
             &store,
             vec![1, 4],
@@ -260,11 +228,7 @@ fn test_target_difficulty_with_height() {
         ))
     );
     assert_eq!(
-        consensus_manager.get_target_difficulty_with_height(
-            &*store.db_and_metadata_read_access().unwrap().0,
-            PowAlgorithm::Blake,
-            5
-        ),
+        consensus_manager.get_target_difficulty_with_height(&*store.db_read_access().unwrap(), PowAlgorithm::Blake, 5),
         Ok(calculate_accumulated_difficulty(
             &store,
             vec![0, 2, 3, 5],
@@ -273,11 +237,7 @@ fn test_target_difficulty_with_height() {
     );
 
     assert_eq!(
-        consensus_manager.get_target_difficulty_with_height(
-            &*store.db_and_metadata_read_access().unwrap().0,
-            PowAlgorithm::Monero,
-            2
-        ),
+        consensus_manager.get_target_difficulty_with_height(&*store.db_read_access().unwrap(), PowAlgorithm::Monero, 2),
         Ok(calculate_accumulated_difficulty(
             &store,
             vec![1],
@@ -285,11 +245,7 @@ fn test_target_difficulty_with_height() {
         ))
     );
     assert_eq!(
-        consensus_manager.get_target_difficulty_with_height(
-            &*store.db_and_metadata_read_access().unwrap().0,
-            PowAlgorithm::Blake,
-            2
-        ),
+        consensus_manager.get_target_difficulty_with_height(&*store.db_read_access().unwrap(), PowAlgorithm::Blake, 2),
         Ok(calculate_accumulated_difficulty(
             &store,
             vec![0, 2],
@@ -298,11 +254,7 @@ fn test_target_difficulty_with_height() {
     );
 
     assert_eq!(
-        consensus_manager.get_target_difficulty_with_height(
-            &*store.db_and_metadata_read_access().unwrap().0,
-            PowAlgorithm::Monero,
-            3
-        ),
+        consensus_manager.get_target_difficulty_with_height(&*store.db_read_access().unwrap(), PowAlgorithm::Monero, 3),
         Ok(calculate_accumulated_difficulty(
             &store,
             vec![1],
@@ -310,11 +262,7 @@ fn test_target_difficulty_with_height() {
         ))
     );
     assert_eq!(
-        consensus_manager.get_target_difficulty_with_height(
-            &*store.db_and_metadata_read_access().unwrap().0,
-            PowAlgorithm::Blake,
-            3
-        ),
+        consensus_manager.get_target_difficulty_with_height(&*store.db_read_access().unwrap(), PowAlgorithm::Blake, 3),
         Ok(calculate_accumulated_difficulty(
             &store,
             vec![0, 2, 3],
@@ -341,19 +289,11 @@ fn test_full_sync_on_reorg() {
     create_test_pow_blockchain(&store, pow_algos, &consensus_manager.consensus_constants());
     assert_eq!(store.get_height(), Ok(Some(4)));
     assert_eq!(
-        diff_adj_manager.get_target_difficulty(
-            &store.metadata_read_access().unwrap(),
-            &*store.db_and_metadata_read_access().unwrap().0,
-            PowAlgorithm::Monero
-        ),
+        diff_adj_manager.get_target_difficulty(&*store.db_read_access().unwrap(), PowAlgorithm::Monero),
         Ok(Difficulty::from(1))
     );
     assert_eq!(
-        diff_adj_manager.get_target_difficulty(
-            &store.metadata_read_access().unwrap(),
-            &*store.db_and_metadata_read_access().unwrap().0,
-            PowAlgorithm::Blake
-        ),
+        diff_adj_manager.get_target_difficulty(&*store.db_read_access().unwrap(), PowAlgorithm::Blake),
         Ok(Difficulty::from(18))
     );
 
@@ -371,19 +311,11 @@ fn test_full_sync_on_reorg() {
     let tip = store.fetch_block(8).unwrap().block;
     append_to_pow_blockchain(&store, tip, pow_algos, &consensus_manager.consensus_constants());
     assert_eq!(
-        diff_adj_manager.get_target_difficulty(
-            &store.metadata_read_access().unwrap(),
-            &*store.db_and_metadata_read_access().unwrap().0,
-            PowAlgorithm::Monero
-        ),
+        diff_adj_manager.get_target_difficulty(&*store.db_read_access().unwrap(), PowAlgorithm::Monero),
         Ok(Difficulty::from(2))
     );
     assert_eq!(
-        diff_adj_manager.get_target_difficulty(
-            &store.metadata_read_access().unwrap(),
-            &*store.db_and_metadata_read_access().unwrap().0,
-            PowAlgorithm::Blake
-        ),
+        diff_adj_manager.get_target_difficulty(&*store.db_read_access().unwrap(), PowAlgorithm::Blake),
         Ok(Difficulty::from(9))
     );
 }
@@ -398,10 +330,7 @@ fn test_median_timestamp() {
     create_test_pow_blockchain(&store, pow_algos, &consensus_manager.consensus_constants());
     let start_timestamp = store.fetch_block(0).unwrap().block().header.timestamp.clone();
     let mut timestamp = diff_adj_manager
-        .get_median_timestamp(
-            &store.metadata_read_access().unwrap(),
-            &*store.db_and_metadata_read_access().unwrap().0,
-        )
+        .get_median_timestamp(&*store.db_read_access().unwrap())
         .expect("median returned an error");
     assert_eq!(timestamp, start_timestamp);
 
@@ -412,10 +341,7 @@ fn test_median_timestamp() {
     let mut prev_timestamp: EpochTime =
         start_timestamp.increase(consensus_manager.consensus_constants().get_target_block_interval());
     timestamp = diff_adj_manager
-        .get_median_timestamp(
-            &store.metadata_read_access().unwrap(),
-            &*store.db_and_metadata_read_access().unwrap().0,
-        )
+        .get_median_timestamp(&*store.db_read_access().unwrap())
         .expect("median returned an error");
     assert_eq!(timestamp, prev_timestamp);
     // lets add 1
@@ -423,10 +349,7 @@ fn test_median_timestamp() {
     append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager.consensus_constants());
     prev_timestamp = start_timestamp.increase(consensus_manager.consensus_constants().get_target_block_interval());
     timestamp = diff_adj_manager
-        .get_median_timestamp(
-            &store.metadata_read_access().unwrap(),
-            &*store.db_and_metadata_read_access().unwrap().0,
-        )
+        .get_median_timestamp(&*store.db_read_access().unwrap())
         .expect("median returned an error");
     assert_eq!(timestamp, prev_timestamp);
 
@@ -437,10 +360,7 @@ fn test_median_timestamp() {
         prev_timestamp =
             start_timestamp.increase(consensus_manager.consensus_constants().get_target_block_interval() * (i / 2));
         timestamp = diff_adj_manager
-            .get_median_timestamp(
-                &store.metadata_read_access().unwrap(),
-                &*store.db_and_metadata_read_access().unwrap().0,
-            )
+            .get_median_timestamp(&*store.db_read_access().unwrap())
             .expect("median returned an error");
         assert_eq!(timestamp, prev_timestamp);
     }
@@ -451,10 +371,7 @@ fn test_median_timestamp() {
         append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager.consensus_constants());
         prev_timestamp = prev_timestamp.increase(consensus_manager.consensus_constants().get_target_block_interval());
         timestamp = diff_adj_manager
-            .get_median_timestamp(
-                &store.metadata_read_access().unwrap(),
-                &*store.db_and_metadata_read_access().unwrap().0,
-            )
+            .get_median_timestamp(&*store.db_read_access().unwrap())
             .expect("median returned an error");
         assert_eq!(timestamp, prev_timestamp);
     }
@@ -480,22 +397,22 @@ fn test_median_timestamp_with_height() {
     let header2_timestamp = store.fetch_header(2).unwrap().timestamp;
 
     let timestamp = diff_adj_manager
-        .get_median_timestamp_at_height(&*store.db_and_metadata_read_access().unwrap().0, 0)
+        .get_median_timestamp_at_height(&*store.db_read_access().unwrap(), 0)
         .expect("median returned an error");
     assert_eq!(timestamp, header0_timestamp);
 
     let timestamp = diff_adj_manager
-        .get_median_timestamp_at_height(&*store.db_and_metadata_read_access().unwrap().0, 3)
+        .get_median_timestamp_at_height(&*store.db_read_access().unwrap(), 3)
         .expect("median returned an error");
     assert_eq!(timestamp, header2_timestamp);
 
     let timestamp = diff_adj_manager
-        .get_median_timestamp_at_height(&*store.db_and_metadata_read_access().unwrap().0, 2)
+        .get_median_timestamp_at_height(&*store.db_read_access().unwrap(), 2)
         .expect("median returned an error");
     assert_eq!(timestamp, header1_timestamp);
 
     let timestamp = diff_adj_manager
-        .get_median_timestamp_at_height(&*store.db_and_metadata_read_access().unwrap().0, 4)
+        .get_median_timestamp_at_height(&*store.db_read_access().unwrap(), 4)
         .expect("median returned an error");
     assert_eq!(timestamp, header2_timestamp);
 }
@@ -510,10 +427,7 @@ fn test_median_timestamp_odd_order() {
     create_test_pow_blockchain(&store, pow_algos, &consensus_manager.consensus_constants());
     let start_timestamp = store.fetch_block(0).unwrap().block().header.timestamp.clone();
     let mut timestamp = diff_adj_manager
-        .get_median_timestamp(
-            &store.metadata_read_access().unwrap(),
-            &*store.db_and_metadata_read_access().unwrap().0,
-        )
+        .get_median_timestamp(&*store.db_read_access().unwrap())
         .expect("median returned an error");
     assert_eq!(timestamp, start_timestamp);
     let pow_algos = vec![PowAlgorithm::Blake];
@@ -523,10 +437,7 @@ fn test_median_timestamp_odd_order() {
     let mut prev_timestamp: EpochTime =
         start_timestamp.increase(consensus_manager.consensus_constants().get_target_block_interval());
     timestamp = diff_adj_manager
-        .get_median_timestamp(
-            &store.metadata_read_access().unwrap(),
-            &*store.db_and_metadata_read_access().unwrap().0,
-        )
+        .get_median_timestamp(&*store.db_read_access().unwrap())
         .expect("median returned an error");
     assert_eq!(timestamp, prev_timestamp);
 
@@ -542,10 +453,7 @@ fn test_median_timestamp_odd_order() {
 
     prev_timestamp = start_timestamp.increase(consensus_manager.consensus_constants().get_target_block_interval() / 2);
     timestamp = diff_adj_manager
-        .get_median_timestamp(
-            &store.metadata_read_access().unwrap(),
-            &*store.db_and_metadata_read_access().unwrap().0,
-        )
+        .get_median_timestamp(&*store.db_read_access().unwrap())
         .expect("median returned an error");
     // Median timestamp should be block 3 and not block 2
     assert_eq!(timestamp, prev_timestamp);

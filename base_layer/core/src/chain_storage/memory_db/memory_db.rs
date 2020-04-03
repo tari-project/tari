@@ -23,13 +23,24 @@
 //! This is a memory-based blockchain database, generally only useful for testing purposes
 
 use crate::{
-    blocks::{Block, BlockHeader},
+    blocks::{blockheader::BlockHash, Block, BlockHeader},
     chain_storage::{
         blockchain_database::BlockchainBackend,
-        db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataValue, MmrTree, WriteOperation},
+        db_transaction::{
+            DbKey,
+            DbKeyValuePair,
+            DbTransaction,
+            DbValue,
+            MetadataKey,
+            MetadataValue,
+            MmrTree,
+            WriteOperation,
+        },
         error::ChainStorageError,
         memory_db::MemDbVec,
+        ChainMetadata,
     },
+    proof_of_work::Difficulty,
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
         types::HashOutput,
@@ -95,7 +106,7 @@ where D: Digest
 }
 
 impl<D> MemoryDatabase<D>
-where D: Digest
+where D: Digest + Send + Sync
 {
     pub fn new(mmr_cache_config: MmrCacheConfig) -> Self {
         let utxo_checkpoints = MemDbVec::<MerkleCheckPoint>::new();
@@ -132,6 +143,58 @@ where D: Digest
         self.db
             .read()
             .map_err(|e| ChainStorageError::AccessError(e.to_string()))
+    }
+
+    // Fetches the chain metadata chain height.
+    fn fetch_chain_height(&self) -> Result<Option<u64>, ChainStorageError> {
+        Ok(
+            if let Some(DbValue::Metadata(MetadataValue::ChainHeight(height))) =
+                self.fetch(&DbKey::Metadata(MetadataKey::ChainHeight))?
+            {
+                height
+            } else {
+                None
+            },
+        )
+    }
+
+    // Fetches the chain metadata best block hash.
+    fn fetch_best_block(&self) -> Result<Option<BlockHash>, ChainStorageError> {
+        Ok(
+            if let Some(DbValue::Metadata(MetadataValue::BestBlock(best_block))) =
+                self.fetch(&DbKey::Metadata(MetadataKey::BestBlock))?
+            {
+                best_block
+            } else {
+                None
+            },
+        )
+    }
+
+    // Fetches the chain metadata accumulated work.
+    fn fetch_accumulated_work(&self) -> Result<Option<Difficulty>, ChainStorageError> {
+        Ok(
+            if let Some(DbValue::Metadata(MetadataValue::AccumulatedWork(accumulated_work))) =
+                self.fetch(&DbKey::Metadata(MetadataKey::AccumulatedWork))?
+            {
+                accumulated_work
+            } else {
+                None
+            },
+        )
+    }
+
+    // Fetches the chain metadata pruning horizon.
+    fn fetch_pruning_horizon(&self) -> Result<u64, ChainStorageError> {
+        Ok(
+            if let Some(DbValue::Metadata(MetadataValue::PruningHorizon(pruning_horizon))) =
+                self.fetch(&DbKey::Metadata(MetadataKey::PruningHorizon))?
+            {
+                pruning_horizon
+            } else {
+                2880
+            },
+        )
     }
 }
 
@@ -450,6 +513,16 @@ where D: Digest + Send + Sync
         } else {
             Ok(None)
         }
+    }
+
+    /// Returns the metadata of the chain.
+    fn fetch_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
+        Ok(ChainMetadata {
+            height_of_longest_chain: self.fetch_chain_height()?,
+            best_block: self.fetch_best_block()?,
+            pruning_horizon: self.fetch_pruning_horizon()?,
+            accumulated_difficulty: self.fetch_accumulated_work()?,
+        })
     }
 }
 

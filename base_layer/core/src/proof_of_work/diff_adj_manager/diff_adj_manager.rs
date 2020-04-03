@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::{BlockchainBackend, ChainMetadata},
+    chain_storage::BlockchainBackend,
     consensus::ConsensusConstants,
     proof_of_work::{
         diff_adj_manager::{diff_adj_storage::DiffAdjStorage, error::DiffAdjManagerError},
@@ -49,7 +49,6 @@ impl DiffAdjManager {
     /// Returns the estimated target difficulty for the specified PoW algorithm at the chain tip.
     pub fn get_target_difficulty<B: BlockchainBackend>(
         &self,
-        metadata: &ChainMetadata,
         db: &B,
         pow_algo: PowAlgorithm,
     ) -> Result<Difficulty, DiffAdjManagerError>
@@ -57,7 +56,7 @@ impl DiffAdjManager {
         self.diff_adj_storage
             .write()
             .map_err(|_| DiffAdjManagerError::PoisonedAccess)?
-            .get_target_difficulty(metadata, db, pow_algo)
+            .get_target_difficulty(db, pow_algo)
     }
 
     /// Returns the estimated target difficulty for the specified PoW algorithm and provided height.
@@ -75,16 +74,11 @@ impl DiffAdjManager {
     }
 
     /// Returns the median timestamp of the past 11 blocks at the chain tip.
-    pub fn get_median_timestamp<B: BlockchainBackend>(
-        &self,
-        metadata: &ChainMetadata,
-        db: &B,
-    ) -> Result<EpochTime, DiffAdjManagerError>
-    {
+    pub fn get_median_timestamp<B: BlockchainBackend>(&self, db: &B) -> Result<EpochTime, DiffAdjManagerError> {
         self.diff_adj_storage
             .write()
             .map_err(|_| DiffAdjManagerError::PoisonedAccess)?
-            .get_median_timestamp(metadata, db)
+            .get_median_timestamp(db)
     }
 
     /// Returns the median timestamp of the past 11 blocks at the provided height.
