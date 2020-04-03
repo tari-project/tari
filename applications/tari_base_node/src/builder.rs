@@ -908,6 +908,14 @@ async fn add_peers_to_comms(comms: &CommsNode, peers: Vec<Peer>) -> Result<(), S
     for p in peers {
         let peer_desc = p.to_string();
         info!(target: LOG_TARGET, "Adding seed peer [{}]", peer_desc);
+
+        if &p.public_key == comms.node_identity().public_key() {
+            info!(
+                target: LOG_TARGET,
+                "Attempting to add yourself [{}] as a seed peer to comms layer, ignoring request", peer_desc
+            );
+            continue;
+        }
         comms
             .peer_manager()
             .add_peer(p)
