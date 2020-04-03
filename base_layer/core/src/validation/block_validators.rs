@@ -220,19 +220,31 @@ fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), Va
     let tmp_block = calculate_mmr_roots(db, template).map_err(|e| ValidationError::CustomError(e.to_string()))?;
     let tmp_header = &tmp_block.header;
     let header = &block.header;
-    if header.kernel_mr != tmp_header.kernel_mr ||
-        header.output_mr != tmp_header.output_mr ||
-        header.range_proof_mr != tmp_header.range_proof_mr
-    {
+    if header.kernel_mr != tmp_header.kernel_mr {
         warn!(
             target: LOG_TARGET,
-            "Block header MMR roots in {} do not match calculated roots",
+            "Block header kernel MMR roots in {} do not match calculated roots",
             block.hash().to_hex()
         );
-        Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots))
-    } else {
-        Ok(())
-    }
+        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
+    };
+    if header.output_mr != tmp_header.output_mr {
+        warn!(
+            target: LOG_TARGET,
+            "Block header output MMR roots in {} do not match calculated roots",
+            block.hash().to_hex()
+        );
+        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
+    };
+    if header.range_proof_mr != tmp_header.range_proof_mr {
+        warn!(
+            target: LOG_TARGET,
+            "Block header range_proof MMR roots in {} do not match calculated roots",
+            block.hash().to_hex()
+        );
+        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
+    };
+    Ok(())
 }
 
 fn check_cut_through(block: &Block) -> Result<(), ValidationError> {
