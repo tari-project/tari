@@ -139,7 +139,7 @@ impl ConsensusConstants {
     #[allow(clippy::identity_op)]
     pub fn rincewind() -> Self {
         let target_block_interval = 120;
-        let difficulty_block_window = 150;
+        let difficulty_block_window = 90;
         ConsensusConstants {
             coinbase_lock_height: 60,
             blockchain_version: 1,
