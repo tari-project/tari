@@ -158,6 +158,8 @@ pub trait BlockchainBackend: Send + Sync {
         F: FnMut(Result<(HashOutput, TransactionOutput), ChainStorageError>);
     /// Returns the stored header with the highest corresponding height.
     fn fetch_last_header(&self) -> Result<Option<BlockHeader>, ChainStorageError>;
+    /// Returns the stored chain metadata.
+    fn fetch_metadata(&self) -> Result<ChainMetadata, ChainStorageError>;
 }
 
 // Private macro that pulls out all the boiler plate of extracting a DB query result from its variants
@@ -169,22 +171,6 @@ macro_rules! fetch {
             Ok(Some(DbValue::$key_var(k))) => Ok(*k),
             Ok(Some(other)) => unexpected_result(key, other),
             Err(e) => log_error(key, e),
-        }
-    }};
-
-    (meta $db:expr, $meta_key:ident, $default:expr) => {{
-        match $db.fetch(&DbKey::Metadata(MetadataKey::$meta_key)) {
-            Ok(None) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "The {} entry is not present in the database. Assuming the database is empty.",
-                    DbKey::Metadata(MetadataKey::$meta_key)
-                );
-                $default
-            },
-            Ok(Some(DbValue::Metadata(MetadataValue::$meta_key(v)))) => v,
-            Ok(Some(other)) => return unexpected_result(DbKey::Metadata(MetadataKey::$meta_key), other),
-            Err(e) => return log_error(DbKey::Metadata(MetadataKey::$meta_key), e),
         }
     }};
 }
@@ -216,7 +202,6 @@ macro_rules! fetch {
 pub struct BlockchainDatabase<T>
 where T: BlockchainBackend
 {
-    metadata: Arc<RwLock<ChainMetadata>>,
     db: Arc<RwLock<T>>,
     validators: Validators<T>,
 }
@@ -231,127 +216,20 @@ where T: BlockchainBackend
         validators: Validators<T>,
     ) -> Result<Self, ChainStorageError>
     {
-        let metadata = Self::read_metadata(&db)?;
         let blockchain_db = BlockchainDatabase {
-            metadata: Arc::new(RwLock::new(metadata)),
             db: Arc::new(RwLock::new(db)),
             validators,
         };
         if blockchain_db.get_height()?.is_none() {
             let genesis_block = consensus_manager.get_genesis_block();
-            let genesis_block_hash = genesis_block.hash();
-            let mut pow = genesis_block.header.pow.clone();
-            pow.add_difficulty(
-                &genesis_block.header.pow,
-                ProofOfWork::achieved_difficulty(&genesis_block.header),
-            );
-            let pow = pow.total_accumulated_difficulty();
             blockchain_db.store_new_block(genesis_block)?;
-            blockchain_db.update_metadata(0, genesis_block_hash, pow)?;
         }
         Ok(blockchain_db)
     }
 
-    /// Reads the blockchain metadata (block height etc) from the underlying backend and returns it.
-    /// If the metadata values aren't in the database, (e.g. when running a node for the first time),
-    /// then log as much and return a reasonable default.
-    fn read_metadata(db: &T) -> Result<ChainMetadata, ChainStorageError> {
-        let height = fetch!(meta db, ChainHeight, None);
-        let hash = fetch!(meta db, BestBlock, None);
-        let accumulated_difficulty = fetch!(meta db, AccumulatedWork, None);
-        // Set a default of 2880 blocks (2 days with 1min blocks)
-        let horizon = fetch!(meta db, PruningHorizon, 2880);
-        Ok(ChainMetadata {
-            height_of_longest_chain: height,
-            best_block: hash,
-            pruning_horizon: horizon,
-            accumulated_difficulty,
-        })
-    }
-
-    fn read_metadata_with_guard(db: &RwLockReadGuard<T>) -> Result<ChainMetadata, ChainStorageError> {
-        let height = fetch!(meta db, ChainHeight, None);
-        let hash = fetch!(meta db, BestBlock, None);
-        let accumulated_difficulty = fetch!(meta db, AccumulatedWork, None);
-        // Set a default of 2880 blocks (2 days with 1min blocks)
-        let horizon = fetch!(meta db, PruningHorizon, 2880);
-        Ok(ChainMetadata {
-            height_of_longest_chain: height,
-            best_block: hash,
-            pruning_horizon: horizon,
-            accumulated_difficulty,
-        })
-    }
-
-    /// If a call to any metadata function fails, you can try and force a re-sync with this function. If the RWLock
-    /// is poisoned because a write attempt failed, this function will replace the old lock with a new one with data
-    /// freshly read from the underlying database. If this still fails, there's probably something badly wrong.
-    ///
-    /// # Returns
-    ///  Ok(true) - The lock was refreshed and data was successfully re-read from the database. Proceed with caution.
-    ///             The database *may* be inconsistent.
-    /// Ok(false) - Everything looks fine. Why did you call this function again?
-    /// Err(ChainStorageError::CriticalError) - Refreshing the lock failed. We couldn't refresh the metadata from the DB
-    ///             backend, so you should probably just shut things down and look at the logs.
-    pub fn try_recover_metadata(&mut self) -> Result<bool, ChainStorageError> {
-        if !self.metadata.is_poisoned() {
-            // metadata is fine. Nothing to do here
-            return Ok(false);
-        }
-        match BlockchainDatabase::read_metadata_with_guard(
-            &self
-                .db
-                .read()
-                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?,
-        ) {
-            Ok(data) => {
-                self.metadata = Arc::new(RwLock::new(data));
-                Ok(true)
-            },
-            Err(e) => {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not read metadata from database. {:?}. We're going to panic here. Perhaps restarting will \
-                     fix things",
-                    e
-                );
-                Err(ChainStorageError::CriticalError)
-            },
-        }
-    }
-
-    pub fn metadata_read_access(&self) -> Result<RwLockReadGuard<ChainMetadata>, ChainStorageError> {
-        self.metadata.read().map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "An attempt to get a read lock on the blockchain metadata failed. {:?}", e
-            );
-            ChainStorageError::AccessError("Read lock on blockchain metadata failed".into())
-        })
-    }
-
-    pub fn metadata_write_access(&self) -> Result<RwLockWriteGuard<ChainMetadata>, ChainStorageError> {
-        self.metadata.write().map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "An attempt to get a write lock on the blockchain metadata failed. {:?}", e
-            );
-            ChainStorageError::AccessError("Write lock on blockchain metadata failed".into())
-        })
-    }
-
-    pub fn db_and_metadata_read_access(
-        &self,
-    ) -> Result<(RwLockReadGuard<T>, RwLockReadGuard<ChainMetadata>), ChainStorageError> {
-        // Always get metadata first so that deadlocks can't occur.
-        let metadata = self.metadata_read_access()?;
-        let db = self.db_read_access()?;
-        Ok((db, metadata))
-    }
-
     // Be careful about making this method public. Rather use `db_and_metadata_read_access`
     // so that metadata and db are read in the correct order so that deadlocks don't occur
-    fn db_read_access(&self) -> Result<RwLockReadGuard<T>, ChainStorageError> {
+    pub fn db_read_access(&self) -> Result<RwLockReadGuard<T>, ChainStorageError> {
         self.db.read().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -361,7 +239,7 @@ where T: BlockchainBackend
         })
     }
 
-    fn db_write_access(&self) -> Result<RwLockWriteGuard<T>, ChainStorageError> {
+    pub fn db_write_access(&self) -> Result<RwLockWriteGuard<T>, ChainStorageError> {
         self.db.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -371,39 +249,27 @@ where T: BlockchainBackend
         })
     }
 
-    fn update_metadata(
-        &self,
-        new_height: u64,
-        new_hash: Vec<u8>,
-        accumulated_difficulty: Difficulty,
-    ) -> Result<(), ChainStorageError>
-    {
-        let mut metadata = self.metadata_write_access()?;
-        let mut db = self.db_write_access()?;
-        update_metadata(&mut metadata, &mut db, new_height, new_hash, accumulated_difficulty)
-    }
-
     /// Returns the height of the current longest chain. This method will only fail if there's a fairly serious
     /// synchronisation problem on the database. You can try calling [BlockchainDatabase::try_recover_metadata] in
     /// that case to re-sync the metadata; or else just exit the program.
     ///
     /// If the chain is empty (the genesis block hasn't been added yet), this function returns `None`
     pub fn get_height(&self) -> Result<Option<u64>, ChainStorageError> {
-        let metadata = self.metadata_read_access()?;
-        Ok(metadata.height_of_longest_chain)
+        let db = self.db_read_access()?;
+        Ok(db.fetch_metadata()?.height_of_longest_chain)
     }
 
     /// Return the geometric mean of the proof of work of the longest chain.
     /// The proof of work is returned as the geometric mean of all difficulties
     pub fn get_accumulated_difficulty(&self) -> Result<Option<Difficulty>, ChainStorageError> {
-        let metadata = self.metadata_read_access()?;
-        Ok(metadata.accumulated_difficulty)
+        let db = self.db_read_access()?;
+        Ok(db.fetch_metadata()?.accumulated_difficulty)
     }
 
     /// Returns a copy of the current blockchain database metadata
     pub fn get_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
-        let metadata = self.metadata_read_access()?;
-        Ok(metadata.clone())
+        let db = self.db_read_access()?;
+        Ok(db.fetch_metadata()?.clone())
     }
 
     /// Returns the transaction kernel with the given hash.
@@ -524,15 +390,13 @@ where T: BlockchainBackend
             .validate(&block)
             .map_err(ChainStorageError::ValidationError)?;
 
-        let mut metadata = self.metadata_write_access()?;
         let mut db = self.db_write_access()?;
-        add_block(&mut metadata, &mut db, &self.validators.block, block)
+        add_block(&mut db, &self.validators.block, block)
     }
 
     fn store_new_block(&self, block: Block) -> Result<(), ChainStorageError> {
-        let mut metadata = self.metadata_write_access()?;
         let mut db = self.db_write_access()?;
-        store_new_block(&mut metadata, &mut db, block)
+        store_new_block(&mut db, block)
     }
 
     /// Returns true if the given block -- assuming everything else is valid -- would be added to the tip of the
@@ -542,9 +406,8 @@ where T: BlockchainBackend
     ///     * the block's parent hash is the hash of the block at the current chain tip,
     ///     * the block height is one greater than the parent block
     pub fn is_at_chain_tip(&self, block: &Block) -> Result<bool, ChainStorageError> {
-        let metadata = self.metadata_read_access()?;
         let db = self.db_read_access()?;
-        is_at_chain_tip(&metadata, &*db, block)
+        is_at_chain_tip(&*db, block)
     }
 
     /// Fetch a block from the blockchain database.
@@ -583,9 +446,8 @@ where T: BlockchainBackend
     /// * The block height is in the future
     /// * The block height is before pruning horizon
     pub fn rewind_to_height(&self, height: u64) -> Result<Vec<Block>, ChainStorageError> {
-        let mut metadata = self.metadata_write_access()?;
         let mut db = self.db_write_access()?;
-        rewind_to_height(&mut metadata, &mut db, height)
+        rewind_to_height(&mut db, height)
     }
 
     /// Calculate the total kernel excess for all kernels in the chain.
@@ -611,34 +473,6 @@ fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, ChainStorageError
     let msg = format!("Unexpected result for database query {}. Response: {}", req, res);
     error!(target: LOG_TARGET, "{}", msg);
     Err(ChainStorageError::UnexpectedResult(msg))
-}
-
-fn update_metadata<T: BlockchainBackend>(
-    metadata: &mut RwLockWriteGuard<ChainMetadata>,
-    db: &mut RwLockWriteGuard<T>,
-    new_height: u64,
-    new_hash: Vec<u8>,
-    accumulated_difficulty: Difficulty,
-) -> Result<(), ChainStorageError>
-{
-    metadata.height_of_longest_chain = Some(new_height);
-    metadata.best_block = Some(new_hash);
-    metadata.accumulated_difficulty = Some(accumulated_difficulty);
-
-    let mut txn = DbTransaction::new();
-    txn.insert(DbKeyValuePair::Metadata(
-        MetadataKey::ChainHeight,
-        MetadataValue::ChainHeight(metadata.height_of_longest_chain),
-    ));
-    txn.insert(DbKeyValuePair::Metadata(
-        MetadataKey::BestBlock,
-        MetadataValue::BestBlock(metadata.best_block.clone()),
-    ));
-    txn.insert(DbKeyValuePair::Metadata(
-        MetadataKey::AccumulatedWork,
-        MetadataValue::AccumulatedWork(metadata.accumulated_difficulty),
-    ));
-    commit(db, txn)
 }
 
 fn fetch_kernel<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<TransactionKernel, ChainStorageError> {
@@ -717,7 +551,6 @@ fn fetch_mmr_proof<T: BlockchainBackend>(db: &T, tree: MmrTree, pos: usize) -> R
 }
 
 fn add_block<T: BlockchainBackend>(
-    metadata: &mut RwLockWriteGuard<ChainMetadata>,
     db: &mut RwLockWriteGuard<T>,
     block_validator: &Arc<Validator<Block, T>>,
     block: Block,
@@ -728,15 +561,11 @@ fn add_block<T: BlockchainBackend>(
         return Ok(BlockAddResult::BlockExists);
     }
 
-    handle_possible_reorg(metadata, db, block_validator, block)
+    handle_possible_reorg(db, block_validator, block)
 }
 
-fn store_new_block<T: BlockchainBackend>(
-    metadata: &mut RwLockWriteGuard<ChainMetadata>,
-    db: &mut RwLockWriteGuard<T>,
-    block: Block,
-) -> Result<(), ChainStorageError>
-{
+// Adds a new block onto the chain tip.
+fn store_new_block<T: BlockchainBackend>(db: &mut RwLockWriteGuard<T>, block: Block) -> Result<(), ChainStorageError> {
     let (header, inputs, outputs, kernels) = block.dissolve();
     let height = header.height;
     let best_block = header.hash();
@@ -745,7 +574,7 @@ fn store_new_block<T: BlockchainBackend>(
             .total_accumulated_difficulty();
     // Build all the DB queries needed to add the block and the add it atomically
     let mut txn = DbTransaction::new();
-    // Update db metadata
+    // Update metadata
     txn.insert(DbKeyValuePair::Metadata(
         MetadataKey::ChainHeight,
         MetadataValue::ChainHeight(Some(height)),
@@ -765,21 +594,13 @@ fn store_new_block<T: BlockchainBackend>(
     kernels.iter().for_each(|k| txn.insert_kernel(k.clone(), true));
     txn.commit_block();
     commit(db, txn)?;
-    // Update local copy of metadata
-    metadata.height_of_longest_chain = Some(height);
-    metadata.best_block = Some(best_block);
-    metadata.accumulated_difficulty = Some(accumulated_difficulty);
     Ok(())
 }
 
-fn is_at_chain_tip<T: BlockchainBackend>(
-    metadata: &ChainMetadata,
-    db: &T,
-    block: &Block,
-) -> Result<bool, ChainStorageError>
-{
-    let (height, parent_hash) = {
+fn is_at_chain_tip<T: BlockchainBackend>(db: &T, block: &Block) -> Result<bool, ChainStorageError> {
+    let (parent_height, parent_hash) = {
         // If the database is empty, the best block must be the genesis block
+        let metadata = db.fetch_metadata()?;
         if metadata.height_of_longest_chain.is_none() {
             return Ok(block.header.height == 0);
         }
@@ -788,8 +609,7 @@ fn is_at_chain_tip<T: BlockchainBackend>(
             metadata.best_block.clone().unwrap(),
         )
     };
-    let best_block = fetch_header(db, height)?;
-    Ok(block.header.prev_hash == parent_hash && block.header.height == best_block.height + 1)
+    Ok(block.header.prev_hash == parent_hash && block.header.height == parent_height + 1)
 }
 
 fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBlock, ChainStorageError> {
@@ -899,7 +719,6 @@ pub fn commit<T: BlockchainBackend>(db: &mut RwLockWriteGuard<T>, txn: DbTransac
 }
 
 fn rewind_to_height<T: BlockchainBackend>(
-    metadata: &mut RwLockWriteGuard<ChainMetadata>,
     db: &mut RwLockWriteGuard<T>,
     height: u64,
 ) -> Result<Vec<Block>, ChainStorageError>
@@ -946,12 +765,24 @@ fn rewind_to_height<T: BlockchainBackend>(
     txn.rewind_kernel_mmr(steps_back);
     txn.rewind_utxo_mmr(steps_back);
     txn.rewind_rp_mmr(steps_back);
-    commit(db, txn)?;
-
+    // Update metadata
     let last_header = fetch_header(&**db, height)?;
-    let pow = ProofOfWork::new_from_difficulty(&last_header.pow, ProofOfWork::achieved_difficulty(&last_header));
-    let pow = pow.total_accumulated_difficulty();
-    update_metadata(metadata, db, height, last_header.hash(), pow)?;
+    let accumulated_work =
+        ProofOfWork::new_from_difficulty(&last_header.pow, ProofOfWork::achieved_difficulty(&last_header))
+            .total_accumulated_difficulty();
+    txn.insert(DbKeyValuePair::Metadata(
+        MetadataKey::ChainHeight,
+        MetadataValue::ChainHeight(Some(last_header.height)),
+    ));
+    txn.insert(DbKeyValuePair::Metadata(
+        MetadataKey::BestBlock,
+        MetadataValue::BestBlock(Some(last_header.hash())),
+    ));
+    txn.insert(DbKeyValuePair::Metadata(
+        MetadataKey::AccumulatedWork,
+        MetadataValue::AccumulatedWork(Some(accumulated_work)),
+    ));
+    commit(db, txn)?;
 
     Ok(removed_blocks)
 }
@@ -959,13 +790,13 @@ fn rewind_to_height<T: BlockchainBackend>(
 // Checks whether we should add the block as an orphan. If it is the case, the orphan block is added and the chain
 // is reorganised if necessary.
 fn handle_possible_reorg<T: BlockchainBackend>(
-    metadata: &mut RwLockWriteGuard<ChainMetadata>,
     db: &mut RwLockWriteGuard<T>,
     block_validator: &Arc<Validator<Block, T>>,
     block: Block,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
-    let db_height = metadata
+    let db_height = db
+        .fetch_metadata()?
         .height_of_longest_chain
         .ok_or_else(|| ChainStorageError::InvalidQuery("Cannot retrieve block. Blockchain DB is empty".into()))
         .or_else(|e| {
@@ -985,7 +816,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     trace!(target: LOG_TARGET, "{}", block);
     // Trigger a reorg check for all blocks in the orphan block pool
     debug!(target: LOG_TARGET, "Checking for chain re-org.");
-    handle_reorg(metadata, db, block_validator, block)
+    handle_reorg(db, block_validator, block)
 }
 
 // The handle_reorg function is triggered by the adding of orphaned blocks. Reorg chains are constructed by
@@ -995,7 +826,6 @@ fn handle_possible_reorg<T: BlockchainBackend>(
 // reorg chain is constructed with a higher accumulated difficulty, then the main chain is rewound and updated
 // with the newly un-orphaned blocks from the reorg chain.
 fn handle_reorg<T: BlockchainBackend>(
-    metadata: &mut RwLockWriteGuard<ChainMetadata>,
     db: &mut RwLockWriteGuard<T>,
     block_validator: &Arc<Validator<Block, T>>,
     new_block: Block,
@@ -1046,7 +876,7 @@ fn handle_reorg<T: BlockchainBackend>(
             .header
             .height -
             1;
-        let removed_blocks = reorganize_chain(metadata, db, block_validator, fork_height, reorg_chain)?;
+        let removed_blocks = reorganize_chain(db, block_validator, fork_height, reorg_chain)?;
         if removed_blocks.is_empty() {
             return Ok(BlockAddResult::Ok);
         } else {
@@ -1070,21 +900,20 @@ fn handle_reorg<T: BlockchainBackend>(
 
 // Reorganize the main chain with the provided fork chain, starting at the specified height.
 fn reorganize_chain<T: BlockchainBackend>(
-    metadata: &mut RwLockWriteGuard<ChainMetadata>,
     db: &mut RwLockWriteGuard<T>,
     block_validator: &Arc<Validator<Block, T>>,
     height: u64,
     chain: VecDeque<Block>,
 ) -> Result<Vec<Block>, ChainStorageError>
 {
-    let removed_blocks = rewind_to_height(metadata, db, height)?;
+    let removed_blocks = rewind_to_height(db, height)?;
     trace!(target: LOG_TARGET, "Validate and add chain blocks.",);
     let mut validation_result: Result<(), ValidationError> = Ok(());
     let mut orphan_hashes = Vec::<BlockHash>::with_capacity(chain.len());
     for block in chain {
         let block_hash = block.hash();
         orphan_hashes.push(block_hash.clone());
-        validation_result = block_validator.validate(&block, db, metadata);
+        validation_result = block_validator.validate(&block, db);
         if validation_result.is_err() {
             debug!(
                 target: LOG_TARGET,
@@ -1094,7 +923,7 @@ fn reorganize_chain<T: BlockchainBackend>(
             remove_orphan(db, block.hash())?;
             break;
         }
-        store_new_block(metadata, db, block)?;
+        store_new_block(db, block)?;
     }
 
     match validation_result {
@@ -1111,7 +940,7 @@ fn reorganize_chain<T: BlockchainBackend>(
         },
         Err(e) => {
             trace!(target: LOG_TARGET, "Restoring previous chain after failed reorg.",);
-            let invalid_chain = rewind_to_height(metadata, db, height)?;
+            let invalid_chain = rewind_to_height(db, height)?;
             debug!(
                 target: LOG_TARGET,
                 "Removed incomplete chain of blocks during chain restore: {:?}.",
@@ -1123,7 +952,7 @@ fn reorganize_chain<T: BlockchainBackend>(
             let mut txn = DbTransaction::new();
             for block in removed_blocks {
                 txn.delete(DbKey::OrphanBlock(block.hash()));
-                store_new_block(metadata, db, block)?;
+                store_new_block(db, block)?;
             }
             commit(db, txn)?;
             Err(ChainStorageError::ValidationError(e))
@@ -1325,7 +1154,6 @@ where T: BlockchainBackend
 {
     fn clone(&self) -> Self {
         BlockchainDatabase {
-            metadata: self.metadata.clone(),
             db: self.db.clone(),
             validators: self.validators.clone(),
         }

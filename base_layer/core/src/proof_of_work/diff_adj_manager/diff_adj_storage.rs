@@ -22,7 +22,7 @@
 
 use crate::{
     blocks::blockheader::BlockHash,
-    chain_storage::{fetch_header, BlockchainBackend, ChainMetadata},
+    chain_storage::{fetch_header, BlockchainBackend},
     consensus::ConsensusConstants,
     proof_of_work::{
         diff_adj_manager::error::DiffAdjManagerError,
@@ -136,8 +136,8 @@ impl DiffAdjStorage {
     }
 
     // Retrieves the height of the longest chain from the blockchain db
-    fn get_height_of_longest_chain(&self, metadata: &ChainMetadata) -> Result<u64, DiffAdjManagerError> {
-        metadata
+    fn get_height_of_longest_chain<B: BlockchainBackend>(&self, db: &B) -> Result<u64, DiffAdjManagerError> {
+        db.fetch_metadata()?
             .height_of_longest_chain
             .ok_or_else(|| DiffAdjManagerError::EmptyBlockchain)
     }
@@ -145,12 +145,11 @@ impl DiffAdjStorage {
     /// Returns the estimated target difficulty for the specified PoW algorithm at the chain tip.
     pub fn get_target_difficulty<B: BlockchainBackend>(
         &mut self,
-        metadata: &ChainMetadata,
         db: &B,
         pow_algo: PowAlgorithm,
     ) -> Result<Difficulty, DiffAdjManagerError>
     {
-        let height = self.get_height_of_longest_chain(metadata)?;
+        let height = self.get_height_of_longest_chain(db)?;
         self.get_target_difficulty_at_height(db, pow_algo, height)
     }
 
@@ -174,13 +173,8 @@ impl DiffAdjStorage {
     }
 
     /// Returns the median timestamp of the past 11 blocks at the chain tip.
-    pub fn get_median_timestamp<B: BlockchainBackend>(
-        &mut self,
-        metadata: &ChainMetadata,
-        db: &B,
-    ) -> Result<EpochTime, DiffAdjManagerError>
-    {
-        let height = self.get_height_of_longest_chain(metadata)?;
+    pub fn get_median_timestamp<B: BlockchainBackend>(&mut self, db: &B) -> Result<EpochTime, DiffAdjManagerError> {
+        let height = self.get_height_of_longest_chain(db)?;
         self.get_median_timestamp_at_height(db, height)
     }
 

@@ -27,7 +27,7 @@ use crate::{
         BlockValidationError,
         NewBlockTemplate,
     },
-    chain_storage::{calculate_mmr_roots, is_utxo, BlockchainBackend, ChainMetadata},
+    chain_storage::{calculate_mmr_roots, is_utxo, BlockchainBackend},
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{transaction::OutputFlags, types::CryptoFactories},
     validation::{
@@ -93,7 +93,7 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator {
     /// 1. Is the block header timestamp greater than the median timestamp?
     /// 1. Is the Proof of Work valid?
     /// 1. Is the achieved difficulty of this block >= the target difficulty for this block?
-    fn validate(&self, block: &Block, db: &B, metadata: &ChainMetadata) -> Result<(), ValidationError> {
+    fn validate(&self, block: &Block, db: &B) -> Result<(), ValidationError> {
         trace!(
             target: LOG_TARGET,
             "Validating block at height {} with hash: {}",
@@ -108,7 +108,11 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator {
         check_inputs_are_utxos(block, db)?;
         check_mmr_roots(block, db)?;
         check_timestamp_ftl(&block.header, &self.rules)?;
-        let tip_height = metadata.height_of_longest_chain.unwrap_or(0);
+        let tip_height = db
+            .fetch_metadata()
+            .map_err(|e| ValidationError::CustomError(e.to_string()))?
+            .height_of_longest_chain
+            .unwrap_or(0);
         check_median_timestamp(db, &block.header, tip_height, self.rules.clone())?;
         check_achieved_difficulty(db, &block.header, tip_height, self.rules.clone())?;
         Ok(())

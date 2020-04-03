@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    chain_storage::{BlockchainBackend, ChainMetadata},
-    validation::error::ValidationError,
-};
+use crate::{chain_storage::BlockchainBackend, validation::error::ValidationError};
 
 pub type Validator<T, B> = Box<dyn Validation<T, B>>;
 pub type StatelessValidator<T> = Box<dyn StatelessValidation<T>>;
@@ -35,7 +32,7 @@ pub trait Validation<T, B>: Send + Sync
 where B: BlockchainBackend
 {
     /// General validation code that can run independent of external state
-    fn validate(&self, item: &T, db: &B, metadata: &ChainMetadata) -> Result<(), ValidationError>;
+    fn validate(&self, item: &T, db: &B) -> Result<(), ValidationError>;
 }
 
 /// Stateless version of the core validation trait.

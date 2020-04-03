@@ -30,7 +30,7 @@ use crate::{
         },
         Block,
     },
-    chain_storage::{BlockchainBackend, ChainMetadata, ChainStorageError},
+    chain_storage::{BlockchainBackend, ChainStorageError},
     consensus::{emission::EmissionSchedule, network::Network, ConsensusConstants},
     proof_of_work::{DiffAdjManager, DiffAdjManagerError, Difficulty, DifficultyAdjustmentError, PowAlgorithm},
     transactions::tari_amount::MicroTari,
@@ -115,14 +115,13 @@ impl ConsensusManager {
     /// Returns the estimated target difficulty for the specified PoW algorithm at the chain tip.
     pub fn get_target_difficulty<B: BlockchainBackend>(
         &self,
-        metadata: &ChainMetadata,
         db: &B,
         pow_algo: PowAlgorithm,
     ) -> Result<Difficulty, ConsensusManagerError>
     {
         match self.access_diff_adj()?.as_ref() {
             Some(v) => v
-                .get_target_difficulty(metadata, db, pow_algo)
+                .get_target_difficulty(db, pow_algo)
                 .map_err(ConsensusManagerError::DifficultyAdjustmentManagerError),
             None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
         }
@@ -145,15 +144,10 @@ impl ConsensusManager {
     }
 
     /// Returns the median timestamp of the past 11 blocks at the chain tip.
-    pub fn get_median_timestamp<B: BlockchainBackend>(
-        &self,
-        metadata: &ChainMetadata,
-        db: &B,
-    ) -> Result<EpochTime, ConsensusManagerError>
-    {
+    pub fn get_median_timestamp<B: BlockchainBackend>(&self, db: &B) -> Result<EpochTime, ConsensusManagerError> {
         match self.access_diff_adj()?.as_ref() {
             Some(v) => v
-                .get_median_timestamp(metadata, db)
+                .get_median_timestamp(db)
                 .map_err(ConsensusManagerError::DifficultyAdjustmentManagerError),
             None => Err(ConsensusManagerError::MissingDifficultyAdjustmentManager),
         }

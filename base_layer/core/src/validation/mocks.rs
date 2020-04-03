@@ -21,10 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{StatelessValidation, Validation};
-use crate::{
-    chain_storage::{BlockchainBackend, ChainMetadata},
-    validation::error::ValidationError,
-};
+use crate::{chain_storage::BlockchainBackend, validation::error::ValidationError};
 
 #[derive(Clone)]
 pub struct MockValidator {
@@ -38,7 +35,7 @@ impl MockValidator {
 }
 
 impl<T, B: BlockchainBackend> Validation<T, B> for MockValidator {
-    fn validate(&self, _item: &T, _db: &B, _metadata: &ChainMetadata) -> Result<(), ValidationError> {
+    fn validate(&self, _item: &T, _db: &B) -> Result<(), ValidationError> {
         if self.result {
             Ok(())
         } else {

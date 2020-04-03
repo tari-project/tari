@@ -83,9 +83,9 @@ where T: BlockchainBackend
             tx.body.kernels()[0].excess_sig.get_signature().to_hex()
         );
         // The transaction is already internally consistent
-        let (db, metadata) = self.blockchain_db.db_and_metadata_read_access()?;
+        let db = self.blockchain_db.db_read_access()?;
 
-        match self.validator.validate(&tx, &db, &metadata) {
+        match self.validator.validate(&tx, &db) {
             Ok(()) => {
                 self.unconfirmed_pool.insert(tx)?;
                 Ok(TxStorageResponse::UnconfirmedPool)

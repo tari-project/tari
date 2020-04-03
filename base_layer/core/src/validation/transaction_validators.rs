@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::{is_utxo, BlockchainBackend, ChainMetadata},
+    chain_storage::{is_utxo, BlockchainBackend},
     transactions::{transaction::Transaction, types::CryptoFactories},
     validation::{StatelessValidation, Validation, ValidationError},
 };
@@ -62,10 +62,14 @@ impl FullTxValidator {
 }
 
 impl<B: BlockchainBackend> Validation<Transaction, B> for FullTxValidator {
-    fn validate(&self, tx: &Transaction, db: &B, metadata: &ChainMetadata) -> Result<(), ValidationError> {
+    fn validate(&self, tx: &Transaction, db: &B) -> Result<(), ValidationError> {
         verify_tx(tx, &self.factories)?;
         verify_inputs(tx, db)?;
-        let tip_height = metadata.height_of_longest_chain.unwrap_or(0);
+        let tip_height = db
+            .fetch_metadata()
+            .map_err(|e| ValidationError::CustomError(e.to_string()))?
+            .height_of_longest_chain
+            .unwrap_or(0);
         verify_timelocks(tx, tip_height)?;
         Ok(())
     }
@@ -76,9 +80,13 @@ impl<B: BlockchainBackend> Validation<Transaction, B> for FullTxValidator {
 pub struct TxInputAndMaturityValidator {}
 
 impl<B: BlockchainBackend> Validation<Transaction, B> for TxInputAndMaturityValidator {
-    fn validate(&self, tx: &Transaction, db: &B, metadata: &ChainMetadata) -> Result<(), ValidationError> {
+    fn validate(&self, tx: &Transaction, db: &B) -> Result<(), ValidationError> {
         verify_inputs(tx, db)?;
-        let tip_height = metadata.height_of_longest_chain.unwrap_or(0);
+        let tip_height = db
+            .fetch_metadata()
+            .map_err(|e| ValidationError::CustomError(e.to_string()))?
+            .height_of_longest_chain
+            .unwrap_or(0);
         verify_timelocks(tx, tip_height)?;
         Ok(())
     }
@@ -88,7 +96,7 @@ impl<B: BlockchainBackend> Validation<Transaction, B> for TxInputAndMaturityVali
 pub struct InputTxValidator {}
 
 impl<B: BlockchainBackend> Validation<Transaction, B> for InputTxValidator {
-    fn validate(&self, tx: &Transaction, db: &B, _metadata: &ChainMetadata) -> Result<(), ValidationError> {
+    fn validate(&self, tx: &Transaction, db: &B) -> Result<(), ValidationError> {
         verify_inputs(tx, db)?;
         Ok(())
     }
@@ -98,8 +106,12 @@ impl<B: BlockchainBackend> Validation<Transaction, B> for InputTxValidator {
 pub struct TimeLockTxValidator {}
 
 impl<B: BlockchainBackend> Validation<Transaction, B> for TimeLockTxValidator {
-    fn validate(&self, tx: &Transaction, _db: &B, metadata: &ChainMetadata) -> Result<(), ValidationError> {
-        let tip_height = metadata.height_of_longest_chain.unwrap_or(0);
+    fn validate(&self, tx: &Transaction, db: &B) -> Result<(), ValidationError> {
+        let tip_height = db
+            .fetch_metadata()
+            .map_err(|e| ValidationError::CustomError(e.to_string()))?
+            .height_of_longest_chain
+            .unwrap_or(0);
         verify_timelocks(tx, tip_height)?;
         Ok(())
     }
