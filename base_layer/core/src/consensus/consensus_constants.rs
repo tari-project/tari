@@ -138,8 +138,8 @@ impl ConsensusConstants {
 
     #[allow(clippy::identity_op)]
     pub fn rincewind() -> Self {
-        let target_block_interval = 60;
-        let difficulty_block_window = 150;
+        let target_block_interval = 120;
+        let difficulty_block_window = 90;
         ConsensusConstants {
             coinbase_lock_height: 60,
             blockchain_version: 1,
@@ -147,13 +147,13 @@ impl ConsensusConstants {
             target_block_interval,
             difficulty_block_window,
             difficulty_max_block_interval: target_block_interval * 60,
-            max_block_transaction_weight: 6250,
+            max_block_transaction_weight: 19500,
             pow_algo_count: 1,
             median_timestamp_count: 11,
             emission_initial: 5_538_846_115 * uT,
             emission_decay: 0.999_999_560_409_038_5,
             emission_tail: 1 * T,
-            min_pow_difficulty: 6_000_000.into(),
+            min_pow_difficulty: 60_000_000.into(),
         }
     }
 
@@ -167,7 +167,7 @@ impl ConsensusConstants {
             target_block_interval,
             difficulty_max_block_interval: target_block_interval * 6,
             difficulty_block_window,
-            max_block_transaction_weight: 6250,
+            max_block_transaction_weight: 19500,
             pow_algo_count: 2,
             median_timestamp_count: 11,
             emission_initial: 10_000_000.into(),
@@ -188,7 +188,7 @@ impl ConsensusConstants {
             target_block_interval,
             difficulty_max_block_interval: target_block_interval * 6,
             difficulty_block_window,
-            max_block_transaction_weight: 6250,
+            max_block_transaction_weight: 19500,
             pow_algo_count: 2,
             median_timestamp_count: 11,
             emission_initial: 10_000_000.into(),
