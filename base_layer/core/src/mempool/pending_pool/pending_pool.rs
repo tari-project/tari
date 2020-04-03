@@ -254,7 +254,7 @@ mod test {
 
     #[test]
     fn test_insert_and_lru() {
-        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), lock: 500, inputs: 2, outputs: 1).0);
+        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(49), lock: 500, inputs: 2, outputs: 1).0);
         let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(20), lock: 2150, inputs: 1, outputs: 2).0);
         let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(100), lock: 1000, inputs: 2, outputs: 1).0);
         let tx4 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(30), lock: 2450, inputs: 2, outputs: 2).0);
@@ -276,7 +276,7 @@ mod test {
         assert_eq!(pending_pool.len(), 3);
         assert_eq!(
             pending_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig),
-            true
+            false
         );
         assert_eq!(
             pending_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig),
@@ -292,7 +292,7 @@ mod test {
         );
         assert_eq!(
             pending_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig),
-            false
+            true
         );
         assert_eq!(
             pending_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig),

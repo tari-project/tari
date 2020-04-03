@@ -273,7 +273,7 @@ fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
     let (mut oms, _, _shutdown, _) = setup_output_manager_service(&mut runtime, backend);
 
     let fee_per_gram = MicroTari::from(20);
-    let fee_without_change = Fee::calculate(fee_per_gram, 2, 1);
+    let fee_without_change = Fee::calculate(fee_per_gram, 1, 2, 1);
     let key1 = PrivateKey::random(&mut OsRng);
     let value1 = 500;
     runtime
@@ -347,7 +347,7 @@ fn send_not_enough_for_change<T: OutputManagerBackend + 'static>(backend: T) {
     let (mut oms, _, _shutdown, _) = setup_output_manager_service(&mut runtime, backend);
 
     let fee_per_gram = MicroTari::from(20);
-    let fee_without_change = Fee::calculate(fee_per_gram, 2, 1);
+    let fee_without_change = Fee::calculate(fee_per_gram, 1, 2, 1);
     let key1 = PrivateKey::random(&mut OsRng);
     let value1 = 500;
     runtime

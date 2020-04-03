@@ -557,7 +557,7 @@ mod test {
         let b = TestParams::new();
         let (utxo, input) = make_input(&mut OsRng, MicroTari(1200), &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
-        let fee = Fee::calculate(MicroTari(20), 1, 1);
+        let fee = Fee::calculate(MicroTari(20), 1, 1, 1);
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari(20))
@@ -615,7 +615,7 @@ mod test {
         let b = TestParams::new();
         let (utxo, input) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
-        let fee = Fee::calculate(MicroTari(20), 1, 2);
+        let fee = Fee::calculate(MicroTari(20), 1, 1, 2);
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari(20))

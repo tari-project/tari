@@ -239,7 +239,7 @@ mod test {
         let tx2 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(20), inputs: 4, outputs: 1).0);
         let tx3 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(100), inputs: 5, outputs: 1).0);
         let tx4 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(30), inputs: 3, outputs: 1).0);
-        let tx5 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(50), inputs: 5, outputs: 1).0);
+        let tx5 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(55), inputs: 5, outputs: 1).0);
 
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 4,
@@ -270,12 +270,12 @@ mod test {
             true
         );
         // Retrieve the set of highest priority unspent transactions
-        let desired_weight = tx1.calculate_weight() + tx3.calculate_weight() + tx4.calculate_weight();
+        let desired_weight = tx1.calculate_weight() + tx3.calculate_weight() + tx5.calculate_weight();
         let selected_txs = unconfirmed_pool.highest_priority_txs(desired_weight).unwrap();
         assert_eq!(selected_txs.len(), 3);
         assert!(selected_txs.contains(&tx1));
         assert!(selected_txs.contains(&tx3));
-        assert!(selected_txs.contains(&tx4));
+        assert!(selected_txs.contains(&tx5));
         // Note that transaction tx5 could not be included as its weight was to big to fit into the remaining allocated
         // space, the second best transaction was then included
 
