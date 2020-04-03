@@ -78,6 +78,16 @@ impl ReorgPool {
         Ok(())
     }
 
+    /// Insert a new transaction into the ReorgPool. Published transactions will have a limited Time-to-live in
+    /// the ReorgPool and will be discarded once the Time-to-live threshold has been reached.
+    pub fn insert(&self, transaction: Arc<Transaction>) -> Result<(), ReorgPoolError> {
+        self.pool_storage
+            .write()
+            .map_err(|e| ReorgPoolError::BackendError(e.to_string()))?
+            .insert(transaction);
+        Ok(())
+    }
+
     /// Check if a transaction is stored in the ReorgPool
     pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> Result<bool, ReorgPoolError> {
         Ok(self

@@ -307,6 +307,12 @@ where T: BlockchainBackend
         fetch_stxo(&*db, hash)
     }
 
+    /// Returns the STXO with the given hash.
+    pub fn is_stxo(&self, hash: HashOutput) -> Result<bool, ChainStorageError> {
+        let db = self.db_read_access()?;
+        is_stxo(&*db, hash)
+    }
+
     /// Returns the orphan block with the given hash.
     pub fn fetch_orphan(&self, hash: HashOutput) -> Result<Block, ChainStorageError> {
         let db = self.db_read_access()?;
@@ -514,6 +520,11 @@ fn fetch_orphan<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<Block,
 
 pub fn is_utxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, ChainStorageError> {
     let key = DbKey::UnspentOutput(hash);
+    db.contains(&key)
+}
+
+pub fn is_stxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, ChainStorageError> {
+    let key = DbKey::SpentOutput(hash);
     db.contains(&key)
 }
 

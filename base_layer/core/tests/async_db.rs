@@ -134,7 +134,7 @@ fn fetch_async_utxo() {
 }
 
 #[test]
-fn async_is_utxo() {
+fn async_is_utxo_stxo() {
     let (db, blocks, outputs, _) = create_blockchain_db_no_cut_through();
     let factory = CommitmentFactory::default();
     blocks.iter().for_each(|b| println!("{}", b));
@@ -144,6 +144,10 @@ fn async_is_utxo() {
     // Check using sync functions
     assert_eq!(db.is_utxo(utxo.hash()), Ok(true));
     assert_eq!(db.is_utxo(stxo.hash()), Ok(false));
+
+    assert_eq!(db.is_stxo(utxo.hash()), Ok(false));
+    assert_eq!(db.is_stxo(stxo.hash()), Ok(true));
+
     test_async(move |rt| {
         let db = db.clone();
         let db2 = db.clone();
@@ -151,10 +155,16 @@ fn async_is_utxo() {
         rt.spawn(async move {
             let is_utxo = async_db::is_utxo(db.clone(), utxo.hash()).await;
             assert_eq!(is_utxo, Ok(true));
+
+            let is_stxo = async_db::is_stxo(db.clone(), utxo.hash()).await;
+            assert_eq!(is_stxo, Ok(false));
         });
         rt.spawn(async move {
             let is_utxo = async_db::is_utxo(db2.clone(), stxo.hash()).await;
             assert_eq!(is_utxo, Ok(false));
+
+            let is_stxo = async_db::is_stxo(db2.clone(), stxo.hash()).await;
+            assert_eq!(is_stxo, Ok(true));
         });
     });
 }

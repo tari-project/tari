@@ -44,4 +44,6 @@ pub enum ValidationError {
     // The total expected supply plus the total accumulated (offset) excess does not equal the sum of all UTXO
     // commitments.
     InvalidAccountingBalance,
+    // Transaction contains already spent inputs
+    ContainsSTxO,
 }
