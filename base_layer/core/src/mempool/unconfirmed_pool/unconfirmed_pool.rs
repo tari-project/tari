@@ -187,12 +187,38 @@ impl UnconfirmedPool {
         published_block.body.kernels().iter().for_each(|kernel| {
             if let Some(ptx) = self.txs_by_signature.get(&kernel.excess_sig) {
                 self.txs_by_priority.remove(&ptx.priority);
-                removed_txs.push(self.txs_by_signature.remove(&kernel.excess_sig).unwrap().transaction);
+                if let Some(ptx) = self.txs_by_signature.remove(&kernel.excess_sig) {
+                    removed_txs.push(ptx.transaction);
+                }
             }
         });
         // First remove published transactions before discarding double spends
         self.discard_double_spends(published_block);
 
+        removed_txs
+    }
+
+    /// Remove all unconfirmed transactions that have become time locked. This can happen when the chain height was
+    /// reduced on some reorgs.
+    pub fn remove_timelocked(&mut self, tip_height: u64) -> Vec<Arc<Transaction>> {
+        let mut removed_tx_keys: Vec<Signature> = Vec::new();
+        for (tx_key, ptx) in self.txs_by_signature.iter() {
+            if ptx.transaction.min_spendable_height() > tip_height + 1 {
+                self.txs_by_priority.remove(&ptx.priority);
+                removed_tx_keys.push(tx_key.clone());
+            }
+        }
+        let mut removed_txs: Vec<Arc<Transaction>> = Vec::new();
+        for tx_key in removed_tx_keys {
+            trace!(
+                target: LOG_TARGET,
+                "Removing time locked transaction from unconfirmed pool: {:?}",
+                tx_key
+            );
+            if let Some(ptx) = self.txs_by_signature.remove(&tx_key) {
+                removed_txs.push(ptx.transaction);
+            }
+        }
         removed_txs
     }
 
