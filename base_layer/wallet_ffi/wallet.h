@@ -324,6 +324,7 @@ struct TariCommsConfig *comms_config_create(char *public_address,
                                      char *database_name,
                                      char *datastore_path,
                                      struct TariPrivateKey *secret_key,
+                                     unsigned long long discovery_timeout_in_secs,
                                      int* error_out);
 
 // Frees memory for a TariCommsConfig
