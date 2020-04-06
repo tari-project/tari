@@ -32,7 +32,7 @@ use tari_comms::{
     utils::signature,
     Bytes,
 };
-use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat};
+use tari_crypto::tari_utilities::message_format::MessageFormat;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::serialize";
@@ -97,10 +97,9 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError>
 
         // If forwarding the message, the DhtHeader already has a signature that should not change
         if is_forwarded {
-            trace!(
+            debug!(
                 target: LOG_TARGET,
-                "Forwarded message {:?}. Message will not be signed",
-                message.tag
+                "Message ({}) is being forwarded so this node will NOT signed it", message.tag
             );
         } else {
             // Sign the body if the origin public key was previously specified.
@@ -108,12 +107,6 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError>
                 let signature = signature::sign(&mut OsRng, node_identity.secret_key().clone(), &body)
                     .map_err(PipelineError::from_debug)?;
                 origin.signature = signature.to_binary().map_err(PipelineError::from_debug)?;
-                trace!(
-                    target: LOG_TARGET,
-                    "Signed message {:?}: {}",
-                    message.tag,
-                    origin.signature.to_hex()
-                );
             }
         }
 

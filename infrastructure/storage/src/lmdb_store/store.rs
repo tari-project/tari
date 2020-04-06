@@ -622,7 +622,7 @@ mod test {
 
     #[test]
     fn test_lmdb_builder() {
-        let mut store = LMDBBuilder::new()
+        let store = LMDBBuilder::new()
             .set_path(env::temp_dir())
             .set_environment_size(500)
             .set_max_number_of_databases(10)

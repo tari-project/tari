@@ -20,34 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-macro_rules! unwrap_oms_send_msg {
-    ($var:expr, reply_value=$reply_value:expr) => {
-        match $var {
-            crate::outbound::DhtOutboundRequest::SendMessage(boxed, body, reply_tx) => {
-                let _ = reply_tx.send($reply_value);
-                (*boxed, body)
-            },
-        }
-    };
-    ($var:expr) => {
-        unwrap_oms_send_msg!(
-            $var,
-            reply_value = $crate::outbound::SendMessageResponse::Queued(vec![])
-        );
-    };
+use std::convert::TryInto;
+
+/// Tries to convert a series of `T`s to `U`s, returning an error at the first failure
+pub fn try_convert_all<T, U, I>(into_iter: I) -> Result<Vec<U>, T::Error>
+where
+    I: IntoIterator<Item = T>,
+    T: TryInto<U>,
+{
+    let iter = into_iter.into_iter();
+    let mut result = Vec::with_capacity(iter.size_hint().0);
+    for item in iter {
+        result.push(item.try_into()?);
+    }
+    Ok(result)
 }
-
-mod dht_actor_mock;
-pub use dht_actor_mock::{create_dht_actor_mock, DhtMockState};
-
-mod dht_discovery_mock;
-pub use dht_discovery_mock::{create_dht_discovery_mock, DhtDiscoveryMockState};
-
-mod makers;
-pub use makers::*;
-
-mod service;
-pub use service::{service_fn, service_spy};
-
-mod store_and_forward_mock;
-pub use store_and_forward_mock::{create_store_and_forward_mock, StoreAndForwardMockState};

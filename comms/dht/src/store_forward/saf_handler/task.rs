@@ -24,15 +24,28 @@ use crate::{
     actor::DhtRequester,
     config::DhtConfig,
     crypt,
-    envelope::{Destination, DhtMessageFlags, DhtMessageHeader, DhtMessageOrigin, NodeDestination},
+    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageOrigin, NodeDestination},
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
     outbound::{OutboundMessageRequester, SendMessageParams},
     proto::{
         envelope::DhtMessageType,
-        store_forward::{StoredMessage, StoredMessagesRequest, StoredMessagesResponse},
+        store_forward::{
+            stored_messages_response::SafResponseType,
+            StoredMessage as ProtoStoredMessage,
+            StoredMessagesRequest,
+            StoredMessagesResponse,
+        },
     },
-    store_forward::{error::StoreAndForwardError, SafStorage},
+    storage::DhtSettingKey,
+    store_forward::{
+        error::StoreAndForwardError,
+        message::{datetime_to_timestamp, timestamp_to_datetime},
+        service::FetchStoredMessageQuery,
+        StoreAndForwardRequester,
+    },
+    utils::try_convert_all,
 };
+use chrono::Utc;
 use digest::Digest;
 use futures::{future, stream, Future, StreamExt};
 use log::*;
@@ -45,7 +58,6 @@ use tari_comms::{
     types::Challenge,
     utils::signature,
 };
-use tari_crypto::tari_utilities::ByteArray;
 use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::store_forward";
@@ -58,7 +70,7 @@ pub struct MessageHandlerTask<S> {
     outbound_service: OutboundMessageRequester,
     node_identity: Arc<NodeIdentity>,
     message: Option<DecryptedDhtMessage>,
-    store: Arc<SafStorage>,
+    saf_requester: StoreAndForwardRequester,
 }
 
 impl<S> MessageHandlerTask<S>
@@ -68,7 +80,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     pub fn new(
         config: DhtConfig,
         next_service: S,
-        store: Arc<SafStorage>,
+        saf_requester: StoreAndForwardRequester,
         dht_requester: DhtRequester,
         peer_manager: Arc<PeerManager>,
         outbound_service: OutboundMessageRequester,
@@ -78,7 +90,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     {
         Self {
             config,
-            store,
+            saf_requester,
             dht_requester,
             next_service,
             peer_manager,
@@ -94,10 +106,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .take()
             .expect("DhtInboundMessageTask initialized without message");
 
-        if message.dht_header.message_type.is_dht_message() && message.decryption_failed() {
+        if message.dht_header.message_type.is_saf_message() && message.decryption_failed() {
             debug!(
                 target: LOG_TARGET,
-                "Received SAFRetrieveMessages message which could not decrypt from NodeId={}. Discarding message.",
+                "Received store and forward message which could not decrypt from NodeId={}. Discarding message.",
                 message.source_peer.node_id
             );
             return Ok(());
@@ -157,59 +169,60 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(());
         }
 
+        let source_pubkey = Box::new(message.source_peer.public_key.clone());
+
         // Compile a set of stored messages for the requesting peer
-        let messages = self.store.with_lock(|mut store| {
-            store
-                .iter()
-                // All messages within start_time (if specified)
-                .filter(|(_, msg)| {
-                    retrieve_msgs.since.as_ref().map(|since| msg.stored_at.as_ref().map(|s| since.seconds <= s.seconds).unwrap_or( false)).unwrap_or( true)
-                })
-                .filter(|(_, msg)|{
-                    if msg.dht_header.is_none() {
-                        warn!(target: LOG_TARGET, "Message was stored without a header. This should never happen!");
-                        return false;
-                    }
-                    let dht_header = msg.dht_header.as_ref().expect("previously checked");
+        let mut query = FetchStoredMessageQuery::new(source_pubkey);
+        if let Some(since) = retrieve_msgs.since.map(timestamp_to_datetime) {
+            query.since(since);
+        }
 
-                    match &dht_header.destination {
-                        None=> false,
-                        // The stored message was sent with an undisclosed recipient. Perhaps this node
-                        // is interested in it
-                        Some(Destination::Unknown(_)) => true,
-                        // Was the stored message sent for the requesting node public key?
-                        Some(Destination::PublicKey(pk)) => pk.as_slice() == message.source_peer.public_key.as_bytes(),
-                        // Was the stored message sent for the requesting node node id?
-                        Some( Destination::NodeId(node_id)) => node_id.as_slice() == message.source_peer.node_id.as_bytes(),
-                    }
-                })
-                .take(self.config.saf_max_returned_messages)
-                .map(|(_, msg)| msg)
-                .cloned()
-                .collect::<Vec<_>>()
-        });
+        let response_types = vec![
+            SafResponseType::Discovery,
+            SafResponseType::Join,
+            SafResponseType::ExplicitlyAddressed,
+        ];
 
-        let stored_messages: StoredMessagesResponse = messages.into();
+        for resp_type in response_types {
+            query.with_response_type(resp_type);
+            let messages = self.saf_requester.fetch_messages(query.clone()).await?;
 
-        trace!(
-            target: LOG_TARGET,
-            "Responding to received message retrieval request with {} message(s)",
-            stored_messages.messages().len()
-        );
-        self.outbound_service
-            .send_message_no_header(
-                SendMessageParams::new()
-                    .direct_public_key(message.source_peer.public_key.clone())
-                    .with_dht_message_type(DhtMessageType::SafStoredMessages)
-                    .finish(),
-                stored_messages,
-            )
-            .await?;
+            if messages.is_empty() {
+                debug!(
+                    target: LOG_TARGET,
+                    "No {:?} stored messages for peer '{}'",
+                    resp_type,
+                    message.source_peer.node_id.short_str()
+                );
+                continue;
+            }
+
+            let stored_messages = StoredMessagesResponse {
+                messages: try_convert_all(messages)?,
+                request_id: retrieve_msgs.request_id,
+                response_type: resp_type as i32,
+            };
+
+            info!(
+                target: LOG_TARGET,
+                "Responding to received message retrieval request with {} message(s)",
+                stored_messages.messages().len()
+            );
+            self.outbound_service
+                .send_message_no_header(
+                    SendMessageParams::new()
+                        .direct_public_key(message.source_peer.public_key.clone())
+                        .with_dht_message_type(DhtMessageType::SafStoredMessages)
+                        .finish(),
+                    stored_messages,
+                )
+                .await?;
+        }
 
         Ok(())
     }
 
-    async fn handle_stored_messages(self, message: DecryptedDhtMessage) -> Result<(), StoreAndForwardError> {
+    async fn handle_stored_messages(mut self, message: DecryptedDhtMessage) -> Result<(), StoreAndForwardError> {
         trace!(
             target: LOG_TARGET,
             "Received stored messages from {}",
@@ -229,6 +242,38 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             "Received {} stored messages from peer",
             response.messages().len()
         );
+
+        let last_timestamp = self
+            .dht_requester
+            .get_setting(DhtSettingKey::SafLastRequestTimestamp)
+            .await?
+            .map(datetime_to_timestamp);
+
+        let max_stored_timestamp = response
+            .messages()
+            .iter()
+            .fold(last_timestamp, |acc, m| match &acc {
+                Some(since) => {
+                    match &m.stored_at {
+                        Some(ts) => {
+                            // If this timestamp is greater than the last one we have
+                            if ts.seconds > since.seconds && ts.seconds < Utc::now().timestamp() {
+                                m.stored_at.clone()
+                            } else {
+                                acc
+                            }
+                        },
+                        None => acc,
+                    }
+                },
+                None => m.stored_at.clone(),
+            })
+            .map(timestamp_to_datetime)
+            .unwrap_or_else(Utc::now);
+
+        self.dht_requester
+            .set_setting(DhtSettingKey::SafLastRequestTimestamp, max_stored_timestamp)
+            .await?;
 
         let tasks = response
             .messages
@@ -309,7 +354,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     fn process_incoming_stored_message(
         &self,
         source_peer: Arc<Peer>,
-        message: StoredMessage,
+        message: ProtoStoredMessage,
     ) -> impl Future<Output = Result<DecryptedDhtMessage, StoreAndForwardError>>
     {
         let node_identity = Arc::clone(&self.node_identity);
@@ -347,15 +392,14 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             // Check that the destination is either undisclosed
             Self::check_destination(&config, &peer_manager, &node_identity, &dht_header).await?;
             // Verify the signature
-            Self::check_signature(origin, &message.encrypted_body)?;
+            Self::check_signature(origin, &message.body)?;
             // Check that the message has not already been received.
-            Self::check_duplicate(&mut dht_requester, &message.encrypted_body).await?;
+            Self::check_duplicate(&mut dht_requester, &message.body).await?;
 
             // Attempt to decrypt the message (if applicable), and deserialize it
-            let decrypted_body =
-                Self::maybe_decrypt_and_deserialize(&node_identity, origin, dht_flags, &message.encrypted_body)?;
+            let decrypted_body = Self::maybe_decrypt_and_deserialize(&node_identity, origin, dht_flags, &message.body)?;
 
-            let inbound_msg = DhtInboundMessage::new(dht_header, Arc::clone(&source_peer), message.encrypted_body);
+            let inbound_msg = DhtInboundMessage::new(dht_header, Arc::clone(&source_peer), message.body);
 
             Ok(DecryptedDhtMessage::succeeded(decrypted_body, inbound_msg))
         }
@@ -430,9 +474,12 @@ mod test {
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
-        store_forward::message::datetime_to_timestamp,
+        proto::envelope::DhtHeader,
+        store_forward::{message::StoredMessagePriority, StoredMessage},
         test_utils::{
             create_dht_actor_mock,
+            create_store_and_forward_mock,
+            make_dht_header,
             make_dht_inbound_message,
             make_node_identity,
             make_peer_manager,
@@ -443,17 +490,34 @@ mod test {
     use chrono::Utc;
     use futures::channel::mpsc;
     use prost::Message;
-    use std::time::Duration;
     use tari_comms::{message::MessageExt, wrap_in_envelope_body};
+    use tari_crypto::tari_utilities::hex::Hex;
     use tokio::runtime::Handle;
 
     // TODO: unit tests for static functions (check_signature, etc)
+
+    fn make_stored_message(node_identity: &NodeIdentity, dht_header: DhtMessageHeader) -> StoredMessage {
+        StoredMessage {
+            id: 1,
+            version: 0,
+            origin_pubkey: node_identity.public_key().to_hex(),
+            origin_signature: String::new(),
+            message_type: DhtMessageType::None as i32,
+            destination_pubkey: None,
+            destination_node_id: None,
+            header: DhtHeader::from(dht_header).to_encoded_bytes().unwrap(),
+            body: b"A".to_vec(),
+            is_encrypted: false,
+            priority: StoredMessagePriority::High as i32,
+            stored_at: Utc::now().naive_utc(),
+        }
+    }
 
     #[tokio_macros::test_basic]
     async fn request_stored_messages() {
         let rt_handle = Handle::current();
         let spy = service_spy();
-        let storage = Arc::new(SafStorage::new(10));
+        let (requester, mock_state) = create_store_and_forward_mock();
 
         let peer_manager = make_peer_manager();
         let (oms_tx, mut oms_rx) = mpsc::channel(1);
@@ -461,33 +525,14 @@ mod test {
         let node_identity = make_node_identity();
 
         // Recent message
-        let inbound_msg = make_dht_inbound_message(&node_identity, vec![], DhtMessageFlags::empty());
-        storage.insert(
-            vec![0],
-            StoredMessage::new(0, inbound_msg.dht_header, b"A".to_vec()),
-            Duration::from_secs(60),
-        );
+        let dht_header = make_dht_header(&node_identity, &[], DhtMessageFlags::empty());
+        mock_state
+            .add_message(make_stored_message(&node_identity, dht_header))
+            .await;
 
-        // Expired message
-        let inbound_msg = make_dht_inbound_message(&node_identity, vec![], DhtMessageFlags::empty());
-        storage.insert(
-            vec![1],
-            StoredMessage::new(0, inbound_msg.dht_header, vec![]),
-            Duration::from_secs(0),
-        );
-
-        // Out of time range
-        let inbound_msg = make_dht_inbound_message(&node_identity, vec![], DhtMessageFlags::empty());
-        let mut msg = StoredMessage::new(0, inbound_msg.dht_header, vec![]);
-        msg.stored_at = Some(datetime_to_timestamp(
-            Utc::now().checked_sub_signed(chrono::Duration::days(1)).unwrap(),
-        ));
-
+        let since = Utc::now().checked_sub_signed(chrono::Duration::seconds(60)).unwrap();
         let mut message = DecryptedDhtMessage::succeeded(
-            wrap_in_envelope_body!(StoredMessagesRequest::since(
-                Utc::now().checked_sub_signed(chrono::Duration::seconds(60)).unwrap()
-            ))
-            .unwrap(),
+            wrap_in_envelope_body!(StoredMessagesRequest::since(since)).unwrap(),
             make_dht_inbound_message(&node_identity, vec![], DhtMessageFlags::ENCRYPTED),
         );
         message.dht_header.message_type = DhtMessageType::SafRequestMessages;
@@ -498,11 +543,11 @@ mod test {
         let task = MessageHandlerTask::new(
             Default::default(),
             spy.to_service::<PipelineError>(),
-            storage,
+            requester,
             dht_requester,
             peer_manager,
             OutboundMessageRequester::new(oms_tx),
-            node_identity,
+            node_identity.clone(),
             message,
         );
 
@@ -512,15 +557,21 @@ mod test {
         let body = EnvelopeBody::decode(body.as_slice()).unwrap();
         let msg = body.decode_part::<StoredMessagesResponse>(0).unwrap().unwrap();
         assert_eq!(msg.messages().len(), 1);
-        assert_eq!(msg.messages()[0].encrypted_body, b"A");
+        assert_eq!(msg.messages()[0].body, b"A");
         assert!(!spy.is_called());
+
+        assert_eq!(mock_state.call_count(), 1);
+        let calls = mock_state.take_calls().await;
+        assert!(calls[0].contains("FetchMessages"));
+        assert!(calls[0].contains(node_identity.public_key().to_hex().as_str()));
+        assert!(calls[0].contains(format!("{:?}", since).as_str()));
     }
 
     #[tokio_macros::test_basic]
     async fn receive_stored_messages() {
         let rt_handle = Handle::current();
         let spy = service_spy();
-        let storage = Arc::new(SafStorage::new(10));
+        let (requester, _) = create_store_and_forward_mock();
 
         let peer_manager = make_peer_manager();
         let (oms_tx, _) = mpsc::channel(1);
@@ -559,8 +610,8 @@ mod test {
             .await
             .unwrap();
 
-        let msg1 = StoredMessage::new(0, inbound_msg_a.dht_header.clone(), msg_a);
-        let msg2 = StoredMessage::new(0, inbound_msg_b.dht_header, msg_b);
+        let msg1 = ProtoStoredMessage::new(0, inbound_msg_a.dht_header.clone(), msg_a);
+        let msg2 = ProtoStoredMessage::new(0, inbound_msg_b.dht_header, msg_b);
         // Cleartext message
         let clear_msg = wrap_in_envelope_body!(b"Clear".to_vec())
             .unwrap()
@@ -568,10 +619,12 @@ mod test {
             .unwrap();
         let clear_header =
             make_dht_inbound_message(&node_identity, clear_msg.clone(), DhtMessageFlags::empty()).dht_header;
-        let msg_clear = StoredMessage::new(0, clear_header, clear_msg);
+        let msg_clear = ProtoStoredMessage::new(0, clear_header, clear_msg);
         let mut message = DecryptedDhtMessage::succeeded(
             wrap_in_envelope_body!(StoredMessagesResponse {
                 messages: vec![msg1.clone(), msg2, msg_clear],
+                request_id: 123,
+                response_type: 0
             })
             .unwrap(),
             make_dht_inbound_message(&node_identity, vec![], DhtMessageFlags::ENCRYPTED),
@@ -586,7 +639,7 @@ mod test {
         let task = MessageHandlerTask::new(
             Default::default(),
             spy.to_service::<PipelineError>(),
-            storage,
+            requester,
             dht_requester,
             peer_manager,
             OutboundMessageRequester::new(oms_tx),
@@ -601,11 +654,11 @@ mod test {
         // Deserialize each request into the message (a vec of a single byte in this case)
         let msgs = requests
             .into_iter()
-            .map(|req| req.success().unwrap().decode_part::<Vec<u8>>(0).unwrap().unwrap())
+            .map(|req| req.success().unwrap().decode_part::<Vec<_>>(0).unwrap().unwrap())
             .collect::<Vec<Vec<u8>>>();
         assert!(msgs.contains(&b"A".to_vec()));
         assert!(msgs.contains(&b"B".to_vec()));
         assert!(msgs.contains(&b"Clear".to_vec()));
-        assert_eq!(mock_state.call_count(), msgs.len());
+        mock_state.get_setting(&DhtSettingKey::SafLastRequestTimestamp).unwrap();
     }
 }

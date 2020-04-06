@@ -20,12 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::actor::{DhtRequest, DhtRequester};
+use crate::{
+    actor::{DhtRequest, DhtRequester},
+    storage::DhtSettingKey,
+};
 use futures::{channel::mpsc, stream::Fuse, StreamExt};
-use std::sync::{
-    atomic::{AtomicBool, AtomicUsize, Ordering},
-    Arc,
-    RwLock,
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc,
+        RwLock,
+    },
 };
 use tari_comms::peer_manager::Peer;
 
@@ -39,6 +45,7 @@ pub struct DhtMockState {
     signature_cache_insert: Arc<AtomicBool>,
     call_count: Arc<AtomicUsize>,
     select_peers: Arc<RwLock<Vec<Peer>>>,
+    settings: Arc<RwLock<HashMap<String, Vec<u8>>>>,
 }
 
 impl DhtMockState {
@@ -47,6 +54,7 @@ impl DhtMockState {
             signature_cache_insert: Arc::new(AtomicBool::new(false)),
             call_count: Arc::new(AtomicUsize::new(0)),
             select_peers: Arc::new(RwLock::new(Vec::new())),
+            settings: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -64,8 +72,8 @@ impl DhtMockState {
         self.call_count.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn call_count(&self) -> usize {
-        self.call_count.load(Ordering::SeqCst)
+    pub fn get_setting(&self, key: &DhtSettingKey) -> Option<Vec<u8>> {
+        self.settings.read().unwrap().get(&key.to_string()).map(Clone::clone)
     }
 }
 
@@ -105,7 +113,19 @@ impl DhtActorMock {
                 let lock = self.state.select_peers.read().unwrap();
                 reply_tx.send(lock.clone()).unwrap();
             },
-            SendRequestStoredMessages(_) => {},
+            SendRequestStoredMessages => {},
+            GetSetting(key, reply_tx) => {
+                let _ = reply_tx.send(Ok(self
+                    .state
+                    .settings
+                    .read()
+                    .unwrap()
+                    .get(&key.to_string())
+                    .map(Clone::clone)));
+            },
+            SetSetting(key, value) => {
+                self.state.settings.write().unwrap().insert(key.to_string(), value);
+            },
         }
     }
 }

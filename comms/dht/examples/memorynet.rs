@@ -403,7 +403,7 @@ async fn do_store_and_forward_discovery(
     println!("Waiting a few seconds for discovery to propagate around the network...");
     time::delay_for(Duration::from_secs(8)).await;
 
-    let mut total_messages = drain_messaging_events(messaging_rx, true).await;
+    let mut total_messages = drain_messaging_events(messaging_rx, false).await;
 
     banner!("🤓 {} is coming back online", get_name(node_identity.node_id()));
     let (tx, ims_rx) = mpsc::channel(1);

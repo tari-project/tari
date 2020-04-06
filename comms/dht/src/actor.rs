@@ -32,16 +32,15 @@ use crate::{
     discovery::DhtDiscoveryError,
     outbound::{OutboundMessageRequester, SendMessageParams},
     proto::{dht::JoinMessage, envelope::DhtMessageType, store_forward::StoredMessagesRequest},
+    storage::{DbConnection, DhtDatabase, DhtSettingKey, StorageError},
     DhtConfig,
 };
-use chrono::{DateTime, Utc};
 use derive_error::Error;
 use futures::{
     channel::{mpsc, mpsc::SendError, oneshot},
     future,
     future::BoxFuture,
     stream::{Fuse, FuturesUnordered},
-    FutureExt,
     SinkExt,
     StreamExt,
 };
@@ -60,7 +59,10 @@ use tari_comms::{
     },
     types::CommsPublicKey,
 };
-use tari_crypto::tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::{
+    message_format::{MessageFormat, MessageFormatError},
+    ByteArray,
+};
 use tari_shutdown::ShutdownSignal;
 use tari_storage::IterationResult;
 use ttl_cache::TtlCache;
@@ -80,6 +82,11 @@ pub enum DhtActorError {
     SendFailed(String),
     DiscoveryError(DhtDiscoveryError),
     BlockingJoinError(tokio::task::JoinError),
+    StorageError(StorageError),
+    #[error(no_from)]
+    StoredValueFailedToDeserialize(MessageFormatError),
+    #[error(no_from)]
+    FailedToSerializeValue(MessageFormatError),
 }
 
 impl From<SendError> for DhtActorError {
@@ -98,23 +105,27 @@ impl From<SendError> for DhtActorError {
 pub enum DhtRequest {
     /// Send a Join request to the network
     SendJoin,
-    /// Send a request for stored messages, optionally specifying a date time that the foreign node should
-    /// use to filter the returned messages.
-    SendRequestStoredMessages(Option<DateTime<Utc>>),
+    /// Send requests to neighbours for stored messages
+    SendRequestStoredMessages,
     /// Inserts a message signature to the msg hash cache. This operation replies with a boolean
     /// which is true if the signature already exists in the cache, otherwise false
     MsgHashCacheInsert(Vec<u8>, oneshot::Sender<bool>),
     /// Fetch selected peers according to the broadcast strategy
     SelectPeers(BroadcastStrategy, oneshot::Sender<Vec<Peer>>),
+    GetSetting(DhtSettingKey, oneshot::Sender<Result<Option<Vec<u8>>, DhtActorError>>),
+    SetSetting(DhtSettingKey, Vec<u8>),
 }
 
 impl Display for DhtRequest {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use DhtRequest::*;
         match self {
-            DhtRequest::SendJoin => f.write_str("SendJoin"),
-            DhtRequest::SendRequestStoredMessages(d) => f.write_str(&format!("SendRequestStoredMessages ({:?})", d)),
-            DhtRequest::MsgHashCacheInsert(_, _) => f.write_str("MsgHashCacheInsert"),
-            DhtRequest::SelectPeers(s, _) => f.write_str(&format!("SelectPeers (Strategy={})", s)),
+            SendJoin => f.write_str("SendJoin"),
+            SendRequestStoredMessages => f.write_str("SendRequestStoredMessages"),
+            MsgHashCacheInsert(_, _) => f.write_str("MsgHashCacheInsert"),
+            SelectPeers(s, _) => f.write_str(&format!("SelectPeers (Strategy={})", s)),
+            GetSetting(key, _) => f.write_str(&format!("GetStoreItem (key={})", key)),
+            SetSetting(key, value) => f.write_str(&format!("SelectPeers (key={}, value={} bytes)", key, value.len())),
         }
     }
 }
@@ -151,10 +162,25 @@ impl DhtRequester {
     }
 
     pub async fn send_request_stored_messages(&mut self) -> Result<(), DhtActorError> {
-        self.sender
-            .send(DhtRequest::SendRequestStoredMessages(None))
-            .await
-            .map_err(Into::into)
+        self.sender.send(DhtRequest::SendRequestStoredMessages).await?;
+        Ok(())
+    }
+
+    pub async fn get_setting<T: MessageFormat>(&mut self, key: DhtSettingKey) -> Result<Option<T>, DhtActorError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender.send(DhtRequest::GetSetting(key, reply_tx)).await?;
+        match reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)?? {
+            Some(bytes) => T::from_binary(&bytes)
+                .map(Some)
+                .map_err(DhtActorError::StoredValueFailedToDeserialize),
+            None => Ok(None),
+        }
+    }
+
+    pub async fn set_setting<T: MessageFormat>(&mut self, key: DhtSettingKey, value: T) -> Result<(), DhtActorError> {
+        let bytes = value.to_binary().map_err(DhtActorError::FailedToSerializeValue)?;
+        self.sender.send(DhtRequest::SetSetting(key, bytes)).await?;
+        Ok(())
     }
 }
 
@@ -191,18 +217,22 @@ impl<'a> DhtActor<'a> {
         }
     }
 
-    pub async fn run(mut self) {
+    pub async fn run(mut self) -> Result<(), DhtActorError> {
+        let conn = DbConnection::connect_url(self.config.database_url.clone()).await?;
+        let output = conn.migrate().await?;
+        info!(target: LOG_TARGET, "Dht database migration:\n{}", output);
+        let db = DhtDatabase::new(conn);
+
         let mut shutdown_signal = self
             .shutdown_signal
             .take()
-            .expect("DhtActor initialized without shutdown_signal")
-            .fuse();
+            .expect("DhtActor initialized without shutdown_signal");
 
         loop {
             futures::select! {
                 request = self.request_rx.select_next_some() => {
                     debug!(target: LOG_TARGET, "DhtActor received message: {}", request);
-                    let handler = self.request_handler(request);
+                    let handler = self.request_handler(db.clone(), request);
                     self.pending_jobs.push(handler);
                 },
 
@@ -227,9 +257,11 @@ impl<'a> DhtActor<'a> {
                 }
             }
         }
+
+        Ok(())
     }
 
-    fn request_handler(&mut self, request: DhtRequest) -> BoxFuture<'a, Result<(), DhtActorError>> {
+    fn request_handler(&mut self, db: DhtDatabase, request: DhtRequest) -> BoxFuture<'a, Result<(), DhtActorError>> {
         use DhtRequest::*;
         match request {
             SendJoin => {
@@ -265,16 +297,31 @@ impl<'a> DhtActor<'a> {
                     }
                 })
             },
-            SendRequestStoredMessages(maybe_since) => {
+            SendRequestStoredMessages => {
                 let node_identity = Arc::clone(&self.node_identity);
                 let outbound_requester = self.outbound_requester.clone();
                 Box::pin(Self::request_stored_messages(
                     node_identity,
                     outbound_requester,
+                    db,
                     self.config.num_neighbouring_nodes,
-                    maybe_since,
                 ))
             },
+            GetSetting(key, reply_tx) => Box::pin(async move {
+                let _ = reply_tx.send(db.get_value(key).await.map_err(Into::into));
+                Ok(())
+            }),
+            SetSetting(key, value) => Box::pin(async move {
+                match db.set_value(key, value).await {
+                    Ok(_) => {
+                        info!(target: LOG_TARGET, "Dht setting '{}' set", key);
+                    },
+                    Err(err) => {
+                        error!(target: LOG_TARGET, "set_setting failed because {:?}", err);
+                    },
+                }
+                Ok(())
+            }),
         }
     }
 
@@ -313,10 +360,16 @@ impl<'a> DhtActor<'a> {
     async fn request_stored_messages(
         node_identity: Arc<NodeIdentity>,
         mut outbound_requester: OutboundMessageRequester,
+        db: DhtDatabase,
         num_neighbouring_nodes: usize,
-        maybe_since: Option<DateTime<Utc>>,
     ) -> Result<(), DhtActorError>
     {
+        let request = db
+            .get_value(DhtSettingKey::SafLastRequestTimestamp)
+            .await?
+            .map(StoredMessagesRequest::since)
+            .unwrap_or_else(StoredMessagesRequest::new);
+
         outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
@@ -328,7 +381,7 @@ impl<'a> DhtActor<'a> {
                     )
                     .with_dht_message_type(DhtMessageType::SafRequestMessages)
                     .finish(),
-                maybe_since.map(StoredMessagesRequest::since).unwrap_or_default(),
+                request,
             )
             .await
             .map_err(|err| DhtActorError::SendFailed(format!("Failed to send request for stored messages: {}", err)))?;

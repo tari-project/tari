@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,37 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::proto::store_forward::StoredMessage;
-use std::{
-    sync::{RwLock, RwLockWriteGuard},
-    time::Duration,
-};
-use ttl_cache::TtlCache;
+use derive_error::Error;
+use tari_crypto::tari_utilities::message_format::MessageFormatError;
+use tokio::task;
 
-pub type SignatureBytes = Vec<u8>;
-
-pub struct SafStorage {
-    message_cache: RwLock<TtlCache<SignatureBytes, StoredMessage>>,
-}
-
-impl SafStorage {
-    pub fn new(cache_capacity: usize) -> Self {
-        Self {
-            message_cache: RwLock::new(TtlCache::new(cache_capacity)),
-        }
-    }
-
-    pub fn insert(&self, key: SignatureBytes, message: StoredMessage, ttl: Duration) -> Option<StoredMessage> {
-        acquire_write_lock!(self.message_cache).insert(key, message, ttl)
-    }
-
-    pub fn with_lock<F, T>(&self, f: F) -> T
-    where F: FnOnce(RwLockWriteGuard<TtlCache<SignatureBytes, StoredMessage>>) -> T {
-        f(acquire_write_lock!(self.message_cache))
-    }
-
-    #[cfg(test)]
-    pub fn remove(&self, key: &SignatureBytes) -> Option<StoredMessage> {
-        acquire_write_lock!(self.message_cache).remove(key)
-    }
+#[derive(Debug, Error)]
+pub enum StorageError {
+    /// Database path contained non-UTF8 characters that are not supported by the host OS
+    InvalidUnicodePath,
+    JoinError(task::JoinError),
+    ConnectionError(diesel::ConnectionError),
+    #[error(msg_embedded, no_from, non_std)]
+    DatabaseMigrationFailed(String),
+    ResultError(diesel::result::Error),
+    MessageFormatError(MessageFormatError),
 }

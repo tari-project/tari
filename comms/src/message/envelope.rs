@@ -151,6 +151,10 @@ impl EnvelopeBody {
         self.parts.len()
     }
 
+    pub fn total_size(&self) -> usize {
+        self.parts.iter().fold(0, |acc, b| acc + b.len())
+    }
+
     pub fn is_empty(&self) -> bool {
         self.parts.is_empty()
     }

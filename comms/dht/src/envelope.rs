@@ -69,11 +69,36 @@ bitflags! {
     }
 }
 
+impl DhtMessageFlags {
+    pub fn is_encrypted(self) -> bool {
+        self.contains(Self::ENCRYPTED)
+    }
+}
+
 impl DhtMessageType {
     pub fn is_dht_message(self) -> bool {
+        self.is_dht_discovery() || self.is_dht_join()
+    }
+
+    pub fn is_dht_discovery(self) -> bool {
         match self {
-            DhtMessageType::None => false,
-            _ => true,
+            DhtMessageType::Discovery => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_dht_join(self) -> bool {
+        match self {
+            DhtMessageType::Join => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_saf_message(self) -> bool {
+        use DhtMessageType::*;
+        match self {
+            SafRequestMessages | SafStoredMessages => true,
+            _ => false,
         }
     }
 }

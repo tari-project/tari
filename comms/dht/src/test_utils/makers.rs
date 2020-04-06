@@ -91,7 +91,7 @@ pub fn make_comms_inbound_message(node_identity: &NodeIdentity, message: Bytes, 
     )
 }
 
-pub fn make_dht_header(node_identity: &NodeIdentity, message: &Vec<u8>, flags: DhtMessageFlags) -> DhtMessageHeader {
+pub fn make_dht_header(node_identity: &NodeIdentity, message: &[u8], flags: DhtMessageFlags) -> DhtMessageHeader {
     DhtMessageHeader {
         version: 0,
         destination: NodeDestination::Unknown,

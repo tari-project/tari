@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{actor::DhtActorError, envelope::DhtMessageError, outbound::DhtOutboundError};
+use crate::{actor::DhtActorError, envelope::DhtMessageError, outbound::DhtOutboundError, storage::StorageError};
 use derive_error::Error;
 use prost::DecodeError;
 use std::io;
 use tari_comms::{message::MessageError, peer_manager::PeerManagerError};
-use tari_crypto::tari_utilities::ciphers::cipher::CipherError;
+use tari_crypto::tari_utilities::{byte_array::ByteArrayError, ciphers::cipher::CipherError};
 
 #[derive(Debug, Error)]
 pub enum StoreAndForwardError {
@@ -58,4 +58,15 @@ pub enum StoreAndForwardError {
     MessageOriginRequired,
     /// The message was malformed
     MalformedMessage,
+
+    StorageError(StorageError),
+    /// The store and forward service requester channel closed
+    RequesterChannelClosed,
+    /// The request was cancelled by the store and forward service
+    RequestCancelled,
+    /// The message was not valid for store and forward
+    InvalidStoreMessage,
+    /// The envelope version is invalid
+    InvalidEnvelopeVersion,
+    MalformedNodeId(ByteArrayError),
 }

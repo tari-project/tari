@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{outbound::DhtOutboundRequest, Dht, DhtConfig};
+use crate::{outbound::DhtOutboundRequest, DbConnectionUrl, Dht, DhtConfig};
 use futures::channel::mpsc;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
@@ -77,6 +77,11 @@ impl DhtBuilder {
 
     pub fn mainnet(mut self) -> Self {
         self.config = DhtConfig::default_mainnet();
+        self
+    }
+
+    pub fn with_database_url(mut self, database_url: DbConnectionUrl) -> Self {
+        self.config.database_url = database_url;
         self
     }
 

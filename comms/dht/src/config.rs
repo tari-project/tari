@@ -20,20 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::envelope::Network;
+use crate::{envelope::Network, storage::DbConnectionUrl};
 use std::time::Duration;
 
 /// The default maximum number of messages that can be stored using the Store-and-forward middleware
 pub const SAF_MSG_CACHE_STORAGE_CAPACITY: usize = 10_000;
 /// The default time-to-live duration used for storage of low priority messages by the Store-and-forward middleware
-pub const SAF_LOW_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(6 * 60 * 60);
+pub const SAF_LOW_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(6 * 60 * 60); // 6 hours
 /// The default time-to-live duration used for storage of high priority messages by the Store-and-forward middleware
-pub const SAF_HIGH_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+pub const SAF_HIGH_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(2 * 24 * 60 * 60); // 2 days
 /// The default number of peer nodes that a message has to be closer to, to be considered a neighbour
 pub const DEFAULT_NUM_NEIGHBOURING_NODES: usize = 10;
 
 #[derive(Debug, Clone)]
 pub struct DhtConfig {
+    /// The `DbConnectionUrl` for the Dht database. Default: In-memory database
+    pub database_url: DbConnectionUrl,
     /// The size of the buffer (channel) which holds pending outbound message requests.
     /// Default: 20
     pub outbound_buffer_size: usize,
@@ -53,8 +55,10 @@ pub struct DhtConfig {
     /// Default: 6 hours
     pub saf_low_priority_msg_storage_ttl: Duration,
     /// The time-to-live duration used for storage of high priority messages by the Store-and-forward middleware.
-    /// Default: 24 hours
+    /// Default: 2 days
     pub saf_high_priority_msg_storage_ttl: Duration,
+    /// The limit on the message size to store in SAF storage in bytes. Default 500kb
+    pub saf_max_message_size: usize,
     /// The max capacity of the message hash cache
     /// Default: 1000
     pub msg_hash_cache_capacity: usize,
@@ -92,6 +96,7 @@ impl DhtConfig {
     pub fn default_local_test() -> Self {
         Self {
             network: Network::LocalTest,
+            database_url: DbConnectionUrl::Memory,
             ..Default::default()
         }
     }
@@ -102,14 +107,16 @@ impl Default for DhtConfig {
         Self {
             num_neighbouring_nodes: DEFAULT_NUM_NEIGHBOURING_NODES,
             saf_num_closest_nodes: 10,
-            saf_max_returned_messages: 1000,
+            saf_max_returned_messages: 100,
             outbound_buffer_size: 20,
             saf_msg_cache_storage_capacity: SAF_MSG_CACHE_STORAGE_CAPACITY,
             saf_low_priority_msg_storage_ttl: SAF_LOW_PRIORITY_MSG_STORAGE_TTL,
             saf_high_priority_msg_storage_ttl: SAF_HIGH_PRIORITY_MSG_STORAGE_TTL,
+            saf_max_message_size: 512 * 1024, // 512 kb
             msg_hash_cache_capacity: 10_000,
             msg_hash_cache_ttl: Duration::from_secs(300),
             broadcast_cooldown_max_attempts: 3,
+            database_url: DbConnectionUrl::Memory,
             broadcast_cooldown_period: Duration::from_secs(60 * 30),
             discovery_request_timeout: Duration::from_secs(2 * 60),
             network: Network::TestNet,
