@@ -236,9 +236,13 @@ impl DhtDiscoveryService {
                 for request in self.collect_all_discovery_requests(&public_key) {
                     let _ = request.reply_tx.send(Ok(peer.clone()));
                 }
-            }
 
-            trace!(target: LOG_TARGET, "Discovery request is recognised and valid");
+                debug!(
+                    target: LOG_TARGET,
+                    "Discovery request for Node Id: {} is successfully completed",
+                    peer.node_id.to_hex(),
+                );
+            }
 
             let _ = reply_tx.send(result);
         }
@@ -406,7 +410,7 @@ impl DhtDiscoveryService {
         };
         debug!(
             target: LOG_TARGET,
-            "Sending Discover message to (at most) {} closest peers", self.config.num_neighbouring_nodes
+            "Sending Discovery message for Node Id: {}", destination
         );
 
         self.outbound_requester
