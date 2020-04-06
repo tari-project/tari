@@ -233,7 +233,7 @@ impl Miner {
             };
             // This flag will let the future select loop again if the miner has not been issued a shutdown command.
             let mut wait_for_miner = false;
-            'inner: while (!wait_for_miner) {
+            while !wait_for_miner {
                 futures::select! {
                 msg = block_event.select_next_some() => {
                     match *msg {
