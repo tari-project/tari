@@ -108,6 +108,11 @@
 #![feature(type_alias_impl_trait)]
 
 #[macro_use]
+extern crate diesel;
+#[macro_use]
+extern crate diesel_migrations;
+
+#[macro_use]
 mod macros;
 
 #[cfg(test)]
@@ -132,9 +137,15 @@ pub use dht::Dht;
 mod discovery;
 pub use discovery::DhtDiscoveryRequester;
 
+mod storage;
+pub use storage::DbConnectionUrl;
+
 mod logging_middleware;
 mod proto;
 mod tower_filter;
+mod utils;
+
+mod schema;
 
 pub mod broadcast_strategy;
 pub mod domain_message;

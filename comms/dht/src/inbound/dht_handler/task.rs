@@ -85,9 +85,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .take()
             .expect("ProcessDhtMessage initialized without message");
 
-        // If this message failed to decrypt, this middleware is not interested in it
+        // If this message failed to decrypt, we stop it going further at this layer
         if message.decryption_failed() {
-            return self.next_service.oneshot(message).await;
+            debug!(
+                target: LOG_TARGET,
+                "Message that failed to decrypt will be discarded here. DhtHeader={}", message.dht_header
+            );
+            return Ok(());
         }
 
         match message.dht_header.message_type {
@@ -189,7 +193,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let body = decryption_result.expect("already checked that this message decrypted successfully");
         let join_msg = body
             .decode_part::<JoinMessage>(0)?
-            .ok_or_else(|| DhtInboundError::InvalidJoinNetAddresses)?;
+            .ok_or_else(|| DhtInboundError::InvalidMessageBody)?;
 
         let addresses = join_msg
             .addresses

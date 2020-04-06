@@ -20,17 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod error;
-mod forward;
-mod message;
-mod saf_handler;
-mod state;
-mod store;
+type SafResult<T> = Result<T, StoreAndForwardError>;
 
-pub use self::{
-    error::StoreAndForwardError,
-    forward::ForwardLayer,
-    saf_handler::MessageHandlerLayer,
-    state::SafStorage,
-    store::StoreLayer,
-};
+mod service;
+pub use service::{StoreAndForwardRequest, StoreAndForwardRequester, StoreAndForwardService};
+
+mod database;
+pub use database::StoredMessage;
+
+mod error;
+pub use error::StoreAndForwardError;
+
+mod forward;
+pub use forward::ForwardLayer;
+
+mod message;
+
+mod saf_handler;
+pub use saf_handler::MessageHandlerLayer;
+
+mod store;
+pub use store::StoreLayer;

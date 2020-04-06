@@ -31,6 +31,7 @@ use crate::{
     outbound::DhtOutboundRequest,
     proto::envelope::DhtMessageType,
     store_forward,
+    store_forward::{StoreAndForwardRequest, StoreAndForwardRequester, StoreAndForwardService},
     tower_filter,
     DhtConfig,
 };
@@ -60,7 +61,9 @@ pub struct Dht {
     outbound_tx: mpsc::Sender<DhtOutboundRequest>,
     /// Sender for DHT requests
     dht_sender: mpsc::Sender<DhtRequest>,
-    /// Sender for DHT requests
+    /// Sender for SAF requests
+    saf_sender: mpsc::Sender<StoreAndForwardRequest>,
+    /// Sender for DHT discovery requests
     discovery_sender: mpsc::Sender<DhtDiscoveryRequest>,
     /// Connection manager actor requester
     connection_manager: ConnectionManagerRequester,
@@ -78,6 +81,7 @@ impl Dht {
     {
         let (dht_sender, dht_receiver) = mpsc::channel(20);
         let (discovery_sender, discovery_receiver) = mpsc::channel(20);
+        let (saf_sender, saf_receiver) = mpsc::channel(20);
 
         let dht = Self {
             node_identity,
@@ -85,9 +89,17 @@ impl Dht {
             config,
             outbound_tx,
             dht_sender,
+            saf_sender,
             connection_manager,
             discovery_sender,
         };
+
+        if dht.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD) {
+            task::spawn(
+                dht.store_and_forward_service(saf_receiver, shutdown_signal.clone())
+                    .run(),
+            );
+        }
 
         task::spawn(dht.actor(dht_receiver, shutdown_signal.clone()).run());
         task::spawn(dht.discovery_service(discovery_receiver, shutdown_signal).run());
@@ -130,6 +142,15 @@ impl Dht {
         )
     }
 
+    fn store_and_forward_service(
+        &self,
+        request_rx: mpsc::Receiver<StoreAndForwardRequest>,
+        shutdown_signal: ShutdownSignal,
+    ) -> StoreAndForwardService
+    {
+        StoreAndForwardService::new(self.config.clone(), request_rx, shutdown_signal)
+    }
+
     /// Return a new OutboundMessageRequester connected to the receiver
     pub fn outbound_requester(&self) -> OutboundMessageRequester {
         OutboundMessageRequester::new(self.outbound_tx.clone())
@@ -143,6 +164,11 @@ impl Dht {
     /// Returns a requester for the DhtDiscoveryService associated with this instance
     pub fn discovery_service_requester(&self) -> DhtDiscoveryRequester {
         DhtDiscoveryRequester::new(self.discovery_sender.clone(), self.config.discovery_request_timeout)
+    }
+
+    /// Returns a requester for the StoreAndForwardService associated with this instance
+    pub fn store_and_forward_requester(&self) -> StoreAndForwardRequester {
+        StoreAndForwardRequester::new(self.saf_sender.clone())
     }
 
     /// Returns an the full DHT stack as a `tower::layer::Layer`. This can be composed with
@@ -163,9 +189,6 @@ impl Dht {
         S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + Sync + 'static,
         S::Future: Send,
     {
-        let saf_storage = Arc::new(store_forward::SafStorage::new(
-            self.config.saf_msg_cache_storage_capacity,
-        ));
         let builder = ServiceBuilder::new()
             .layer(inbound::DeserializeLayer::new())
             .layer(inbound::ValidateLayer::new(
@@ -192,11 +215,11 @@ impl Dht {
                 self.config.clone(),
                 Arc::clone(&self.peer_manager),
                 Arc::clone(&self.node_identity),
-                Arc::clone(&saf_storage),
+                self.store_and_forward_requester(),
             ))
             .layer(store_forward::MessageHandlerLayer::new(
                 self.config.clone(),
-                saf_storage,
+                self.store_and_forward_requester(),
                 self.dht_requester(),
                 Arc::clone(&self.node_identity),
                 Arc::clone(&self.peer_manager),

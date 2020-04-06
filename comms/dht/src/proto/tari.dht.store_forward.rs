@@ -5,6 +5,8 @@
 pub struct StoredMessagesRequest {
     #[prost(message, optional, tag = "1")]
     pub since: ::std::option::Option<::prost_types::Timestamp>,
+    #[prost(uint32, tag = "2")]
+    pub request_id: u32,
 }
 /// Storage for a single message envelope, including the date and time when the element was stored
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -16,11 +18,29 @@ pub struct StoredMessage {
     #[prost(message, optional, tag = "3")]
     pub dht_header: ::std::option::Option<super::envelope::DhtHeader>,
     #[prost(bytes, tag = "4")]
-    pub encrypted_body: std::vec::Vec<u8>,
+    pub body: std::vec::Vec<u8>,
 }
 /// The StoredMessages contains the set of applicable messages retrieved from a neighbouring peer node.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StoredMessagesResponse {
     #[prost(message, repeated, tag = "1")]
     pub messages: ::std::vec::Vec<StoredMessage>,
+    #[prost(uint32, tag = "2")]
+    pub request_id: u32,
+    #[prost(enumeration = "stored_messages_response::SafResponseType", tag = "3")]
+    pub response_type: i32,
+}
+pub mod stored_messages_response {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+    #[repr(i32)]
+    pub enum SafResponseType {
+        /// All applicable messages
+        General = 0,
+        /// Send messages explicitly addressed to the requesting node or within the requesting node's region
+        ExplicitlyAddressed = 1,
+        /// Send Discovery messages that could be for the requester
+        Discovery = 2,
+        /// Send Join messages that the requester could be interested in
+        Join = 3,
+    }
 }

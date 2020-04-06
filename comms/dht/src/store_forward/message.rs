@@ -21,13 +21,22 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    envelope::DhtMessageHeader,
-    proto::store_forward::{StoredMessage, StoredMessagesRequest, StoredMessagesResponse},
+    proto::{
+        envelope::DhtHeader,
+        store_forward::{StoredMessage, StoredMessagesRequest, StoredMessagesResponse},
+    },
+    store_forward::{database, StoreAndForwardError},
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
+use prost::Message;
 use prost_types::Timestamp;
+use rand::{rngs::OsRng, RngCore};
+use std::{
+    cmp,
+    convert::{TryFrom, TryInto},
+};
 
-/// Utility function that converts a `chrono::DateTime` to a `prost::Timestamp`
+/// Utility function that converts a `chrono::DateTime<Utc>` to a `prost::Timestamp`
 pub(crate) fn datetime_to_timestamp(datetime: DateTime<Utc>) -> Timestamp {
     Timestamp {
         seconds: datetime.timestamp(),
@@ -35,26 +44,54 @@ pub(crate) fn datetime_to_timestamp(datetime: DateTime<Utc>) -> Timestamp {
     }
 }
 
+/// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime<Utc>`
+pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> DateTime<Utc> {
+    let naive = NaiveDateTime::from_timestamp(timestamp.seconds, cmp::max(0, timestamp.nanos) as u32);
+    DateTime::from_utc(naive, Utc)
+}
+
 impl StoredMessagesRequest {
+    pub fn new() -> Self {
+        Self {
+            since: None,
+            request_id: OsRng.next_u32(),
+        }
+    }
+
     pub fn since(since: DateTime<Utc>) -> Self {
         Self {
             since: Some(datetime_to_timestamp(since)),
+            request_id: OsRng.next_u32(),
         }
     }
 }
 
+#[cfg(test)]
 impl StoredMessage {
-    pub fn new(version: u32, dht_header: DhtMessageHeader, encrypted_body: Vec<u8>) -> Self {
+    pub fn new(version: u32, dht_header: crate::envelope::DhtMessageHeader, encrypted_body: Vec<u8>) -> Self {
         Self {
             version,
             dht_header: Some(dht_header.into()),
-            encrypted_body,
+            body: encrypted_body,
             stored_at: Some(datetime_to_timestamp(Utc::now())),
         }
     }
+}
 
-    pub fn has_required_fields(&self) -> bool {
-        self.dht_header.is_some()
+impl TryFrom<database::StoredMessage> for StoredMessage {
+    type Error = StoreAndForwardError;
+
+    fn try_from(message: database::StoredMessage) -> Result<Self, Self::Error> {
+        let dht_header = DhtHeader::decode(message.header.as_slice())?;
+        Ok(Self {
+            stored_at: Some(datetime_to_timestamp(DateTime::from_utc(message.stored_at, Utc))),
+            version: message
+                .version
+                .try_into()
+                .map_err(|_| StoreAndForwardError::InvalidEnvelopeVersion)?,
+            body: message.body,
+            dht_header: Some(dht_header),
+        })
     }
 }
 
@@ -64,8 +101,8 @@ impl StoredMessagesResponse {
     }
 }
 
-impl From<Vec<StoredMessage>> for StoredMessagesResponse {
-    fn from(messages: Vec<StoredMessage>) -> Self {
-        Self { messages }
-    }
+#[derive(Debug, Copy, Clone)]
+pub enum StoredMessagePriority {
+    Low = 1,
+    High = 10,
 }

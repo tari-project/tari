@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,34 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-macro_rules! unwrap_oms_send_msg {
-    ($var:expr, reply_value=$reply_value:expr) => {
-        match $var {
-            crate::outbound::DhtOutboundRequest::SendMessage(boxed, body, reply_tx) => {
-                let _ = reply_tx.send($reply_value);
-                (*boxed, body)
-            },
-        }
-    };
-    ($var:expr) => {
-        unwrap_oms_send_msg!(
-            $var,
-            reply_value = $crate::outbound::SendMessageResponse::Queued(vec![])
-        );
-    };
-}
+mod connection;
+pub use connection::{DbConnection, DbConnectionUrl};
 
-mod dht_actor_mock;
-pub use dht_actor_mock::{create_dht_actor_mock, DhtMockState};
+mod error;
+pub use error::StorageError;
 
-mod dht_discovery_mock;
-pub use dht_discovery_mock::{create_dht_discovery_mock, DhtDiscoveryMockState};
+mod dht_setting_entry;
+pub use dht_setting_entry::{DhtSettingKey, DhtSettingsEntry};
 
-mod makers;
-pub use makers::*;
-
-mod service;
-pub use service::{service_fn, service_spy};
-
-mod store_and_forward_mock;
-pub use store_and_forward_mock::{create_store_and_forward_mock, StoreAndForwardMockState};
+mod database;
+pub use database::DhtDatabase;

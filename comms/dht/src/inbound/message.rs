@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{consts::DHT_ENVELOPE_HEADER_VERSION, envelope::DhtMessageHeader};
+use crate::{
+    consts::DHT_ENVELOPE_HEADER_VERSION,
+    envelope::{DhtMessageFlags, DhtMessageHeader},
+};
 use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
@@ -118,5 +121,21 @@ impl DecryptedDhtMessage {
             .as_ref()
             .map(|o| &o.public_key)
             .unwrap_or(&self.source_peer.public_key)
+    }
+
+    /// Returns true if the message is or was encrypted by
+    pub fn is_encrypted(&self) -> bool {
+        self.dht_header.flags.contains(DhtMessageFlags::ENCRYPTED)
+    }
+
+    pub fn has_origin(&self) -> bool {
+        self.dht_header.origin.is_some()
+    }
+
+    pub fn body_size(&self) -> usize {
+        match self.decryption_result.as_ref() {
+            Ok(b) => b.total_size(),
+            Err(b) => b.len(),
+        }
     }
 }
