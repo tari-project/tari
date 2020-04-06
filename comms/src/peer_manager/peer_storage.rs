@@ -301,13 +301,18 @@ where DS: KeyValueStore<PeerId, Peer>
         node_id: &NodeId,
         n: usize,
         excluded_peers: &[CommsPublicKey],
+        features: Option<PeerFeatures>,
     ) -> Result<Vec<Peer>, PeerManagerError>
     {
         let mut peer_keys = Vec::new();
         let mut dists = Vec::new();
         self.peer_db
             .for_each_ok(|(peer_key, peer)| {
-                if !peer.is_banned() && !excluded_peers.contains(&peer.public_key) {
+                if features.map(|f| peer.features == f).unwrap_or(true) &&
+                    !peer.is_banned() &&
+                    !peer.is_offline() &&
+                    !excluded_peers.contains(&peer.public_key)
+                {
                     peer_keys.push(peer_key);
                     dists.push(node_id.distance(&peer.node_id));
                 }
@@ -345,7 +350,7 @@ where DS: KeyValueStore<PeerId, Peer>
         // TODO: Send to a random set of Communication Nodes
         let mut peer_keys = self
             .peer_db
-            .filter(|(_, peer)| !peer.is_banned())
+            .filter(|(_, peer)| !peer.is_banned() && peer.features == PeerFeatures::COMMUNICATION_NODE)
             .map(|pairs| pairs.into_iter().map(|(k, _)| k).collect::<Vec<_>>())
             .map_err(PeerManagerError::DatabaseError)?;
 
@@ -383,23 +388,43 @@ where DS: KeyValueStore<PeerId, Peer>
         n: usize,
     ) -> Result<bool, PeerManagerError>
     {
-        let region2node_dist = region_node_id.distance(node_id);
+        let region_node_distance = region_node_id.distance(node_id);
+        let node_threshold = self.calc_region_threshold(region_node_id, n, PeerFeatures::COMMUNICATION_NODE)?;
+        // Is node ID in the base node threshold?
+        if region_node_distance <= node_threshold {
+            return Ok(true);
+        }
+        let client_threshold = self.calc_region_threshold(region_node_id, n, PeerFeatures::COMMUNICATION_CLIENT)?;
+        // Is node ID in the base client threshold?
+        Ok(region_node_distance <= client_threshold)
+    }
+
+    pub fn calc_region_threshold(
+        &self,
+        region_node_id: &NodeId,
+        n: usize,
+        features: PeerFeatures,
+    ) -> Result<NodeDistance, PeerManagerError>
+    {
         let mut dists = vec![NodeDistance::max_distance(); n];
-        let last_index = dists.len() - 1;
+        let last_index = n - 1;
+
         self.peer_db
             .for_each_ok(|(_, peer)| {
-                if !peer.is_banned() {
-                    let curr_dist = region_node_id.distance(&peer.node_id);
-                    for i in 0..dists.len() {
-                        if dists[i] > curr_dist {
-                            dists.insert(i, curr_dist);
-                            dists.pop();
-                            break;
-                        }
-                    }
+                if peer.features != features {
+                    return IterationResult::Continue;
+                }
 
-                    if region2node_dist > dists[last_index] {
-                        return IterationResult::Break;
+                if peer.is_banned() || peer.is_offline() {
+                    return IterationResult::Continue;
+                }
+
+                let curr_dist = region_node_id.distance(&peer.node_id);
+                for i in 0..dists.len() {
+                    if dists[i] > curr_dist {
+                        dists.insert(i, curr_dist);
+                        dists.pop();
+                        break;
                     }
                 }
 
@@ -407,7 +432,7 @@ where DS: KeyValueStore<PeerId, Peer>
             })
             .map_err(PeerManagerError::DatabaseError)?;
 
-        Ok(region2node_dist <= dists[last_index])
+        Ok(dists.remove(last_index))
     }
 
     /// Changes the ban flag bit of the peer

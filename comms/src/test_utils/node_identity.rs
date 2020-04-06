@@ -34,10 +34,8 @@ pub fn build_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     Arc::new(NodeIdentity::random(&mut OsRng, public_addr, features).unwrap())
 }
 
-pub fn ordered_node_identities(n: usize) -> Vec<Arc<NodeIdentity>> {
-    let mut ids = (0..n)
-        .map(|_| build_node_identity(PeerFeatures::default()))
-        .collect::<Vec<_>>();
+pub fn ordered_node_identities(n: usize, features: PeerFeatures) -> Vec<Arc<NodeIdentity>> {
+    let mut ids = (0..n).map(|_| build_node_identity(features)).collect::<Vec<_>>();
     ids.sort_unstable_by(|a, b| a.node_id().cmp(b.node_id()));
     ids
 }
