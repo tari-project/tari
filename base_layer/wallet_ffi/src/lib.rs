@@ -2151,6 +2151,7 @@ pub unsafe extern "C" fn comms_config_create(
     database_name: *const c_char,
     datastore_path: *const c_char,
     secret_key: *mut TariPrivateKey,
+    discovery_timeout_in_secs: c_ulonglong,
     error_out: *mut c_int,
 ) -> *mut TariCommsConfig
 {
@@ -2202,7 +2203,7 @@ pub unsafe extern "C" fn comms_config_create(
                         max_concurrent_inbound_tasks: 100,
                         outbound_buffer_size: 100,
                         dht: DhtConfig {
-                            discovery_request_timeout: Duration::from_secs(120),
+                            discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
                             ..Default::default()
                         },
                         // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
@@ -4173,6 +4174,7 @@ mod test {
                 db_name_alice_str,
                 db_path_alice_str,
                 secret_key_alice,
+                20,
                 error_ptr,
             );
             (*alice_config).allow_test_addresses = true;
@@ -4205,6 +4207,7 @@ mod test {
                 db_name_bob_str,
                 db_path_bob_str,
                 secret_key_bob,
+                20,
                 error_ptr,
             );
             let bob_wallet = wallet_create(
