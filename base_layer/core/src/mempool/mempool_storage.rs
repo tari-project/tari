@@ -168,11 +168,34 @@ where T: BlockchainBackend
             );
         }
 
+        let prev_tip_height = removed_blocks
+            .last()
+            .expect("Added empty set of blocks on reorg.")
+            .header
+            .height;
+        let new_tip_height = new_blocks
+            .last()
+            .expect("Removed empty set of blocks on reorg.")
+            .header
+            .height;
         self.insert_txs(
             self.reorg_pool
                 .remove_reorged_txs_and_discard_double_spends(removed_blocks, &new_blocks)?,
         )?;
         self.process_published_blocks(new_blocks)?;
+
+        if new_tip_height < prev_tip_height {
+            trace!(
+                target: LOG_TARGET,
+                "Checking for time locked transactions in unconfirmed pool as chain height was reduced from {} to {} \
+                 during reorg.",
+                prev_tip_height,
+                new_tip_height,
+            );
+            self.pending_pool
+                .insert_txs(self.unconfirmed_pool.remove_timelocked(new_tip_height))?;
+        }
+
         Ok(())
     }
 

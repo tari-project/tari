@@ -382,10 +382,16 @@ fn test_reorg() {
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 0);
     assert_eq!(stats.timelocked_txs, 1);
+    assert_eq!(stats.published_txs, 5);
 
     db.rewind_to_height(2).unwrap();
 
-    mempool.process_reorg(vec![blocks[3].clone()], vec![]).unwrap();
+    let template = chain_block(&blocks[2], vec![], consensus_manager.consensus_constants());
+    let reorg_block3 = db.calculate_mmr_roots(template).unwrap();
+
+    mempool
+        .process_reorg(vec![blocks[3].clone()], vec![reorg_block3])
+        .unwrap();
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 2);
     assert_eq!(stats.timelocked_txs, 1);
