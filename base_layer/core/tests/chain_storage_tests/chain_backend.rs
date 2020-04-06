@@ -86,8 +86,19 @@ fn memory_insert_contains_delete_and_fetch_header() {
 
 #[test]
 fn lmdb_insert_contains_delete_and_fetch_header() {
-    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    insert_contains_delete_and_fetch_header(db);
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        insert_contains_delete_and_fetch_header(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 fn insert_contains_delete_and_fetch_utxo<T: BlockchainBackend>(mut db: T) {
@@ -120,8 +131,19 @@ fn memory_insert_contains_delete_and_fetch_utxo() {
 
 #[test]
 fn lmdb_insert_contains_delete_and_fetch_utxo() {
-    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    insert_contains_delete_and_fetch_utxo(db);
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        insert_contains_delete_and_fetch_utxo(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 fn insert_contains_delete_and_fetch_kernel<T: BlockchainBackend>(mut db: T) {
@@ -155,8 +177,19 @@ fn memory_insert_contains_delete_and_fetch_kernel() {
 
 #[test]
 fn lmdb_insert_contains_delete_and_fetch_kernel() {
-    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    insert_contains_delete_and_fetch_kernel(db);
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        insert_contains_delete_and_fetch_kernel(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 fn insert_contains_delete_and_fetch_orphan<T: BlockchainBackend>(mut db: T, consensus_constants: &ConsensusConstants) {
@@ -195,10 +228,21 @@ fn memory_insert_contains_delete_and_fetch_orphan() {
 
 #[test]
 fn lmdb_insert_contains_delete_and_fetch_orphan() {
-    let network = Network::LocalNet;
-    let consensus_constants = network.create_consensus_constants();
-    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    insert_contains_delete_and_fetch_orphan(db, &consensus_constants);
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let network = Network::LocalNet;
+        let consensus_constants = network.create_consensus_constants();
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        insert_contains_delete_and_fetch_orphan(db, &consensus_constants);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 fn spend_utxo_and_unspend_stxo<T: BlockchainBackend>(mut db: T) {
@@ -258,8 +302,19 @@ fn memory_spend_utxo_and_unspend_stxo() {
 
 #[test]
 fn lmdb_spend_utxo_and_unspend_stxo() {
-    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    spend_utxo_and_unspend_stxo(db);
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        spend_utxo_and_unspend_stxo(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 fn insert_fetch_metadata<T: BlockchainBackend>(mut db: T) {
@@ -337,8 +392,19 @@ fn memory_insert_fetch_metadata() {
 
 #[test]
 fn lmdb_insert_fetch_metadata() {
-    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    insert_fetch_metadata(db);
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        insert_fetch_metadata(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 fn fetch_mmr_root_and_proof_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
@@ -412,8 +478,19 @@ fn memory_fetch_mmr_root_and_proof_for_utxo_and_rp() {
 
 #[test]
 fn lmdb_fetch_mmr_root_and_proof_for_utxo_and_rp() {
-    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    fetch_mmr_root_and_proof_for_utxo_and_rp(db);
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        fetch_mmr_root_and_proof_for_utxo_and_rp(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 fn fetch_mmr_root_and_proof_for_kernel<T: BlockchainBackend>(mut db: T) {
@@ -462,8 +539,19 @@ fn memory_fetch_mmr_root_and_proof_for_kernel() {
 
 #[test]
 fn lmdb_fetch_mmr_root_and_proof_for_kernel() {
-    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    fetch_mmr_root_and_proof_for_kernel(db);
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        fetch_mmr_root_and_proof_for_kernel(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 fn fetch_future_mmr_root_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
@@ -513,8 +601,19 @@ fn memory_fetch_future_mmr_root_for_utxo_and_rp() {
 
 #[test]
 fn lmdb_fetch_future_mmr_root_for_utxo_and_rp() {
-    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    fetch_future_mmr_root_for_utxo_and_rp(db);
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        fetch_future_mmr_root_for_utxo_and_rp(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 fn fetch_future_mmr_root_for_for_kernel<T: BlockchainBackend>(mut db: T) {
@@ -552,8 +651,19 @@ fn memory_fetch_future_mmr_root_for_for_kernel() {
 
 #[test]
 fn lmdb_fetch_future_mmr_root_for_for_kernel() {
-    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    fetch_future_mmr_root_for_for_kernel(db);
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        fetch_future_mmr_root_for_for_kernel(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 fn commit_block_and_create_fetch_checkpoint_and_rewind_mmr<T: BlockchainBackend>(mut db: T) {
@@ -649,8 +759,19 @@ fn memory_commit_block_and_create_fetch_checkpoint_and_rewind_mmr() {
 
 #[test]
 fn lmdb_commit_block_and_create_fetch_checkpoint_and_rewind_mmr() {
-    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    commit_block_and_create_fetch_checkpoint_and_rewind_mmr(db);
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        commit_block_and_create_fetch_checkpoint_and_rewind_mmr(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 // TODO: Test Needed: fetch_mmr_node
@@ -712,10 +833,21 @@ fn memory_for_each_orphan() {
 
 #[test]
 fn lmdb_for_each_orphan() {
-    let network = Network::LocalNet;
-    let consensus_constants = network.create_consensus_constants();
-    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    for_each_orphan(db, &consensus_constants);
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let network = Network::LocalNet;
+        let consensus_constants = network.create_consensus_constants();
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        for_each_orphan(db, &consensus_constants);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 fn for_each_kernel<T: BlockchainBackend>(mut db: T) {
@@ -761,8 +893,19 @@ fn memory_for_each_kernel() {
 
 #[test]
 fn lmdb_for_each_kernel() {
-    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    for_each_kernel(db);
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        for_each_kernel(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 fn for_each_header<T: BlockchainBackend>(mut db: T) {
@@ -808,8 +951,19 @@ fn memory_for_each_header() {
 
 #[test]
 fn lmdb_for_each_header() {
-    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    for_each_header(db);
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        for_each_header(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 fn for_each_utxo<T: BlockchainBackend>(mut db: T) {
@@ -856,8 +1010,19 @@ fn memory_for_each_utxo() {
 
 #[test]
 fn lmdb_for_each_utxo() {
-    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    for_each_utxo(db);
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        for_each_utxo(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 #[test]
@@ -882,120 +1047,138 @@ fn lmdb_backend_restore() {
     // Create backend storage
     let path = create_temporary_data_path();
     {
-        let mut db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
-        let mut txn = DbTransaction::new();
-        txn.insert_orphan(orphan.clone());
-        txn.insert_utxo(utxo1, true);
-        txn.insert_utxo(utxo2, true);
-        txn.insert_kernel(kernel, true);
-        txn.insert_header(header.clone());
-        txn.commit_block();
-        assert!(db.write(txn).is_ok());
-        let mut txn = DbTransaction::new();
-        txn.spend_utxo(stxo_hash.clone());
-        assert!(db.write(txn).is_ok());
+        {
+            let mut db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
+            let mut txn = DbTransaction::new();
+            txn.insert_orphan(orphan.clone());
+            txn.insert_utxo(utxo1, true);
+            txn.insert_utxo(utxo2, true);
+            txn.insert_kernel(kernel, true);
+            txn.insert_header(header.clone());
+            txn.commit_block();
+            assert!(db.write(txn).is_ok());
+            let mut txn = DbTransaction::new();
+            txn.spend_utxo(stxo_hash.clone());
+            assert!(db.write(txn).is_ok());
 
+            assert_eq!(db.contains(&DbKey::BlockHeader(header.height)), Ok(true));
+            assert_eq!(db.contains(&DbKey::BlockHash(header_hash.clone())), Ok(true));
+            assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash.clone())), Ok(true));
+            assert_eq!(db.contains(&DbKey::SpentOutput(stxo_hash.clone())), Ok(true));
+            assert_eq!(db.contains(&DbKey::TransactionKernel(kernel_hash.clone())), Ok(true));
+            assert_eq!(db.contains(&DbKey::OrphanBlock(orphan_hash.clone())), Ok(true));
+        }
+        // Restore backend storage
+        let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
         assert_eq!(db.contains(&DbKey::BlockHeader(header.height)), Ok(true));
-        assert_eq!(db.contains(&DbKey::BlockHash(header_hash.clone())), Ok(true));
-        assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash.clone())), Ok(true));
-        assert_eq!(db.contains(&DbKey::SpentOutput(stxo_hash.clone())), Ok(true));
-        assert_eq!(db.contains(&DbKey::TransactionKernel(kernel_hash.clone())), Ok(true));
-        assert_eq!(db.contains(&DbKey::OrphanBlock(orphan_hash.clone())), Ok(true));
+        assert_eq!(db.contains(&DbKey::BlockHash(header_hash)), Ok(true));
+        assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash)), Ok(true));
+        assert_eq!(db.contains(&DbKey::SpentOutput(stxo_hash)), Ok(true));
+        assert_eq!(db.contains(&DbKey::TransactionKernel(kernel_hash)), Ok(true));
+        assert_eq!(db.contains(&DbKey::OrphanBlock(orphan_hash)), Ok(true));
     }
-    // Restore backend storage
-    let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
-    assert_eq!(db.contains(&DbKey::BlockHeader(header.height)), Ok(true));
-    assert_eq!(db.contains(&DbKey::BlockHash(header_hash)), Ok(true));
-    assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash)), Ok(true));
-    assert_eq!(db.contains(&DbKey::SpentOutput(stxo_hash)), Ok(true));
-    assert_eq!(db.contains(&DbKey::TransactionKernel(kernel_hash)), Ok(true));
-    assert_eq!(db.contains(&DbKey::OrphanBlock(orphan_hash)), Ok(true));
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&path).exists() {
+        std::fs::remove_dir_all(&path).unwrap();
+    }
 }
 
 #[test]
 fn lmdb_mmr_reset_and_commit() {
-    let factories = CryptoFactories::default();
-    let mut db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
 
-    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
-    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
-    let kernel1 = create_test_kernel(100.into(), 0);
-    let kernel2 = create_test_kernel(200.into(), 0);
-    let mut header1 = BlockHeader::new(0);
-    header1.height = 1;
-    let utxo_hash1 = utxo1.hash();
-    let utxo_hash2 = utxo2.hash();
-    let kernel_hash1 = kernel1.hash();
-    let kernel_hash2 = kernel2.hash();
-    let rp_hash1 = utxo1.proof.hash();
-    let header_hash1 = header1.hash();
+    // Perform test
+    {
+        let factories = CryptoFactories::default();
+        let mut db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
 
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1, true);
-    txn.insert_kernel(kernel1, true);
-    txn.insert_header(header1);
-    txn.commit_block();
-    assert!(db.write(txn).is_ok());
+        let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
+        let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
+        let kernel1 = create_test_kernel(100.into(), 0);
+        let kernel2 = create_test_kernel(200.into(), 0);
+        let mut header1 = BlockHeader::new(0);
+        header1.height = 1;
+        let utxo_hash1 = utxo1.hash();
+        let utxo_hash2 = utxo2.hash();
+        let kernel_hash1 = kernel1.hash();
+        let kernel_hash2 = kernel2.hash();
+        let rp_hash1 = utxo1.proof.hash();
+        let header_hash1 = header1.hash();
 
-    // Reset mmrs as a mmr txn failed without applying storage txns.
-    let mut txn = DbTransaction::new();
-    txn.spend_utxo(utxo_hash2.clone());
-    txn.commit_block();
-    assert!(db.write(txn).is_err());
+        let mut txn = DbTransaction::new();
+        txn.insert_utxo(utxo1, true);
+        txn.insert_kernel(kernel1, true);
+        txn.insert_header(header1);
+        txn.commit_block();
+        assert!(db.write(txn).is_ok());
 
-    assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash1.clone())), Ok(true));
-    assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash2.clone())), Ok(false));
-    assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash1.clone())), Ok(false));
-    assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash2.clone())), Ok(false));
-    assert_eq!(db.contains(&DbKey::TransactionKernel(kernel_hash1.clone())), Ok(true));
-    assert_eq!(db.contains(&DbKey::TransactionKernel(kernel_hash2.clone())), Ok(false));
-    assert_eq!(db.contains(&DbKey::BlockHash(header_hash1.clone())), Ok(true));
-    assert_eq!(
-        db.fetch_checkpoint(MmrTree::Utxo, 0).unwrap().nodes_added()[0],
-        utxo_hash1
-    );
-    assert_eq!(
-        db.fetch_checkpoint(MmrTree::Kernel, 0).unwrap().nodes_added()[0],
-        kernel_hash1
-    );
-    assert_eq!(
-        db.fetch_checkpoint(MmrTree::RangeProof, 0).unwrap().nodes_added()[0],
-        rp_hash1
-    );
-    assert!(db.fetch_checkpoint(MmrTree::Utxo, 1).is_err());
-    assert!(db.fetch_checkpoint(MmrTree::Kernel, 1).is_err());
-    assert!(db.fetch_checkpoint(MmrTree::RangeProof, 1).is_err());
+        // Reset mmrs as a mmr txn failed without applying storage txns.
+        let mut txn = DbTransaction::new();
+        txn.spend_utxo(utxo_hash2.clone());
+        txn.commit_block();
+        assert!(db.write(txn).is_err());
 
-    // Reset mmrs as a storage txn failed after the mmr txns were applied, ensure the previous state was preserved.
-    let mut txn = DbTransaction::new();
-    txn.spend_utxo(utxo_hash1.clone());
-    txn.delete(DbKey::TransactionKernel(kernel_hash1.clone()));
-    txn.delete(DbKey::TransactionKernel(kernel_hash2.clone()));
-    txn.commit_block();
-    assert!(db.write(txn).is_err());
+        assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash1.clone())), Ok(true));
+        assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash2.clone())), Ok(false));
+        assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash1.clone())), Ok(false));
+        assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash2.clone())), Ok(false));
+        assert_eq!(db.contains(&DbKey::TransactionKernel(kernel_hash1.clone())), Ok(true));
+        assert_eq!(db.contains(&DbKey::TransactionKernel(kernel_hash2.clone())), Ok(false));
+        assert_eq!(db.contains(&DbKey::BlockHash(header_hash1.clone())), Ok(true));
+        assert_eq!(
+            db.fetch_checkpoint(MmrTree::Utxo, 0).unwrap().nodes_added()[0],
+            utxo_hash1
+        );
+        assert_eq!(
+            db.fetch_checkpoint(MmrTree::Kernel, 0).unwrap().nodes_added()[0],
+            kernel_hash1
+        );
+        assert_eq!(
+            db.fetch_checkpoint(MmrTree::RangeProof, 0).unwrap().nodes_added()[0],
+            rp_hash1
+        );
+        assert!(db.fetch_checkpoint(MmrTree::Utxo, 1).is_err());
+        assert!(db.fetch_checkpoint(MmrTree::Kernel, 1).is_err());
+        assert!(db.fetch_checkpoint(MmrTree::RangeProof, 1).is_err());
 
-    assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash1.clone())), Ok(true));
-    assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash2.clone())), Ok(false));
-    assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash1.clone())), Ok(false));
-    assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash2)), Ok(false));
-    assert_eq!(db.contains(&DbKey::TransactionKernel(kernel_hash1.clone())), Ok(true));
-    assert_eq!(db.contains(&DbKey::TransactionKernel(kernel_hash2)), Ok(false));
-    assert_eq!(db.contains(&DbKey::BlockHash(header_hash1.clone())), Ok(true));
-    assert_eq!(
-        db.fetch_checkpoint(MmrTree::Utxo, 0).unwrap().nodes_added()[0],
-        utxo_hash1
-    );
-    assert_eq!(
-        db.fetch_checkpoint(MmrTree::Kernel, 0).unwrap().nodes_added()[0],
-        kernel_hash1
-    );
-    assert_eq!(
-        db.fetch_checkpoint(MmrTree::RangeProof, 0).unwrap().nodes_added()[0],
-        rp_hash1
-    );
-    assert!(db.fetch_checkpoint(MmrTree::Utxo, 1).is_err());
-    assert!(db.fetch_checkpoint(MmrTree::Kernel, 1).is_err());
-    assert!(db.fetch_checkpoint(MmrTree::RangeProof, 1).is_err());
+        // Reset mmrs as a storage txn failed after the mmr txns were applied, ensure the previous state was preserved.
+        let mut txn = DbTransaction::new();
+        txn.spend_utxo(utxo_hash1.clone());
+        txn.delete(DbKey::TransactionKernel(kernel_hash1.clone()));
+        txn.delete(DbKey::TransactionKernel(kernel_hash2.clone()));
+        txn.commit_block();
+        assert!(db.write(txn).is_err());
+
+        assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash1.clone())), Ok(true));
+        assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash2.clone())), Ok(false));
+        assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash1.clone())), Ok(false));
+        assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash2)), Ok(false));
+        assert_eq!(db.contains(&DbKey::TransactionKernel(kernel_hash1.clone())), Ok(true));
+        assert_eq!(db.contains(&DbKey::TransactionKernel(kernel_hash2)), Ok(false));
+        assert_eq!(db.contains(&DbKey::BlockHash(header_hash1.clone())), Ok(true));
+        assert_eq!(
+            db.fetch_checkpoint(MmrTree::Utxo, 0).unwrap().nodes_added()[0],
+            utxo_hash1
+        );
+        assert_eq!(
+            db.fetch_checkpoint(MmrTree::Kernel, 0).unwrap().nodes_added()[0],
+            kernel_hash1
+        );
+        assert_eq!(
+            db.fetch_checkpoint(MmrTree::RangeProof, 0).unwrap().nodes_added()[0],
+            rp_hash1
+        );
+        assert!(db.fetch_checkpoint(MmrTree::Utxo, 1).is_err());
+        assert!(db.fetch_checkpoint(MmrTree::Kernel, 1).is_err());
+        assert!(db.fetch_checkpoint(MmrTree::RangeProof, 1).is_err());
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 fn fetch_checkpoint<T: BlockchainBackend>(mut db: T) {
@@ -1085,9 +1268,20 @@ fn memory_fetch_checkpoint() {
 
 #[test]
 fn lmdb_fetch_checkpoint() {
-    let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 1 };
-    let db = create_lmdb_database(&create_temporary_data_path(), mmr_cache_config).unwrap();
-    fetch_checkpoint(db);
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 1 };
+        let db = create_lmdb_database(&temp_path, mmr_cache_config).unwrap();
+        fetch_checkpoint(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 fn duplicate_utxo<T: BlockchainBackend>(mut db: T) {
@@ -1123,8 +1317,19 @@ fn memory_duplicate_utxo() {
 
 #[test]
 fn lmdb_duplicate_utxo() {
-    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    duplicate_utxo(db);
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        duplicate_utxo(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 fn fetch_last_header<T: BlockchainBackend>(mut db: T) {
@@ -1156,6 +1361,17 @@ fn memory_fetch_last_header() {
 
 #[test]
 fn lmdb_fetch_last_header() {
-    let db = create_lmdb_database(&create_temporary_data_path(), MmrCacheConfig::default()).unwrap();
-    fetch_last_header(db);
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        fetch_last_header(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
