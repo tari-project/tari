@@ -231,44 +231,51 @@ impl Miner {
                 true => task::spawn(self.mining()),
                 false => task::spawn(self.not_mining()),
             };
-            futures::select! {
-            msg = block_event.select_next_some() => {
-                match *msg {
-                    BlockEvent::Verified((_, ref result)) => {
-                        //Miner does not care if the chain reorg'ed or just added a new block. Both cases means a new chain tip, so it needs to restart.
-                    match *result {
-                        BlockAddResult::Ok | BlockAddResult::ChainReorg(_) => {
-                        stop_mining_flag.store(true, Ordering::Relaxed);
-                        start_mining = true;
+            // This flag will let the future select loop again if the miner has not been issued a shutdown command.
+            let mut wait_for_miner = false;
+            'inner: while (!wait_for_miner) {
+                futures::select! {
+                msg = block_event.select_next_some() => {
+                    match *msg {
+                        BlockEvent::Verified((_, ref result)) => {
+                            //Miner does not care if the chain reorg'ed or just added a new block. Both cases means a new chain tip, so it needs to restart.
+                        match *result {
+                            BlockAddResult::Ok | BlockAddResult::ChainReorg(_) => {
+                            stop_mining_flag.store(true, Ordering::Relaxed);
+                            start_mining = true;
+                            wait_for_miner = true;
+                        },
+                        _ => {}
+                    }
                     },
-                    _ => {}
-                }
+                    _ => (),
+                    }
                 },
-                _ => (),
+                event = state_event.select_next_some() => {
+                    use StateEvent::*;
+                    stop_mining_flag.store(true, Ordering::Relaxed);
+                    match *event {
+                        BlocksSynchronized | NetworkSilence => {
+                            info!(target: LOG_TARGET,
+                            "Our chain has synchronised with the network, or is a seed node. Starting miner");
+                            start_mining = true;
+                            wait_for_miner = true;
+                        },
+                        FallenBehind(SyncStatus::Lagging(_, _)) => {
+                            info!(target: LOG_TARGET, "Our chain has fallen behind the network. Pausing miner");
+                            start_mining = false;
+                            wait_for_miner = true;
+                        },
+                        _ => {},
+                    }
+                },
+                _ = kill_signal => {
+                    info!(target: LOG_TARGET, "Mining kill signal received! Miner is shutting down");
+                    stop_mining_flag.store(true, Ordering::Relaxed);
+                    break 'main;
                 }
-            },
-            event = state_event.select_next_some() => {
-                use StateEvent::*;
-                stop_mining_flag.store(true, Ordering::Relaxed);
-                match *event {
-                    BlocksSynchronized | NetworkSilence => {
-                        info!(target: LOG_TARGET,
-                        "Our chain has synchronised with the network, or is a seed node. Starting miner");
-                        start_mining = true;
-                    },
-                    FallenBehind(SyncStatus::Lagging(_, _)) => {
-                        info!(target: LOG_TARGET, "Our chain has fallen behind the network. Pausing miner");
-                        start_mining = false;
-                    },
-                    _ => {},
-                }
-            },
-            _ = kill_signal => {
-                info!(target: LOG_TARGET, "Mining kill signal received! Miner is shutting down");
-                stop_mining_flag.store(true, Ordering::Relaxed);
-                break 'main;
+                };
             }
-            };
             self = mining_future.await.expect("Miner crashed").expect("Miner crashed");
         }
         debug!(target: LOG_TARGET, "Mining thread stopped.");
