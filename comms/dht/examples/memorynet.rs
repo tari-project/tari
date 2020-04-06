@@ -339,7 +339,7 @@ async fn peer_list_summary<'a, I: IntoIterator<Item = T>, T: AsRef<TestNode>>(ne
             .as_ref()
             .comms
             .peer_manager()
-            .closest_peers(node_identity.node_id(), 10, &[])
+            .closest_peers(node_identity.node_id(), 10, &[], None)
             .await
             .unwrap();
         let mut table = Table::new();

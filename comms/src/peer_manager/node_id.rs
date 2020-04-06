@@ -68,7 +68,7 @@ impl NodeDistance {
         nd
     }
 
-    pub fn max_distance() -> NodeDistance {
+    pub const fn max_distance() -> NodeDistance {
         NodeDistance([255; NODE_ID_ARRAY_SIZE])
     }
 }
@@ -355,6 +355,12 @@ mod test {
         assert!(n1_to_n2_dist < n1_to_n3_dist);
         assert_eq!(n1_to_n2_dist, desired_n1_to_n2_dist);
         assert_eq!(n1_to_n3_dist, desired_n1_to_n3_dist);
+
+        // Commutative
+        let n1_to_n2_dist = node_id1.distance(&node_id2);
+        let n2_to_n1_dist = node_id2.distance(&node_id1);
+
+        assert_eq!(n1_to_n2_dist, n2_to_n1_dist);
     }
 
     #[test]

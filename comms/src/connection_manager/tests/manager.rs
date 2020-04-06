@@ -234,7 +234,7 @@ async fn dial_offline_peer() {
 async fn simultaneous_dial_events() {
     let mut shutdown = Shutdown::new();
 
-    let node_identities = ordered_node_identities(2);
+    let node_identities = ordered_node_identities(2, Default::default());
 
     // Setup connection manager 1
     let peer_manager1 = build_peer_manager();
