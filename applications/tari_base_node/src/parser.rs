@@ -72,6 +72,7 @@ use tokio::{runtime, time};
 pub enum BaseNodeCommand {
     Help,
     GetBalance,
+    ListUtxos,
     SendTari,
     GetChainMetadata,
     ListPeers,
@@ -188,6 +189,9 @@ impl Parser {
             GetBalance => {
                 self.process_get_balance();
             },
+            ListUtxos => {
+                self.process_list_unspent_outputs();
+            },
             SendTari => {
                 self.process_send_tari(args);
             },
@@ -255,6 +259,9 @@ impl Parser {
             },
             GetBalance => {
                 println!("Gets your balance");
+            },
+            ListUtxos => {
+                println!("List your UTXOs");
             },
             SendTari => {
                 println!("Sends an amount of Tari to a address call this command via:");
@@ -325,6 +332,51 @@ impl Parser {
                     return;
                 },
                 Ok(data) => println!("Balances:\n{}", data),
+            };
+        });
+    }
+
+    // Function to process the list utxos command
+    fn process_list_unspent_outputs(&mut self) {
+        let mut handler1 = self.node_service.clone();
+        let mut handler2 = self.wallet_output_service.clone();
+        self.executor.spawn(async move {
+            let mut current_height = 0 as i64;
+            match handler1.get_metadata().await {
+                Err(err) => {
+                    println!("Failed to retrieve chain metadata: {:?}", err);
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err);
+                    return;
+                },
+                Ok(data) => current_height = data.height_of_longest_chain.unwrap() as i64,
+            };
+            match handler2.get_unspent_outputs().await {
+                Err(e) => {
+                    println!("Something went wrong");
+                    warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
+                    return;
+                },
+                Ok(mut unspent_outputs) => {
+                    if unspent_outputs.len() > 0 {
+                        println!(
+                            "\nYou have {} UTXOs: (value, spending key, mature in ? blocks, flags)",
+                            unspent_outputs.len()
+                        );
+                        for uo in unspent_outputs.iter() {
+                            let mature_in = std::cmp::max(uo.features.maturity as i64 - &current_height, 0);
+                            println!(
+                                "   {}, {}, {:>3}, {:?}",
+                                uo.value,
+                                uo.spending_key.to_hex(),
+                                mature_in,
+                                uo.features.flags
+                            );
+                        }
+                        println!("");
+                    } else {
+                        println!("\nNo valid UTXOs found at this time\n");
+                    }
+                },
             };
         });
     }
