@@ -106,7 +106,6 @@ make_async!(calculate_mmr_root(tree: MmrTree,additions: Vec<HashOutput>,deletion
 make_async!(add_block(block: Block) -> BlockAddResult, "add_block");
 make_async!(calculate_mmr_roots(template: NewBlockTemplate) -> Block, "calculate_mmr_roots");
 
-// make_async!(is_new_best_block(block: &Block) -> bool);
 make_async!(fetch_block(height: u64) -> HistoricalBlock, "fetch_block");
 make_async!(fetch_block_with_hash(hash: HashOutput) -> Option<HistoricalBlock>, "fetch_block_with_hash");
 make_async!(rewind_to_height(height: u64) -> Vec<Block>, "rewind_to_height");
