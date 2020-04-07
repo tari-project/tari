@@ -32,7 +32,7 @@ use crate::{
     proof_of_work::{Difficulty, ProofOfWork},
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-        types::{BlindingFactor, Commitment, CommitmentFactory, HashOutput},
+        types::{Commitment, HashOutput},
     },
     validation::{StatelessValidation, StatelessValidator, Validation, ValidationError, Validator},
 };
@@ -41,14 +41,10 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,
-    ops::DerefMut,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use strum_macros::Display;
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    tari_utilities::{hex::Hex, Hashable},
-};
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof, MutableMmrLeafNodes};
 
 const LOG_TARGET: &str = "c::cs::database";
@@ -405,17 +401,6 @@ where T: BlockchainBackend
         store_new_block(&mut db, block)
     }
 
-    /// Returns true if the given block -- assuming everything else is valid -- would be added to the tip of the
-    /// longest chain; i.e. the following conditions are met:
-    ///   * The blockchain is empty,
-    ///   * or ALL of:
-    ///     * the block's parent hash is the hash of the block at the current chain tip,
-    ///     * the block height is one greater than the parent block
-    pub fn is_at_chain_tip(&self, block: &Block) -> Result<bool, ChainStorageError> {
-        let db = self.db_read_access()?;
-        is_at_chain_tip(&*db, block)
-    }
-
     /// Fetch a block from the blockchain database.
     ///
     /// # Returns
@@ -454,24 +439,6 @@ where T: BlockchainBackend
     pub fn rewind_to_height(&self, height: u64) -> Result<Vec<Block>, ChainStorageError> {
         let mut db = self.db_write_access()?;
         rewind_to_height(&mut db, height)
-    }
-
-    /// Calculate the total kernel excess for all kernels in the chain.
-    pub fn total_kernel_excess(&self) -> Result<Commitment, ChainStorageError> {
-        let db = self.db_read_access()?;
-        total_kernel_excess(&*db)
-    }
-
-    /// Calculate the total kernel offset for all the kernel offsets recorded in the headers of the chain.
-    pub fn total_kernel_offset(&self) -> Result<BlindingFactor, ChainStorageError> {
-        let db = self.db_read_access()?;
-        total_kernel_offset(&*db)
-    }
-
-    /// Calculate the total sum of all the UTXO commitments in the chain.
-    pub fn total_utxo_commitment(&self) -> Result<Commitment, ChainStorageError> {
-        let db = self.db_read_access()?;
-        total_utxo_commitment(&*db)
     }
 }
 
@@ -608,21 +575,6 @@ fn store_new_block<T: BlockchainBackend>(db: &mut RwLockWriteGuard<T>, block: Bl
     Ok(())
 }
 
-fn is_at_chain_tip<T: BlockchainBackend>(db: &T, block: &Block) -> Result<bool, ChainStorageError> {
-    let (parent_height, parent_hash) = {
-        // If the database is empty, the best block must be the genesis block
-        let metadata = db.fetch_metadata()?;
-        if metadata.height_of_longest_chain.is_none() {
-            return Ok(block.header.height == 0);
-        }
-        (
-            metadata.height_of_longest_chain.clone().unwrap(),
-            metadata.best_block.clone().unwrap(),
-        )
-    };
-    Ok(block.header.prev_hash == parent_hash && block.header.height == parent_height + 1)
-}
-
 fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBlock, ChainStorageError> {
     let tip_height = check_for_valid_height(&*db, height)?;
     let header = fetch_header(db, height)?;
@@ -657,7 +609,7 @@ fn fetch_block_with_hash<T: BlockchainBackend>(
 }
 
 fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<u64, ChainStorageError> {
-    let db_height = db.fetch_last_header()?.map(|tip| tip.height).unwrap_or(0);
+    let db_height = db.fetch_metadata()?.height_of_longest_chain.unwrap_or(0);
     if height > db_height {
         return Err(ChainStorageError::InvalidQuery(format!(
             "Cannot get block at height {}. Chain tip is at {}",
@@ -726,7 +678,7 @@ fn fetch_checkpoint<T: BlockchainBackend>(
 }
 
 pub fn commit<T: BlockchainBackend>(db: &mut RwLockWriteGuard<T>, txn: DbTransaction) -> Result<(), ChainStorageError> {
-    db.deref_mut().write(txn)
+    db.write(txn)
 }
 
 fn rewind_to_height<T: BlockchainBackend>(
@@ -987,33 +939,6 @@ fn remove_orphan<T: BlockchainBackend>(
     let mut txn = DbTransaction::new();
     txn.delete(DbKey::OrphanBlock(hash));
     commit(db, txn)
-}
-
-fn total_kernel_excess<T: BlockchainBackend>(db: &T) -> Result<Commitment, ChainStorageError> {
-    let mut excess = CommitmentFactory::default().zero();
-    db.for_each_kernel(|pair| {
-        let (_, kernel) = pair.unwrap();
-        excess = &excess + &kernel.excess;
-    })?;
-    Ok(excess)
-}
-
-fn total_kernel_offset<T: BlockchainBackend>(db: &T) -> Result<BlindingFactor, ChainStorageError> {
-    let mut offset = BlindingFactor::default();
-    db.for_each_header(|pair| {
-        let (_, header) = pair.unwrap();
-        offset = &offset + &header.total_kernel_offset;
-    })?;
-    Ok(offset)
-}
-
-fn total_utxo_commitment<T: BlockchainBackend>(db: &T) -> Result<Commitment, ChainStorageError> {
-    let mut total_commitment = CommitmentFactory::default().zero();
-    db.for_each_utxo(|pair| {
-        let (_, utxo) = pair.unwrap();
-        total_commitment = &total_commitment + &utxo.commitment;
-    })?;
-    Ok(total_commitment)
 }
 
 /// We try and build a chain from this block to the main chain. If we can't do that we can stop.

@@ -356,7 +356,7 @@ impl Parser {
                     warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
                     return;
                 },
-                Ok(mut unspent_outputs) => {
+                Ok(unspent_outputs) => {
                     if unspent_outputs.len() > 0 {
                         println!(
                             "\nYou have {} UTXOs: (value, spending key, mature in ? blocks, flags)",

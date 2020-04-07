@@ -103,7 +103,7 @@ mod test {
                 MempoolRequest::GetStats => Ok(MempoolResponse::Stats(request_stats())),
                 _ => Err(MempoolServiceError::UnexpectedApiResponse),
             };
-            reply_channel.send(res);
+            reply_channel.send(res).unwrap();
         }
     }
 
