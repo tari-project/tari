@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,53 +20,5 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! This module is responsible for handling logic responsible for storing the blockchain state.
-//!
-//! It is structured in such a way that clients (e.g. base nodes) can configure the various components of the state
-//! (kernels, utxos, etc) in whichever way they like. It's possible to have the UTXO set in memory, and the kernels
-//! backed by LMDB, while the merkle trees are stored in flat files for example.
-
-mod blockchain_database;
-mod consts;
-mod db_transaction;
-mod error;
-mod historical_block;
-mod lmdb_db;
-mod memory_db;
-mod metadata;
-
-// public modules
-pub mod async_db;
-
-// Public API exports
-pub use blockchain_database::{
-    calculate_mmr_roots,
-    fetch_header,
-    is_stxo,
-    is_utxo,
-    BlockAddResult,
-    BlockchainBackend,
-    BlockchainDatabase,
-    BlockchainDatabaseConfig,
-    MutableMmrState,
-    Validators,
-};
-pub use db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree};
-pub use error::ChainStorageError;
-pub use historical_block::HistoricalBlock;
-pub use lmdb_db::{
-    create_lmdb_database,
-    LMDBDatabase,
-    LMDB_DB_BLOCK_HASHES,
-    LMDB_DB_HEADERS,
-    LMDB_DB_KERNELS,
-    LMDB_DB_KERNEL_MMR_CP_BACKEND,
-    LMDB_DB_METADATA,
-    LMDB_DB_ORPHANS,
-    LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND,
-    LMDB_DB_STXOS,
-    LMDB_DB_UTXOS,
-    LMDB_DB_UTXO_MMR_CP_BACKEND,
-};
-pub use memory_db::MemoryDatabase;
-pub use metadata::ChainMetadata;
+/// The maximum number of orphans that can be stored in the Orphan block pool.
+pub const BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY: usize = 720;

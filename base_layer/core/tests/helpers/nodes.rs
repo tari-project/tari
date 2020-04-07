@@ -37,7 +37,7 @@ use tari_core::{
         OutboundNodeCommsInterface,
     },
     blocks::Block,
-    chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
+    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
     mempool::{
         Mempool,
@@ -184,7 +184,8 @@ impl BaseNodeBuilder {
             .consensus_manager
             .unwrap_or(ConsensusManagerBuilder::new(self.network).build());
         let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
-        let blockchain_db = BlockchainDatabase::new(db, &consensus_manager, validators).unwrap();
+        let blockchain_db =
+            BlockchainDatabase::new(db, &consensus_manager, validators, BlockchainDatabaseConfig::default()).unwrap();
         let mempool_validator = MempoolValidators::new(TxInputAndMaturityValidator {}, TxInputAndMaturityValidator {});
         let mempool = Mempool::new(
             blockchain_db.clone(),

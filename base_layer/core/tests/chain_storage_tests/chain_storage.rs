@@ -38,7 +38,9 @@ use tari_core::{
     chain_storage::{
         create_lmdb_database,
         BlockAddResult,
+        BlockchainBackend,
         BlockchainDatabase,
+        BlockchainDatabaseConfig,
         ChainStorageError,
         DbKey,
         DbTransaction,
@@ -757,7 +759,7 @@ fn store_and_retrieve_blocks() {
     let network = Network::LocalNet;
     let rules = ConsensusManagerBuilder::new(network).build();
     let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
-    let store = BlockchainDatabase::new(db, &rules, validators).unwrap();
+    let store = BlockchainDatabase::new(db, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
 
     let block0 = store.fetch_block(0).unwrap().block().clone();
     let block1 = append_block(&store, &block0, vec![], &rules.consensus_constants(), 1.into()).unwrap();
@@ -780,7 +782,7 @@ fn store_and_retrieve_chain_and_orphan_blocks_with_hashes() {
     let network = Network::LocalNet;
     let rules = ConsensusManagerBuilder::new(network).build();
     let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
-    let store = BlockchainDatabase::new(db, &rules, validators).unwrap();
+    let store = BlockchainDatabase::new(db, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
 
     let block0 = store.fetch_block(0).unwrap().block().clone();
     let block1 = append_block(&store, &block0, vec![], &rules.consensus_constants(), 1.into()).unwrap();
@@ -809,7 +811,8 @@ fn restore_metadata() {
         let block_hash: BlockHash;
         {
             let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
-            let db = BlockchainDatabase::new(db, &rules, validators.clone()).unwrap();
+            let db =
+                BlockchainDatabase::new(db, &rules, validators.clone(), BlockchainDatabaseConfig::default()).unwrap();
 
             let block0 = db.fetch_block(0).unwrap().block().clone();
             let block1 = append_block(&db, &block0, vec![], &rules.consensus_constants(), 1.into()).unwrap();
@@ -821,7 +824,7 @@ fn restore_metadata() {
         }
         // Restore blockchain db
         let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
-        let db = BlockchainDatabase::new(db, &rules, validators).unwrap();
+        let db = BlockchainDatabase::new(db, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
 
         let metadata = db.get_metadata().unwrap();
         assert_eq!(metadata.height_of_longest_chain, Some(1));
@@ -853,7 +856,8 @@ fn invalid_block() {
             StatelessBlockValidator::new(&consensus_manager.consensus_constants()),
         );
         let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
-        let mut store = BlockchainDatabase::new(db, &consensus_manager, validators).unwrap();
+        let mut store =
+            BlockchainDatabase::new(db, &consensus_manager, validators, BlockchainDatabaseConfig::default()).unwrap();
         let mut blocks = vec![block0];
         let mut outputs = vec![vec![output]];
         let block0_hash = blocks[0].hash();
@@ -961,4 +965,171 @@ fn invalid_block() {
     if std::path::Path::new(&temp_path).exists() {
         std::fs::remove_dir_all(&temp_path).unwrap();
     }
+}
+
+#[test]
+fn orphan_cleanup_on_block_add() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let db = MemoryDatabase::<HashDigest>::default();
+    let config = BlockchainDatabaseConfig {
+        orphan_storage_capacity: 3,
+    };
+    let store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
+
+    let orphan1 = create_orphan_block(500, vec![], &consensus_manager.consensus_constants());
+    let orphan2 = create_orphan_block(5, vec![], &consensus_manager.consensus_constants());
+    let orphan3 = create_orphan_block(30, vec![], &consensus_manager.consensus_constants());
+    let orphan4 = create_orphan_block(700, vec![], &consensus_manager.consensus_constants());
+    let orphan5 = create_orphan_block(43, vec![], &consensus_manager.consensus_constants());
+    let orphan6 = create_orphan_block(75, vec![], &consensus_manager.consensus_constants());
+    let orphan7 = create_orphan_block(150, vec![], &consensus_manager.consensus_constants());
+    let orphan1_hash = orphan1.hash();
+    let orphan2_hash = orphan2.hash();
+    let orphan3_hash = orphan3.hash();
+    let orphan4_hash = orphan4.hash();
+    let orphan5_hash = orphan5.hash();
+    let orphan6_hash = orphan6.hash();
+    let orphan7_hash = orphan7.hash();
+    assert_eq!(store.add_block(orphan1.clone()), Ok(BlockAddResult::OrphanBlock));
+    assert_eq!(store.add_block(orphan2), Ok(BlockAddResult::OrphanBlock));
+    assert_eq!(store.add_block(orphan3), Ok(BlockAddResult::OrphanBlock));
+    assert_eq!(store.add_block(orphan4.clone()), Ok(BlockAddResult::OrphanBlock));
+    assert_eq!(store.add_block(orphan5), Ok(BlockAddResult::OrphanBlock));
+    assert_eq!(store.add_block(orphan6), Ok(BlockAddResult::OrphanBlock));
+    assert_eq!(store.add_block(orphan7.clone()), Ok(BlockAddResult::OrphanBlock));
+
+    assert_eq!(store.db_read_access().unwrap().get_orphan_count(), Ok(3));
+    assert_eq!(store.fetch_orphan(orphan1_hash), Ok(orphan1));
+    assert!(store.fetch_orphan(orphan2_hash).is_err());
+    assert!(store.fetch_orphan(orphan3_hash).is_err());
+    assert_eq!(store.fetch_orphan(orphan4_hash), Ok(orphan4));
+    assert!(store.fetch_orphan(orphan5_hash).is_err());
+    assert!(store.fetch_orphan(orphan6_hash).is_err());
+    assert_eq!(store.fetch_orphan(orphan7_hash), Ok(orphan7));
+}
+
+#[test]
+fn orphan_cleanup_on_reorg() {
+    // Create Main Chain
+    let network = Network::LocalNet;
+    let factories = CryptoFactories::default();
+    let consensus_constants = ConsensusConstantsBuilder::new(network).build();
+    let (block0, output) = create_genesis_block(&factories, &consensus_constants);
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants)
+        .with_block(block0.clone())
+        .build();
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let db = MemoryDatabase::<HashDigest>::default();
+    let config = BlockchainDatabaseConfig {
+        orphan_storage_capacity: 3,
+    };
+    let mut store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
+    let mut blocks = vec![block0];
+    let mut outputs = vec![vec![output]];
+
+    // Block A1
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        vec![],
+        Difficulty::from(2),
+        &consensus_manager.consensus_constants()
+    )
+    .is_ok());
+    // Block A2
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        vec![],
+        Difficulty::from(3),
+        &consensus_manager.consensus_constants()
+    )
+    .is_ok());
+    // Block A3
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        vec![],
+        Difficulty::from(3),
+        &consensus_manager.consensus_constants()
+    )
+    .is_ok());
+    // Block A4
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        vec![],
+        Difficulty::from(3),
+        &consensus_manager.consensus_constants()
+    )
+    .is_ok());
+
+    // Create Forked Chain
+    let consensus_manager_fork = ConsensusManagerBuilder::new(network)
+        .with_block(blocks[0].clone())
+        .build();
+    let mut orphan_store = create_mem_db(&consensus_manager_fork);
+    let mut orphan_blocks = vec![blocks[0].clone()];
+    let mut orphan_outputs = vec![outputs[0].clone()];
+    // Block B1
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut orphan_store,
+        &mut orphan_blocks,
+        &mut orphan_outputs,
+        vec![],
+        Difficulty::from(2),
+        &consensus_manager_fork.consensus_constants()
+    )
+    .is_ok());
+    // Block B2
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut orphan_store,
+        &mut orphan_blocks,
+        &mut orphan_outputs,
+        vec![],
+        Difficulty::from(10),
+        &consensus_manager_fork.consensus_constants()
+    )
+    .is_ok());
+    // Block B3
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut orphan_store,
+        &mut orphan_blocks,
+        &mut orphan_outputs,
+        vec![],
+        Difficulty::from(15),
+        &consensus_manager_fork.consensus_constants()
+    )
+    .is_ok());
+
+    // Fill orphan block pool
+    let orphan1 = create_orphan_block(1, vec![], &consensus_manager.consensus_constants());
+    let orphan2 = create_orphan_block(1, vec![], &consensus_manager.consensus_constants());
+    assert_eq!(store.add_block(orphan1.clone()), Ok(BlockAddResult::OrphanBlock));
+    assert_eq!(store.add_block(orphan2.clone()), Ok(BlockAddResult::OrphanBlock));
+
+    // Adding B1 and B2 to the main chain will produce a reorg from GB->A1->A2->A3->A4 to GB->B1->B2->B3.
+    assert_eq!(
+        store.add_block(orphan_blocks[1].clone()),
+        Ok(BlockAddResult::OrphanBlock)
+    );
+    if let Ok(BlockAddResult::ChainReorg(_)) = store.add_block(orphan_blocks[2].clone()) {
+        assert!(true);
+    } else {
+        assert!(false);
+    }
+
+    // Check that A2, A3 and A4 is in the orphan block pool, A1 and the other orphans were discarded by the orphan
+    // cleanup.
+    assert_eq!(store.db_read_access().unwrap().get_orphan_count(), Ok(3));
+    assert_eq!(store.fetch_orphan(blocks[2].hash()), Ok(blocks[2].clone()));
+    assert_eq!(store.fetch_orphan(blocks[3].hash()), Ok(blocks[3].clone()));
+    assert_eq!(store.fetch_orphan(blocks[4].hash()), Ok(blocks[4].clone()));
 }
