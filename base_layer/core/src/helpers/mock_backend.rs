@@ -85,6 +85,10 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
+    fn get_orphan_count(&self) -> Result<usize, ChainStorageError> {
+        unimplemented!()
+    }
+
     fn for_each_kernel<F>(&self, _f: F) -> Result<(), ChainStorageError>
     where
         Self: Sized,

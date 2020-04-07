@@ -473,6 +473,12 @@ where D: Digest + Send + Sync
         Ok(())
     }
 
+    /// Returns the number of blocks in the block orphan pool.
+    fn get_orphan_count(&self) -> Result<usize, ChainStorageError> {
+        let db = self.db_access()?;
+        Ok(db.orphans.len())
+    }
+
     /// Iterate over all the stored transaction kernels and execute the function `f` for each kernel.
     fn for_each_kernel<F>(&self, mut f: F) -> Result<(), ChainStorageError>
     where F: FnMut(Result<(HashOutput, TransactionKernel), ChainStorageError>) {

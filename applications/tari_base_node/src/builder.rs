@@ -60,6 +60,7 @@ use tari_core::{
         create_lmdb_database,
         BlockchainBackend,
         BlockchainDatabase,
+        BlockchainDatabaseConfig,
         LMDBDatabase,
         MemoryDatabase,
         Validators,
@@ -403,7 +404,9 @@ where
         FullConsensusValidator::new(rules.clone(), factories.clone()),
         StatelessBlockValidator::new(&rules.consensus_constants()),
     );
-    let db = BlockchainDatabase::new(backend, &rules, validators).map_err(|e| e.to_string())?;
+    // TODO - make BlockchainDatabaseConfig configurable
+    let db = BlockchainDatabase::new(backend, &rules, validators, BlockchainDatabaseConfig::default())
+        .map_err(|e| e.to_string())?;
     let mempool_validator =
         MempoolValidators::new(FullTxValidator::new(factories.clone()), TxInputAndMaturityValidator {});
     let mempool = Mempool::new(db.clone(), MempoolConfig::default(), mempool_validator);

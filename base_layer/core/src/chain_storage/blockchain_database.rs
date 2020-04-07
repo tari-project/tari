@@ -23,6 +23,7 @@
 use crate::{
     blocks::{blockheader::BlockHash, Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
+        consts::BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
         db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree},
         error::ChainStorageError,
         ChainMetadata,
@@ -52,6 +53,20 @@ use tari_crypto::{
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof, MutableMmrLeafNodes};
 
 const LOG_TARGET: &str = "c::cs::database";
+
+/// Configuration for the BlockchainDatabase.
+#[derive(Clone, Copy)]
+pub struct BlockchainDatabaseConfig {
+    pub orphan_storage_capacity: usize,
+}
+
+impl Default for BlockchainDatabaseConfig {
+    fn default() -> Self {
+        Self {
+            orphan_storage_capacity: BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Display)]
 pub enum BlockAddResult {
@@ -141,6 +156,8 @@ pub trait BlockchainBackend: Send + Sync {
     where
         Self: Sized,
         F: FnMut(Result<(HashOutput, Block), ChainStorageError>);
+    /// Returns the number of blocks in the block orphan pool.
+    fn get_orphan_count(&self) -> Result<usize, ChainStorageError>;
     /// Performs the function F for each transaction kernel.
     fn for_each_kernel<F>(&self, f: F) -> Result<(), ChainStorageError>
     where
@@ -186,7 +203,7 @@ macro_rules! fetch {
 ///
 /// ```
 /// use tari_core::{
-///     chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
+///     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
 ///     consensus::{ConsensusManagerBuilder, Network},
 ///     transactions::types::HashDigest,
 ///     validation::{mocks::MockValidator, Validation},
@@ -196,7 +213,7 @@ macro_rules! fetch {
 /// let db = MemoryDatabase::<HashDigest>::default();
 /// let network = Network::LocalNet;
 /// let rules = ConsensusManagerBuilder::new(network).build();
-/// let db = BlockchainDatabase::new(db_backend, &rules, validators).unwrap();
+/// let db = BlockchainDatabase::new(db_backend, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
 /// // Do stuff with db
 /// ```
 pub struct BlockchainDatabase<T>
@@ -204,6 +221,7 @@ where T: BlockchainBackend
 {
     db: Arc<RwLock<T>>,
     validators: Validators<T>,
+    config: BlockchainDatabaseConfig,
 }
 
 impl<T> BlockchainDatabase<T>
@@ -214,11 +232,13 @@ where T: BlockchainBackend
         db: T,
         consensus_manager: &ConsensusManager,
         validators: Validators<T>,
+        config: BlockchainDatabaseConfig,
     ) -> Result<Self, ChainStorageError>
     {
         let blockchain_db = BlockchainDatabase {
             db: Arc::new(RwLock::new(db)),
             validators,
+            config,
         };
         if blockchain_db.get_height()?.is_none() {
             let genesis_block = consensus_manager.get_genesis_block();
@@ -397,7 +417,12 @@ where T: BlockchainBackend
             .map_err(ChainStorageError::ValidationError)?;
 
         let mut db = self.db_write_access()?;
-        add_block(&mut db, &self.validators.block, block)
+        add_block(
+            &mut db,
+            &self.validators.block,
+            block,
+            self.config.orphan_storage_capacity,
+        )
     }
 
     fn store_new_block(&self, block: Block) -> Result<(), ChainStorageError> {
@@ -565,14 +590,22 @@ fn add_block<T: BlockchainBackend>(
     db: &mut RwLockWriteGuard<T>,
     block_validator: &Arc<Validator<Block, T>>,
     block: Block,
+    orphan_storage_capacity: usize,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let block_hash = block.hash();
     if db.contains(&DbKey::BlockHash(block_hash))? {
         return Ok(BlockAddResult::BlockExists);
     }
-
-    handle_possible_reorg(db, block_validator, block)
+    let block_add_result = handle_possible_reorg(db, block_validator, block)?;
+    // Cleanup orphan block pool
+    match block_add_result {
+        BlockAddResult::Ok => {},
+        BlockAddResult::BlockExists => {},
+        BlockAddResult::OrphanBlock => cleanup_orphans_single(db, orphan_storage_capacity)?,
+        BlockAddResult::ChainReorg(_) => cleanup_orphans_comprehensive(db, orphan_storage_capacity)?,
+    }
+    Ok(block_add_result)
 }
 
 // Adds a new block onto the chain tip.
@@ -1150,6 +1183,73 @@ fn find_strongest_orphan_tip<T: BlockchainBackend>(
     Ok((best_accum_difficulty, best_tip_hash))
 }
 
+// Discards the orphan block with the minimum height from the block orphan pool to maintain the configured orphan pool
+// storage limit.
+fn cleanup_orphans_single<T: BlockchainBackend>(
+    db: &mut RwLockWriteGuard<T>,
+    orphan_storage_capacity: usize,
+) -> Result<(), ChainStorageError>
+{
+    if db.get_orphan_count()? > orphan_storage_capacity {
+        trace!(
+            target: LOG_TARGET,
+            "Orphan block storage limit reached, performing simple cleanup.",
+        );
+        let mut min_height: u64 = u64::max_value();
+        let mut remove_hash: Option<BlockHash> = None;
+        db.for_each_orphan(|pair| {
+            let (_, block) = pair.unwrap();
+            if block.header.height < min_height {
+                min_height = block.header.height;
+                remove_hash = Some(block.hash());
+            }
+        })
+        .expect("Unexpected result for database query");
+        if let Some(hash) = remove_hash {
+            trace!(target: LOG_TARGET, "Discarding orphan block ({}).", hash.to_hex());
+            remove_orphan(db, hash)?;
+        }
+    }
+    Ok(())
+}
+
+// Perform a comprehensive search to remove all the minimum height orphans to maintain the configured orphan pool
+// storage limit.
+fn cleanup_orphans_comprehensive<T: BlockchainBackend>(
+    db: &mut RwLockWriteGuard<T>,
+    orphan_storage_capacity: usize,
+) -> Result<(), ChainStorageError>
+{
+    let orphan_count = db.get_orphan_count()?;
+    if orphan_count > orphan_storage_capacity {
+        trace!(
+            target: LOG_TARGET,
+            "Orphan block storage limit reached, performing comprehensive cleanup.",
+        );
+        let remove_count = orphan_count - orphan_storage_capacity;
+
+        let mut orphans = Vec::<(u64, BlockHash)>::with_capacity(orphan_count);
+        db.for_each_orphan(|pair| {
+            let (_, block) = pair.unwrap();
+            orphans.push((block.header.height, block.hash()));
+        })
+        .expect("Unexpected result for database query");
+        orphans.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let mut txn = DbTransaction::new();
+        for i in 0..remove_count {
+            trace!(
+                target: LOG_TARGET,
+                "Discarding orphan block ({}).",
+                orphans[i].1.to_hex()
+            );
+            txn.delete(DbKey::OrphanBlock(orphans[i].1.clone()));
+        }
+        commit(db, txn)?;
+    }
+    Ok(())
+}
+
 fn log_error<T>(req: DbKey, err: ChainStorageError) -> Result<T, ChainStorageError> {
     error!(
         target: LOG_TARGET,
@@ -1167,6 +1267,7 @@ where T: BlockchainBackend
         BlockchainDatabase {
             db: self.db.clone(),
             validators: self.validators.clone(),
+            config: self.config.clone(),
         }
     }
 }
