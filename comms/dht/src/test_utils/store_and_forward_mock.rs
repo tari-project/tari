@@ -120,7 +120,6 @@ impl StoreAndForwardMock {
                 id: OsRng.next_u32() as i32,
                 version: msg.version,
                 origin_pubkey: msg.origin_pubkey,
-                origin_signature: msg.origin_signature,
                 message_type: msg.message_type,
                 destination_pubkey: msg.destination_pubkey,
                 destination_node_id: msg.destination_node_id,

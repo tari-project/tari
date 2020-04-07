@@ -175,20 +175,20 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             decryption_result,
             dht_header,
             source_peer,
+            authenticated_origin,
             ..
         } = message;
 
-        let origin = dht_header
-            .origin
-            .as_ref()
-            .ok_or_else(|| DhtInboundError::OriginRequired("Origin is required for this message type".to_string()))?;
+        let authenticated_pk = authenticated_origin.ok_or_else(|| {
+            DhtInboundError::OriginRequired("Authenticated origin is required for this message type".to_string())
+        })?;
 
-        if &origin.public_key == self.node_identity.public_key() {
+        if &authenticated_pk == self.node_identity.public_key() {
             trace!(target: LOG_TARGET, "Received our own join message. Discarding it.");
             return Ok(());
         }
 
-        trace!(target: LOG_TARGET, "Received Join Message from {}", origin.public_key);
+        trace!(target: LOG_TARGET, "Received Join Message from {}", authenticated_pk);
 
         let body = decryption_result.expect("already checked that this message decrypted successfully");
         let join_msg = body
@@ -205,11 +205,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Err(DhtInboundError::InvalidAddresses);
         }
 
-        let node_id = self.validate_raw_node_id(&origin.public_key, &join_msg.node_id)?;
+        let node_id = self.validate_raw_node_id(&authenticated_pk, &join_msg.node_id)?;
 
         let origin_peer = self
             .add_or_update_peer(
-                &origin.public_key,
+                &authenticated_pk,
                 node_id,
                 addresses,
                 PeerFeatures::from_bits_truncate(join_msg.peer_features),
@@ -262,12 +262,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     .closest(
                         origin_peer.node_id,
                         self.config.num_neighbouring_nodes,
-                        vec![origin.public_key.clone(), source_peer.public_key.clone()],
+                        vec![authenticated_pk, source_peer.public_key.clone()],
                         PeerFeatures::MESSAGE_PROPAGATION,
                     )
                     .with_dht_header(dht_header)
                     .finish(),
-                body.to_encoded_bytes()?,
+                body.to_encoded_bytes(),
             )
             .await?;
 
@@ -300,10 +300,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             target: LOG_TARGET,
             "Received Discover Response Message from {}",
             message
-                .dht_header
-                .origin
+                .authenticated_origin
                 .as_ref()
-                .map(|o| o.public_key.to_hex())
+                .map(|pk| pk.to_hex())
                 .unwrap_or_else(|| "<unknown>".to_string())
         );
 
@@ -331,13 +330,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .decode_part::<DiscoveryMessage>(0)?
             .ok_or_else(|| DhtInboundError::InvalidMessageBody)?;
 
-        let origin = message.dht_header.origin.ok_or_else(|| {
+        let authenticated_pk = message.authenticated_origin.ok_or_else(|| {
             DhtInboundError::OriginRequired("Origin header required for Discovery message".to_string())
         })?;
 
         info!(
             target: LOG_TARGET,
-            "Received discovery message from '{}'", origin.public_key,
+            "Received discovery message from '{}'", authenticated_pk
         );
 
         let addresses = discover_msg
@@ -350,10 +349,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Err(DhtInboundError::InvalidAddresses);
         }
 
-        let node_id = self.validate_raw_node_id(&origin.public_key, &discover_msg.node_id)?;
+        let node_id = self.validate_raw_node_id(&authenticated_pk, &discover_msg.node_id)?;
         let origin_peer = self
             .add_or_update_peer(
-                &origin.public_key,
+                &authenticated_pk,
                 node_id,
                 addresses,
                 PeerFeatures::from_bits_truncate(discover_msg.peer_features),
@@ -370,7 +369,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
 
         // Send the origin the current nodes latest contact info
-        self.send_discovery_response(origin.public_key, discover_msg.nonce)
+        self.send_discovery_response(origin_peer.public_key, discover_msg.nonce)
             .await?;
 
         Ok(())

@@ -791,7 +791,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
         .wait_call_count(1, Duration::from_secs(10))
         .unwrap();
     let (_, body) = alice_outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(body.as_slice()).unwrap();
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let sender_message = envelope_body
         .decode_part::<proto::TransactionSenderMessage>(1)
         .unwrap()
@@ -954,7 +954,7 @@ fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(al
         .wait_call_count(1, Duration::from_secs(10))
         .unwrap();
     let (_, body) = alice_outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(body.as_slice()).unwrap();
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let recipient_reply: RecipientSignedMessage = envelope_body
         .decode_part::<proto::RecipientSignedMessage>(1)
         .unwrap()
@@ -1058,7 +1058,7 @@ fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alic
         .wait_call_count(1, Duration::from_secs(10))
         .unwrap();
     let (_, body) = alice_outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(body.as_slice()).unwrap();
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let recipient_reply: RecipientSignedMessage = envelope_body
         .decode_part::<proto::RecipientSignedMessage>(1)
         .unwrap()
@@ -1448,8 +1448,8 @@ fn transaction_mempool_broadcast() {
         ))
         .unwrap();
 
-    let call = alice_outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(&mut call.1.as_slice()).unwrap();
+    let (_, body) = alice_outbound_service.pop_call().unwrap();
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_sender_msg: TransactionSenderMessage = envelope_body
         .decode_part::<proto::TransactionSenderMessage>(1)
         .unwrap()
@@ -1478,8 +1478,8 @@ fn transaction_mempool_broadcast() {
             timeout = Duration::from_secs(20)
         )
     });
-    let call = bob_outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(&mut call.1.as_slice()).unwrap();
+    let (_, body) = bob_outbound_service.pop_call().unwrap();
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_reply_msg: RecipientSignedMessage = envelope_body
         .decode_part::<proto::RecipientSignedMessage>(1)
         .unwrap()
@@ -1526,8 +1526,8 @@ fn transaction_mempool_broadcast() {
 
     assert_eq!(alice_completed_tx.status, TransactionStatus::Completed);
 
-    let call = alice_outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(&mut call.1.as_slice()).unwrap();
+    let (_, body) = alice_outbound_service.pop_call().unwrap();
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let msr = envelope_body
         .decode_part::<MempoolProto::MempoolServiceRequest>(1)
         .unwrap()
@@ -1537,9 +1537,9 @@ fn transaction_mempool_broadcast() {
 
     let _ = alice_outbound_service.pop_call().unwrap(); // burn a mempool request
     let _ = alice_outbound_service.pop_call().unwrap(); // burn a mempool request
-    let call = alice_outbound_service.pop_call().unwrap(); // this should be the sending of the finalized tx to the receiver
+    let (_, body) = alice_outbound_service.pop_call().unwrap(); // this should be the sending of the finalized tx to the receiver
 
-    let envelope_body = EnvelopeBody::decode(&mut call.1.as_slice()).unwrap();
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_finalized = envelope_body
         .decode_part::<proto::TransactionFinalizedMessage>(1)
         .unwrap()
@@ -1772,8 +1772,8 @@ fn transaction_base_node_monitoring() {
         ))
         .unwrap();
 
-    let call = alice_outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(&mut call.1.as_slice()).unwrap();
+    let (_, body) = alice_outbound_service.pop_call().unwrap();
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_sender_msg: TransactionSenderMessage = envelope_body
         .decode_part::<proto::TransactionSenderMessage>(1)
         .unwrap()
@@ -1802,8 +1802,8 @@ fn transaction_base_node_monitoring() {
             timeout = Duration::from_secs(20)
         )
     });
-    let call = bob_outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(&mut call.1.as_slice()).unwrap();
+    let (_, body) = bob_outbound_service.pop_call().unwrap();
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_reply_msg: RecipientSignedMessage = envelope_body
         .decode_part::<proto::RecipientSignedMessage>(1)
         .unwrap()
@@ -1845,8 +1845,8 @@ fn transaction_base_node_monitoring() {
         ))
         .unwrap();
 
-    let call = alice_outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(&mut call.1.as_slice()).unwrap();
+    let (_, body) = alice_outbound_service.pop_call().unwrap();
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_sender_msg: TransactionSenderMessage = envelope_body
         .decode_part::<proto::TransactionSenderMessage>(1)
         .unwrap()
@@ -1875,8 +1875,8 @@ fn transaction_base_node_monitoring() {
             timeout = Duration::from_secs(20)
         )
     });
-    let call = bob_outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(&mut call.1.as_slice()).unwrap();
+    let (_, body) = bob_outbound_service.pop_call().unwrap();
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_reply_msg: RecipientSignedMessage = envelope_body
         .decode_part::<proto::RecipientSignedMessage>(1)
         .unwrap()
@@ -1912,8 +1912,8 @@ fn transaction_base_node_monitoring() {
 
     let _ = alice_outbound_service.pop_call().unwrap(); // burn a base node request
 
-    let call = alice_outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(&mut call.1.as_slice()).unwrap();
+    let (_, body) = alice_outbound_service.pop_call().unwrap();
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let msr = envelope_body
         .decode_part::<MempoolProto::MempoolServiceRequest>(1)
         .unwrap()
@@ -2362,8 +2362,8 @@ fn transaction_cancellation_when_not_in_mempool() {
         ))
         .unwrap();
 
-    let call = alice_outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(&mut call.1.as_slice()).unwrap();
+    let (_, body) = alice_outbound_service.pop_call().unwrap();
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_sender_msg: TransactionSenderMessage = envelope_body
         .decode_part::<proto::TransactionSenderMessage>(1)
         .unwrap()
@@ -2392,8 +2392,8 @@ fn transaction_cancellation_when_not_in_mempool() {
             timeout = Duration::from_secs(30)
         )
     });
-    let call = bob_outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(&mut call.1.as_slice()).unwrap();
+    let (_, body) = bob_outbound_service.pop_call().unwrap();
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_reply_msg: RecipientSignedMessage = envelope_body
         .decode_part::<proto::RecipientSignedMessage>(1)
         .unwrap()
@@ -2429,8 +2429,8 @@ fn transaction_cancellation_when_not_in_mempool() {
 
     let _ = alice_outbound_service.pop_call().unwrap(); // burn a base node request
 
-    let call = alice_outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(&mut call.1.as_slice()).unwrap();
+    let (_, body) = alice_outbound_service.pop_call().unwrap();
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let msr = envelope_body
         .decode_part::<MempoolProto::MempoolServiceRequest>(1)
         .unwrap()

@@ -190,11 +190,8 @@ impl Dht {
         S::Future: Send,
     {
         let builder = ServiceBuilder::new()
-            .layer(inbound::DeserializeLayer::new())
-            .layer(inbound::ValidateLayer::new(
-                self.config.network,
-                self.outbound_requester(),
-            ))
+            .layer(inbound::DeserializeLayer)
+            .layer(inbound::ValidateLayer::new(self.config.network))
             .layer(inbound::DedupLayer::new(self.dht_requester()));
 
         // FIXME: There is an unresolved stack overflow issue on windows. Seems that we've reached the limit on stack
@@ -262,7 +259,7 @@ impl Dht {
             ))
             .layer(MessageLoggingLayer::new("Outbound message: "))
             .layer(outbound::EncryptionLayer::new(Arc::clone(&self.node_identity)))
-            .layer(outbound::SerializeLayer::new(Arc::clone(&self.node_identity)))
+            .layer(outbound::SerializeLayer)
             .into_inner()
     }
 
@@ -348,14 +345,9 @@ mod test {
 
         let mut service = dht.inbound_middleware_layer().layer(SinkService::new(out_tx));
 
-        let msg = wrap_in_envelope_body!(b"secret".to_vec()).unwrap();
-        let dht_envelope = make_dht_envelope(
-            &node_identity,
-            msg.to_encoded_bytes().unwrap(),
-            DhtMessageFlags::empty(),
-        );
-        let inbound_message =
-            make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().unwrap().into());
+        let msg = wrap_in_envelope_body!(b"secret".to_vec());
+        let dht_envelope = make_dht_envelope(&node_identity, msg.to_encoded_bytes(), DhtMessageFlags::empty(), false);
+        let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 
         let msg = {
             service.call(inbound_message).await.unwrap();
@@ -376,7 +368,7 @@ mod test {
         let (connection_manager, _) = create_connection_manager_mock(1);
 
         // Dummy out channel, we are not testing outbound here.
-        let (out_tx, _) = mpsc::channel(10);
+        let (out_tx, _out_rx) = mpsc::channel(10);
 
         let shutdown = Shutdown::new();
         let dht = DhtBuilder::new(
@@ -392,13 +384,10 @@ mod test {
 
         let mut service = dht.inbound_middleware_layer().layer(SinkService::new(out_tx));
 
-        let msg = wrap_in_envelope_body!(b"secret".to_vec()).unwrap();
+        let msg = wrap_in_envelope_body!(b"secret".to_vec());
         // Encrypt for self
-        let ecdh_key = crypt::generate_ecdh_secret(node_identity.secret_key(), node_identity.public_key());
-        let encrypted_bytes = crypt::encrypt(&ecdh_key, &msg.to_encoded_bytes().unwrap()).unwrap();
-        let dht_envelope = make_dht_envelope(&node_identity, encrypted_bytes, DhtMessageFlags::ENCRYPTED);
-        let inbound_message =
-            make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().unwrap().into());
+        let dht_envelope = make_dht_envelope(&node_identity, msg.to_encoded_bytes(), DhtMessageFlags::ENCRYPTED, true);
+        let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 
         let msg = {
             service.call(inbound_message).await.unwrap();
@@ -437,25 +426,17 @@ mod test {
 
         let mut service = dht.inbound_middleware_layer().layer(SinkService::new(next_service_tx));
 
-        let msg = wrap_in_envelope_body!(b"unencrypteable".to_vec()).unwrap();
+        let msg = wrap_in_envelope_body!(b"unencrypteable".to_vec());
 
         // Encrypt for someone else
         let node_identity2 = make_node_identity();
         let ecdh_key = crypt::generate_ecdh_secret(node_identity2.secret_key(), node_identity2.public_key());
-        let encrypted_bytes = crypt::encrypt(&ecdh_key, &msg.to_encoded_bytes().unwrap()).unwrap();
-        let dht_envelope = make_dht_envelope(&node_identity, encrypted_bytes, DhtMessageFlags::ENCRYPTED);
+        let encrypted_bytes = crypt::encrypt(&ecdh_key, &msg.to_encoded_bytes()).unwrap();
+        let dht_envelope = make_dht_envelope(&node_identity, encrypted_bytes, DhtMessageFlags::ENCRYPTED, true);
 
-        let origin_sig = dht_envelope
-            .header
-            .as_ref()
-            .unwrap()
-            .origin
-            .as_ref()
-            .unwrap()
-            .signature
-            .clone();
-        let inbound_message =
-            make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().unwrap().into());
+        let origin_mac = dht_envelope.header.as_ref().unwrap().origin_mac.clone();
+        assert_eq!(origin_mac.is_empty(), false);
+        let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 
         service.call(inbound_message).await.unwrap();
 
@@ -463,7 +444,7 @@ mod test {
         let (params, _) = oms_mock_state.pop_call().unwrap();
 
         // Check that OMS got a request to forward with the original Dht Header
-        assert_eq!(params.dht_header.unwrap().origin.unwrap().signature, origin_sig);
+        assert_eq!(params.dht_header.unwrap().origin_mac, origin_mac);
 
         // Check the next service was not called
         assert!(next_service_rx.try_next().is_err());
@@ -494,18 +475,14 @@ mod test {
 
         let mut service = dht.inbound_middleware_layer().layer(SinkService::new(next_service_tx));
 
-        let msg = wrap_in_envelope_body!(b"secret".to_vec()).unwrap();
-        let mut dht_envelope = make_dht_envelope(
-            &node_identity,
-            msg.to_encoded_bytes().unwrap(),
-            DhtMessageFlags::empty(),
-        );
+        let msg = wrap_in_envelope_body!(b"secret".to_vec());
+        let mut dht_envelope =
+            make_dht_envelope(&node_identity, msg.to_encoded_bytes(), DhtMessageFlags::empty(), false);
         dht_envelope.header.as_mut().and_then(|header| {
             header.message_type = DhtMessageType::SafStoredMessages as i32;
             Some(header)
         });
-        let inbound_message =
-            make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().unwrap().into());
+        let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 
         service.call(inbound_message).await.unwrap_err();
         // This seems like the best way to tell that an open channel is empty without the test blocking indefinitely

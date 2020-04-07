@@ -3,17 +3,21 @@ pub struct DhtHeader {
     #[prost(uint32, tag = "1")]
     pub version: u32,
     /// Origin public key of the message. This can be the same peer that sent the message
-    /// or another peer if the message should be forwarded. This is optional but must be specified
+    /// or another peer if the message should be forwarded. This is optional but MUST be specified
     /// if the ENCRYPTED flag is set.
-    #[prost(message, optional, tag = "5")]
-    pub origin: ::std::option::Option<DhtOrigin>,
+    /// If an ephemeral_public_key is specified, this MUST be encrypted using a derived ECDH shared key
+    #[prost(bytes, tag = "5")]
+    pub origin_mac: std::vec::Vec<u8>,
+    /// Ephemeral public key component of the ECDH shared key. MUST be specified if the ENCRYPTED flag is set.
+    #[prost(bytes, tag = "6")]
+    pub ephemeral_public_key: std::vec::Vec<u8>,
     /// The type of message
-    #[prost(enumeration = "DhtMessageType", tag = "6")]
+    #[prost(enumeration = "DhtMessageType", tag = "7")]
     pub message_type: i32,
     /// The network for which this message is intended (e.g. TestNet, MainNet etc.)
-    #[prost(enumeration = "Network", tag = "7")]
+    #[prost(enumeration = "Network", tag = "8")]
     pub network: i32,
-    #[prost(uint32, tag = "8")]
+    #[prost(uint32, tag = "9")]
     pub flags: u32,
     #[prost(oneof = "dht_header::Destination", tags = "2, 3, 4")]
     pub destination: ::std::option::Option<dht_header::Destination>,
@@ -40,8 +44,9 @@ pub struct DhtEnvelope {
     #[prost(bytes, tag = "2")]
     pub body: std::vec::Vec<u8>,
 }
+/// The Message Authentication Code (MAC) message format of the decrypted `DhtHeader::origin_mac` field
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct DhtOrigin {
+pub struct OriginMac {
     #[prost(bytes, tag = "1")]
     pub public_key: std::vec::Vec<u8>,
     #[prost(bytes, tag = "2")]

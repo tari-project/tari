@@ -10,8 +10,7 @@ table! {
     stored_messages (id) {
         id -> Integer,
         version -> Integer,
-        origin_pubkey -> Text,
-        origin_signature -> Text,
+        origin_pubkey -> Nullable<Text>,
         message_type -> Integer,
         destination_pubkey -> Nullable<Text>,
         destination_node_id -> Nullable<Text>,

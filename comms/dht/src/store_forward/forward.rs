@@ -147,6 +147,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             source_peer,
             decryption_result,
             dht_header,
+            authenticated_origin,
             ..
         } = message;
 
@@ -171,8 +172,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .expect("previous check that decryption failed");
 
         let mut excluded_peers = vec![source_peer.public_key.clone()];
-        if let Some(origin) = dht_header.origin.as_ref() {
-            excluded_peers.push(origin.public_key.clone());
+        if let Some(pk) = authenticated_origin.as_ref() {
+            excluded_peers.push(pk.clone());
         }
         let mut message_params = self.get_send_params(&dht_header, excluded_peers).await?;
 
@@ -271,8 +272,13 @@ mod test {
         let oms = OutboundMessageRequester::new(oms_tx);
         let mut service = ForwardLayer::new(peer_manager, oms).layer(spy.to_service::<PipelineError>());
 
-        let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
-        let msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(Vec::new()).unwrap(), inbound_msg);
+        let node_identity = make_node_identity();
+        let inbound_msg = make_dht_inbound_message(&node_identity, b"".to_vec(), DhtMessageFlags::empty(), false);
+        let msg = DecryptedDhtMessage::succeeded(
+            wrap_in_envelope_body!(Vec::new()),
+            Some(node_identity.public_key().clone()),
+            inbound_msg,
+        );
         block_on(service.call(msg)).unwrap();
         assert!(spy.is_called());
         assert!(oms_rx.try_next().is_err());
@@ -289,7 +295,8 @@ mod test {
 
         let mut service = ForwardLayer::new(peer_manager, oms_requester).layer(spy.to_service::<PipelineError>());
 
-        let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
+        let inbound_msg =
+            make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty(), false);
         let msg = DecryptedDhtMessage::failed(inbound_msg);
         rt.block_on(service.call(msg)).unwrap();
         assert!(spy.is_called());

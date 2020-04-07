@@ -213,16 +213,22 @@ impl Peer {
 /// Display Peer as `[peer_id]: <pubkey>`
 impl Display for Peer {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let flags_str = if self.flags == PeerFlags::empty() {
+            "".to_string()
+        } else {
+            format!("{:?}", self.flags)
+        };
         f.write_str(&format!(
             "{}[{}] PK={} {} {:?} {}",
-            if self.is_banned() { "BANNED " } else { "" },
+            flags_str,
             self.node_id.short_str(),
             self.public_key,
             self.addresses
-                .address_iter()
-                .next()
+                .addresses
+                .iter()
                 .map(ToString::to_string)
-                .unwrap_or_else(|| "<none>".to_string()),
+                .collect::<Vec<_>>()
+                .join(","),
             match self.features {
                 PeerFeatures::COMMUNICATION_NODE => "BASE_NODE".to_string(),
                 PeerFeatures::COMMUNICATION_CLIENT => "WALLET".to_string(),

@@ -21,22 +21,25 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod broadcast;
+pub use broadcast::BroadcastLayer;
+
 mod encryption;
+pub use encryption::EncryptionLayer;
+
 mod error;
+pub use error::DhtOutboundError;
+
 pub(crate) mod message;
+pub use message::{DhtOutboundRequest, OutboundEncryption, SendMessageResponse};
+
 mod message_params;
+pub use message_params::SendMessageParams;
+
 mod requester;
+pub use requester::OutboundMessageRequester;
+
 mod serialize;
+pub use serialize::SerializeLayer;
 
 #[cfg(any(test, feature = "test-mocks"))]
 pub mod mock;
-
-pub use self::{
-    broadcast::BroadcastLayer,
-    encryption::EncryptionLayer,
-    error::DhtOutboundError,
-    message::{DhtOutboundRequest, OutboundEncryption, SendMessageResponse},
-    message_params::SendMessageParams,
-    requester::OutboundMessageRequester,
-    serialize::SerializeLayer,
-};

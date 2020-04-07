@@ -120,7 +120,7 @@ impl ChainMetadataService {
     /// Send this node's metadata to
     async fn update_liveness_chain_metadata(&mut self) -> Result<(), ChainMetadataSyncError> {
         let chain_metadata = self.base_node.get_metadata().await?;
-        let bytes = proto::ChainMetadata::from(chain_metadata).to_encoded_bytes()?;
+        let bytes = proto::ChainMetadata::from(chain_metadata).to_encoded_bytes();
         self.liveness
             .set_pong_metadata_entry(MetadataKey::ChainMetadata, bytes)
             .await?;
@@ -300,10 +300,7 @@ mod test {
         let (liveness_handle, _) = create_p2p_liveness_mock(1);
         let mut metadata = Metadata::new();
         let proto_chain_metadata = create_sample_proto_chain_metadata();
-        metadata.insert(
-            MetadataKey::ChainMetadata,
-            proto_chain_metadata.to_encoded_bytes().unwrap(),
-        );
+        metadata.insert(MetadataKey::ChainMetadata, proto_chain_metadata.to_encoded_bytes());
 
         let node_id = NodeId::new();
         let pong_event = PongEvent {

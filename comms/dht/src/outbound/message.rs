@@ -21,9 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    envelope::{DhtMessageFlags, DhtMessageHeader},
+    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, Network, NodeDestination},
     outbound::message_params::FinalSendMessageParams,
 };
+use bytes::Bytes;
 use futures::channel::oneshot;
 use std::{fmt, fmt::Display};
 use tari_comms::{message::MessageTag, peer_manager::Peer, types::CommsPublicKey};
@@ -114,11 +115,7 @@ impl SendMessageResponse {
 #[derive(Debug)]
 pub enum DhtOutboundRequest {
     /// Send a message using the given broadcast strategy
-    SendMessage(
-        Box<FinalSendMessageParams>,
-        Vec<u8>,
-        oneshot::Sender<SendMessageResponse>,
-    ),
+    SendMessage(Box<FinalSendMessageParams>, Bytes, oneshot::Sender<SendMessageResponse>),
 }
 
 impl fmt::Display for DhtOutboundRequest {
@@ -137,41 +134,54 @@ impl fmt::Display for DhtOutboundRequest {
 pub struct DhtOutboundMessage {
     pub tag: MessageTag,
     pub destination_peer: Peer,
-    pub dht_header: DhtMessageHeader,
+    pub custom_header: Option<DhtMessageHeader>,
     pub encryption: OutboundEncryption,
-    pub body: Vec<u8>,
+    pub body: Bytes,
+    pub ephemeral_public_key: Option<CommsPublicKey>,
+    pub origin_mac: Option<Vec<u8>>,
+    pub include_origin: bool,
+    pub destination: NodeDestination,
+    pub dht_message_type: DhtMessageType,
+    pub network: Network,
+    pub dht_flags: DhtMessageFlags,
 }
 
 impl DhtOutboundMessage {
-    /// Create a new DhtOutboundMessage
-    pub fn new(
-        destination_peer: Peer,
-        dht_header: DhtMessageHeader,
-        encryption: OutboundEncryption,
-        body: Vec<u8>,
-    ) -> Self
-    {
-        Self {
-            tag: MessageTag::new(),
-            destination_peer,
-            dht_header,
-            encryption,
-            body,
-        }
+    pub fn with_ephemeral_public_key(&mut self, ephemeral_public_key: CommsPublicKey) -> &mut Self {
+        self.ephemeral_public_key = Some(ephemeral_public_key);
+        self
+    }
+
+    pub fn with_origin_mac(&mut self, origin_mac: Vec<u8>) -> &mut Self {
+        self.origin_mac = Some(origin_mac);
+        self
+    }
+
+    pub fn set_body(&mut self, body: Bytes) -> &mut Self {
+        self.body = body;
+        self
     }
 }
 
 impl fmt::Display for DhtOutboundMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        let header_str = self
+            .custom_header
+            .as_ref()
+            .and_then(|h| Some(format!("{} (Propagated)", h)))
+            .unwrap_or_else(|| {
+                format!(
+                    "Network: {:?}, Flags: {:?}, Destination: {}",
+                    self.network, self.dht_flags, self.destination
+                )
+            });
         write!(
             f,
-            "\n---- DhtOutboundMessage ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {} \nFlags: \
-             {:?}\nEncryption: {}\n{}\n----",
+            "\n---- Outgoing message ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\nEncryption: {}\n{}\n----",
             self.body.len(),
-            self.dht_header.message_type,
+            self.dht_message_type,
             self.destination_peer,
-            self.dht_header,
-            self.dht_header.flags,
+            header_str,
             self.encryption,
             self.tag
         )
