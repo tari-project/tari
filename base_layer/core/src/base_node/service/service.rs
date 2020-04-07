@@ -401,7 +401,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     outbound_message_service
         .send_direct(
             origin_public_key,
-            OutboundEncryption::EncryptForPeer,
+            OutboundEncryption::None,
             OutboundDomainMessage::new(TariMessageType::BaseNodeResponse, message),
         )
         .await?;
@@ -506,7 +506,7 @@ async fn handle_outbound_block(
     outbound_message_service
         .propagate(
             NodeDestination::Unknown,
-            OutboundEncryption::EncryptForPeer,
+            OutboundEncryption::None,
             exclude_peers,
             OutboundDomainMessage::new(TariMessageType::NewBlock, ProtoBlock::from(block)),
         )

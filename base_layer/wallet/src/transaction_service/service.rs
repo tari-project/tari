@@ -568,7 +568,7 @@ where
             .outbound_message_service
             .send_direct(
                 dest_pubkey.clone(),
-                OutboundEncryption::EncryptForPeer,
+                OutboundEncryption::None,
                 OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message),
             )
             .await?
@@ -707,7 +707,7 @@ where
         self.outbound_message_service
             .send_direct(
                 source_pubkey.clone(),
-                OutboundEncryption::EncryptForPeer,
+                OutboundEncryption::None,
                 OutboundDomainMessage::new(TariMessageType::TransactionFinalized, finalized_transaction_message),
             )
             .await?;
@@ -780,7 +780,7 @@ where
             self.outbound_message_service
                 .send_direct(
                     source_pubkey.clone(),
-                    OutboundEncryption::EncryptForPeer,
+                    OutboundEncryption::None,
                     OutboundDomainMessage::new(TariMessageType::ReceiverPartialTransactionReply, proto_message),
                 )
                 .await?;
@@ -1134,7 +1134,7 @@ where
                 self.outbound_message_service
                     .send_direct(
                         pk.clone(),
-                        OutboundEncryption::EncryptForPeer,
+                        OutboundEncryption::None,
                         OutboundDomainMessage::new(TariMessageType::MempoolRequest, mempool_request),
                     )
                     .await?;
@@ -1358,7 +1358,7 @@ where
                 self.outbound_message_service
                     .send_direct(
                         pk.clone(),
-                        OutboundEncryption::EncryptForPeer,
+                        OutboundEncryption::None,
                         OutboundDomainMessage::new(TariMessageType::MempoolRequest, mempool_request),
                     )
                     .await?;
@@ -1372,7 +1372,7 @@ where
                 self.outbound_message_service
                     .send_direct(
                         pk.clone(),
-                        OutboundEncryption::EncryptForPeer,
+                        OutboundEncryption::None,
                         OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request),
                     )
                     .await?;
