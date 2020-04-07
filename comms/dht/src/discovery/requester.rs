@@ -82,7 +82,9 @@ impl Display for DhtDiscoveryRequest {
         use DhtDiscoveryRequest::*;
         match self {
             DiscoverPeer(boxed) => write!(f, "DiscoverPeer({})", boxed.0),
-            NotifyDiscoveryResponseReceived(boxed) => write!(f, "NotifyDiscoveryResponseReceived({:#?})", *boxed),
+            NotifyDiscoveryResponseReceived(discovery_resp) => {
+                write!(f, "NotifyDiscoveryResponseReceived({:#?})", discovery_resp)
+            },
         }
     }
 }

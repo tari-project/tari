@@ -37,7 +37,7 @@ use futures::{
 };
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 use tari_comms::{
     connection_manager::{ConnectionManagerError, ConnectionManagerRequester},
     log_if_error,
@@ -59,6 +59,17 @@ const MAX_FAILED_ATTEMPTS_MARK_PEER_OFFLINE: usize = 10;
 struct DiscoveryRequestState {
     reply_tx: oneshot::Sender<Result<Peer, DhtDiscoveryError>>,
     public_key: Box<CommsPublicKey>,
+    start_ts: Instant,
+}
+
+impl DiscoveryRequestState {
+    pub fn new(public_key: Box<CommsPublicKey>, reply_tx: oneshot::Sender<Result<Peer, DhtDiscoveryError>>) -> Self {
+        Self {
+            public_key,
+            reply_tx,
+            start_ts: Instant::now(),
+        }
+    }
 }
 
 pub struct DhtDiscoveryService {
@@ -144,7 +155,7 @@ impl DhtDiscoveryService {
                 );
             },
 
-            NotifyDiscoveryResponseReceived(discovery_msg) => self.handle_discovery_response(*discovery_msg).await,
+            NotifyDiscoveryResponseReceived(discovery_msg) => self.handle_discovery_response(discovery_msg).await,
         }
     }
 
@@ -158,7 +169,7 @@ impl DhtDiscoveryService {
                     if peer.connection_stats.failed_attempts() > MAX_FAILED_ATTEMPTS_MARK_PEER_OFFLINE {
                         debug!(
                             target: LOG_TARGET,
-                            "Deleting stale peer '{}' because this node failed to connect to them {} times",
+                            "Marking peer '{}' as offline because this node failed to connect to them {} times",
                             peer.node_id.short_str(),
                             MAX_FAILED_ATTEMPTS_MARK_PEER_OFFLINE
                         );
@@ -214,44 +225,73 @@ impl DhtDiscoveryService {
         requests
     }
 
-    async fn handle_discovery_response(&mut self, discovery_msg: DiscoveryResponseMessage) {
+    async fn handle_discovery_response(&mut self, discovery_msg: Box<DiscoveryResponseMessage>) {
         trace!(
             target: LOG_TARGET,
             "Received discovery response message from {}",
             discovery_msg.node_id.to_hex()
         );
-        if let Some(request) = log_if_error!(
-            target: LOG_TARGET,
-            self.inflight_discoveries
-                .remove(&discovery_msg.nonce)
-                .ok_or_else(|| DhtDiscoveryError::InflightDiscoveryRequestNotFound),
-            "{error}",
-        ) {
-            let DiscoveryRequestState { public_key, reply_tx } = request;
 
-            let result = self.validate_then_add_peer(&public_key, discovery_msg).await;
+        match self.inflight_discoveries.remove(&discovery_msg.nonce) {
+            Some(request) => {
+                let DiscoveryRequestState {
+                    public_key,
+                    reply_tx,
+                    start_ts,
+                } = request;
 
-            // Resolve any other pending discover requests if the peer was found
-            if let Ok(peer) = &result {
-                for request in self.collect_all_discovery_requests(&public_key) {
-                    let _ = request.reply_tx.send(Ok(peer.clone()));
+                let result = self.validate_then_add_peer(&public_key, discovery_msg).await;
+
+                // Resolve any other pending discover requests if the peer was found
+                match &result {
+                    Ok(peer) => {
+                        info!(
+                            target: LOG_TARGET,
+                            "Received discovery response from peer {}. Discovery completed in {}s",
+                            peer.node_id,
+                            (Instant::now() - start_ts).as_secs_f32()
+                        );
+
+                        for request in self.collect_all_discovery_requests(&public_key) {
+                            if !reply_tx.is_canceled() {
+                                let _ = request.reply_tx.send(Ok(peer.clone()));
+                            }
+                        }
+
+                        debug!(
+                            target: LOG_TARGET,
+                            "Discovery request for Node Id {} completed successfully",
+                            peer.node_id.to_hex(),
+                        );
+                    },
+                    Err(err) => {
+                        info!(
+                            target: LOG_TARGET,
+                            "Failed to validate and add peer from discovery response from peer. {:?} Discovery \
+                             completed in {}s",
+                            err,
+                            (Instant::now() - start_ts).as_secs_f32()
+                        );
+                    },
                 }
 
-                debug!(
+                let _ = reply_tx.send(result);
+            },
+            None => {
+                info!(
                     target: LOG_TARGET,
-                    "Discovery request for Node Id: {} is successfully completed",
-                    peer.node_id.to_hex(),
+                    "Received a discovery response from peer '{}' that this node did not expect. It may have been \
+                     cancelled earlier.",
+                    discovery_msg.node_id.to_hex()
                 );
-            }
-
-            let _ = reply_tx.send(result);
+            },
         }
     }
 
     async fn validate_then_add_peer(
         &mut self,
         public_key: &CommsPublicKey,
-        discovery_msg: DiscoveryResponseMessage,
+        discovery_msg: Box<DiscoveryResponseMessage>,
     ) -> Result<Peer, DhtDiscoveryError>
     {
         let node_id = self.validate_raw_node_id(&public_key, &discovery_msg.node_id)?;
@@ -317,6 +357,7 @@ impl DhtDiscoveryService {
                     None,
                 )
                 .await?;
+            peer_manager.set_offline(pubkey, false).await?;
         } else {
             peer_manager
                 .add_peer(Peer::new(
@@ -364,12 +405,8 @@ impl DhtDiscoveryService {
         );
 
         // Add the new inflight request.
-        let key_exists = self
-            .inflight_discoveries
-            .insert(nonce, DiscoveryRequestState { reply_tx, public_key })
-            .is_some();
-        // The nonce should never be chosen more than once
-        debug_assert!(!key_exists);
+        self.inflight_discoveries
+            .insert(nonce, DiscoveryRequestState::new(public_key, reply_tx));
 
         trace!(
             target: LOG_TARGET,
