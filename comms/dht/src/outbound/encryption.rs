@@ -100,15 +100,6 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), &**public_key);
                 message.body = crypt::encrypt(&shared_secret, &message.body).map_err(PipelineError::from_debug)?;
             },
-            OutboundEncryption::EncryptForPeer => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Encrypting message for peer with public key {}", message.destination_peer.public_key
-                );
-                let shared_secret =
-                    crypt::generate_ecdh_secret(node_identity.secret_key(), &message.destination_peer.public_key);
-                message.body = crypt::encrypt(&shared_secret, &message.body).map_err(PipelineError::from_debug)?
-            },
             OutboundEncryption::None => {
                 debug!(target: LOG_TARGET, "Encryption not requested for message");
             },
@@ -185,7 +176,7 @@ mod test {
                 &[],
             ),
             make_dht_header(&node_identity, &body, DhtMessageFlags::ENCRYPTED),
-            OutboundEncryption::EncryptForPeer,
+            OutboundEncryption::EncryptFor(Box::new(CommsPublicKey::default())),
             MessageFlags::empty(),
             body.clone(),
         );

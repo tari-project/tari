@@ -371,7 +371,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     outbound_message_service
         .send_direct(
             origin_public_key,
-            OutboundEncryption::EncryptForPeer,
+            OutboundEncryption::None,
             OutboundDomainMessage::new(TariMessageType::MempoolResponse, message),
         )
         .await?;
@@ -421,7 +421,7 @@ async fn handle_outbound_request(
         .send_random(
             1,
             NodeDestination::Unknown,
-            OutboundEncryption::EncryptForPeer,
+            OutboundEncryption::None,
             OutboundDomainMessage::new(TariMessageType::MempoolRequest, service_request),
         )
         .await
@@ -516,7 +516,7 @@ async fn handle_outbound_tx(
     outbound_message_service
         .propagate(
             NodeDestination::Unknown,
-            OutboundEncryption::EncryptForPeer,
+            OutboundEncryption::None,
             exclude_peers,
             OutboundDomainMessage::new(TariMessageType::NewTransaction, ProtoTransaction::from(tx)),
         )

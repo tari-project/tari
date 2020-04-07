@@ -36,11 +36,14 @@ use tari_comms::{
 ///
 /// ```edition2018
 /// # use tari_comms_dht::outbound::{SendMessageParams, OutboundEncryption};
+/// use tari_comms::types::CommsPublicKey;
 ///
-/// // These params represent sending to 5 random peers, each encrypted for that peer
+/// // These params represent sending to 5 random peers. The message will be able to be decrypted by
+/// // the peer with the corresponding secret key of `dest_public_key`.
+/// let dest_public_key = CommsPublicKey::default();
 /// let params = SendMessageParams::new()
 ///   .random(5)
-///   .with_encryption(OutboundEncryption::EncryptForPeer)
+///   .with_encryption(OutboundEncryption::EncryptFor(Box::new(dest_public_key)))
 ///   .finish();
 /// ```
 #[derive(Debug, Clone)]

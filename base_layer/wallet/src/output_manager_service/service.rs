@@ -402,7 +402,7 @@ where
                 self.outbound_message_service
                     .send_direct(
                         pk.clone(),
-                        OutboundEncryption::EncryptForPeer,
+                        OutboundEncryption::None,
                         OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request),
                     )
                     .await?;
