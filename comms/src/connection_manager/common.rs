@@ -144,6 +144,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
                     Some(supported_protocols),
                 )
                 .await?;
+            peer_manager.set_offline(&authenticated_public_key, false).await?;
         },
         None => {
             debug!(

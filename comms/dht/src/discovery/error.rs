@@ -30,8 +30,6 @@ pub enum DhtDiscoveryError {
     /// The reply channel was canceled
     ReplyCanceled,
     DhtOutboundError(DhtOutboundError),
-    /// Received a discovery response which did not match an inflight discovery request
-    InflightDiscoveryRequestNotFound,
     /// Received public key in peer discovery response which does not match the requested public key
     DiscoveredPeerMismatch,
     /// Received an invalid `NodeId`
