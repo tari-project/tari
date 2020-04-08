@@ -1,12 +1,12 @@
 create table metadata
 (
-    id               int       not null primary key check (id = 0),
-    chain_height     bigint   null,
-    best_block       text      null,
-    accumulated_work bigint   null,
-    pruning_horizon  bigint   not null,
-    created_at       timestamp not null default CURRENT_TIMESTAMP,
-    updated_at       timestamp not null default current_timestamp
+    id               INT       NOT NULL PRIMARY KEY check (id = 0),
+    chain_height     BIGINT   null,
+    best_block       TEXT      null,
+    accumulated_work BIGINT   null,
+    pruning_horizon  BIGINT   NOT NULL,
+    created_at       TIMESTAMP NOT NULL default CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP NOT NULL default current_timestamp
 );
 
 -- There should always be one row

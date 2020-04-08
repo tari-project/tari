@@ -1,15 +1,15 @@
 create table kernels (
-    hash text not null primary key,
-    features jsonb not null,
-    fee bigint not null,
-    lock_height bigint not null,
-    meta_info text null,
-    linked_kernel text null,
-    excess text not null,
-    excess_sig_nonce bytea not null,
-    excess_sig_sig bytea not null,
-    block_hash text not null,
-    created_at timestamp not null default current_timestamp,
+    hash TEXT NOT NULL PRIMARY KEY,
+    features jsonb NOT NULL,
+    fee BIGINT NOT NULL,
+    lock_height BIGINT NOT NULL,
+    meta_info TEXT null,
+    linked_kernel TEXT null,
+    excess TEXT NOT NULL,
+    excess_sig_nonce BYTEA NOT NULL,
+    excess_sig_sig BYTEA NOT NULL,
+    block_hash TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL default current_timestamp,
 );
 
 create index index_kernels_hash on kernels(hash);
