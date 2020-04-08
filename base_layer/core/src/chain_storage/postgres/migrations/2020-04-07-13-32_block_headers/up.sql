@@ -10,8 +10,8 @@ create table block_headers (
     total_kernel_offset TEXT NOT NULL,
     nonce BIGINT NOT NULL,
     proof_of_work_display jsonb NOT NULL,
-    orphan NOT NULL default false,
-    created_at TIMESTAMP NOT NULL default current_timestamp,
+    orphan NOT NULL DEFAULT false,
+    created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
 );
 
 create index index_block_headers_hash on block_headers(hash);

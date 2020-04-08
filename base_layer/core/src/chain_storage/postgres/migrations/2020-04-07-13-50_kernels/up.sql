@@ -3,13 +3,13 @@ create table kernels (
     features jsonb NOT NULL,
     fee BIGINT NOT NULL,
     lock_height BIGINT NOT NULL,
-    meta_info TEXT null,
-    linked_kernel TEXT null,
+    meta_info TEXT NULL,
+    linked_kernel TEXT NULL,
     excess TEXT NOT NULL,
     excess_sig_nonce BYTEA NOT NULL,
     excess_sig_sig BYTEA NOT NULL,
     block_hash TEXT NOT NULL,
-    created_at TIMESTAMP NOT NULL default current_timestamp,
+    created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
 );
 
 create index index_kernels_hash on kernels(hash);

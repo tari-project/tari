@@ -3,9 +3,9 @@ create table tx_outputs(
     features_flags SMALLINT NOT NULL,
     features_maturity BIGINT NOT NULL,
     commitment TEXT NOT NULL,
-    proof BYTEA null,
-    spent BIGINT NOT NULL default 0,
-    created_at TIMESTAMP NOT NULL default current_timestamp,
+    proof BYTEA NULL,
+    spent BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
 );
 
 create index index_tx_outputs_hash on tx_outputs(hash);
