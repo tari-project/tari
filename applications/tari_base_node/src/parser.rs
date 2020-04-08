@@ -56,8 +56,12 @@ use tari_core::{
     blocks::BlockHeader,
     mempool::service::LocalMempoolService,
     tari_utilities::{hex::Hex, Hashable},
-    transactions::tari_amount::{uT, MicroTari},
+    transactions::{
+        tari_amount::{uT, MicroTari},
+        transaction::OutputFeatures,
+    },
 };
+use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
 use tari_shutdown::Shutdown;
 use tari_wallet::{
     output_manager_service::{error::OutputManagerError, handle::OutputManagerHandle},
@@ -359,15 +363,18 @@ impl Parser {
                 Ok(unspent_outputs) => {
                     if unspent_outputs.len() > 0 {
                         println!(
-                            "\nYou have {} UTXOs: (value, spending key, mature in ? blocks, flags)",
+                            "\nYou have {} UTXOs: (value, commitment, mature in ? blocks, flags)",
                             unspent_outputs.len()
                         );
+                        let factory = PedersenCommitmentFactory::default();
                         for uo in unspent_outputs.iter() {
-                            let mature_in = std::cmp::max(uo.features.maturity as i64 - &current_height, 0);
+                            let mature_in = std::cmp::max(uo.features.maturity as i64 - *&current_height, 0);
                             println!(
                                 "   {}, {}, {:>3}, {:?}",
                                 uo.value,
-                                uo.spending_key.to_hex(),
+                                uo.as_transaction_input(&factory, OutputFeatures::default())
+                                    .commitment
+                                    .to_hex(),
                                 mature_in,
                                 uo.features.flags
                             );
