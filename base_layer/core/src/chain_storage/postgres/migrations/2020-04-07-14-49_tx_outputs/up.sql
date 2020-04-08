@@ -3,8 +3,8 @@ create table tx_outputs(
     features_flags smallint not null,
     features_maturity bigint not null,
     commitment text not null,
-    proof bytea not null,
-    spent boolean not null default false,
+    proof bytea,
+    spent bigint not null default 0,
     created_at timestamp not null default current_timestamp,
 );
 

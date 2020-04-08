@@ -10,6 +10,7 @@ create table block_headers (
     total_kernel_offset text not null,
     nonce bigint not null,
     proof_of_work_display jsonb not null,
+    orphan not null default false,
     created_at timestamp not null default current_timestamp,
 );
 
