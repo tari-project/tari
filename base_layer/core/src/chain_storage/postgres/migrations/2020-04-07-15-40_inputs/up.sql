@@ -5,7 +5,7 @@ create table inputs (
     created_at timestamp not null default current_timestamp,
 );
 
-create index inputs_id on inputs(id);
+create index index_inputs_id on inputs(id);
 create index index_inputs_block_hash on inputs(hash);
 create index index_inputs_output_hash on inputs(height);
 cluster inputs using inputs_id;
