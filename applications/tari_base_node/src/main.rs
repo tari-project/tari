@@ -20,6 +20,59 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+/// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣶⣿⣿⣿⣿⣶⣦⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+/// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⣾⣿⡿⠋⠀⠀⠀⠀⠉⠛⠿⣿⣿⣶⣤⣀⠀⠀⠀⠀⠀⠀⢰⣿⣾⣾⣾⣾⣾⣾⣾⣾⣾⣿⠀⠀⠀⣾⣾⣾⡀⠀⠀⠀⠀⢰⣾⣾⣾⣾⣿⣶⣶⡀⠀⠀⠀⢸⣾⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀
+/// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⣶⣶⣤⣄⡀⠀⠀⠀⠀⠀⠉⠛⣿⣿⠀⠀⠀⠀⠀⠈⠉⠉⠉⠉⣿⣿⡏⠉⠉⠉⠉⠀⠀⣰⣿⣿⣿⣿⠀⠀⠀⠀⢸⣿⣿⠉⠉⠉⠛⣿⣿⡆⠀⠀⢸⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀
+/// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⠀⠀⠀⠈⠙⣿⡿⠿⣿⣿⣿⣶⣶⣤⣤⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⢠⣿⣿⠃⣿⣿⣷⠀⠀⠀⢸⣿⣿⣀⣀⣀⣴⣿⣿⠃⠀⠀⢸⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀
+/// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣤⠀⠀⠀⢸⣿⡟⠀⠀⠀⠀⠀⠉⣽⣿⣿⠟⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⣿⣿⣿⣤⣬⣿⣿⣆⠀⠀⢸⣿⣿⣿⣿⣿⡿⠟⠉⠀⠀⠀⢸⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀
+/// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⣿⣿⣤⠀⢸⣿⡟⠀⠀⠀⣠⣾⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⣾⣿⣿⠿⠿⠿⢿⣿⣿⡀⠀⢸⣿⣿⠙⣿⣿⣿⣄⠀⠀⠀⠀⢸⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀
+/// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⣿⣿⣼⣿⡟⣀⣶⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⣰⣿⣿⠃⠀⠀⠀⠀⣿⣿⣿⠀⢸⣿⣿⠀⠀⠙⣿⣿⣷⣄⠀⠀⢸⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀
+/// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⣿⣿⣿⣿⠛⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+/// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀
+///
+/// # Tari Base Node
+///
+/// The Tari Base Node is a major application in the Tari Network
+///
+/// It consists of the Base Node itself, a Wallet and a Miner
+///
+/// ## Running the Tari Base Node
+///
+/// Tor needs to be started first
+/// ```
+/// tor --allow-missing-torrc --ignore-missing-torrc \
+///  --clientonly 1 --socksport 9050 --controlport 127.0.0.1:9051 \
+///  --log "notice stdout" --clientuseipv6 1
+/// ```
+///
+/// For the first run
+/// ```cargo run tari_base_node -- --create_id```
+/// 
+/// Subsequent runs
+/// ```cargo run tari_base_node```
+///
+/// ## Commands
+///
+/// `help` - Displays a list of commands
+/// `get-balance` - Displays the balance of the wallet (available, pending incoming, pending outgoing)
+/// `send-tari` - Sends Tari, the amount needs to be specified, followed by the destination (public key or emoji id) and
+/// an optional message `get-chain-metadata` - Lists information about the blockchain of this Base Node
+/// `list-peers` - Lists information about peers known by this base node
+/// `ban-peer` - Bans a peer
+/// `unban-peer` - Removes a ban for a peer
+/// `list-connections` - Lists active connections to this Base Node
+/// `list-headers` - Lists header information. Either the first header height and the last header height needs to be
+/// specified, or the amount of headers from the top `check-db` - Checks the blockchain database for missing blocks and
+/// headers `calc-timing` - Calculates the time average time taken to mine a given range of blocks
+/// `discover-peer` - Attempts to discover a peer on the network, a public key or emoji id needs to be specified
+/// `get-block` - Retrieves a block, the height of the block needs to be specified
+/// `get-mempool-stats` - Displays information about the mempool
+/// `get-mempool-state` - Displays state information for the mempool
+/// `whoami` - Displays identity information about this Base Node and it's wallet
+/// `toggle-mining` - Turns the miner on or off
+/// `quit` - Exits the Base Node
+/// `exit` - Same as quit
+
 /// Utilities and helpers for building the base node instance
 mod builder;
 /// The command line interface definition and configuration
@@ -44,11 +97,13 @@ use tokio::runtime::Runtime;
 
 pub const LOG_TARGET: &str = "base_node::app";
 
+/// Enum to show failure information
 enum ExitCodes {
     ConfigError = 101,
     UnknownError = 102,
 }
 
+/// Application entry point
 fn main() {
     cli::print_banner();
     match main_inner() {
@@ -57,6 +112,7 @@ fn main() {
     }
 }
 
+/// Sets up the base node and runs the cli_loop
 fn main_inner() -> Result<(), ExitCodes> {
     // Parse and validate command-line arguments
     let arguments = cli::parse_cli_args();
@@ -151,6 +207,12 @@ fn main_inner() -> Result<(), ExitCodes> {
     Ok(())
 }
 
+/// Sets up the tokio runtime based on the configuration
+/// ## Parameters
+/// `config` - The configuration  of the base node
+///
+/// ## Returns
+/// A result containing the runtime on success, string indicating the error on failure
 fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
     let num_core_threads = config.core_threads;
     let num_blocking_threads = config.blocking_threads;
@@ -172,6 +234,13 @@ fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
         .map_err(|e| format!("There was an error while building the node runtime. {}", e.to_string()))
 }
 
+/// Runs the Base Node
+/// ## Parameters
+/// `parser` - The parser to process input commands
+/// `shutdown` - The trigger for shutting down
+///
+/// ## Returns
+/// Doesn't return anything
 fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
     let cli_config = Config::builder()
         .history_ignore_space(true)
@@ -213,6 +282,15 @@ fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
     }
 }
 
+/// Loads the node identity, or creates a new one if the --create_id flag was specified
+/// ## Parameters
+/// `identity_file` - Reference to file path
+/// `public_address` - Network address of the base node
+/// `create_id` - Whether an identity needs to be created or not
+/// `peer_features` - Enables features of the base node
+///
+/// # Return
+/// A NodeIdentity wrapped in an atomic reference counter on success, the exit code indicating the reason on failure
 fn setup_node_identity(
     identity_file: &PathBuf,
     public_address: &Multiaddr,

@@ -114,7 +114,7 @@ pub struct Parser {
     enable_miner: Arc<AtomicBool>,
 }
 
-// This will go through all instructions and look for potential matches
+/// This will go through all instructions and look for potential matches
 impl Completer for Parser {
     type Candidate = String;
 
@@ -134,7 +134,7 @@ impl Completer for Parser {
     }
 }
 
-// This allows us to make hints based on historic inputs
+/// This allows us to make hints based on historic inputs
 impl Hinter for Parser {
     fn hint(&self, line: &str, pos: usize, ctx: &rustyline::Context<'_>) -> Option<String> {
         self.hinter.hint(line, pos, ctx)
@@ -177,7 +177,7 @@ impl Parser {
         self.process_command(command, args, shutdown);
     }
 
-    // Function to process commands
+    /// Function to process commands
     fn process_command<'a, I: Iterator<Item = &'a str>>(
         &mut self,
         command: BaseNodeCommand,
@@ -252,6 +252,7 @@ impl Parser {
         }
     }
 
+    /// Displays the commands or context specific help for a given command
     fn print_help<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
         let help_for = BaseNodeCommand::from_str(args.next().unwrap_or_default()).unwrap_or(BaseNodeCommand::Help);
         use BaseNodeCommand::*;
@@ -325,7 +326,7 @@ impl Parser {
         }
     }
 
-    // Function to process  the get balance command
+    /// Function to process the get-balance command
     fn process_get_balance(&mut self) {
         let mut handler = self.wallet_output_service.clone();
         self.executor.spawn(async move {
@@ -340,7 +341,7 @@ impl Parser {
         });
     }
 
-    // Function to process the list utxos command
+    /// Function to process the list utxos command
     fn process_list_unspent_outputs(&mut self) {
         let mut handler1 = self.node_service.clone();
         let mut handler2 = self.wallet_output_service.clone();
@@ -388,7 +389,7 @@ impl Parser {
         });
     }
 
-    // Function to process  the get chain meta data
+    /// Function to process the get-chain-metadata command
     fn process_get_chain_meta(&mut self) {
         let mut handler = self.node_service.clone();
         self.executor.spawn(async move {
@@ -403,6 +404,7 @@ impl Parser {
         });
     }
 
+    /// Function to process the get-block command
     fn process_get_block<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
         let command_arg = args.take(4).collect::<Vec<&str>>();
         let height = if command_arg.len() == 1 {
@@ -438,6 +440,7 @@ impl Parser {
         });
     }
 
+    /// Function to process the get-mempool-stats command
     fn process_get_mempool_stats(&mut self) {
         let mut handler = self.mempool_service.clone();
         self.executor.spawn(async move {
@@ -452,6 +455,7 @@ impl Parser {
         });
     }
 
+    /// Function to process the get-mempool-state command
     fn process_get_mempool_state(&mut self) {
         let mut handler = self.mempool_service.clone();
         self.executor.spawn(async move {
@@ -466,6 +470,7 @@ impl Parser {
         });
     }
 
+    /// Function to process the discover-peer command
     fn process_discover_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
         let mut dht = self.discovery_service.clone();
 
@@ -495,6 +500,7 @@ impl Parser {
         });
     }
 
+    /// Function to process the list-peers command
     fn process_list_peers<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
         let peer_manager = self.peer_manager.clone();
         let filter = args.next().map(ToOwned::to_owned);
@@ -531,6 +537,7 @@ impl Parser {
         });
     }
 
+    /// Function to process the ban-peer command
     fn process_ban_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I, is_banned: bool) {
         let peer_manager = self.peer_manager.clone();
         let mut connection_manager = self.connection_manager.clone();
@@ -572,6 +579,7 @@ impl Parser {
         });
     }
 
+    /// Function to process the list-connections command
     fn process_list_connections(&self) {
         let mut connection_manager = self.connection_manager.clone();
         self.executor.spawn(async move {
@@ -598,6 +606,7 @@ impl Parser {
         });
     }
 
+    /// Function to process the toggle-mining command
     fn process_toggle_mining(&mut self) {
         let new_state = !self.enable_miner.load(Ordering::SeqCst);
         self.enable_miner.store(new_state, Ordering::SeqCst);
@@ -609,6 +618,7 @@ impl Parser {
         debug!(target: LOG_TARGET, "Mining state is now switched to {}", new_state);
     }
 
+    /// Function to process the list-headers command
     fn process_list_headers<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
         let command_arg = args.map(|arg| arg.to_string()).take(4).collect::<Vec<String>>();
         if (command_arg.is_empty()) || (command_arg.len() > 2) {
@@ -627,6 +637,7 @@ impl Parser {
         });
     }
 
+    /// Function to process the get-headers command
     async fn get_headers(mut handler: LocalNodeCommsInterface, command_arg: Vec<String>) -> Vec<BlockHeader> {
         let height = if command_arg.len() == 2 {
             let height = command_arg[1].parse::<u64>();
@@ -682,6 +693,7 @@ impl Parser {
         }
     }
 
+    /// Function to process the calc-timing command
     fn process_calc_timing<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
         let command_arg = args.map(|arg| arg.to_string()).take(4).collect::<Vec<String>>();
         if (command_arg.is_empty()) || (command_arg.len() > 2) {
@@ -701,6 +713,7 @@ impl Parser {
         });
     }
 
+    /// Function to process the check-db command
     fn process_check_db(&mut self) {
         // Todo, add calls to ask peers for missing data
         let mut node = self.node_service.clone();
@@ -737,6 +750,7 @@ impl Parser {
         });
     }
 
+    /// Function to process the whoami command
     fn process_whoami(&self) {
         println!("======== Wallet ==========");
         println!("{}", self.wallet_node_identity);
@@ -760,7 +774,7 @@ impl Parser {
         println!("{}", self.base_node_identity);
     }
 
-    // Function to process  the send transaction function
+    /// Function to process the send transaction command
     fn process_send_tari<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
         let amount = args.next().and_then(|v| v.parse::<u64>().ok());
         if amount.is_none() {
@@ -863,6 +877,7 @@ impl Parser {
     }
 }
 
+/// Returns a CommsPublicKey from either a emoji id or a public key
 fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
     EmojiId::str_to_pubkey(&key.trim().replace('|', ""))
         .or_else(|_| CommsPublicKey::from_hex(key))
