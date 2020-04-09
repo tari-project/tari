@@ -22,7 +22,7 @@ tari_wallet = { path = "../../base_layer/wallet", version = "^0.0" }
 tari_broadcast_channel = "^0.1"
 tari_crypto = { version = "^0.3" }
 
-clap = "2.33.0"
+structopt = { version = "0.3.13", default_features = false }
 config = { version = "0.9.3" }
 dirs = "2.0.2"
 futures = { version = "^0.3.1", default-features = false, features = ["alloc"]}
