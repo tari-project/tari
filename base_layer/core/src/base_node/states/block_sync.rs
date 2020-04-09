@@ -379,11 +379,12 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
                     ban_sync_peer(shared, sync_peers, sync_peer.clone()).await?;
                     break;
                 },
-                Err(ChainStorageError::ValidationError(_)) => {
+                Err(ChainStorageError::ValidationError(e)) => {
                     warn!(
                         target: LOG_TARGET,
-                        "Validation on block {} from peer failed. Retrying",
+                        "Validation on block {} from peer failed due to: {:?}. Retrying",
                         block_hash.to_hex(),
+                        e,
                     );
                     warn!(
                         target: LOG_TARGET,
