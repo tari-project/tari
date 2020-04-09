@@ -1,6 +1,6 @@
 create table kernels (
     hash TEXT NOT NULL PRIMARY KEY,
-    features jsonb NOT NULL,
+    features SMALLINT NOT NULL,
     fee BIGINT NOT NULL,
     lock_height BIGINT NOT NULL,
     meta_info TEXT NULL,
@@ -8,7 +8,7 @@ create table kernels (
     excess TEXT NOT NULL,
     excess_sig_nonce BYTEA NOT NULL,
     excess_sig_sig BYTEA NOT NULL,
-    block_hash TEXT NOT NULL,
+    block_hash TEXT NOT NULL REFERENCES block_headers(hash),
     created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
 );
 

@@ -4,12 +4,13 @@ create table tx_outputs(
     features_maturity BIGINT NOT NULL,
     commitment TEXT NOT NULL,
     proof BYTEA NULL,
-    spent BIGINT NOT NULL DEFAULT 0,
-    created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    input TEXT NOT NULL REFERENCES block_headers(hash),
+    spent TEXT NULL REFERENCES block_headers(hash),
 );
 
 create index index_tx_outputs_hash on tx_outputs(hash);
-create index index_tx_outputs_spent on tx_outputs(boolean);
+create index index_tx_outputs_input on tx_outputs(input);
+create index index_tx_outputs_spent on tx_outputs(spent);
 cluster tx_outputs using index_tx_outputs_hash;
 
 select diesel_manage_updated_at('tx_outputs');

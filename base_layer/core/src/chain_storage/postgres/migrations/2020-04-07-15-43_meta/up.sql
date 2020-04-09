@@ -5,7 +5,6 @@ create table metadata
     best_block       TEXT      NULL,
     accumulated_work BIGINT   NULL,
     pruning_horizon  BIGINT   NOT NULL,
-    created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at       TIMESTAMP NOT NULL DEFAULT current_timestamp
 );
 
