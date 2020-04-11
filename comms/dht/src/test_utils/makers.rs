@@ -27,7 +27,7 @@ use crate::{
 use rand::rngs::OsRng;
 use std::sync::Arc;
 use tari_comms::{
-    message::{InboundMessage, MessageEnvelopeHeader, MessageFlags},
+    message::InboundMessage,
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     types::CommsDatabase,
@@ -72,7 +72,7 @@ pub fn make_client_identity() -> Arc<NodeIdentity> {
     )
 }
 
-pub fn make_comms_inbound_message(node_identity: &NodeIdentity, message: Bytes, flags: MessageFlags) -> InboundMessage {
+pub fn make_comms_inbound_message(node_identity: &NodeIdentity, message: Bytes) -> InboundMessage {
     InboundMessage::new(
         Arc::new(Peer::new(
             node_identity.public_key().clone(),
@@ -82,11 +82,6 @@ pub fn make_comms_inbound_message(node_identity: &NodeIdentity, message: Bytes, 
             PeerFeatures::COMMUNICATION_NODE,
             &[],
         )),
-        MessageEnvelopeHeader {
-            public_key: node_identity.public_key().clone(),
-            signature: Bytes::new(),
-            flags,
-        },
         message,
     )
 }

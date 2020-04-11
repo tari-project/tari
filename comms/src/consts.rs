@@ -28,7 +28,3 @@ pub const PEER_MANAGER_MAX_FLOOD_PEERS: usize = 1000;
 /// The amount of time to consider a peer to be offline (i.e. dial to peer will fail without trying) after a failed
 /// connection attempt
 pub const PEER_OFFLINE_COOLDOWN_PERIOD: Duration = Duration::from_secs(60);
-
-/// The envelope version. This should be increased any time a change is made to the
-/// envelope proto files.
-pub const ENVELOPE_VERSION: u32 = 0;

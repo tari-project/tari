@@ -84,7 +84,6 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError>
             mut dht_header,
             body,
             destination_peer,
-            comms_flags,
             ..
         } = message;
 
@@ -115,12 +114,7 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError>
         let body = Bytes::from(envelope.to_encoded_bytes().map_err(PipelineError::from_debug)?);
 
         next_service
-            .oneshot(OutboundMessage::with_tag(
-                message.tag,
-                destination_peer.node_id,
-                comms_flags,
-                body,
-            ))
+            .oneshot(OutboundMessage::with_tag(message.tag, destination_peer.node_id, body))
             .await
     }
 }
@@ -154,7 +148,6 @@ mod test {
     use futures::executor::block_on;
     use prost::Message;
     use tari_comms::{
-        message::MessageFlags,
         net_address::MultiaddressesWithStats,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
         types::CommsPublicKey,
@@ -182,7 +175,6 @@ mod test {
             ),
             make_dht_header(&node_identity, &body, DhtMessageFlags::empty()),
             OutboundEncryption::None,
-            MessageFlags::empty(),
             body,
         );
         block_on(serialize.call(msg)).unwrap();

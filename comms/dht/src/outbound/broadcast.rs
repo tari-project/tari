@@ -43,7 +43,6 @@ use futures::{
 use log::*;
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
-    message::MessageFlags,
     peer_manager::{NodeId, NodeIdentity, Peer},
     pipeline::PipelineError,
     types::CommsPublicKey,
@@ -433,15 +432,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         // Construct a MessageEnvelope for each recipient
         let messages = selected_peers
             .into_iter()
-            .map(|peer| {
-                DhtOutboundMessage::new(
-                    peer,
-                    dht_header.clone(),
-                    encryption.clone(),
-                    MessageFlags::NONE,
-                    body.clone(),
-                )
-            })
+            .map(|peer| DhtOutboundMessage::new(peer, dht_header.clone(), encryption.clone(), body.clone()))
             .collect::<Vec<_>>();
 
         Ok(messages)

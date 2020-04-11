@@ -31,12 +31,6 @@ use derive_error::Error;
 #[derive(Debug, Error)]
 pub enum InboundMessagingError {
     PeerManagerError(PeerManagerError),
-    /// Inbound message signatures are invalid
-    InvalidMessageSignature,
-    /// The received envelope is invalid
-    InvalidEnvelope,
-    /// The connected peer sent a public key which did not match the public key of the connected peer
-    PeerPublicKeyMismatch,
     /// Failed to decode message
     MessageDecodeError(prost::DecodeError),
     MessageError(MessageError),

@@ -26,11 +26,7 @@ use crate::{
     connection_manager::{ConnectionManagerEvent, ConnectionManagerRequester},
     message::{InboundMessage, MessageTag, OutboundMessage},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManagerError},
-    protocol::{
-        messaging::{inbound::InboundMessaging, outbound::OutboundMessaging},
-        ProtocolEvent,
-        ProtocolNotification,
-    },
+    protocol::{messaging::outbound::OutboundMessaging, ProtocolEvent, ProtocolNotification},
     runtime::current_executor,
     types::CommsSubstream,
     PeerManager,
@@ -363,7 +359,6 @@ impl MessagingProtocol {
         let messaging_events_tx = self.messaging_events_tx.clone();
         let mut inbound_message_tx = self.inbound_message_tx.clone();
         let mut framed_substream = Self::framed(substream);
-        let inbound = InboundMessaging;
 
         self.executor.spawn(async move {
             while let Some(result) = framed_substream.next().await {
@@ -376,42 +371,23 @@ impl MessagingProtocol {
                             raw_msg.len()
                         );
 
-                        let mut raw_msg = raw_msg.freeze();
-                        let (event, in_msg) = match inbound.process_message(Arc::clone(&peer), &mut raw_msg).await {
-                            Ok(inbound_msg) => (
-                                MessagingEvent::MessageReceived(
-                                    Box::new(inbound_msg.source_peer.node_id.clone()),
-                                    inbound_msg.tag,
-                                ),
-                                Some(inbound_msg),
-                            ),
-                            Err(err) => {
-                                // TODO: #banheuristic
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Received invalid message from peer '{}' ({})",
-                                    peer.node_id.short_str(),
-                                    err
-                                );
-                                (
-                                    MessagingEvent::InvalidMessageReceived(Box::new(peer.node_id.clone())),
-                                    None,
-                                )
-                            },
-                        };
+                        let inbound_msg = InboundMessage::new(Arc::clone(&peer), raw_msg.freeze());
 
-                        if let Some(in_msg) = in_msg {
-                            if let Err(err) = inbound_message_tx.send(in_msg).await {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Failed to send InboundMessage for peer '{}' because '{}'",
-                                    peer.node_id.short_str(),
-                                    err
-                                );
+                        let event = MessagingEvent::MessageReceived(
+                            Box::new(inbound_msg.source_peer.node_id.clone()),
+                            inbound_msg.tag,
+                        );
 
-                                if err.is_disconnected() {
-                                    break;
-                                }
+                        if let Err(err) = inbound_message_tx.send(inbound_msg).await {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Failed to send InboundMessage for peer '{}' because '{}'",
+                                peer.node_id.short_str(),
+                                err
+                            );
+
+                            if err.is_disconnected() {
+                                break;
                             }
                         }
 
