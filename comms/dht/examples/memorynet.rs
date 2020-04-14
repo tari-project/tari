@@ -68,8 +68,7 @@ use tari_comms::{
     ConnectionManagerEvent,
     PeerConnection,
 };
-use tari_comms_dht::{envelope::NodeDestination, inbound::DecryptedDhtMessage, Dht, DhtBuilder};
-use tari_crypto::tari_utilities::ByteArray;
+use tari_comms_dht::{inbound::DecryptedDhtMessage, Dht, DhtBuilder};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tari_test_utils::{paths::create_temporary_data_path, random};
 use tokio::{runtime, time};
@@ -216,17 +215,7 @@ async fn main() {
 
     peer_list_summary(&wallets).await;
 
-    total_messages += discovery(&wallets, &mut messaging_events_rx, false, true).await;
-
-    take_a_break().await;
-    total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
-
-    total_messages += discovery(&wallets, &mut messaging_events_rx, true, false).await;
-
-    take_a_break().await;
-    total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
-
-    total_messages += discovery(&wallets, &mut messaging_events_rx, false, false).await;
+    total_messages += discovery(&wallets, &mut messaging_events_rx).await;
 
     take_a_break().await;
     total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
@@ -247,13 +236,7 @@ async fn shutdown_all(nodes: Vec<TestNode>) {
     future::join_all(tasks).await;
 }
 
-async fn discovery(
-    wallets: &[TestNode],
-    messaging_events_rx: &mut MessagingEventRx,
-    use_network_region: bool,
-    use_destination_node_id: bool,
-) -> usize
-{
+async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut MessagingEventRx) -> usize {
     let mut successes = 0;
     let mut total_messages = 0;
     let mut total_time = Duration::from_secs(0);
@@ -265,30 +248,11 @@ async fn discovery(
 
         peer_list_summary(&[wallet1, wallet2]).await;
 
-        let mut destination = NodeDestination::Unknown;
-        if use_network_region {
-            let mut new_node_id = [0; 13];
-            let node_id = wallet2.get_node_id();
-            let buf = &mut new_node_id[..10];
-            buf.copy_from_slice(&node_id.as_bytes()[..10]);
-            let regional_node_id = NodeId::from_bytes(&new_node_id).unwrap();
-            destination = NodeDestination::NodeId(Box::new(regional_node_id));
-        }
-
-        let mut node_id_dest = None;
-        if use_destination_node_id {
-            node_id_dest = Some(wallet2.get_node_id());
-        }
-
         let start = Instant::now();
         let discovery_result = wallet1
             .dht
             .discovery_service_requester()
-            .discover_peer(
-                Box::new(wallet2.node_identity().public_key().clone()),
-                node_id_dest,
-                destination,
-            )
+            .discover_peer(Box::new(wallet2.node_identity().public_key().clone()))
             .await;
 
         let end = Instant::now();
@@ -387,15 +351,13 @@ async fn do_store_and_forward_discovery(
         node_identity.public_key(),
     );
     let mut first_wallet_discovery_req = wallets[0].dht.discovery_service_requester();
+
+    let start = Instant::now();
     let discovery_task = runtime::Handle::current().spawn({
         let node_identity = node_identity.clone();
         async move {
             first_wallet_discovery_req
-                .discover_peer(
-                    Box::new(node_identity.public_key().clone()),
-                    Some(node_identity.node_id().clone()),
-                    node_identity.public_key().clone().into(),
-                )
+                .discover_peer(Box::new(node_identity.public_key().clone()))
                 .await
         }
     });
@@ -410,7 +372,6 @@ async fn do_store_and_forward_discovery(
     let (comms, dht) = setup_comms_dht(node_identity, create_peer_storage(all_peers), tx).await;
     let wallet = TestNode::new(comms, dht, None, ims_rx, messaging_tx);
 
-    let start = Instant::now();
     wallet.dht.dht_requester().send_request_stored_messages().await.unwrap();
 
     total_messages += match discovery_task.await.unwrap() {
@@ -497,8 +458,8 @@ fn connection_manager_logger(
             PeerConnectWillClose(_, node_id, direction) => {
                 println!(
                     "'{}' will disconnect {} connection to '{}'",
-                    direction,
                     get_name(node_id),
+                    direction,
                     node_name,
                 );
             },

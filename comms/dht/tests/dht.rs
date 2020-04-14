@@ -33,7 +33,7 @@ use tari_comms::{
     CommsBuilder,
     CommsNode,
 };
-use tari_comms_dht::{envelope::NodeDestination, inbound::DecryptedDhtMessage, Dht, DhtBuilder};
+use tari_comms_dht::{inbound::DecryptedDhtMessage, Dht, DhtBuilder};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tari_test_utils::{async_assert_eventually, paths::create_temporary_data_path, random};
 use tower::ServiceBuilder;
@@ -213,12 +213,7 @@ async fn dht_discover_propagation() {
     node_A
         .dht
         .discovery_service_requester()
-        .discover_peer(
-            Box::new(node_D.node_identity().public_key().clone()),
-            None,
-            // Sending to a nonsense NodeId, this should still propagate towards D in a network of 4
-            NodeDestination::NodeId(Box::new(Default::default())),
-        )
+        .discover_peer(Box::new(node_D.node_identity().public_key().clone()))
         .await
         .unwrap();
 

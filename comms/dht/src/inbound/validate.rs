@@ -20,19 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    inbound::DhtInboundMessage,
-    outbound::{OutboundMessageRequester, SendMessageParams},
-    proto::{
-        dht::{RejectMessage, RejectMessageReason},
-        envelope::{DhtMessageType, Network},
-    },
-};
+use crate::{inbound::DhtInboundMessage, proto::envelope::Network};
 use futures::{task::Context, Future};
 use log::*;
 use std::task::Poll;
-use tari_comms::{message::MessageExt, pipeline::PipelineError};
-use tari_crypto::tari_utilities::ByteArray;
+use tari_comms::pipeline::PipelineError;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::validate";
@@ -45,15 +37,13 @@ const LOG_TARGET: &str = "comms::dht::validate";
 pub struct ValidateMiddleware<S> {
     next_service: S,
     target_network: Network,
-    outbound_requester: OutboundMessageRequester,
 }
 
 impl<S> ValidateMiddleware<S> {
-    pub fn new(service: S, target_network: Network, outbound_requester: OutboundMessageRequester) -> Self {
+    pub fn new(service: S, target_network: Network) -> Self {
         Self {
             next_service: service,
             target_network,
-            outbound_requester,
         }
     }
 }
@@ -70,76 +60,40 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, msg: DhtInboundMessage) -> Self::Future {
-        Self::process_message(
-            self.next_service.clone(),
-            self.target_network,
-            self.outbound_requester.clone(),
-            msg,
-        )
-    }
-}
-
-impl<S> ValidateMiddleware<S>
-where S: Service<DhtInboundMessage, Response = (), Error = PipelineError>
-{
-    pub async fn process_message(
-        next_service: S,
-        target_network: Network,
-        mut outbound_requester: OutboundMessageRequester,
-        message: DhtInboundMessage,
-    ) -> Result<(), PipelineError>
-    {
-        trace!(
-            target: LOG_TARGET,
-            "Checking the message target network is '{:?}'",
-            target_network
-        );
-        if message.dht_header.network == target_network {
-            next_service.oneshot(message).await?;
-        } else {
-            debug!(
+    fn call(&mut self, message: DhtInboundMessage) -> Self::Future {
+        let next_service = self.next_service.clone();
+        let target_network = self.target_network;
+        async move {
+            trace!(
                 target: LOG_TARGET,
-                "Message is for another network (want = {:?} got = {:?}). Explicitly rejecting the message.",
-                target_network,
-                message.dht_header.network
+                "Checking the message target network is '{:?}'",
+                target_network
             );
-            outbound_requester
-                .send_raw(
-                    SendMessageParams::new()
-                        .direct_public_key(message.source_peer.public_key.clone())
-                        .with_dht_message_type(DhtMessageType::RejectMsg)
-                        .finish(),
-                    RejectMessage {
-                        signature: message
-                            .dht_header
-                            .origin
-                            .map(|o| o.public_key.to_vec())
-                            .unwrap_or_default(),
-                        reason: RejectMessageReason::UnsupportedNetwork as i32,
-                    }
-                    .to_encoded_bytes()
-                    .map_err(PipelineError::from_debug)?,
-                )
-                .await
-                .map_err(PipelineError::from_debug)?;
-        }
 
-        Ok(())
+            if message.dht_header.network == target_network && message.dht_header.is_valid() {
+                next_service.oneshot(message).await?;
+            } else {
+                debug!(
+                    target: LOG_TARGET,
+                    "Message is for another network (want = {:?} got = {:?}) or message header is invalid. Discarding \
+                     the message.",
+                    target_network,
+                    message.dht_header.network
+                );
+            }
+
+            Ok(())
+        }
     }
 }
 
 pub struct ValidateLayer {
     target_network: Network,
-    outbound_requester: OutboundMessageRequester,
 }
 
 impl ValidateLayer {
-    pub fn new(target_network: Network, outbound_requester: OutboundMessageRequester) -> Self {
-        Self {
-            target_network,
-            outbound_requester,
-        }
+    pub fn new(target_network: Network) -> Self {
+        Self { target_network }
     }
 }
 
@@ -147,7 +101,7 @@ impl<S> Layer<S> for ValidateLayer {
     type Service = ValidateMiddleware<S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        ValidateMiddleware::new(service, self.target_network, self.outbound_requester.clone())
+        ValidateMiddleware::new(service, self.target_network)
     }
 }
 
@@ -155,8 +109,7 @@ impl<S> Layer<S> for ValidateLayer {
 mod test {
     use super::*;
     use crate::{
-        envelope::{DhtMessageFlags, DhtMessageType},
-        outbound::mock::create_outbound_service_mock,
+        envelope::DhtMessageFlags,
         test_utils::{make_dht_inbound_message, make_node_identity, service_spy},
     };
     use tari_test_utils::panic_context;
@@ -167,18 +120,13 @@ mod test {
         let mut rt = Runtime::new().unwrap();
         let spy = service_spy();
 
-        let (out_requester, mock) = create_outbound_service_mock(1);
-        let mock_state = mock.get_state();
-        rt.spawn(mock.run());
-
-        let mut validate =
-            ValidateLayer::new(Network::LocalTest, out_requester).layer(spy.to_service::<PipelineError>());
+        let mut validate = ValidateLayer::new(Network::LocalTest).layer(spy.to_service::<PipelineError>());
 
         panic_context!(cx);
 
         assert!(validate.poll_ready(&mut cx).is_ready());
         let node_identity = make_node_identity();
-        let mut msg = make_dht_inbound_message(&node_identity, Vec::new(), DhtMessageFlags::empty());
+        let mut msg = make_dht_inbound_message(&node_identity, Vec::new(), DhtMessageFlags::empty(), false);
         msg.dht_header.network = Network::MainNet;
 
         rt.block_on(validate.call(msg.clone())).unwrap();
@@ -188,17 +136,5 @@ mod test {
 
         rt.block_on(validate.call(msg.clone())).unwrap();
         assert_eq!(spy.call_count(), 1);
-
-        let calls = mock_state.take_calls();
-        assert_eq!(calls.len(), 1);
-        let params = calls[0].0.clone();
-        assert_eq!(params.dht_message_type, DhtMessageType::RejectMsg);
-        assert_eq!(
-            params.broadcast_strategy.direct_public_key().unwrap(),
-            node_identity.public_key()
-        );
-
-        // Drop validate so that the mock will stop running
-        drop(validate);
     }
 }

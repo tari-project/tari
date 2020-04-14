@@ -23,11 +23,23 @@
 use crate::{
     crypt,
     outbound::message::{DhtOutboundMessage, OutboundEncryption},
+    proto::envelope::OriginMac,
 };
 use futures::{task::Context, Future};
 use log::*;
+use rand::rngs::OsRng;
 use std::{sync::Arc, task::Poll};
-use tari_comms::{peer_manager::NodeIdentity, pipeline::PipelineError};
+use tari_comms::{
+    message::MessageExt,
+    peer_manager::NodeIdentity,
+    pipeline::PipelineError,
+    types::CommsPublicKey,
+    utils::signature,
+};
+use tari_crypto::{
+    keys::PublicKey,
+    tari_utilities::{message_format::MessageFormat, ByteArray},
+};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::middleware::encryption";
@@ -79,34 +91,55 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError> + Clo
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, msg: DhtOutboundMessage) -> Self::Future {
-        Self::handle_message(self.inner.clone(), Arc::clone(&self.node_identity), msg)
+    fn call(&mut self, mut message: DhtOutboundMessage) -> Self::Future {
+        let next_service = self.inner.clone();
+        let node_identity = Arc::clone(&self.node_identity);
+        async move {
+            trace!(target: LOG_TARGET, "DHT Message flags: {:?}", message.dht_flags);
+            match &message.encryption {
+                OutboundEncryption::EncryptFor(public_key) => {
+                    debug!(target: LOG_TARGET, "Encrypting message for {}", public_key);
+                    // Generate ephemeral public/private key pair and ECDH shared secret
+                    let (e_sk, e_pk) = CommsPublicKey::random_keypair(&mut OsRng);
+                    let shared_ephemeral_secret = crypt::generate_ecdh_secret(&e_sk, &**public_key);
+                    // Encrypt the message with the body
+                    let encrypted_body =
+                        crypt::encrypt(&shared_ephemeral_secret, &message.body).map_err(PipelineError::from_debug)?;
+
+                    // Sign the encrypted message
+                    let origin_mac = create_origin_mac(&node_identity, &encrypted_body)?;
+                    // Encrypt and set the origin field
+                    let encrypted_origin_mac =
+                        crypt::encrypt(&shared_ephemeral_secret, &origin_mac).map_err(PipelineError::from_debug)?;
+                    message
+                        .with_origin_mac(encrypted_origin_mac)
+                        .with_ephemeral_public_key(e_pk)
+                        .set_body(encrypted_body.into());
+                },
+                OutboundEncryption::None => {
+                    debug!(target: LOG_TARGET, "Encryption not requested for message");
+
+                    if message.include_origin && message.custom_header.is_none() {
+                        let origin_mac = create_origin_mac(&node_identity, &message.body)?;
+                        message.with_origin_mac(origin_mac);
+                    }
+                },
+            };
+
+            next_service.oneshot(message).await
+        }
     }
 }
 
-impl<S> EncryptionService<S>
-where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
-{
-    async fn handle_message(
-        next_service: S,
-        node_identity: Arc<NodeIdentity>,
-        mut message: DhtOutboundMessage,
-    ) -> Result<(), PipelineError>
-    {
-        trace!(target: LOG_TARGET, "DHT Message flags: {:?}", message.dht_header.flags);
-        match &message.encryption {
-            OutboundEncryption::EncryptFor(public_key) => {
-                debug!(target: LOG_TARGET, "Encrypting message for {}", public_key);
-                let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), &**public_key);
-                message.body = crypt::encrypt(&shared_secret, &message.body).map_err(PipelineError::from_debug)?;
-            },
-            OutboundEncryption::None => {
-                debug!(target: LOG_TARGET, "Encryption not requested for message");
-            },
-        };
+fn create_origin_mac(node_identity: &NodeIdentity, body: &[u8]) -> Result<Vec<u8>, PipelineError> {
+    let signature =
+        signature::sign(&mut OsRng, node_identity.secret_key().clone(), body).map_err(PipelineError::from_debug)?;
 
-        next_service.oneshot(message).await
-    }
+    let mac = OriginMac {
+        public_key: node_identity.public_key().to_vec(),
+        signature: signature.to_binary().map_err(PipelineError::from_debug)?,
+    };
+    Ok(mac.to_encoded_bytes())
 }
 
 #[cfg(test)]
@@ -114,14 +147,10 @@ mod test {
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
-        test_utils::{make_dht_header, make_node_identity, service_spy},
+        test_utils::{create_outbound_message, make_node_identity, service_spy},
     };
     use futures::executor::block_on;
-    use tari_comms::{
-        net_address::MultiaddressesWithStats,
-        peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-        types::CommsPublicKey,
-    };
+    use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
     use tari_test_utils::panic_context;
 
     #[test]
@@ -133,25 +162,14 @@ mod test {
         panic_context!(cx);
         assert!(encryption.poll_ready(&mut cx).is_ready());
 
-        let body = b"A".to_vec();
-        let msg = DhtOutboundMessage::new(
-            Peer::new(
-                CommsPublicKey::default(),
-                NodeId::default(),
-                MultiaddressesWithStats::new(vec![]),
-                PeerFlags::empty(),
-                PeerFeatures::COMMUNICATION_NODE,
-                &[],
-            ),
-            make_dht_header(&node_identity, &body, DhtMessageFlags::empty()),
-            OutboundEncryption::None,
-            body.clone(),
-        );
+        let body = b"A";
+        let msg = create_outbound_message(body);
         block_on(encryption.call(msg)).unwrap();
 
         let msg = spy.pop_request().unwrap();
-        assert_eq!(msg.body, body);
+        assert_eq!(msg.body.to_vec(), body);
         assert_eq!(msg.destination_peer.node_id, NodeId::default());
+        assert!(msg.ephemeral_public_key.is_none())
     }
 
     #[test]
@@ -163,24 +181,15 @@ mod test {
         panic_context!(cx);
         assert!(encryption.poll_ready(&mut cx).is_ready());
 
-        let body = b"A".to_vec();
-        let msg = DhtOutboundMessage::new(
-            Peer::new(
-                CommsPublicKey::default(),
-                NodeId::default(),
-                MultiaddressesWithStats::new(vec![]),
-                PeerFlags::empty(),
-                PeerFeatures::COMMUNICATION_NODE,
-                &[],
-            ),
-            make_dht_header(&node_identity, &body, DhtMessageFlags::ENCRYPTED),
-            OutboundEncryption::EncryptFor(Box::new(CommsPublicKey::default())),
-            body.clone(),
-        );
+        let body = b"A";
+        let mut msg = create_outbound_message(body);
+        msg.dht_flags = DhtMessageFlags::ENCRYPTED;
+        msg.encryption = OutboundEncryption::EncryptFor(Box::new(CommsPublicKey::default()));
         block_on(encryption.call(msg)).unwrap();
 
         let msg = spy.pop_request().unwrap();
-        assert_ne!(msg.body, body);
+        assert_ne!(msg.body.to_vec(), body);
         assert_eq!(msg.destination_peer.node_id, NodeId::default());
+        assert!(msg.ephemeral_public_key.is_some())
     }
 }

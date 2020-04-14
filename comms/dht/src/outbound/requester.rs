@@ -195,7 +195,7 @@ impl OutboundMessageRequester {
                 message
             );
         }
-        let body = wrap_in_envelope_body!(message.to_header(), message.into_inner())?.to_encoded_bytes()?;
+        let body = wrap_in_envelope_body!(message.to_header(), message.into_inner()).to_encoded_bytes();
         self.send_raw(params, body).await
     }
 
@@ -211,7 +211,7 @@ impl OutboundMessageRequester {
         if cfg!(debug_assertions) {
             trace!(target: LOG_TARGET, "Send Message: {} {:?}", params, message);
         }
-        let body = wrap_in_envelope_body!(message)?.to_encoded_bytes()?;
+        let body = wrap_in_envelope_body!(message).to_encoded_bytes();
         self.send_raw(params, body).await
     }
 
@@ -224,7 +224,7 @@ impl OutboundMessageRequester {
     {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(DhtOutboundRequest::SendMessage(Box::new(params), body, reply_tx))
+            .send(DhtOutboundRequest::SendMessage(Box::new(params), body.into(), reply_tx))
             .await?;
 
         reply_rx

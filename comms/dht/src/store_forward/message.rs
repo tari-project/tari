@@ -68,11 +68,11 @@ impl StoredMessagesRequest {
 
 #[cfg(test)]
 impl StoredMessage {
-    pub fn new(version: u32, dht_header: crate::envelope::DhtMessageHeader, encrypted_body: Vec<u8>) -> Self {
+    pub fn new(version: u32, dht_header: crate::envelope::DhtMessageHeader, body: Vec<u8>) -> Self {
         Self {
             version,
             dht_header: Some(dht_header.into()),
-            body: encrypted_body,
+            body,
             stored_at: Some(datetime_to_timestamp(Utc::now())),
         }
     }

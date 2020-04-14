@@ -412,7 +412,7 @@ where
                 self.send_dialer_request(DialerRequest::CancelPendingDial(node_id.clone()))
                     .await;
 
-                match self.active_connections.remove(&node_id) {
+                match self.active_connections.get(&node_id) {
                     Some(existing_conn) => {
                         debug!(
                             target: LOG_TARGET,
@@ -421,7 +421,7 @@ where
                             existing_conn.peer_node_id()
                         );
 
-                        if self.tie_break_existing_connection(&existing_conn, &new_conn) {
+                        if self.tie_break_existing_connection(existing_conn, &new_conn) {
                             debug!(
                                 target: LOG_TARGET,
                                 "Disconnecting existing {} connection to peer '{}' because of simultaneous dial",
@@ -434,8 +434,14 @@ where
                                 Box::new(existing_conn.peer_node_id().clone()),
                                 existing_conn.direction(),
                             ));
+
+                            // Replace existing connection with new one
+                            let existing_conn = self
+                                .active_connections
+                                .insert(node_id, new_conn.clone())
+                                .expect("Already checked");
+
                             self.delayed_disconnect(existing_conn);
-                            self.active_connections.insert(node_id, new_conn.clone());
                             self.publish_event(PeerConnected(new_conn));
                         } else {
                             debug!(
@@ -447,7 +453,6 @@ where
                             );
 
                             self.delayed_disconnect(new_conn);
-                            self.active_connections.insert(node_id, existing_conn);
                         }
                     },
                     None => {
@@ -586,19 +591,8 @@ where
                     return;
                 }
 
-                if let Err(err) = self.dialer_tx.try_send(DialerRequest::Dial(Box::new(peer), reply_tx)) {
+                if let Err(err) = self.dialer_tx.send(DialerRequest::Dial(Box::new(peer), reply_tx)).await {
                     error!(target: LOG_TARGET, "Failed to send request to dialer because '{}'", err);
-                    // TODO: If the channel is full - we'll fail to dial. This function should block until the dial
-                    //       request channel has cleared
-
-                    if let DialerRequest::Dial(_, reply_tx) = err.into_inner() {
-                        log_if_error_fmt!(
-                            target: LOG_TARGET,
-                            reply_tx.send(Err(ConnectionManagerError::EstablisherChannelError)),
-                            "Failed to send dial peer result for peer '{}'",
-                            node_id.short_str()
-                        );
-                    }
                 }
             },
             Err(err) => {

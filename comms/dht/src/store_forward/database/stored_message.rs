@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    envelope::DhtMessageHeader,
+    inbound::DecryptedDhtMessage,
     proto::envelope::DhtHeader,
     schema::stored_messages,
     store_forward::message::StoredMessagePriority,
@@ -35,8 +35,7 @@ use tari_crypto::tari_utilities::hex::Hex;
 #[table_name = "stored_messages"]
 pub struct NewStoredMessage {
     pub version: i32,
-    pub origin_pubkey: String,
-    pub origin_signature: String,
+    pub origin_pubkey: Option<String>,
     pub message_type: i32,
     pub destination_pubkey: Option<String>,
     pub destination_node_id: Option<String>,
@@ -47,27 +46,33 @@ pub struct NewStoredMessage {
 }
 
 impl NewStoredMessage {
-    pub fn try_construct(
-        version: u32,
-        dht_header: DhtMessageHeader,
-        priority: StoredMessagePriority,
-        body: Vec<u8>,
-    ) -> Option<Self>
-    {
+    pub fn try_construct(message: DecryptedDhtMessage, priority: StoredMessagePriority) -> Option<Self> {
+        let DecryptedDhtMessage {
+            version,
+            authenticated_origin,
+            decryption_result,
+            dht_header,
+            ..
+        } = message;
+
+        let body = match decryption_result {
+            Ok(envelope_body) => envelope_body.to_encoded_bytes(),
+            Err(encrypted_body) => encrypted_body,
+        };
+
         Some(Self {
             version: version.try_into().ok()?,
-            origin_pubkey: dht_header.origin.as_ref().map(|o| o.public_key.to_hex())?,
-            origin_signature: dht_header.origin.as_ref().map(|o| o.signature.to_hex())?,
+            origin_pubkey: authenticated_origin.as_ref().map(|pk| pk.to_hex()),
             message_type: dht_header.message_type as i32,
             destination_pubkey: dht_header.destination.public_key().map(|pk| pk.to_hex()),
             destination_node_id: dht_header.destination.node_id().map(|node_id| node_id.to_hex()),
-            body,
             is_encrypted: dht_header.flags.is_encrypted(),
             priority: priority as i32,
             header: {
                 let dht_header: DhtHeader = dht_header.into();
-                dht_header.to_encoded_bytes().ok()?
+                dht_header.to_encoded_bytes()
             },
+            body,
         })
     }
 }
@@ -76,8 +81,7 @@ impl NewStoredMessage {
 pub struct StoredMessage {
     pub id: i32,
     pub version: i32,
-    pub origin_pubkey: String,
-    pub origin_signature: String,
+    pub origin_pubkey: Option<String>,
     pub message_type: i32,
     pub destination_pubkey: Option<String>,
     pub destination_node_id: Option<String>,

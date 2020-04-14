@@ -21,11 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    discovery::{
-        requester::{DhtDiscoveryRequest, DiscoverPeerRequest},
-        DhtDiscoveryError,
-    },
-    envelope::{DhtMessageType, NodeDestination},
+    discovery::{requester::DhtDiscoveryRequest, DhtDiscoveryError},
+    envelope::DhtMessageType,
     outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageParams},
     proto::dht::{DiscoveryMessage, DiscoveryResponseMessage},
     DhtConfig,
@@ -146,11 +143,10 @@ impl DhtDiscoveryService {
     async fn handle_request(&mut self, request: DhtDiscoveryRequest) {
         use DhtDiscoveryRequest::*;
         match request {
-            DiscoverPeer(boxed) => {
-                let (request, reply_tx) = *boxed;
+            DiscoverPeer(dest_pubkey, reply_tx) => {
                 log_if_error!(
                     target: LOG_TARGET,
-                    self.initiate_peer_discovery(request, reply_tx).await,
+                    self.initiate_peer_discovery(dest_pubkey, reply_tx).await,
                     "Failed to initiate a discovery request because '{error}'",
                 );
             },
@@ -183,16 +179,9 @@ impl DhtDiscoveryService {
                              peer",
                             peer.node_id.short_str()
                         );
-                        // Attempt to discover them
-                        let request = DiscoverPeerRequest {
-                            dest_public_key: Box::new(peer.public_key),
-                            // TODO: This should be the node region, not the node id
-                            dest_node_id: Some(peer.node_id),
-                            destination: Default::default(),
-                        };
                         // Don't need to be notified for this discovery
                         let (reply_tx, _) = oneshot::channel();
-                        if let Err(err) = self.initiate_peer_discovery(request, reply_tx).await {
+                        if let Err(err) = self.initiate_peer_discovery(Box::new(peer.public_key), reply_tx).await {
                             error!(target: LOG_TARGET, "Error sending discovery message: {:?}", err);
                         }
                     }
@@ -381,13 +370,12 @@ impl DhtDiscoveryService {
 
     async fn initiate_peer_discovery(
         &mut self,
-        discovery_request: DiscoverPeerRequest,
+        dest_pubkey: Box<CommsPublicKey>,
         reply_tx: oneshot::Sender<Result<Peer, DhtDiscoveryError>>,
     ) -> Result<(), DhtDiscoveryError>
     {
         let nonce = OsRng.next_u64();
-        let public_key = discovery_request.dest_public_key.clone();
-        self.send_discover(nonce, discovery_request).await?;
+        self.send_discover(nonce, dest_pubkey.clone()).await?;
 
         let inflight_count = self.inflight_discoveries.len();
 
@@ -406,7 +394,7 @@ impl DhtDiscoveryService {
 
         // Add the new inflight request.
         self.inflight_discoveries
-            .insert(nonce, DiscoveryRequestState::new(public_key, reply_tx));
+            .insert(nonce, DiscoveryRequestState::new(dest_pubkey, reply_tx));
 
         trace!(
             target: LOG_TARGET,
@@ -420,25 +408,9 @@ impl DhtDiscoveryService {
     async fn send_discover(
         &mut self,
         nonce: u64,
-        discovery_request: DiscoverPeerRequest,
+        dest_public_key: Box<CommsPublicKey>,
     ) -> Result<(), DhtDiscoveryError>
     {
-        let DiscoverPeerRequest {
-            dest_node_id,
-            dest_public_key,
-            destination,
-        } = discovery_request;
-
-        // If the destination node is is known, send to the closest peers we know. Otherwise...
-        let network_location_node_id = dest_node_id
-            .or_else(|| match &destination {
-                // ... if the destination is undisclosed or a public key, send discover to our closest peers
-                NodeDestination::Unknown | NodeDestination::PublicKey(_) => Some(self.node_identity.node_id().clone()),
-                // otherwise, send it to the closest peers to the given NodeId destination we know
-                NodeDestination::NodeId(node_id) => Some(*node_id.clone()),
-            })
-            .expect("cannot fail");
-
         let discover_msg = DiscoveryMessage {
             node_id: self.node_identity.node_id().to_vec(),
             addresses: vec![self.node_identity.public_address().to_string()],
@@ -447,19 +419,13 @@ impl DhtDiscoveryService {
         };
         debug!(
             target: LOG_TARGET,
-            "Sending Discovery message for Node Id: {}", destination
+            "Sending Discovery message for peer public key '{}'", dest_public_key
         );
 
         self.outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .closest(
-                        network_location_node_id,
-                        self.config.num_neighbouring_nodes,
-                        Vec::new(),
-                        PeerFeatures::empty(),
-                    )
-                    .with_destination(destination)
+                    .neighbours_include_clients(Vec::new())
                     .with_encryption(OutboundEncryption::EncryptFor(dest_public_key))
                     .with_dht_message_type(DhtMessageType::Discovery)
                     .finish(),
@@ -512,7 +478,7 @@ mod test {
             rt.spawn(service.run());
 
             let dest_public_key = Box::new(CommsPublicKey::default());
-            let result = rt.block_on(requester.discover_peer(dest_public_key.clone(), None, NodeDestination::Unknown));
+            let result = rt.block_on(requester.discover_peer(dest_public_key.clone()));
 
             assert!(result.unwrap_err().is_timeout());
 

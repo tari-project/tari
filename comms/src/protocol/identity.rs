@@ -88,8 +88,7 @@ where
         features: node_identity.features().bits(),
         supported_protocols,
     }
-    .to_encoded_bytes()
-    .map_err(|_| IdentityProtocolError::ProtobufEncodingError)?;
+    .to_encoded_bytes();
 
     sink.send(msg_bytes.into()).await?;
     sink.close().await?;

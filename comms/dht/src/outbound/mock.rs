@@ -26,6 +26,7 @@ use crate::outbound::{
     DhtOutboundRequest,
     OutboundMessageRequester,
 };
+use bytes::Bytes;
 use futures::{channel::mpsc, stream::Fuse, StreamExt};
 use std::{
     sync::{Arc, Condvar, Mutex, RwLock},
@@ -44,7 +45,7 @@ pub fn create_outbound_service_mock(size: usize) -> (OutboundMessageRequester, O
 #[derive(Clone, Default)]
 pub struct OutboundServiceMockState {
     #[allow(clippy::type_complexity)]
-    calls: Arc<Mutex<Vec<(FinalSendMessageParams, Vec<u8>)>>>,
+    calls: Arc<Mutex<Vec<(FinalSendMessageParams, Bytes)>>>,
     next_response: Arc<RwLock<Option<SendMessageResponse>>>,
     call_count_cond_var: Arc<Condvar>,
 }
@@ -88,7 +89,7 @@ impl OutboundServiceMockState {
     /// Wait for a call to be added or timeout.
     ///
     /// An error will be returned if the timeout expires.
-    pub fn wait_pop_call(&self, timeout: Duration) -> Result<(FinalSendMessageParams, Vec<u8>), String> {
+    pub fn wait_pop_call(&self, timeout: Duration) -> Result<(FinalSendMessageParams, Bytes), String> {
         let call_guard = acquire_lock!(self.calls);
         let (mut call_guard, timeout) = self
             .call_count_cond_var
@@ -106,16 +107,16 @@ impl OutboundServiceMockState {
         acquire_write_lock!(self.next_response).take()
     }
 
-    pub fn add_call(&self, req: (FinalSendMessageParams, Vec<u8>)) {
+    pub fn add_call(&self, req: (FinalSendMessageParams, Bytes)) {
         acquire_lock!(self.calls).push(req);
         self.call_count_cond_var.notify_all();
     }
 
-    pub fn take_calls(&self) -> Vec<(FinalSendMessageParams, Vec<u8>)> {
+    pub fn take_calls(&self) -> Vec<(FinalSendMessageParams, Bytes)> {
         acquire_lock!(self.calls).drain(..).collect()
     }
 
-    pub fn pop_call(&self) -> Option<(FinalSendMessageParams, Vec<u8>)> {
+    pub fn pop_call(&self) -> Option<(FinalSendMessageParams, Bytes)> {
         acquire_lock!(self.calls).pop()
     }
 }

@@ -513,13 +513,16 @@ mod test {
             &[],
         );
         DomainMessage {
-            dht_header: DhtMessageHeader::new(
-                Default::default(),
-                DhtMessageType::None,
-                None,
-                Network::LocalTest,
-                Default::default(),
-            ),
+            dht_header: DhtMessageHeader {
+                version: 0,
+                destination: Default::default(),
+                origin_mac: Vec::new(),
+                ephemeral_public_key: None,
+                message_type: DhtMessageType::None,
+                network: Network::LocalTest,
+                flags: Default::default(),
+            },
+            authenticated_origin: None,
             source_peer,
             inner,
         }

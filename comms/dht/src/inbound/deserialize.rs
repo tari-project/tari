@@ -58,51 +58,38 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, msg: InboundMessage) -> Self::Future {
-        Self::deserialize(self.next_service.clone(), msg)
-    }
-}
+    fn call(&mut self, message: InboundMessage) -> Self::Future {
+        let next_service = self.next_service.clone();
+        async move {
+            trace!(target: LOG_TARGET, "Deserializing InboundMessage");
 
-impl<S> DhtDeserializeMiddleware<S>
-where S: Service<DhtInboundMessage, Response = (), Error = PipelineError>
-{
-    pub async fn deserialize(next_service: S, message: InboundMessage) -> Result<(), PipelineError> {
-        trace!(target: LOG_TARGET, "Deserializing InboundMessage");
+            let InboundMessage {
+                source_peer, mut body, ..
+            } = message;
 
-        let InboundMessage {
-            source_peer, mut body, ..
-        } = message;
+            if body.is_empty() {
+                return Err(format!("Received empty message from peer '{}'", source_peer)
+                    .as_str()
+                    .into());
+            }
 
-        match DhtEnvelope::decode(&mut body) {
-            Ok(dht_envelope) => {
-                trace!(target: LOG_TARGET, "Deserialization succeeded. Checking signatures");
-                if dht_envelope.has_origin() {
-                    if dht_envelope.is_origin_signature_valid() {
-                        trace!(target: LOG_TARGET, "Origin signature validation passed.");
-                    } else {
-                        // TODO: #banheuristic
-                        // The origin signature is not valid, this message should never have been sent
-                        warn!(
-                            target: LOG_TARGET,
-                            "SECURITY: Origin signature verification failed. Discarding message from NodeId {}",
-                            source_peer.node_id
-                        );
-                        return Ok(());
-                    }
-                }
+            match DhtEnvelope::decode(&mut body) {
+                Ok(dht_envelope) => {
+                    trace!(target: LOG_TARGET, "Deserialization succeeded.");
 
-                let inbound_msg = DhtInboundMessage::new(
-                    dht_envelope.header.try_into().map_err(PipelineError::from_debug)?,
-                    source_peer,
-                    dht_envelope.body,
-                );
+                    let inbound_msg = DhtInboundMessage::new(
+                        dht_envelope.header.try_into().map_err(PipelineError::from_debug)?,
+                        source_peer,
+                        dht_envelope.body,
+                    );
 
-                next_service.oneshot(inbound_msg).await
-            },
-            Err(err) => {
-                error!(target: LOG_TARGET, "DHT deserialization failed: {}", err);
-                Err(PipelineError::from_debug(err))
-            },
+                    next_service.oneshot(inbound_msg).await
+                },
+                Err(err) => {
+                    error!(target: LOG_TARGET, "DHT deserialization failed: {}", err);
+                    Err(PipelineError::from_debug(err))
+                },
+            }
         }
     }
 }
@@ -144,10 +131,10 @@ mod test {
 
         assert!(deserialize.poll_ready(&mut cx).is_ready());
         let node_identity = make_node_identity();
-        let dht_envelope = make_dht_envelope(&node_identity, b"A".to_vec(), DhtMessageFlags::empty());
+        let dht_envelope = make_dht_envelope(&node_identity, b"A".to_vec(), DhtMessageFlags::empty(), false);
         block_on(deserialize.call(make_comms_inbound_message(
             &node_identity,
-            dht_envelope.to_encoded_bytes().unwrap().into(),
+            dht_envelope.to_encoded_bytes().into(),
         )))
         .unwrap();
 

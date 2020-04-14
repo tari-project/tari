@@ -26,7 +26,6 @@ use futures::{task::Context, Future};
 use log::*;
 use std::task::Poll;
 use tari_comms::{pipeline::PipelineError, types::Challenge};
-use tari_crypto::tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::dedup";
@@ -85,13 +84,7 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError>
         {
             warn!(
                 target: LOG_TARGET,
-                "Received duplicate message from peer {} (origin={:?}). Message discarded.",
-                message.source_peer.node_id,
-                message
-                    .dht_header
-                    .origin
-                    .map(|o| o.public_key.to_hex())
-                    .unwrap_or_else(|| "<unknown>".to_string()),
+                "Received duplicate message from peer {}. Message discarded.", message.source_peer.node_id,
             );
             return Ok(());
         }
@@ -148,7 +141,7 @@ mod test {
 
         assert!(dedup.poll_ready(&mut cx).is_ready());
         let node_identity = make_node_identity();
-        let msg = make_dht_inbound_message(&node_identity, Vec::new(), DhtMessageFlags::empty());
+        let msg = make_dht_inbound_message(&node_identity, Vec::new(), DhtMessageFlags::empty(), false);
 
         rt.block_on(dedup.call(msg.clone())).unwrap();
         assert_eq!(spy.call_count(), 1);
