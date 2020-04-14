@@ -161,6 +161,11 @@ impl Parser {
         }
     }
 
+    /// This will return the list of commands from the parser
+    pub fn get_commands(&self) -> Vec<String> {
+        self.commands.clone()
+    }
+
     /// This will parse the provided command and execute the task
     pub fn handle_command(&mut self, command_str: &str, shutdown: &mut Shutdown) {
         if command_str.trim().is_empty() {
