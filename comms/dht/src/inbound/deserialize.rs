@@ -132,7 +132,7 @@ mod test {
         test_utils::{make_comms_inbound_message, make_dht_envelope, make_node_identity, service_spy},
     };
     use futures::executor::block_on;
-    use tari_comms::message::{MessageExt, MessageFlags};
+    use tari_comms::message::MessageExt;
     use tari_test_utils::panic_context;
 
     #[test]
@@ -148,7 +148,6 @@ mod test {
         block_on(deserialize.call(make_comms_inbound_message(
             &node_identity,
             dht_envelope.to_encoded_bytes().unwrap().into(),
-            MessageFlags::empty(),
         )))
         .unwrap();
 

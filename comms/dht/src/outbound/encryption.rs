@@ -118,7 +118,6 @@ mod test {
     };
     use futures::executor::block_on;
     use tari_comms::{
-        message::MessageFlags,
         net_address::MultiaddressesWithStats,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
         types::CommsPublicKey,
@@ -146,7 +145,6 @@ mod test {
             ),
             make_dht_header(&node_identity, &body, DhtMessageFlags::empty()),
             OutboundEncryption::None,
-            MessageFlags::empty(),
             body.clone(),
         );
         block_on(encryption.call(msg)).unwrap();
@@ -177,7 +175,6 @@ mod test {
             ),
             make_dht_header(&node_identity, &body, DhtMessageFlags::ENCRYPTED),
             OutboundEncryption::EncryptFor(Box::new(CommsPublicKey::default())),
-            MessageFlags::empty(),
             body.clone(),
         );
         block_on(encryption.call(msg)).unwrap();

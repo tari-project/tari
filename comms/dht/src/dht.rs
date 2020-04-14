@@ -315,7 +315,7 @@ mod test {
     use futures::{channel::mpsc, StreamExt};
     use std::{sync::Arc, time::Duration};
     use tari_comms::{
-        message::{MessageExt, MessageFlags},
+        message::MessageExt,
         pipeline::SinkService,
         test_utils::mocks::create_connection_manager_mock,
         wrap_in_envelope_body,
@@ -354,11 +354,8 @@ mod test {
             msg.to_encoded_bytes().unwrap(),
             DhtMessageFlags::empty(),
         );
-        let inbound_message = make_comms_inbound_message(
-            &node_identity,
-            dht_envelope.to_encoded_bytes().unwrap().into(),
-            MessageFlags::empty(),
-        );
+        let inbound_message =
+            make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().unwrap().into());
 
         let msg = {
             service.call(inbound_message).await.unwrap();
@@ -400,11 +397,8 @@ mod test {
         let ecdh_key = crypt::generate_ecdh_secret(node_identity.secret_key(), node_identity.public_key());
         let encrypted_bytes = crypt::encrypt(&ecdh_key, &msg.to_encoded_bytes().unwrap()).unwrap();
         let dht_envelope = make_dht_envelope(&node_identity, encrypted_bytes, DhtMessageFlags::ENCRYPTED);
-        let inbound_message = make_comms_inbound_message(
-            &node_identity,
-            dht_envelope.to_encoded_bytes().unwrap().into(),
-            MessageFlags::empty(),
-        );
+        let inbound_message =
+            make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().unwrap().into());
 
         let msg = {
             service.call(inbound_message).await.unwrap();
@@ -460,11 +454,8 @@ mod test {
             .unwrap()
             .signature
             .clone();
-        let inbound_message = make_comms_inbound_message(
-            &node_identity,
-            dht_envelope.to_encoded_bytes().unwrap().into(),
-            MessageFlags::empty(),
-        );
+        let inbound_message =
+            make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().unwrap().into());
 
         service.call(inbound_message).await.unwrap();
 
@@ -513,11 +504,8 @@ mod test {
             header.message_type = DhtMessageType::SafStoredMessages as i32;
             Some(header)
         });
-        let inbound_message = make_comms_inbound_message(
-            &node_identity,
-            dht_envelope.to_encoded_bytes().unwrap().into(),
-            MessageFlags::empty(),
-        );
+        let inbound_message =
+            make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().unwrap().into());
 
         service.call(inbound_message).await.unwrap_err();
         // This seems like the best way to tell that an open channel is empty without the test blocking indefinitely

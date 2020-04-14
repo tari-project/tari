@@ -26,11 +26,7 @@ use crate::{
 };
 use futures::channel::oneshot;
 use std::{fmt, fmt::Display};
-use tari_comms::{
-    message::{MessageFlags, MessageTag},
-    peer_manager::Peer,
-    types::CommsPublicKey,
-};
+use tari_comms::{message::MessageTag, peer_manager::Peer, types::CommsPublicKey};
 use tari_crypto::tari_utilities::hex::Hex;
 
 /// Determines if an outbound message should be Encrypted and, if so, for which public key
@@ -142,7 +138,6 @@ pub struct DhtOutboundMessage {
     pub tag: MessageTag,
     pub destination_peer: Peer,
     pub dht_header: DhtMessageHeader,
-    pub comms_flags: MessageFlags,
     pub encryption: OutboundEncryption,
     pub body: Vec<u8>,
 }
@@ -153,7 +148,6 @@ impl DhtOutboundMessage {
         destination_peer: Peer,
         dht_header: DhtMessageHeader,
         encryption: OutboundEncryption,
-        comms_flags: MessageFlags,
         body: Vec<u8>,
     ) -> Self
     {
@@ -162,7 +156,6 @@ impl DhtOutboundMessage {
             destination_peer,
             dht_header,
             encryption,
-            comms_flags,
             body,
         }
     }

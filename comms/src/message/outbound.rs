@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    message::{MessageFlags, MessageTag},
-    peer_manager::NodeId,
-};
+use crate::{message::MessageTag, peer_manager::NodeId};
 use bytes::Bytes;
 use std::{
     fmt,
@@ -36,22 +33,20 @@ use std::{
 pub struct OutboundMessage {
     pub tag: MessageTag,
     pub peer_node_id: NodeId,
-    pub flags: MessageFlags,
     pub body: Bytes,
 }
 
 impl OutboundMessage {
     /// Create a new OutboundMessage
-    pub fn new(peer_node_id: NodeId, flags: MessageFlags, body: Bytes) -> OutboundMessage {
-        Self::with_tag(MessageTag::new(), peer_node_id, flags, body)
+    pub fn new(peer_node_id: NodeId, body: Bytes) -> OutboundMessage {
+        Self::with_tag(MessageTag::new(), peer_node_id, body)
     }
 
     /// Create a new OutboundMessage with the specified MessageTag
-    pub fn with_tag(tag: MessageTag, peer_node_id: NodeId, flags: MessageFlags, body: Bytes) -> OutboundMessage {
+    pub fn with_tag(tag: MessageTag, peer_node_id: NodeId, body: Bytes) -> OutboundMessage {
         OutboundMessage {
             tag,
             peer_node_id,
-            flags,
             body,
         }
     }
@@ -78,7 +73,7 @@ mod test {
         static TEST_MSG: Bytes = Bytes::from_static(b"The ghost brigades");
         let node_id = NodeId::new();
         let tag = MessageTag::new();
-        let subject = OutboundMessage::with_tag(tag, node_id.clone(), MessageFlags::empty(), TEST_MSG.clone());
+        let subject = OutboundMessage::with_tag(tag, node_id.clone(), TEST_MSG.clone());
         assert_eq!(tag, subject.tag);
         assert_eq!(subject.body, TEST_MSG);
         assert_eq!(subject.peer_node_id, node_id);

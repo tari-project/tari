@@ -21,10 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod error;
-mod inbound;
 mod outbound;
-mod protocol;
 
+mod protocol;
 pub use protocol::{
     MessagingEvent,
     MessagingEventReceiver,

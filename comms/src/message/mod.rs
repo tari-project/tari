@@ -59,12 +59,10 @@
 //! [MessageHeader]: ./message/struct.MessageHeader.html
 //! [MessageData]: ./message/struct.MessageData.html
 //! [DomainConnector]: ../domain_connector/struct.DomainConnector.html
-use bitflags::*;
-use serde::{Deserialize, Serialize};
 
 #[macro_use]
 mod envelope;
-pub use envelope::{Envelope, EnvelopeBody, EnvelopeHeader, MessageEnvelopeHeader};
+pub use envelope::EnvelopeBody;
 
 mod error;
 pub use error::MessageError;
@@ -88,13 +86,3 @@ pub trait MessageExt: prost::Message {
     }
 }
 impl<T: prost::Message> MessageExt for T {}
-
-bitflags! {
-    /// Used to indicate characteristics of the incoming or outgoing message, such
-    /// as whether the message is encrypted.
-    #[derive(Default, Deserialize, Serialize)]
-    pub struct MessageFlags: u32 {
-        const NONE = 0b0000_0000;
-        const ENCRYPTED = 0b0000_0001;
-    }
-}

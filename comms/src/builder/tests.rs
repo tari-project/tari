@@ -206,7 +206,6 @@ async fn peer_to_peer_messaging() {
     for i in 0..NUM_MSGS {
         let outbound_msg = OutboundMessage::new(
             node_identity2.node_id().clone(),
-            Default::default(),
             format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
         );
         outbound_tx1.send(outbound_msg).await.unwrap();
@@ -227,7 +226,6 @@ async fn peer_to_peer_messaging() {
     for i in 0..NUM_MSGS {
         let outbound_msg = OutboundMessage::new(
             node_identity1.node_id().clone(),
-            Default::default(),
             format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
         );
         outbound_tx2.send(outbound_msg).await.unwrap();
@@ -295,7 +293,6 @@ async fn peer_to_peer_messaging_simultaneous() {
         for i in 0..NUM_MSGS {
             let outbound_msg = OutboundMessage::new(
                 node_identity2.node_id().clone(),
-                Default::default(),
                 format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
             );
             outbound_tx1.send(outbound_msg).await.unwrap();
@@ -306,7 +303,6 @@ async fn peer_to_peer_messaging_simultaneous() {
         for i in 0..NUM_MSGS {
             let outbound_msg = OutboundMessage::new(
                 node_identity1.node_id().clone(),
-                Default::default(),
                 format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
             );
             outbound_tx2.send(outbound_msg).await.unwrap();
