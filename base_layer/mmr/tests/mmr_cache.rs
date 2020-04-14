@@ -89,3 +89,71 @@ fn create_cache_update_and_rewind() {
     assert!(mmr_cache.update().is_ok());
     assert_eq!(mmr_cache.get_mmr_only_root(), Ok(cp1_mmr_only_root));
 }
+
+#[test]
+fn multiple_rewinds() {
+    let config = MmrCacheConfig { rewind_hist_len: 2 };
+    let mut checkpoint_db = MemBackendVec::<MerkleCheckPoint>::new();
+    let mut mmr_cache = MmrCache::<Hasher, _, _>::new(Vec::new(), checkpoint_db.clone(), config).unwrap();
+
+    // Add h1, h2, h3 and h4 checkpoints
+    let h1 = int_to_hash(1);
+    let h2 = int_to_hash(2);
+    let h3 = int_to_hash(3);
+    let h4 = int_to_hash(4);
+    let h5 = int_to_hash(5);
+    checkpoint_db
+        .push(MerkleCheckPoint::new(vec![h1.clone()], Bitmap::create()))
+        .unwrap();
+    assert!(mmr_cache.update().is_ok());
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1]).clone()));
+
+    checkpoint_db
+        .push(MerkleCheckPoint::new(vec![h2.clone()], Bitmap::create()))
+        .unwrap();
+    assert!(mmr_cache.update().is_ok());
+    let h1h2 = combine_hashes(&[&h1, &h2]);
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2]).clone()));
+
+    checkpoint_db
+        .push(MerkleCheckPoint::new(vec![h3.clone()], Bitmap::create()))
+        .unwrap();
+    assert!(mmr_cache.update().is_ok());
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2, &h3]).clone()));
+
+    checkpoint_db
+        .push(MerkleCheckPoint::new(vec![h4.clone()], Bitmap::create()))
+        .unwrap();
+    assert!(mmr_cache.update().is_ok());
+    let h3h4 = combine_hashes(&[&h3, &h4]);
+    let h1h2h3h4 = combine_hashes(&[&h1h2, &h3h4]);
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2h3h4]).clone()));
+    assert_eq!(checkpoint_db.len(), Ok(4));
+
+    // Remove h4 checkpoint
+    checkpoint_db.truncate(3).unwrap();
+    assert_eq!(checkpoint_db.len(), Ok(3));
+    assert!(mmr_cache.update().is_ok());
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2, &h3]).clone()));
+
+    // Add h5 checkpoint
+    checkpoint_db
+        .push(MerkleCheckPoint::new(vec![h5.clone()], Bitmap::create()))
+        .unwrap();
+    assert!(mmr_cache.update().is_ok());
+    let h3h5 = combine_hashes(&[&h3, &h5]);
+    let h1h2h3h5 = combine_hashes(&[&h1h2, &h3h5]);
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2h3h5]).clone()));
+
+    // Remove h5 checkpoint
+    checkpoint_db.truncate(3).unwrap();
+    assert_eq!(checkpoint_db.len(), Ok(3));
+    assert!(mmr_cache.update().is_ok());
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2, &h3]).clone()));
+
+    // Remove h3 checkpoint
+    checkpoint_db.truncate(2).unwrap();
+    assert_eq!(checkpoint_db.len(), Ok(2));
+    assert!(mmr_cache.update().is_ok());
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2]).clone()));
+}
