@@ -94,6 +94,21 @@ impl TryFrom<&[u8]> for NodeDistance {
     }
 }
 
+impl ByteArray for NodeDistance {
+    /// Try and convert the given byte array to a NodeDistance. Any failures (incorrect array length,
+    /// implementation-specific checks, etc) return a [ByteArrayError](enum.ByteArrayError.html).
+    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
+        bytes
+            .try_into()
+            .map_err(|err| ByteArrayError::ConversionError(format!("{:?}", err)))
+    }
+
+    /// Return the NodeDistance as a byte array
+    fn as_bytes(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
 impl fmt::Display for NodeDistance {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", to_hex(&self.0))

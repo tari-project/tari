@@ -55,6 +55,7 @@ impl StoredMessagesRequest {
         Self {
             since: None,
             request_id: OsRng.next_u32(),
+            dist_threshold: Vec::new(),
         }
     }
 
@@ -62,6 +63,7 @@ impl StoredMessagesRequest {
         Self {
             since: Some(datetime_to_timestamp(since)),
             request_id: OsRng.next_u32(),
+            dist_threshold: Vec::new(),
         }
     }
 }

@@ -52,7 +52,7 @@ impl Display for DhtInboundMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(
             f,
-            "\n---- DhtInboundMessage ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\n----",
+            "\n---- Inbound Message ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\n----",
             self.body.len(),
             self.dht_header.message_type,
             self.source_peer,

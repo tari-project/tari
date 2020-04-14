@@ -41,7 +41,10 @@ use futures::{
 };
 use log::*;
 use std::{convert::TryFrom, time::Duration};
-use tari_comms::types::CommsPublicKey;
+use tari_comms::{
+    peer_manager::{node_id::NodeDistance, NodeId},
+    types::CommsPublicKey,
+};
 use tari_shutdown::ShutdownSignal;
 use tokio::time;
 
@@ -53,16 +56,20 @@ const CLEANUP_INTERVAL: Duration = Duration::from_secs(10 * 60); // 10 mins
 #[derive(Debug, Clone)]
 pub struct FetchStoredMessageQuery {
     public_key: Box<CommsPublicKey>,
+    node_id: Box<NodeId>,
     since: Option<DateTime<Utc>>,
+    dist_threshold: Option<Box<NodeDistance>>,
     response_type: SafResponseType,
 }
 
 impl FetchStoredMessageQuery {
-    pub fn new(public_key: Box<CommsPublicKey>) -> Self {
+    pub fn new(public_key: Box<CommsPublicKey>, node_id: Box<NodeId>) -> Self {
         Self {
             public_key,
+            node_id,
             since: None,
-            response_type: SafResponseType::General,
+            response_type: SafResponseType::Anonymous,
+            dist_threshold: None,
         }
     }
 
@@ -73,6 +80,11 @@ impl FetchStoredMessageQuery {
 
     pub fn with_response_type(&mut self, response_type: SafResponseType) -> &mut Self {
         self.response_type = response_type;
+        self
+    }
+
+    pub fn with_dist_threshold(&mut self, dist_threshold: Box<NodeDistance>) -> &mut Self {
+        self.dist_threshold = Some(dist_threshold);
         self
     }
 }
@@ -218,25 +230,28 @@ impl StoreAndForwardService {
         query: FetchStoredMessageQuery,
     ) -> SafResult<Vec<StoredMessage>>
     {
+        use SafResponseType::*;
         let limit = i64::try_from(self.config.saf_max_returned_messages)
             .ok()
             .or(Some(std::i64::MAX))
             .unwrap();
         let messages = match query.response_type {
-            SafResponseType::General => {
-                db.find_messages_for_public_key(&query.public_key, query.since, limit)
+            ForMe => {
+                db.find_messages_for_peer(&query.public_key, &query.node_id, query.since, limit)
                     .await?
             },
-            SafResponseType::Join => {
+            Join => {
                 db.find_messages_of_type_for_pubkey(&query.public_key, DhtMessageType::Join, query.since, limit)
                     .await?
             },
-            SafResponseType::Discovery => {
+            Discovery => {
                 db.find_messages_of_type_for_pubkey(&query.public_key, DhtMessageType::Discovery, query.since, limit)
                     .await?
             },
-            SafResponseType::ExplicitlyAddressed => {
-                db.find_messages_for_public_key(&query.public_key, query.since, limit)
+
+            Anonymous => db.find_anonymous_messages(query.since, limit).await?,
+            InRegion => {
+                db.find_regional_messages(&query.node_id, query.dist_threshold, query.since, limit)
                     .await?
             },
         };
