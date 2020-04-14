@@ -499,11 +499,19 @@ pub fn create_lmdb_database(
     mmr_cache_config: MmrCacheConfig,
 ) -> Result<LMDBDatabase<HashDigest>, ChainStorageError>
 {
+    // On Windows platforms, the entire space is reserved for the LMDB. At this stage 50Gb might be
+    // a bit large for some users. At a later stage this can be increased if the DB grows to that
+    // size. We also may have found a way around the pre-allocation by then
+    let env_size = 1000;
+    // Other platforms don't have this problem, so can allocate a much bigger DB
+    #[cfg(not(target_os = "windows"))]
+    let env_size = 50_000;
+
     let flags = db::CREATE;
     std::fs::create_dir_all(&path).unwrap_or_default();
     let lmdb_store = LMDBBuilder::new()
         .set_path(path.to_str().unwrap())
-        .set_environment_size(50000)
+        .set_environment_size(env_size)
         .set_max_number_of_databases(15)
         .add_database(LMDB_DB_METADATA, flags)
         .add_database(LMDB_DB_HEADERS, flags)

@@ -195,13 +195,7 @@ impl Dht {
                 self.config.network,
                 self.outbound_requester(),
             ))
-            .layer(inbound::DedupLayer::new(self.dht_requester()));
-
-        // FIXME: There is an unresolved stack overflow issue on windows. Seems that we've reached the limit on stack
-        //        page size. These layers are removed from windows builds for now as they are not critical to
-        //        the functioning of the node. (issue #1416)
-        #[cfg(not(target_os = "windows"))]
-        let builder = builder
+            .layer(inbound::DedupLayer::new(self.dht_requester()))
             .layer(tower_filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
             .layer(MessageLoggingLayer::new("Inbound message: "));
 

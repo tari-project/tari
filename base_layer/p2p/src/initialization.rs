@@ -308,9 +308,10 @@ where
                 .with_outbound_pipeline(outbound_rx, |sink| {
                     ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
                 })
-                .max_concurrent_inbound_tasks(config.max_concurrent_inbound_tasks)
+                // .max_concurrent_inbound_tasks(config.max_concurrent_inbound_tasks)
                 .with_inbound_pipeline(
                     ServiceBuilder::new()
+                        .concurrency_limit(config.max_concurrent_inbound_tasks)
                         .layer(dht.inbound_middleware_layer())
                         .service(SinkService::new(connector)),
                 )

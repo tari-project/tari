@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::bounded_executor::BoundedExecutor;
+use crate::{bounded_executor::BoundedExecutor, runtime};
 use futures::{stream::FusedStream, Stream, StreamExt};
 use log::*;
 use std::fmt::Debug;
@@ -33,7 +33,7 @@ const LOG_TARGET: &str = "comms::pipeline::inbound";
 /// that ServicePipeline doesn't keep the result of the service
 /// call and that it spawns a task for each incoming item.
 pub struct Inbound<TSvc, TStream> {
-    executor: BoundedExecutor,
+    // executor: ,
     service: TSvc,
     stream: TStream,
 }
@@ -46,9 +46,9 @@ where
     TSvc::Error: Debug + Send,
     TSvc::Future: Send,
 {
-    pub fn new(executor: BoundedExecutor, stream: TStream, service: TSvc) -> Self {
+    pub fn new(stream: TStream, service: TSvc) -> Self {
         Self {
-            executor,
+            // executor,
             stream,
             service,
         }
@@ -58,7 +58,7 @@ where
         while let Some(item) = self.stream.next().await {
             let service = self.service.clone();
             // Call the service in it's own spawned task
-            self.executor
+            runtime::current_executor()
                 .spawn(async move {
                     if let Err(err) = service.oneshot(item).await {
                         error!(target: LOG_TARGET, "Inbound pipeline returned an error: '{:?}'", err);
@@ -87,7 +87,6 @@ mod test {
 
         let executor = Handle::current();
         let pipeline = Inbound::new(
-            BoundedExecutor::new(executor.clone(), 1),
             stream,
             service_fn(move |req| {
                 out_tx.try_send(req).unwrap();

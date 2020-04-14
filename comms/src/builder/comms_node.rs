@@ -169,8 +169,9 @@ where
         executor.spawn(messaging.run());
 
         // Spawn inbound pipeline
-        let bounded_executor = BoundedExecutor::new(executor.clone(), messaging_pipeline.max_concurrent_inbound_tasks);
-        let inbound = pipeline::Inbound::new(bounded_executor, inbound_message_rx, messaging_pipeline.inbound);
+        // let bounded_executor = BoundedExecutor::new(executor.clone(),
+        // messaging_pipeline.max_concurrent_inbound_tasks);
+        let inbound = pipeline::Inbound::new(inbound_message_rx, messaging_pipeline.inbound);
         executor.spawn(inbound.run());
 
         // Spawn outbound pipeline

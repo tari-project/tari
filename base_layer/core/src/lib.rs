@@ -27,6 +27,8 @@
 #![feature(type_alias_impl_trait)]
 // Enable usage of Vec::shrink_to
 #![feature(shrink_to)]
+// Enable statement level cfg attributes
+#![feature(stmt_expr_attributes)]
 
 #[macro_use]
 extern crate bitflags;
