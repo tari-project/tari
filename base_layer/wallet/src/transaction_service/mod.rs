@@ -23,6 +23,7 @@
 pub mod config;
 pub mod error;
 pub mod handle;
+pub mod protocols;
 pub mod service;
 pub mod storage;
 
@@ -38,8 +39,7 @@ use crate::{
 use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
-use tari_broadcast_channel::bounded;
-use tari_comms::{peer_manager::NodeIdentity, protocol::messaging::MessagingEventReceiver};
+use tari_comms::{peer_manager::NodeIdentity, protocol::messaging::MessagingEventSender};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     base_node::proto::base_node as BaseNodeProto,
@@ -60,7 +60,7 @@ use tari_service_framework::{
     ServiceInitializer,
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
+use tokio::{runtime, sync::broadcast};
 
 const LOG_TARGET: &str = "wallet::transaction_service";
 
@@ -69,7 +69,7 @@ where T: TransactionBackend
 {
     config: TransactionServiceConfig,
     subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
-    message_event_receiver: Option<MessagingEventReceiver>,
+    message_event_receiver: Option<MessagingEventSender>,
     backend: Option<T>,
     node_identity: Arc<NodeIdentity>,
     factories: CryptoFactories,
@@ -81,7 +81,7 @@ where T: TransactionBackend
     pub fn new(
         config: TransactionServiceConfig,
         subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
-        message_event_receiver: MessagingEventReceiver,
+        message_event_receiver: MessagingEventSender,
         backend: T,
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
@@ -153,9 +153,9 @@ where T: TransactionBackend + Clone + 'static
         let mempool_response_stream = self.mempool_response_stream();
         let base_node_response_stream = self.base_node_response_stream();
 
-        let (publisher, subscriber) = bounded(100);
+        let (publisher, _) = broadcast::channel(200);
 
-        let transaction_handle = TransactionServiceHandle::new(sender, subscriber);
+        let transaction_handle = TransactionServiceHandle::new(sender, publisher.clone());
 
         // Register handle before waiting for handles to be ready
         handles_fut.register(transaction_handle);

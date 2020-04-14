@@ -149,6 +149,7 @@ fn wallet_base_node_integration_test() {
         ContactsServiceMemoryDatabase::new(),
     )
     .unwrap();
+    let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream_fused();
 
     alice_wallet
         .set_base_node_peer(
@@ -247,14 +248,13 @@ fn wallet_base_node_integration_test() {
         ))
         .unwrap();
 
-    let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream_fused();
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let mut delay = delay_for(Duration::from_secs(60)).fuse();
         let mut broadcast = false;
         loop {
             futures::select! {
                 event = alice_event_stream.select_next_some() => {
-                    if let TransactionEvent::TransactionBroadcast(_e) = (*event).clone() {
+                    if let TransactionEvent::TransactionBroadcast(_e) = (*event.unwrap()).clone() {
                         broadcast = true;
                         break;
                     }
@@ -323,15 +323,13 @@ fn wallet_base_node_integration_test() {
         assert!(found_tx_outputs == transaction.body.outputs().len());
     });
 
-    let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream_fused();
-
     runtime.block_on(async {
         let mut delay = delay_for(Duration::from_secs(30)).fuse();
         let mut mined = false;
         loop {
             futures::select! {
                 event = alice_event_stream.select_next_some() => {
-                    if let TransactionEvent::TransactionMined(_e) = (*event).clone() {
+                    if let TransactionEvent::TransactionMined(_e) = (*event.unwrap()).clone() {
                         mined = true;
                         break;
                     }

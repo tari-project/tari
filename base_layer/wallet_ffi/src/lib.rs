@@ -3101,7 +3101,7 @@ pub unsafe extern "C" fn wallet_get_pending_outgoing_balance(
 /// as an out parameter.
 ///
 /// ## Returns
-/// `bool` - Returns if successful or not
+/// `unsigned long long` - Returns 0 if unsuccessful or the TxId of the sent transaction if successful
 ///
 /// # Safety
 /// None
@@ -3113,20 +3113,20 @@ pub unsafe extern "C" fn wallet_send_transaction(
     fee_per_gram: c_ulonglong,
     message: *const c_char,
     error_out: *mut c_int,
-) -> bool
+) -> c_ulonglong
 {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
+        return 0;
     }
 
     if dest_public_key.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("dest_public_key".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
+        return 0;
     }
 
     let message_string = if !message.is_null() {
@@ -3145,11 +3145,11 @@ pub unsafe extern "C" fn wallet_send_transaction(
             MicroTari::from(fee_per_gram),
             message_string,
         )) {
-        Ok(_) => true,
+        Ok(tx_id) => tx_id,
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            false
+            0
         },
     }
 }

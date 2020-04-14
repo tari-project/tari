@@ -287,10 +287,18 @@ where
         let message_inner = message.clone().into_inner();
         poll_fn(move |_| blocking(|| message_inner.commit(&conn))).await??;
 
-        self.event_publisher
+        let _ = self
+            .event_publisher
             .send(TextMessageEvent::ReceivedTextMessage)
             .await
-            .map_err(|_| TextMessageError::EventStreamError)?;
+            .map_err(|e| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Error sending event, usually because there are no subscribers: {:?}",
+                    e
+                );
+                e
+            });
 
         Ok(())
     }
@@ -315,10 +323,18 @@ where
         );
 
         poll_fn(move |_| blocking(|| SentTextMessage::mark_sent_message_ack(&message_ack_inner.id, &conn))).await??;
-        self.event_publisher
+        let _ = self
+            .event_publisher
             .send(TextMessageEvent::ReceivedTextMessageAck)
             .await
-            .map_err(|_| TextMessageError::EventStreamError)?;
+            .map_err(|e| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Error sending event, usually because there are no subscribers: {:?}",
+                    e
+                );
+                e
+            });
         Ok(())
     }
 

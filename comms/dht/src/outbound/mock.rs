@@ -45,7 +45,7 @@ pub fn create_outbound_service_mock(size: usize) -> (OutboundMessageRequester, O
 #[derive(Clone, Default)]
 pub struct OutboundServiceMockState {
     #[allow(clippy::type_complexity)]
-    calls: Arc<Mutex<Vec<(FinalSendMessageParams, Bytes)>>>,
+    calls: Arc<Mutex<Vec<(FinalSendMessageParams, Bytes, MessageTag)>>>,
     next_response: Arc<RwLock<Option<SendMessageResponse>>>,
     call_count_cond_var: Arc<Condvar>,
 }
@@ -89,7 +89,7 @@ impl OutboundServiceMockState {
     /// Wait for a call to be added or timeout.
     ///
     /// An error will be returned if the timeout expires.
-    pub fn wait_pop_call(&self, timeout: Duration) -> Result<(FinalSendMessageParams, Bytes), String> {
+    pub fn wait_pop_call(&self, timeout: Duration) -> Result<(FinalSendMessageParams, Bytes, MessageTag), String> {
         let call_guard = acquire_lock!(self.calls);
         let (mut call_guard, timeout) = self
             .call_count_cond_var
@@ -107,16 +107,16 @@ impl OutboundServiceMockState {
         acquire_write_lock!(self.next_response).take()
     }
 
-    pub fn add_call(&self, req: (FinalSendMessageParams, Bytes)) {
+    pub fn add_call(&self, req: (FinalSendMessageParams, Bytes, MessageTag)) {
         acquire_lock!(self.calls).push(req);
         self.call_count_cond_var.notify_all();
     }
 
-    pub fn take_calls(&self) -> Vec<(FinalSendMessageParams, Bytes)> {
+    pub fn take_calls(&self) -> Vec<(FinalSendMessageParams, Bytes, MessageTag)> {
         acquire_lock!(self.calls).drain(..).collect()
     }
 
-    pub fn pop_call(&self) -> Option<(FinalSendMessageParams, Bytes)> {
+    pub fn pop_call(&self) -> Option<(FinalSendMessageParams, Bytes, MessageTag)> {
         acquire_lock!(self.calls).pop()
     }
 }
@@ -142,11 +142,12 @@ impl OutboundServiceMock {
         while let Some(req) = self.receiver.next().await {
             match req {
                 DhtOutboundRequest::SendMessage(params, body, reply_tx) => {
-                    self.mock_state.add_call((*params, body));
+                    let tag = MessageTag::new();
+                    self.mock_state.add_call((*params, body, tag.clone()));
                     let response = self
                         .mock_state
                         .take_next_response()
-                        .or_else(|| Some(SendMessageResponse::Queued(vec![MessageTag::new()])))
+                        .or_else(|| Some(SendMessageResponse::Queued(vec![tag])))
                         .expect("never none");
 
                     reply_tx.send(response).expect("Reply channel cancelled");

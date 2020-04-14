@@ -156,7 +156,7 @@ where
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
                 subscription_factory.clone(),
-                comms.subscribe_messaging_events(),
+                comms.message_event_sender(),
                 transaction_backend,
                 comms.node_identity(),
                 factories.clone(),

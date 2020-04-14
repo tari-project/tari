@@ -294,7 +294,7 @@ where
         // Only process requests with a request_key that we are expecting.
         let queried_hashes: Vec<Vec<u8>> = match self.pending_utxo_query_keys.remove(&request_key) {
             None => {
-                debug!(
+                trace!(
                     target: LOG_TARGET,
                     "Ignoring Base Node Response with unexpected request key ({}), it was not meant for this service.",
                     request_key
@@ -343,10 +343,18 @@ where
             "Handled Base Node response for Query {}", request_key
         );
 
-        self.event_publisher
+        let _ = self
+            .event_publisher
             .send(OutputManagerEvent::ReceiveBaseNodeResponse(request_key))
             .await
-            .map_err(|_| OutputManagerError::EventStreamError)?;
+            .map_err(|e| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Error sending event, usually because there are no subscribers: {:?}",
+                    e
+                );
+                e
+            });
 
         Ok(())
     }
@@ -363,10 +371,18 @@ where
             self.query_unspent_outputs_status(utxo_query_timeout_futures).await?;
             // TODO Remove this once this bug is fixed
             trace!(target: LOG_TARGET, "Finished queueing new Base Node query timeout");
-            self.event_publisher
+            let _ = self
+                .event_publisher
                 .send(OutputManagerEvent::BaseNodeSyncRequestTimedOut(query_key))
                 .await
-                .map_err(|_| OutputManagerError::EventStreamError)?;
+                .map_err(|e| {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Error sending event, usually because there are no subscribers: {:?}",
+                        e
+                    );
+                    e
+                });
         }
         Ok(())
     }

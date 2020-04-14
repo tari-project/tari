@@ -29,13 +29,12 @@ use crate::{
     },
 };
 use futures::{stream::Fuse, StreamExt};
-use std::{collections::HashMap, fmt};
-use tari_broadcast_channel::Subscriber;
+use std::{collections::HashMap, fmt, sync::Arc};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
 use tari_service_framework::reply_channel::SenderService;
+use tokio::sync::broadcast;
 use tower::Service;
-
 /// API Request enum
 #[derive(Debug)]
 pub enum TransactionServiceRequest {
@@ -99,7 +98,7 @@ impl fmt::Display for TransactionServiceRequest {
 /// API Response enum
 #[derive(Debug)]
 pub enum TransactionServiceResponse {
-    TransactionSent,
+    TransactionSent(TxId),
     PendingInboundTransactions(HashMap<u64, InboundTransaction>),
     PendingOutboundTransactions(HashMap<u64, OutboundTransaction>),
     CompletedTransactions(HashMap<u64, CompletedTransaction>),
@@ -135,25 +134,30 @@ pub enum TransactionEvent {
     Error(String),
 }
 
+pub type TransactionEventSender = broadcast::Sender<Arc<TransactionEvent>>;
+pub type TransactionEventReceiver = broadcast::Receiver<Arc<TransactionEvent>>;
 /// The Transaction Service Handle is a struct that contains the interfaces used to communicate with a running
 /// Transaction Service
 #[derive(Clone)]
 pub struct TransactionServiceHandle {
     handle: SenderService<TransactionServiceRequest, Result<TransactionServiceResponse, TransactionServiceError>>,
-    event_stream: Subscriber<TransactionEvent>,
+    event_stream_sender: TransactionEventSender,
 }
 
 impl TransactionServiceHandle {
     pub fn new(
         handle: SenderService<TransactionServiceRequest, Result<TransactionServiceResponse, TransactionServiceError>>,
-        event_stream: Subscriber<TransactionEvent>,
+        event_stream_sender: TransactionEventSender,
     ) -> Self
     {
-        Self { handle, event_stream }
+        Self {
+            handle,
+            event_stream_sender,
+        }
     }
 
-    pub fn get_event_stream_fused(&self) -> Fuse<Subscriber<TransactionEvent>> {
-        self.event_stream.clone().fuse()
+    pub fn get_event_stream_fused(&self) -> Fuse<TransactionEventReceiver> {
+        self.event_stream_sender.subscribe().fuse()
     }
 
     pub async fn send_transaction(
@@ -162,7 +166,7 @@ impl TransactionServiceHandle {
         amount: MicroTari,
         fee_per_gram: MicroTari,
         message: String,
-    ) -> Result<(), TransactionServiceError>
+    ) -> Result<TxId, TransactionServiceError>
     {
         match self
             .handle
@@ -174,7 +178,7 @@ impl TransactionServiceHandle {
             )))
             .await??
         {
-            TransactionServiceResponse::TransactionSent => Ok(()),
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

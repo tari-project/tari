@@ -302,7 +302,7 @@ mod test {
         assert!(spy.is_called());
 
         assert_eq!(oms_mock_state.call_count(), 1);
-        let (params, _) = oms_mock_state.pop_call().unwrap();
+        let (params, _, _) = oms_mock_state.pop_call().unwrap();
 
         assert!(params.dht_header.is_some());
     }
