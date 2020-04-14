@@ -11,7 +11,7 @@ edition = "2018"
 
 
 [dependencies]
-clap = "2.33.0"
+structopt = { version = "0.3.13", default_features = false }
 config = { version = "0.9.3" }
 dirs = "2.0"
 get_if_addrs = "0.5.3"

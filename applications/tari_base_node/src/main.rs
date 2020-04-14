@@ -90,7 +90,8 @@ use log::*;
 use parser::Parser;
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
 use std::{path::PathBuf, sync::Arc};
-use tari_common::{load_configuration, GlobalConfig};
+use structopt::StructOpt;
+use tari_common::GlobalConfig;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
 use tari_shutdown::Shutdown;
 use tokio::runtime::Runtime;
@@ -101,6 +102,13 @@ pub const LOG_TARGET: &str = "base_node::app";
 enum ExitCodes {
     ConfigError = 101,
     UnknownError = 102,
+}
+
+impl From<tari_common::ConfigError> for ExitCodes {
+    fn from(err: tari_common::ConfigError) -> Self {
+        error!(target: LOG_TARGET, "{}", err);
+        Self::ConfigError
+    }
 }
 
 /// Application entry point
@@ -115,18 +123,16 @@ fn main() {
 /// Sets up the base node and runs the cli_loop
 fn main_inner() -> Result<(), ExitCodes> {
     // Parse and validate command-line arguments
-    let arguments = cli::parse_cli_args();
+    let mut arguments = cli::Arguments::from_args();
+
+    // check and initialize configuration files
+    arguments.bootstrap.init_dirs()?;
 
     // Initialise the logger
-    if !tari_common::initialize_logging(&arguments.bootstrap.log_config) {
-        return Err(ExitCodes::ConfigError);
-    }
+    arguments.bootstrap.initialize_logging()?;
 
     // Load and apply configuration file
-    let cfg = load_configuration(&arguments.bootstrap).map_err(|err| {
-        error!(target: LOG_TARGET, "{}", err);
-        ExitCodes::ConfigError
-    })?;
+    let cfg = arguments.bootstrap.load_configuration()?;
 
     // Populate the configuration struct
     let node_config = GlobalConfig::convert_from(cfg).map_err(|err| {
@@ -182,7 +188,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         return Ok(());
     }
 
-    if arguments.init {
+    if arguments.bootstrap.init {
         info!(target: LOG_TARGET, "Default configuration created. Done.");
         return Ok(());
     }
