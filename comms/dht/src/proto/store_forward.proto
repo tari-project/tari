@@ -12,6 +12,7 @@ package tari.dht.store_forward;
 message StoredMessagesRequest {
     google.protobuf.Timestamp since = 1;
     uint32 request_id = 2;
+    bytes dist_threshold = 3;
 }
 
 // Storage for a single message envelope, including the date and time when the element was stored
@@ -27,14 +28,16 @@ message StoredMessagesResponse {
     repeated StoredMessage messages = 1;
     uint32 request_id = 2;
     enum SafResponseType {
-        // All applicable messages
-        General = 0;
-        // Send messages explicitly addressed to the requesting node or within the requesting node's region
-        ExplicitlyAddressed = 1;
-        // Send Discovery messages that could be for the requester
-        Discovery = 2;
-        // Send Join messages that the requester could be interested in
-        Join = 3;
+        // Messages for the requested public key or node ID
+        ForMe = 0;
+        // Discovery messages that could be for the requester
+        Discovery = 1;
+        // Join messages that the requester could be interested in
+        Join = 2;
+        // Messages without an explicit destination and with an unidentified encrypted source
+        Anonymous = 3;
+        // Messages within the requesting node's region
+        InRegion = 4;
     }
     SafResponseType response_type = 3;
 }

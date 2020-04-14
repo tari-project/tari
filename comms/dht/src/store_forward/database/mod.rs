@@ -31,7 +31,10 @@ use crate::{
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl};
-use tari_comms::types::CommsPublicKey;
+use tari_comms::{
+    peer_manager::{node_id::NodeDistance, NodeId},
+    types::CommsPublicKey,
+};
 use tari_crypto::tari_utilities::hex::Hex;
 
 pub struct StoreAndForwardDatabase {
@@ -54,19 +57,56 @@ impl StoreAndForwardDatabase {
             .await
     }
 
-    pub async fn find_messages_for_public_key(
+    pub async fn find_messages_for_peer(
         &self,
         public_key: &CommsPublicKey,
+        node_id: &NodeId,
         since: Option<DateTime<Utc>>,
         limit: i64,
     ) -> Result<Vec<StoredMessage>, StorageError>
     {
         let pk_hex = public_key.to_hex();
+        let node_id_hex = node_id.to_hex();
         self.connection
-            .with_connection_async(move |conn| {
+            .with_connection_async::<_, Vec<StoredMessage>>(move |conn| {
                 let mut query = stored_messages::table
                     .select(stored_messages::all_columns)
-                    .filter(stored_messages::destination_pubkey.eq(pk_hex))
+                    .filter(
+                        stored_messages::destination_pubkey
+                            .eq(pk_hex)
+                            .or(stored_messages::destination_node_id.eq(node_id_hex)),
+                    )
+                    .into_boxed();
+
+                if let Some(since) = since {
+                    query = query.filter(stored_messages::stored_at.ge(since.naive_utc()));
+                }
+
+                query
+                    .order_by(stored_messages::stored_at.asc())
+                    .limit(limit)
+                    .get_results(conn)
+                    .map_err(Into::into)
+            })
+            .await
+    }
+
+    pub async fn find_regional_messages(
+        &self,
+        node_id: &NodeId,
+        dist_threshold: Option<Box<NodeDistance>>,
+        since: Option<DateTime<Utc>>,
+        limit: i64,
+    ) -> Result<Vec<StoredMessage>, StorageError>
+    {
+        let node_id_hex = node_id.to_hex();
+        let results = self
+            .connection
+            .with_connection_async::<_, Vec<StoredMessage>>(move |conn| {
+                let mut query = stored_messages::table
+                    .select(stored_messages::all_columns)
+                    .filter(stored_messages::destination_node_id.ne(node_id_hex))
+                    .filter(stored_messages::destination_node_id.is_not_null())
                     .filter(stored_messages::message_type.eq(DhtMessageType::None as i32))
                     .into_boxed();
 
@@ -75,7 +115,57 @@ impl StoreAndForwardDatabase {
                 }
 
                 query
-                    .order_by(stored_messages::stored_at.desc())
+                    .order_by(stored_messages::stored_at.asc())
+                    .limit(limit)
+                    .get_results(conn)
+                    .map_err(Into::into)
+            })
+            .await?;
+
+        match dist_threshold {
+            Some(dist_threshold) => {
+                // Filter node ids that are within the distance threshold from the source node id
+                let results = results
+                    .into_iter()
+                    // TODO: Investigate if we could do this in sqlite using XOR (^)
+                    .filter(|message| match message.destination_node_id {
+                        Some(ref dest_node_id) => match NodeId::from_hex(dest_node_id).ok() {
+                            Some(dest_node_id) => {
+                                &dest_node_id == node_id || &dest_node_id.distance(node_id) <= &*dist_threshold
+                            },
+                            None => false,
+                        },
+                        None => true,
+                    })
+                    .collect();
+                Ok(results)
+            },
+            None => Ok(results),
+        }
+    }
+
+    pub async fn find_anonymous_messages(
+        &self,
+        since: Option<DateTime<Utc>>,
+        limit: i64,
+    ) -> Result<Vec<StoredMessage>, StorageError>
+    {
+        self.connection
+            .with_connection_async(move |conn| {
+                let mut query = stored_messages::table
+                    .select(stored_messages::all_columns)
+                    .filter(stored_messages::origin_pubkey.is_null())
+                    .filter(stored_messages::destination_pubkey.is_null())
+                    .filter(stored_messages::is_encrypted.eq(true))
+                    .filter(stored_messages::message_type.eq(DhtMessageType::None as i32))
+                    .into_boxed();
+
+                if let Some(since) = since {
+                    query = query.filter(stored_messages::stored_at.ge(since.naive_utc()));
+                }
+
+                query
+                    .order_by(stored_messages::stored_at.asc())
                     .limit(limit)
                     .get_results(conn)
                     .map_err(Into::into)
@@ -109,7 +199,7 @@ impl StoreAndForwardDatabase {
                 }
 
                 query
-                    .order_by(stored_messages::stored_at.desc())
+                    .order_by(stored_messages::stored_at.asc())
                     .limit(limit)
                     .get_results(conn)
                     .map_err(Into::into)

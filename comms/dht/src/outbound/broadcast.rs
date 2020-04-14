@@ -222,6 +222,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         reply_tx: oneshot::Sender<SendMessageResponse>,
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
     {
+        trace!(target: LOG_TARGET, "Send params: {:?}", params);
         if params
             .broadcast_strategy
             .direct_public_key()

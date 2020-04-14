@@ -299,9 +299,11 @@ impl<'a> DhtActor<'a> {
             },
             SendRequestStoredMessages => {
                 let node_identity = Arc::clone(&self.node_identity);
+                let peer_manager = Arc::clone(&self.peer_manager);
                 let outbound_requester = self.outbound_requester.clone();
                 Box::pin(Self::request_stored_messages(
                     node_identity,
+                    peer_manager,
                     outbound_requester,
                     db,
                     self.config.num_neighbouring_nodes,
@@ -359,16 +361,28 @@ impl<'a> DhtActor<'a> {
 
     async fn request_stored_messages(
         node_identity: Arc<NodeIdentity>,
+        peer_manager: Arc<PeerManager>,
         mut outbound_requester: OutboundMessageRequester,
         db: DhtDatabase,
         num_neighbouring_nodes: usize,
     ) -> Result<(), DhtActorError>
     {
-        let request = db
+        let mut request = db
             .get_value(DhtSettingKey::SafLastRequestTimestamp)
             .await?
             .map(StoredMessagesRequest::since)
             .unwrap_or_else(StoredMessagesRequest::new);
+
+        // Calculate the network region threshold for our node id.
+        // i.e. "Give me all messages that are this close to my node ID"
+        let threshold = peer_manager
+            .calc_region_threshold(
+                node_identity.node_id(),
+                num_neighbouring_nodes,
+                PeerFeatures::DHT_STORE_FORWARD,
+            )
+            .await?;
+        request.dist_threshold = threshold.to_vec();
 
         outbound_requester
             .send_message_no_header(

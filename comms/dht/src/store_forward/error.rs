@@ -71,4 +71,6 @@ pub enum StoreAndForwardError {
     /// The envelope version is invalid
     InvalidEnvelopeVersion,
     MalformedNodeId(ByteArrayError),
+    /// NodeDistance threshold was invalid
+    InvalidNodeDistanceThreshold,
 }

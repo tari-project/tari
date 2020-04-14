@@ -213,6 +213,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(None);
         }
 
+        if message.dht_header.message_type.is_saf_message() {
+            log_not_eligible("because it is a SAF message");
+            return Ok(None);
+        }
+
         if message
             .authenticated_origin()
             .map(|pk| pk == self.node_identity.public_key())
@@ -330,13 +335,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         use NodeDestination::*;
         match &message.dht_header.destination {
             Unknown => {
-                // No destination provided, only discovery messages are currently important enough to be stored
-                if message.dht_header.message_type.is_dht_discovery() {
-                    Ok(Some(StoredMessagePriority::Low))
-                } else {
-                    log_not_eligible("destination is unknown, and message is not a Discovery");
-                    Ok(None)
-                }
+                // No destination provided,
+                Ok(Some(StoredMessagePriority::Low))
             },
             PublicKey(dest_public_key) => {
                 // If we know the destination peer, keep the message for them

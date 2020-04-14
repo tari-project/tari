@@ -28,7 +28,7 @@ pub const SAF_MSG_CACHE_STORAGE_CAPACITY: usize = 10_000;
 /// The default time-to-live duration used for storage of low priority messages by the Store-and-forward middleware
 pub const SAF_LOW_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(6 * 60 * 60); // 6 hours
 /// The default time-to-live duration used for storage of high priority messages by the Store-and-forward middleware
-pub const SAF_HIGH_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(2 * 24 * 60 * 60); // 2 days
+pub const SAF_HIGH_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(3 * 24 * 60 * 60); // 3 days
 /// The default number of peer nodes that a message has to be closer to, to be considered a neighbour
 pub const DEFAULT_NUM_NEIGHBOURING_NODES: usize = 10;
 
@@ -55,9 +55,9 @@ pub struct DhtConfig {
     /// Default: 6 hours
     pub saf_low_priority_msg_storage_ttl: Duration,
     /// The time-to-live duration used for storage of high priority messages by the Store-and-forward middleware.
-    /// Default: 2 days
+    /// Default: 3 days
     pub saf_high_priority_msg_storage_ttl: Duration,
-    /// The limit on the message size to store in SAF storage in bytes. Default 500kb
+    /// The limit on the message size to store in SAF storage in bytes. Default 500 KiB
     pub saf_max_message_size: usize,
     /// The max capacity of the message hash cache
     /// Default: 1000
@@ -112,7 +112,7 @@ impl Default for DhtConfig {
             saf_msg_cache_storage_capacity: SAF_MSG_CACHE_STORAGE_CAPACITY,
             saf_low_priority_msg_storage_ttl: SAF_LOW_PRIORITY_MSG_STORAGE_TTL,
             saf_high_priority_msg_storage_ttl: SAF_HIGH_PRIORITY_MSG_STORAGE_TTL,
-            saf_max_message_size: 512 * 1024, // 512 kb
+            saf_max_message_size: 512 * 1024, // 500 KiB
             msg_hash_cache_capacity: 10_000,
             msg_hash_cache_ttl: Duration::from_secs(300),
             broadcast_cooldown_max_attempts: 3,

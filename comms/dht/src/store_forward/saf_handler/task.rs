@@ -53,7 +53,7 @@ use prost::Message;
 use std::{convert::TryInto, sync::Arc};
 use tari_comms::{
     message::EnvelopeBody,
-    peer_manager::{NodeIdentity, Peer, PeerManager, PeerManagerError},
+    peer_manager::{node_id::NodeDistance, NodeIdentity, Peer, PeerManager, PeerManagerError},
     pipeline::PipelineError,
     types::{Challenge, CommsPublicKey},
     utils::signature,
@@ -171,17 +171,29 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
 
         let source_pubkey = Box::new(message.source_peer.public_key.clone());
+        let source_node_id = Box::new(message.source_peer.node_id.clone());
 
         // Compile a set of stored messages for the requesting peer
-        let mut query = FetchStoredMessageQuery::new(source_pubkey);
+        let mut query = FetchStoredMessageQuery::new(source_pubkey, source_node_id);
+
         if let Some(since) = retrieve_msgs.since.map(timestamp_to_datetime) {
             query.since(since);
         }
 
+        if !retrieve_msgs.dist_threshold.is_empty() {
+            let dist_threshold = Box::new(
+                NodeDistance::from_bytes(&retrieve_msgs.dist_threshold)
+                    .map_err(|_| StoreAndForwardError::InvalidNodeDistanceThreshold)?,
+            );
+            query.with_dist_threshold(dist_threshold);
+        }
+
         let response_types = vec![
+            SafResponseType::ForMe,
+            SafResponseType::Anonymous,
+            SafResponseType::InRegion,
             SafResponseType::Discovery,
             SafResponseType::Join,
-            SafResponseType::ExplicitlyAddressed,
         ];
 
         for resp_type in response_types {
@@ -189,7 +201,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             let messages = self.saf_requester.fetch_messages(query.clone()).await?;
 
             if messages.is_empty() {
-                debug!(
+                info!(
                     target: LOG_TARGET,
                     "No {:?} stored messages for peer '{}'",
                     resp_type,
@@ -206,8 +218,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
             info!(
                 target: LOG_TARGET,
-                "Responding to received message retrieval request with {} message(s)",
-                stored_messages.messages().len()
+                "Responding to received message retrieval request with {} {:?} message(s)",
+                stored_messages.messages().len(),
+                resp_type
             );
             self.outbound_service
                 .send_message_no_header(
@@ -240,8 +253,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         debug!(
             target: LOG_TARGET,
-            "Received {} stored messages from peer",
-            response.messages().len()
+            "Received {} stored messages of type {} from peer",
+            response.messages().len(),
+            SafResponseType::from_i32(response.response_type)
+                .as_ref()
+                .map(|t| format!("{:?}", t))
+                .unwrap_or("<Invalid>".to_string()),
         );
 
         let last_timestamp = self
@@ -451,10 +468,21 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 "[store and forward] DHT header is invalid after validity check because it did not contain an \
                  ephemeral_public_key",
             );
+
+            trace!(
+                target: LOG_TARGET,
+                "Attempting to decrypt origin mac ({} byte(s))",
+                header.origin_mac.len()
+            );
             let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), ephemeral_public_key);
             let decrypted = crypt::decrypt(&shared_secret, &header.origin_mac)?;
             let authenticated_pk = Self::authenticate_message(&decrypted, body)?;
 
+            trace!(
+                target: LOG_TARGET,
+                "Attempting to decrypt message body ({} byte(s))",
+                body.len()
+            );
             let decrypted_bytes = crypt::decrypt(&shared_secret, body)?;
             let envelope_body =
                 EnvelopeBody::decode(decrypted_bytes.as_slice()).map_err(|_| StoreAndForwardError::DecryptionFailed)?;

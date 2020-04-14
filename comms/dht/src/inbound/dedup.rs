@@ -26,6 +26,7 @@ use futures::{task::Context, Future};
 use log::*;
 use std::task::Poll;
 use tari_comms::{pipeline::PipelineError, types::Challenge};
+use tari_crypto::tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::dedup";
@@ -77,6 +78,7 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError>
     {
         trace!(target: LOG_TARGET, "Checking inbound message cache for duplicates");
         let hash = Self::hash_message(&message);
+        trace!(target: LOG_TARGET, "Inserting message hash {}", hash.to_hex());
         if dht_requester
             .insert_message_hash(hash)
             .await
@@ -88,6 +90,8 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError>
             );
             return Ok(());
         }
+
+        trace!(target: LOG_TARGET, "Passing message onto next service");
         next_service.oneshot(message).await
     }
 
