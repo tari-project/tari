@@ -134,7 +134,7 @@ pub fn create_wallet(
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
         dht: DhtConfig {
-            discovery_request_timeout: Duration::from_millis(500),
+            discovery_request_timeout: Duration::from_secs(30),
             ..Default::default()
         },
         allow_test_addresses: true,
@@ -288,6 +288,7 @@ pub fn generate_wallet_test_data<
     wallet
         .runtime
         .block_on(wallet.comms.peer_manager().add_peer(alice_peer))?;
+
     let bob_peer = wallet_bob.comms.node_identity().to_peer();
 
     wallet
@@ -449,7 +450,7 @@ pub fn generate_wallet_test_data<
             futures::select! {
                 event = wallet_event_stream.select_next_some() => {
                     match &*event.unwrap() {
-                        TransactionEvent::TransactionSendResult(_,_) => {
+                        TransactionEvent::TransactionDirectSendResult(_,_) => {
                             count+=1;
                             if count >= 10 {
                                 break;
@@ -495,7 +496,7 @@ pub fn generate_wallet_test_data<
         }
         assert!(count >= 8, "Event waiting timed out before receiving expected events 3");
     });
-
+    log::error!("Inbound Transactions starting");
     // Pending Inbound
     wallet_alice
         .runtime

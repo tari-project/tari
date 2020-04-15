@@ -29,7 +29,7 @@ use crate::{
         protocols::{
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
             transaction_chain_monitoring_protocol::TransactionChainMonitoringProtocol,
-            transaction_send_protocol::TransactionSendProtocol,
+            transaction_send_protocol::{TransactionProtocolStage, TransactionSendProtocol},
         },
         storage::database::{
             CompletedTransaction,
@@ -44,7 +44,7 @@ use crate::{
 };
 use chrono::Utc;
 use futures::{
-    channel::{mpsc, mpsc::Sender},
+    channel::{mpsc, mpsc::Sender, oneshot},
     pin_mut,
     stream::FuturesUnordered,
     SinkExt,
@@ -134,6 +134,7 @@ where TBackend: TransactionBackend + Clone + 'static
     pending_transaction_reply_senders: HashMap<TxId, Sender<(CommsPublicKey, RecipientSignedMessage)>>,
     mempool_response_senders: HashMap<u64, Sender<MempoolServiceResponse>>,
     base_node_response_senders: HashMap<u64, Sender<BaseNodeProto::BaseNodeServiceResponse>>,
+    send_transaction_cancellation_senders: HashMap<u64, oneshot::Sender<()>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -197,6 +198,7 @@ where
             pending_transaction_reply_senders: HashMap::new(),
             mempool_response_senders: HashMap::new(),
             base_node_response_senders: HashMap::new(),
+            send_transaction_cancellation_senders: HashMap::new(),
         }
     }
 
@@ -251,6 +253,7 @@ where
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         > = FuturesUnordered::new();
 
+        info!(target: LOG_TARGET, "Transaction Service started");
         loop {
             futures::select! {
                 //Incoming request
@@ -269,13 +272,17 @@ where
                 msg = transaction_stream.select_next_some() => {
                     trace!(target: LOG_TARGET, "Handling Transaction Message");
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
-                    let result  = self.accept_transaction(origin_public_key, inner_msg).await.or_else(|err| {
-                        error!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {:?} for NodeID: {}", err, self.node_identity.node_id().short_str());
-                        Err(err)
-                    });
+                    let result  = self.accept_transaction(origin_public_key, inner_msg).await;
 
-                    if result.is_err() {
-                        let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling Transaction Sender message".to_string(),)));
+                    match result {
+                        Err(TransactionServiceError::RepeatedMessageError) => {
+                            trace!(target: LOG_TARGET, "A repeated Transaction message was received");
+                        }
+                        Err(e) => {
+                            error!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {:?} for NodeID: {}", e, self.node_identity.node_id().short_str());
+                            let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error(format!("Error handling Transaction Sender message: {:?}", e).to_string())));
+                        }
+                        _ => (),
                     }
                 },
                  // Incoming messages from the Comms layer
@@ -375,6 +382,10 @@ where
                 )
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
+            TransactionServiceRequest::CancelTransaction(tx_id) => self
+                .cancel_transaction(tx_id)
+                .await
+                .map(|_| TransactionServiceResponse::TransactionCancelled),
             TransactionServiceRequest::GetPendingInboundTransactions => Ok(
                 TransactionServiceResponse::PendingInboundTransactions(self.get_pending_inbound_transactions().await?),
             ),
@@ -403,6 +414,7 @@ where
                     public_key,
                     transaction_broadcast_join_handles,
                     chain_monitoring_join_handles,
+                    send_transaction_join_handles,
                 )
                 .await
                 .map(|_| TransactionServiceResponse::BaseNodePublicKeySet),
@@ -461,16 +473,21 @@ where
         let tx_id = sender_protocol.get_tx_id()?;
 
         let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
+        let (cancellation_sender, cancellation_receiver) = oneshot::channel();
         self.pending_transaction_reply_senders.insert(tx_id, tx_reply_sender);
+        self.send_transaction_cancellation_senders
+            .insert(tx_id, cancellation_sender);
         let protocol = TransactionSendProtocol::new(
             tx_id,
             self.service_resources.clone(),
             tx_reply_receiver,
+            cancellation_receiver,
             self.message_event_sender.subscribe(),
             dest_pubkey,
             amount,
             message,
             sender_protocol,
+            TransactionProtocolStage::Initial,
         );
 
         let join_handle = tokio::spawn(protocol.execute());
@@ -519,6 +536,7 @@ where
         match join_result {
             Ok(id) => {
                 let _ = self.pending_transaction_reply_senders.remove(&id);
+                let _ = self.send_transaction_cancellation_senders.remove(&id);
                 let _ = self
                     .broadcast_completed_transaction_to_mempool(id, transaction_broadcast_join_handles)
                     .await
@@ -537,6 +555,7 @@ where
             },
             Err(TransactionServiceProtocolError { id, error }) => {
                 let _ = self.pending_transaction_reply_senders.remove(&id);
+                let _ = self.send_transaction_cancellation_senders.remove(&id);
                 error!(
                     target: LOG_TARGET,
                     "Error completing Send Transaction Protocol (Id: {}): {:?}", id, error
@@ -546,6 +565,82 @@ where
                     .send(Arc::new(TransactionEvent::Error(format!("{:?}", error).to_string())));
             },
         }
+    }
+
+    /// Cancel a pending outbound transaction
+    async fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
+        let _outbound_tx = self
+            .db
+            .get_pending_outbound_transaction(tx_id.clone())
+            .await
+            .map_err(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Pending Outbound Transaction does not exist and could not be cancelled: {:?}", e
+                );
+                e
+            })?;
+
+        self.db.remove_pending_outbound_transaction(tx_id).await?;
+        self.output_manager_service.cancel_transaction(tx_id).await?;
+
+        if let Some(cancellation_sender) = self.send_transaction_cancellation_senders.remove(&tx_id) {
+            let _ = cancellation_sender.send(());
+        }
+        let _ = self.pending_transaction_reply_senders.remove(&tx_id);
+
+        let _ = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCancelled(tx_id)))
+            .map_err(|e| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Error sending event, usually because there are no subscribers: {:?}",
+                    e
+                );
+                e
+            });
+
+        info!(
+            target: LOG_TARGET,
+            "Send Transaction process cancelled for TxId: {}", tx_id
+        );
+
+        Ok(())
+    }
+
+    async fn restart_all_send_transaction_protocols(
+        &mut self,
+        join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
+    ) -> Result<(), TransactionServiceError>
+    {
+        let outbound_txs = self.db.get_pending_outbound_transactions().await?;
+        for (tx_id, tx) in outbound_txs {
+            if !self.pending_transaction_reply_senders.contains_key(&tx_id) {
+                let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
+                let (cancellation_sender, cancellation_receiver) = oneshot::channel();
+                self.pending_transaction_reply_senders.insert(tx_id, tx_reply_sender);
+                self.send_transaction_cancellation_senders
+                    .insert(tx_id, cancellation_sender);
+                let protocol = TransactionSendProtocol::new(
+                    tx_id,
+                    self.service_resources.clone(),
+                    tx_reply_receiver,
+                    cancellation_receiver,
+                    self.message_event_sender.subscribe(),
+                    tx.destination_public_key,
+                    tx.amount,
+                    tx.message,
+                    tx.sender_protocol,
+                    TransactionProtocolStage::WaitForReply,
+                );
+
+                let join_handle = tokio::spawn(protocol.execute());
+                join_handles.push(join_handle);
+            }
+        }
+
+        Ok(())
     }
 
     /// Accept a new transaction from a sender by handling a public SenderMessage. The reply is generated and sent.
@@ -561,9 +656,14 @@ where
         let sender_message: TransactionSenderMessage = sender_message
             .try_into()
             .map_err(TransactionServiceError::InvalidMessageError)?;
-
         // Currently we will only reply to a Single sender transaction protocol
         if let TransactionSenderMessage::Single(data) = sender_message.clone() {
+            // Check this is not a repeat message i.e. tx_id doesn't already exist in our pending or completed
+            // transactions
+            if self.db.transaction_exists(data.tx_id).await? {
+                return Err(TransactionServiceError::RepeatedMessageError);
+            }
+
             let amount = data.amount;
 
             let spending_key = self
@@ -580,12 +680,6 @@ where
                 &self.factories,
             );
             let recipient_reply = rtp.get_signed_data()?.clone();
-
-            // Check this is not a repeat message i.e. tx_id doesn't already exist in our pending or completed
-            // transactions
-            if self.db.transaction_exists(recipient_reply.tx_id).await? {
-                return Err(TransactionServiceError::RepeatedMessageError);
-            }
 
             let tx_id = recipient_reply.tx_id;
             let proto_message: proto::RecipientSignedMessage = recipient_reply.into();
@@ -662,12 +756,6 @@ where
                     "Cannot convert Transaction field from TransactionFinalized message".to_string(),
                 )
             })?;
-        info!(
-            target: LOG_TARGET,
-            "Finalized Transaction with TX_ID = {} received from {}",
-            tx_id,
-            source_pubkey.clone()
-        );
 
         let inbound_tx = self
             .db
@@ -676,10 +764,18 @@ where
             .map_err(|e| {
                 error!(
                     target: LOG_TARGET,
-                    "Finalized transaction TxId does not exist in Pending Inbound Transactions"
+                    "Finalized transaction TxId does not exist in Pending Inbound Transactions, could be a repeat \
+                     Store and Forward message"
                 );
                 e
             })?;
+
+        info!(
+            target: LOG_TARGET,
+            "Finalized Transaction with TX_ID = {} received from {}",
+            tx_id,
+            source_pubkey.clone()
+        );
 
         if inbound_tx.source_public_key != source_pubkey {
             error!(
@@ -887,6 +983,7 @@ where
         base_node_public_key: CommsPublicKey,
         broadcast_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
         chain_monitoring_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
+        send_transaction_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError>
     {
         let startup_broadcast = self.base_node_public_key.is_none();
@@ -912,6 +1009,17 @@ where
                     error!(
                         target: LOG_TARGET,
                         "Error querying base_node for all completed transactions: {:?}", resp
+                    );
+                    Err(resp)
+                });
+
+            let _ = self
+                .restart_all_send_transaction_protocols(send_transaction_join_handles)
+                .await
+                .or_else(|resp| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Error restarting protocols for all pending outbound transactions: {:?}", resp
                     );
                     Err(resp)
                 });

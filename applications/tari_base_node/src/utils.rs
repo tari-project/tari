@@ -40,7 +40,7 @@ where S: Stream<Item = Result<Arc<TransactionEvent>, RecvError>> + Unpin {
         match event_stream.next().await {
             Some(event_result) => match event_result {
                 Ok(event) => {
-                    if let TransactionEvent::TransactionSendDiscoveryComplete(tx_id, is_success) = &*event {
+                    if let TransactionEvent::TransactionDirectSendResult(tx_id, is_success) = &*event {
                         if *tx_id == expected_tx_id {
                             break *is_success;
                         }

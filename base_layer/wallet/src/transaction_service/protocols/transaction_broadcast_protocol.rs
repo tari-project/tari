@@ -297,9 +297,7 @@ where TBackend: TransactionBackend + Clone + 'static
                             let _ = self
                                 .resources
                                 .event_publisher
-                                .send(Arc::new(TransactionEvent::TransactionSendDiscoveryComplete(
-                                    self.id, false,
-                                )))
+                                .send(Arc::new(TransactionEvent::TransactionCancelled(self.id)))
                                 .map_err(|e| {
                                     trace!(
                                         target: LOG_TARGET,
