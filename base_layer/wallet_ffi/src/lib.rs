@@ -2291,7 +2291,9 @@ pub unsafe extern "C" fn wallet_create(
     callback_received_finalized_transaction: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_transaction_broadcast: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_transaction_mined: unsafe extern "C" fn(*mut TariCompletedTransaction),
-    callback_discovery_process_complete: unsafe extern "C" fn(c_ulonglong, bool),
+    callback_direct_send_result: unsafe extern "C" fn(c_ulonglong, bool),
+    callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
+    callback_transaction_cancellation: unsafe extern "C" fn(c_ulonglong),
     callback_base_node_sync_complete: unsafe extern "C" fn(u64, bool),
     error_out: *mut c_int,
 ) -> *mut TariWallet
@@ -2379,7 +2381,9 @@ pub unsafe extern "C" fn wallet_create(
                         callback_received_finalized_transaction,
                         callback_transaction_broadcast,
                         callback_transaction_mined,
-                        callback_discovery_process_complete,
+                        callback_direct_send_result,
+                        callback_store_and_forward_send_result,
+                        callback_transaction_cancellation,
                         callback_base_node_sync_complete,
                     );
 
@@ -3677,6 +3681,47 @@ pub unsafe extern "C" fn wallet_import_utxo(
     }
 }
 
+/// Cancel a Pending Outbound Transaction
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `transaction_id` - The TransactionId
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - returns whether the transaction could be cancelled
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_cancel_pending_transaction(
+    wallet: *mut TariWallet,
+    transaction_id: c_ulonglong,
+    error_out: *mut c_int,
+) -> bool
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).transaction_service.cancel_transaction(transaction_id))
+    {
+        Ok(_) => true,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
+    }
+}
+
 /// This function will tell the wallet to query the set base node to confirm the status of wallet data. For example this
 /// will check that Unspent Outputs stored in the wallet are still available as UTXO's on the blockchain
 ///
@@ -3751,7 +3796,9 @@ mod test {
         pub received_finalized_tx_callback_called: bool,
         pub broadcast_tx_callback_called: bool,
         pub mined_tx_callback_called: bool,
-        pub discovery_send_callback_called: bool,
+        pub direct_send_callback_called: bool,
+        pub store_and_forward_send_callback_called: bool,
+        pub tx_cancellation_callback_called: bool,
         pub base_node_sync_callback_called: bool,
     }
 
@@ -3763,8 +3810,10 @@ mod test {
                 received_finalized_tx_callback_called: false,
                 broadcast_tx_callback_called: false,
                 mined_tx_callback_called: false,
-                discovery_send_callback_called: false,
+                direct_send_callback_called: false,
+                store_and_forward_send_callback_called: false,
                 base_node_sync_callback_called: false,
+                tx_cancellation_callback_called: false,
             }
         }
 
@@ -3774,7 +3823,9 @@ mod test {
             self.received_finalized_tx_callback_called = false;
             self.broadcast_tx_callback_called = false;
             self.mined_tx_callback_called = false;
-            self.discovery_send_callback_called = false;
+            self.direct_send_callback_called = false;
+            self.store_and_forward_send_callback_called = false;
+            self.tx_cancellation_callback_called = false;
             self.base_node_sync_callback_called = false;
         }
     }
@@ -3850,7 +3901,15 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn discovery_process_complete_callback(_tx_id: c_ulonglong, _result: bool) {
+    unsafe extern "C" fn direct_send_callback(_tx_id: c_ulonglong, _result: bool) {
+        assert!(true);
+    }
+
+    unsafe extern "C" fn store_and_forward_send_callback(_tx_id: c_ulonglong, _result: bool) {
+        assert!(true);
+    }
+
+    unsafe extern "C" fn tx_cancellation_callback(_tx_id: c_ulonglong) {
         assert!(true);
     }
 
@@ -3907,7 +3966,15 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn discovery_process_complete_callback_bob(_tx_id: c_ulonglong, _result: bool) {
+    unsafe extern "C" fn direct_send_callback_bob(_tx_id: c_ulonglong, _result: bool) {
+        assert!(true);
+    }
+
+    unsafe extern "C" fn store_and_forward_send_callback_bob(_tx_id: c_ulonglong, _result: bool) {
+        assert!(true);
+    }
+
+    unsafe extern "C" fn tx_cancellation_callback_bob(_tx_id: c_ulonglong) {
         assert!(true);
     }
 
@@ -4153,7 +4220,6 @@ mod test {
                 let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
                 lock.reset();
             }
-
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let secret_key_alice = private_key_generate();
@@ -4186,7 +4252,9 @@ mod test {
                 received_tx_finalized_callback,
                 broadcast_callback,
                 mined_callback,
-                discovery_process_complete_callback,
+                direct_send_callback,
+                store_and_forward_send_callback,
+                tx_cancellation_callback,
                 base_node_sync_process_complete_callback,
                 error_ptr,
             );
@@ -4218,7 +4286,9 @@ mod test {
                 received_tx_finalized_callback_bob,
                 broadcast_callback_bob,
                 mined_callback_bob,
-                discovery_process_complete_callback_bob,
+                direct_send_callback_bob,
+                store_and_forward_send_callback_bob,
+                tx_cancellation_callback_bob,
                 base_node_sync_process_complete_callback_bob,
                 error_ptr,
             );

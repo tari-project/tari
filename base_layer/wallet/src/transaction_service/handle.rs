@@ -43,6 +43,7 @@ pub enum TransactionServiceRequest {
     GetCompletedTransactions,
     SetBaseNodePublicKey(CommsPublicKey),
     SendTransaction((CommsPublicKey, MicroTari, MicroTari, String)),
+    CancelTransaction(TxId),
     RequestCoinbaseSpendingKey((MicroTari, u64)),
     CompleteCoinbaseTransaction((TxId, Transaction)),
     CancelPendingCoinbaseTransaction(TxId),
@@ -69,6 +70,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::SendTransaction((k, v, _, msg)) => {
                 f.write_str(&format!("SendTransaction (to {}, {}, {})", k, v, msg))
             },
+            Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
             Self::RequestCoinbaseSpendingKey((v, h)) => {
                 f.write_str(&format!("RequestCoinbaseSpendingKey ({}, maturity={})", v, h))
             },
@@ -99,6 +101,7 @@ impl fmt::Display for TransactionServiceRequest {
 #[derive(Debug)]
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
+    TransactionCancelled,
     PendingInboundTransactions(HashMap<u64, InboundTransaction>),
     PendingOutboundTransactions(HashMap<u64, OutboundTransaction>),
     CompletedTransactions(HashMap<u64, CompletedTransaction>),
@@ -126,8 +129,9 @@ pub enum TransactionEvent {
     ReceivedTransaction(TxId),
     ReceivedTransactionReply(TxId),
     ReceivedFinalizedTransaction(TxId),
-    TransactionSendResult(TxId, bool),
-    TransactionSendDiscoveryComplete(TxId, bool),
+    TransactionDirectSendResult(TxId, bool),
+    TransactionStoreForwardSendResult(TxId, bool),
+    TransactionCancelled(TxId),
     TransactionBroadcast(TxId),
     TransactionMined(TxId),
     TransactionMinedRequestTimedOut(TxId),
@@ -179,6 +183,17 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::CancelTransaction(tx_id))
+            .await??
+        {
+            TransactionServiceResponse::TransactionCancelled => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

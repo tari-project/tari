@@ -23,7 +23,7 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use futures::{channel::mpsc::Receiver, StreamExt};
+use futures::{channel::mpsc::Receiver, FutureExt, StreamExt};
 use log::*;
 
 use crate::transaction_service::{
@@ -32,11 +32,12 @@ use crate::transaction_service::{
     service::TransactionServiceResources,
     storage::database::{CompletedTransaction, OutboundTransaction, TransactionBackend, TransactionStatus},
 };
+use futures::channel::oneshot;
 use tari_comms::{
     protocol::messaging::{MessagingEvent, MessagingEventReceiver},
     types::CommsPublicKey,
 };
-use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundEncryption};
+use tari_comms_dht::{domain_message::OutboundDomainMessage, envelope::NodeDestination, outbound::OutboundEncryption};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{KernelFeatures, TransactionError},
@@ -47,17 +48,25 @@ use tari_p2p::tari_message::TariMessageType;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::send_protocol";
 
+#[derive(PartialEq)]
+pub enum TransactionProtocolStage {
+    Initial,
+    WaitForReply,
+}
+
 pub struct TransactionSendProtocol<TBackend>
 where TBackend: TransactionBackend + Clone + 'static
 {
     id: u64,
     resources: TransactionServiceResources<TBackend>,
     transaction_reply_receiver: Option<Receiver<(CommsPublicKey, RecipientSignedMessage)>>,
-    message_send_event_receiver: MessagingEventReceiver,
+    cancellation_receiver: Option<oneshot::Receiver<()>>,
+    message_send_event_receiver: Option<MessagingEventReceiver>,
     dest_pubkey: CommsPublicKey,
     amount: MicroTari,
     message: String,
     sender_protocol: SenderTransactionProtocol,
+    stage: TransactionProtocolStage,
 }
 
 impl<TBackend> TransactionSendProtocol<TBackend>
@@ -67,217 +76,47 @@ where TBackend: TransactionBackend + Clone + 'static
         id: u64,
         resources: TransactionServiceResources<TBackend>,
         transaction_reply_receiver: Receiver<(CommsPublicKey, RecipientSignedMessage)>,
+        cancellation_receiver: oneshot::Receiver<()>,
         message_send_event_receiver: MessagingEventReceiver,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
         message: String,
         sender_protocol: SenderTransactionProtocol,
+        stage: TransactionProtocolStage,
     ) -> Self
     {
         Self {
             id,
             resources,
             transaction_reply_receiver: Some(transaction_reply_receiver),
-            message_send_event_receiver,
+            cancellation_receiver: Some(cancellation_receiver),
+            message_send_event_receiver: Some(message_send_event_receiver),
             dest_pubkey,
             amount,
             message,
             sender_protocol,
+            stage,
         }
     }
 
     /// Execute the Transaction Send Protocol as an async task.
     pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
-        if !self.sender_protocol.is_single_round_message_ready() {
-            error!(target: LOG_TARGET, "Sender Transaction Protocol is in an invalid state");
-            return Err(TransactionServiceProtocolError::new(
-                self.id,
-                TransactionServiceError::InvalidStateError,
-            ));
+        if self.stage == TransactionProtocolStage::Initial {
+            self.send_transaction().await?;
         }
 
-        let msg = self
-            .sender_protocol
-            .build_single_round_message()
-            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-        let tx_id = msg.tx_id;
-
-        if tx_id != self.id {
-            return Err(TransactionServiceProtocolError::new(
-                self.id,
-                TransactionServiceError::InvalidStateError,
-            ));
-        }
-
-        let proto_message = proto::TransactionSenderMessage::single(msg.into());
-
-        let message_tag = match self
-            .resources
-            .outbound_message_service
-            .send_direct(
-                self.dest_pubkey.clone(),
-                OutboundEncryption::None,
-                OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message),
-            )
-            .await
-        {
-            Ok(result) => match result.resolve_ok().await {
-                None => {
-                    let _ = self.resources.event_publisher.send(Arc::new(
-                        TransactionEvent::TransactionSendDiscoveryComplete(tx_id, false),
-                    ));
-                    error!(target: LOG_TARGET, "Transaction Send message failed to send");
-                    return Err(TransactionServiceProtocolError::new(
-                        self.id,
-                        TransactionServiceError::OutboundSendFailure,
-                    ));
-                },
-                Some(tags) if tags.len() == 1 => {
-                    info!(
-                        target: LOG_TARGET,
-                        "Transaction (TxId: {}) Send Discovery process successful with Message Tag: {:?}",
-                        tx_id,
-                        tags[0],
-                    );
-                    tags[0]
-                },
-                Some(_tags) => {
-                    error!(
-                        target: LOG_TARGET,
-                        "Send Discovery process for TX_ID: {} was unsuccessful and no message was sent", tx_id
-                    );
-                    let _ = self.resources.event_publisher.send(Arc::new(
-                        TransactionEvent::TransactionSendDiscoveryComplete(tx_id, false),
-                    ));
-                    if let Err(e) = self.resources.output_manager_service.cancel_transaction(tx_id).await {
-                        error!(
-                            target: LOG_TARGET,
-                            "Failed to Cancel TX_ID: {} after failed sending attempt with error {:?}", tx_id, e
-                        );
-                    };
-                    error!(target: LOG_TARGET, "Transaction Send message failed to send");
-                    return Err(TransactionServiceProtocolError::new(
-                        self.id,
-                        TransactionServiceError::OutboundSendFailure,
-                    ));
-                },
-            },
-            Err(e) => {
-                error!(target: LOG_TARGET, "Transaction Send failed: {:?}", e);
-                return Err(TransactionServiceProtocolError::new(
-                    self.id,
-                    TransactionServiceError::OutboundSendFailure,
-                ));
-            },
-        };
-
-        info!(
-            target: LOG_TARGET,
-            "Transaction with TX_ID = {} queued to be sent to {}", tx_id, self.dest_pubkey
-        );
-
-        // Wait for the Message Event to tell us this has been sent
-        loop {
-            let (received_tag, success) = match self.message_send_event_receiver.next().await {
-                Some(read_item) => match read_item {
-                    Ok(event) => match &*event {
-                        MessagingEvent::MessageSent(message_tag) => (message_tag.clone(), true),
-                        MessagingEvent::SendMessageFailed(outbound_message, _reason) => (outbound_message.tag, false),
-                        _ => continue,
-                    },
-                    Err(e) => {
-                        error!(
-                            target: LOG_TARGET,
-                            "Error reading from message send event stream: {:?}", e
-                        );
-                        return Err(TransactionServiceProtocolError::new(
-                            self.id,
-                            TransactionServiceError::from(e),
-                        ));
-                    },
-                },
-                None => {
-                    error!(target: LOG_TARGET, "Error reading from message send event stream");
-                    return Err(TransactionServiceProtocolError::new(
-                        self.id,
-                        TransactionServiceError::OutboundSendFailure,
-                    ));
-                },
-            };
-
-            if received_tag != message_tag {
-                continue;
-            }
-
-            if success {
-                self.resources
-                    .output_manager_service
-                    .confirm_pending_transaction(tx_id)
-                    .await
-                    .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-
-                let fee = self
-                    .sender_protocol
-                    .get_fee_amount()
-                    .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-                let outbound_tx = OutboundTransaction {
-                    tx_id,
-                    destination_public_key: self.dest_pubkey.clone(),
-                    amount: self.amount,
-                    fee,
-                    sender_protocol: self.sender_protocol.clone(),
-                    status: TransactionStatus::Pending,
-                    message: self.message.clone(),
-                    timestamp: Utc::now().naive_utc(),
-                };
-
-                self.resources
-                    .db
-                    .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx)
-                    .await
-                    .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-
-                info!(
-                    target: LOG_TARGET,
-                    "Pending Outbound Transaction TxId: {:?} was successfully sent with Message Tag: {:?}",
-                    tx_id,
-                    message_tag
-                );
-            } else {
-                error!(
-                    target: LOG_TARGET,
-                    "Pending Outbound Transaction TxId: {:?} with Message Tag {:?} could not be sent",
-                    tx_id,
-                    message_tag,
-                );
-                if let Err(e) = self.resources.output_manager_service.cancel_transaction(tx_id).await {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to Cancel TX_ID: {} after failed sending attempt with error {:?}", tx_id, e
-                    );
-                }
-            }
-
-            let _ = self
-                .resources
-                .event_publisher
-                .send(Arc::new(TransactionEvent::TransactionSendResult(tx_id, success)));
-
-            if !success {
-                return Err(TransactionServiceProtocolError::new(
-                    self.id,
-                    TransactionServiceError::OutboundSendFailure,
-                ));
-            }
-
-            break;
-        }
-
-        // Wait for Transaction Reply
+        // Waiting  for Transaction Reply
+        let tx_id = self.id;
         let mut receiver = self
             .transaction_reply_receiver
             .take()
             .ok_or_else(|| TransactionServiceProtocolError::new(self.id, TransactionServiceError::InvalidStateError))?;
+
+        let mut cancellation_receiver = self
+            .cancellation_receiver
+            .take()
+            .ok_or_else(|| TransactionServiceProtocolError::new(self.id, TransactionServiceError::InvalidStateError))?
+            .fuse();
 
         let mut outbound_tx = self
             .resources
@@ -295,20 +134,24 @@ where TBackend: TransactionBackend + Clone + 'static
         }
 
         let mut source_pubkey;
-        let mut recipient_reply;
+        #[allow(unused_assignments)]
+        let mut reply = None;
         loop {
-            match receiver.next().await {
-                Some((spk, rr)) => {
+            #[allow(unused_assignments)]
+            let mut rr_tx_id = 0;
+            futures::select! {
+                (spk, rr) = receiver.select_next_some() => {
                     source_pubkey = spk;
-                    recipient_reply = rr;
+                    rr_tx_id = rr.tx_id;
+                    reply = Some(rr);
                 },
-                None => {
-                    error!(target: LOG_TARGET, "Transaction Reply Channel has closes");
+                _ = cancellation_receiver => {
+                    info!(target: LOG_TARGET, "Cancelling Transaction Send Protocol for TxId: {}", self.id);
                     return Err(TransactionServiceProtocolError::new(
                         self.id,
-                        TransactionServiceError::ProtocolChannelError,
+                        TransactionServiceError::TransactionCancelled,
                     ));
-                },
+                }
             }
 
             if outbound_tx.destination_public_key != source_pubkey {
@@ -316,12 +159,17 @@ where TBackend: TransactionBackend + Clone + 'static
                     target: LOG_TARGET,
                     "Transaction Reply did not come from the expected Public Key"
                 );
-            } else if !outbound_tx.sender_protocol.check_tx_id(recipient_reply.tx_id.clone()) {
+            } else if !outbound_tx.sender_protocol.check_tx_id(rr_tx_id) {
                 error!(target: LOG_TARGET, "Transaction Reply does not have the correct TxId");
             } else {
                 break;
             }
         }
+
+        let recipient_reply = reply.ok_or(TransactionServiceProtocolError::new(
+            self.id,
+            TransactionServiceError::TransactionCancelled,
+        ))?;
 
         outbound_tx
             .sender_protocol
@@ -398,5 +246,224 @@ where TBackend: TransactionBackend + Clone + 'static
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
         Ok(self.id)
+    }
+
+    /// Contains all the logic to initially send the transaction. This will only be done on the first time this Protocol
+    /// is executed.
+    async fn send_transaction(&mut self) -> Result<(), TransactionServiceProtocolError> {
+        if !self.sender_protocol.is_single_round_message_ready() {
+            error!(target: LOG_TARGET, "Sender Transaction Protocol is in an invalid state");
+            return Err(TransactionServiceProtocolError::new(
+                self.id,
+                TransactionServiceError::InvalidStateError,
+            ));
+        }
+
+        let msg = self
+            .sender_protocol
+            .build_single_round_message()
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+        let tx_id = msg.tx_id;
+
+        if tx_id != self.id {
+            return Err(TransactionServiceProtocolError::new(
+                self.id,
+                TransactionServiceError::InvalidStateError,
+            ));
+        }
+
+        let proto_message = proto::TransactionSenderMessage::single(msg.into());
+        let mut direct_send_success = false;
+        match self
+            .resources
+            .outbound_message_service
+            .send_direct(
+                self.dest_pubkey.clone(),
+                OutboundEncryption::None,
+                OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message.clone()),
+            )
+            .await
+        {
+            Ok(result) => match result.resolve_ok().await {
+                None => {
+                    let _ = self
+                        .resources
+                        .event_publisher
+                        .send(Arc::new(TransactionEvent::TransactionDirectSendResult(tx_id, false)));
+                    error!(target: LOG_TARGET, "Transaction Send directly to recipient failed");
+                },
+                Some(tags) if tags.len() == 1 => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Transaction (TxId: {}) Direct Send to {} successful with Message Tag: {:?}",
+                        tx_id,
+                        self.dest_pubkey,
+                        tags[0],
+                    );
+                    direct_send_success = true;
+                    let message_tag = tags[0];
+                    let event_publisher = self.resources.event_publisher.clone();
+                    // Launch a task to monitor if the message gets sent
+                    if let Some(mut message_event_receiver) = self.message_send_event_receiver.take() {
+                        tokio::spawn(async move {
+                            loop {
+                                let (received_tag, success) = match message_event_receiver.next().await {
+                                    Some(read_item) => match read_item {
+                                        Ok(event) => match &*event {
+                                            MessagingEvent::MessageSent(message_tag) => (message_tag.clone(), true),
+                                            MessagingEvent::SendMessageFailed(outbound_message, _reason) => {
+                                                (outbound_message.tag, false)
+                                            },
+                                            _ => continue,
+                                        },
+                                        Err(e) => {
+                                            error!(
+                                                target: LOG_TARGET,
+                                                "Error reading from message send event stream: {:?}", e
+                                            );
+                                            break;
+                                        },
+                                    },
+                                    None => {
+                                        error!(target: LOG_TARGET, "Error reading from message send event stream");
+                                        break;
+                                    },
+                                };
+                                if received_tag != message_tag {
+                                    continue;
+                                }
+                                let _ = event_publisher
+                                    .send(Arc::new(TransactionEvent::TransactionDirectSendResult(tx_id, success)));
+                                break;
+                            }
+                        });
+                    }
+                },
+                Some(_tags) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Direct Send process for TX_ID: {} was unsuccessful and no message was sent", tx_id
+                    );
+                    let _ = self
+                        .resources
+                        .event_publisher
+                        .send(Arc::new(TransactionEvent::TransactionDirectSendResult(tx_id, false)));
+                    error!(target: LOG_TARGET, "Transaction Send message failed to send");
+                },
+            },
+            Err(e) => {
+                error!(target: LOG_TARGET, "Direct Transaction Send failed: {:?}", e);
+                let _ = self
+                    .resources
+                    .event_publisher
+                    .send(Arc::new(TransactionEvent::TransactionDirectSendResult(tx_id, false)));
+            },
+        };
+
+        let mut store_and_forward_send_success = false;
+        match self
+            .resources
+            .outbound_message_service
+            .propagate(
+                NodeDestination::from(self.dest_pubkey.clone()),
+                OutboundEncryption::EncryptFor(Box::new(self.dest_pubkey.clone())),
+                vec![],
+                OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message),
+            )
+            .await
+        {
+            Ok(result) => match result.resolve_ok().await {
+                None => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Transaction Send (TxId: {}) to neighbours for Store and Forward failed", self.id
+                    );
+                },
+                Some(tags) if !tags.is_empty() => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Transaction (TxId: {}) Send to Neighbours for Store and Forward successful with Message \
+                         Tags: {:?}",
+                        tx_id,
+                        tags,
+                    );
+                    store_and_forward_send_success = true;
+                },
+                Some(_) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Transaction Send to Neighbours for Store and Forward for TX_ID: {} was unsuccessful and no \
+                         messages were sent",
+                        tx_id
+                    );
+                },
+            },
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction Send (TxId: {}) to neighbours for Store and Forward failed: {:?}", self.id, e
+                );
+            },
+        };
+
+        if !direct_send_success && !store_and_forward_send_success {
+            if let Err(e) = self.resources.output_manager_service.cancel_transaction(tx_id).await {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to Cancel TX_ID: {} after failed sending attempt with error {:?}", tx_id, e
+                );
+            };
+            let _ = self
+                .resources
+                .event_publisher
+                .send(Arc::new(TransactionEvent::TransactionStoreForwardSendResult(
+                    tx_id, false,
+                )));
+            return Err(TransactionServiceProtocolError::new(
+                self.id,
+                TransactionServiceError::OutboundSendFailure,
+            ));
+        }
+
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(tx_id)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+
+        let fee = self
+            .sender_protocol
+            .get_fee_amount()
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+        let outbound_tx = OutboundTransaction {
+            tx_id,
+            destination_public_key: self.dest_pubkey.clone(),
+            amount: self.amount,
+            fee,
+            sender_protocol: self.sender_protocol.clone(),
+            status: TransactionStatus::Pending,
+            message: self.message.clone(),
+            timestamp: Utc::now().naive_utc(),
+        };
+
+        self.resources
+            .db
+            .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+
+        info!(
+            target: LOG_TARGET,
+            "Pending Outbound Transaction TxId: {:?} added. Waiting for Reply or Cancellation", tx_id,
+        );
+
+        let _ = self
+            .resources
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionStoreForwardSendResult(
+                tx_id, true,
+            )));
+
+        Ok(())
     }
 }

@@ -83,6 +83,8 @@ pub enum TransactionServiceError {
     UnexpectedMempoolResponse,
     /// Base Node response key does not match on that is expected
     UnexpectedBaseNodeResponse,
+    /// The current transaction has been cancelled
+    TransactionCancelled,
     DhtOutboundError(DhtOutboundError),
     OutputManagerError(OutputManagerError),
     TransportChannelError(TransportChannelError),
