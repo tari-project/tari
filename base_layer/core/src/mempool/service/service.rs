@@ -432,7 +432,7 @@ async fn handle_outbound_request(
         .map_err(|e| MempoolServiceError::OutboundMessageService(e.to_string()))?;
 
     match send_result.resolve_ok().await {
-        Some(tags) if !tags.is_empty() => {
+        Some(send_states) if !send_states.is_empty() => {
             // Spawn timeout and wait for matching response to arrive
             waiting_requests.insert(request_key, Some(reply_tx))?;
             // Spawn timeout for waiting_request

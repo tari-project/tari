@@ -22,12 +22,16 @@
 
 use crate::{
     envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, Network, NodeDestination},
-    outbound::message_params::FinalSendMessageParams,
+    outbound::{message_params::FinalSendMessageParams, message_send_state::MessageSendStates},
 };
 use bytes::Bytes;
 use futures::channel::oneshot;
 use std::{fmt, fmt::Display};
-use tari_comms::{message::MessageTag, peer_manager::Peer, types::CommsPublicKey};
+use tari_comms::{
+    message::{MessageTag, MessagingReplyTx},
+    peer_manager::Peer,
+    types::CommsPublicKey,
+};
 use tari_crypto::tari_utilities::hex::Hex;
 
 /// Determines if an outbound message should be Encrypted and, if so, for which public key
@@ -77,7 +81,7 @@ impl Default for OutboundEncryption {
 pub enum SendMessageResponse {
     /// Returns the message tags which are queued for sending. These tags will be used in a subsequent OutboundEvent to
     /// indicate if the message succeeded/failed to send
-    Queued(Vec<MessageTag>),
+    Queued(MessageSendStates),
     /// A failure occurred when sending
     Failed,
     /// DHT Discovery has been initiated. The caller may wait on the receiver
@@ -92,19 +96,19 @@ impl SendMessageResponse {
     /// A `SendMessageResponse::Failed` will resolve immediately returning a `None`.
     /// If DHT discovery is initiated, this will resolve once discovery has completed, either
     /// succeeding (`Some(n)`) or failing (`None`).
-    pub async fn resolve_ok(self) -> Option<Vec<MessageTag>> {
+    pub async fn resolve_ok(self) -> Option<MessageSendStates> {
         use SendMessageResponse::*;
         match self {
-            Queued(tags) => Some(tags),
+            Queued(send_states) => Some(send_states),
             Failed => None,
             PendingDiscovery(rx) => rx.await.ok()?.queued_or_failed(),
         }
     }
 
-    fn queued_or_failed(self) -> Option<Vec<MessageTag>> {
+    fn queued_or_failed(self) -> Option<MessageSendStates> {
         use SendMessageResponse::*;
         match self {
-            Queued(tags) => Some(tags),
+            Queued(send_states) => Some(send_states),
             Failed => None,
             PendingDiscovery(_) => panic!("ok_or_failed() called on PendingDiscovery"),
         }
@@ -128,9 +132,40 @@ impl fmt::Display for DhtOutboundRequest {
     }
 }
 
+/// Wrapper struct for a oneshot reply sender. When this struct is dropped, an automatic fail is sent on the oneshot if
+/// a response has not already been sent.
+#[derive(Debug)]
+pub struct WrappedReplyTx(Option<MessagingReplyTx>);
+
+impl WrappedReplyTx {
+    pub fn into_inner(mut self) -> Option<MessagingReplyTx> {
+        self.0.take()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn none() -> Self {
+        Self(None)
+    }
+}
+
+impl From<MessagingReplyTx> for WrappedReplyTx {
+    fn from(inner: MessagingReplyTx) -> Self {
+        Self(Some(inner))
+    }
+}
+
+impl Drop for WrappedReplyTx {
+    fn drop(&mut self) {
+        // If this is dropped and the reply tx has not been used already, send an error reply
+        if let Some(reply_tx) = self.0.take() {
+            let _ = reply_tx.send(Err(()));
+        }
+    }
+}
+
 /// DhtOutboundMessage consists of the DHT and comms information required to
 /// send a message
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct DhtOutboundMessage {
     pub tag: MessageTag,
     pub destination_peer: Peer,
@@ -142,6 +177,7 @@ pub struct DhtOutboundMessage {
     pub include_origin: bool,
     pub destination: NodeDestination,
     pub dht_message_type: DhtMessageType,
+    pub reply_tx: WrappedReplyTx,
     pub network: Network,
     pub dht_flags: DhtMessageFlags,
 }

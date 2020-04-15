@@ -43,7 +43,7 @@ use tari_comms::{
 use tari_crypto::tari_utilities::ByteArray;
 use tower::{layer::Layer, Service, ServiceExt};
 
-const LOG_TARGET: &str = "comms::middleware::forward";
+const LOG_TARGET: &str = "comms::dht::storeforward::store";
 
 /// This layer is responsible for storing messages which have failed to decrypt
 pub struct StoreLayer {

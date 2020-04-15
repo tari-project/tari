@@ -135,38 +135,43 @@ impl OutboundMessaging {
 
     async fn start_forwarding_messages(mut self, substream: CommsSubstream) -> Result<(), MessagingProtocolError> {
         let mut framed = MessagingProtocol::framed(substream);
-        while let Some(out_msg) = self.request_rx.next().await {
+        while let Some(mut out_msg) = self.request_rx.next().await {
             trace!(
                 target: LOG_TARGET,
                 "Sending message ({} bytes) ({:?}) on outbound messaging substream",
                 out_msg.body.len(),
                 out_msg.tag,
             );
-            if let Err(err) = framed.send(out_msg.body.clone()).await {
-                debug!(
-                    target: LOG_TARGET,
-                    "[ThisNode={}] OutboundMessaging failed to send message to peer '{}' because '{}'",
-                    self.node_identity.node_id().short_str(),
-                    self.peer_node_id.short_str(),
-                    err
-                );
-                let _ = self
-                    .messaging_events_tx
-                    .send(MessagingEvent::SendMessageFailed(
-                        out_msg,
-                        SendFailReason::SubstreamSendFailed,
-                    ))
-                    .await;
-                // FATAL: Failed to send on the substream
-                self.flush_all_messages_to_failed_event(SendFailReason::SubstreamSendFailed)
-                    .await;
-                return Err(MessagingProtocolError::OutboundSubstreamFailure);
+            match framed.send(out_msg.body.clone()).await {
+                Ok(_) => {
+                    out_msg.reply_success();
+                    let _ = self
+                        .messaging_events_tx
+                        .send(MessagingEvent::MessageSent(out_msg.tag))
+                        .await;
+                },
+                Err(err) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "[ThisNode={}] OutboundMessaging failed to send message to peer '{}' because '{}'",
+                        self.node_identity.node_id().short_str(),
+                        self.peer_node_id.short_str(),
+                        err
+                    );
+                    out_msg.reply_fail();
+                    let _ = self
+                        .messaging_events_tx
+                        .send(MessagingEvent::SendMessageFailed(
+                            out_msg,
+                            SendFailReason::SubstreamSendFailed,
+                        ))
+                        .await;
+                    // FATAL: Failed to send on the substream
+                    self.flush_all_messages_to_failed_event(SendFailReason::SubstreamSendFailed)
+                        .await;
+                    return Err(MessagingProtocolError::OutboundSubstreamFailure);
+                },
             }
-
-            let _ = self
-                .messaging_events_tx
-                .send(MessagingEvent::MessageSent(out_msg.tag))
-                .await;
         }
 
         Ok(())

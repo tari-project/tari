@@ -494,7 +494,7 @@ mod test {
         task::spawn(async move {
             match outbound_rx.select_next_some().await {
                 DhtOutboundRequest::SendMessage(_, _, reply_tx) => {
-                    reply_tx.send(SendMessageResponse::Queued(vec![])).unwrap();
+                    reply_tx.send(SendMessageResponse::Queued(vec![].into())).unwrap();
                 },
             }
         });

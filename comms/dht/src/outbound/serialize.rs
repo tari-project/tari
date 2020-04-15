@@ -77,6 +77,7 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone 
                 network,
                 dht_flags,
                 origin_mac,
+                reply_tx,
                 ..
             } = message;
 
@@ -95,7 +96,12 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone 
             let body = Bytes::from(envelope.to_encoded_bytes());
 
             next_service
-                .oneshot(OutboundMessage::with_tag(tag, destination_peer.node_id, body))
+                .oneshot(OutboundMessage {
+                    tag,
+                    peer_node_id: destination_peer.node_id,
+                    reply_tx: reply_tx.into_inner(),
+                    body,
+                })
                 .await
         }
     }

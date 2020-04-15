@@ -32,7 +32,7 @@ macro_rules! unwrap_oms_send_msg {
     ($var:expr) => {
         unwrap_oms_send_msg!(
             $var,
-            reply_value = $crate::outbound::SendMessageResponse::Queued(vec![])
+            reply_value = $crate::outbound::SendMessageResponse::Queued(vec![].into())
         );
     };
 }

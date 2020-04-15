@@ -22,33 +22,54 @@
 
 use crate::{message::MessageTag, peer_manager::NodeId};
 use bytes::Bytes;
+use futures::channel::oneshot;
 use std::{
     fmt,
     fmt::{Error, Formatter},
 };
 
+pub type MessagingReplyTx = oneshot::Sender<Result<(), ()>>;
+pub type MessagingReplyRx = oneshot::Receiver<Result<(), ()>>;
+
 /// Contains details required to build a message envelope and send a message to a peer. OutboundMessage will not copy
 /// the body bytes when cloned and is 'cheap to clone(tm)'.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub struct OutboundMessage {
     pub tag: MessageTag,
     pub peer_node_id: NodeId,
     pub body: Bytes,
+    pub reply_tx: Option<MessagingReplyTx>,
 }
 
 impl OutboundMessage {
-    /// Create a new OutboundMessage
-    pub fn new(peer_node_id: NodeId, body: Bytes) -> OutboundMessage {
-        Self::with_tag(MessageTag::new(), peer_node_id, body)
-    }
-
-    /// Create a new OutboundMessage with the specified MessageTag
-    pub fn with_tag(tag: MessageTag, peer_node_id: NodeId, body: Bytes) -> OutboundMessage {
-        OutboundMessage {
-            tag,
+    pub fn new(peer_node_id: NodeId, body: Bytes) -> Self {
+        Self {
+            tag: MessageTag::new(),
             peer_node_id,
             body,
+            reply_tx: None,
         }
+    }
+
+    pub fn reply_fail(&mut self) {
+        self.oneshot_reply(Err(()));
+    }
+
+    pub fn reply_success(&mut self) {
+        self.oneshot_reply(Ok(()));
+    }
+
+    #[inline]
+    fn oneshot_reply(&mut self, result: Result<(), ()>) {
+        if let Some(reply_tx) = self.reply_tx.take() {
+            let _ = reply_tx.send(result);
+        }
+    }
+}
+
+impl Drop for OutboundMessage {
+    fn drop(&mut self) {
+        self.reply_fail();
     }
 }
 
@@ -73,7 +94,12 @@ mod test {
         static TEST_MSG: Bytes = Bytes::from_static(b"The ghost brigades");
         let node_id = NodeId::new();
         let tag = MessageTag::new();
-        let subject = OutboundMessage::with_tag(tag, node_id.clone(), TEST_MSG.clone());
+        let subject = OutboundMessage {
+            tag,
+            peer_node_id: node_id.clone(),
+            reply_tx: None,
+            body: TEST_MSG.clone(),
+        };
         assert_eq!(tag, subject.tag);
         assert_eq!(subject.body, TEST_MSG);
         assert_eq!(subject.peer_node_id, node_id);

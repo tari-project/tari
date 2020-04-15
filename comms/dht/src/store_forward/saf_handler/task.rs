@@ -61,7 +61,7 @@ use tari_comms::{
 use tari_crypto::tari_utilities::ByteArray;
 use tower::{Service, ServiceExt};
 
-const LOG_TARGET: &str = "comms::dht::store_forward";
+const LOG_TARGET: &str = "comms::dht::store_forward::handler";
 
 pub struct MessageHandlerTask<S> {
     config: DhtConfig,
