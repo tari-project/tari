@@ -41,6 +41,7 @@ use crate::{
     Wallet,
 };
 use chrono::{Duration as ChronoDuration, Utc};
+use futures::{FutureExt, StreamExt};
 use log::*;
 use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng, RngCore};
 use std::{
@@ -68,8 +69,7 @@ use tari_crypto::{
     tari_utilities::hex::Hex,
 };
 use tari_p2p::{initialization::CommsConfig, transport::TransportType};
-use tari_test_utils::collect_stream;
-use tokio::runtime::Runtime;
+use tokio::{runtime::Runtime, time::delay_for};
 
 // Used to generate test wallet data
 
@@ -208,6 +208,8 @@ pub fn generate_wallet_test_data<
     .collect();
     let mut message_index = 0;
 
+    let mut wallet_event_stream = wallet.transaction_service.get_event_stream_fused();
+
     // Generate contacts
     let mut generated_contacts = Vec::new();
     for i in 0..names.len() {
@@ -247,7 +249,7 @@ pub fn generate_wallet_test_data<
         generated_contacts[0].1.clone(),
         alice_temp_dir.clone(),
     );
-
+    let mut alice_event_stream = wallet_alice.transaction_service.get_event_stream_fused();
     for i in 0..20 {
         let (_ti, uo) = make_input(&mut OsRng.clone(), MicroTari::from(1_500_000 + i * 530_500), &factories);
         wallet_alice
@@ -267,6 +269,8 @@ pub fn generate_wallet_test_data<
         generated_contacts[1].1.clone(),
         bob_temp_dir.clone(),
     );
+    let mut bob_event_stream = wallet_bob.transaction_service.get_event_stream_fused();
+
     for i in 0..20 {
         let (_ti, uo) = make_input(
             &mut OsRng.clone(),
@@ -310,35 +314,54 @@ pub fn generate_wallet_test_data<
         .unwrap();
     info!(target: LOG_TARGET, "Starting to execute test transactions");
 
+    // Grab the first 2 outbound tx_ids for later
+    let mut outbound_tx_ids = Vec::new();
+
     // Completed TX
-    wallet.runtime.block_on(wallet.transaction_service.send_transaction(
+    let tx_id = wallet.runtime.block_on(wallet.transaction_service.send_transaction(
         contacts[0].public_key.clone(),
         MicroTari::from(1_100_000),
         MicroTari::from(100),
         messages[message_index].clone(),
     ))?;
-
+    outbound_tx_ids.push(tx_id.clone());
     message_index = (message_index + 1) % messages.len();
-    wallet.runtime.block_on(wallet.transaction_service.send_transaction(
+
+    let tx_id = wallet.runtime.block_on(wallet.transaction_service.send_transaction(
         contacts[0].public_key.clone(),
         MicroTari::from(2_010_500),
         MicroTari::from(110),
         messages[message_index].clone(),
     ))?;
+    outbound_tx_ids.push(tx_id.clone());
     message_index = (message_index + 1) % messages.len();
 
-    // Grab the first 2 outbound tx_ids for later
-    let mut outbound_tx_ids = Vec::new();
-    let wallet_event_stream = wallet.transaction_service.get_event_stream_fused();
-    let wallet_stream = wallet
-        .runtime
-        .block_on(async { collect_stream!(wallet_event_stream, take = 4, timeout = Duration::from_secs(60)) });
-    for v in wallet_stream {
-        if let TransactionEvent::TransactionSendResult(tx_id, _) = &*v {
-            outbound_tx_ids.push(tx_id.clone());
+    wallet_alice.runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let mut count = 0;
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                    match &*event.unwrap() {
+                        TransactionEvent::ReceivedTransaction(_) => {
+                            count +=1;
+                        },
+                        TransactionEvent::ReceivedFinalizedTransaction(_) => {
+                            count +=1;
+                        },
+                        _ => (),
+                    }
+                    if count >=4 {
+                        break;
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
         }
-    }
-    assert_eq!(outbound_tx_ids.len(), 2);
+        assert!(count >= 4, "Event waiting timed out before receiving expected events 1");
+    });
 
     wallet.runtime.block_on(wallet.transaction_service.send_transaction(
         contacts[0].public_key.clone(),
@@ -419,30 +442,59 @@ pub fn generate_wallet_test_data<
     ));
     message_index = (message_index + 1) % messages.len();
 
-    // Make sure that the messages have been received by the alice and bob wallets before they start sending messages so
-    // that they have the wallet in their peer_managers
-    let alice_event_stream = wallet_alice.transaction_service.get_event_stream_fused();
-    let bob_event_stream = wallet_bob.transaction_service.get_event_stream_fused();
+    wallet.runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let mut count = 0;
+        loop {
+            futures::select! {
+                event = wallet_event_stream.select_next_some() => {
+                    match &*event.unwrap() {
+                        TransactionEvent::TransactionSendResult(_,_) => {
+                            count+=1;
+                            if count >= 10 {
+                                break;
+                            }
+                        },
+                        _ => (),
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert!(
+            count >= 10,
+            "Event waiting timed out before receiving expected events 2"
+        );
+    });
 
-    let _alice_stream = wallet_alice
-        .runtime
-        .block_on(async { collect_stream!(alice_event_stream, take = 12, timeout = Duration::from_secs(60)) });
-
-    let _bob_stream = wallet_bob
-        .runtime
-        .block_on(async { collect_stream!(bob_event_stream, take = 8, timeout = Duration::from_secs(60)) });
-    // Make sure that the messages have been received by the alice and bob wallets before they start sending messages so
-    // that they have the wallet in their peer_managers
-    let alice_event_stream = wallet_alice.transaction_service.get_event_stream_fused();
-    let bob_event_stream = wallet_bob.transaction_service.get_event_stream_fused();
-
-    let _alice_stream = wallet_bob
-        .runtime
-        .block_on(async { collect_stream!(alice_event_stream, take = 6, timeout = Duration::from_secs(60)) });
-
-    let _bob_stream = wallet_bob
-        .runtime
-        .block_on(async { collect_stream!(bob_event_stream, take = 2, timeout = Duration::from_secs(60)) });
+    wallet_bob.runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let mut count = 0;
+        loop {
+            futures::select! {
+                event = bob_event_stream.select_next_some() => {
+                    match &*event.unwrap() {
+                        TransactionEvent::ReceivedTransaction(_) => {
+                            count+=1;
+                        },
+                        TransactionEvent::ReceivedFinalizedTransaction(_) => {
+                            count+=1;
+                        },
+                        _ => (),
+                    }
+                    if count >= 8 {
+                        break;
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert!(count >= 8, "Event waiting timed out before receiving expected events 3");
+    });
 
     // Pending Inbound
     wallet_alice
@@ -494,10 +546,30 @@ pub fn generate_wallet_test_data<
             messages[message_index].clone(),
         ))?;
 
-    let wallet_event_stream = wallet.transaction_service.get_event_stream_fused();
-    let _wallet_stream = wallet
-        .runtime
-        .block_on(async { collect_stream!(wallet_event_stream, take = 30, timeout = Duration::from_secs(120)) });
+    wallet.runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let mut count = 0;
+        loop {
+            futures::select! {
+                event = wallet_event_stream.select_next_some() => {
+                    match &*event.unwrap() {
+                        TransactionEvent::ReceivedFinalizedTransaction(_) => {
+                            count+=1;
+                            if count >= 5 {
+                                break;
+                            }
+                        },
+                        _ => (),
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert!(count >= 5, "Event waiting timed out before receiving expected events 4");
+    });
+
     let txs = wallet
         .runtime
         .block_on(wallet.transaction_service.get_completed_transactions())

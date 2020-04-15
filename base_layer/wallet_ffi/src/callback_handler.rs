@@ -55,7 +55,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     output_manager_service::{handle::OutputManagerEvent, TxId},
     transaction_service::{
-        handle::TransactionEvent,
+        handle::{TransactionEvent, TransactionEventReceiver},
         storage::database::{CompletedTransaction, InboundTransaction, TransactionBackend, TransactionDatabase},
     },
 };
@@ -73,7 +73,7 @@ where TBackend: TransactionBackend + 'static
     callback_discovery_process_complete: unsafe extern "C" fn(TxId, bool),
     callback_base_node_sync_complete: unsafe extern "C" fn(TxId, bool),
     db: TransactionDatabase<TBackend>,
-    transaction_service_event_stream: Fuse<Subscriber<TransactionEvent>>,
+    transaction_service_event_stream: Fuse<TransactionEventReceiver>,
     output_manager_service_event_stream: Fuse<Subscriber<OutputManagerEvent>>,
     shutdown_signal: Option<ShutdownSignal>,
 }
@@ -84,7 +84,7 @@ where TBackend: TransactionBackend + 'static
 {
     pub fn new(
         db: TransactionDatabase<TBackend>,
-        transaction_service_event_stream: Fuse<Subscriber<TransactionEvent>>,
+        transaction_service_event_stream: Fuse<TransactionEventReceiver>,
         output_manager_service_event_stream: Fuse<Subscriber<OutputManagerEvent>>,
         shutdown_signal: ShutdownSignal,
         callback_received_transaction: unsafe extern "C" fn(*mut InboundTransaction),
@@ -150,38 +150,43 @@ where TBackend: TransactionBackend + 'static
 
         loop {
             futures::select! {
-                msg = self.transaction_service_event_stream.select_next_some() => {
-                    trace!(target: LOG_TARGET, "Transaction Service Callback Handler event {:?}", msg);
-                    match (*msg).clone() {
-                        TransactionEvent::ReceivedTransaction(tx_id) => {
-                            self.receive_transaction_event(tx_id).await;
-                        },
-                        TransactionEvent::ReceivedTransactionReply(tx_id) => {
-                            self.receive_transaction_reply_event(tx_id).await;
-                        },
-                        TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
-                            self.receive_finalized_transaction_event(tx_id).await;
-                        },
-                        TransactionEvent::TransactionSendDiscoveryComplete(tx_id, result) => {
-                            // If this event result is false we will return that result via the callback as
-                            // no further action will be taken on this send attempt. However if it is true
-                            // then we must wait for a `TransactionSendResult` which
-                            // will tell us the final result of the send
-                            if !result {
-                                self.receive_discovery_process_result(tx_id, result);
+                result = self.transaction_service_event_stream.select_next_some() => {
+                    match result {
+                        Ok(msg) => {
+                            trace!(target: LOG_TARGET, "Transaction Service Callback Handler event {:?}", msg);
+                            match (*msg).clone() {
+                                TransactionEvent::ReceivedTransaction(tx_id) => {
+                                    self.receive_transaction_event(tx_id).await;
+                                },
+                                TransactionEvent::ReceivedTransactionReply(tx_id) => {
+                                    self.receive_transaction_reply_event(tx_id).await;
+                                },
+                                TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
+                                    self.receive_finalized_transaction_event(tx_id).await;
+                                },
+                                TransactionEvent::TransactionSendDiscoveryComplete(tx_id, result) => {
+                                    // If this event result is false we will return that result via the callback as
+                                    // no further action will be taken on this send attempt. However if it is true
+                                    // then we must wait for a `TransactionSendResult` which
+                                    // will tell us the final result of the send
+                                    if !result {
+                                        self.receive_discovery_process_result(tx_id, result);
+                                    }
+                                },
+                                TransactionEvent::TransactionBroadcast(tx_id) => {
+                                    self.receive_transaction_broadcast_event(tx_id).await;
+                                },
+                                TransactionEvent::TransactionMined(tx_id) => {
+                                    self.receive_transaction_mined_event(tx_id).await;
+                                },
+                                TransactionEvent::TransactionSendResult(tx_id, result) => {
+                                    self.receive_discovery_process_result(tx_id, result);
+                                },
+                                /// Only the above variants are mapped to callbacks
+                                _ => (),
                             }
                         },
-                        TransactionEvent::TransactionBroadcast(tx_id) => {
-                            self.receive_transaction_broadcast_event(tx_id).await;
-                        },
-                        TransactionEvent::TransactionMined(tx_id) => {
-                            self.receive_transaction_mined_event(tx_id).await;
-                        },
-                        TransactionEvent::TransactionSendResult(tx_id, result) => {
-                            self.receive_discovery_process_result(tx_id, result);
-                        },
-                        /// Only the above variants are mapped to callbacks
-                        _ => (),
+                        Err(e) => error!(target: LOG_TARGET, "Error reading from Transaction Service event broadcast channel"),
                     }
                 },
                 msg = self.output_manager_service_event_stream.select_next_some() => {

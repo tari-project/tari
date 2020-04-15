@@ -1150,7 +1150,7 @@ async fn register_wallet_services(
         .add_initializer(TransactionServiceInitializer::new(
             TransactionServiceConfig::default(),
             subscription_factory,
-            wallet_comms.subscribe_messaging_events(),
+            wallet_comms.message_event_sender(),
             TransactionServiceSqliteDatabase::new(wallet_db_conn.clone()),
             wallet_comms.node_identity(),
             factories,

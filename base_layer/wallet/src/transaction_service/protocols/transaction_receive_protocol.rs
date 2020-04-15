@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,23 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node::RequestKey,
-    mempool::{StateResponse, StatsResponse, TxStorageResponse},
-};
-use serde::{Deserialize, Serialize};
-
-/// API Response enum for Mempool responses.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum MempoolResponse {
-    Stats(StatsResponse),
-    State(StateResponse),
-    TxStorage(TxStorageResponse),
-}
-
-/// Response type for a received MempoolService requests
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct MempoolServiceResponse {
-    pub request_key: RequestKey,
-    pub response: MempoolResponse,
-}
+// pub struct TransactionReceiveProtocol {
+//     id: u64,
+//     db: TransactionDatabase<TBackend>,
+//     output_manager_service: OutputManagerHandle,
+//     outbound_message_service: OutboundMessageRequester,
+//     event_publisher: Publisher<TransactionEvent>,
+//     node_identity: Arc<NodeIdentity>,
+//     factories: CryptoFactories,
+//     transaction_finalized_channel: Receiver<Transaction>,
+// }

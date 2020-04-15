@@ -23,6 +23,9 @@
 use futures::{Stream, StreamExt};
 use std::sync::Arc;
 use tari_wallet::transaction_service::handle::TransactionEvent;
+use tokio::sync::broadcast::RecvError;
+
+pub const LOG_TARGET: &str = "base_node::app::utils";
 
 /// Asynchronously processes the event stream checking to see if the given tx_id is present or not
 /// ## Parameters
@@ -32,15 +35,21 @@ use tari_wallet::transaction_service::handle::TransactionEvent;
 /// ## Returns
 /// True if found, false otherwise
 pub async fn wait_for_discovery_transaction_event<S>(mut event_stream: S, expected_tx_id: u64) -> bool
-where S: Stream<Item = Arc<TransactionEvent>> + Unpin {
+where S: Stream<Item = Result<Arc<TransactionEvent>, RecvError>> + Unpin {
     loop {
         match event_stream.next().await {
-            Some(event) => {
-                if let TransactionEvent::TransactionSendDiscoveryComplete(tx_id, is_success) = &*event {
-                    if *tx_id == expected_tx_id {
-                        break *is_success;
+            Some(event_result) => match event_result {
+                Ok(event) => {
+                    if let TransactionEvent::TransactionSendDiscoveryComplete(tx_id, is_success) = &*event {
+                        if *tx_id == expected_tx_id {
+                            break *is_success;
+                        }
                     }
-                }
+                },
+                Err(e) => {
+                    log::error!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
+                    break false;
+                },
             },
             None => {
                 break false;

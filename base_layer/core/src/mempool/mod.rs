@@ -66,7 +66,7 @@ use core::fmt::{Display, Error, Formatter};
 use serde::{Deserialize, Serialize};
 use tari_crypto::tari_utilities::hex::Hex;
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StatsResponse {
     pub total_txs: usize,
     pub unconfirmed_txs: usize,
@@ -92,7 +92,7 @@ impl Display for StatsResponse {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StateResponse {
     pub unconfirmed_pool: Vec<Signature>,
     pub orphan_pool: Vec<Signature>,
@@ -123,7 +123,7 @@ impl Display for StateResponse {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum TxStorageResponse {
     UnconfirmedPool,
     OrphanPool,
