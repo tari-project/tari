@@ -7,6 +7,8 @@ pub struct StoredMessagesRequest {
     pub since: ::std::option::Option<::prost_types::Timestamp>,
     #[prost(uint32, tag = "2")]
     pub request_id: u32,
+    #[prost(bytes, tag = "3")]
+    pub dist_threshold: std::vec::Vec<u8>,
 }
 /// Storage for a single message envelope, including the date and time when the element was stored
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -34,13 +36,15 @@ pub mod stored_messages_response {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
     #[repr(i32)]
     pub enum SafResponseType {
-        /// All applicable messages
-        General = 0,
-        /// Send messages explicitly addressed to the requesting node or within the requesting node's region
-        ExplicitlyAddressed = 1,
-        /// Send Discovery messages that could be for the requester
-        Discovery = 2,
-        /// Send Join messages that the requester could be interested in
-        Join = 3,
+        /// Messages for the requested public key or node ID
+        ForMe = 0,
+        /// Discovery messages that could be for the requester
+        Discovery = 1,
+        /// Join messages that the requester could be interested in
+        Join = 2,
+        /// Messages without an explicit destination and with an unidentified encrypted source
+        Anonymous = 3,
+        /// Messages within the requesting node's region
+        InRegion = 4,
     }
 }

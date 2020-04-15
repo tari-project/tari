@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{consts::DHT_ENVELOPE_HEADER_VERSION, proto::envelope::DhtOrigin};
 use bitflags::bitflags;
 use derive_error::Error;
 use serde::{Deserialize, Serialize};
@@ -29,11 +28,12 @@ use std::{
     fmt,
     fmt::Display,
 };
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, utils::signature};
-use tari_crypto::tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
+use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 
 // Re-export applicable protos
 pub use crate::proto::envelope::{dht_header::Destination, DhtEnvelope, DhtHeader, DhtMessageType, Network};
+use bytes::Bytes;
 
 #[derive(Debug, Error)]
 pub enum DhtMessageError {
@@ -47,6 +47,8 @@ pub enum DhtMessageError {
     InvalidNetwork,
     /// Invalid or unrecognised DHT message flags
     InvalidMessageFlags,
+    /// Invalid ephemeral public key
+    InvalidEphemeralPublicKey,
     /// Header was omitted from the message
     HeaderOmitted,
 }
@@ -103,71 +105,27 @@ impl DhtMessageType {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
-pub struct DhtMessageOrigin {
-    pub public_key: CommsPublicKey,
-    pub signature: Vec<u8>,
-}
-
-impl fmt::Debug for DhtMessageOrigin {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("DhtMessageOrigin")
-            .field("public_key", &self.public_key.to_hex())
-            .field("signature", &self.signature.to_hex())
-            .finish()
-    }
-}
-
-impl TryFrom<DhtOrigin> for DhtMessageOrigin {
-    type Error = DhtMessageError;
-
-    fn try_from(value: DhtOrigin) -> Result<Self, Self::Error> {
-        Ok(Self {
-            public_key: CommsPublicKey::from_bytes(&value.public_key).map_err(|_| DhtMessageError::InvalidOrigin)?,
-            signature: value.signature,
-        })
-    }
-}
-
-impl From<DhtMessageOrigin> for DhtOrigin {
-    fn from(value: DhtMessageOrigin) -> Self {
-        Self {
-            public_key: value.public_key.to_vec(),
-            signature: value.signature,
-        }
-    }
-}
-
 /// This struct mirrors the protobuf version of DhtHeader but is more ergonomic to work with.
 /// It is preferable to not to expose the generated prost structs publicly.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DhtMessageHeader {
     pub version: u32,
     pub destination: NodeDestination,
-    /// Origin of the message. This can refer to the same peer that sent the message
-    /// or another peer if the message should be forwarded.
-    pub origin: Option<DhtMessageOrigin>,
+    /// Encoded DhtOrigin. This can refer to the same peer that sent the message
+    /// or another peer if the message is being propagated.
+    pub origin_mac: Vec<u8>,
+    pub ephemeral_public_key: Option<CommsPublicKey>,
     pub message_type: DhtMessageType,
     pub network: Network,
     pub flags: DhtMessageFlags,
 }
 
 impl DhtMessageHeader {
-    pub fn new(
-        destination: NodeDestination,
-        message_type: DhtMessageType,
-        origin: Option<DhtMessageOrigin>,
-        network: Network,
-        flags: DhtMessageFlags,
-    ) -> Self
-    {
-        Self {
-            version: DHT_ENVELOPE_HEADER_VERSION,
-            destination,
-            origin,
-            message_type,
-            network,
-            flags,
+    pub fn is_valid(&self) -> bool {
+        if self.flags.contains(DhtMessageFlags::ENCRYPTED) {
+            !self.origin_mac.is_empty() && self.ephemeral_public_key.is_some()
+        } else {
+            true
         }
     }
 }
@@ -176,8 +134,8 @@ impl Display for DhtMessageHeader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "DhtMessageHeader (Dest:{}, Origin:{:?}, Type:{:?}, Network:{:?}, Flags:{:?})",
-            self.destination, self.origin, self.message_type, self.network, self.flags
+            "DhtMessageHeader (Dest:{}, Type:{:?}, Network:{:?}, Flags:{:?})",
+            self.destination, self.message_type, self.network, self.flags
         )
     }
 }
@@ -193,15 +151,20 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
             .map(Option::unwrap)
             .ok_or_else(|| DhtMessageError::InvalidDestination)?;
 
-        let origin = match header.origin {
-            Some(origin) => Some(origin.try_into()?),
-            None => None,
+        let ephemeral_public_key = if header.ephemeral_public_key.is_empty() {
+            None
+        } else {
+            Some(
+                CommsPublicKey::from_bytes(&header.ephemeral_public_key)
+                    .map_err(|_| DhtMessageError::InvalidEphemeralPublicKey)?,
+            )
         };
 
         Ok(Self {
             version: header.version,
             destination,
-            origin,
+            origin_mac: header.origin_mac,
+            ephemeral_public_key,
             message_type: DhtMessageType::from_i32(header.message_type)
                 .ok_or_else(|| DhtMessageError::InvalidMessageType)?,
             network: Network::from_i32(header.network).ok_or_else(|| DhtMessageError::InvalidNetwork)?,
@@ -225,7 +188,12 @@ impl From<DhtMessageHeader> for DhtHeader {
     fn from(header: DhtMessageHeader) -> Self {
         Self {
             version: header.version,
-            origin: header.origin.map(Into::into),
+            ephemeral_public_key: header
+                .ephemeral_public_key
+                .as_ref()
+                .map(ByteArray::to_vec)
+                .unwrap_or_else(Vec::new),
+            origin_mac: header.origin_mac,
             destination: Some(header.destination.into()),
             message_type: header.message_type as i32,
             network: header.network as i32,
@@ -235,43 +203,11 @@ impl From<DhtMessageHeader> for DhtHeader {
 }
 
 impl DhtEnvelope {
-    pub fn new(header: DhtHeader, body: Vec<u8>) -> Self {
+    pub fn new(header: DhtHeader, body: Bytes) -> Self {
         Self {
             header: Some(header),
-            body,
+            body: body.to_vec(),
         }
-    }
-
-    /// Returns true if the header and origin are present, otherwise false
-    pub fn has_origin(&self) -> bool {
-        self.header.as_ref().map(|h| h.origin.is_some()).unwrap_or(false)
-    }
-
-    /// Verifies the origin signature and returns true if it is valid.
-    ///
-    /// This method panics if called on an envelope without an origin. This should be checked before calling this
-    /// function by using the `DhtEnvelope::has_origin` method
-    pub fn is_origin_signature_valid(&self) -> bool {
-        self.header
-            .as_ref()
-            .and_then(|header| {
-                let origin = header
-                    .origin
-                    .as_ref()
-                    .expect("call is_origin_signature_valid on envelope without origin");
-
-                CommsPublicKey::from_bytes(&origin.public_key)
-                    .map(|pk| (pk, &origin.signature))
-                    .ok()
-            })
-            .map(|(origin_public_key, origin_signature)| {
-                match signature::verify(&origin_public_key, origin_signature, &self.body) {
-                    Ok(is_valid) => is_valid,
-                    // error means that the signature could not deserialize, so is invalid
-                    Err(_) => false,
-                }
-            })
-            .unwrap_or(false)
     }
 }
 

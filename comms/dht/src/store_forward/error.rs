@@ -36,9 +36,11 @@ pub enum StoreAndForwardError {
     /// Received stored message has an invalid destination
     InvalidDestination,
     /// Received stored message has an invalid origin signature
-    InvalidSignature,
+    InvalidOriginMac,
     /// Invalid envelope body
     InvalidEnvelopeBody,
+    /// DHT header is invalid
+    InvalidDhtHeader,
     /// Received stored message which is not encrypted
     StoredMessageNotEncrypted,
     /// Unable to decrypt received stored message
@@ -69,4 +71,6 @@ pub enum StoreAndForwardError {
     /// The envelope version is invalid
     InvalidEnvelopeVersion,
     MalformedNodeId(ByteArrayError),
+    /// NodeDistance threshold was invalid
+    InvalidNodeDistanceThreshold,
 }

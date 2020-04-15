@@ -88,12 +88,14 @@ impl<TSink> InboundDomainConnector<TSink> {
         let DecryptedDhtMessage {
             source_peer,
             dht_header,
+            authenticated_origin,
             ..
         } = inbound_message;
 
         let peer_message = PeerMessage {
             message_header: header,
             source_peer: Clone::clone(&*source_peer),
+            authenticated_origin,
             dht_header,
             body: msg_bytes,
         };
@@ -141,21 +143,17 @@ mod test {
     use crate::test_utils::{make_dht_inbound_message, make_node_identity};
     use futures::{channel::mpsc, executor::block_on, StreamExt};
     use tari_comms::{message::MessageExt, wrap_in_envelope_body};
-    use tari_comms_dht::{domain_message::MessageHeader, envelope::DhtMessageFlags};
+    use tari_comms_dht::domain_message::MessageHeader;
     use tower::ServiceExt;
 
     #[tokio_macros::test_basic]
     async fn handle_message() {
         let (tx, mut rx) = mpsc::channel(1);
         let header = MessageHeader::new(123);
-        let msg = wrap_in_envelope_body!(header, b"my message".to_vec()).unwrap();
+        let msg = wrap_in_envelope_body!(header, b"my message".to_vec());
 
-        let inbound_message = make_dht_inbound_message(
-            &make_node_identity(),
-            msg.to_encoded_bytes().unwrap(),
-            DhtMessageFlags::empty(),
-        );
-        let decrypted = DecryptedDhtMessage::succeeded(msg, inbound_message);
+        let inbound_message = make_dht_inbound_message(&make_node_identity(), msg.to_encoded_bytes());
+        let decrypted = DecryptedDhtMessage::succeeded(msg, None, inbound_message);
         InboundDomainConnector::new(tx).oneshot(decrypted).await.unwrap();
 
         let peer_message = block_on(rx.next()).unwrap();
@@ -167,14 +165,10 @@ mod test {
     async fn send_on_sink() {
         let (tx, mut rx) = mpsc::channel(1);
         let header = MessageHeader::new(123);
-        let msg = wrap_in_envelope_body!(header, b"my message".to_vec()).unwrap();
+        let msg = wrap_in_envelope_body!(header, b"my message".to_vec());
 
-        let inbound_message = make_dht_inbound_message(
-            &make_node_identity(),
-            msg.to_encoded_bytes().unwrap(),
-            DhtMessageFlags::empty(),
-        );
-        let decrypted = DecryptedDhtMessage::succeeded(msg, inbound_message);
+        let inbound_message = make_dht_inbound_message(&make_node_identity(), msg.to_encoded_bytes());
+        let decrypted = DecryptedDhtMessage::succeeded(msg, None, inbound_message);
 
         InboundDomainConnector::new(tx).send(decrypted).await.unwrap();
 
@@ -187,14 +181,10 @@ mod test {
     async fn handle_message_fail_deserialize() {
         let (tx, mut rx) = mpsc::channel(1);
         let header = b"dodgy header".to_vec();
-        let msg = wrap_in_envelope_body!(header, b"message".to_vec()).unwrap();
+        let msg = wrap_in_envelope_body!(header, b"message".to_vec());
 
-        let inbound_message = make_dht_inbound_message(
-            &make_node_identity(),
-            msg.to_encoded_bytes().unwrap(),
-            DhtMessageFlags::empty(),
-        );
-        let decrypted = DecryptedDhtMessage::succeeded(msg, inbound_message);
+        let inbound_message = make_dht_inbound_message(&make_node_identity(), msg.to_encoded_bytes());
+        let decrypted = DecryptedDhtMessage::succeeded(msg, None, inbound_message);
         InboundDomainConnector::new(tx).oneshot(decrypted).await.unwrap_err();
 
         assert!(rx.try_next().unwrap().is_none());
@@ -206,13 +196,9 @@ mod test {
         // from it's call function
         let (tx, _) = mpsc::channel(1);
         let header = MessageHeader::new(123);
-        let msg = wrap_in_envelope_body!(header, b"my message".to_vec()).unwrap();
-        let inbound_message = make_dht_inbound_message(
-            &make_node_identity(),
-            msg.to_encoded_bytes().unwrap(),
-            DhtMessageFlags::empty(),
-        );
-        let decrypted = DecryptedDhtMessage::succeeded(msg, inbound_message);
+        let msg = wrap_in_envelope_body!(header, b"my message".to_vec());
+        let inbound_message = make_dht_inbound_message(&make_node_identity(), msg.to_encoded_bytes());
+        let decrypted = DecryptedDhtMessage::succeeded(msg, None, inbound_message);
         let result = InboundDomainConnector::new(tx).oneshot(decrypted).await;
         assert!(result.is_err());
     }

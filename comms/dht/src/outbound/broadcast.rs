@@ -25,7 +25,7 @@ use crate::{
     actor::DhtRequester,
     broadcast_strategy::BroadcastStrategy,
     discovery::DhtDiscoveryRequester,
-    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageOrigin, NodeDestination},
+    envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     outbound::{
         message::{DhtOutboundMessage, OutboundEncryption},
         message_params::FinalSendMessageParams,
@@ -33,6 +33,7 @@ use crate::{
     },
     proto::envelope::{DhtMessageType, Network},
 };
+use bytes::Bytes;
 use futures::{
     channel::oneshot,
     future,
@@ -43,7 +44,8 @@ use futures::{
 use log::*;
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
-    peer_manager::{NodeId, NodeIdentity, Peer},
+    message::MessageTag,
+    peer_manager::{NodeIdentity, Peer},
     pipeline::PipelineError,
     types::CommsPublicKey,
 };
@@ -216,10 +218,11 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     async fn handle_send_message(
         &mut self,
         params: FinalSendMessageParams,
-        body: Vec<u8>,
+        body: Bytes,
         reply_tx: oneshot::Sender<SendMessageResponse>,
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
     {
+        trace!(target: LOG_TARGET, "Send params: {:?}", params);
         if params
             .broadcast_strategy
             .direct_public_key()
@@ -344,24 +347,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             dest_public_key
         );
 
-        // TODO: This works because we know that all non-DAN node IDs are/should be derived from the public key.
-        //       Once the DAN launches, this may not be the case and we'll need to query the blockchain for the node id
-        let derived_node_id = NodeId::from_key(&*dest_public_key).ok();
-
-        // TODO: Target a general region instead of the actual destination node id
-        let regional_destination = derived_node_id
-            .as_ref()
-            .map(Clone::clone)
-            .map(Box::new)
-            .map(NodeDestination::NodeId)
-            .unwrap_or_else(|| NodeDestination::Unknown);
-
         // Peer not found, let's try and discover it
-        match self
-            .dht_discovery_requester
-            .discover_peer(dest_public_key, derived_node_id, regional_destination)
-            .await
-        {
+        match self.dht_discovery_requester.discover_peer(dest_public_key).await {
             // Peer found!
             Ok(peer) => {
                 if peer.is_banned() {
@@ -397,42 +384,28 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         custom_header: Option<DhtMessageHeader>,
         extra_flags: DhtMessageFlags,
         force_origin: bool,
-        body: Vec<u8>,
+        body: Bytes,
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
     {
         let dht_flags = encryption.flags() | extra_flags;
 
-        // Create a DHT header
-        let dht_header = custom_header
-            .or_else(|| {
-                // The origin is specified if encryption is turned on, otherwise it is not
-                let origin = if force_origin || encryption.is_encrypt() {
-                    Some(DhtMessageOrigin {
-                        // Origin public key used to identify the origin and verify the signature
-                        public_key: self.node_identity.public_key().clone(),
-                        // Signing will happen later in the pipeline (SerializeMiddleware), left empty to prevent double
-                        // work
-                        signature: Vec::new(),
-                    })
-                } else {
-                    None
-                };
-
-                Some(DhtMessageHeader::new(
-                    // Final destination for this message
-                    destination,
-                    dht_message_type,
-                    origin,
-                    self.target_network,
-                    dht_flags,
-                ))
-            })
-            .expect("always Some");
-
-        // Construct a MessageEnvelope for each recipient
+        // Construct a DhtOutboundMessage for each recipient
         let messages = selected_peers
             .into_iter()
-            .map(|peer| DhtOutboundMessage::new(peer, dht_header.clone(), encryption.clone(), body.clone()))
+            .map(|peer| DhtOutboundMessage {
+                tag: MessageTag::new(),
+                destination_peer: peer,
+                destination: destination.clone(),
+                dht_message_type,
+                network: self.target_network,
+                dht_flags,
+                custom_header: custom_header.clone(),
+                include_origin: force_origin || encryption.is_encrypt(),
+                encryption: encryption.clone(),
+                body: body.clone(),
+                ephemeral_public_key: None,
+                origin_mac: None,
+            })
             .collect::<Vec<_>>();
 
         Ok(messages)
@@ -518,7 +491,7 @@ mod test {
 
         rt.block_on(service.call(DhtOutboundRequest::SendMessage(
             Box::new(SendMessageParams::new().flood().finish()),
-            "custom_msg".as_bytes().to_vec(),
+            "custom_msg".as_bytes().into(),
             reply_tx,
         )))
         .unwrap();
@@ -568,7 +541,7 @@ mod test {
                         .with_discovery(false)
                         .finish(),
                 ),
-                "custom_msg".as_bytes().to_vec(),
+                Bytes::from_static(b"custom_msg"),
                 reply_tx,
             )),
         )
@@ -619,7 +592,7 @@ mod test {
                         .direct_public_key(peer_to_discover.public_key.clone())
                         .finish(),
                 ),
-                "custom_msg".as_bytes().to_vec(),
+                "custom_msg".as_bytes().into(),
                 reply_tx,
             )),
         )

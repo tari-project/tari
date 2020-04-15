@@ -172,8 +172,9 @@ where
             .checkpoints
             .len()
             .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
-        if cp_count < self.base_cp_index {
-            // Checkpoint before the base MMR index, this will require a full reconstruction of the cache.
+        if cp_count <= self.base_cp_index {
+            // Checkpoint before or the same as the base MMR index, this will require a full reconstruction of the
+            // cache.
             self.create_base_mmr()?;
             self.create_curr_mmr()?;
         } else if cp_count < self.curr_cp_index {

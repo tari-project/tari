@@ -31,22 +31,10 @@ macro_rules! wrap_in_envelope_body {
     ($($e:expr),+) => {{
         use $crate::message::MessageExt;
         let mut envelope_body = $crate::message::EnvelopeBody::new();
-        let mut error = None;
         $(
-            match $e.to_encoded_bytes() {
-                Ok(bytes) => envelope_body.push_part(bytes),
-                Err(err) => {
-                    if error.is_none() {
-                        error = Some(err);
-                    }
-                }
-            }
+            envelope_body.push_part($e.to_encoded_bytes());
         )*
-
-        match error {
-            Some(err) => Err(err),
-            None => Ok(envelope_body),
-        }
+        envelope_body
     }}
 }
 

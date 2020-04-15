@@ -55,6 +55,7 @@ impl StoredMessagesRequest {
         Self {
             since: None,
             request_id: OsRng.next_u32(),
+            dist_threshold: Vec::new(),
         }
     }
 
@@ -62,17 +63,18 @@ impl StoredMessagesRequest {
         Self {
             since: Some(datetime_to_timestamp(since)),
             request_id: OsRng.next_u32(),
+            dist_threshold: Vec::new(),
         }
     }
 }
 
 #[cfg(test)]
 impl StoredMessage {
-    pub fn new(version: u32, dht_header: crate::envelope::DhtMessageHeader, encrypted_body: Vec<u8>) -> Self {
+    pub fn new(version: u32, dht_header: crate::envelope::DhtMessageHeader, body: Vec<u8>) -> Self {
         Self {
             version,
             dht_header: Some(dht_header.into()),
-            body: encrypted_body,
+            body,
             stored_at: Some(datetime_to_timestamp(Utc::now())),
         }
     }

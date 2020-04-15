@@ -20,28 +20,37 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::channel::mpsc;
+use futures::{channel::mpsc, StreamExt};
 use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
     backoff::ConstantBackoff,
+    message::MessageExt,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerStorage},
     pipeline,
     pipeline::SinkService,
     transports::MemoryTransport,
     types::CommsDatabase,
+    wrap_in_envelope_body,
     CommsBuilder,
     CommsNode,
 };
-use tari_comms_dht::{envelope::NodeDestination, inbound::DecryptedDhtMessage, Dht, DhtBuilder};
+use tari_comms_dht::{
+    envelope::NodeDestination,
+    inbound::DecryptedDhtMessage,
+    outbound::{OutboundEncryption, SendMessageParams},
+    Dht,
+    DhtBuilder,
+};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tari_test_utils::{async_assert_eventually, paths::create_temporary_data_path, random};
+use tokio::time;
 use tower::ServiceBuilder;
 
 struct TestNode {
     comms: CommsNode,
     dht: Dht,
-    _ims_rx: mpsc::Receiver<DecryptedDhtMessage>,
+    ims_rx: mpsc::Receiver<DecryptedDhtMessage>,
 }
 
 impl TestNode {
@@ -51,6 +60,10 @@ impl TestNode {
 
     pub fn to_peer(&self) -> Peer {
         self.comms.node_identity().to_peer()
+    }
+
+    pub async fn next_inbound_message(&mut self, timeout: Duration) -> Option<DecryptedDhtMessage> {
+        time::timeout(timeout, self.ims_rx.next()).await.ok()?
     }
 }
 
@@ -81,15 +94,14 @@ fn create_peer_storage(peers: Vec<Peer>) -> CommsDatabase {
 
 async fn make_node(features: PeerFeatures, seed_peer: Option<Peer>) -> TestNode {
     let node_identity = make_node_identity(features);
+    make_node_with_node_identity(node_identity, seed_peer).await
+}
 
+async fn make_node_with_node_identity(node_identity: Arc<NodeIdentity>, seed_peer: Option<Peer>) -> TestNode {
     let (tx, ims_rx) = mpsc::channel(1);
     let (comms, dht) = setup_comms_dht(node_identity, create_peer_storage(seed_peer.into_iter().collect()), tx).await;
 
-    TestNode {
-        comms,
-        dht,
-        _ims_rx: ims_rx,
-    }
+    TestNode { comms, dht, ims_rx }
 }
 
 async fn setup_comms_dht(
@@ -213,12 +225,7 @@ async fn dht_discover_propagation() {
     node_A
         .dht
         .discovery_service_requester()
-        .discover_peer(
-            Box::new(node_D.node_identity().public_key().clone()),
-            None,
-            // Sending to a nonsense NodeId, this should still propagate towards D in a network of 4
-            NodeDestination::NodeId(Box::new(Default::default())),
-        )
+        .discover_peer(Box::new(node_D.node_identity().public_key().clone()))
         .await
         .unwrap();
 
@@ -238,4 +245,69 @@ async fn dht_discover_propagation() {
     node_B.comms.shutdown().await;
     node_C.comms.shutdown().await;
     node_D.comms.shutdown().await;
+}
+
+#[tokio_macros::test]
+#[allow(non_snake_case)]
+async fn dht_store_forward() {
+    let node_C_node_identity = make_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    // Node B knows about Node C
+    let node_B = make_node(PeerFeatures::COMMUNICATION_NODE, None).await;
+    // Node A knows about Node B
+    let node_A = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_B.to_peer())).await;
+
+    let params = SendMessageParams::new()
+        .neighbours(vec![])
+        .with_encryption(OutboundEncryption::EncryptFor(Box::new(
+            node_C_node_identity.public_key().clone(),
+        )))
+        .with_destination(NodeDestination::Unknown)
+        .finish();
+
+    let secret_msg1 = b"NCZW VUSX PNYM INHZ XMQX SFWX WLKJ AHSH";
+    let secret_msg2 = b"NMCO CCAK UQPM KCSM HKSE INJU SBLK";
+
+    let mut node_B_msg_events = node_B.comms.subscribe_messaging_events();
+    node_A
+        .dht
+        .outbound_requester()
+        .send_raw(
+            params.clone(),
+            wrap_in_envelope_body!(secret_msg1.to_vec()).to_encoded_bytes(),
+        )
+        .await
+        .unwrap();
+    node_A
+        .dht
+        .outbound_requester()
+        .send_raw(params, wrap_in_envelope_body!(secret_msg2.to_vec()).to_encoded_bytes())
+        .await
+        .unwrap();
+
+    // Wait for node B to receive the 2 propagation messages
+    node_B_msg_events.next().await.unwrap().unwrap();
+    node_B_msg_events.next().await.unwrap().unwrap();
+
+    let mut node_C = make_node_with_node_identity(node_C_node_identity, None).await;
+    node_C.comms.peer_manager().add_peer(node_B.to_peer()).await.unwrap();
+    node_C.dht.dht_requester().send_request_stored_messages().await.unwrap();
+
+    let msg = node_C.next_inbound_message(Duration::from_secs(5)).await.unwrap();
+    assert_eq!(
+        msg.authenticated_origin.as_ref().unwrap(),
+        node_A.comms.node_identity().public_key()
+    );
+    let secret = msg.success().unwrap().decode_part::<Vec<u8>>(0).unwrap().unwrap();
+    assert_eq!(secret, secret_msg1.to_vec());
+    let msg = node_C.next_inbound_message(Duration::from_secs(5)).await.unwrap();
+    assert_eq!(
+        msg.authenticated_origin.as_ref().unwrap(),
+        node_A.comms.node_identity().public_key()
+    );
+    let secret = msg.success().unwrap().decode_part::<Vec<u8>>(0).unwrap().unwrap();
+    assert_eq!(secret, secret_msg2.to_vec());
+
+    node_A.comms.shutdown().await;
+    node_B.comms.shutdown().await;
+    node_C.comms.shutdown().await;
 }

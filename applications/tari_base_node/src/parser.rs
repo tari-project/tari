@@ -50,7 +50,7 @@ use tari_comms::{
     types::CommsPublicKey,
     NodeIdentity,
 };
-use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
+use tari_comms_dht::DhtDiscoveryRequester;
 use tari_core::{
     base_node::LocalNodeCommsInterface,
     blocks::BlockHeader,
@@ -486,7 +486,7 @@ impl Parser {
         self.executor.spawn(async move {
             let start = Instant::now();
             println!("🌎 Peer discovery started.");
-            match dht.discover_peer(dest_pubkey, None, NodeDestination::Unknown).await {
+            match dht.discover_peer(dest_pubkey).await {
                 Ok(p) => {
                     let end = Instant::now();
                     println!("⚡️ Discovery succeeded in {}ms!", (end - start).as_millis());

@@ -37,7 +37,6 @@ use futures::{task::Context, Future};
 use log::*;
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
-    message::MessageExt,
     peer_manager::{NodeId, NodeIdentity, PeerManager},
     pipeline::PipelineError,
 };
@@ -205,17 +204,26 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             );
         };
 
-        if message.body_size() > self.config.saf_max_message_size {
+        if message.body_len() > self.config.saf_max_message_size {
             log_not_eligible(&format!(
                 "the message body exceeded the maximum storage size (body size={}, max={})",
-                message.body_size(),
+                message.body_len(),
                 self.config.saf_max_message_size
             ));
             return Ok(None);
         }
 
-        if message.origin_public_key() == self.node_identity.public_key() {
-            log_not_eligible("not storing message from this node");
+        if message.dht_header.message_type.is_saf_message() {
+            log_not_eligible("because it is a SAF message");
+            return Ok(None);
+        }
+
+        if message
+            .authenticated_origin()
+            .map(|pk| pk == self.node_identity.public_key())
+            .unwrap_or(false)
+        {
+            log_not_eligible("this message originates from this node");
             return Ok(None);
         }
 
@@ -223,12 +231,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             // The message decryption was successful, or the message was not encrypted
             Some(_) => {
                 // If the message doesnt have an origin we wont store it
-                if !message.has_origin() {
-                    log_not_eligible("it does not have an origin");
+                if !message.has_origin_mac() {
+                    log_not_eligible("it is encrypted and does not have an origin MAC");
                     return Ok(None);
                 }
 
-                // If this node decrypted the message, no need to store it
+                // If this node decrypted the message (message.success() above), no need to store it
                 if message.is_encrypted() {
                     log_not_eligible("the message was encrypted for this node");
                     return Ok(None);
@@ -251,12 +259,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             },
             // This node could not decrypt the message
             None => {
-                if !message.has_origin() {
-                    // TODO: #banheuristic - the source should not have propagated this message
+                if !message.has_origin_mac() {
+                    // TODO: #banheuristic - the source peer should not have propagated this message
                     warn!(
                         target: LOG_TARGET,
-                        "Store task received an encrypted message with no source. This message is invalid and should \
-                         not be stored or propagated. Dropping message. Sent by node '{}'",
+                        "Store task received an encrypted message with no origin MAC. This message is invalid and \
+                         should not be stored or propagated. Dropping message. Sent by node '{}'",
                         message.source_peer.node_id.short_str()
                     );
                     return Ok(None);
@@ -327,13 +335,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         use NodeDestination::*;
         match &message.dht_header.destination {
             Unknown => {
-                // No destination provided, only discovery messages are currently important enough to be stored
-                if message.dht_header.message_type.is_dht_discovery() {
-                    Ok(Some(StoredMessagePriority::Low))
-                } else {
-                    log_not_eligible("destination is unknown, and message is not a Discovery");
-                    Ok(None)
-                }
+                // No destination provided,
+                Ok(Some(StoredMessagePriority::Low))
             },
             PublicKey(dest_public_key) => {
                 // If we know the destination peer, keep the message for them
@@ -387,26 +390,14 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     async fn store(&mut self, priority: StoredMessagePriority, message: DecryptedDhtMessage) -> SafResult<()> {
-        let DecryptedDhtMessage {
-            version,
-            decryption_result,
-            dht_header,
-            ..
-        } = message;
-
-        let body = match decryption_result {
-            Ok(body) => body.to_encoded_bytes()?,
-            Err(encrypted_body) => encrypted_body,
-        };
-
         debug!(
             target: LOG_TARGET,
             "Storing message from peer '{}' ({} bytes)",
             message.source_peer.node_id.short_str(),
-            body.len()
+            message.body_len(),
         );
 
-        let stored_message = NewStoredMessage::try_construct(version, dht_header, priority, body)
+        let stored_message = NewStoredMessage::try_construct(message, priority)
             .ok_or_else(|| StoreAndForwardError::InvalidStoreMessage)?;
         self.saf_requester.insert_message(stored_message).await?;
 
@@ -430,7 +421,7 @@ mod test {
     };
     use chrono::Utc;
     use std::time::Duration;
-    use tari_comms::wrap_in_envelope_body;
+    use tari_comms::{message::MessageExt, wrap_in_envelope_body};
     use tari_crypto::tari_utilities::hex::Hex;
     use tari_test_utils::async_assert_eventually;
 
@@ -444,9 +435,9 @@ mod test {
         let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, requester)
             .layer(spy.to_service::<PipelineError>());
 
-        let mut inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
-        inbound_msg.dht_header.origin = None;
-        let msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(Vec::new()).unwrap(), inbound_msg);
+        let inbound_msg =
+            make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty(), false);
+        let msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(Vec::new()), None, inbound_msg);
         service.call(msg).await.unwrap();
         assert!(spy.is_called());
         let messages = mock_state.get_messages().await;
@@ -465,14 +456,18 @@ mod test {
             addresses: vec![],
             peer_features: 0,
         }
-        .to_encoded_bytes()
-        .unwrap();
+        .to_encoded_bytes();
 
         let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, requester)
             .layer(spy.to_service::<PipelineError>());
-        let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty());
+        let sender_identity = make_node_identity();
+        let inbound_msg = make_dht_inbound_message(&sender_identity, b"".to_vec(), DhtMessageFlags::empty(), true);
 
-        let mut msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(join_msg_bytes).unwrap(), inbound_msg);
+        let mut msg = DecryptedDhtMessage::succeeded(
+            wrap_in_envelope_body!(join_msg_bytes),
+            Some(sender_identity.public_key().clone()),
+            inbound_msg,
+        );
         msg.dht_header.message_type = DhtMessageType::Join;
         service.call(msg).await.unwrap();
         assert!(spy.is_called());
@@ -499,8 +494,18 @@ mod test {
         let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, requester)
             .layer(spy.to_service::<PipelineError>());
 
-        let inbound_msg = make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::ENCRYPTED);
-        let msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(b"secret".to_vec()).unwrap(), inbound_msg);
+        let msg_node_identity = make_node_identity();
+        let inbound_msg = make_dht_inbound_message(
+            &msg_node_identity,
+            b"This shouldnt be stored".to_vec(),
+            DhtMessageFlags::ENCRYPTED,
+            true,
+        );
+        let msg = DecryptedDhtMessage::succeeded(
+            wrap_in_envelope_body!(b"secret".to_vec()),
+            Some(msg_node_identity.public_key().clone()),
+            inbound_msg,
+        );
         service.call(msg).await.unwrap();
         assert!(spy.is_called());
 
@@ -518,7 +523,12 @@ mod test {
         let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, requester)
             .layer(spy.to_service::<PipelineError>());
 
-        let mut inbound_msg = make_dht_inbound_message(&origin_node_identity, b"".to_vec(), DhtMessageFlags::empty());
+        let mut inbound_msg = make_dht_inbound_message(
+            &origin_node_identity,
+            b"Will you keep this for me?".to_vec(),
+            DhtMessageFlags::ENCRYPTED,
+            true,
+        );
         inbound_msg.dht_header.destination =
             NodeDestination::PublicKey(Box::new(origin_node_identity.public_key().clone()));
         let msg = DecryptedDhtMessage::failed(inbound_msg.clone());
@@ -534,8 +544,8 @@ mod test {
 
         let message = mock_state.get_messages().await.remove(0);
         assert_eq!(
-            message.origin_signature,
-            inbound_msg.dht_header.origin.unwrap().signature.to_hex()
+            message.destination_pubkey.unwrap(),
+            origin_node_identity.public_key().to_hex()
         );
         let duration = Utc::now().naive_utc().signed_duration_since(message.stored_at);
         assert!(duration.num_seconds() <= 5);

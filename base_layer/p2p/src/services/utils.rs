@@ -43,6 +43,7 @@ where T: prost::Message + Default {
     Ok(DomainMessage {
         source_peer: serialized.source_peer.clone(),
         dht_header: serialized.dht_header.clone(),
+        authenticated_origin: serialized.authenticated_origin.clone(),
         inner: serialized.decode_message()?,
     })
 }

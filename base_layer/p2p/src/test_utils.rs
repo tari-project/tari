@@ -25,13 +25,11 @@ use std::sync::Arc;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
-    utils::signature,
 };
 use tari_comms_dht::{
-    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageOrigin, DhtMessageType, Network, NodeDestination},
+    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, Network, NodeDestination},
     inbound::DhtInboundMessage,
 };
-use tari_crypto::tari_utilities::message_format::MessageFormat;
 
 macro_rules! unwrap_oms_send_msg {
     ($var:expr, reply_value=$reply_value:expr) => {
@@ -61,31 +59,21 @@ pub fn make_node_identity() -> Arc<NodeIdentity> {
     )
 }
 
-pub fn make_dht_header(node_identity: &NodeIdentity, message: &Vec<u8>, flags: DhtMessageFlags) -> DhtMessageHeader {
+pub fn make_dht_header() -> DhtMessageHeader {
     DhtMessageHeader {
         version: 0,
         destination: NodeDestination::Unknown,
-        origin: Some(DhtMessageOrigin {
-            public_key: node_identity.public_key().clone(),
-            signature: signature::sign(&mut OsRng, node_identity.secret_key().clone(), message)
-                .unwrap()
-                .to_binary()
-                .unwrap(),
-        }),
+        origin_mac: Vec::new(),
+        ephemeral_public_key: None,
         message_type: DhtMessageType::None,
         network: Network::LocalTest,
-        flags,
+        flags: DhtMessageFlags::NONE,
     }
 }
 
-pub fn make_dht_inbound_message(
-    node_identity: &NodeIdentity,
-    message: Vec<u8>,
-    flags: DhtMessageFlags,
-) -> DhtInboundMessage
-{
+pub fn make_dht_inbound_message(node_identity: &NodeIdentity, message: Vec<u8>) -> DhtInboundMessage {
     DhtInboundMessage::new(
-        make_dht_header(node_identity, &message, flags),
+        make_dht_header(),
         Arc::new(Peer::new(
             node_identity.public_key().clone(),
             node_identity.node_id().clone(),
