@@ -61,8 +61,6 @@ pub enum MessagingRequest {
 /// occurred
 #[derive(Debug, Error, Copy, Clone)]
 pub enum SendFailReason {
-    /// Dial was not attempted because the peer is offline
-    PeerOffline,
     /// Dial was attempted, but failed
     PeerDialFailed,
     /// Failed to open a messaging substream to peer

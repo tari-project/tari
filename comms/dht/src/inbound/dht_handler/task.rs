@@ -131,13 +131,14 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     pubkey,
                     Some(node_id),
                     Some(net_addresses),
-                    None,
+                    // We've already checked this peer is not banned, so we aren't unsetting the ban flag
+                    // TODO: 🐞 If we use more than two flags we might inadvertently unset something we don't want to.
+                    Some(PeerFlags::empty()),
                     Some(peer_features),
                     None,
                     None,
                 )
                 .await?;
-            peer_manager.set_offline(&pubkey, false).await?;
         } else {
             peer_manager
                 .add_peer(Peer::new(
@@ -184,16 +185,19 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         })?;
 
         if &authenticated_pk == self.node_identity.public_key() {
-            trace!(target: LOG_TARGET, "Received our own join message. Discarding it.");
+            warn!(target: LOG_TARGET, "Received our own join message. Discarding it.");
             return Ok(());
         }
-
-        trace!(target: LOG_TARGET, "Received Join Message from {}", authenticated_pk);
 
         let body = decryption_result.expect("already checked that this message decrypted successfully");
         let join_msg = body
             .decode_part::<JoinMessage>(0)?
             .ok_or_else(|| DhtInboundError::InvalidMessageBody)?;
+
+        info!(
+            target: LOG_TARGET,
+            "Received join Message from '{}' {}", authenticated_pk, join_msg
+        );
 
         let addresses = join_msg
             .addresses
@@ -249,10 +253,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             self.send_join_direct(origin_peer.public_key).await?;
         }
 
-        trace!(
+        debug!(
             target: LOG_TARGET,
-            "Propagating join message to at most {} peer(s)",
-            self.config.num_neighbouring_nodes
+            "Propagating join message to at most {} peer(s)", self.config.num_neighbouring_nodes
         );
 
         // Propagate message to closer peers

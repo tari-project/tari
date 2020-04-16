@@ -74,8 +74,6 @@ pub enum ConnectionManagerError {
     IdentityProtocolError(IdentityProtocolError),
     /// The dial was cancelled
     DialCancelled,
-    /// The peer is offline and will not be dialed
-    PeerOffline,
     #[error(msg_embedded, no_from, non_std)]
     InvalidMultiaddr(String),
     /// Failed to send wire format byte

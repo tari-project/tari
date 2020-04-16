@@ -43,9 +43,8 @@ use std::time::Duration;
 use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_stream, unpack_enum};
 use tokio::{runtime::Handle, sync::broadcast};
-use tokio_macros as r#async;
 
-#[r#async::test_basic]
+#[tokio_macros::test_basic]
 async fn connect_to_nonexistent_peer() {
     let rt_handle = Handle::current();
     let node_identity = build_node_identity(PeerFeatures::empty());
@@ -85,7 +84,7 @@ async fn connect_to_nonexistent_peer() {
     shutdown.trigger().unwrap();
 }
 
-#[r#async::test_basic]
+#[tokio_macros::test_basic]
 async fn dial_success() {
     const TEST_PROTO: ProtocolId = ProtocolId::from_static(b"/test/valid");
     let shutdown = Shutdown::new();
@@ -184,53 +183,7 @@ where
         .count()
 }
 
-#[r#async::test_basic]
-async fn dial_offline_peer() {
-    let shutdown = Shutdown::new();
-
-    let node_identity = build_node_identity(PeerFeatures::empty());
-
-    let peer_manager = build_peer_manager();
-    let mut conn_man = build_connection_manager(
-        TestNodeConfig {
-            node_identity: node_identity.clone(),
-            ..Default::default()
-        },
-        peer_manager.clone(),
-        Protocols::new(),
-        shutdown.to_signal(),
-    );
-
-    let public_address = conn_man.wait_until_listening().await.unwrap();
-    let mut subscription = conn_man.get_event_subscription();
-
-    let mut peer = Peer::new(
-        node_identity.public_key().clone(),
-        node_identity.node_id().clone(),
-        vec![public_address].into(),
-        PeerFlags::empty(),
-        PeerFeatures::COMMUNICATION_CLIENT,
-        &[],
-    );
-
-    peer.connection_stats.set_connection_failed();
-    assert_eq!(peer.is_recently_offline(), false);
-    peer.connection_stats.set_connection_failed();
-    assert_eq!(peer.is_recently_offline(), true);
-
-    peer_manager.add_peer(peer).await.unwrap();
-
-    let err = conn_man.dial_peer(node_identity.node_id().clone()).await.unwrap_err();
-    unpack_enum!(ConnectionManagerError::PeerOffline = err);
-
-    let event = subscription.next().await.unwrap().unwrap();
-
-    unpack_enum!(ConnectionManagerEvent::PeerConnectFailed(node_id, err) = &*event);
-    assert_eq!(&**node_id, node_identity.node_id());
-    unpack_enum!(ConnectionManagerError::PeerOffline = err);
-}
-
-#[r#async::test_basic]
+#[tokio_macros::test_basic]
 async fn simultaneous_dial_events() {
     let mut shutdown = Shutdown::new();
 

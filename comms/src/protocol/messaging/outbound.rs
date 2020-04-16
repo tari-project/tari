@@ -86,17 +86,6 @@ impl OutboundMessaging {
                     );
                     continue;
                 },
-                Err(err @ ConnectionManagerError::PeerOffline) => {
-                    error!(
-                        target: LOG_TARGET,
-                        "MessagingProtocol failed to dial peer '{}' because '{:?}'",
-                        self.peer_node_id.short_str(),
-                        err
-                    );
-                    self.flush_all_messages_to_failed_event(SendFailReason::PeerOffline)
-                        .await;
-                    break Err(MessagingProtocolError::PeerDialFailed);
-                },
                 Err(err) => {
                     error!(
                         target: LOG_TARGET,
