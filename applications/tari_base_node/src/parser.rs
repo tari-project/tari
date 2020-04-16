@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::LOG_TARGET;
-use crate::{builder::NodeContainer, utils};
+use crate::{builder::NodeContainer, table::Table, utils, utils::format_duration_basic};
 use chrono::Utc;
 use chrono_english::{parse_date_string, Dialect};
 use log::*;
@@ -540,8 +540,7 @@ impl Parser {
                 .await
             {
                 Ok(p) => {
-                    let end = Instant::now();
-                    println!("⚡️ Discovery succeeded in {}ms!", (end - start).as_millis());
+                    println!("⚡️ Discovery succeeded in {}ms!", start.elapsed().as_millis());
                     println!("This peer was found:");
                     println!("{}", p);
                 },
@@ -572,12 +571,34 @@ impl Parser {
             match peer_manager.perform_query(query).await {
                 Ok(peers) => {
                     let num_peers = peers.len();
-                    println!(
-                        "{}",
-                        peers
-                            .into_iter()
-                            .fold(String::new(), |acc, p| format!("{}\n{}", acc, p))
-                    );
+                    println!();
+                    let mut table = Table::new();
+                    table.set_titles(vec![
+                        "NodeId",
+                        "Public Key",
+                        "Flags",
+                        "Role",
+                        "Added at",
+                        "Last connection",
+                    ]);
+                    for peer in peers {
+                        table.add_row(row![
+                            peer.node_id.short_str(),
+                            peer.public_key,
+                            format!("{:?}", peer.flags),
+                            {
+                                if peer.features == PeerFeatures::COMMUNICATION_CLIENT {
+                                    "Wallet"
+                                } else {
+                                    "Base node"
+                                }
+                            },
+                            peer.added_at.date(),
+                            peer.connection_stats,
+                        ]);
+                    }
+                    table.print_std();
+
                     println!("{} peer(s) known by this node", num_peers);
                 },
                 Err(err) => {
@@ -697,19 +718,42 @@ impl Parser {
     /// Function to process the list-connections command
     fn process_list_connections(&self) {
         let mut connection_manager = self.connection_manager.clone();
+        let peer_manager = self.peer_manager.clone();
+
         self.executor.spawn(async move {
             match connection_manager.get_active_connections().await {
                 Ok(conns) if conns.is_empty() => {
                     println!("No active peer connections.");
                 },
                 Ok(conns) => {
+                    println!();
                     let num_connections = conns.len();
-                    println!(
-                        "{}",
-                        conns
-                            .into_iter()
-                            .fold(String::new(), |acc, p| format!("{}\n{}", acc, p))
-                    );
+                    let mut table = Table::new();
+                    table.set_titles(vec!["NodeId", "Public Key", "Address", "Direction", "Uptime", "Role"]);
+                    for conn in conns {
+                        let peer = peer_manager
+                            .find_by_node_id(conn.peer_node_id())
+                            .await
+                            .expect("Unexpected peer database error or peer not found");
+
+                        table.add_row(row![
+                            peer.node_id.short_str(),
+                            peer.public_key,
+                            conn.address(),
+                            conn.direction(),
+                            format_duration_basic(conn.connected_since()),
+                            {
+                                if peer.features == PeerFeatures::COMMUNICATION_CLIENT {
+                                    "Wallet"
+                                } else {
+                                    "Base node"
+                                }
+                            },
+                        ]);
+                    }
+
+                    table.print_std();
+
                     println!("{} active connection(s)", num_connections);
                 },
                 Err(err) => {
@@ -1010,25 +1054,23 @@ impl Parser {
                     .await
                     {
                         Ok(true) => {
-                            let end = Instant::now();
                             println!(
                                 "Discovery succeeded for peer {} after {}ms",
                                 dest_pubkey,
-                                (end - start).as_millis()
+                                start.elapsed().as_millis()
                             );
                             debug!(
                                 target: LOG_TARGET,
                                 "Discovery succeeded for peer {} after {}ms",
                                 dest_pubkey,
-                                (end - start).as_millis()
+                                start.elapsed().as_millis()
                             );
                         },
                         Ok(false) => {
-                            let end = Instant::now();
                             println!(
                                 "Discovery failed for peer {} after {}ms",
                                 dest_pubkey,
-                                (end - start).as_millis()
+                                start.elapsed().as_millis()
                             );
                             println!("The peer may be offline. Please try again later.");
 
@@ -1036,7 +1078,7 @@ impl Parser {
                                 target: LOG_TARGET,
                                 "Discovery failed for peer {} after {}ms",
                                 dest_pubkey,
-                                (end - start).as_millis()
+                                start.elapsed().as_millis()
                             );
                         },
                         Err(_) => {

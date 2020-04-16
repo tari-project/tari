@@ -54,12 +54,11 @@ where F: FnOnce() -> R {
         trace_id
     );
     let ret = f();
-    let end = Instant::now();
     trace!(
         target: LOG_TARGET,
         "[{}] Exited blocking thread after {}ms. trace_id: '{}'",
         name,
-        (end - start).as_millis(),
+        start.elapsed().as_millis(),
         trace_id
     );
     ret

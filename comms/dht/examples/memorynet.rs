@@ -258,18 +258,16 @@ async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut MessagingEven
             )
             .await;
 
-        let end = Instant::now();
-
         match discovery_result {
             Ok(peer) => {
                 successes += 1;
-                total_time += end - start;
+                total_time += start.elapsed();
                 banner!(
                     "⚡️🎉😎 '{}' discovered peer '{}' ({}) in {}ms",
                     wallet1,
                     get_name(&peer.node_id),
                     peer,
-                    (end - start).as_millis()
+                    start.elapsed().as_millis()
                 );
 
                 time::delay_for(Duration::from_secs(5)).await;
@@ -280,7 +278,7 @@ async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut MessagingEven
                     "💩 '{}' failed to discover '{}' after {}ms because '{:?}'",
                     wallet1,
                     wallet2,
-                    (end - start).as_millis(),
+                    start.elapsed().as_millis(),
                     err
                 );
 
@@ -381,8 +379,7 @@ async fn do_store_and_forward_discovery(
 
     total_messages += match discovery_task.await.unwrap() {
         Ok(peer) => {
-            let end = Instant::now();
-            banner!("🎉 Discovered peer {} in {}ms", peer, (end - start).as_millis());
+            banner!("🎉 Discovered peer {} in {}ms", peer, start.elapsed().as_millis());
             drain_messaging_events(messaging_rx, false).await
         },
         Err(err) => {

@@ -109,7 +109,7 @@ impl OutboundServiceMockState {
     }
 
     pub fn take_next_response(&self) -> Option<SendMessageResponse> {
-        acquire_write_lock!(self.next_response).take()
+        self.next_response.write().unwrap().take()
     }
 
     pub fn add_call(&self, req: (FinalSendMessageParams, Bytes)) {

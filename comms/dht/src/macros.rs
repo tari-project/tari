@@ -28,18 +28,12 @@ macro_rules! acquire_lock {
         match $e.$m() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                log::warn!(target: "dht", "Lock has been POISONED and will be silently recovered");
+                log::warn!(target: "comms::dht", "Lock has been POISONED and will be silently recovered");
                 poisoned.into_inner()
             },
         }
     };
     ($e:expr) => {
         acquire_lock!($e, lock)
-    };
-}
-
-macro_rules! acquire_write_lock {
-    ($e:expr) => {
-        acquire_lock!($e, write)
     };
 }
