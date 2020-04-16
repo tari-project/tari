@@ -245,11 +245,12 @@ async fn download_blocks<B: BlockchainBackend + 'static>(
                             );
                             return Ok(false);
                         },
-                        Err(ChainStorageError::ValidationError(_)) => {
+                        Err(ChainStorageError::ValidationError { source }) => {
                             warn!(
                                 target: LOG_TARGET,
-                                "Validation on block {} from peer failed. Retrying",
+                                "Validation on block {} because of {} from peer failed. Retrying",
                                 block_hash.to_hex(),
+                                source
                             );
                             return Ok(false);
                         },

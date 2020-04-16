@@ -117,7 +117,7 @@ where D: Digest + Send + Sync
             store.env(),
             store
                 .get_handle(LMDB_DB_UTXO_MMR_CP_BACKEND)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError("Could not create UTXO MMR backend".to_string()))?
                 .db()
                 .clone(),
         );
@@ -125,7 +125,7 @@ where D: Digest + Send + Sync
             store.env(),
             store
                 .get_handle(LMDB_DB_KERNEL_MMR_CP_BACKEND)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError("Could not create kernel MMR backend".to_string()))?
                 .db()
                 .clone(),
         );
@@ -133,7 +133,9 @@ where D: Digest + Send + Sync
             store.env(),
             store
                 .get_handle(LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| {
+                    ChainStorageError::CriticalError("Could not create range proof MMR backend".to_string())
+                })?
                 .db()
                 .clone(),
         );
@@ -141,7 +143,7 @@ where D: Digest + Send + Sync
         let env = store.env();
         let metadata_db = store
             .get_handle(LMDB_DB_METADATA)
-            .ok_or_else(|| ChainStorageError::CriticalError)?
+            .ok_or_else(|| ChainStorageError::CriticalError("Could not create metadata backend".to_string()))?
             .db()
             .clone();
         let metadata = ChainMetadata {
@@ -156,37 +158,39 @@ where D: Digest + Send + Sync
             mem_metadata: metadata,
             headers_db: store
                 .get_handle(LMDB_DB_HEADERS)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError("Could not get handle to headers DB".to_string()))?
                 .db()
                 .clone(),
             block_hashes_db: store
                 .get_handle(LMDB_DB_BLOCK_HASHES)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| {
+                    ChainStorageError::CriticalError("Could not create handle to block hashes DB".to_string())
+                })?
                 .db()
                 .clone(),
             utxos_db: store
                 .get_handle(LMDB_DB_UTXOS)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError("Could not create handle to UTXOs DB".to_string()))?
                 .db()
                 .clone(),
             stxos_db: store
                 .get_handle(LMDB_DB_STXOS)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError("Could not create handle to STXOs DB".to_string()))?
                 .db()
                 .clone(),
             txos_hash_to_index_db: store
                 .get_handle(LMDB_DB_TXOS_HASH_TO_INDEX)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError("Could not create handle to TXOs DB".to_string()))?
                 .db()
                 .clone(),
             kernels_db: store
                 .get_handle(LMDB_DB_KERNELS)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError("Could not create handle to kernels DB".to_string()))?
                 .db()
                 .clone(),
             orphans_db: store
                 .get_handle(LMDB_DB_ORPHANS)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError("Could not create handle to orphans DB".to_string()))?
                 .db()
                 .clone(),
             utxo_mmr: MmrCache::new(MemDbVec::new(), utxo_checkpoints.clone(), mmr_cache_config)?,
@@ -517,7 +521,7 @@ pub fn create_lmdb_database(
         .add_database(LMDB_DB_KERNEL_MMR_CP_BACKEND, flags)
         .add_database(LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND, flags)
         .build()
-        .map_err(|_| ChainStorageError::CriticalError)?;
+        .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
     LMDBDatabase::<HashDigest>::new(lmdb_store, mmr_cache_config)
 }
 

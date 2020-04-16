@@ -407,10 +407,7 @@ where T: BlockchainBackend
     /// If an error does occur while writing the new block parts, all changes are reverted before returning.
     pub fn add_block(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
         // Perform orphan block validation.
-        self.validators
-            .orphan
-            .validate(&block)
-            .map_err(ChainStorageError::ValidationError)?;
+        self.validators.orphan.validate(&block)?;
 
         let mut db = self.db_write_access()?;
         add_block(
@@ -951,7 +948,7 @@ fn reorganize_chain<T: BlockchainBackend>(
                 store_new_block(db, block)?;
             }
             commit(db, txn)?;
-            Err(ChainStorageError::ValidationError(e))
+            Err(e.into())
         },
     }
 }
