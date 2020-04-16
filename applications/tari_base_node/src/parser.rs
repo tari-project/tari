@@ -22,8 +22,11 @@
 
 use super::LOG_TARGET;
 use crate::{builder::NodeContainer, utils};
+use chrono::Utc;
+use chrono_english::{parse_date_string, Dialect};
 use log::*;
 use qrcode::{render::unicode, QrCode};
+use regex::Regex;
 use rustyline::{
     completion::Completer,
     error::ReadlineError,
@@ -92,6 +95,7 @@ pub enum BaseNodeCommand {
     GetMempoolState,
     Whoami,
     ToggleMining,
+    MakeItRain,
     Quit,
     Exit,
 }
@@ -113,6 +117,12 @@ pub struct Parser {
     wallet_transaction_service: TransactionServiceHandle,
     enable_miner: Arc<AtomicBool>,
 }
+
+const MAKE_IT_RAIN_USAGE: &str = "\nmake-it-rain [Txs/s] [duration (s)] [start amount (uT)] [increment (uT)/Tx] \
+                                  [\"start time (UTC)\" / 'now' for immediate start] [public key or emoji id to send \
+                                  to] [message]\n       or\nmake-it-rain [Txs/s] [duration (s)] [start amount (uT)] \
+                                  [increment (uT)/Tx] [\"start time (UTC)\" / 'now' for immediate start] --file \
+                                  [\"path to file\" containing list of 'public key or emoji id' 'message']\n";
 
 /// This will go through all instructions and look for potential matches
 impl Completer for Parser {
@@ -166,6 +176,17 @@ impl Parser {
         if command_str.trim().is_empty() {
             return;
         }
+
+        // Delimit arguments using spaces and pairs of quotation marks, which may include spaces
+        let arg_temp = command_str.trim().to_string();
+        let re = Regex::new(r#"[^\s"]+|"(?:\\"|[^"])+""#).unwrap();
+        let arg_temp_vec: Vec<&str> = re.find_iter(&arg_temp).map(|mat| mat.as_str()).collect();
+        // Remove quotation marks left behind by `Regex` - it does not support look ahead and look behind
+        let mut del_arg_vec = Vec::new();
+        for arg in arg_temp_vec.iter().skip(1) {
+            del_arg_vec.push(str::replace(arg, "\"", ""));
+        }
+
         let mut args = command_str.split_whitespace();
         let command = BaseNodeCommand::from_str(args.next().unwrap_or(&"help"));
         if command.is_err() {
@@ -174,7 +195,7 @@ impl Parser {
             return;
         }
         let command = command.unwrap();
-        self.process_command(command, args, shutdown);
+        self.process_command(command, args, del_arg_vec, shutdown);
     }
 
     /// Function to process commands
@@ -182,6 +203,7 @@ impl Parser {
         &mut self,
         command: BaseNodeCommand,
         args: I,
+        del_arg_vec: Vec<String>,
         shutdown: &mut Shutdown,
     )
     {
@@ -240,6 +262,9 @@ impl Parser {
             },
             Whoami => {
                 self.process_whoami();
+            },
+            MakeItRain => {
+                self.process_make_it_rain(del_arg_vec);
             },
             Exit | Quit => {
                 println!("Shutting down...");
@@ -320,6 +345,10 @@ impl Parser {
                      address"
                 );
             },
+            MakeItRain => {
+                println!("Sends multiple amounts of Tari to a public wallet address via this command:");
+                println!("{}", MAKE_IT_RAIN_USAGE);
+            },
             Exit | Quit => {
                 println!("Exits the base node");
             },
@@ -346,14 +375,13 @@ impl Parser {
         let mut handler1 = self.node_service.clone();
         let mut handler2 = self.wallet_output_service.clone();
         self.executor.spawn(async move {
-            let mut current_height = 0 as i64;
-            match handler1.get_metadata().await {
+            let current_height = match handler1.get_metadata().await {
                 Err(err) => {
                     println!("Failed to retrieve chain metadata: {:?}", err);
                     warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err);
                     return;
                 },
-                Ok(data) => current_height = data.height_of_longest_chain.unwrap() as i64,
+                Ok(data) => data.height_of_longest_chain.unwrap() as i64,
             };
             match handler2.get_unspent_outputs().await {
                 Err(e) => {
@@ -362,14 +390,14 @@ impl Parser {
                     return;
                 },
                 Ok(unspent_outputs) => {
-                    if unspent_outputs.len() > 0 {
+                    if !unspent_outputs.is_empty() {
                         println!(
                             "\nYou have {} UTXOs: (value, commitment, mature in ? blocks, flags)",
                             unspent_outputs.len()
                         );
                         let factory = PedersenCommitmentFactory::default();
                         for uo in unspent_outputs.iter() {
-                            let mature_in = std::cmp::max(uo.features.maturity as i64 - *&current_height, 0);
+                            let mature_in = std::cmp::max(uo.features.maturity as i64 - current_height, 0);
                             println!(
                                 "   {}, {}, {:>3}, {:?}",
                                 uo.value,
@@ -380,7 +408,7 @@ impl Parser {
                                 uo.features.flags
                             );
                         }
-                        println!("");
+                        println!();
                     } else {
                         println!("\nNo valid UTXOs found at this time\n");
                     }
@@ -874,6 +902,117 @@ impl Parser {
                 Ok(_) => println!("Sending {} Tari to {} ", amount, dest_pubkey),
             };
         });
+    }
+
+    // Function to process the make it rain transaction function
+    fn process_make_it_rain(&mut self, command_arg: Vec<String>) {
+        let command_error_msg =
+            "Command entered incorrectly, please use the following format:\n".to_owned() + MAKE_IT_RAIN_USAGE;
+
+        if (command_arg.is_empty()) || (command_arg.len() < 6) {
+            println!("{}", command_error_msg);
+            println!("Expected at least 6 arguments, received {}\n", command_arg.len());
+            return;
+        }
+
+        // [number of Txs/s]
+        let mut inc: u8 = 0;
+        let tx_per_s = command_arg[inc as usize].parse::<f64>();
+        if tx_per_s.is_err() {
+            println!("{}", command_error_msg);
+            println!("Invalid data provided for [number of Txs/s]\n");
+            return;
+        };
+        let tx_per_s = tx_per_s.unwrap();
+
+        // [test duration (s)]
+        inc += 1;
+        let duration = command_arg[inc as usize].parse::<u32>();
+        if duration.is_err() {
+            println!("{}", command_error_msg);
+            println!("Invalid data provided for [test duration (s)]\n");
+            return;
+        };
+        let duration = duration.unwrap();
+        if (tx_per_s * duration as f64) < 1.0 {
+            println!("{}", command_error_msg);
+            println!("Invalid data provided for [number of Txs/s] * [test duration (s)], must be >= 1\n");
+            return;
+        }
+
+        // [starting amount (uT)]
+        inc += 1;
+        let start_amount = command_arg[inc as usize].parse::<u64>();
+        if start_amount.is_err() {
+            println!("{}", command_error_msg);
+            println!("Invalid data provided for [starting amount (uT)]\n");
+            return;
+        }
+        let start_amount: MicroTari = start_amount.unwrap().into();
+
+        // [increment (uT)/Tx]
+        inc += 1;
+        let amount_inc = command_arg[inc as usize].parse::<u64>();
+        if amount_inc.is_err() {
+            println!("{}", command_error_msg);
+            println!("Invalid data provided for [increment (uT)/Tx]\n");
+            return;
+        }
+        let amount_inc: MicroTari = amount_inc.unwrap().into();
+
+        // [start time (UTC) / 'now']
+        inc += 1;
+        let time = command_arg[inc as usize].to_string();
+        let time_utc_ref = Utc::now();
+        let mut _time_utc_start = Utc::now();
+        let datetime = parse_date_string(&time, Utc::now(), Dialect::Uk);
+        match datetime {
+            Ok(t) => {
+                if t > time_utc_ref {
+                    _time_utc_start = t;
+                }
+            },
+            Err(e) => {
+                println!("{}", command_error_msg);
+                println!("Invalid data provided for [start time (UTC) / 'now']\n");
+                println!("{}", e);
+                return;
+            },
+        }
+
+        // TODO: Read in recipient address list and custom message from file
+        // [public key or emoji id to send to]
+        inc += 1;
+        let key = command_arg[inc as usize].to_string();
+        let dest_pubkey = match parse_emoji_id_or_public_key(&key) {
+            Some(v) => v,
+            None => {
+                println!("{}", command_error_msg);
+                println!("Invalid data provided for [public key or emoji id to send to]\n");
+                return;
+            },
+        };
+
+        // [message]
+        let mut msg = "".to_string();
+        inc += 1;
+        if command_arg.len() > inc as usize {
+            for arg in command_arg.iter().skip(inc as usize) {
+                msg = msg + arg + " ";
+            }
+            msg = msg.trim().to_string();
+        }
+
+        // TODO: Implement Tx rate vs. as fast as possible, must be non-blocking
+        // TODO: Start at specified time, must be non-blocking
+        for i in 0..(tx_per_s * duration as f64) as usize {
+            // `send-tari` commands: [amount of tari to send] [destination public key or emoji id] [optional: msg]
+            let command_str =
+                (start_amount.0 + amount_inc.0 * i as u64).to_string() + " " + &dest_pubkey.to_string() + " " + &msg;
+            let args = command_str.split_whitespace();
+            // Execute
+            self.process_send_tari(args);
+        }
     }
 }
 
