@@ -148,7 +148,7 @@ impl Default for ConfigBootstrap {
 }
 
 impl ConfigBootstrap {
-    const ARGS: &'static [&'static str] = &["init", "base_dir", "base-path", "config", "log-config"];
+    const ARGS: &'static [&'static str] = &["base-path", "base_dir", "config", "init", "log-config", "log_config"];
 
     /// Initialize configuration and directories based on ConfigBootstrap options.
     ///
@@ -243,7 +243,9 @@ impl ConfigBootstrap {
             })
             .filter_map(|arg| arg);
 
-        Ok(ConfigBootstrap::from_iter_safe(iter)?)
+        let mut vals: Vec<std::ffi::OsString> = iter.collect();
+        vals.insert(0, "".into());
+        Ok(ConfigBootstrap::from_iter_safe(vals.iter())?)
     }
 
     /// Set up application-level logging using the Log4rs configuration file
@@ -312,10 +314,56 @@ where F: Fn(&Path) -> Result<(), std::io::Error> {
 
 #[cfg(test)]
 mod test {
-    use crate::{bootstrap_config_from_cli, dir_utils, dir_utils::default_subdir, load_configuration};
+    use crate::{bootstrap_config_from_cli, dir_utils, dir_utils::default_subdir, load_configuration, ConfigBootstrap};
     use structopt::{clap::clap_app, StructOpt};
     use tari_test_utils::random::string;
     use tempdir::TempDir;
+
+    #[test]
+    fn test_bootstrap_from_matches() {
+        // Create command line test data
+        let app = clap_app!(myapp =>
+            (@arg base_dir: -b --base_dir +takes_value "A path to a directory to store your files")
+            (@arg config: -c --config +takes_value "A path to the configuration file to use (config.toml)")
+            (@arg log_config: -l--log_config +takes_value "A path to the logfile configuration (log4rs.yml))")
+            (@arg init: --init "Create a default configuration file if it doesn't exist")
+        );
+        let matches = app.clone().get_matches_from(vec![
+            "",
+            "--log_config",
+            "no-file-created",
+            "--config",
+            "no-file-created",
+            "--base_dir",
+            "no-dir-created",
+            "--init",
+        ]);
+        let bootstrap = ConfigBootstrap::from_matches(&matches).expect("failed to extract matches");
+        assert!(bootstrap.init);
+        assert_eq!(bootstrap.base_path.to_str(), Some("no-dir-created"));
+        assert_eq!(bootstrap.log_config.to_str(), Some("no-file-created"));
+        assert_eq!(bootstrap.config.to_str(), Some("no-file-created"));
+
+        // Check aliases too
+        let app = clap_app!(myapp =>
+            (@arg ("base-path"): -b --("base-path") +takes_value "A path to a directory to store your files")
+            (@arg config: -c --config +takes_value "A path to the configuration file to use (config.toml)")
+            (@arg ("log-config"): -l --("log-config") +takes_value "A path to the logfile configuration (log4rs.yml))")
+            (@arg init: --init "Create a default configuration file if it doesn't exist")
+        );
+        let matches = app.get_matches_from(vec![
+            "",
+            "--log-config",
+            "no-file-created",
+            "--base-path",
+            "no-dir-created",
+        ]);
+        let bootstrap = ConfigBootstrap::from_matches(&matches).expect("failed to extract matches");
+        assert!(!bootstrap.init);
+        assert_eq!(bootstrap.base_path.to_str(), Some("no-dir-created"));
+        assert_eq!(bootstrap.log_config.to_str(), Some("no-file-created"));
+        assert_eq!(bootstrap.config.to_str(), Some(""));
+    }
 
     #[test]
     fn test_bootstrap_config_from_cli_and_load_configuration() {
@@ -343,7 +391,11 @@ mod test {
             "--create_id",
         ]);
 
-        // Load bootstrap
+        let bootstrap = ConfigBootstrap::from_matches(&matches).expect("failed to extract matches");
+        assert!(bootstrap.init);
+        assert_eq!(&bootstrap.base_path, dir);
+
+        // Load bootstrap via former API
         let bootstrap = bootstrap_config_from_cli(&matches);
         let config_exists = std::path::Path::new(&bootstrap.config).exists();
         let log_config_exists = std::path::Path::new(&bootstrap.log_config).exists();
