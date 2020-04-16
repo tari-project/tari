@@ -1448,7 +1448,7 @@ fn transaction_mempool_broadcast() {
         .unwrap();
     alice_outbound_service
         .wait_call_count(1, Duration::from_secs(60))
-        .unwrap();
+        .expect("Alice call wait 1");
     let (_, body, tag) = alice_outbound_service.pop_call().unwrap();
     alice_messaging_event_sender
         .send(Arc::new(MessagingEvent::MessageSent(tag.clone())))
@@ -1475,21 +1475,14 @@ fn transaction_mempool_broadcast() {
         .unwrap();
     bob_outbound_service
         .wait_call_count(1, Duration::from_secs(60))
-        .unwrap();
+        .expect("bob call wait 1");
     let call = bob_outbound_service.pop_call().unwrap();
     let envelope_body = EnvelopeBody::decode(&mut call.1.to_vec().as_slice()).unwrap();
-    let tx_reply_msg: RecipientSignedMessage = envelope_body
+    let bob_tx_reply_msg1: RecipientSignedMessage = envelope_body
         .decode_part::<proto::RecipientSignedMessage>(1)
         .unwrap()
         .unwrap()
         .try_into()
-        .unwrap();
-
-    runtime
-        .block_on(alice_tx_ack_sender.send(create_dummy_message(
-            tx_reply_msg.into(),
-            bob_node_identity.public_key(),
-        )))
         .unwrap();
 
     // Send Tx2
@@ -1502,8 +1495,8 @@ fn transaction_mempool_broadcast() {
         ))
         .unwrap();
     alice_outbound_service
-        .wait_call_count(2, Duration::from_secs(60))
-        .unwrap();
+        .wait_call_count(3, Duration::from_secs(60))
+        .expect("Alice call wait 2");
 
     let mut call = alice_outbound_service.pop_call().unwrap();
     let mut sender_msg = try_decode_sender_message(call.1.to_vec().clone());
@@ -1512,6 +1505,7 @@ fn transaction_mempool_broadcast() {
         sender_msg = try_decode_sender_message(call.1.to_vec().clone());
     }
     let tx_sender_msg = sender_msg.unwrap();
+
     alice_messaging_event_sender
         .send(Arc::new(MessagingEvent::MessageSent(call.2.clone())))
         .unwrap();
@@ -1531,19 +1525,27 @@ fn transaction_mempool_broadcast() {
         .unwrap();
     bob_outbound_service
         .wait_call_count(1, Duration::from_secs(60))
-        .unwrap();
+        .expect("Bob call wait 2");
     let (_, body, _) = bob_outbound_service.pop_call().unwrap();
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
-    let tx_reply_msg: RecipientSignedMessage = envelope_body
+    let bob_tx_reply_msg2: RecipientSignedMessage = envelope_body
         .decode_part::<proto::RecipientSignedMessage>(1)
         .unwrap()
         .unwrap()
         .try_into()
         .unwrap();
 
+    // Give Alice both of Bobs replies
     runtime
         .block_on(alice_tx_ack_sender.send(create_dummy_message(
-            tx_reply_msg.into(),
+            bob_tx_reply_msg1.into(),
+            bob_node_identity.public_key(),
+        )))
+        .unwrap();
+
+    runtime
+        .block_on(alice_tx_ack_sender.send(create_dummy_message(
+            bob_tx_reply_msg2.into(),
             bob_node_identity.public_key(),
         )))
         .unwrap();
@@ -1592,7 +1594,7 @@ fn transaction_mempool_broadcast() {
 
     alice_outbound_service
         .wait_call_count(4, Duration::from_secs(60))
-        .unwrap();
+        .expect("ALice call wait 3");
 
     let mut msr_tx1_found = false;
     let mut bsr_tx1_found = false;

@@ -48,7 +48,7 @@ use tari_p2p::tari_message::TariMessageType;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::send_protocol";
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum TransactionProtocolStage {
     Initial,
     WaitForReply,
@@ -101,6 +101,12 @@ where TBackend: TransactionBackend + Clone + 'static
 
     /// Execute the Transaction Send Protocol as an async task.
     pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
+        trace!(
+            "Starting Transaction Send protocol for TxId: {} at Stage {:?}",
+            self.id,
+            self.stage
+        );
+
         if self.stage == TransactionProtocolStage::Initial {
             self.send_transaction().await?;
         }

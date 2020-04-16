@@ -656,11 +656,23 @@ where
         let sender_message: TransactionSenderMessage = sender_message
             .try_into()
             .map_err(TransactionServiceError::InvalidMessageError)?;
+
         // Currently we will only reply to a Single sender transaction protocol
         if let TransactionSenderMessage::Single(data) = sender_message.clone() {
+            trace!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) received from {}",
+                data.tx_id,
+                source_pubkey
+            );
             // Check this is not a repeat message i.e. tx_id doesn't already exist in our pending or completed
             // transactions
             if self.db.transaction_exists(data.tx_id).await? {
+                trace!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) already present in database.",
+                    data.tx_id
+                );
                 return Err(TransactionServiceError::RepeatedMessageError);
             }
 
