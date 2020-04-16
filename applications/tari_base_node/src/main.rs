@@ -113,7 +113,6 @@ impl From<tari_common::ConfigError> for ExitCodes {
 
 /// Application entry point
 fn main() {
-    cli::print_banner();
     match main_inner() {
         Ok(_) => std::process::exit(0),
         Err(exit_code) => std::process::exit(exit_code as i32),
@@ -195,6 +194,9 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     // Run, node, run!
     let parser = Parser::new(rt.handle().clone(), &ctx);
+
+    cli::print_banner(parser.get_commands(), 3);
+
     let base_node_handle = rt.spawn(ctx.run(rt.handle().clone()));
 
     info!(
