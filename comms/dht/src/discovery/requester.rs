@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{discovery::DhtDiscoveryError, proto::dht::DiscoveryResponseMessage};
+use crate::{discovery::DhtDiscoveryError, envelope::NodeDestination, proto::dht::DiscoveryResponseMessage};
 use futures::{
     channel::{mpsc, oneshot},
     SinkExt,
@@ -34,7 +34,11 @@ use tokio::time;
 
 #[derive(Debug)]
 pub enum DhtDiscoveryRequest {
-    DiscoverPeer(Box<CommsPublicKey>, oneshot::Sender<Result<Peer, DhtDiscoveryError>>),
+    DiscoverPeer(
+        Box<CommsPublicKey>,
+        NodeDestination,
+        oneshot::Sender<Result<Peer, DhtDiscoveryError>>,
+    ),
     NotifyDiscoveryResponseReceived(Box<DiscoveryResponseMessage>),
 }
 
@@ -42,7 +46,7 @@ impl Display for DhtDiscoveryRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         use DhtDiscoveryRequest::*;
         match self {
-            DiscoverPeer(public_key, _) => write!(f, "DiscoverPeer({})", public_key),
+            DiscoverPeer(public_key, dest, _) => write!(f, "DiscoverPeer({}, {})", public_key, dest),
             NotifyDiscoveryResponseReceived(discovery_resp) => {
                 write!(f, "NotifyDiscoveryResponseReceived({:#?})", discovery_resp)
             },
@@ -78,11 +82,20 @@ impl DhtDiscoveryRequester {
     ///    - `PublicKey` if any node on the network knows this public key, the message will be directed to that node.
     ///      This sacrifices privacy for more efficient discovery in terms of network bandwidth and may result in
     ///      quicker discovery times.
-    pub async fn discover_peer(&mut self, dest_public_key: Box<CommsPublicKey>) -> Result<Peer, DhtDiscoveryError> {
+    pub async fn discover_peer(
+        &mut self,
+        dest_public_key: Box<CommsPublicKey>,
+        destination: NodeDestination,
+    ) -> Result<Peer, DhtDiscoveryError>
+    {
         let (reply_tx, reply_rx) = oneshot::channel();
 
         self.sender
-            .send(DhtDiscoveryRequest::DiscoverPeer(dest_public_key, reply_tx))
+            .send(DhtDiscoveryRequest::DiscoverPeer(
+                dest_public_key,
+                destination,
+                reply_tx,
+            ))
             .await?;
 
         time::timeout(

@@ -26,7 +26,7 @@ use crate::{
         node_id::{NodeDistance, NodeId},
         peer::{Peer, PeerFlags},
         peer_id::PeerId,
-        peer_storage::PeerStorage,
+        peer_storage::{PeerStorage, RegionStats},
         PeerFeatures,
         PeerManagerError,
         PeerQuery,
@@ -249,6 +249,39 @@ impl PeerManager {
     /// Adds a new net address to the peer if it doesn't yet exist
     pub async fn add_net_address(&self, node_id: &NodeId, net_address: &Multiaddr) -> Result<(), PeerManagerError> {
         self.peer_storage.write().await.add_net_address(node_id, net_address)
+    }
+
+    pub async fn update_each<F>(&self, mut f: F) -> Result<usize, PeerManagerError>
+    where F: FnMut(Peer) -> Option<Peer> {
+        let mut lock = self.peer_storage.write().await;
+        let mut peers_to_update = Vec::new();
+        lock.for_each(|peer| {
+            if let Some(peer) = (f)(peer) {
+                peers_to_update.push(peer);
+            }
+            IterationResult::Continue
+        })?;
+
+        let updated_count = peers_to_update.len();
+        for p in peers_to_update {
+            lock.add_peer(p)?;
+        }
+
+        Ok(updated_count)
+    }
+
+    /// Return some basic stats about the region around region_node_id
+    pub async fn get_region_stats<'a>(
+        &self,
+        region_node_id: &'a NodeId,
+        n: usize,
+        features: PeerFeatures,
+    ) -> Result<RegionStats<'a>, PeerManagerError>
+    {
+        self.peer_storage
+            .read()
+            .await
+            .get_region_stats(region_node_id, n, features)
     }
 }
 

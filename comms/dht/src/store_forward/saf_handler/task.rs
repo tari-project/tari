@@ -61,7 +61,7 @@ use tari_comms::{
 use tari_crypto::tari_utilities::ByteArray;
 use tower::{Service, ServiceExt};
 
-const LOG_TARGET: &str = "comms::dht::store_forward::handler";
+const LOG_TARGET: &str = "comms::dht::storeforward::handler";
 
 pub struct MessageHandlerTask<S> {
     config: DhtConfig,
@@ -193,7 +193,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             SafResponseType::Anonymous,
             SafResponseType::InRegion,
             SafResponseType::Discovery,
-            SafResponseType::Join,
         ];
 
         for resp_type in response_types {
@@ -251,7 +250,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .ok_or_else(|| StoreAndForwardError::InvalidEnvelopeBody)?;
         let source_peer = Arc::new(message.source_peer);
 
-        debug!(
+        info!(
             target: LOG_TARGET,
             "Received {} stored messages of type {} from peer",
             response.messages().len(),

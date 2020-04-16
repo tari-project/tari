@@ -35,12 +35,7 @@ pub enum ConnectionManagerRequest {
     /// Dial a given peer by node id.
     /// Parameters:
     /// 1. Node Id to dial
-    /// 1. If true, attempt to dial the peer even if we recently failed to dial them and they are considered offline
-    DialPeer(
-        NodeId,
-        bool,
-        oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
-    ),
+    DialPeer(NodeId, oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>),
     /// Register a oneshot to get triggered when the node is listening, or has failed to listen
     NotifyListening(oneshot::Sender<Multiaddr>),
     /// Retrieve an active connection for a given node id if one exists.
@@ -111,23 +106,9 @@ impl ConnectionManagerRequester {
 
     /// Attempt to connect to a remote peer
     pub async fn dial_peer(&mut self, node_id: NodeId) -> Result<PeerConnection, ConnectionManagerError> {
-        self.send_dial_peer(node_id, false).await
-    }
-
-    /// Attempt to connect to a remote peer, even if we failed to contact the peer recently
-    pub async fn dial_peer_forced(&mut self, node_id: NodeId) -> Result<PeerConnection, ConnectionManagerError> {
-        self.send_dial_peer(node_id, true).await
-    }
-
-    async fn send_dial_peer(
-        &mut self,
-        node_id: NodeId,
-        is_forced: bool,
-    ) -> Result<PeerConnection, ConnectionManagerError>
-    {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(ConnectionManagerRequest::DialPeer(node_id, is_forced, reply_tx))
+            .send(ConnectionManagerRequest::DialPeer(node_id, reply_tx))
             .await
             .map_err(|_| ConnectionManagerError::SendToActorFailed)?;
         reply_rx

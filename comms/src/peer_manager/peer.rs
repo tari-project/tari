@@ -68,7 +68,7 @@ pub struct Peer {
     pub node_id: NodeId,
     /// Peer's addresses
     pub addresses: MultiaddressesWithStats,
-    /// Flags for the peer. Indicates if the peer is banned.
+    /// Flags for the peer.
     pub flags: PeerFlags,
     /// Features supported by the peer
     pub features: PeerFeatures,

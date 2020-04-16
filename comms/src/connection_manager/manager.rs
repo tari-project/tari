@@ -315,7 +315,7 @@ where
         use ConnectionManagerRequest::*;
         trace!(target: LOG_TARGET, "Connection manager got request: {:?}", request);
         match request {
-            DialPeer(node_id, is_forced, reply_tx) => match self.get_active_connection(&node_id) {
+            DialPeer(node_id, reply_tx) => match self.get_active_connection(&node_id) {
                 Some(conn) => {
                     debug!(target: LOG_TARGET, "[{}] Found existing active connection", conn);
                     log_if_error_fmt!(
@@ -333,7 +333,7 @@ where
                         self.node_identity.node_id().short_str(),
                         node_id.short_str()
                     );
-                    self.dial_peer(node_id, reply_tx, is_forced).await
+                    self.dial_peer(node_id, reply_tx).await
                 },
             },
             NotifyListening(reply_tx) => match self.listener_address.as_ref() {
@@ -572,25 +572,10 @@ where
         &mut self,
         node_id: NodeId,
         reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
-        force_dial: bool,
     )
     {
         match self.peer_manager.find_by_node_id(&node_id).await {
             Ok(peer) => {
-                if !force_dial && peer.is_recently_offline() {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Peer '{}' is offline (i.e. we failed to connect to them recently).",
-                        peer.node_id.short_str()
-                    );
-                    let _ = reply_tx.send(Err(ConnectionManagerError::PeerOffline));
-                    self.publish_event(ConnectionManagerEvent::PeerConnectFailed(
-                        Box::new(peer.node_id),
-                        ConnectionManagerError::PeerOffline,
-                    ));
-                    return;
-                }
-
                 if let Err(err) = self.dialer_tx.send(DialerRequest::Dial(Box::new(peer), reply_tx)).await {
                     error!(target: LOG_TARGET, "Failed to send request to dialer because '{}'", err);
                 }

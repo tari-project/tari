@@ -37,7 +37,7 @@ use crate::{
 use log::*;
 use multiaddr::Multiaddr;
 use rand::{rngs::OsRng, Rng};
-use std::{cmp::min, collections::HashMap};
+use std::{cmp, collections::HashMap, fmt};
 use tari_storage::{IterationResult, KeyValueStore};
 
 const LOG_TARGET: &str = "comms::peer_manager::peer_storage";
@@ -320,7 +320,7 @@ where DS: KeyValueStore<PeerId, Peer>
             })
             .map_err(PeerManagerError::DatabaseError)?;
         // Use all available peers up to a maximum of N
-        let max_available = min(peer_keys.len(), n);
+        let max_available = cmp::min(peer_keys.len(), n);
         if max_available == 0 {
             return Ok(Vec::new());
         }
@@ -355,7 +355,7 @@ where DS: KeyValueStore<PeerId, Peer>
             .map_err(PeerManagerError::DatabaseError)?;
 
         // Use all available peers up to a maximum of N
-        let max_available = min(peer_keys.len(), n);
+        let max_available = cmp::min(peer_keys.len(), n);
         if max_available == 0 {
             return Ok(Vec::new());
         }
@@ -406,33 +406,8 @@ where DS: KeyValueStore<PeerId, Peer>
         features: PeerFeatures,
     ) -> Result<NodeDistance, PeerManagerError>
     {
-        let mut dists = vec![NodeDistance::max_distance(); n];
-        let last_index = n - 1;
-
-        self.peer_db
-            .for_each_ok(|(_, peer)| {
-                if peer.features != features {
-                    return IterationResult::Continue;
-                }
-
-                if peer.is_banned() || peer.is_offline() {
-                    return IterationResult::Continue;
-                }
-
-                let curr_dist = region_node_id.distance(&peer.node_id);
-                for i in 0..dists.len() {
-                    if dists[i] > curr_dist {
-                        dists.insert(i, curr_dist);
-                        dists.pop();
-                        break;
-                    }
-                }
-
-                IterationResult::Continue
-            })
-            .map_err(PeerManagerError::DatabaseError)?;
-
-        Ok(dists.remove(last_index))
+        self.get_region_stats(region_node_id, n, features)
+            .map(|stats| stats.distance)
     }
 
     /// Changes the ban flag bit of the peer
@@ -489,11 +464,103 @@ where DS: KeyValueStore<PeerId, Peer>
             .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)
     }
+
+    /// Return some basic stats for the region surrounding the region_node_id
+    pub fn get_region_stats<'a>(
+        &self,
+        region_node_id: &'a NodeId,
+        n: usize,
+        features: PeerFeatures,
+    ) -> Result<RegionStats<'a>, PeerManagerError>
+    {
+        let mut dists = vec![NodeDistance::max_distance(); n];
+        let last_index = n - 1;
+
+        let mut neighbours = vec![None; n];
+        self.peer_db
+            .for_each_ok(|(_, peer)| {
+                if peer.features != features {
+                    return IterationResult::Continue;
+                }
+
+                if peer.is_banned() {
+                    return IterationResult::Continue;
+                }
+                if peer.is_offline() {
+                    return IterationResult::Continue;
+                }
+
+                let curr_dist = region_node_id.distance(&peer.node_id);
+                for i in 0..dists.len() {
+                    if dists[i] > curr_dist {
+                        dists.insert(i, curr_dist);
+                        dists.pop();
+                        neighbours.insert(i, Some(peer));
+                        neighbours.pop();
+                        break;
+                    }
+                }
+
+                IterationResult::Continue
+            })
+            .map_err(PeerManagerError::DatabaseError)?;
+
+        let distance = dists.remove(last_index);
+        let total = neighbours.iter().filter(|p| p.is_some()).count();
+        let num_offline = neighbours
+            .iter()
+            .filter(|p| p.as_ref().map(|p| p.is_offline()).unwrap_or(false))
+            .count();
+        let num_banned = neighbours
+            .iter()
+            .filter(|p| p.as_ref().map(|p| p.is_banned()).unwrap_or(false))
+            .count();
+
+        Ok(RegionStats {
+            distance,
+            ref_node_id: region_node_id,
+            total,
+            num_offline,
+            num_banned,
+        })
+    }
 }
 
 impl Into<CommsDatabase> for PeerStorage<CommsDatabase> {
     fn into(self) -> CommsDatabase {
         self.peer_db
+    }
+}
+
+pub struct RegionStats<'a> {
+    distance: NodeDistance,
+    ref_node_id: &'a NodeId,
+    total: usize,
+    num_offline: usize,
+    num_banned: usize,
+}
+
+impl RegionStats<'_> {
+    pub fn in_region(&self, node_id: &NodeId) -> bool {
+        node_id.distance(self.ref_node_id) <= self.distance
+    }
+
+    pub fn offline_ratio(&self) -> f32 {
+        self.num_offline as f32 / self.total as f32
+    }
+
+    pub fn banned_ratio(&self) -> f32 {
+        self.num_banned as f32 / self.total as f32
+    }
+}
+
+impl fmt::Display for RegionStats<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "RegionStats(distance = {}, total = {}, num offline = {}, num banned = {})",
+            self.distance, self.total, self.num_offline, self.num_banned
+        )
     }
 }
 

@@ -43,13 +43,15 @@ const LOG_TARGET: &str = "comms::dht::storeforward::forward";
 pub struct ForwardLayer {
     peer_manager: Arc<PeerManager>,
     outbound_service: OutboundMessageRequester,
+    is_enabled: bool,
 }
 
 impl ForwardLayer {
-    pub fn new(peer_manager: Arc<PeerManager>, outbound_service: OutboundMessageRequester) -> Self {
+    pub fn new(peer_manager: Arc<PeerManager>, outbound_service: OutboundMessageRequester, is_enabled: bool) -> Self {
         Self {
             peer_manager,
             outbound_service,
+            is_enabled,
         }
     }
 }
@@ -63,6 +65,7 @@ impl<S> Layer<S> for ForwardLayer {
             // Pass in just the config item needed by the middleware for almost free copies
             Arc::clone(&self.peer_manager),
             self.outbound_service.clone(),
+            self.is_enabled,
         )
     }
 }
@@ -75,14 +78,22 @@ pub struct ForwardMiddleware<S> {
     next_service: S,
     peer_manager: Arc<PeerManager>,
     outbound_service: OutboundMessageRequester,
+    is_enabled: bool,
 }
 
 impl<S> ForwardMiddleware<S> {
-    pub fn new(service: S, peer_manager: Arc<PeerManager>, outbound_service: OutboundMessageRequester) -> Self {
+    pub fn new(
+        service: S,
+        peer_manager: Arc<PeerManager>,
+        outbound_service: OutboundMessageRequester,
+        is_enabled: bool,
+    ) -> Self
+    {
         Self {
             next_service: service,
             peer_manager,
             outbound_service,
+            is_enabled,
         }
     }
 }
@@ -99,13 +110,20 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Cl
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, msg: DecryptedDhtMessage) -> Self::Future {
-        Forwarder::new(
-            self.next_service.clone(),
-            Arc::clone(&self.peer_manager),
-            self.outbound_service.clone(),
-        )
-        .handle(msg)
+    fn call(&mut self, message: DecryptedDhtMessage) -> Self::Future {
+        let next_service = self.next_service.clone();
+        let peer_manager = Arc::clone(&self.peer_manager);
+        let outbound_service = self.outbound_service.clone();
+        let is_enabled = self.is_enabled;
+        async move {
+            if !is_enabled {
+                trace!(target: LOG_TARGET, "Passing message to next service (Not enabled)");
+                return next_service.oneshot(message).await;
+            }
+
+            let forwarder = Forwarder::new(next_service, peer_manager, outbound_service);
+            forwarder.handle(message).await
+        }
     }
 }
 
@@ -175,8 +193,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         if let Some(pk) = authenticated_origin.as_ref() {
             excluded_peers.push(pk.clone());
         }
-        let mut message_params = self.get_send_params(&dht_header, excluded_peers).await?;
 
+        let mut message_params = self.get_send_params(&dht_header, excluded_peers).await?;
         message_params.with_dht_header(dht_header.clone());
 
         self.outbound_service.send_raw(message_params.finish(), body).await?;
@@ -270,7 +288,7 @@ mod test {
         let peer_manager = make_peer_manager();
         let (oms_tx, mut oms_rx) = mpsc::channel(1);
         let oms = OutboundMessageRequester::new(oms_tx);
-        let mut service = ForwardLayer::new(peer_manager, oms).layer(spy.to_service::<PipelineError>());
+        let mut service = ForwardLayer::new(peer_manager, oms, true).layer(spy.to_service::<PipelineError>());
 
         let node_identity = make_node_identity();
         let inbound_msg = make_dht_inbound_message(&node_identity, b"".to_vec(), DhtMessageFlags::empty(), false);
@@ -293,7 +311,7 @@ mod test {
         let oms_mock_state = oms_mock.get_state();
         rt.spawn(oms_mock.run());
 
-        let mut service = ForwardLayer::new(peer_manager, oms_requester).layer(spy.to_service::<PipelineError>());
+        let mut service = ForwardLayer::new(peer_manager, oms_requester, true).layer(spy.to_service::<PipelineError>());
 
         let sample_body = b"Lorem ipsum";
         let inbound_msg = make_dht_inbound_message(

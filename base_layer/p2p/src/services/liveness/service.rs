@@ -34,9 +34,9 @@ use crate::{
     services::liveness::{neighbours::Neighbours, LivenessEvent, PongEvent},
     tari_message::TariMessageType,
 };
-use futures::{pin_mut, stream::StreamExt, task::Context, SinkExt, Stream};
+use futures::{future::Either, pin_mut, stream::StreamExt, SinkExt, Stream};
 use log::*;
-use std::{pin::Pin, task::Poll, time::Instant};
+use std::time::Instant;
 use tari_broadcast_channel::Publisher;
 use tari_comms::{
     peer_manager::{NodeId, Peer},
@@ -108,8 +108,8 @@ where
         pin_mut!(request_stream);
 
         let mut ping_tick = match self.config.auto_ping_interval {
-            Some(interval) => EitherStream::Left(time::interval_at((Instant::now() + interval).into(), interval)),
-            None => EitherStream::Right(futures::stream::iter(Vec::new())),
+            Some(interval) => Either::Left(time::interval_at((Instant::now() + interval).into(), interval)),
+            None => Either::Right(futures::stream::iter(Vec::new())),
         }
         .fuse();
 
@@ -361,33 +361,6 @@ where
 
     fn get_pong_count(&self) -> usize {
         self.state.pongs_received()
-    }
-}
-
-// Unfortunately, `stream::Either` doesn't exist yet in futures-0.3.0
-enum EitherStream<A, B> {
-    Left(A),
-    Right(B),
-}
-
-impl<A, B> Stream for EitherStream<A, B>
-where
-    A: Stream + Unpin,
-    B: Stream<Item = A::Item> + Unpin,
-{
-    type Item = A::Item;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match &mut *self {
-            EitherStream::Left(stream) => {
-                pin_mut!(stream);
-                stream.poll_next(cx)
-            },
-            EitherStream::Right(stream) => {
-                pin_mut!(stream);
-                stream.poll_next(cx)
-            },
-        }
     }
 }
 

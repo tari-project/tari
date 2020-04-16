@@ -31,7 +31,7 @@ pub struct LivenessConfig {
     pub enable_auto_join: bool,
     /// Set to true to enable a request for stored messages on node startup (default: false)
     pub enable_auto_stored_message_request: bool,
-    /// The length of time between querying peer manager for closest neighbours. (default: 5mins)
+    /// The length of time between querying peer manager for closest neighbours. (default: 1 minute)
     pub refresh_neighbours_interval: Duration,
 }
 
@@ -41,7 +41,7 @@ impl Default for LivenessConfig {
             auto_ping_interval: None,
             enable_auto_join: false,
             enable_auto_stored_message_request: false,
-            refresh_neighbours_interval: Duration::from_secs(3 * 60),
+            refresh_neighbours_interval: Duration::from_secs(60),
         }
     }
 }

@@ -138,13 +138,14 @@ pub async fn validate_and_add_peer_from_peer_identity(
                     &authenticated_public_key,
                     Some(peer_node_id.clone()),
                     Some(addresses),
-                    None,
+                    // Clear all flags (this is ok because we only have BANNED and OFFLINE flags)
+                    // TODO: Change the way banned and offline states are represented
+                    Some(PeerFlags::empty()),
                     Some(PeerFeatures::from_bits_truncate(peer_identity.features)),
                     Some(conn_stats),
                     Some(supported_protocols),
                 )
                 .await?;
-            peer_manager.set_offline(&authenticated_public_key, false).await?;
         },
         None => {
             debug!(

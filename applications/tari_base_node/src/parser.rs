@@ -49,11 +49,11 @@ use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_comms::{
     connection_manager::ConnectionManagerRequester,
-    peer_manager::{PeerFeatures, PeerManager, PeerQuery},
+    peer_manager::{PeerFeatures, PeerFlags, PeerManager, PeerQuery},
     types::CommsPublicKey,
     NodeIdentity,
 };
-use tari_comms_dht::DhtDiscoveryRequester;
+use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
     base_node::LocalNodeCommsInterface,
     blocks::BlockHeader,
@@ -83,6 +83,7 @@ pub enum BaseNodeCommand {
     SendTari,
     GetChainMetadata,
     ListPeers,
+    ResetOfflinePeers,
     BanPeer,
     UnbanPeer,
     ListConnections,
@@ -235,6 +236,9 @@ impl Parser {
             ListPeers => {
                 self.process_list_peers(args);
             },
+            ResetOfflinePeers => {
+                self.process_reset_offline_peers();
+            },
             CheckDb => {
                 self.process_check_db();
             },
@@ -310,6 +314,9 @@ impl Parser {
             },
             ListPeers => {
                 println!("Lists the peers that this node knows about");
+            },
+            ResetOfflinePeers => {
+                println!("Clear offline flag from all peers");
             },
             BanPeer => {
                 println!("Bans a peer");
@@ -519,7 +526,10 @@ impl Parser {
         self.executor.spawn(async move {
             let start = Instant::now();
             println!("🌎 Peer discovery started.");
-            match dht.discover_peer(dest_pubkey).await {
+            match dht
+                .discover_peer(dest_pubkey.clone(), NodeDestination::PublicKey(dest_pubkey))
+                .await
+            {
                 Ok(p) => {
                     let end = Instant::now();
                     println!("⚡️ Discovery succeeded in {}ms!", (end - start).as_millis());
@@ -633,6 +643,33 @@ impl Parser {
                 Err(err) => {
                     println!("Failed to list connections: {:?}", err);
                     error!(target: LOG_TARGET, "Could not list connections: {:?}", err);
+                    return;
+                },
+            }
+        });
+    }
+
+    fn process_reset_offline_peers(&self) {
+        let peer_manager = self.peer_manager.clone();
+        self.executor.spawn(async move {
+            let result = peer_manager
+                .update_each(|mut peer| {
+                    if peer.flags.contains(PeerFlags::OFFLINE) {
+                        peer.flags.remove(PeerFlags::OFFLINE);
+                        Some(peer)
+                    } else {
+                        None
+                    }
+                })
+                .await;
+
+            match result {
+                Ok(num_updated) => {
+                    println!("{} peer(s) were unmarked as offline.", num_updated);
+                },
+                Err(err) => {
+                    println!("Failed to clear offline peer states: {:?}", err);
+                    error!(target: LOG_TARGET, "{:?}", err);
                     return;
                 },
             }
