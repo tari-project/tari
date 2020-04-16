@@ -334,7 +334,7 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 
 // Creates a TariWallet
 struct TariWallet *wallet_create(struct TariWalletConfig *config,
-                                    char *log_path,
+                                    const char *log_path,
                                     void (*callback_received_transaction)(struct TariPendingInboundTransaction*),
                                     void (*callback_received_transaction_reply)(struct TariCompletedTransaction*),
                                     void (*callback_received_finalized_transaction)(struct TariCompletedTransaction*),
