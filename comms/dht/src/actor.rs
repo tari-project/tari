@@ -310,7 +310,7 @@ impl<'a> DhtActor<'a> {
                 ))
             },
             GetSetting(key, reply_tx) => Box::pin(async move {
-                let _ = reply_tx.send(db.get_value(key).await.map_err(Into::into));
+                let _ = reply_tx.send(db.get_value_bytes(key).await.map_err(Into::into));
                 Ok(())
             }),
             SetSetting(key, value) => Box::pin(async move {
@@ -628,6 +628,7 @@ mod test {
         broadcast_strategy::BroadcastClosestRequest,
         test_utils::{make_node_identity, make_peer_manager},
     };
+    use chrono::{DateTime, Utc};
     use tari_comms::{
         net_address::MultiaddressesWithStats,
         peer_manager::{PeerFeatures, PeerFlags},
@@ -768,5 +769,44 @@ mod test {
             .unwrap();
 
         assert_eq!(peers.len(), 1);
+    }
+
+    #[tokio_macros::test_basic]
+    async fn get_and_set_setting() {
+        let node_identity = make_node_identity();
+        let peer_manager = make_peer_manager();
+        let (out_tx, _out_rx) = mpsc::channel(1);
+        let (actor_tx, actor_rx) = mpsc::channel(1);
+        let mut requester = DhtRequester::new(actor_tx);
+        let outbound_requester = OutboundMessageRequester::new(out_tx);
+        let shutdown = Shutdown::new();
+        let actor = DhtActor::new(
+            Default::default(),
+            node_identity,
+            peer_manager,
+            outbound_requester,
+            actor_rx,
+            shutdown.to_signal(),
+        );
+
+        runtime::Handle::current().spawn(actor.run());
+
+        assert!(requester
+            .get_setting::<DateTime<Utc>>(DhtSettingKey::SafLastRequestTimestamp,)
+            .await
+            .unwrap()
+            .is_none());
+        let ts = Utc::now();
+        requester
+            .set_setting(DhtSettingKey::SafLastRequestTimestamp, ts)
+            .await
+            .unwrap();
+
+        let got_ts = requester
+            .get_setting::<DateTime<Utc>>(DhtSettingKey::SafLastRequestTimestamp)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got_ts, ts);
     }
 }

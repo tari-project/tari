@@ -349,7 +349,11 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         );
 
         // Peer not found, let's try and discover it
-        match self.dht_discovery_requester.discover_peer(dest_public_key).await {
+        match self
+            .dht_discovery_requester
+            .discover_peer(dest_public_key.clone(), NodeDestination::PublicKey(dest_public_key))
+            .await
+        {
             // Peer found!
             Ok(peer) => {
                 if peer.is_banned() {

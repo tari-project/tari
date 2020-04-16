@@ -48,6 +48,10 @@ use tari_shutdown::ShutdownSignal;
 use tokio::task;
 use tower::{layer::Layer, Service, ServiceBuilder};
 
+const DHT_ACTOR_CHANNEL_SIZE: usize = 100;
+const DHT_DISCOVERY_CHANNEL_SIZE: usize = 100;
+const DHT_SAF_SERVICE_CHANNEL_SIZE: usize = 100;
+
 /// Responsible for starting the DHT actor, building the DHT middleware stack and as a factory
 /// for producing DHT requesters.
 pub struct Dht {
@@ -79,9 +83,9 @@ impl Dht {
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
-        let (dht_sender, dht_receiver) = mpsc::channel(20);
-        let (discovery_sender, discovery_receiver) = mpsc::channel(20);
-        let (saf_sender, saf_receiver) = mpsc::channel(20);
+        let (dht_sender, dht_receiver) = mpsc::channel(DHT_ACTOR_CHANNEL_SIZE);
+        let (discovery_sender, discovery_receiver) = mpsc::channel(DHT_DISCOVERY_CHANNEL_SIZE);
+        let (saf_sender, saf_receiver) = mpsc::channel(DHT_SAF_SERVICE_CHANNEL_SIZE);
 
         let dht = Self {
             node_identity,
@@ -207,6 +211,7 @@ impl Dht {
             .layer(store_forward::ForwardLayer::new(
                 Arc::clone(&self.peer_manager),
                 self.outbound_requester(),
+                self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD),
             ))
             .layer(store_forward::StoreLayer::new(
                 self.config.clone(),

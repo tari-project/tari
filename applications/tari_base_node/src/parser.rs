@@ -53,7 +53,7 @@ use tari_comms::{
     types::CommsPublicKey,
     NodeIdentity,
 };
-use tari_comms_dht::DhtDiscoveryRequester;
+use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
     base_node::LocalNodeCommsInterface,
     blocks::BlockHeader,
@@ -83,7 +83,7 @@ pub enum BaseNodeCommand {
     SendTari,
     GetChainMetadata,
     ListPeers,
-    ClearOfflinePeerFlags,
+    ResetOfflinePeers,
     BanPeer,
     UnbanPeer,
     ListConnections,
@@ -315,7 +315,7 @@ impl Parser {
             ListPeers => {
                 println!("Lists the peers that this node knows about");
             },
-            ClearOfflinePeerFlags => {
+            ResetOfflinePeers => {
                 println!("Clear offline flag from all peers");
             },
             BanPeer => {
@@ -526,7 +526,10 @@ impl Parser {
         self.executor.spawn(async move {
             let start = Instant::now();
             println!("🌎 Peer discovery started.");
-            match dht.discover_peer(dest_pubkey).await {
+            match dht
+                .discover_peer(dest_pubkey.clone(), NodeDestination::PublicKey(dest_pubkey))
+                .await
+            {
                 Ok(p) => {
                     let end = Instant::now();
                     println!("⚡️ Discovery succeeded in {}ms!", (end - start).as_millis());
@@ -647,7 +650,7 @@ impl Parser {
     }
 
     fn process_reset_offline_peers(&self) {
-        let mut peer_manager = self.peer_manager.clone();
+        let peer_manager = self.peer_manager.clone();
         self.executor.spawn(async move {
             let result = peer_manager
                 .update_each(|mut peer| {

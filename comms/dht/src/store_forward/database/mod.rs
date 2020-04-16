@@ -186,11 +186,7 @@ impl StoreAndForwardDatabase {
             .with_connection_async(move |conn| {
                 let mut query = stored_messages::table
                     .select(stored_messages::all_columns)
-                    .filter(
-                        stored_messages::destination_pubkey
-                            .eq(pk_hex)
-                            .or(stored_messages::destination_pubkey.is_null()),
-                    )
+                    .filter(stored_messages::destination_pubkey.eq(pk_hex))
                     .filter(stored_messages::message_type.eq(message_type as i32))
                     .into_boxed();
 

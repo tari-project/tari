@@ -136,10 +136,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         // Decrypt and verify the origin
         let authenticated_origin = match Self::attempt_decrypt_origin_mac(&shared_secret, dht_header) {
-            Ok(origin) => {
+            Ok((public_key, signature)) => {
                 // If this fails, discard the message because we decrypted and deserialized the message with our shared
                 // ECDH secret but the message could not be authenticated
-                Self::authenticate_origin_mac(&origin, &message.body).map_err(PipelineError::from_debug)?
+                Self::authenticate_origin_mac(&public_key, &signature, &message.body)
+                    .map_err(PipelineError::from_debug)?;
+                public_key
             },
             Err(err) => {
                 debug!(target: LOG_TARGET, "Unable to decrypt message origin: {}", err);
@@ -167,7 +169,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     fn attempt_decrypt_origin_mac(
         shared_secret: &CommsPublicKey,
         dht_header: &DhtMessageHeader,
-    ) -> Result<OriginMac, DecryptionError>
+    ) -> Result<(CommsPublicKey, Vec<u8>), DecryptionError>
     {
         let encrypted_origin_mac = Some(&dht_header.origin_mac)
             .filter(|b| !b.is_empty())
@@ -175,14 +177,23 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .ok_or_else(|| DecryptionError::OriginMacNotProvided)?;
         let decrypted_bytes = crypt::decrypt(shared_secret, encrypted_origin_mac)
             .map_err(|_| DecryptionError::OriginMacDecryptedFailed)?;
-        OriginMac::decode(decrypted_bytes.as_slice()).map_err(|_| DecryptionError::OriginMacDecryptedFailed)
+        let origin_mac =
+            OriginMac::decode(decrypted_bytes.as_slice()).map_err(|_| DecryptionError::OriginMacDecryptedFailed)?;
+        // Check the public key here, because it is possible (rare but possible) for an failed decrypted message to pass
+        // protobuf decoding of the relatively simple OriginMac struct but with invalid data
+        let public_key = CommsPublicKey::from_bytes(&origin_mac.public_key)
+            .map_err(|_| DecryptionError::OriginMacInvalidPublicKey)?;
+        Ok((public_key, origin_mac.signature))
     }
 
-    fn authenticate_origin_mac(origin: &OriginMac, body: &[u8]) -> Result<CommsPublicKey, DecryptionError> {
-        let public_key =
-            CommsPublicKey::from_bytes(&origin.public_key).map_err(|_| DecryptionError::OriginMacInvalidPublicKey)?;
-        if signature::verify(&public_key, &origin.signature, body).unwrap_or(false) {
-            Ok(public_key)
+    fn authenticate_origin_mac(
+        public_key: &CommsPublicKey,
+        signature: &[u8],
+        body: &[u8],
+    ) -> Result<(), DecryptionError>
+    {
+        if signature::verify(public_key, signature, body).unwrap_or(false) {
+            Ok(())
         } else {
             Err(DecryptionError::OriginMacInvalidSignature)
         }
@@ -229,7 +240,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         } else {
             let origin_mac = OriginMac::decode(message.dht_header.origin_mac.as_slice())
                 .map_err(|_| PipelineError::from_debug(DecryptionError::OriginMacClearTextDecodeFailed))?;
-            Some(Self::authenticate_origin_mac(&origin_mac, &message.body).map_err(PipelineError::from_debug)?)
+            let public_key = CommsPublicKey::from_bytes(&origin_mac.public_key)
+                .map_err(|_| PipelineError::from_debug(DecryptionError::OriginMacInvalidPublicKey))?;
+            Self::authenticate_origin_mac(&public_key, &origin_mac.signature, &message.body)
+                .map_err(PipelineError::from_debug)?;
+            Some(public_key)
         };
 
         match EnvelopeBody::decode(message.body.as_slice()) {

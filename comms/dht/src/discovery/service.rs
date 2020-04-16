@@ -22,7 +22,7 @@
 
 use crate::{
     discovery::{requester::DhtDiscoveryRequest, DhtDiscoveryError},
-    envelope::DhtMessageType,
+    envelope::{DhtMessageType, NodeDestination},
     outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageParams},
     proto::dht::{DiscoveryMessage, DiscoveryResponseMessage},
     DhtConfig,
@@ -146,10 +146,10 @@ impl DhtDiscoveryService {
     async fn handle_request(&mut self, request: DhtDiscoveryRequest) {
         use DhtDiscoveryRequest::*;
         match request {
-            DiscoverPeer(dest_pubkey, reply_tx) => {
+            DiscoverPeer(dest_pubkey, destination, reply_tx) => {
                 log_if_error!(
                     target: LOG_TARGET,
-                    self.initiate_peer_discovery(dest_pubkey, reply_tx).await,
+                    self.initiate_peer_discovery(dest_pubkey, destination, reply_tx).await,
                     "Failed to initiate a discovery request because '{error}'",
                 );
             },
@@ -202,8 +202,13 @@ impl DhtDiscoveryService {
                     // Don't need to be notified for this discovery
                     let (reply_tx, _) = oneshot::channel();
                     // Send out a discovery for that peer without keeping track of it as an inflight discovery
-                    self.initiate_peer_discovery(Box::new(peer.public_key), reply_tx)
-                        .await?;
+                    let dest_pubkey = Box::new(peer.public_key);
+                    self.initiate_peer_discovery(
+                        dest_pubkey.clone(),
+                        NodeDestination::PublicKey(dest_pubkey),
+                        reply_tx,
+                    )
+                    .await?;
                 }
             },
             _ => {},
@@ -392,11 +397,12 @@ impl DhtDiscoveryService {
     async fn initiate_peer_discovery(
         &mut self,
         dest_pubkey: Box<CommsPublicKey>,
+        destination: NodeDestination,
         reply_tx: oneshot::Sender<Result<Peer, DhtDiscoveryError>>,
     ) -> Result<(), DhtDiscoveryError>
     {
         let nonce = OsRng.next_u64();
-        self.send_discover(nonce, dest_pubkey.clone()).await?;
+        self.send_discover(nonce, destination, dest_pubkey.clone()).await?;
 
         let inflight_count = self.inflight_discoveries.len();
 
@@ -429,6 +435,7 @@ impl DhtDiscoveryService {
     async fn send_discover(
         &mut self,
         nonce: u64,
+        destination: NodeDestination,
         dest_public_key: Box<CommsPublicKey>,
     ) -> Result<(), DhtDiscoveryError>
     {
@@ -438,9 +445,9 @@ impl DhtDiscoveryService {
             peer_features: self.node_identity.features().bits(),
             nonce,
         };
-        debug!(
+        info!(
             target: LOG_TARGET,
-            "Sending Discovery message for peer public key '{}'", dest_public_key
+            "Sending Discovery message for peer public key '{}' with destination {}", dest_public_key, destination
         );
 
         let send_states = self
@@ -448,6 +455,7 @@ impl DhtDiscoveryService {
             .send_message_no_header(
                 SendMessageParams::new()
                     .neighbours_include_clients(Vec::new())
+                    .with_destination(destination)
                     .with_encryption(OutboundEncryption::EncryptFor(dest_public_key))
                     .with_dht_message_type(DhtMessageType::Discovery)
                     .finish(),
@@ -522,7 +530,10 @@ mod test {
             rt.spawn(service.run());
 
             let dest_public_key = Box::new(CommsPublicKey::default());
-            let result = rt.block_on(requester.discover_peer(dest_public_key.clone()));
+            let result = rt.block_on(requester.discover_peer(
+                dest_public_key.clone(),
+                NodeDestination::PublicKey(dest_public_key.clone()),
+            ));
 
             assert!(result.unwrap_err().is_timeout());
 

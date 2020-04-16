@@ -48,7 +48,7 @@ use tari_comms::{
 use tari_shutdown::ShutdownSignal;
 use tokio::time;
 
-const LOG_TARGET: &str = "comms::dht::store_forward::actor";
+const LOG_TARGET: &str = "comms::dht::storeforward::actor";
 /// The interval to initiate a database cleanup.
 /// This involves cleaning up messages which have been stored too long according to their priority
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(10 * 60); // 10 mins
@@ -154,7 +154,13 @@ impl StoreAndForwardService {
         Ok(StoreAndForwardDatabase::new(conn))
     }
 
-    pub async fn run(mut self) -> SafResult<()> {
+    pub async fn run(self) {
+        if let Err(err) = self.run_inner().await {
+            error!(target: LOG_TARGET, "Failed to run store and forward service: {:?}", err);
+        }
+    }
+
+    async fn run_inner(mut self) -> SafResult<()> {
         let db = self.connect_database().await?;
         let mut shutdown_signal = self
             .shutdown_signal
@@ -163,21 +169,13 @@ impl StoreAndForwardService {
 
         let mut cleanup_ticker = time::interval(CLEANUP_INTERVAL).fuse();
 
-        // Do initial cleanup to account for time passed since being offline
-        if let Err(err) = self.cleanup(&db).await {
-            error!(
-                target: LOG_TARGET,
-                "Error when performing store and forward cleanup: {:?}", err
-            );
-        }
-
         loop {
             futures::select! {
                 request = self.request_rx.select_next_some() => {
                     self.handle_request(&db, request).await;
                 },
 
-                _ = cleanup_ticker.next() => {
+                _ = cleanup_ticker.select_next_some() => {
                     if let Err(err) = self.cleanup(&db).await {
                         error!(target: LOG_TARGET, "Error when performing store and forward cleanup: {:?}", err);
                     }
@@ -195,6 +193,7 @@ impl StoreAndForwardService {
 
     async fn handle_request(&self, db: &StoreAndForwardDatabase, request: StoreAndForwardRequest) {
         use StoreAndForwardRequest::*;
+        trace!(target: LOG_TARGET, "Request: {:?}", request);
         match request {
             FetchMessages(query, reply_tx) => match self.handle_fetch_message_query(db, query).await {
                 Ok(messages) => {
@@ -203,7 +202,7 @@ impl StoreAndForwardService {
                 Err(err) => {
                     error!(
                         target: LOG_TARGET,
-                        "find_messages_by_public_key failed because '{:?}'", err
+                        "Failed to fetch stored messages because '{:?}'", err
                     );
                     let _ = reply_tx.send(Err(err));
                 },
@@ -213,11 +212,11 @@ impl StoreAndForwardService {
                 match db.insert_message(msg).await {
                     Ok(_) => info!(
                         target: LOG_TARGET,
-                        "Store and forward message stored for public key '{}'",
+                        "Stored message for public key '{}'",
                         public_key.unwrap_or_else(|| "<None>".to_string())
                     ),
                     Err(err) => {
-                        error!(target: LOG_TARGET, "insert_message failed because '{:?}'", err);
+                        error!(target: LOG_TARGET, "InsertMessage failed because '{:?}'", err);
                     },
                 }
             },

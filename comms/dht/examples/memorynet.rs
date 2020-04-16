@@ -68,7 +68,7 @@ use tari_comms::{
     ConnectionManagerEvent,
     PeerConnection,
 };
-use tari_comms_dht::{inbound::DecryptedDhtMessage, Dht, DhtBuilder};
+use tari_comms_dht::{envelope::NodeDestination, inbound::DecryptedDhtMessage, Dht, DhtBuilder};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tari_test_utils::{paths::create_temporary_data_path, random};
 use tokio::{runtime, time};
@@ -252,7 +252,10 @@ async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut MessagingEven
         let discovery_result = wallet1
             .dht
             .discovery_service_requester()
-            .discover_peer(Box::new(wallet2.node_identity().public_key().clone()))
+            .discover_peer(
+                Box::new(wallet2.node_identity().public_key().clone()),
+                NodeDestination::Unknown,
+            )
             .await;
 
         let end = Instant::now();
@@ -288,8 +291,9 @@ async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut MessagingEven
     }
 
     banner!(
-        "✨ The set of discoveries succeeded {}% of the time and took a total of {:.1}s with {} messages sent.",
-        (successes as f32 / (wallets.len() - 1) as f32) * 100.0,
+        "✨ The set of discoveries succeeded {} out of {} times and took a total of {:.1}s with {} messages sent.",
+        successes,
+        wallets.len() - 1,
         total_time.as_secs_f32(),
         total_messages
     );
@@ -355,9 +359,10 @@ async fn do_store_and_forward_discovery(
     let start = Instant::now();
     let discovery_task = runtime::Handle::current().spawn({
         let node_identity = node_identity.clone();
+        let dest_public_key = Box::new(node_identity.public_key().clone());
         async move {
             first_wallet_discovery_req
-                .discover_peer(Box::new(node_identity.public_key().clone()))
+                .discover_peer(dest_public_key.clone(), NodeDestination::PublicKey(dest_public_key))
                 .await
         }
     });

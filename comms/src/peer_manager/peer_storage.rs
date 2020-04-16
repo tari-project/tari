@@ -37,7 +37,7 @@ use crate::{
 use log::*;
 use multiaddr::Multiaddr;
 use rand::{rngs::OsRng, Rng};
-use std::{cmp::min, collections::HashMap, fmt};
+use std::{cmp, collections::HashMap, fmt};
 use tari_storage::{IterationResult, KeyValueStore};
 
 const LOG_TARGET: &str = "comms::peer_manager::peer_storage";
@@ -320,7 +320,7 @@ where DS: KeyValueStore<PeerId, Peer>
             })
             .map_err(PeerManagerError::DatabaseError)?;
         // Use all available peers up to a maximum of N
-        let max_available = min(peer_keys.len(), n);
+        let max_available = cmp::min(peer_keys.len(), n);
         if max_available == 0 {
             return Ok(Vec::new());
         }
@@ -355,7 +355,7 @@ where DS: KeyValueStore<PeerId, Peer>
             .map_err(PeerManagerError::DatabaseError)?;
 
         // Use all available peers up to a maximum of N
-        let max_available = min(peer_keys.len(), n);
+        let max_available = cmp::min(peer_keys.len(), n);
         if max_available == 0 {
             return Ok(Vec::new());
         }
@@ -476,22 +476,17 @@ where DS: KeyValueStore<PeerId, Peer>
         let mut dists = vec![NodeDistance::max_distance(); n];
         let last_index = n - 1;
 
-        let mut num_offline = 0;
-        let mut num_banned = 0;
-        let mut total = 0;
+        let mut neighbours = vec![None; n];
         self.peer_db
             .for_each_ok(|(_, peer)| {
                 if peer.features != features {
                     return IterationResult::Continue;
                 }
 
-                total += 1;
                 if peer.is_banned() {
-                    num_banned += 1;
                     return IterationResult::Continue;
                 }
                 if peer.is_offline() {
-                    num_offline += 1;
                     return IterationResult::Continue;
                 }
 
@@ -500,6 +495,8 @@ where DS: KeyValueStore<PeerId, Peer>
                     if dists[i] > curr_dist {
                         dists.insert(i, curr_dist);
                         dists.pop();
+                        neighbours.insert(i, Some(peer));
+                        neighbours.pop();
                         break;
                     }
                 }
@@ -509,6 +506,15 @@ where DS: KeyValueStore<PeerId, Peer>
             .map_err(PeerManagerError::DatabaseError)?;
 
         let distance = dists.remove(last_index);
+        let total = neighbours.iter().filter(|p| p.is_some()).count();
+        let num_offline = neighbours
+            .iter()
+            .filter(|p| p.as_ref().map(|p| p.is_offline()).unwrap_or(false))
+            .count();
+        let num_banned = neighbours
+            .iter()
+            .filter(|p| p.as_ref().map(|p| p.is_banned()).unwrap_or(false))
+            .count();
 
         Ok(RegionStats {
             distance,
