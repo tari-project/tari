@@ -61,6 +61,7 @@ use std::{
 use tari_comms::{peer_manager::NodeIdentity, protocol::messaging::MessagingEventSender, types::CommsPublicKey};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
+    envelope::NodeDestination,
     outbound::{OutboundEncryption, OutboundMessageRequester},
 };
 #[cfg(feature = "test_harness")]
@@ -562,7 +563,7 @@ where
                 );
                 let _ = self
                     .event_publisher
-                    .send(Arc::new(TransactionEvent::Error(format!("{:?}", error).to_string())));
+                    .send(Arc::new(TransactionEvent::Error(format!("{:?}", error))));
             },
         }
     }
@@ -699,6 +700,15 @@ where
                 .send_direct(
                     source_pubkey.clone(),
                     OutboundEncryption::None,
+                    OutboundDomainMessage::new(TariMessageType::ReceiverPartialTransactionReply, proto_message.clone()),
+                )
+                .await?;
+
+            self.outbound_message_service
+                .propagate(
+                    NodeDestination::from(source_pubkey.clone()),
+                    OutboundEncryption::EncryptFor(Box::new(source_pubkey.clone())),
+                    vec![],
                     OutboundDomainMessage::new(TariMessageType::ReceiverPartialTransactionReply, proto_message),
                 )
                 .await?;
@@ -1063,8 +1073,8 @@ where
                 let protocol = TransactionBroadcastProtocol::new(
                     tx_id,
                     self.service_resources.clone(),
-                    self.config.mempool_broadcast_timeout.clone(),
-                    pk.clone(),
+                    self.config.mempool_broadcast_timeout,
+                    pk,
                     mempool_response_receiver,
                     base_node_response_receiver,
                 );
@@ -1086,11 +1096,11 @@ where
         trace!(target: LOG_TARGET, "Attempting to Broadcast all Completed Transactions");
         let completed_txs = self.db.get_completed_transactions().await?;
         for completed_tx in completed_txs.values() {
-            if completed_tx.status == TransactionStatus::Completed {
-                if !self.mempool_response_senders.contains_key(&completed_tx.tx_id) {
-                    self.broadcast_completed_transaction_to_mempool(completed_tx.tx_id, join_handles)
-                        .await?;
-                }
+            if completed_tx.status == TransactionStatus::Completed &&
+                !self.mempool_response_senders.contains_key(&completed_tx.tx_id)
+            {
+                self.broadcast_completed_transaction_to_mempool(completed_tx.tx_id, join_handles)
+                    .await?;
             }
         }
 
@@ -1167,7 +1177,7 @@ where
                 );
                 let _ = self
                     .event_publisher
-                    .send(Arc::new(TransactionEvent::Error(format!("{:?}", error).to_string())));
+                    .send(Arc::new(TransactionEvent::Error(format!("{:?}", error))));
             },
         }
     }
@@ -1201,8 +1211,8 @@ where
                     protocol_id,
                     completed_tx.tx_id,
                     self.service_resources.clone(),
-                    self.config.base_node_mined_timeout.clone(),
-                    pk.clone(),
+                    self.config.base_node_mined_timeout,
+                    pk,
                     mempool_response_receiver,
                     base_node_response_receiver,
                 );
@@ -1239,7 +1249,7 @@ where
                 );
                 let _ = self
                     .event_publisher
-                    .send(Arc::new(TransactionEvent::Error(format!("{:?}", error).to_string())));
+                    .send(Arc::new(TransactionEvent::Error(format!("{:?}", error))));
             },
         }
     }

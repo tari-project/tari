@@ -401,7 +401,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let conn = acquire_lock!(self.database_connection);
         match CompletedTransactionSql::find(tx_id, &(*conn)) {
             Ok(v) => {
-                let _ = v.cancel(&(*conn))?;
+                v.cancel(&(*conn))?;
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                 return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(

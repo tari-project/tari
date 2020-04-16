@@ -69,6 +69,7 @@ where TBackend: TransactionBackend + Clone + 'static
     stage: TransactionProtocolStage,
 }
 
+#[allow(clippy::too_many_arguments)]
 impl<TBackend> TransactionSendProtocol<TBackend>
 where TBackend: TransactionBackend + Clone + 'static
 {
@@ -241,15 +242,69 @@ where TBackend: TransactionBackend + Clone + 'static
                 e
             });
 
+        // TODO Actually monitor the send status of this message
         self.resources
             .outbound_message_service
             .send_direct(
                 outbound_tx.destination_public_key.clone(),
                 OutboundEncryption::None,
-                OutboundDomainMessage::new(TariMessageType::TransactionFinalized, finalized_transaction_message),
+                OutboundDomainMessage::new(
+                    TariMessageType::TransactionFinalized,
+                    finalized_transaction_message.clone(),
+                ),
             )
             .await
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+
+        // TODO Monitor the final send result of this process
+        match self
+            .resources
+            .outbound_message_service
+            .propagate(
+                NodeDestination::from(self.dest_pubkey.clone()),
+                OutboundEncryption::EncryptFor(Box::new(self.dest_pubkey.clone())),
+                vec![],
+                OutboundDomainMessage::new(
+                    TariMessageType::TransactionFinalized,
+                    finalized_transaction_message.clone(),
+                ),
+            )
+            .await
+        {
+            Ok(result) => match result.resolve_ok().await {
+                None => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Sending Finalized Transaction (TxId: {}) to neighbours for Store and Forward failed", self.id
+                    );
+                },
+                Some(tags) if !tags.is_empty() => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Sending Finalized Transaction (TxId: {}) to Neighbours for Store and Forward successful with \
+                         Message Tags: {:?}",
+                        tx_id,
+                        tags,
+                    );
+                },
+                Some(_) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Sending Finalized Transaction to Neighbours for Store and Forward for TX_ID: {} was \
+                         unsuccessful and no messages were sent",
+                        tx_id
+                    );
+                },
+            },
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Sending Finalized Transaction (TxId: {}) to neighbours for Store and Forward failed: {:?}",
+                    self.id,
+                    e
+                );
+            },
+        };
 
         Ok(self.id)
     }
@@ -316,7 +371,7 @@ where TBackend: TransactionBackend + Clone + 'static
                                 let (received_tag, success) = match message_event_receiver.next().await {
                                     Some(read_item) => match read_item {
                                         Ok(event) => match &*event {
-                                            MessagingEvent::MessageSent(message_tag) => (message_tag.clone(), true),
+                                            MessagingEvent::MessageSent(message_tag) => (*message_tag, true),
                                             MessagingEvent::SendMessageFailed(outbound_message, _reason) => {
                                                 (outbound_message.tag, false)
                                             },
@@ -366,6 +421,7 @@ where TBackend: TransactionBackend + Clone + 'static
             },
         };
 
+        // TODO Actually monitor the send status of this message
         let mut store_and_forward_send_success = false;
         match self
             .resources

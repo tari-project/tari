@@ -95,21 +95,15 @@ where TBackend: TransactionBackend + Clone + 'static
 
     /// The task that defines the execution of the protocol.
     pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
-        let mut mempool_response_receiver =
-            self.mempool_response_receiver
-                .take()
-                .ok_or(TransactionServiceProtocolError::new(
-                    self.id,
-                    TransactionServiceError::InvalidStateError,
-                ))?;
+        let mut mempool_response_receiver = self
+            .mempool_response_receiver
+            .take()
+            .ok_or_else(|| TransactionServiceProtocolError::new(self.id, TransactionServiceError::InvalidStateError))?;
 
-        let mut base_node_response_receiver =
-            self.base_node_response_receiver
-                .take()
-                .ok_or(TransactionServiceProtocolError::new(
-                    self.id,
-                    TransactionServiceError::InvalidStateError,
-                ))?;
+        let mut base_node_response_receiver = self
+            .base_node_response_receiver
+            .take()
+            .ok_or_else(|| TransactionServiceProtocolError::new(self.id, TransactionServiceError::InvalidStateError))?;
 
         trace!(
             target: LOG_TARGET,
