@@ -35,6 +35,8 @@ pub use message::{DhtOutboundRequest, OutboundEncryption, SendMessageResponse};
 mod message_params;
 pub use message_params::SendMessageParams;
 
+mod message_send_state;
+
 mod requester;
 pub use requester::OutboundMessageRequester;
 

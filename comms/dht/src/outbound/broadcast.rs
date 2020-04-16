@@ -29,6 +29,7 @@ use crate::{
     outbound::{
         message::{DhtOutboundMessage, OutboundEncryption},
         message_params::FinalSendMessageParams,
+        message_send_state::MessageSendState,
         SendMessageResponse,
     },
     proto::envelope::{DhtMessageType, Network},
@@ -281,7 +282,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         },
                         Ok(None) => {
                             // Message sent to 0 peers
-                            let _ = discovery_reply_tx.send(SendMessageResponse::Queued(vec![]));
+                            let _ = discovery_reply_tx.send(SendMessageResponse::Queued(vec![].into()));
                             return Ok(Vec::new());
                         },
                         Err(err) => {
@@ -304,16 +305,16 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     )
                     .await
                 {
-                    Ok(msgs) => {
-                        // Reply with the number of messages to be sent
+                    Ok((msgs, send_states)) => {
+                        // Reply with the `MessageTag`s for each message
                         let _ = reply_tx
                             .take()
                             .expect("cannot fail")
-                            .send(SendMessageResponse::Queued(msgs.iter().map(|m| m.tag).collect()));
+                            .send(SendMessageResponse::Queued(send_states.into()));
+
                         Ok(msgs)
                     },
                     Err(err) => {
-                        // Reply 0 messages sent
                         let _ = reply_tx.take().expect("cannot fail").send(SendMessageResponse::Failed);
                         Err(err)
                     },
@@ -385,30 +386,39 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         extra_flags: DhtMessageFlags,
         force_origin: bool,
         body: Bytes,
-    ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
+    ) -> Result<(Vec<DhtOutboundMessage>, Vec<MessageSendState>), DhtOutboundError>
     {
         let dht_flags = encryption.flags() | extra_flags;
 
         // Construct a DhtOutboundMessage for each recipient
         let messages = selected_peers
             .into_iter()
-            .map(|peer| DhtOutboundMessage {
-                tag: MessageTag::new(),
-                destination_peer: peer,
-                destination: destination.clone(),
-                dht_message_type,
-                network: self.target_network,
-                dht_flags,
-                custom_header: custom_header.clone(),
-                include_origin: force_origin || encryption.is_encrypt(),
-                encryption: encryption.clone(),
-                body: body.clone(),
-                ephemeral_public_key: None,
-                origin_mac: None,
+            .map(|peer| {
+                let (reply_tx, reply_rx) = oneshot::channel();
+                let tag = MessageTag::new();
+                let send_state = MessageSendState::new(tag, reply_rx);
+                (
+                    DhtOutboundMessage {
+                        tag,
+                        destination_peer: peer,
+                        destination: destination.clone(),
+                        dht_message_type,
+                        network: self.target_network,
+                        dht_flags,
+                        custom_header: custom_header.clone(),
+                        include_origin: force_origin || encryption.is_encrypt(),
+                        encryption: encryption.clone(),
+                        body: body.clone(),
+                        reply_tx: reply_tx.into(),
+                        ephemeral_public_key: None,
+                        origin_mac: None,
+                    },
+                    send_state,
+                )
             })
             .collect::<Vec<_>>();
 
-        Ok(messages)
+        Ok(messages.into_iter().unzip())
     }
 }
 

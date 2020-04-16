@@ -71,7 +71,7 @@ mod inbound;
 pub use inbound::InboundMessage;
 
 mod outbound;
-pub use outbound::OutboundMessage;
+pub use outbound::{MessagingReplyRx, MessagingReplyTx, OutboundMessage};
 
 mod tag;
 pub use tag::MessageTag;

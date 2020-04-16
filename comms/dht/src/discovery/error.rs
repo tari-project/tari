@@ -40,6 +40,8 @@ pub enum DhtDiscoveryError {
     SendBufferFull,
     /// The discovery request timed out
     DiscoveryTimeout,
+    /// Failed to send discovery message
+    DiscoverySendFailed,
     PeerManagerError(PeerManagerError),
     #[error(msg_embedded, non_std, no_from)]
     InvalidPeerMultiaddr(String),

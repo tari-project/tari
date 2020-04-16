@@ -48,6 +48,7 @@ use log::*;
 use std::{fmt, fmt::Display, sync::Arc};
 use tari_comms::{
     peer_manager::{
+        node_id::NodeDistance,
         NodeId,
         NodeIdentity,
         Peer,
@@ -64,7 +65,6 @@ use tari_crypto::tari_utilities::{
     ByteArray,
 };
 use tari_shutdown::ShutdownSignal;
-use tari_storage::IterationResult;
 use ttl_cache::TtlCache;
 
 const LOG_TARGET: &str = "comms::dht::actor";
@@ -461,7 +461,21 @@ impl<'a> DhtActor<'a> {
                 .await?;
 
                 if include_all_communication_clients {
-                    Self::add_all_communication_client_nodes(&peer_manager, &exclude, &mut candidates).await?;
+                    let region_dist = peer_manager
+                        .calc_region_threshold(
+                            node_identity.node_id(),
+                            config.num_neighbouring_nodes,
+                            PeerFeatures::COMMUNICATION_CLIENT,
+                        )
+                        .await?;
+                    Self::add_communication_client_nodes_within_region(
+                        &peer_manager,
+                        node_identity.node_id(),
+                        region_dist,
+                        &exclude,
+                        &mut candidates,
+                    )
+                    .await?;
                 }
 
                 Ok(candidates)
@@ -469,31 +483,39 @@ impl<'a> DhtActor<'a> {
         }
     }
 
-    async fn add_all_communication_client_nodes(
+    async fn add_communication_client_nodes_within_region(
         peer_manager: &PeerManager,
+        ref_node_id: &NodeId,
+        threshold_dist: NodeDistance,
         excluded_peers: &[CommsPublicKey],
         list: &mut Vec<Peer>,
     ) -> Result<(), DhtActorError>
     {
-        peer_manager
-            .for_each(|peer| {
+        let query = PeerQuery::new()
+            .select_where(|peer| {
                 if peer.features != PeerFeatures::COMMUNICATION_CLIENT {
-                    return IterationResult::Continue;
+                    return false;
                 }
 
                 if peer.is_banned() || peer.is_offline() {
-                    return IterationResult::Continue;
+                    return false;
                 }
 
                 if excluded_peers.contains(&peer.public_key) {
-                    return IterationResult::Continue;
+                    return false;
                 }
 
-                list.push(peer);
+                let dist = ref_node_id.distance(&peer.node_id);
+                if dist > threshold_dist {
+                    return false;
+                }
 
-                IterationResult::Continue
+                true
             })
-            .await?;
+            .sort_by(PeerQuerySortBy::DistanceFrom(ref_node_id));
+
+        let peers = peer_manager.perform_query(query).await?;
+        list.extend(peers);
 
         Ok(())
     }
@@ -528,11 +550,8 @@ impl<'a> DhtActor<'a> {
         let mut filtered_out_node_count = 0;
         let query = PeerQuery::new()
             .select_where(|peer| {
-                trace!(target: LOG_TARGET, "Considering peer for broadcast: {}", peer.node_id);
-
-                let is_banned = peer.is_banned();
-                trace!(target: LOG_TARGET, "[{}] is banned: {}", peer.node_id, is_banned);
-                if is_banned {
+                if peer.is_banned() {
+                    trace!(target: LOG_TARGET, "[{}] is banned", peer.node_id);
                     banned_count += 1;
                     return false;
                 }

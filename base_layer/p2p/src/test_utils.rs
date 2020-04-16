@@ -43,7 +43,7 @@ macro_rules! unwrap_oms_send_msg {
     ($var:expr) => {
         unwrap_oms_send_msg!(
             $var,
-            reply_value = tari_comms_dht::outbound::SendMessageResponse::Queued(vec![])
+            reply_value = tari_comms_dht::outbound::SendMessageResponse::Queued(vec![].into())
         );
     };
 }

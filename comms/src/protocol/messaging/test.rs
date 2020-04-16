@@ -41,7 +41,12 @@ use crate::{
     types::{CommsDatabase, CommsPublicKey, CommsSubstream},
 };
 use bytes::Bytes;
-use futures::{channel::mpsc, SinkExt, StreamExt};
+use futures::{
+    channel::{mpsc, oneshot},
+    stream::FuturesUnordered,
+    SinkExt,
+    StreamExt,
+};
 use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_crypto::keys::PublicKey;
@@ -266,9 +271,17 @@ async fn many_concurrent_send_message_requests() {
 
     // Send many messages to node
     let mut msg_tags = Vec::with_capacity(NUM_MSGS);
+    let mut reply_rxs = Vec::with_capacity(NUM_MSGS);
     for _ in 0..NUM_MSGS {
-        let out_msg = OutboundMessage::new(node_id2.clone(), TEST_MSG1);
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let out_msg = OutboundMessage {
+            tag: MessageTag::new(),
+            reply_tx: Some(reply_tx),
+            peer_node_id: node_id2.clone(),
+            body: TEST_MSG1,
+        };
         msg_tags.push(out_msg.tag);
+        reply_rxs.push(reply_rx);
         request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
     }
 
@@ -289,6 +302,11 @@ async fn many_concurrent_send_message_requests() {
         msg_tags.remove(index);
     }
 
+    let unordered = FuturesUnordered::new();
+    reply_rxs.into_iter().for_each(|rx| unordered.push(rx));
+    let results = unordered.collect::<Vec<_>>().await;
+    assert_eq!(results.into_iter().map(|r| r.unwrap()).all(|r| r.is_ok()), true);
+
     // Got a single call to create a substream
     assert_eq!(peer_conn_mock1.call_count(), 1);
 }
@@ -302,9 +320,17 @@ async fn many_concurrent_send_message_requests_that_fail() {
 
     // Send many messages to node
     let mut msg_tags = Vec::with_capacity(NUM_MSGS);
+    let mut reply_rxs = Vec::with_capacity(NUM_MSGS);
     for _ in 0..NUM_MSGS {
-        let out_msg = OutboundMessage::new(node_id2.clone(), TEST_MSG1);
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let out_msg = OutboundMessage {
+            tag: MessageTag::new(),
+            reply_tx: Some(reply_tx),
+            peer_node_id: node_id2.clone(),
+            body: TEST_MSG1,
+        };
         msg_tags.push(out_msg.tag);
+        reply_rxs.push(reply_rx);
         request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
     }
 
@@ -319,5 +345,11 @@ async fn many_concurrent_send_message_requests_that_fail() {
         let index = msg_tags.iter().position(|t| t == &out_msg.tag).unwrap();
         msg_tags.remove(index);
     }
+
+    let unordered = FuturesUnordered::new();
+    reply_rxs.into_iter().for_each(|rx| unordered.push(rx));
+    let results = unordered.collect::<Vec<_>>().await;
+    assert_eq!(results.into_iter().map(|r| r.unwrap()).all(|r| r.is_err()), true);
+
     assert_eq!(msg_tags.len(), 0);
 }

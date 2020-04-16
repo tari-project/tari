@@ -23,11 +23,16 @@
 use crate::outbound::{
     message::SendMessageResponse,
     message_params::FinalSendMessageParams,
+    message_send_state::MessageSendState,
     DhtOutboundRequest,
     OutboundMessageRequester,
 };
 use bytes::Bytes;
-use futures::{channel::mpsc, stream::Fuse, StreamExt};
+use futures::{
+    channel::{mpsc, oneshot},
+    stream::Fuse,
+    StreamExt,
+};
 use std::{
     sync::{Arc, Condvar, Mutex, RwLock},
     time::Duration,
@@ -143,14 +148,20 @@ impl OutboundServiceMock {
             match req {
                 DhtOutboundRequest::SendMessage(params, body, reply_tx) => {
                     let tag = MessageTag::new();
-                    self.mock_state.add_call((*params, body, tag.clone()));
+                    self.mock_state.add_call((*params, body, tag));
+                    let (inner_reply_tx, inner_reply_rx) = oneshot::channel();
                     let response = self
                         .mock_state
                         .take_next_response()
-                        .or_else(|| Some(SendMessageResponse::Queued(vec![tag])))
+                        .or_else(|| {
+                            Some(SendMessageResponse::Queued(
+                                vec![MessageSendState::new(MessageTag::new(), inner_reply_rx)].into(),
+                            ))
+                        })
                         .expect("never none");
 
                     reply_tx.send(response).expect("Reply channel cancelled");
+                    let _ = inner_reply_tx.send(Ok(()));
                 },
             }
         }

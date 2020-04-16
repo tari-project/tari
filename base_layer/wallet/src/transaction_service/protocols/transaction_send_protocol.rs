@@ -292,16 +292,16 @@ where TBackend: TransactionBackend + Clone + 'static
                         .send(Arc::new(TransactionEvent::TransactionDirectSendResult(tx_id, false)));
                     error!(target: LOG_TARGET, "Transaction Send directly to recipient failed");
                 },
-                Some(tags) if tags.len() == 1 => {
+                Some(send_states) if send_states.len() == 1 => {
                     info!(
                         target: LOG_TARGET,
                         "Transaction (TxId: {}) Direct Send to {} successful with Message Tag: {:?}",
                         tx_id,
                         self.dest_pubkey,
-                        tags[0],
+                        send_states[0].tag,
                     );
                     direct_send_success = true;
-                    let message_tag = tags[0];
+                    let message_tag = send_states[0].tag;
                     let event_publisher = self.resources.event_publisher.clone();
                     // Launch a task to monitor if the message gets sent
                     if let Some(mut message_event_receiver) = self.message_send_event_receiver.take() {

@@ -65,15 +65,13 @@ pub enum SendFailReason {
     PeerOffline,
     /// Dial was attempted, but failed
     PeerDialFailed,
-    /// Outbound message envelope failed to serialize
-    EnvelopeFailedToSerialize,
     /// Failed to open a messaging substream to peer
     SubstreamOpenFailed,
     /// Failed to send on substream channel
     SubstreamSendFailed,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum MessagingEvent {
     MessageReceived(Box<NodeId>, MessageTag),
     InvalidMessageReceived(Box<NodeId>),
@@ -301,8 +299,9 @@ impl MessagingProtocol {
     }
 
     async fn send_message(&mut self, out_msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
+        let peer_node_id = out_msg.peer_node_id.clone();
         let sender = loop {
-            match self.active_queues.entry(Box::new(out_msg.peer_node_id.clone())) {
+            match self.active_queues.entry(Box::new(peer_node_id.clone())) {
                 Entry::Occupied(entry) => {
                     if entry.get().is_closed() {
                         entry.remove();
@@ -316,7 +315,7 @@ impl MessagingProtocol {
                         self.node_identity.clone(),
                         self.connection_manager_requester.clone(),
                         self.internal_messaging_event_tx.clone(),
-                        out_msg.peer_node_id.clone(),
+                        peer_node_id.clone(),
                     )
                     .await?;
                     break entry.insert(sender);
@@ -324,18 +323,18 @@ impl MessagingProtocol {
             }
         };
 
-        match sender.send(out_msg.clone()).await {
+        match sender.send(out_msg).await {
             Ok(_) => Ok(()),
             Err(err) => {
                 debug!(
                     target: LOG_TARGET,
                     "Failed to send message on channel because '{:?}'", err
                 );
-                // Lazily remove Senders from the active queue if the MessagingProtocolHandler has shut down
+                // Lazily remove Senders from the active queue if the `OutboundMessaging` task has shut down
                 if err.is_disconnected() {
-                    self.active_queues.remove(&out_msg.peer_node_id);
+                    self.active_queues.remove(&peer_node_id);
                 }
-                Err(MessagingProtocolError::MessageSendFailed(out_msg))
+                Err(MessagingProtocolError::MessageSendFailed)
             },
         }
     }

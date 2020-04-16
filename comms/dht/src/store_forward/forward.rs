@@ -37,7 +37,7 @@ use tari_comms::{
 };
 use tower::{layer::Layer, Service, ServiceExt};
 
-const LOG_TARGET: &str = "comms::store_forward::forward";
+const LOG_TARGET: &str = "comms::dht::storeforward::forward";
 
 /// This layer is responsible for forwarding messages which have failed to decrypt
 pub struct ForwardLayer {
@@ -154,7 +154,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         if self.destination_matches_source(&dht_header.destination, &source_peer) {
             // TODO: #banheuristic - the origin of this message was the destination. Two things are wrong here:
             //       1. The origin/destination should not have forwarded this (the destination node didnt do
-            //          is_destined_for_this_node check above)
+            //          this destination_matches_source check)
             //       1. The source sent a message that the destination could not decrypt
             //       The authenticated source should be banned (malicious), and origin should be temporarily banned
             //       (bug?)
@@ -295,15 +295,23 @@ mod test {
 
         let mut service = ForwardLayer::new(peer_manager, oms_requester).layer(spy.to_service::<PipelineError>());
 
-        let inbound_msg =
-            make_dht_inbound_message(&make_node_identity(), b"".to_vec(), DhtMessageFlags::empty(), false);
+        let sample_body = b"Lorem ipsum";
+        let inbound_msg = make_dht_inbound_message(
+            &make_node_identity(),
+            sample_body.to_vec(),
+            DhtMessageFlags::empty(),
+            false,
+        );
+        let header = inbound_msg.dht_header.clone();
         let msg = DecryptedDhtMessage::failed(inbound_msg);
         rt.block_on(service.call(msg)).unwrap();
         assert!(spy.is_called());
 
         assert_eq!(oms_mock_state.call_count(), 1);
-        let (params, _, _) = oms_mock_state.pop_call().unwrap();
+        let (params, body, _) = oms_mock_state.pop_call().unwrap();
 
-        assert!(params.dht_header.is_some());
+        // Header and body are preserved when forwarding
+        assert_eq!(&body.to_vec(), &sample_body);
+        assert_eq!(params.dht_header.unwrap(), header);
     }
 }
