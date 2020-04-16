@@ -413,6 +413,27 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
+    fn cancel_pending_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
+        let conn = acquire_lock!(self.database_connection);
+        match InboundTransactionSql::find(tx_id, &(*conn)) {
+            Ok(v) => {
+                let _ = v.cancel(&(*conn))?;
+            },
+            Err(_) => {
+                match OutboundTransactionSql::find(tx_id, &(*conn)) {
+                    Ok(v) => {
+                        let _ = v.cancel(&(*conn))?;
+                    },
+                    Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
+                        return Err(TransactionStorageError::ValuesNotFound);
+                    },
+                    Err(e) => return Err(e),
+                };
+            },
+        };
+        Ok(())
+    }
+
     #[cfg(feature = "test_harness")]
     fn update_completed_transaction_timestamp(
         &self,
@@ -475,6 +496,11 @@ impl InboundTransactionSql {
         }
 
         Ok(())
+    }
+
+    pub fn cancel(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+        // TODO Once sqlite migrations are implemented have cancellation be done with a Status flag
+        self.delete(conn)
     }
 }
 
@@ -551,6 +577,11 @@ impl OutboundTransactionSql {
         }
 
         Ok(())
+    }
+
+    pub fn cancel(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+        // TODO Once sqlite migrations are implemented have cancellation be done with a Status flag
+        self.delete(conn)
     }
 }
 

@@ -81,6 +81,8 @@ pub trait TransactionBackend: Send + Sync {
     fn mine_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Cancel Completed transaction, this will update the transaction status
     fn cancel_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
+    /// Cancel Completed transaction, this will update the transaction status
+    fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Update a completed transactions timestamp for use in test data generation
     #[cfg(feature = "test_harness")]
     fn update_completed_transaction_timestamp(
@@ -536,6 +538,14 @@ where T: TransactionBackend + 'static
     pub async fn cancel_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.cancel_completed_transaction(tx_id))
+            .await
+            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        Ok(())
+    }
+
+    pub async fn cancel_pending_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.cancel_pending_transaction(tx_id))
             .await
             .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(())

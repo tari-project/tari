@@ -569,19 +569,14 @@ where
 
     /// Cancel a pending outbound transaction
     async fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
-        let _outbound_tx = self
-            .db
-            .get_pending_outbound_transaction(tx_id.clone())
-            .await
-            .map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Pending Outbound Transaction does not exist and could not be cancelled: {:?}", e
-                );
-                e
-            })?;
+        self.db.cancel_pending_transaction(tx_id.clone()).await.map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Pending Transaction does not exist and could not be cancelled: {:?}", e
+            );
+            e
+        })?;
 
-        self.db.remove_pending_outbound_transaction(tx_id).await?;
         self.output_manager_service.cancel_transaction(tx_id).await?;
 
         if let Some(cancellation_sender) = self.send_transaction_cancellation_senders.remove(&tx_id) {
@@ -601,10 +596,7 @@ where
                 e
             });
 
-        info!(
-            target: LOG_TARGET,
-            "Send Transaction process cancelled for TxId: {}", tx_id
-        );
+        info!(target: LOG_TARGET, "Pending Transaction (TxId: {}) cancelled", tx_id);
 
         Ok(())
     }

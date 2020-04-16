@@ -60,10 +60,11 @@ use tari_core::{
     transactions::{
         proto::types::TransactionOutput as TransactionOutputProto,
         tari_amount::*,
-        transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction, TransactionOutput},
+        transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
         transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
         types::{CryptoFactories, PrivateKey, PublicKey, RangeProof, Signature},
         ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
     },
 };
 use tari_crypto::{
@@ -104,6 +105,7 @@ use tari_wallet::{
         },
         TransactionServiceInitializer,
     },
+    types::HashDigest,
 };
 use tempdir::TempDir;
 use tokio::{
@@ -2767,21 +2769,15 @@ fn transaction_cancellation_when_not_in_mempool() {
     assert_eq!(balance.available_balance, alice_total_available);
 }
 
-#[test]
-fn test_transaction_cancellation() {
+fn test_transaction_cancellation<T: TransactionBackend + Clone + 'static>(backend: T) {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
 
-    let (mut alice_ts, mut alice_output_manager, _alice_outbound_service, _, _, _, _, _, _) =
-        setup_transaction_service_no_comms(
-            &mut runtime,
-            factories.clone(),
-            TransactionMemoryDatabase::new(),
-            Some(Duration::from_secs(20)),
-        );
+    let (mut alice_ts, mut alice_output_manager, _alice_outbound_service, mut alice_tx_sender, _, _, _, _, _) =
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, Some(Duration::from_secs(20)));
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
     let alice_total_available = 250000 * uT;
@@ -2804,7 +2800,7 @@ fn test_transaction_cancellation() {
         loop {
             futures::select! {
                 event = alice_event_stream.select_next_some() => {
-                    if let TransactionEvent::TransactionDirectSendResult(_,_) = &*event.unwrap() {
+                    if let TransactionEvent::TransactionStoreForwardSendResult(_,_) = &*event.unwrap() {
                        break;
                     }
                 },
@@ -2828,4 +2824,76 @@ fn test_transaction_cancellation() {
         .unwrap()
         .remove(&tx_id)
         .is_none());
+
+    let mut builder = SenderTransactionProtocol::builder(1);
+    let amount = MicroTari::from(10_000);
+    let input = UnblindedOutput::new(MicroTari::from(100_000), PrivateKey::random(&mut OsRng), None);
+    builder
+        .with_lock_height(0)
+        .with_fee_per_gram(MicroTari::from(177))
+        .with_offset(PrivateKey::random(&mut OsRng))
+        .with_private_nonce(PrivateKey::random(&mut OsRng))
+        .with_amount(0, amount)
+        .with_message("Yo!".to_string())
+        .with_input(
+            input.as_transaction_input(&factories.commitment, OutputFeatures::default()),
+            input.clone(),
+        )
+        .with_change_secret(PrivateKey::random(&mut OsRng));
+
+    let mut stp = builder.build::<HashDigest>(&factories).unwrap();
+    let tx_sender_msg = stp.build_single_round_message().unwrap();
+    let tx_id2 = tx_sender_msg.tx_id;
+    let proto_message = proto::TransactionSenderMessage::single(tx_sender_msg.into());
+    runtime
+        .block_on(alice_tx_sender.send(create_dummy_message(
+            proto_message,
+            &PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        )))
+        .unwrap();
+
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                    if let TransactionEvent::ReceivedTransaction(_) = &*event.unwrap() {
+                       break;
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+    });
+
+    runtime
+        .block_on(alice_ts.get_pending_inbound_transactions())
+        .unwrap()
+        .remove(&tx_id2)
+        .expect("Pending Transaction should be in list");
+
+    runtime.block_on(alice_ts.cancel_transaction(tx_id2)).unwrap();
+
+    assert!(runtime
+        .block_on(alice_ts.get_pending_inbound_transactions())
+        .unwrap()
+        .remove(&tx_id2)
+        .is_none());
+}
+
+#[test]
+fn test_transaction_cancellation_memory_db() {
+    test_transaction_cancellation(TransactionMemoryDatabase::new());
+}
+
+#[test]
+fn test_transaction_cancellation_sqlite_db() {
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = temp_dir.path().to_str().unwrap().to_string();
+    let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
+
+    test_transaction_cancellation(TransactionServiceSqliteDatabase::new(connection));
 }
