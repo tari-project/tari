@@ -193,15 +193,13 @@ impl Dht {
         S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + Sync + 'static,
         S::Future: Send,
     {
+        // FIXME: There is an unresolved stack overflow issue on windows in debug mode during runtime, but not in
+        //        release mode, related to the amount of layers. (issue #1416)
         let builder = ServiceBuilder::new()
             .layer(inbound::DeserializeLayer)
             .layer(inbound::ValidateLayer::new(self.config.network))
             .layer(inbound::DedupLayer::new(self.dht_requester()));
 
-        // FIXME: There is an unresolved stack overflow issue on windows. Seems that we've reached the limit on stack
-        //        page size. These layers are removed from windows builds for now as they are not critical to
-        //        the functioning of the node. (issue #1416)
-        #[cfg(not(target_os = "windows"))]
         let builder = builder
             .layer(tower_filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
             .layer(MessageLoggingLayer::new("Inbound message: "));
@@ -455,8 +453,6 @@ mod test {
         assert!(next_service_rx.try_next().is_err());
     }
 
-    // FIXME: This test is excluded for Windows builds due to an unresolved stack overflow issue (#1416)
-    #[cfg(not(target_os = "windows"))]
     #[tokio_macros::test_basic]
     async fn stack_filter_saf_message() {
         let node_identity = make_client_identity();
