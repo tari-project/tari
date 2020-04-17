@@ -35,6 +35,7 @@ use crate::{
     types::{CommsDatabase, CommsPublicKey},
 };
 use multiaddr::Multiaddr;
+use std::time::Duration;
 use tari_storage::IterationResult;
 use tokio::sync::RwLock;
 
@@ -68,6 +69,8 @@ impl PeerManager {
         node_id: Option<NodeId>,
         net_addresses: Option<Vec<Multiaddr>>,
         flags: Option<PeerFlags>,
+        #[allow(clippy::option_option)] banned_until: Option<Option<Duration>>,
+        #[allow(clippy::option_option)] is_offline: Option<bool>,
         peer_features: Option<PeerFeatures>,
         connection_stats: Option<PeerConnectionStats>,
         supported_protocols: Option<Vec<ProtocolId>>,
@@ -78,6 +81,8 @@ impl PeerManager {
             node_id,
             net_addresses,
             flags,
+            banned_until,
+            is_offline,
             peer_features,
             connection_stats,
             supported_protocols,
@@ -89,12 +94,13 @@ impl PeerManager {
         let mut storage = self.peer_storage.write().await;
         let mut peer = storage.find_by_node_id(node_id)?;
         peer.connection_stats.set_connection_success();
-        peer.flags.remove(PeerFlags::OFFLINE);
         storage.update_peer(
             &peer.public_key,
             None,
             None,
             None,
+            None,
+            Some(false),
             None,
             Some(peer.connection_stats),
             None,
@@ -108,6 +114,8 @@ impl PeerManager {
         peer.connection_stats.set_connection_failed();
         storage.update_peer(
             &peer.public_key,
+            None,
+            None,
             None,
             None,
             None,
@@ -236,9 +244,14 @@ impl PeerManager {
             .calc_region_threshold(region_node_id, n, features)
     }
 
-    /// Changes the ban flag bit of the peer
-    pub async fn set_banned(&self, public_key: &CommsPublicKey, ban_flag: bool) -> Result<NodeId, PeerManagerError> {
-        self.peer_storage.write().await.set_banned(public_key, ban_flag)
+    /// Unbans the peer if it is banned. This function is idempotent.
+    pub async fn unban(&self, public_key: &CommsPublicKey) -> Result<NodeId, PeerManagerError> {
+        self.peer_storage.write().await.unban(public_key)
+    }
+
+    /// Ban the peer for a length of time specified by the duration
+    pub async fn ban_for(&self, public_key: &CommsPublicKey, duration: Duration) -> Result<NodeId, PeerManagerError> {
+        self.peer_storage.write().await.ban_for(public_key, duration)
     }
 
     /// Changes the offline flag bit of the peer
@@ -305,7 +318,9 @@ mod test {
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_addresses = MultiaddressesWithStats::from("/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap());
         let mut peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), features, &[]);
-        peer.set_banned(ban_flag);
+        if ban_flag {
+            peer.ban_for(Duration::from_secs(1000));
+        }
         peer
     }
 

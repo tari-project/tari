@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,7 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod cidr;
-pub mod datetime;
-pub mod multiaddr;
-pub mod signature;
+use chrono::{DateTime, NaiveTime, Utc};
+use std::time::Duration;
+
+pub fn safe_future_datetime_from_duration(duration: Duration) -> DateTime<Utc> {
+    let old_duration = chrono::Duration::from_std(duration).unwrap_or_else(|_| chrono::Duration::max_value());
+    Utc::now().checked_add_signed(old_duration).unwrap_or_else(|| {
+        chrono::MAX_DATE
+            .and_time(NaiveTime::from_hms(0, 0, 0))
+            .expect("cannot fail")
+    })
+}

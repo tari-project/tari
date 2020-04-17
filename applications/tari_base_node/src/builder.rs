@@ -164,6 +164,11 @@ impl NodeContainer {
         using_backend!(self, ctx, &ctx.base_node_comms)
     }
 
+    /// Returns the wallet CommsNode.
+    pub fn wallet_comms(&self) -> &CommsNode {
+        using_backend!(self, ctx, &ctx.wallet_comms)
+    }
+
     /// Returns this node's identity.
     pub fn base_node_identity(&self) -> Arc<NodeIdentity> {
         using_backend!(self, ctx, ctx.base_node_comms.node_identity())
@@ -1097,7 +1102,7 @@ where
             LivenessConfig {
                 auto_ping_interval: Some(Duration::from_secs(30)),
                 enable_auto_join: true,
-                enable_auto_stored_message_request: true,
+                enable_auto_stored_message_request: false,
                 refresh_neighbours_interval: Duration::from_secs(3 * 60),
             },
             subscription_factory,

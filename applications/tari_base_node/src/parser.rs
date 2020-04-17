@@ -49,7 +49,7 @@ use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_comms::{
     connection_manager::ConnectionManagerRequester,
-    peer_manager::{PeerFeatures, PeerFlags, PeerManager, PeerQuery},
+    peer_manager::{PeerFeatures, PeerManager, PeerQuery},
     types::CommsPublicKey,
     NodeIdentity,
 };
@@ -109,6 +109,7 @@ pub struct Parser {
     discovery_service: DhtDiscoveryRequester,
     base_node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
+    wallet_peer_manager: Arc<PeerManager>,
     connection_manager: ConnectionManagerRequester,
     commands: Vec<String>,
     hinter: HistoryHinter,
@@ -161,6 +162,7 @@ impl Parser {
             discovery_service: ctx.base_node_dht().discovery_service_requester(),
             base_node_identity: ctx.base_node_identity(),
             peer_manager: ctx.base_node_comms().peer_manager(),
+            wallet_peer_manager: ctx.wallet_comms().peer_manager(),
             connection_manager: ctx.base_node_comms().connection_manager(),
             commands: BaseNodeCommand::iter().map(|x| x.to_string()).collect(),
             hinter: HistoryHinter {},
@@ -581,43 +583,106 @@ impl Parser {
     }
 
     /// Function to process the ban-peer command
-    fn process_ban_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I, is_banned: bool) {
+    fn process_ban_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I, must_ban: bool) {
         let peer_manager = self.peer_manager.clone();
+        let wallet_peer_manager = self.wallet_peer_manager.clone();
         let mut connection_manager = self.connection_manager.clone();
 
         let public_key = match args.next().and_then(parse_emoji_id_or_public_key) {
             Some(v) => Box::new(v),
             None => {
                 println!("Please enter a valid destination public key or emoji id");
-                println!("ban-peer/unban-peer [hex public key or emoji id]");
+                println!(
+                    "ban-peer/unban-peer [hex public key or emoji id] (length of time to ban the peer for in seconds)"
+                );
                 return;
             },
         };
 
+        let pubkeys = vec![
+            self.base_node_identity.public_key(),
+            self.wallet_node_identity.public_key(),
+        ];
+        if pubkeys.contains(&&*public_key) {
+            println!("Cannot ban our own wallet or node");
+            return;
+        }
+
+        let duration = args
+            .next()
+            .and_then(|s| s.parse::<u64>().ok())
+            .map(Duration::from_secs)
+            .unwrap_or_else(|| Duration::from_secs(std::u64::MAX));
+
         self.executor.spawn(async move {
-            match peer_manager.set_banned(&public_key, is_banned).await {
-                Ok(node_id) => {
-                    if is_banned {
-                        match connection_manager.disconnect_peer(node_id).await {
-                            Ok(_) => {
-                                println!("Peer was banned.");
-                            },
-                            Err(err) => {
-                                println!(
-                                    "Peer was banned but an error occurred when disconnecting them: {:?}",
-                                    err
-                                );
-                            },
-                        }
-                    } else {
-                        println!("Peer ban was removed.");
-                    }
-                },
-                Err(err) => {
-                    println!("Failed to ban/unban peer: {:?}", err);
-                    error!(target: LOG_TARGET, "Could not ban/unban peer: {:?}", err);
-                    return;
-                },
+            if must_ban {
+                match peer_manager.ban_for(&public_key, duration).await {
+                    Ok(node_id) => match connection_manager.disconnect_peer(node_id).await {
+                        Ok(_) => {
+                            println!("Peer was banned in base node.");
+                        },
+                        Err(err) => {
+                            println!(
+                                "Peer was banned but an error occurred when disconnecting them: {:?}",
+                                err
+                            );
+                        },
+                    },
+                    Err(err) if err.is_peer_not_found() => {
+                        println!("Peer not found in base node");
+                    },
+                    Err(err) => {
+                        println!("Failed to ban peer: {:?}", err);
+                        error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
+                    },
+                }
+
+                match wallet_peer_manager.ban_for(&public_key, duration).await {
+                    Ok(node_id) => match connection_manager.disconnect_peer(node_id).await {
+                        Ok(_) => {
+                            println!("Peer was banned in wallet.");
+                        },
+                        Err(err) => {
+                            println!(
+                                "Peer was banned but an error occurred when disconnecting them: {:?}",
+                                err
+                            );
+                        },
+                    },
+                    Err(err) if err.is_peer_not_found() => {
+                        println!("Peer not found in wallet");
+                    },
+                    Err(err) => {
+                        println!("Failed to ban peer: {:?}", err);
+                        error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
+                    },
+                }
+            } else {
+                match peer_manager.unban(&public_key).await {
+                    Ok(_) => {
+                        println!("Peer ban was removed from base node.");
+                    },
+                    Err(err) if err.is_peer_not_found() => {
+                        println!("Peer not found in base node");
+                    },
+                    Err(err) => {
+                        println!("Failed to ban peer: {:?}", err);
+                        error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
+                    },
+                }
+
+                match wallet_peer_manager.unban(&public_key).await {
+                    Ok(_) => {
+                        println!("Peer ban was removed from wallet.");
+                    },
+                    Err(err) if err.is_peer_not_found() => {
+                        println!("Peer not found in wallet");
+                    },
+                    Err(err) => {
+                        println!("Failed to ban peer: {:?}", err);
+                        error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
+                    },
+                }
             }
         });
     }
@@ -654,8 +719,8 @@ impl Parser {
         self.executor.spawn(async move {
             let result = peer_manager
                 .update_each(|mut peer| {
-                    if peer.flags.contains(PeerFlags::OFFLINE) {
-                        peer.flags.remove(PeerFlags::OFFLINE);
+                    if peer.is_offline() {
+                        peer.set_offline(false);
                         Some(peer)
                     } else {
                         None

@@ -131,9 +131,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     pubkey,
                     Some(node_id),
                     Some(net_addresses),
-                    // We've already checked this peer is not banned, so we aren't unsetting the ban flag
-                    // TODO: 🐞 If we use more than two flags we might inadvertently unset something we don't want to.
-                    Some(PeerFlags::empty()),
+                    None,
+                    None,
+                    Some(false),
                     Some(peer_features),
                     None,
                     None,
@@ -339,7 +339,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         info!(
             target: LOG_TARGET,
-            "Received discovery message from '{}'", authenticated_pk
+            "Received discovery message from '{}', forwarded by {}", authenticated_pk, message.source_peer
         );
 
         let addresses = discover_msg
@@ -366,7 +366,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         if origin_peer.is_banned() {
             warn!(
                 target: LOG_TARGET,
-                "Received Discovery request for banned peer. This request will be ignored."
+                "Received Discovery request for banned peer '{}'. This request will be ignored.", authenticated_pk
             );
             return Ok(());
         }

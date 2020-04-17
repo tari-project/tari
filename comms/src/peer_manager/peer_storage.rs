@@ -37,7 +37,7 @@ use crate::{
 use log::*;
 use multiaddr::Multiaddr;
 use rand::{rngs::OsRng, Rng};
-use std::{cmp, collections::HashMap, fmt};
+use std::{cmp, collections::HashMap, fmt, time::Duration};
 use tari_storage::{IterationResult, KeyValueStore};
 
 const LOG_TARGET: &str = "comms::peer_manager::peer_storage";
@@ -121,6 +121,8 @@ where DS: KeyValueStore<PeerId, Peer>
         node_id: Option<NodeId>,
         net_addresses: Option<Vec<Multiaddr>>,
         flags: Option<PeerFlags>,
+        #[allow(clippy::option_option)] banned_until: Option<Option<Duration>>,
+        #[allow(clippy::option_option)] is_offline: Option<bool>,
         peer_features: Option<PeerFeatures>,
         connection_stats: Option<PeerConnectionStats>,
         supported_protocols: Option<Vec<ProtocolId>>,
@@ -149,6 +151,8 @@ where DS: KeyValueStore<PeerId, Peer>
                     node_id,
                     net_addresses,
                     flags,
+                    banned_until,
+                    is_offline,
                     peer_features,
                     connection_stats,
                     supported_protocols,
@@ -410,8 +414,30 @@ where DS: KeyValueStore<PeerId, Peer>
             .map(|stats| stats.distance)
     }
 
-    /// Changes the ban flag bit of the peer
-    pub fn set_banned(&mut self, public_key: &CommsPublicKey, ban_flag: bool) -> Result<NodeId, PeerManagerError> {
+    /// Unban the peer
+    pub fn unban(&mut self, public_key: &CommsPublicKey) -> Result<NodeId, PeerManagerError> {
+        let peer_key = *self
+            .public_key_index
+            .get(&public_key)
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+        let mut peer = self
+            .peer_db
+            .get(&peer_key)
+            .map_err(PeerManagerError::DatabaseError)?
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+        let node_id = peer.node_id.clone();
+
+        if peer.banned_until.is_some() {
+            peer.unban();
+            self.peer_db
+                .insert(peer_key, peer)
+                .map_err(PeerManagerError::DatabaseError)?;
+        }
+        Ok(node_id)
+    }
+
+    /// Ban the peer for the given duration
+    pub fn ban_for(&mut self, public_key: &CommsPublicKey, duration: Duration) -> Result<NodeId, PeerManagerError> {
         let peer_key = *self
             .public_key_index
             .get(&public_key)
@@ -421,7 +447,7 @@ where DS: KeyValueStore<PeerId, Peer>
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
-        peer.set_banned(ban_flag);
+        peer.ban_for(duration);
         let node_id = peer.node_id.clone();
         self.peer_db
             .insert(peer_key, peer)

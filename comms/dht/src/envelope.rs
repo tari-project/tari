@@ -247,6 +247,13 @@ impl NodeDestination {
             NodeDestination::NodeId(node_id) => Some(node_id),
         }
     }
+
+    pub fn is_unknown(&self) -> bool {
+        match self {
+            NodeDestination::Unknown => true,
+            _ => false,
+        }
+    }
 }
 
 impl PartialEq<&CommsPublicKey> for NodeDestination {

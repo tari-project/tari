@@ -259,12 +259,13 @@ async fn dht_store_forward() {
     // Node A knows about Node B
     let node_A = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_B.to_peer())).await;
 
+    let dest_public_key = Box::new(node_C_node_identity.public_key().clone());
     let params = SendMessageParams::new()
         .neighbours(vec![])
-        .with_encryption(OutboundEncryption::EncryptFor(Box::new(
-            node_C_node_identity.public_key().clone(),
+        .with_encryption(OutboundEncryption::EncryptFor(dest_public_key))
+        .with_destination(NodeDestination::NodeId(Box::new(
+            node_C_node_identity.node_id().clone(),
         )))
-        .with_destination(NodeDestination::Unknown)
         .finish();
 
     let secret_msg1 = b"NCZW VUSX PNYM INHZ XMQX SFWX WLKJ AHSH";

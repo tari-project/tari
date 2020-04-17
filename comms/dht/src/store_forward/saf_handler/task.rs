@@ -190,7 +190,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let response_types = vec![
             SafResponseType::ForMe,
-            SafResponseType::Anonymous,
             SafResponseType::InRegion,
             SafResponseType::Discovery,
         ];
@@ -271,6 +270,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .iter()
             .fold(last_timestamp, |acc, m| match &acc {
                 Some(since) => {
+                    // TODO: This comes from a peer and so could be a lie
                     match &m.stored_at {
                         Some(ts) => {
                             // If this timestamp is greater than the last one we have
@@ -393,14 +393,26 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             if !dht_header.is_valid() {
                 return Err(StoreAndForwardError::InvalidDhtHeader);
             }
+            let message_type = dht_header.message_type;
 
-            if dht_header.message_type.is_dht_message() {
-                trace!(
-                    target: LOG_TARGET,
-                    "Got stored DHT message type '{}' from peer '{}'",
-                    dht_header.message_type,
-                    source_peer.node_id.short_str()
-                );
+            if message_type.is_dht_message() {
+                if !message_type.is_dht_discovery() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Discarding {} message from peer '{}'",
+                        message_type,
+                        source_peer.node_id.short_str()
+                    );
+                    return Err(StoreAndForwardError::InvalidDhtMessageType);
+                }
+                if dht_header.destination.is_unknown() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Discarding anonymous discovery message from peer '{}'",
+                        source_peer.node_id.short_str()
+                    );
+                    return Err(StoreAndForwardError::InvalidDhtMessageType);
+                }
             }
 
             // Check that the destination is either undisclosed, for us or for our network region
@@ -412,7 +424,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             let (authenticated_pk, decrypted_body) =
                 Self::authenticate_and_decrypt_if_required(&node_identity, &dht_header, &message.body)?;
 
-            let inbound_msg = DhtInboundMessage::new(dht_header, Arc::clone(&source_peer), message.body);
+            let mut inbound_msg = DhtInboundMessage::new(dht_header, Arc::clone(&source_peer), message.body);
+            inbound_msg.is_saf_message = true;
 
             Ok(DecryptedDhtMessage::succeeded(
                 decrypted_body,

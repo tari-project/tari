@@ -218,7 +218,7 @@ mod test {
     };
     use multiaddr::Multiaddr;
     use rand::rngs::OsRng;
-    use std::iter::repeat_with;
+    use std::{iter::repeat_with, time::Duration};
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::HashmapDatabase;
 
@@ -234,7 +234,9 @@ mod test {
             PeerFeatures::MESSAGE_PROPAGATION,
             &[],
         );
-        peer.set_banned(ban_flag);
+        if ban_flag {
+            peer.ban_for(Duration::from_secs(1000));
+        }
         peer
     }
 

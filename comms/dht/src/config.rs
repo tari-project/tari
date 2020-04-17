@@ -60,7 +60,7 @@ pub struct DhtConfig {
     /// The limit on the message size to store in SAF storage in bytes. Default 500 KiB
     pub saf_max_message_size: usize,
     /// The max capacity of the message hash cache
-    /// Default: 1000
+    /// Default: 10000
     pub msg_hash_cache_capacity: usize,
     /// The time-to-live for items in the message hash cache
     /// Default: 300s

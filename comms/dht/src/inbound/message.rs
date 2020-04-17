@@ -35,6 +35,7 @@ pub struct DhtInboundMessage {
     pub version: u32,
     pub source_peer: Arc<Peer>,
     pub dht_header: DhtMessageHeader,
+    pub is_saf_message: bool,
     pub body: Vec<u8>,
 }
 impl DhtInboundMessage {
@@ -43,6 +44,7 @@ impl DhtInboundMessage {
             version: DHT_ENVELOPE_HEADER_VERSION,
             dht_header,
             source_peer,
+            is_saf_message: false,
             body,
         }
     }
