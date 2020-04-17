@@ -241,7 +241,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             Some(_) => {
                 // If the message doesnt have an origin we wont store it
                 if !message.has_origin_mac() {
-                    log_not_eligible("it is encrypted and does not have an origin MAC");
+                    log_not_eligible("it is a cleartext message and does not have an origin MAC");
                     return Ok(None);
                 }
 

@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{actor::DhtRequester, inbound::DhtInboundMessage};
+use crate::{actor::DhtRequester, inbound::DhtInboundMessage, outbound::message::DhtOutboundMessage};
 use digest::Input;
 use futures::{task::Context, Future};
 use log::*;
@@ -30,6 +30,14 @@ use tari_crypto::tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::dedup";
+
+fn hash_inbound_message(message: &DhtInboundMessage) -> Vec<u8> {
+    Challenge::new().chain(&message.body).result().to_vec()
+}
+
+fn hash_outbound_message(message: &DhtOutboundMessage) -> Vec<u8> {
+    Challenge::new().chain(&message.body.to_vec()).result().to_vec()
+}
 
 /// # DHT Deduplication middleware
 ///
@@ -62,42 +70,64 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, msg: DhtInboundMessage) -> Self::Future {
-        Self::process_message(self.next_service.clone(), self.dht_requester.clone(), msg)
+    fn call(&mut self, message: DhtInboundMessage) -> Self::Future {
+        let next_service = self.next_service.clone();
+        let mut dht_requester = self.dht_requester.clone();
+        async move {
+            trace!(target: LOG_TARGET, "Checking inbound message cache for duplicates");
+            let hash = hash_inbound_message(&message);
+            trace!(target: LOG_TARGET, "Inserting message hash {}", hash.to_hex());
+            if dht_requester
+                .insert_message_hash(hash)
+                .await
+                .map_err(PipelineError::from_debug)?
+            {
+                info!(
+                    target: LOG_TARGET,
+                    "Received duplicate message from peer '{}'. Message discarded.",
+                    message.source_peer.node_id.short_str(),
+                );
+                return Ok(());
+            }
+
+            trace!(target: LOG_TARGET, "Passing message onto next service");
+            next_service.oneshot(message).await
+        }
     }
 }
 
-impl<S> DedupMiddleware<S>
-where S: Service<DhtInboundMessage, Response = (), Error = PipelineError>
+impl<S> Service<DhtOutboundMessage> for DedupMiddleware<S>
+where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError> + Clone
 {
-    pub async fn process_message(
-        next_service: S,
-        mut dht_requester: DhtRequester,
-        message: DhtInboundMessage,
-    ) -> Result<(), PipelineError>
-    {
-        trace!(target: LOG_TARGET, "Checking inbound message cache for duplicates");
-        let hash = Self::hash_message(&message);
-        trace!(target: LOG_TARGET, "Inserting message hash {}", hash.to_hex());
-        if dht_requester
-            .insert_message_hash(hash)
-            .await
-            .map_err(PipelineError::from_debug)?
-        {
-            info!(
-                target: LOG_TARGET,
-                "Received duplicate message from peer '{}'. Message discarded.",
-                message.source_peer.node_id.short_str(),
-            );
-            return Ok(());
-        }
+    type Error = PipelineError;
+    type Response = ();
 
-        trace!(target: LOG_TARGET, "Passing message onto next service");
-        next_service.oneshot(message).await
+    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
+
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
     }
 
-    fn hash_message(message: &DhtInboundMessage) -> Vec<u8> {
-        Challenge::new().chain(&message.body).result().to_vec()
+    fn call(&mut self, message: DhtOutboundMessage) -> Self::Future {
+        let next_service = self.next_service.clone();
+        let mut dht_requester = self.dht_requester.clone();
+        async move {
+            trace!(target: LOG_TARGET, "Adding outbound message to duplicate cache");
+
+            if message.is_broadcast {
+                let hash = hash_outbound_message(&message);
+                if dht_requester
+                    .insert_message_hash(hash)
+                    .await
+                    .map_err(PipelineError::from_debug)?
+                {
+                    warn!(target: LOG_TARGET, "Already sent this message!");
+                }
+            }
+
+            trace!(target: LOG_TARGET, "Passing message onto next service");
+            next_service.oneshot(message).await
+        }
     }
 }
 

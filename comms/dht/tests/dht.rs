@@ -36,6 +36,7 @@ use tari_comms::{
     CommsNode,
 };
 use tari_comms_dht::{
+    domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
     inbound::DecryptedDhtMessage,
     outbound::{OutboundEncryption, SendMessageParams},
@@ -98,7 +99,7 @@ async fn make_node(features: PeerFeatures, seed_peer: Option<Peer>) -> TestNode 
 }
 
 async fn make_node_with_node_identity(node_identity: Arc<NodeIdentity>, seed_peer: Option<Peer>) -> TestNode {
-    let (tx, ims_rx) = mpsc::channel(1);
+    let (tx, ims_rx) = mpsc::channel(10);
     let (comms, dht) = setup_comms_dht(node_identity, create_peer_storage(seed_peer.into_iter().collect()), tx).await;
 
     TestNode { comms, dht, ims_rx }
@@ -314,4 +315,116 @@ async fn dht_store_forward() {
     node_A.comms.shutdown().await;
     node_B.comms.shutdown().await;
     node_C.comms.shutdown().await;
+}
+
+#[tokio_macros::test]
+#[allow(non_snake_case)]
+async fn dht_propagate_dedup() {
+    env_logger::init();
+    // Node D knows no one
+    let mut node_D = make_node(PeerFeatures::COMMUNICATION_NODE, None).await;
+    // Node C knows about Node D
+    let node_C = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_D.to_peer())).await;
+    // Node B knows about Node C
+    let node_B = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_C.to_peer())).await;
+    // Node A knows about Node B and C
+    let node_A = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_B.to_peer())).await;
+    node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
+    log::info!(
+        "NodeA = {}, NodeB = {}, Node C = {}, Node D = {}",
+        node_A.node_identity().node_id(),
+        node_B.node_identity().node_id(),
+        node_C.node_identity().node_id(),
+        node_D.node_identity().node_id(),
+    );
+
+    // let mut node_B_messaging = node_B.comms.subscribe_messaging_events();
+    // let mut node_C_messaging = node_C.comms.subscribe_messaging_events();
+    // let mut node_D_messaging = node_D.comms.subscribe_messaging_events();
+
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    struct Person {
+        #[prost(string, tag = "1")]
+        name: String,
+        #[prost(uint32, tag = "2")]
+        age: u32,
+    }
+
+    let out_msg = OutboundDomainMessage::new(123, Person {
+        name: "John Conway".into(),
+        age: 82,
+    });
+    node_A
+        .dht
+        .outbound_requester()
+        .propagate(
+            // Node D is a client node, so an destination is required for domain messages
+            NodeDestination::Unknown, // NodeId(Box::new(node_D.node_identity().node_id().clone())),
+            OutboundEncryption::EncryptFor(Box::new(node_D.node_identity().public_key().clone())),
+            vec![],
+            out_msg,
+        )
+        .await
+        .unwrap();
+
+    let msg = node_D.next_inbound_message(Duration::from_secs(10)).await.unwrap();
+    assert!(msg.decryption_succeeded());
+    let person = msg
+        .decryption_result
+        .unwrap()
+        .decode_part::<Person>(1)
+        .unwrap()
+        .unwrap();
+    assert_eq!(person.name, "John Conway");
+
+    // let node_A_id = node_A.node_identity().node_id().clone();
+    // let node_B_id = node_B.node_identity().node_id().clone();
+    // let node_C_id = node_C.node_identity().node_id().clone();
+
+    node_A.comms.shutdown().await;
+    node_B.comms.shutdown().await;
+    node_C.comms.shutdown().await;
+    node_D.comms.shutdown().await;
+
+    // TODO: Finish testing expectations for message propagation
+    // let events = collect_stream!(node_B_messaging, timeout = Duration::from_secs(20))
+    //     .into_iter()
+    //     .map(Result::unwrap)
+    //     .collect::<Vec<_>>();
+    // unpack_enum!(MessagingEvent::MessageReceived(node_id, tag) = &*events[0]);
+    // assert_eq!(**node_id, node_A_id);
+    // unpack_enum!(MessagingEvent::MessageSent(tag) = &*events[1]);
+    // log::info!("Node B sent {}", tag);
+    // if events.len() > 2 {
+    //     unpack_enum!(MessagingEvent::MessageReceived(node_id, tag) = &*events[2]);
+    //     log::info!("Node B got foem {}", node_id);
+    // }
+    // assert_eq!(events.len(), 2);
+    //
+    // let events = collect_stream!(node_C_messaging, timeout = Duration::from_secs(20))
+    //     .into_iter()
+    //     .map(Result::unwrap)
+    //     .collect::<Vec<_>>();
+    // unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*events[0]);
+    // assert_eq!(**node_id, node_A_id);
+    // unpack_enum!(MessagingEvent::MessageSent(tag) = &*events[1]);
+    // log::info!("Node C sent {}", tag);
+    // unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*events[2]);
+    // assert_eq!(**node_id, node_B_id);
+    // unpack_enum!(MessagingEvent::MessageSent(tag) = &*events[3]);
+    // log::info!("Node C sent {}", tag);
+    // unpack_enum!(MessagingEvent::MessageSent(tag) = &*events[4]);
+    // log::info!("Node C sent {}", tag);
+    // assert_eq!(events.len(), 5);
+    //
+    // let events = collect_stream!(node_D_messaging, timeout = Duration::from_secs(20))
+    //     .into_iter()
+    //     .map(Result::unwrap)
+    //     .collect::<Vec<_>>();
+    // assert_eq!(events.len(), 2);
+    // unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*events[0]);
+    // assert_eq!(**node_id, node_C_id);
+    //
+    // unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*events[1]);
+    // assert_eq!(**node_id, node_C_id);
 }

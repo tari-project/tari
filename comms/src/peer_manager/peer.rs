@@ -226,6 +226,10 @@ impl Peer {
         self.banned_until = None;
     }
 
+    pub fn banned_until(&self) -> Option<&NaiveDateTime> {
+        self.banned_until.as_ref()
+    }
+
     /// Marks the peer as offline
     pub fn set_offline(&mut self, is_offline: bool) {
         if is_offline {
@@ -244,8 +248,20 @@ impl Display for Peer {
         } else {
             format!("{:?}", self.flags)
         };
+
+        let status_str = {
+            let mut s = Vec::new();
+            if let Some(offline_at) = self.offline_at.as_ref() {
+                s.push(format!("OFFLINE since {}", offline_at));
+            }
+
+            if let Some(dt) = self.banned_until() {
+                s.push(format!("BANNED until {}", dt));
+            }
+            s.join(", ")
+        };
         f.write_str(&format!(
-            "{}[{}] PK={} {} {:?} {}",
+            "{}[{}] PK={} ({}) {} {:?} {}",
             flags_str,
             self.node_id.short_str(),
             self.public_key,
@@ -255,6 +271,7 @@ impl Display for Peer {
                 .map(ToString::to_string)
                 .collect::<Vec<_>>()
                 .join(","),
+            status_str,
             match self.features {
                 PeerFeatures::COMMUNICATION_NODE => "BASE_NODE".to_string(),
                 PeerFeatures::COMMUNICATION_CLIENT => "WALLET".to_string(),

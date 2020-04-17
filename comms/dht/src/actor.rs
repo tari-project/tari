@@ -124,8 +124,8 @@ impl Display for DhtRequest {
             SendRequestStoredMessages => f.write_str("SendRequestStoredMessages"),
             MsgHashCacheInsert(_, _) => f.write_str("MsgHashCacheInsert"),
             SelectPeers(s, _) => f.write_str(&format!("SelectPeers (Strategy={})", s)),
-            GetSetting(key, _) => f.write_str(&format!("GetStoreItem (key={})", key)),
-            SetSetting(key, value) => f.write_str(&format!("SelectPeers (key={}, value={} bytes)", key, value.len())),
+            GetSetting(key, _) => f.write_str(&format!("GetSetting (key={})", key)),
+            SetSetting(key, value) => f.write_str(&format!("SetSetting (key={}, value={} bytes)", key, value.len())),
         }
     }
 }
@@ -384,15 +384,15 @@ impl<'a> DhtActor<'a> {
             .await?;
         request.dist_threshold = threshold.to_vec();
 
+        info!(
+            target: LOG_TARGET,
+            "Sending store and forward request to neighbours (Since = {:?})", request.since
+        );
+
         outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .closest(
-                        node_identity.node_id().clone(),
-                        num_neighbouring_nodes,
-                        Vec::new(),
-                        PeerFeatures::DHT_STORE_FORWARD,
-                    )
+                    .neighbours(Vec::new())
                     .with_dht_message_type(DhtMessageType::SafRequestMessages)
                     .finish(),
                 request,
@@ -797,6 +797,20 @@ mod test {
             .unwrap()
             .is_none());
         let ts = Utc::now();
+        requester
+            .set_setting(DhtSettingKey::SafLastRequestTimestamp, ts)
+            .await
+            .unwrap();
+
+        let got_ts = requester
+            .get_setting::<DateTime<Utc>>(DhtSettingKey::SafLastRequestTimestamp)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got_ts, ts);
+
+        // Check upsert
+        let ts = Utc::now().checked_add_signed(chrono::Duration::seconds(123)).unwrap();
         requester
             .set_setting(DhtSettingKey::SafLastRequestTimestamp, ts)
             .await

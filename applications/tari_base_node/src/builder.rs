@@ -1005,7 +1005,10 @@ async fn setup_wallet_comms(
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
         // TODO - make this configurable
-        dht: Default::default(),
+        dht: DhtConfig {
+            database_url: DbConnectionUrl::File(config.data_dir.join("dht-wallet.db")),
+            ..Default::default()
+        },
         // TODO: This should be false unless testing locally - make this configurable
         allow_test_addresses: true,
         listener_liveness_whitelist_cidrs: Vec::new(),

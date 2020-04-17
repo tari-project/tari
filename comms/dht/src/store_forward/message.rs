@@ -40,7 +40,7 @@ use std::{
 pub(crate) fn datetime_to_timestamp(datetime: DateTime<Utc>) -> Timestamp {
     Timestamp {
         seconds: datetime.timestamp(),
-        nanos: datetime.timestamp_subsec_nanos() as i32,
+        nanos: datetime.timestamp_subsec_nanos().try_into().unwrap_or(std::i32::MAX),
     }
 }
 

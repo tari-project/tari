@@ -80,11 +80,11 @@ impl StoreAndForwardDatabase {
                     .into_boxed();
 
                 if let Some(since) = since {
-                    query = query.filter(stored_messages::stored_at.ge(since.naive_utc()));
+                    query = query.filter(stored_messages::stored_at.gt(since.naive_utc()));
                 }
 
                 query
-                    .order_by(stored_messages::stored_at.asc())
+                    .order_by(stored_messages::stored_at.desc())
                     .limit(limit)
                     .get_results(conn)
                     .map_err(Into::into)
@@ -112,11 +112,11 @@ impl StoreAndForwardDatabase {
                     .into_boxed();
 
                 if let Some(since) = since {
-                    query = query.filter(stored_messages::stored_at.ge(since.naive_utc()));
+                    query = query.filter(stored_messages::stored_at.gt(since.naive_utc()));
                 }
 
                 query
-                    .order_by(stored_messages::stored_at.asc())
+                    .order_by(stored_messages::stored_at.desc())
                     .limit(limit)
                     .get_results(conn)
                     .map_err(Into::into)
@@ -162,11 +162,11 @@ impl StoreAndForwardDatabase {
                     .into_boxed();
 
                 if let Some(since) = since {
-                    query = query.filter(stored_messages::stored_at.ge(since.naive_utc()));
+                    query = query.filter(stored_messages::stored_at.gt(since.naive_utc()));
                 }
 
                 query
-                    .order_by(stored_messages::stored_at.asc())
+                    .order_by(stored_messages::stored_at.desc())
                     .limit(limit)
                     .get_results(conn)
                     .map_err(Into::into)
@@ -192,11 +192,11 @@ impl StoreAndForwardDatabase {
                     .into_boxed();
 
                 if let Some(since) = since {
-                    query = query.filter(stored_messages::stored_at.ge(since.naive_utc()));
+                    query = query.filter(stored_messages::stored_at.gt(since.naive_utc()));
                 }
 
                 query
-                    .order_by(stored_messages::stored_at.asc())
+                    .order_by(stored_messages::stored_at.desc())
                     .limit(limit)
                     .get_results(conn)
                     .map_err(Into::into)
