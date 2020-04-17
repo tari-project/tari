@@ -152,6 +152,7 @@ pub fn print_banner(commands: Vec<String>, chunk_size: i32) {
     for line in logo.lines() {
         println!("{}", box_data(line.to_string(), target_line_length));
     }
+    println!("{}", box_data(" ".to_string(), target_line_length));
     println!("{}", box_data("Tari Base Node".to_string(), target_line_length));
     println!("{}", box_data("~~~~~~~~~~~~~~".to_string(), target_line_length));
     println!(
