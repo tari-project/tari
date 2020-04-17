@@ -31,9 +31,9 @@ fn box_line(length: usize, is_top: bool) -> String {
         return format!("");
     }
     if is_top {
-        format!("{}{}{}", "┏", "━".repeat(length - 2), "┓")
+        format!("{}{}{}", "┌", "─".repeat(length - 2), "┐")
     } else {
-        format!("{}{}{}", "┗", "━".repeat(length - 2), "┛")
+        format!("{}{}{}", "└", "─".repeat(length - 2), "┘")
     }
 }
 
@@ -42,7 +42,7 @@ fn box_separator(length: usize) -> String {
     if length < 2 {
         return format!("");
     }
-    format!("{}{}{}", "┣", "━".repeat(length - 2), "┫")
+    format!("{}{}{}", "├", "─".repeat(length - 2), "┤")
 }
 
 /// returns a line in the box, with box borders at the beginning and end, contents centered.
@@ -57,7 +57,7 @@ fn box_data(data: String, target_length: usize) -> String {
     while s.chars().count() < target_length - 1 {
         s = format!("{}{}", " ", s);
     }
-    format!("{}{}", "┃", s)
+    format!("{}{}", "│", s)
 }
 
 /// returns a vector of strings, for each vector of strings, the strings are combined (padded and spaced as necessary),
