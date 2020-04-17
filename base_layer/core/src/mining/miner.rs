@@ -266,7 +266,7 @@ impl Miner {
                             start_mining = false;
                             wait_for_miner = true;
                         },
-                        _ => {},
+                        _ => {wait_for_miner = true;},
                     }
                 },
                 _ = kill_signal => {
