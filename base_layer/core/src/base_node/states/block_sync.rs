@@ -36,7 +36,7 @@ use core::cmp::min;
 use derive_error::Error;
 use log::*;
 use rand::seq::SliceRandom;
-use std::str::FromStr;
+use std::{str::FromStr, time::Duration};
 use tari_comms::{
     connection_manager::ConnectionManagerError,
     peer_manager::{NodeId, PeerManagerError},
@@ -59,6 +59,8 @@ const MAX_ADD_BLOCK_RETRY_ATTEMPTS: usize = 3;
 const HEADER_REQUEST_SIZE: usize = 100;
 // The number of blocks that can be requested in a single query.
 const BLOCK_REQUEST_SIZE: usize = 5;
+// The default length of time to ban a misbehaving/malfunctioning sync peer (24 hours)
+const DEFAULT_PEER_BAN_DURATION: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// Configuration for the Block Synchronization.
 #[derive(Clone, Copy)]
@@ -71,6 +73,7 @@ pub struct BlockSyncConfig {
     pub max_add_block_retry_attempts: usize,
     pub header_request_size: usize,
     pub block_request_size: usize,
+    pub peer_ban_duration: Duration,
 }
 
 impl Default for BlockSyncConfig {
@@ -84,6 +87,7 @@ impl Default for BlockSyncConfig {
             max_add_block_retry_attempts: MAX_ADD_BLOCK_RETRY_ATTEMPTS,
             header_request_size: HEADER_REQUEST_SIZE,
             block_request_size: BLOCK_REQUEST_SIZE,
+            peer_ban_duration: DEFAULT_PEER_BAN_DURATION,
         }
     }
 }
@@ -608,7 +612,10 @@ async fn ban_sync_peer<B: BlockchainBackend + 'static>(
 {
     sync_peers.retain(|p| *p != sync_peer);
     let peer = shared.peer_manager.find_by_node_id(&sync_peer).await?;
-    shared.peer_manager.set_banned(&peer.public_key, true).await?;
+    shared
+        .peer_manager
+        .ban_for(&peer.public_key, shared.config.block_sync_config.peer_ban_duration)
+        .await?;
     shared.connection_manager.disconnect_peer(sync_peer).await??;
     if sync_peers.is_empty() {
         return Err(BlockSyncError::NoSyncPeers);

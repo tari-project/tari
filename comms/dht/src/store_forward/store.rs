@@ -348,7 +348,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         match &message.dht_header.destination {
             Unknown => {
                 // No destination provided,
-                Ok(Some(StoredMessagePriority::Low))
+                if message.dht_header.message_type.is_dht_discovery() {
+                    log_not_eligible("it is an anonymous discovery message");
+                    Ok(None)
+                } else {
+                    Ok(Some(StoredMessagePriority::Low))
+                }
             },
             PublicKey(dest_public_key) => {
                 // If we know the destination peer, keep the message for them

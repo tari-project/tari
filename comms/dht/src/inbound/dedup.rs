@@ -84,9 +84,10 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError>
             .await
             .map_err(PipelineError::from_debug)?
         {
-            warn!(
+            info!(
                 target: LOG_TARGET,
-                "Received duplicate message from peer {}. Message discarded.", message.source_peer.node_id,
+                "Received duplicate message from peer '{}'. Message discarded.",
+                message.source_peer.node_id.short_str(),
             );
             return Ok(());
         }

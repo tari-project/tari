@@ -76,6 +76,7 @@ impl StoreAndForwardDatabase {
                             .eq(pk_hex)
                             .or(stored_messages::destination_node_id.eq(node_id_hex)),
                     )
+                    .filter(stored_messages::message_type.eq(DhtMessageType::None as i32))
                     .into_boxed();
 
                 if let Some(since) = since {

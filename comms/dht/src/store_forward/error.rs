@@ -73,4 +73,6 @@ pub enum StoreAndForwardError {
     MalformedNodeId(ByteArrayError),
     /// NodeDistance threshold was invalid
     InvalidNodeDistanceThreshold,
+    /// DHT message type should not have been forwarded
+    InvalidDhtMessageType,
 }
