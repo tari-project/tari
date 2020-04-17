@@ -1252,7 +1252,6 @@ where
         response: BaseNodeProto::BaseNodeServiceResponse,
     ) -> Result<(), TransactionServiceError>
     {
-        trace!(target: LOG_TARGET, "Received Base Node Response: {:?}", response);
         let sender = match self.base_node_response_senders.get_mut(&response.request_key) {
             None => {
                 trace!(
