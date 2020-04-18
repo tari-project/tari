@@ -23,6 +23,7 @@
 use rand::rngs::OsRng;
 use std::sync::Arc;
 use tari_comms::{
+    message::MessageTag,
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
 };
@@ -73,6 +74,7 @@ pub fn make_dht_header() -> DhtMessageHeader {
 
 pub fn make_dht_inbound_message(node_identity: &NodeIdentity, message: Vec<u8>) -> DhtInboundMessage {
     DhtInboundMessage::new(
+        MessageTag::new(),
         make_dht_header(),
         Arc::new(Peer::new(
             node_identity.public_key().clone(),

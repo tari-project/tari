@@ -83,14 +83,13 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone 
 
             let dht_header = custom_header.map(DhtHeader::from).unwrap_or_else(|| DhtHeader {
                 version: DHT_ENVELOPE_HEADER_VERSION,
-                origin_mac: origin_mac.unwrap_or_else(Vec::new),
+                origin_mac: origin_mac.map(|b| b.to_vec()).unwrap_or_else(Vec::new),
                 ephemeral_public_key: ephemeral_public_key.map(|e| e.to_vec()).unwrap_or_else(Vec::new),
                 message_type: dht_message_type as i32,
                 network: network as i32,
                 flags: dht_flags.bits(),
                 destination: Some(destination.into()),
             });
-
             let envelope = DhtEnvelope::new(dht_header, body);
 
             let body = Bytes::from(envelope.to_encoded_bytes());

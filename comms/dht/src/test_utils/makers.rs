@@ -148,6 +148,7 @@ pub fn make_dht_inbound_message(
 {
     let envelope = make_dht_envelope(node_identity, body, flags, include_origin);
     DhtInboundMessage::new(
+        MessageTag::new(),
         envelope.header.unwrap().try_into().unwrap(),
         Arc::new(Peer::new(
             node_identity.public_key().clone(),
@@ -215,8 +216,6 @@ pub fn create_outbound_message(body: &[u8]) -> DhtOutboundMessage {
         network: Network::LocalTest,
         dht_flags: Default::default(),
         custom_header: None,
-        include_origin: false,
-        encryption: Default::default(),
         body: body.to_vec().into(),
         ephemeral_public_key: None,
         reply_tx: WrappedReplyTx::none(),

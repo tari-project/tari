@@ -24,6 +24,7 @@ use super::{error::DhtOutboundError, message::DhtOutboundRequest};
 use crate::{
     actor::DhtRequester,
     broadcast_strategy::BroadcastStrategy,
+    crypt,
     discovery::DhtDiscoveryRequester,
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     outbound::{
@@ -32,7 +33,7 @@ use crate::{
         message_send_state::MessageSendState,
         SendMessageResponse,
     },
-    proto::envelope::{DhtMessageType, Network},
+    proto::envelope::{DhtMessageType, Network, OriginMac},
 };
 use bytes::Bytes;
 use futures::{
@@ -43,12 +44,18 @@ use futures::{
     Future,
 };
 use log::*;
+use rand::rngs::OsRng;
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
-    message::MessageTag,
+    message::{MessageExt, MessageTag},
     peer_manager::{NodeIdentity, Peer},
     pipeline::PipelineError,
     types::CommsPublicKey,
+    utils::signature,
+};
+use tari_crypto::{
+    keys::PublicKey,
+    tari_utilities::{message_format::MessageFormat, ByteArray},
 };
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -398,6 +405,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     {
         let dht_flags = encryption.flags() | extra_flags;
 
+        let (ephemeral_public_key, origin_mac, body) = self.process_encryption(&encryption, force_origin, body)?;
+
         // Construct a DhtOutboundMessage for each recipient
         let messages = selected_peers
             .into_iter()
@@ -414,12 +423,10 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         network: self.target_network,
                         dht_flags,
                         custom_header: custom_header.clone(),
-                        include_origin: force_origin || encryption.is_encrypt(),
-                        encryption: encryption.clone(),
                         body: body.clone(),
                         reply_tx: reply_tx.into(),
-                        ephemeral_public_key: None,
-                        origin_mac: None,
+                        ephemeral_public_key: ephemeral_public_key.clone(),
+                        origin_mac: origin_mac.clone(),
                         is_broadcast,
                     },
                     send_state,
@@ -429,6 +436,55 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
         Ok(messages.into_iter().unzip())
     }
+
+    fn process_encryption(
+        &self,
+        encryption: &OutboundEncryption,
+        include_origin: bool,
+        body: Bytes,
+    ) -> Result<(Option<Arc<CommsPublicKey>>, Option<Bytes>, Bytes), DhtOutboundError>
+    {
+        match encryption {
+            OutboundEncryption::EncryptFor(public_key) => {
+                debug!(target: LOG_TARGET, "Encrypting message for {}", public_key);
+                // Generate ephemeral public/private key pair and ECDH shared secret
+                let (e_sk, e_pk) = CommsPublicKey::random_keypair(&mut OsRng);
+                let shared_ephemeral_secret = crypt::generate_ecdh_secret(&e_sk, &**public_key);
+                // Encrypt the message with the body
+                let encrypted_body = crypt::encrypt(&shared_ephemeral_secret, &body)?;
+
+                // Sign the encrypted message
+                let origin_mac = create_origin_mac(&self.node_identity, &encrypted_body)?;
+                // Encrypt and set the origin field
+                let encrypted_origin_mac = crypt::encrypt(&shared_ephemeral_secret, &origin_mac)?;
+                Ok((
+                    Some(Arc::new(e_pk)),
+                    Some(encrypted_origin_mac.into()),
+                    encrypted_body.into(),
+                ))
+            },
+            OutboundEncryption::None => {
+                debug!(target: LOG_TARGET, "Encryption not requested for message");
+
+                if include_origin {
+                    let origin_mac = create_origin_mac(&self.node_identity, &body)?;
+                    Ok((None, Some(origin_mac.into()), body))
+                } else {
+                    Ok((None, None, body))
+                }
+            },
+        }
+    }
+}
+
+fn create_origin_mac(node_identity: &NodeIdentity, body: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
+    let signature = signature::sign(&mut OsRng, node_identity.secret_key().clone(), body)?;
+
+    let mac = OriginMac {
+        public_key: node_identity.public_key().to_vec(),
+        signature: signature.to_binary()?,
+    };
+    Ok(mac.to_encoded_bytes())
 }
 
 #[cfg(test)]

@@ -63,7 +63,7 @@ pub struct DhtConfig {
     /// Default: 10000
     pub msg_hash_cache_capacity: usize,
     /// The time-to-live for items in the message hash cache
-    /// Default: 300s
+    /// Default: 300s (5 mins)
     pub msg_hash_cache_ttl: Duration,
     /// Sets the number of failed attempts in-a-row to tolerate before temporarily excluding this peer from broadcast
     /// messages.
@@ -114,7 +114,7 @@ impl Default for DhtConfig {
             saf_high_priority_msg_storage_ttl: SAF_HIGH_PRIORITY_MSG_STORAGE_TTL,
             saf_max_message_size: 512 * 1024, // 500 KiB
             msg_hash_cache_capacity: 10_000,
-            msg_hash_cache_ttl: Duration::from_secs(300),
+            msg_hash_cache_ttl: Duration::from_secs(5 * 60),
             broadcast_cooldown_max_attempts: 3,
             database_url: DbConnectionUrl::Memory,
             broadcast_cooldown_period: Duration::from_secs(60 * 30),

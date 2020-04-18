@@ -209,11 +209,15 @@ impl StoreAndForwardService {
             },
             InsertMessage(msg) => {
                 let public_key = msg.destination_pubkey.clone();
+                let node_id = msg.destination_node_id.clone();
                 match db.insert_message(msg).await {
                     Ok(_) => info!(
                         target: LOG_TARGET,
-                        "Stored message for public key '{}'",
-                        public_key.unwrap_or_else(|| "<None>".to_string())
+                        "Stored message for {}",
+                        public_key
+                            .map(|p| format!("public key '{}'", p))
+                            .or_else(|| node_id.map(|n| format!("node id '{}'", n)))
+                            .unwrap_or_else(|| "<Anonymous>".to_string())
                     ),
                     Err(err) => {
                         error!(target: LOG_TARGET, "InsertMessage failed because '{:?}'", err);

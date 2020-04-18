@@ -74,9 +74,13 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
         let next_service = self.next_service.clone();
         let mut dht_requester = self.dht_requester.clone();
         async move {
-            trace!(target: LOG_TARGET, "Checking inbound message cache for duplicates");
             let hash = hash_inbound_message(&message);
-            trace!(target: LOG_TARGET, "Inserting message hash {}", hash.to_hex());
+            trace!(
+                target: LOG_TARGET,
+                "Inserting message hash {} for message {}",
+                hash.to_hex(),
+                message.tag
+            );
             if dht_requester
                 .insert_message_hash(hash)
                 .await
@@ -84,13 +88,14 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
             {
                 info!(
                     target: LOG_TARGET,
-                    "Received duplicate message from peer '{}'. Message discarded.",
+                    "Received duplicate message {} from peer '{}'. Message discarded.",
+                    message.tag,
                     message.source_peer.node_id.short_str(),
                 );
                 return Ok(());
             }
 
-            trace!(target: LOG_TARGET, "Passing message onto next service");
+            debug!(target: LOG_TARGET, "Passing message {} onto next service", message.tag);
             next_service.oneshot(message).await
         }
     }
@@ -112,16 +117,25 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError> + Clo
         let next_service = self.next_service.clone();
         let mut dht_requester = self.dht_requester.clone();
         async move {
-            trace!(target: LOG_TARGET, "Adding outbound message to duplicate cache");
-
             if message.is_broadcast {
                 let hash = hash_outbound_message(&message);
+                debug!(
+                    target: LOG_TARGET,
+                    "Dedup added message hash {} to cache for message {}",
+                    hash.to_hex(),
+                    message.tag
+                );
                 if dht_requester
                     .insert_message_hash(hash)
                     .await
                     .map_err(PipelineError::from_debug)?
                 {
-                    warn!(target: LOG_TARGET, "Already sent this message!");
+                    info!(
+                        target: LOG_TARGET,
+                        "Outgoing message is already in the cache ({}, next peer = {})",
+                        message.tag,
+                        message.destination_peer.node_id.short_str()
+                    );
                 }
             }
 
@@ -154,7 +168,14 @@ mod test {
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
-        test_utils::{create_dht_actor_mock, make_dht_inbound_message, make_node_identity, service_spy, DhtMockState},
+        test_utils::{
+            create_dht_actor_mock,
+            create_outbound_message,
+            make_dht_inbound_message,
+            make_node_identity,
+            service_spy,
+            DhtMockState,
+        },
     };
     use tari_test_utils::panic_context;
     use tokio::runtime::Runtime;
@@ -186,5 +207,26 @@ mod test {
         assert_eq!(spy.call_count(), 1);
         // Drop dedup so that the DhtMock will stop running
         drop(dedup);
+    }
+
+    #[test]
+    fn deterministic_hash() {
+        const TEST_MSG: &[u8] = b"test123";
+        const EXPECTED_HASH: &str = "90cccd774db0ac8c6ea2deff0e26fc52768a827c91c737a2e050668d8c39c224";
+        let node_identity = make_node_identity();
+        let msg = make_dht_inbound_message(&node_identity, TEST_MSG.to_vec(), DhtMessageFlags::empty(), false);
+        let hash1 = hash_inbound_message(&msg);
+        let msg = create_outbound_message(&TEST_MSG);
+        let hash_out1 = hash_outbound_message(&msg);
+
+        let node_identity = make_node_identity();
+        let msg = make_dht_inbound_message(&node_identity, TEST_MSG.to_vec(), DhtMessageFlags::empty(), false);
+        let hash2 = hash_inbound_message(&msg);
+        let msg = create_outbound_message(&TEST_MSG);
+        let hash_out2 = hash_outbound_message(&msg);
+
+        assert_eq!(hash1, hash2);
+        let subjects = &[hash1, hash_out1, hash2, hash_out2];
+        assert!(subjects.into_iter().all(|h| h.to_hex() == EXPECTED_HASH));
     }
 }
