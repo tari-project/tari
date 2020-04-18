@@ -2306,17 +2306,8 @@ pub unsafe extern "C" fn wallet_create(
         return ptr::null_mut();
     }
 
-    let logging_path_string = if !log_path.is_null() {
-        Some(CStr::from_ptr(log_path).to_str().unwrap().to_owned())
-    } else {
-        None
-    };
-
-    let runtime = Runtime::new();
-    let factories = CryptoFactories::default();
-    let w;
-
-    if let Some(path) = logging_path_string {
+    if !log_path.is_null() {
+        let path = CStr::from_ptr(log_path).to_str().unwrap().to_owned();
         let logfile = FileAppender::builder()
             .encoder(Box::new(PatternEncoder::new(
                 "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}",
@@ -2333,6 +2324,10 @@ pub unsafe extern "C" fn wallet_create(
         log4rs::init_config(lconfig).expect("Should be able to start logging");
         debug!(target: LOG_TARGET, "Logging started");
     }
+
+    let runtime = Runtime::new();
+    let factories = CryptoFactories::default();
+    let w;
 
     match runtime {
         Ok(runtime) => {
@@ -4243,7 +4238,7 @@ mod test {
                 20,
                 error_ptr,
             );
-            (*alice_config).allow_test_addresses = true;
+
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),

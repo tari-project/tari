@@ -319,10 +319,10 @@ void pending_inbound_transactions_destroy(struct TariPendingInboundTransactions 
 
 /// -------------------------------- TariCommsConfig ----------------------------------------------- ///
 // Creates a TariCommsConfig
-struct TariCommsConfig *comms_config_create(char *public_address,
+struct TariCommsConfig *comms_config_create(const char *public_address,
                                      struct TariTransportType *transport,
-                                     char *database_name,
-                                     char *datastore_path,
+                                     const char *database_name,
+                                     const char *datastore_path,
                                      struct TariPrivateKey *secret_key,
                                      unsigned long long discovery_timeout_in_secs,
                                      int* error_out);
@@ -353,7 +353,7 @@ char* wallet_sign_message(struct TariWallet *wallet, const char* msg, int* error
 bool wallet_verify_message_signature(struct TariWallet *wallet, struct TariPublicKey *public_key, const char* hex_sig_nonce, const char* msg, int* error_out);
 
 /// Generates test data
-bool wallet_test_generate_data(struct TariWallet *wallet, char *datastore_path,int* error_out);
+bool wallet_test_generate_data(struct TariWallet *wallet, const char *datastore_path,int* error_out);
 
 // Adds a base node peer to the TariWallet
 bool wallet_add_base_node_peer(struct TariWallet *wallet, struct TariPublicKey *public_key, const char *address,int* error_out);
