@@ -221,5 +221,6 @@ pub fn create_outbound_message(body: &[u8]) -> DhtOutboundMessage {
         ephemeral_public_key: None,
         reply_tx: WrappedReplyTx::none(),
         origin_mac: None,
+        is_broadcast: false,
     }
 }

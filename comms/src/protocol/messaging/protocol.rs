@@ -84,7 +84,7 @@ impl fmt::Display for MessagingEvent {
             MessageReceived(node_id, tag) => write!(f, "MessageReceived({}, {})", node_id.short_str(), tag),
             InvalidMessageReceived(node_id) => write!(f, "InvalidMessageReceived({})", node_id.short_str()),
             SendMessageFailed(out_msg, reason) => write!(f, "SendMessageFailed({}, Reason = {})", out_msg, reason),
-            MessageSent(tag) => write!(f, "SendMessageSucceeded({})", tag),
+            MessageSent(tag) => write!(f, "MessageSent({})", tag),
         }
     }
 }

@@ -72,6 +72,14 @@ impl fmt::Display for BroadcastStrategy {
 }
 
 impl BroadcastStrategy {
+    pub fn is_broadcast(&self) -> bool {
+        use BroadcastStrategy::*;
+        match self {
+            Closest(_) | Flood | Neighbours(_, _) | Random(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn is_direct(&self) -> bool {
         use BroadcastStrategy::*;
         match self {

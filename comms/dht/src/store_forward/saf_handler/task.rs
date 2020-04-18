@@ -39,7 +39,7 @@ use crate::{
     storage::DhtSettingKey,
     store_forward::{
         error::StoreAndForwardError,
-        message::{datetime_to_timestamp, timestamp_to_datetime},
+        message::timestamp_to_datetime,
         service::FetchStoredMessageQuery,
         StoreAndForwardRequester,
     },
@@ -174,9 +174,15 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let source_node_id = Box::new(message.source_peer.node_id.clone());
 
         // Compile a set of stored messages for the requesting peer
-        let mut query = FetchStoredMessageQuery::new(source_pubkey, source_node_id);
+        let mut query = FetchStoredMessageQuery::new(source_pubkey, source_node_id.clone());
 
         if let Some(since) = retrieve_msgs.since.map(timestamp_to_datetime) {
+            debug!(
+                target: LOG_TARGET,
+                "Peer '{}' requested all messages since '{}'",
+                source_node_id.short_str(),
+                since
+            );
             query.since(since);
         }
 
@@ -259,37 +265,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .unwrap_or("<Invalid>".to_string()),
         );
 
-        let last_timestamp = self
-            .dht_requester
-            .get_setting(DhtSettingKey::SafLastRequestTimestamp)
-            .await?
-            .map(datetime_to_timestamp);
-
-        let max_stored_timestamp = response
-            .messages()
-            .iter()
-            .fold(last_timestamp, |acc, m| match &acc {
-                Some(since) => {
-                    // TODO: This comes from a peer and so could be a lie
-                    match &m.stored_at {
-                        Some(ts) => {
-                            // If this timestamp is greater than the last one we have
-                            if ts.seconds > since.seconds && ts.seconds < Utc::now().timestamp() {
-                                m.stored_at.clone()
-                            } else {
-                                acc
-                            }
-                        },
-                        None => acc,
-                    }
-                },
-                None => m.stored_at.clone(),
-            })
-            .map(timestamp_to_datetime)
-            .unwrap_or_else(Utc::now);
-
+        let now = Utc::now();
+        debug!(target: LOG_TARGET, "Setting SafLastRequestTimestamp to {}", now);
         self.dht_requester
-            .set_setting(DhtSettingKey::SafLastRequestTimestamp, max_stored_timestamp)
+            .set_setting(DhtSettingKey::SafLastRequestTimestamp, now)
             .await?;
 
         let tasks = response

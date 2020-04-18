@@ -194,25 +194,25 @@ impl DhtDiscoveryService {
                         );
                     }
                 } else {
-                    if !self.has_inflight_discovery(&peer.public_key) {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Attempting to discover peer '{}' because we failed to connect on all addresses for the
-                    peer",
-                            peer.node_id.short_str()
-                        );
-
-                        // Don't need to be notified for this discovery
-                        let (reply_tx, _) = oneshot::channel();
-                        // Send out a discovery for that peer without keeping track of it as an inflight discovery
-                        let dest_pubkey = Box::new(peer.public_key);
-                        self.initiate_peer_discovery(
-                            dest_pubkey.clone(),
-                            NodeDestination::PublicKey(dest_pubkey),
-                            reply_tx,
-                        )
-                        .await?;
-                    }
+                    // if !self.has_inflight_discovery(&peer.public_key) {
+                    //     debug!(
+                    //         target: LOG_TARGET,
+                    //         "Attempting to discover peer '{}' because we failed to connect on all addresses for the
+                    // peer",
+                    //         peer.node_id.short_str()
+                    //     );
+                    //
+                    //     // Don't need to be notified for this discovery
+                    //     let (reply_tx, _) = oneshot::channel();
+                    //     // Send out a discovery for that peer without keeping track of it as an inflight discovery
+                    //     let dest_pubkey = Box::new(peer.public_key);
+                    //     self.initiate_peer_discovery(
+                    //         dest_pubkey.clone(),
+                    //         NodeDestination::PublicKey(dest_pubkey),
+                    //         reply_tx,
+                    //     )
+                    //     .await?;
+                    // }
                 }
             },
             _ => {},
@@ -221,11 +221,11 @@ impl DhtDiscoveryService {
         Ok(())
     }
 
-    fn has_inflight_discovery(&self, public_key: &CommsPublicKey) -> bool {
-        self.inflight_discoveries
-            .values()
-            .all(|state| &*state.public_key != public_key)
-    }
+    // fn has_inflight_discovery(&self, public_key: &CommsPublicKey) -> bool {
+    //     self.inflight_discoveries
+    //         .values()
+    //         .all(|state| &*state.public_key != public_key)
+    // }
 
     fn collect_all_discovery_requests(&mut self, public_key: &CommsPublicKey) -> Vec<DiscoveryRequestState> {
         let mut requests = Vec::new();

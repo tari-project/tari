@@ -107,7 +107,7 @@ impl Default for DhtConfig {
         Self {
             num_neighbouring_nodes: DEFAULT_NUM_NEIGHBOURING_NODES,
             saf_num_closest_nodes: 10,
-            saf_max_returned_messages: 100,
+            saf_max_returned_messages: 50,
             outbound_buffer_size: 20,
             saf_msg_cache_storage_capacity: SAF_MSG_CACHE_STORAGE_CAPACITY,
             saf_low_priority_msg_storage_ttl: SAF_LOW_PRIORITY_MSG_STORAGE_TTL,

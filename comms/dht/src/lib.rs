@@ -140,6 +140,9 @@ pub use discovery::DhtDiscoveryRequester;
 mod storage;
 pub use storage::DbConnectionUrl;
 
+mod dedup;
+pub use dedup::DedupLayer;
+
 mod logging_middleware;
 mod proto;
 mod tower_filter;

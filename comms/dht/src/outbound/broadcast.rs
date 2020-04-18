@@ -261,6 +261,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     is_discovery_enabled,
                 );
 
+                let is_broadcast = broadcast_strategy.is_broadcast();
+
                 // Discovery is required if:
                 //  - Discovery is enabled for this request
                 //  - There where no peers returned
@@ -301,6 +303,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         dht_header,
                         dht_message_flags,
                         force_origin,
+                        is_broadcast,
                         body,
                     )
                     .await
@@ -389,6 +392,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         custom_header: Option<DhtMessageHeader>,
         extra_flags: DhtMessageFlags,
         force_origin: bool,
+        is_broadcast: bool,
         body: Bytes,
     ) -> Result<(Vec<DhtOutboundMessage>, Vec<MessageSendState>), DhtOutboundError>
     {
@@ -416,6 +420,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         reply_tx: reply_tx.into(),
                         ephemeral_public_key: None,
                         origin_mac: None,
+                        is_broadcast,
                     },
                     send_state,
                 )

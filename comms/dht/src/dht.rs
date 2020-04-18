@@ -33,6 +33,7 @@ use crate::{
     store_forward,
     store_forward::{StoreAndForwardRequest, StoreAndForwardRequester, StoreAndForwardService},
     tower_filter,
+    DedupLayer,
     DhtConfig,
 };
 use futures::{channel::mpsc, future, Future};
@@ -195,16 +196,12 @@ impl Dht {
     {
         // FIXME: There is an unresolved stack overflow issue on windows in debug mode during runtime, but not in
         //        release mode, related to the amount of layers. (issue #1416)
-        let builder = ServiceBuilder::new()
+        ServiceBuilder::new()
             .layer(inbound::DeserializeLayer)
             .layer(inbound::ValidateLayer::new(self.config.network))
-            .layer(inbound::DedupLayer::new(self.dht_requester()));
-
-        let builder = builder
+            .layer(DedupLayer::new(self.dht_requester()))
             .layer(tower_filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
-            .layer(MessageLoggingLayer::new("Inbound message: "));
-
-        builder
+            .layer(MessageLoggingLayer::new("Inbound message: "))
             .layer(inbound::DecryptionLayer::new(Arc::clone(&self.node_identity)))
             .layer(store_forward::ForwardLayer::new(
                 Arc::clone(&self.peer_manager),
@@ -260,6 +257,7 @@ impl Dht {
                 self.discovery_service_requester(),
                 self.config.network,
             ))
+            .layer(DedupLayer::new(self.dht_requester()))
             .layer(MessageLoggingLayer::new("Outbound message: "))
             .layer(outbound::EncryptionLayer::new(Arc::clone(&self.node_identity)))
             .layer(outbound::SerializeLayer)

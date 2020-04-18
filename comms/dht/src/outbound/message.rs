@@ -180,6 +180,7 @@ pub struct DhtOutboundMessage {
     pub reply_tx: WrappedReplyTx,
     pub network: Network,
     pub dht_flags: DhtMessageFlags,
+    pub is_broadcast: bool,
 }
 
 impl DhtOutboundMessage {
