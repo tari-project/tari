@@ -26,7 +26,7 @@ use crate::{
 };
 use bytes::Bytes;
 use futures::channel::oneshot;
-use std::{fmt, fmt::Display};
+use std::{fmt, fmt::Display, sync::Arc};
 use tari_comms::{
     message::{MessageTag, MessagingReplyTx},
     peer_manager::Peer,
@@ -170,34 +170,15 @@ pub struct DhtOutboundMessage {
     pub tag: MessageTag,
     pub destination_peer: Peer,
     pub custom_header: Option<DhtMessageHeader>,
-    pub encryption: OutboundEncryption,
     pub body: Bytes,
-    pub ephemeral_public_key: Option<CommsPublicKey>,
-    pub origin_mac: Option<Vec<u8>>,
-    pub include_origin: bool,
+    pub ephemeral_public_key: Option<Arc<CommsPublicKey>>,
+    pub origin_mac: Option<Bytes>,
     pub destination: NodeDestination,
     pub dht_message_type: DhtMessageType,
     pub reply_tx: WrappedReplyTx,
     pub network: Network,
     pub dht_flags: DhtMessageFlags,
     pub is_broadcast: bool,
-}
-
-impl DhtOutboundMessage {
-    pub fn with_ephemeral_public_key(&mut self, ephemeral_public_key: CommsPublicKey) -> &mut Self {
-        self.ephemeral_public_key = Some(ephemeral_public_key);
-        self
-    }
-
-    pub fn with_origin_mac(&mut self, origin_mac: Vec<u8>) -> &mut Self {
-        self.origin_mac = Some(origin_mac);
-        self
-    }
-
-    pub fn set_body(&mut self, body: Bytes) -> &mut Self {
-        self.body = body;
-        self
-    }
 }
 
 impl fmt::Display for DhtOutboundMessage {
@@ -214,13 +195,12 @@ impl fmt::Display for DhtOutboundMessage {
             });
         write!(
             f,
-            "\n---- Outgoing message ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\nEncryption: {}\n{}\n----",
+            "\n---- Outgoing message ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\n{}\n----",
             self.body.len(),
             self.dht_message_type,
             self.destination_peer,
             header_str,
-            self.encryption,
-            self.tag
+            self.tag,
         )
     }
 }

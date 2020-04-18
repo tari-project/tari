@@ -29,6 +29,7 @@ use tari_comms::{
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerStorage},
     pipeline,
     pipeline::SinkService,
+    protocol::messaging::MessagingEvent,
     transports::MemoryTransport,
     types::CommsDatabase,
     wrap_in_envelope_body,
@@ -44,7 +45,13 @@ use tari_comms_dht::{
     DhtBuilder,
 };
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
-use tari_test_utils::{async_assert_eventually, paths::create_temporary_data_path, random};
+use tari_test_utils::{
+    async_assert_eventually,
+    collect_stream,
+    paths::create_temporary_data_path,
+    random,
+    unpack_enum,
+};
 use tokio::time;
 use tower::ServiceBuilder;
 
@@ -320,7 +327,6 @@ async fn dht_store_forward() {
 #[tokio_macros::test]
 #[allow(non_snake_case)]
 async fn dht_propagate_dedup() {
-    env_logger::init();
     // Node D knows no one
     let mut node_D = make_node(PeerFeatures::COMMUNICATION_NODE, None).await;
     // Node C knows about Node D
@@ -332,15 +338,16 @@ async fn dht_propagate_dedup() {
     node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
     log::info!(
         "NodeA = {}, NodeB = {}, Node C = {}, Node D = {}",
-        node_A.node_identity().node_id(),
-        node_B.node_identity().node_id(),
-        node_C.node_identity().node_id(),
-        node_D.node_identity().node_id(),
+        node_A.node_identity().node_id().short_str(),
+        node_B.node_identity().node_id().short_str(),
+        node_C.node_identity().node_id().short_str(),
+        node_D.node_identity().node_id().short_str(),
     );
 
-    // let mut node_B_messaging = node_B.comms.subscribe_messaging_events();
-    // let mut node_C_messaging = node_C.comms.subscribe_messaging_events();
-    // let mut node_D_messaging = node_D.comms.subscribe_messaging_events();
+    let mut node_A_messaging = node_A.comms.subscribe_messaging_events();
+    let mut node_B_messaging = node_B.comms.subscribe_messaging_events();
+    let mut node_C_messaging = node_C.comms.subscribe_messaging_events();
+    let mut node_D_messaging = node_D.comms.subscribe_messaging_events();
 
     #[derive(Clone, PartialEq, ::prost::Message)]
     struct Person {
@@ -377,54 +384,64 @@ async fn dht_propagate_dedup() {
         .unwrap();
     assert_eq!(person.name, "John Conway");
 
-    // let node_A_id = node_A.node_identity().node_id().clone();
-    // let node_B_id = node_B.node_identity().node_id().clone();
-    // let node_C_id = node_C.node_identity().node_id().clone();
+    let node_A_id = node_A.node_identity().node_id().clone();
+    let node_B_id = node_B.node_identity().node_id().clone();
+    let node_C_id = node_C.node_identity().node_id().clone();
 
     node_A.comms.shutdown().await;
     node_B.comms.shutdown().await;
     node_C.comms.shutdown().await;
     node_D.comms.shutdown().await;
 
-    // TODO: Finish testing expectations for message propagation
-    // let events = collect_stream!(node_B_messaging, timeout = Duration::from_secs(20))
-    //     .into_iter()
-    //     .map(Result::unwrap)
-    //     .collect::<Vec<_>>();
-    // unpack_enum!(MessagingEvent::MessageReceived(node_id, tag) = &*events[0]);
-    // assert_eq!(**node_id, node_A_id);
-    // unpack_enum!(MessagingEvent::MessageSent(tag) = &*events[1]);
-    // log::info!("Node B sent {}", tag);
-    // if events.len() > 2 {
-    //     unpack_enum!(MessagingEvent::MessageReceived(node_id, tag) = &*events[2]);
-    //     log::info!("Node B got foem {}", node_id);
-    // }
-    // assert_eq!(events.len(), 2);
-    //
-    // let events = collect_stream!(node_C_messaging, timeout = Duration::from_secs(20))
-    //     .into_iter()
-    //     .map(Result::unwrap)
-    //     .collect::<Vec<_>>();
-    // unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*events[0]);
-    // assert_eq!(**node_id, node_A_id);
-    // unpack_enum!(MessagingEvent::MessageSent(tag) = &*events[1]);
-    // log::info!("Node C sent {}", tag);
-    // unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*events[2]);
-    // assert_eq!(**node_id, node_B_id);
-    // unpack_enum!(MessagingEvent::MessageSent(tag) = &*events[3]);
-    // log::info!("Node C sent {}", tag);
-    // unpack_enum!(MessagingEvent::MessageSent(tag) = &*events[4]);
-    // log::info!("Node C sent {}", tag);
-    // assert_eq!(events.len(), 5);
-    //
-    // let events = collect_stream!(node_D_messaging, timeout = Duration::from_secs(20))
-    //     .into_iter()
-    //     .map(Result::unwrap)
-    //     .collect::<Vec<_>>();
-    // assert_eq!(events.len(), 2);
-    // unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*events[0]);
-    // assert_eq!(**node_id, node_C_id);
-    //
-    // unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*events[1]);
-    // assert_eq!(**node_id, node_C_id);
+    // Check the message flow BEFORE deduping
+    let (sent, received) = partition_events(collect_stream!(node_A_messaging, timeout = Duration::from_secs(20)));
+    assert_eq!(sent.len(), 2);
+    unpack_enum!(MessagingEvent::MessageSent(_tag) = &*sent[0]);
+    unpack_enum!(MessagingEvent::MessageSent(_tag) = &*sent[1]);
+    // Expected race condition: If A->B->C before A->C then C->A
+    let is_race_condition = received.len() == 1;
+    if is_race_condition {
+        unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*received[0]);
+        assert_eq!(**node_id, node_C_id);
+    }
+
+    let (sent, received) = partition_events(collect_stream!(node_B_messaging, timeout = Duration::from_secs(20)));
+    assert_eq!(sent.len(), 1);
+    unpack_enum!(MessagingEvent::MessageSent(tag) = &*sent[0]);
+    log::info!("Node B sent {}", tag);
+    unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*received[0]);
+    assert_eq!(**node_id, node_A_id);
+    assert_eq!(received.len(), 1);
+    // Expected race condition: If A->C->B before A->B then C->B
+    if received.len() == 2 {
+        // This being the case, the previous race condition shouldn't have occurred
+        assert_eq!(is_race_condition, false);
+        unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*received[2]);
+        assert_eq!(node_id.to_string(), node_C_id.to_string());
+    }
+
+    let (sent, received) = partition_events(collect_stream!(node_C_messaging, timeout = Duration::from_secs(20)));
+    assert_eq!(sent.len(), 1);
+    assert_eq!(received.len(), 2);
+    unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*received[0]);
+    let mut expected = vec![&node_A_id, &node_B_id];
+    expected.remove(expected.iter().position(|n| n == &&**node_id).unwrap());
+    unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*received[1]);
+    expected.remove(expected.iter().position(|n| n == &&**node_id).unwrap());
+
+    let (sent, received) = partition_events(collect_stream!(node_D_messaging, timeout = Duration::from_secs(20)));
+    assert_eq!(received.len(), 1);
+    assert_eq!(sent.len(), 0);
+    unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*received[0]);
+    assert_eq!(**node_id, node_C_id);
+}
+
+fn partition_events(
+    events: Vec<Result<Arc<MessagingEvent>, tokio::sync::broadcast::RecvError>>,
+) -> (Vec<Arc<MessagingEvent>>, Vec<Arc<MessagingEvent>>) {
+    events.into_iter().map(Result::unwrap).partition(|e| match &**e {
+        MessagingEvent::MessageReceived(_, _) => false,
+        MessagingEvent::MessageSent(_) => true,
+        _ => unreachable!(),
+    })
 }

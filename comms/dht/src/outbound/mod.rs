@@ -23,9 +23,6 @@
 mod broadcast;
 pub use broadcast::BroadcastLayer;
 
-mod encryption;
-pub use encryption::EncryptionLayer;
-
 mod error;
 pub use error::DhtOutboundError;
 

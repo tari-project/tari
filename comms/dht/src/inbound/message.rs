@@ -28,19 +28,26 @@ use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
-use tari_comms::{message::EnvelopeBody, peer_manager::Peer, types::CommsPublicKey};
+use tari_comms::{
+    message::{EnvelopeBody, MessageTag},
+    peer_manager::Peer,
+    types::CommsPublicKey,
+};
 
 #[derive(Debug, Clone)]
 pub struct DhtInboundMessage {
+    pub tag: MessageTag,
     pub version: u32,
     pub source_peer: Arc<Peer>,
     pub dht_header: DhtMessageHeader,
+    /// True if forwarded via store and forward, otherwise false
     pub is_saf_message: bool,
     pub body: Vec<u8>,
 }
 impl DhtInboundMessage {
-    pub fn new(dht_header: DhtMessageHeader, source_peer: Arc<Peer>, body: Vec<u8>) -> Self {
+    pub fn new(tag: MessageTag, dht_header: DhtMessageHeader, source_peer: Arc<Peer>, body: Vec<u8>) -> Self {
         Self {
+            tag,
             version: DHT_ENVELOPE_HEADER_VERSION,
             dht_header,
             source_peer,
@@ -54,11 +61,12 @@ impl Display for DhtInboundMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(
             f,
-            "\n---- Inbound Message ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\n----",
+            "\n---- Inbound Message ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\n{}\n----",
             self.body.len(),
             self.dht_header.message_type,
             self.source_peer,
             self.dht_header,
+            self.tag,
         )
     }
 }
@@ -66,6 +74,7 @@ impl Display for DhtInboundMessage {
 /// Represents a decrypted InboundMessage.
 #[derive(Debug, Clone)]
 pub struct DecryptedDhtMessage {
+    pub tag: MessageTag,
     pub version: u32,
     /// The _connected_ peer which sent or forwarded this message. This may not be the peer
     /// which created this message.
@@ -83,6 +92,7 @@ impl DecryptedDhtMessage {
     ) -> Self
     {
         Self {
+            tag: message.tag,
             version: message.version,
             source_peer: message.source_peer,
             authenticated_origin,
@@ -93,6 +103,7 @@ impl DecryptedDhtMessage {
 
     pub fn failed(message: DhtInboundMessage) -> Self {
         Self {
+            tag: message.tag,
             version: message.version,
             source_peer: message.source_peer,
             authenticated_origin: None,

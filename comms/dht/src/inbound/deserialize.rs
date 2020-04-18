@@ -64,7 +64,10 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
             trace!(target: LOG_TARGET, "Deserializing InboundMessage");
 
             let InboundMessage {
-                source_peer, mut body, ..
+                source_peer,
+                mut body,
+                tag,
+                ..
             } = message;
 
             if body.is_empty() {
@@ -75,9 +78,13 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
 
             match DhtEnvelope::decode(&mut body) {
                 Ok(dht_envelope) => {
-                    trace!(target: LOG_TARGET, "Deserialization succeeded.");
+                    debug!(
+                        target: LOG_TARGET,
+                        "Deserialization succeeded. Passing message {} onto next service", tag
+                    );
 
                     let inbound_msg = DhtInboundMessage::new(
+                        tag,
                         dht_envelope.header.try_into().map_err(PipelineError::from_debug)?,
                         source_peer,
                         dht_envelope.body,

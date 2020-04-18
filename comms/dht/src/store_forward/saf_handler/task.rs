@@ -52,7 +52,7 @@ use log::*;
 use prost::Message;
 use std::{convert::TryInto, sync::Arc};
 use tari_comms::{
-    message::EnvelopeBody,
+    message::{EnvelopeBody, MessageTag},
     peer_manager::{node_id::NodeDistance, NodeIdentity, Peer, PeerManager, PeerManagerError},
     pipeline::PipelineError,
     types::{Challenge, CommsPublicKey},
@@ -403,7 +403,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             let (authenticated_pk, decrypted_body) =
                 Self::authenticate_and_decrypt_if_required(&node_identity, &dht_header, &message.body)?;
 
-            let mut inbound_msg = DhtInboundMessage::new(dht_header, Arc::clone(&source_peer), message.body);
+            let mut inbound_msg =
+                DhtInboundMessage::new(MessageTag::new(), dht_header, Arc::clone(&source_peer), message.body);
             inbound_msg.is_saf_message = true;
 
             Ok(DecryptedDhtMessage::succeeded(

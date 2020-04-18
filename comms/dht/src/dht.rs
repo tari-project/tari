@@ -201,7 +201,10 @@ impl Dht {
             .layer(inbound::ValidateLayer::new(self.config.network))
             .layer(DedupLayer::new(self.dht_requester()))
             .layer(tower_filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
-            .layer(MessageLoggingLayer::new("Inbound message: "))
+            .layer(MessageLoggingLayer::new(format!(
+                "Inbound [{}]",
+                self.node_identity.node_id().short_str()
+            )))
             .layer(inbound::DecryptionLayer::new(Arc::clone(&self.node_identity)))
             .layer(store_forward::ForwardLayer::new(
                 Arc::clone(&self.peer_manager),
@@ -258,8 +261,10 @@ impl Dht {
                 self.config.network,
             ))
             .layer(DedupLayer::new(self.dht_requester()))
-            .layer(MessageLoggingLayer::new("Outbound message: "))
-            .layer(outbound::EncryptionLayer::new(Arc::clone(&self.node_identity)))
+            .layer(MessageLoggingLayer::new(format!(
+                "Outbound [{}]",
+                self.node_identity.node_id().short_str()
+            )))
             .layer(outbound::SerializeLayer)
             .into_inner()
     }
