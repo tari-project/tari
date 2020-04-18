@@ -196,8 +196,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let response_types = vec![
             SafResponseType::ForMe,
-            SafResponseType::InRegion,
-            SafResponseType::Discovery,
+            /* SafResponseType::InRegion,
+             * SafResponseType::Discovery, */
         ];
 
         for resp_type in response_types {
