@@ -52,7 +52,7 @@ fn box_data(data: String, target_length: usize) -> String {
     } else {
         0
     };
-    let mut s = format!("{}{}{}{}", " ".repeat(padding), data, " ".repeat(padding), "┃");
+    let mut s = format!("{}{}{}{}", " ".repeat(padding), data, " ".repeat(padding), "│");
     // for integer rounding error, usually only 1 char, to ensure border lines up
     while s.chars().count() < target_length - 1 {
         s = format!("{}{}", " ", s);
