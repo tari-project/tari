@@ -82,6 +82,7 @@ use tari_core::{
         types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
     },
     validation::{
+        accum_difficulty_validators::AccumDifficultyValidator,
         block_validators::{FullConsensusValidator, StatelessBlockValidator},
         transaction_validators::{FullTxValidator, TxInputAndMaturityValidator},
     },
@@ -462,6 +463,7 @@ where
     let validators = Validators::new(
         FullConsensusValidator::new(rules.clone(), factories.clone()),
         StatelessBlockValidator::new(&rules.consensus_constants()),
+        AccumDifficultyValidator {},
     );
     // TODO - make BlockchainDatabaseConfig configurable
     let db = BlockchainDatabase::new(backend, &rules, validators, BlockchainDatabaseConfig::default())

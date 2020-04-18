@@ -58,7 +58,11 @@ use tari_core::{
     },
     tx,
     txn_schema,
-    validation::{block_validators::StatelessBlockValidator, mocks::MockValidator},
+    validation::{
+        accum_difficulty_validators::MockAccumDifficultyValidator,
+        block_validators::StatelessBlockValidator,
+        mocks::MockValidator,
+    },
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_mmr::{MmrCacheConfig, MutableMmr};
@@ -755,7 +759,11 @@ fn handle_reorg() {
 #[test]
 fn store_and_retrieve_blocks() {
     let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 2 };
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockAccumDifficultyValidator {},
+    );
     let network = Network::LocalNet;
     let rules = ConsensusManagerBuilder::new(network).build();
     let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
@@ -778,7 +786,11 @@ fn store_and_retrieve_blocks() {
 #[test]
 fn store_and_retrieve_chain_and_orphan_blocks_with_hashes() {
     let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 2 };
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockAccumDifficultyValidator {},
+    );
     let network = Network::LocalNet;
     let rules = ConsensusManagerBuilder::new(network).build();
     let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
@@ -805,7 +817,11 @@ fn restore_metadata() {
 
     // Perform test
     {
-        let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+        let validators = Validators::new(
+            MockValidator::new(true),
+            MockValidator::new(true),
+            MockAccumDifficultyValidator {},
+        );
         let network = Network::LocalNet;
         let rules = ConsensusManagerBuilder::new(network).build();
         let block_hash: BlockHash;
@@ -854,6 +870,7 @@ fn invalid_block() {
         let validators = Validators::new(
             MockValidator::new(true),
             StatelessBlockValidator::new(&consensus_manager.consensus_constants()),
+            MockAccumDifficultyValidator {},
         );
         let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
         let mut store =
@@ -971,7 +988,11 @@ fn invalid_block() {
 fn orphan_cleanup_on_block_add() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockAccumDifficultyValidator {},
+    );
     let db = MemoryDatabase::<HashDigest>::default();
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
@@ -1021,7 +1042,11 @@ fn orphan_cleanup_on_reorg() {
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockAccumDifficultyValidator {},
+    );
     let db = MemoryDatabase::<HashDigest>::default();
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,

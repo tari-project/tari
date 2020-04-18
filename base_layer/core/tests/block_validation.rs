@@ -25,7 +25,10 @@ use tari_core::{
     consensus::{ConsensusManagerBuilder, Network},
     proof_of_work::DiffAdjManager,
     transactions::types::{CryptoFactories, HashDigest},
-    validation::block_validators::{FullConsensusValidator, StatelessBlockValidator},
+    validation::{
+        accum_difficulty_validators::AccumDifficultyValidator,
+        block_validators::{FullConsensusValidator, StatelessBlockValidator},
+    },
 };
 
 #[test]
@@ -37,6 +40,7 @@ fn test_genesis_block() {
     let validators = Validators::new(
         FullConsensusValidator::new(rules.clone(), factories),
         StatelessBlockValidator::new(&rules.consensus_constants()),
+        AccumDifficultyValidator {},
     );
     let db = BlockchainDatabase::new(backend, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
     let diff_adj_manager = DiffAdjManager::new(&rules.consensus_constants()).unwrap();
