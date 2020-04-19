@@ -325,7 +325,7 @@ pub fn generate_wallet_test_data<
         MicroTari::from(100),
         messages[message_index].clone(),
     ))?;
-    outbound_tx_ids.push(tx_id.clone());
+    outbound_tx_ids.push(tx_id);
     message_index = (message_index + 1) % messages.len();
 
     let tx_id = wallet.runtime.block_on(wallet.transaction_service.send_transaction(
@@ -334,7 +334,7 @@ pub fn generate_wallet_test_data<
         MicroTari::from(110),
         messages[message_index].clone(),
     ))?;
-    outbound_tx_ids.push(tx_id.clone());
+    outbound_tx_ids.push(tx_id);
     message_index = (message_index + 1) % messages.len();
 
     wallet_alice.runtime.block_on(async {

@@ -33,10 +33,7 @@ use crate::transaction_service::{
     storage::database::{CompletedTransaction, OutboundTransaction, TransactionBackend, TransactionStatus},
 };
 use futures::channel::oneshot;
-use tari_comms::{
-    protocol::messaging::{MessagingEvent, MessagingEventReceiver},
-    types::CommsPublicKey,
-};
+use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{domain_message::OutboundDomainMessage, envelope::NodeDestination, outbound::OutboundEncryption};
 use tari_core::transactions::{
     tari_amount::MicroTari,
@@ -61,7 +58,6 @@ where TBackend: TransactionBackend + Clone + 'static
     resources: TransactionServiceResources<TBackend>,
     transaction_reply_receiver: Option<Receiver<(CommsPublicKey, RecipientSignedMessage)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
-    message_send_event_receiver: Option<MessagingEventReceiver>,
     dest_pubkey: CommsPublicKey,
     amount: MicroTari,
     message: String,
@@ -78,7 +74,6 @@ where TBackend: TransactionBackend + Clone + 'static
         resources: TransactionServiceResources<TBackend>,
         transaction_reply_receiver: Receiver<(CommsPublicKey, RecipientSignedMessage)>,
         cancellation_receiver: oneshot::Receiver<()>,
-        message_send_event_receiver: MessagingEventReceiver,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
         message: String,
@@ -91,7 +86,6 @@ where TBackend: TransactionBackend + Clone + 'static
             resources,
             transaction_reply_receiver: Some(transaction_reply_receiver),
             cancellation_receiver: Some(cancellation_receiver),
-            message_send_event_receiver: Some(message_send_event_receiver),
             dest_pubkey,
             amount,
             message,
@@ -108,6 +102,8 @@ where TBackend: TransactionBackend + Clone + 'static
             self.stage
         );
 
+        // Only Send the transaction of the protocol stage is Initial. If the protocol is started in a later stage
+        // ignore this
         if self.stage == TransactionProtocolStage::Initial {
             self.send_transaction().await?;
         }
@@ -216,7 +212,7 @@ where TBackend: TransactionBackend + Clone + 'static
 
         self.resources
             .db
-            .complete_outbound_transaction(tx_id.clone(), completed_transaction.clone())
+            .complete_outbound_transaction(tx_id, completed_transaction.clone())
             .await
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
         info!(
@@ -261,7 +257,9 @@ where TBackend: TransactionBackend + Clone + 'static
             .resources
             .outbound_message_service
             .propagate(
-                NodeDestination::from(self.dest_pubkey.clone()),
+                NodeDestination::NodeId(Box::new(NodeId::from_key(&self.dest_pubkey).map_err(|e| {
+                    TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
+                })?)),
                 OutboundEncryption::EncryptFor(Box::new(self.dest_pubkey.clone())),
                 vec![],
                 OutboundDomainMessage::new(
@@ -346,13 +344,6 @@ where TBackend: TransactionBackend + Clone + 'static
             .await
         {
             Ok(result) => match result.resolve_ok().await {
-                None => {
-                    let _ = self
-                        .resources
-                        .event_publisher
-                        .send(Arc::new(TransactionEvent::TransactionDirectSendResult(tx_id, false)));
-                    error!(target: LOG_TARGET, "Transaction Send directly to recipient failed");
-                },
                 Some(send_states) if send_states.len() == 1 => {
                     info!(
                         target: LOG_TARGET,
@@ -362,54 +353,36 @@ where TBackend: TransactionBackend + Clone + 'static
                         send_states[0].tag,
                     );
                     direct_send_success = true;
-                    let message_tag = send_states[0].tag;
+
                     let event_publisher = self.resources.event_publisher.clone();
                     // Launch a task to monitor if the message gets sent
-                    if let Some(mut message_event_receiver) = self.message_send_event_receiver.take() {
-                        tokio::spawn(async move {
-                            loop {
-                                let (received_tag, success) = match message_event_receiver.next().await {
-                                    Some(read_item) => match read_item {
-                                        Ok(event) => match &*event {
-                                            MessagingEvent::MessageSent(message_tag) => (*message_tag, true),
-                                            MessagingEvent::SendMessageFailed(outbound_message, _reason) => {
-                                                (outbound_message.tag, false)
-                                            },
-                                            _ => continue,
-                                        },
-                                        Err(e) => {
-                                            error!(
-                                                target: LOG_TARGET,
-                                                "Error reading from message send event stream: {:?}", e
-                                            );
-                                            break;
-                                        },
-                                    },
-                                    None => {
-                                        error!(target: LOG_TARGET, "Error reading from message send event stream");
-                                        break;
-                                    },
-                                };
-                                if received_tag != message_tag {
-                                    continue;
-                                }
+                    tokio::spawn(async move {
+                        match send_states.wait_single().await {
+                            true => {
+                                info!(
+                                    target: LOG_TARGET,
+                                    "Direct Send process for TX_ID: {} was successful", tx_id
+                                );
                                 let _ = event_publisher
-                                    .send(Arc::new(TransactionEvent::TransactionDirectSendResult(tx_id, success)));
-                                break;
-                            }
-                        });
-                    }
+                                    .send(Arc::new(TransactionEvent::TransactionDirectSendResult(tx_id, true)));
+                            },
+                            false => {
+                                error!(
+                                    target: LOG_TARGET,
+                                    "Direct Send process for TX_ID: {} was unsuccessful and no message was sent", tx_id
+                                );
+                                let _ = event_publisher
+                                    .send(Arc::new(TransactionEvent::TransactionDirectSendResult(tx_id, false)));
+                            },
+                        }
+                    });
                 },
-                Some(_tags) => {
-                    error!(
-                        target: LOG_TARGET,
-                        "Direct Send process for TX_ID: {} was unsuccessful and no message was sent", tx_id
-                    );
+                _ => {
                     let _ = self
                         .resources
                         .event_publisher
                         .send(Arc::new(TransactionEvent::TransactionDirectSendResult(tx_id, false)));
-                    error!(target: LOG_TARGET, "Transaction Send message failed to send");
+                    error!(target: LOG_TARGET, "Transaction Send Direct for TxID: {} failed", tx_id);
                 },
             },
             Err(e) => {
@@ -427,7 +400,9 @@ where TBackend: TransactionBackend + Clone + 'static
             .resources
             .outbound_message_service
             .propagate(
-                NodeDestination::from(self.dest_pubkey.clone()),
+                NodeDestination::NodeId(Box::new(NodeId::from_key(&self.dest_pubkey).map_err(|e| {
+                    TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
+                })?)),
                 OutboundEncryption::EncryptFor(Box::new(self.dest_pubkey.clone())),
                 vec![],
                 OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message),
@@ -469,6 +444,12 @@ where TBackend: TransactionBackend + Clone + 'static
         };
 
         if !direct_send_success && !store_and_forward_send_success {
+            error!(
+                target: LOG_TARGET,
+                "Failed to Send Transaction (TxId: {}) both Directly or via Store and Forward. Pending Transaction \
+                 will be cancelled",
+                tx_id
+            );
             if let Err(e) = self.resources.output_manager_service.cancel_transaction(tx_id).await {
                 error!(
                     target: LOG_TARGET,

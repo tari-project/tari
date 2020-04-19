@@ -45,4 +45,6 @@ pub enum DhtOutboundError {
     ReplyChannelCanceled,
     /// Attempted to send a message to ourselves
     SendToOurselves,
+    /// Discovery process failed
+    DiscoveryFailed,
 }

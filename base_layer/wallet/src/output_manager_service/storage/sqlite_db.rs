@@ -650,7 +650,7 @@ impl From<UpdateOutput> for UpdateOutputSql {
 
 /// This struct represents a PendingTransactionOutputs  in the Sql database. A distinct struct is required to define the
 /// Sql friendly equivalent datatypes for the members.
-#[derive(Clone, Queryable, Insertable)]
+#[derive(Debug, Clone, Queryable, Insertable)]
 #[table_name = "pending_transaction_outputs"]
 struct PendingTransactionOutputSql {
     tx_id: i64,

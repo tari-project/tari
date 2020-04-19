@@ -465,6 +465,7 @@ where
             .accept_incoming_pending_transaction(tx_id, amount, key.clone(), OutputFeatures::default())
             .await?;
 
+        self.confirm_encumberance(tx_id).await?;
         Ok(key)
     }
 
@@ -654,6 +655,10 @@ where
 
     /// Cancel a pending transaction and place the encumbered outputs back into the unspent pool
     pub async fn cancel_transaction(&mut self, tx_id: u64) -> Result<(), OutputManagerError> {
+        trace!(
+            target: LOG_TARGET,
+            "Cancelling pending transaction outputs for TxId: tx_id"
+        );
         Ok(self.db.cancel_pending_transaction_outputs(tx_id).await?)
     }
 
