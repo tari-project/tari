@@ -140,7 +140,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                     db.unspent_outputs.push(*o);
                 },
                 DbKeyValuePair::PendingTransactionOutputs(t, p) => {
-                    db.pending_transactions.insert(t, *p);
+                    db.short_term_pending_transactions.insert(t, *p);
                 },
                 DbKeyValuePair::KeyManagerState(km) => db.key_manager_state = Some(km),
             },

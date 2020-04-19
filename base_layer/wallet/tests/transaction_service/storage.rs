@@ -270,7 +270,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         );
         #[cfg(feature = "test_harness")]
         runtime
-            .block_on(db.broadcast_completed_transaction(completed_txs[0].tx_id.clone()))
+            .block_on(db.broadcast_completed_transaction(completed_txs[0].tx_id))
             .unwrap();
         let retrieved_completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
 
@@ -282,7 +282,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
         #[cfg(feature = "test_harness")]
         runtime
-            .block_on(db.mine_completed_transaction(completed_txs[0].tx_id.clone()))
+            .block_on(db.mine_completed_transaction(completed_txs[0].tx_id))
             .unwrap();
         let retrieved_completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
 

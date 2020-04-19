@@ -58,7 +58,10 @@ use std::{
     convert::{TryFrom, TryInto},
     sync::Arc,
 };
-use tari_comms::{peer_manager::NodeIdentity, protocol::messaging::MessagingEventSender, types::CommsPublicKey};
+use tari_comms::{
+    peer_manager::{NodeId, NodeIdentity},
+    types::CommsPublicKey,
+};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
@@ -117,7 +120,6 @@ where TBackend: TransactionBackend + Clone + 'static
     config: TransactionServiceConfig,
     db: TransactionDatabase<TBackend>,
     outbound_message_service: OutboundMessageRequester,
-    message_event_sender: MessagingEventSender,
     output_manager_service: OutputManagerHandle,
     transaction_stream: Option<TTxStream>,
     transaction_reply_stream: Option<TTxReplyStream>,
@@ -163,7 +165,6 @@ where
         base_node_response_stream: BNResponseStream,
         output_manager_service: OutputManagerHandle,
         outbound_message_service: OutboundMessageRequester,
-        message_event_sender: MessagingEventSender,
         event_publisher: TransactionEventSender,
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
@@ -183,7 +184,6 @@ where
             config,
             db,
             outbound_message_service,
-            message_event_sender,
             output_manager_service,
             transaction_stream: Some(transaction_stream),
             transaction_reply_stream: Some(transaction_reply_stream),
@@ -483,7 +483,6 @@ where
             self.service_resources.clone(),
             tx_reply_receiver,
             cancellation_receiver,
-            self.message_event_sender.subscribe(),
             dest_pubkey,
             amount,
             message,
@@ -570,7 +569,7 @@ where
 
     /// Cancel a pending outbound transaction
     async fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
-        self.db.cancel_pending_transaction(tx_id.clone()).await.map_err(|e| {
+        self.db.cancel_pending_transaction(tx_id).await.map_err(|e| {
             error!(
                 target: LOG_TARGET,
                 "Pending Transaction does not exist and could not be cancelled: {:?}", e
@@ -610,6 +609,10 @@ where
         let outbound_txs = self.db.get_pending_outbound_transactions().await?;
         for (tx_id, tx) in outbound_txs {
             if !self.pending_transaction_reply_senders.contains_key(&tx_id) {
+                debug!(
+                    target: LOG_TARGET,
+                    "Restarting listening for Reply for Pending Outbound Transaction TxId: {}", tx_id
+                );
                 let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
                 let (cancellation_sender, cancellation_receiver) = oneshot::channel();
                 self.pending_transaction_reply_senders.insert(tx_id, tx_reply_sender);
@@ -620,7 +623,6 @@ where
                     self.service_resources.clone(),
                     tx_reply_receiver,
                     cancellation_receiver,
-                    self.message_event_sender.subscribe(),
                     tx.destination_public_key,
                     tx.amount,
                     tx.message,
@@ -698,7 +700,7 @@ where
 
             self.outbound_message_service
                 .propagate(
-                    NodeDestination::from(source_pubkey.clone()),
+                    NodeDestination::NodeId(Box::new(NodeId::from_key(&source_pubkey)?)),
                     OutboundEncryption::EncryptFor(Box::new(source_pubkey.clone())),
                     vec![],
                     OutboundDomainMessage::new(TariMessageType::ReceiverPartialTransactionReply, proto_message),
@@ -771,18 +773,14 @@ where
                 )
             })?;
 
-        let inbound_tx = self
-            .db
-            .get_pending_inbound_transaction(tx_id.clone())
-            .await
-            .map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Finalized transaction TxId does not exist in Pending Inbound Transactions, could be a repeat \
-                     Store and Forward message"
-                );
-                e
-            })?;
+        let inbound_tx = self.db.get_pending_inbound_transaction(tx_id).await.map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Finalized transaction TxId does not exist in Pending Inbound Transactions, could be a repeat Store \
+                 and Forward message"
+            );
+            e
+        })?;
 
         info!(
             target: LOG_TARGET,
@@ -827,7 +825,7 @@ where
         };
 
         self.db
-            .complete_inbound_transaction(tx_id.clone(), completed_transaction.clone())
+            .complete_inbound_transaction(tx_id, completed_transaction.clone())
             .await?;
 
         info!(
@@ -875,11 +873,11 @@ where
 
         let spending_key = self
             .output_manager_service
-            .get_coinbase_spending_key(tx_id.clone(), amount.clone(), maturity_height)
+            .get_coinbase_spending_key(tx_id, amount.clone(), maturity_height)
             .await?;
 
         self.db
-            .add_pending_coinbase_transaction(tx_id.clone(), PendingCoinbaseTransaction {
+            .add_pending_coinbase_transaction(tx_id, PendingCoinbaseTransaction {
                 tx_id,
                 amount,
                 commitment: self.factories.commitment.commit_value(&spending_key, u64::from(amount)),
@@ -898,17 +896,13 @@ where
         completed_transaction: Transaction,
     ) -> Result<(), TransactionServiceError>
     {
-        let coinbase_tx = self
-            .db
-            .get_pending_coinbase_transaction(tx_id.clone())
-            .await
-            .map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Finalized coinbase transaction TxId does not exist in Pending Inbound Transactions"
-                );
-                e
-            })?;
+        let coinbase_tx = self.db.get_pending_coinbase_transaction(tx_id).await.map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Finalized coinbase transaction TxId does not exist in Pending Inbound Transactions"
+            );
+            e
+        })?;
 
         if !completed_transaction.body.inputs().is_empty() ||
             completed_transaction.body.outputs().len() != 1 ||
@@ -952,17 +946,13 @@ where
 
     /// If a specific coinbase transaction will not be mined then the Miner can cancel it
     pub async fn cancel_pending_coinbase_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
-        let _ = self
-            .db
-            .get_pending_coinbase_transaction(tx_id.clone())
-            .await
-            .map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Finalized coinbase transaction TxId does not exist in Pending Inbound Transactions"
-                );
-                e
-            })?;
+        let _ = self.db.get_pending_coinbase_transaction(tx_id).await.map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Finalized coinbase transaction TxId does not exist in Pending Inbound Transactions"
+            );
+            e
+        })?;
 
         self.output_manager_service.cancel_transaction(tx_id).await?;
 
@@ -1050,7 +1040,7 @@ where
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError>
     {
-        let completed_tx = self.db.get_completed_transaction(tx_id.clone()).await?;
+        let completed_tx = self.db.get_completed_transaction(tx_id).await?;
 
         if completed_tx.status != TransactionStatus::Completed || completed_tx.transaction.body.kernels().is_empty() {
             return Err(TransactionServiceError::InvalidCompletedTransaction);
@@ -1182,7 +1172,7 @@ where
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError>
     {
-        let completed_tx = self.db.get_completed_transaction(tx_id.clone()).await?;
+        let completed_tx = self.db.get_completed_transaction(tx_id).await?;
 
         if completed_tx.status != TransactionStatus::Broadcast || completed_tx.transaction.body.kernels().is_empty() {
             return Err(TransactionServiceError::InvalidCompletedTransaction);
@@ -1285,7 +1275,7 @@ where
         let completed_txs = self.db.get_completed_transactions().await?;
         for completed_tx in completed_txs.values() {
             if completed_tx.status == TransactionStatus::Broadcast {
-                self.start_transaction_chain_monitoring_protocol(completed_tx.tx_id.clone(), join_handles)
+                self.start_transaction_chain_monitoring_protocol(completed_tx.tx_id, join_handles)
                     .await?;
             }
         }
@@ -1304,7 +1294,7 @@ where
         let tx_id = OsRng.next_u64();
         self.db
             .add_utxo_import_transaction(
-                tx_id.clone(),
+                tx_id,
                 value,
                 source_public_key,
                 self.node_identity.public_key().clone(),
@@ -1324,7 +1314,7 @@ where
     ) -> Result<(), TransactionServiceError>
     {
         self.db
-            .complete_outbound_transaction(completed_tx.tx_id.clone(), completed_tx.clone())
+            .complete_outbound_transaction(completed_tx.tx_id, completed_tx.clone())
             .await?;
         Ok(())
     }
@@ -1335,7 +1325,7 @@ where
     #[cfg(feature = "test_harness")]
     pub async fn broadcast_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         let completed_txs = self.db.get_completed_transactions().await?;
-        completed_txs.get(&tx_id.clone()).ok_or_else(|| {
+        completed_txs.get(&tx_id).ok_or_else(|| {
             TransactionServiceError::TestHarnessError("Could not find Completed TX to broadcast.".to_string())
         })?;
 
@@ -1363,18 +1353,18 @@ where
     #[cfg(feature = "test_harness")]
     pub async fn mine_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         let completed_txs = self.db.get_completed_transactions().await?;
-        let _found_tx = completed_txs.get(&tx_id.clone()).ok_or_else(|| {
+        let _found_tx = completed_txs.get(&tx_id).ok_or_else(|| {
             TransactionServiceError::TestHarnessError("Could not find Completed TX to mine.".to_string())
         })?;
 
         let pending_tx_outputs = self.output_manager_service.get_pending_transactions().await?;
-        let pending_tx = pending_tx_outputs.get(&tx_id.clone()).ok_or_else(|| {
+        let pending_tx = pending_tx_outputs.get(&tx_id).ok_or_else(|| {
             TransactionServiceError::TestHarnessError("Could not find Pending TX to complete.".to_string())
         })?;
 
         self.output_manager_service
             .confirm_transaction(
-                tx_id.clone(),
+                tx_id,
                 pending_tx
                     .outputs_to_be_spent
                     .iter()
@@ -1458,7 +1448,7 @@ where
 
         let spending_key = self
             .output_manager_service
-            .get_recipient_spending_key(tx_id.clone(), amount.clone())
+            .get_recipient_spending_key(tx_id, amount.clone())
             .await?;
         let nonce = PrivateKey::random(&mut OsRng);
         let rtp = ReceiverTransactionProtocol::new(
@@ -1480,7 +1470,7 @@ where
         };
 
         self.db
-            .add_pending_inbound_transaction(tx_id.clone(), inbound_transaction.clone())
+            .add_pending_inbound_transaction(tx_id, inbound_transaction.clone())
             .await?;
 
         let _ = self
@@ -1504,7 +1494,7 @@ where
     pub async fn finalize_received_test_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         let inbound_txs = self.db.get_pending_inbound_transactions().await?;
 
-        let found_tx = inbound_txs.get(&tx_id.clone()).ok_or_else(|| {
+        let found_tx = inbound_txs.get(&tx_id).ok_or_else(|| {
             TransactionServiceError::TestHarnessError("Could not find Pending Inbound TX to finalize.".to_string())
         })?;
 
@@ -1521,7 +1511,7 @@ where
         };
 
         self.db
-            .complete_inbound_transaction(tx_id.clone(), completed_transaction.clone())
+            .complete_inbound_transaction(tx_id, completed_transaction.clone())
             .await?;
         let _ = self
             .event_publisher

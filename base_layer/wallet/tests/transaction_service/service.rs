@@ -43,7 +43,6 @@ use tari_broadcast_channel::bounded;
 use tari_comms::{
     message::EnvelopeBody,
     peer_manager::{NodeIdentity, PeerFeatures},
-    protocol::messaging::{MessagingEvent, MessagingEventSender},
     CommsNode,
 };
 use tari_comms_dht::outbound::mock::{create_outbound_service_mock, OutboundServiceMockState};
@@ -111,7 +110,7 @@ use tempdir::TempDir;
 use tokio::{
     runtime,
     runtime::{Builder, Runtime},
-    sync::{broadcast, broadcast::channel},
+    sync::broadcast::channel,
     time::delay_for,
 };
 
@@ -159,7 +158,6 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
                 ..Default::default()
             },
             subscription_factory,
-            comms.message_event_sender(),
             backend,
             comms.node_identity().clone(),
             factories.clone(),
@@ -190,7 +188,6 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
     Sender<DomainMessage<proto::TransactionFinalizedMessage>>,
     Sender<DomainMessage<MempoolProto::MempoolServiceResponse>>,
     Sender<DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>,
-    MessagingEventSender,
 )
 {
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
@@ -224,8 +221,6 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
     let outbound_mock_state = mock_outbound_service.get_state();
     runtime.spawn(mock_outbound_service.run());
 
-    let (message_event_publisher, _message_event_subscriber) = broadcast::channel(30);
-
     let ts_service = TransactionService::new(
         TransactionServiceConfig {
             mempool_broadcast_timeout: Duration::from_secs(5),
@@ -241,7 +236,6 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
         base_node_response_receiver,
         output_manager_service_handle.clone(),
         outbound_message_requester.clone(),
-        message_event_publisher.clone(),
         event_publisher,
         Arc::new(
             NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
@@ -259,7 +253,6 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
         tx_finalized_sender,
         mempool_response_sender,
         base_node_response_sender,
-        message_event_publisher,
     )
 }
 
@@ -711,7 +704,6 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
         _,
         _,
         _,
-        alice_messaging_event_sender,
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend, None);
 
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
@@ -731,11 +723,9 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
     alice_outbound_service
         .wait_call_count(2, Duration::from_secs(60))
         .unwrap();
-    let (_, body, tag) = alice_outbound_service.pop_call().unwrap();
+    let (_, body) = alice_outbound_service.pop_call().unwrap();
     let _ = alice_outbound_service.pop_call().unwrap(); // burn SAF message
-    alice_messaging_event_sender
-        .send(Arc::new(MessagingEvent::MessageSent(tag.clone())))
-        .unwrap();
+
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let sender_message = envelope_body
         .decode_part::<proto::TransactionSenderMessage>(1)
@@ -824,7 +814,6 @@ fn finalize_tx_with_nonexistent_txid<T: TransactionBackend + Clone + 'static>(al
         mut alice_tx_finalized,
         _,
         _,
-        _,
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend, None);
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
@@ -882,13 +871,12 @@ fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(al
         mut alice_tx_finalized,
         _,
         _,
-        _,
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend, None);
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
-    let (_bob_ts, mut bob_output_manager, _bob_outbound_service, _bob_tx_sender, _bob_tx_ack_sender, _, _, _, _) =
+    let (_bob_ts, mut bob_output_manager, _bob_outbound_service, _bob_tx_sender, _bob_tx_ack_sender, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend, None);
 
     let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment);
@@ -914,7 +902,7 @@ fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(al
     alice_outbound_service
         .wait_call_count(2, Duration::from_secs(10))
         .unwrap();
-    let (_, body, _) = alice_outbound_service.pop_call().unwrap();
+    let (_, body) = alice_outbound_service.pop_call().unwrap();
     let _ = alice_outbound_service.pop_call().unwrap(); // burn SAF message
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
@@ -988,13 +976,12 @@ fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alic
         mut alice_tx_finalized,
         _,
         _,
-        _,
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend, None);
     let alice_event_stream = alice_ts.get_event_stream_fused();
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
-    let (_bob_ts, mut bob_output_manager, _bob_outbound_service, _bob_tx_sender, _bob_tx_ack_sender, _, _, _, _) =
+    let (_bob_ts, mut bob_output_manager, _bob_outbound_service, _bob_tx_sender, _bob_tx_ack_sender, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend, None);
 
     let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment);
@@ -1020,7 +1007,7 @@ fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alic
     alice_outbound_service
         .wait_call_count(2, Duration::from_secs(10))
         .unwrap();
-    let (_, body, _) = alice_outbound_service.pop_call().unwrap();
+    let (_, body) = alice_outbound_service.pop_call().unwrap();
     let _ = alice_outbound_service.pop_call().unwrap(); // burn SAF message
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
@@ -1241,7 +1228,7 @@ fn discovery_async_return_test() {
                     if let TransactionEvent::TransactionDirectSendResult(tx_id, success) = &*event.unwrap() {
                         success_count+=1;
                         success_result = success.clone();
-                        success_tx_id = tx_id.clone();
+                        success_tx_id = *tx_id;
                         if success_count >= 1 {
                             break;
                         }
@@ -1296,7 +1283,6 @@ fn test_coinbase<T: TransactionBackend + Clone + 'static>(backend: T) {
         _alice_outbound_service,
         _alice_tx_sender,
         _alice_tx_ack_sender,
-        _,
         _,
         _,
         _,
@@ -1427,7 +1413,6 @@ fn transaction_mempool_broadcast() {
         _,
         mut alice_mempool_response_sender,
         mut alice_base_node_response_sender,
-        alice_messaging_event_sender,
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
@@ -1435,7 +1420,7 @@ fn transaction_mempool_broadcast() {
         .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
         .unwrap();
 
-    let (_bob_ts, _bob_output_manager, bob_outbound_service, mut bob_tx_sender, _, _, _, _, _) =
+    let (_bob_ts, _bob_output_manager, bob_outbound_service, mut bob_tx_sender, _, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
 
     let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment);
@@ -1456,11 +1441,9 @@ fn transaction_mempool_broadcast() {
     alice_outbound_service
         .wait_call_count(2, Duration::from_secs(60))
         .expect("Alice call wait 1");
-    let (_, body, tag) = alice_outbound_service.pop_call().unwrap();
+    let (_, body) = alice_outbound_service.pop_call().unwrap();
     let _ = alice_outbound_service.pop_call().unwrap(); // Burn the SAF version of the message
-    alice_messaging_event_sender
-        .send(Arc::new(MessagingEvent::MessageSent(tag.clone())))
-        .unwrap();
+
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_sender_msg: TransactionSenderMessage = envelope_body
         .decode_part::<proto::TransactionSenderMessage>(1)
@@ -1512,10 +1495,6 @@ fn transaction_mempool_broadcast() {
     let _ = alice_outbound_service.pop_call().unwrap(); // Burn the SAF version of the message
     let tx_sender_msg = try_decode_sender_message(call.1.to_vec().clone()).unwrap();
 
-    alice_messaging_event_sender
-        .send(Arc::new(MessagingEvent::MessageSent(call.2.clone())))
-        .unwrap();
-
     match tx_sender_msg.clone() {
         TransactionSenderMessage::Single(_) => (),
         _ => {
@@ -1533,7 +1512,7 @@ fn transaction_mempool_broadcast() {
         .wait_call_count(2, Duration::from_secs(60))
         .expect("Bob call wait 2");
 
-    let (_, body, _) = bob_outbound_service.pop_call().unwrap();
+    let (_, body) = bob_outbound_service.pop_call().unwrap();
     let _ = bob_outbound_service.pop_call().unwrap(); // Burn the SAF version of the message
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
@@ -1847,24 +1826,24 @@ fn broadcast_all_completed_transactions_on_startup() {
     };
 
     db.write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
-        completed_tx1.tx_id.clone(),
+        completed_tx1.tx_id,
         Box::new(completed_tx1.clone()),
     )))
     .unwrap();
 
     db.write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
-        completed_tx2.tx_id.clone(),
+        completed_tx2.tx_id,
         Box::new(completed_tx2.clone()),
     )))
     .unwrap();
 
     db.write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
-        completed_tx3.tx_id.clone(),
+        completed_tx3.tx_id,
         Box::new(completed_tx3.clone()),
     )))
     .unwrap();
 
-    let (mut alice_ts, _, _, _, _, _, _, _, _) =
+    let (mut alice_ts, _, _, _, _, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), db, None);
 
     runtime
@@ -1925,12 +1904,11 @@ fn transaction_base_node_monitoring() {
         _,
         mut alice_mempool_response_sender,
         mut alice_base_node_response_sender,
-        alice_messaging_event_sender,
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
 
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
-    let (_, _, bob_outbound_service, mut bob_tx_sender, _, _, _, _, _bob_messaging_event_sender) =
+    let (_, _, bob_outbound_service, mut bob_tx_sender, _, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
 
     let mut alice_total_available = 250000 * uT;
@@ -1957,11 +1935,9 @@ fn transaction_base_node_monitoring() {
         .wait_call_count(2, Duration::from_secs(60))
         .unwrap();
 
-    let (_, body, tag) = alice_outbound_service.pop_call().unwrap();
+    let (_, body) = alice_outbound_service.pop_call().unwrap();
     let _ = alice_outbound_service.pop_call().unwrap(); // burn SAF message
-    alice_messaging_event_sender
-        .send(Arc::new(MessagingEvent::MessageSent(tag.clone())))
-        .unwrap();
+
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_sender_msg: TransactionSenderMessage = envelope_body
         .decode_part::<proto::TransactionSenderMessage>(1)
@@ -1987,7 +1963,7 @@ fn transaction_base_node_monitoring() {
     bob_outbound_service
         .wait_call_count(2, Duration::from_secs(60))
         .unwrap();
-    let (_, body, _) = bob_outbound_service.pop_call().unwrap();
+    let (_, body) = bob_outbound_service.pop_call().unwrap();
     let _ = bob_outbound_service.pop_call().unwrap(); // burn SAF message
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
@@ -2013,12 +1989,8 @@ fn transaction_base_node_monitoring() {
     alice_outbound_service
         .wait_call_count(2, Duration::from_secs(60))
         .unwrap();
-    let (_, body, tag) = alice_outbound_service.pop_call().unwrap();
+    let (_, body) = alice_outbound_service.pop_call().unwrap();
     let _ = alice_outbound_service.pop_call().unwrap(); // burn SAF message
-
-    alice_messaging_event_sender
-        .send(Arc::new(MessagingEvent::MessageSent(tag.clone())))
-        .unwrap();
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_sender_msg: TransactionSenderMessage = envelope_body
@@ -2037,7 +2009,7 @@ fn transaction_base_node_monitoring() {
     bob_outbound_service
         .wait_call_count(2, Duration::from_secs(60))
         .unwrap();
-    let (_, body, _) = bob_outbound_service.pop_call().unwrap();
+    let (_, body) = bob_outbound_service.pop_call().unwrap();
     let _ = bob_outbound_service.pop_call().unwrap(); // burn SAF message
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
@@ -2175,7 +2147,7 @@ fn transaction_base_node_monitoring() {
     let wrong_outputs = vec![completed_tx_outputs[0].clone(), TransactionOutput::default().into()];
 
     let base_node_response = BaseNodeProto::BaseNodeServiceResponse {
-        request_key: completed_tx_id.clone(),
+        request_key: completed_tx_id,
         response: Some(BaseNodeResponseProto::TransactionOutputs(
             BaseNodeProto::TransactionOutputs {
                 outputs: wrong_outputs.into(),
@@ -2261,7 +2233,7 @@ fn transaction_base_node_monitoring() {
         .unwrap();
 
     let base_node_response2 = BaseNodeProto::BaseNodeServiceResponse {
-        request_key: completed_tx_id.clone(),
+        request_key: completed_tx_id,
         response: Some(BaseNodeResponseProto::TransactionOutputs(
             BaseNodeProto::TransactionOutputs {
                 outputs: completed_tx_outputs.into(),
@@ -2361,24 +2333,24 @@ fn query_all_completed_transactions_on_startup() {
     };
 
     db.write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
-        completed_tx1.tx_id.clone(),
+        completed_tx1.tx_id,
         Box::new(completed_tx1.clone()),
     )))
     .unwrap();
 
     db.write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
-        completed_tx2.tx_id.clone(),
+        completed_tx2.tx_id,
         Box::new(completed_tx2.clone()),
     )))
     .unwrap();
 
     db.write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
-        completed_tx3.tx_id.clone(),
+        completed_tx3.tx_id,
         Box::new(completed_tx3.clone()),
     )))
     .unwrap();
 
-    let (mut alice_ts, _, _, _, _, _, _, _, _) =
+    let (mut alice_ts, _, _, _, _, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), db, None);
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
@@ -2544,7 +2516,6 @@ fn transaction_cancellation_when_not_in_mempool() {
         _,
         mut alice_mempool_response_sender,
         _,
-        alice_messaging_event_sender,
     ) = setup_transaction_service_no_comms(
         &mut runtime,
         factories.clone(),
@@ -2552,7 +2523,7 @@ fn transaction_cancellation_when_not_in_mempool() {
         Some(Duration::from_secs(5)),
     );
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
-    let (mut bob_ts, _, bob_outbound_service, mut bob_tx_sender, _, _, _, _, _) = setup_transaction_service_no_comms(
+    let (mut bob_ts, _, bob_outbound_service, mut bob_tx_sender, _, _, _, _) = setup_transaction_service_no_comms(
         &mut runtime,
         factories.clone(),
         TransactionMemoryDatabase::new(),
@@ -2579,11 +2550,9 @@ fn transaction_cancellation_when_not_in_mempool() {
     alice_outbound_service
         .wait_call_count(2, Duration::from_secs(60))
         .unwrap();
-    let (_, body, tag) = alice_outbound_service.pop_call().unwrap();
+    let (_, body) = alice_outbound_service.pop_call().unwrap();
     let _ = alice_outbound_service.pop_call().unwrap(); // burn SAF message
-    alice_messaging_event_sender
-        .send(Arc::new(MessagingEvent::MessageSent(tag.clone())))
-        .unwrap();
+
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_sender_msg: TransactionSenderMessage = envelope_body
         .decode_part::<proto::TransactionSenderMessage>(1)
@@ -2608,7 +2577,7 @@ fn transaction_cancellation_when_not_in_mempool() {
     bob_outbound_service
         .wait_call_count(2, Duration::from_secs(60))
         .unwrap();
-    let (_, body, _) = bob_outbound_service.pop_call().unwrap();
+    let (_, body) = bob_outbound_service.pop_call().unwrap();
     let _ = bob_outbound_service.pop_call().unwrap(); // burn SAF message
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
@@ -2780,7 +2749,7 @@ fn test_transaction_cancellation<T: TransactionBackend + Clone + 'static>(backen
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
 
-    let (mut alice_ts, mut alice_output_manager, _alice_outbound_service, mut alice_tx_sender, _, _, _, _, _) =
+    let (mut alice_ts, mut alice_output_manager, _alice_outbound_service, mut alice_tx_sender, _, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, Some(Duration::from_secs(20)));
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 

@@ -680,7 +680,7 @@ fn test_startup_utxo_scan() {
     let output3 = UnblindedOutput::new(MicroTari::from(value3), key3, None);
     runtime.block_on(oms.add_output(output3.clone())).unwrap();
 
-    let (_, body, _) = outbound_service.pop_call().unwrap();
+    let (_, body) = outbound_service.pop_call().unwrap();
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let bn_request: BaseNodeProto::BaseNodeServiceRequest = envelope_body
         .decode_part::<BaseNodeProto::BaseNodeServiceRequest>(1)
@@ -755,7 +755,7 @@ fn test_startup_utxo_scan() {
 
     runtime.block_on(oms.sync_with_base_node()).unwrap();
 
-    let (_, body, _) = outbound_service.pop_call().unwrap();
+    let (_, body) = outbound_service.pop_call().unwrap();
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let bn_request: BaseNodeProto::BaseNodeServiceRequest = envelope_body
         .decode_part::<BaseNodeProto::BaseNodeServiceRequest>(1)

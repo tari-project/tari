@@ -550,7 +550,7 @@ mod test {
             assert!(result.unwrap_err().is_timeout());
 
             oms_mock_state.wait_call_count(1, Duration::from_secs(5)).unwrap();
-            let (params, _, _) = oms_mock_state.pop_call().unwrap();
+            let (params, _) = oms_mock_state.pop_call().unwrap();
             assert_eq!(params.dht_message_type, DhtMessageType::Discovery);
             assert_eq!(params.encryption, OutboundEncryption::EncryptFor(dest_public_key));
 

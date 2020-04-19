@@ -384,7 +384,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             // Error during discovery
             Err(err) => {
                 debug!(target: LOG_TARGET, "Peer discovery failed because '{}'.", err);
-                Ok(None)
+                Err(DhtOutboundError::DiscoveryFailed)
             },
         }
     }
