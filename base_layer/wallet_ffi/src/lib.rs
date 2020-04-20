@@ -142,7 +142,7 @@ use tari_comms::{
     socks,
     tor,
 };
-use tari_comms_dht::DhtConfig;
+use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
 use tari_crypto::{
     keys::{PublicKey, SecretKey},
@@ -2183,7 +2183,9 @@ pub unsafe extern "C" fn comms_config_create(
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
+    let datastore_path = PathBuf::from(datastore_path_string);
 
+    let dht_database_path = datastore_path.join("dht.db");
     let public_address = public_address_str.parse::<Multiaddr>();
 
     match public_address {
@@ -2198,12 +2200,13 @@ pub unsafe extern "C" fn comms_config_create(
                     let config = TariCommsConfig {
                         node_identity: Arc::new(ni),
                         transport_type: (*transport_type).clone(),
-                        datastore_path: PathBuf::from(datastore_path_string),
+                        datastore_path,
                         peer_database_name: database_name_string,
                         max_concurrent_inbound_tasks: 100,
                         outbound_buffer_size: 100,
                         dht: DhtConfig {
                             discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
+                            database_url: DbConnectionUrl::File(dht_database_path),
                             ..Default::default()
                         },
                         // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field

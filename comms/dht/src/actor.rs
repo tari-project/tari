@@ -627,6 +627,7 @@ mod test {
     use crate::{
         broadcast_strategy::BroadcastClosestRequest,
         test_utils::{make_node_identity, make_peer_manager},
+        DbConnectionUrl,
     };
     use chrono::{DateTime, Utc};
     use tari_comms::{
@@ -634,6 +635,7 @@ mod test {
         peer_manager::{PeerFeatures, PeerFlags},
     };
     use tari_shutdown::Shutdown;
+    use tari_test_utils::random;
     use tokio::runtime;
 
     #[tokio_macros::test_basic]
@@ -781,7 +783,10 @@ mod test {
         let outbound_requester = OutboundMessageRequester::new(out_tx);
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
-            Default::default(),
+            DhtConfig {
+                database_url: DbConnectionUrl::MemoryShared(random::string(8)),
+                ..Default::default()
+            },
             node_identity,
             peer_manager,
             outbound_requester,
