@@ -2455,7 +2455,7 @@ fn transaction_cancellation_when_not_in_mempool() {
         mut alice_tx_ack_sender,
         _,
         mut alice_mempool_response_sender,
-        _,
+        mut alice_base_node_response_sender,
     ) = setup_transaction_service_no_comms(
         &mut runtime,
         factories.clone(),
@@ -2623,6 +2623,13 @@ fn transaction_cancellation_when_not_in_mempool() {
         response: Some(MempoolResponse::TxStorage(TxStorageResponse::NotStored).into()),
     };
 
+    let base_node_response = BaseNodeProto::BaseNodeServiceResponse {
+        request_key: chain_monitoring_id,
+        response: Some(BaseNodeResponseProto::TransactionOutputs(
+            BaseNodeProto::TransactionOutputs { outputs: vec![] },
+        )),
+    };
+
     runtime.block_on(async {
         let mut delay = delay_for(Duration::from_secs(60)).fuse();
         let mut timeouts = 0;
@@ -2653,8 +2660,15 @@ fn transaction_cancellation_when_not_in_mempool() {
         )
         .unwrap();
 
+    runtime
+        .block_on(alice_base_node_response_sender.send(create_dummy_message(
+            base_node_response,
+            base_node_identity.public_key(),
+        )))
+        .unwrap();
+
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(20)).fuse();
+        let mut delay = delay_for(Duration::from_secs(60)).fuse();
         let mut cancelled = false;
         loop {
             futures::select! {
