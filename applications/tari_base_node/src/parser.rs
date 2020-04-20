@@ -97,6 +97,7 @@ pub enum BaseNodeCommand {
     Whoami,
     ToggleMining,
     MakeItRain,
+    CoinSplit,
     Quit,
     Exit,
 }
@@ -277,6 +278,9 @@ impl Parser {
             MakeItRain => {
                 self.process_make_it_rain(del_arg_vec);
             },
+            CoinSplit => {
+                self.process_coin_split(args);
+            },
             Exit | Quit => {
                 println!("Shutting down...");
                 info!(
@@ -362,6 +366,9 @@ impl Parser {
             MakeItRain => {
                 println!("Sends multiple amounts of Tari to a public wallet address via this command:");
                 println!("{}", MAKE_IT_RAIN_USAGE);
+            },
+            CoinSplit => {
+                println!("Constructs a transaction to split a small set of UTXOs into a large set of UTXOs");
             },
             Exit | Quit => {
                 println!("Exits the base node");
@@ -907,6 +914,51 @@ impl Parser {
         println!();
         println!("======== Base Node ==========");
         println!("{}", self.base_node_identity);
+    }
+
+    /// Function to process the coin split command
+    fn process_coin_split<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
+        let amount_per_split = args.next().and_then(|v| v.parse::<u64>().ok());
+        let split_count = args.next().and_then(|v| v.parse::<usize>().ok());
+        if amount_per_split.is_none() | split_count.is_none() {
+            println!("Command entered incorrectly, please use the following format: ");
+            println!("coin-split [amount of tari to allocated to each UTXO] [number of UTXOs to create]");
+            return;
+        }
+        let amount_per_split: MicroTari = amount_per_split.unwrap().into();
+        let split_count = split_count.unwrap();
+
+        // Use output manager service to get utxo and create the coin split transaction
+        let fee_per_gram = 25 * uT; // TODO: use configured fee per gram
+        let mut output_manager = self.wallet_output_service.clone();
+        let mut txn_service = self.wallet_transaction_service.clone();
+        self.executor.spawn(async move {
+            match output_manager
+                .create_coin_split(amount_per_split, split_count, fee_per_gram, None)
+                .await
+            {
+                Ok((tx_id, tx, fee, amount)) => {
+                    match txn_service
+                        .submit_transaction(tx_id, tx, fee, amount, "Coin split".into())
+                        .await
+                    {
+                        Ok(_) => println!("Coin split transaction created with tx_id:\n{}", tx_id),
+                        Err(e) => {
+                            println!("Something went wrong creating a coin split transaction");
+                            println!("{:?}", e);
+                            warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
+                            return;
+                        },
+                    };
+                },
+                Err(e) => {
+                    println!("Something went wrong creating a coin split transaction");
+                    println!("{:?}", e);
+                    warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
+                    return;
+                },
+            };
+        });
     }
 
     /// Function to process the send transaction command

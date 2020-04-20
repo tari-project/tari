@@ -57,7 +57,7 @@ pub trait OutputManagerBackend: Send + Sync {
         &self,
         tx_id: TxId,
         outputs_to_send: &[UnblindedOutput],
-        change_output: Option<UnblindedOutput>,
+        outputs_to_receive: &[UnblindedOutput],
     ) -> Result<(), OutputManagerStorageError>;
     /// This method confirms that a transaction negotiation is complete and outputs can be fully encumbered. This
     /// reserves these outputs until the transaction is confirmed or cancelled
@@ -335,12 +335,12 @@ where T: OutputManagerBackend + 'static
         &self,
         tx_id: TxId,
         outputs_to_send: Vec<UnblindedOutput>,
-        change_output: Option<UnblindedOutput>,
+        outputs_to_receive: Vec<UnblindedOutput>,
     ) -> Result<(), OutputManagerStorageError>
     {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
-            db_clone.short_term_encumber_outputs(tx_id, &outputs_to_send, change_output)
+            db_clone.short_term_encumber_outputs(tx_id, &outputs_to_send, &outputs_to_receive)
         })
         .await
         .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))

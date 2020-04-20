@@ -48,6 +48,7 @@ pub enum TransactionServiceRequest {
     CompleteCoinbaseTransaction((TxId, Transaction)),
     CancelPendingCoinbaseTransaction(TxId),
     ImportUtxo(MicroTari, CommsPublicKey, String),
+    SubmitTransaction((TxId, Transaction, MicroTari, MicroTari, String)),
     #[cfg(feature = "test_harness")]
     CompletePendingOutboundTransaction(CompletedTransaction),
     #[cfg(feature = "test_harness")]
@@ -79,6 +80,7 @@ impl fmt::Display for TransactionServiceRequest {
                 f.write_str(&format!("CancelPendingCoinbaseTransaction ({}) ", id))
             },
             Self::ImportUtxo(v, k, msg) => f.write_str(&format!("ImportUtxo (from {}, {}, {})", k, v, msg)),
+            Self::SubmitTransaction((id, _, _, _, _)) => f.write_str(&format!("SubmitTransaction ({})", id)),
             #[cfg(feature = "test_harness")]
             Self::CompletePendingOutboundTransaction(tx) => {
                 f.write_str(&format!("CompletePendingOutboundTransaction ({})", tx.tx_id))
@@ -110,6 +112,7 @@ pub enum TransactionServiceResponse {
     CoinbaseTransactionCancelled,
     BaseNodePublicKeySet,
     UtxoImported(TxId),
+    TransactionSubmitted,
     #[cfg(feature = "test_harness")]
     CompletedPendingTransaction,
     #[cfg(feature = "test_harness")]
@@ -318,6 +321,27 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::UtxoImported(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn submit_transaction(
+        &mut self,
+        tx_id: u64,
+        tx: Transaction,
+        fee: MicroTari,
+        amount: MicroTari,
+        message: String,
+    ) -> Result<(), TransactionServiceError>
+    {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SubmitTransaction((
+                tx_id, tx, fee, amount, message,
+            )))
+            .await??
+        {
+            TransactionServiceResponse::TransactionSubmitted => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

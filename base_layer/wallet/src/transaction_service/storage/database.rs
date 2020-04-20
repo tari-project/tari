@@ -344,6 +344,25 @@ where T: TransactionBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
+    pub async fn insert_completed_transaction(
+        &self,
+        tx_id: TxId,
+        transaction: CompletedTransaction,
+    ) -> Result<Option<DbValue>, TransactionStorageError>
+    {
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || {
+            db_clone.write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
+                tx_id,
+                Box::new(transaction),
+            )))
+        })
+        .await
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+        .and_then(|inner_result| inner_result)
+    }
+
     pub async fn get_pending_outbound_transaction(
         &self,
         tx_id: TxId,

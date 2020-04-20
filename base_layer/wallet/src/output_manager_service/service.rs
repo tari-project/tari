@@ -52,7 +52,14 @@ use tari_core::{
     transactions::{
         fee::Fee,
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, TransactionInput, TransactionOutput, UnblindedOutput},
+        transaction::{
+            KernelFeatures,
+            OutputFeatures,
+            Transaction,
+            TransactionInput,
+            TransactionOutput,
+            UnblindedOutput,
+        },
         types::{CryptoFactories, PrivateKey},
         SenderTransactionProtocol,
     },
@@ -273,6 +280,10 @@ where
                 .fetch_invalid_outputs()
                 .await
                 .map(OutputManagerResponse::InvalidOutputs),
+            OutputManagerRequest::CreateCoinSplit((amount_per_split, split_count, fee_per_gram, lock_height)) => self
+                .create_coin_split(amount_per_split, split_count, fee_per_gram, lock_height)
+                .await
+                .map(OutputManagerResponse::Transaction),
         }
     }
 
@@ -538,8 +549,8 @@ where
         message: String,
     ) -> Result<SenderTransactionProtocol, OutputManagerError>
     {
-        let outputs = self
-            .select_outputs(amount, fee_per_gram, UTXOSelectionStrategy::MaturityThenSmallest)
+        let (outputs, _) = self
+            .select_utxos(amount, fee_per_gram, 1, UTXOSelectionStrategy::MaturityThenSmallest)
             .await?;
         let total = outputs.iter().fold(MicroTari::from(0), |acc, x| acc + x.value);
 
@@ -582,14 +593,14 @@ where
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         // If a change output was created add it to the pending_outputs list.
-        let change_output = match change_key {
-            Some(key) => Some(UnblindedOutput {
+        let mut change_output = Vec::<UnblindedOutput>::new();
+        if let Some(key) = change_key {
+            change_output.push(UnblindedOutput {
                 value: stp.get_amount_to_self()?,
                 spending_key: key,
                 features: OutputFeatures::default(),
-            }),
-            None => None,
-        };
+            });
+        }
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
@@ -667,16 +678,17 @@ where
         Ok(self.db.timeout_pending_transaction_outputs(period).await?)
     }
 
-    /// Select which outputs to use to send a transaction of the specified amount. Use the specified selection strategy
-    /// to choose the outputs
-    async fn select_outputs(
+    /// Select which unspent transaction outputs to use to send a transaction of the specified amount. Use the specified
+    /// selection strategy to choose the outputs. It also determines if a change output is required.
+    async fn select_utxos(
         &mut self,
         amount: MicroTari,
         fee_per_gram: MicroTari,
+        output_count: usize,
         strategy: UTXOSelectionStrategy,
-    ) -> Result<Vec<UnblindedOutput>, OutputManagerError>
+    ) -> Result<(Vec<UnblindedOutput>, bool), OutputManagerError>
     {
-        let mut outputs = Vec::new();
+        let mut utxos = Vec::new();
         let mut total = MicroTari::from(0);
         let mut fee_without_change = MicroTari::from(0);
         let mut fee_with_change = MicroTari::from(0);
@@ -698,14 +710,18 @@ where
             },
         };
 
+        let mut require_change_output = false;
         for o in uo.iter() {
-            outputs.push(o.clone());
+            utxos.push(o.clone());
             total += o.value;
             // I am assuming that the only output will be the payment output and change if required
-            fee_without_change = Fee::calculate(fee_per_gram, 1, outputs.len(), 1);
-            fee_with_change = Fee::calculate(fee_per_gram, 1, outputs.len(), 2);
-
-            if total == amount + fee_without_change || total >= amount + fee_with_change {
+            fee_without_change = Fee::calculate(fee_per_gram, 1, utxos.len(), output_count);
+            if total == amount + fee_without_change {
+                break;
+            }
+            fee_with_change = Fee::calculate(fee_per_gram, 1, utxos.len(), output_count + 1);
+            if total >= amount + fee_with_change {
+                require_change_output = true;
                 break;
             }
         }
@@ -714,7 +730,7 @@ where
             return Err(OutputManagerError::NotEnoughFunds);
         }
 
-        Ok(outputs)
+        Ok((utxos, require_change_output))
     }
 
     /// Set the base node public key to the list that will be used to check the status of UTXO's on the base chain. If
@@ -751,6 +767,96 @@ where
 
     pub async fn fetch_invalid_outputs(&self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         Ok(self.db.get_invalid_outputs().await?)
+    }
+
+    pub async fn create_coin_split(
+        &mut self,
+        amount_per_split: MicroTari,
+        split_count: usize,
+        fee_per_gram: MicroTari,
+        lock_height: Option<u64>,
+    ) -> Result<(u64, Transaction, MicroTari, MicroTari), OutputManagerError>
+    {
+        trace!(
+            target: LOG_TARGET,
+            "Select UTXOs and estimate coin split transaction fee."
+        );
+        let mut output_count = split_count;
+        let total_split_amount = amount_per_split * split_count as u64;
+        let (inputs, require_change_output) = self
+            .select_utxos(
+                total_split_amount,
+                fee_per_gram,
+                output_count,
+                UTXOSelectionStrategy::MaturityThenSmallest,
+            )
+            .await?;
+        let utxo_total = inputs.iter().fold(MicroTari::from(0), |acc, x| acc + x.value);
+        let input_count = inputs.len();
+        if require_change_output {
+            output_count = split_count + 1
+        };
+        let fee = Fee::calculate(fee_per_gram, 1, input_count, output_count);
+
+        trace!(target: LOG_TARGET, "Construct coin split transaction.");
+        let offset = PrivateKey::random(&mut OsRng);
+        let nonce = PrivateKey::random(&mut OsRng);
+        let mut builder = SenderTransactionProtocol::builder(0);
+        builder
+            .with_lock_height(lock_height.unwrap_or(0))
+            .with_fee_per_gram(fee_per_gram)
+            .with_offset(offset.clone())
+            .with_private_nonce(nonce.clone());
+        trace!(target: LOG_TARGET, "Add inputs to coin split transaction.");
+        for uo in inputs.iter() {
+            builder.with_input(
+                uo.as_transaction_input(&self.factories.commitment, uo.clone().features),
+                uo.clone(),
+            );
+        }
+        trace!(target: LOG_TARGET, "Add outputs to coin split transaction.");
+        let mut outputs = Vec::with_capacity(output_count);
+        let change_output = utxo_total
+            .checked_sub(fee)
+            .ok_or(OutputManagerError::NotEnoughFunds)?
+            .checked_sub(total_split_amount)
+            .ok_or(OutputManagerError::NotEnoughFunds)?;
+        for i in 0..output_count {
+            let output_amount = if i < split_count {
+                amount_per_split
+            } else {
+                change_output
+            };
+
+            let mut spend_key = PrivateKey::default();
+            {
+                let mut km = acquire_lock!(self.key_manager);
+                spend_key = km.next_key()?.k;
+            }
+            self.db.increment_key_index().await?;
+            let utxo = UnblindedOutput::new(output_amount, spend_key, None);
+            outputs.push(utxo.clone());
+            builder.with_output(utxo);
+        }
+        trace!(target: LOG_TARGET, "Build coin split transaction.");
+        let factories = CryptoFactories::default();
+        let mut stp = builder
+            .build::<HashDigest>(&self.factories)
+            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+        // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
+        // store them until the transaction times out OR is confirmed
+        let tx_id = stp.get_tx_id()?;
+        trace!(
+            target: LOG_TARGET,
+            "Encumber coin split transaction ({}) outputs.",
+            tx_id
+        );
+        self.db.encumber_outputs(tx_id, inputs, outputs).await?;
+        self.confirm_encumberance(tx_id).await?;
+        trace!(target: LOG_TARGET, "Finalize coin split transaction ({}).", tx_id);
+        stp.finalize(KernelFeatures::empty(), &factories)?;
+        let tx = stp.get_transaction().map(Clone::clone)?;
+        Ok((tx_id, tx, fee, utxo_total))
     }
 
     /// Return the Seed words for the current Master Key set in the Key Manager

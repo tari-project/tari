@@ -269,7 +269,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         &self,
         tx_id: u64,
         outputs_to_send: &[UnblindedOutput],
-        change_output: Option<UnblindedOutput>,
+        outputs_to_receive: &[UnblindedOutput],
     ) -> Result<(), OutputManagerStorageError>
     {
         let conn = acquire_lock!(self.database_connection);
@@ -295,8 +295,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             )?;
         }
 
-        if let Some(co) = change_output {
-            OutputSql::new(co, OutputStatus::EncumberedToBeReceived, Some(tx_id)).commit(&(*conn))?;
+        for co in outputs_to_receive {
+            OutputSql::new(co.clone(), OutputStatus::EncumberedToBeReceived, Some(tx_id)).commit(&(*conn))?;
         }
 
         Ok(())
