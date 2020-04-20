@@ -5,7 +5,7 @@ create table tx_outputs(
     commitment TEXT NOT NULL,
     proof BYTEA NULL,
     input TEXT NOT NULL REFERENCES block_headers(hash),
-    spent TEXT NULL REFERENCES block_headers(hash),
+    spent TEXT NULL REFERENCES block_headers(hash)
 );
 
 create index index_tx_outputs_hash on tx_outputs(hash);

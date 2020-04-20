@@ -9,7 +9,7 @@ create table kernels (
     excess_sig_nonce BYTEA NOT NULL,
     excess_sig_sig BYTEA NOT NULL,
     block_hash TEXT NOT NULL REFERENCES block_headers(hash),
-    created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    created_at TIMESTAMP NOT NULL DEFAULT current_timestamp
 );
 
 create index index_kernels_hash on kernels(hash);

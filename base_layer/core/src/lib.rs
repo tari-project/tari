@@ -30,6 +30,8 @@
 
 #[macro_use]
 extern crate bitflags;
+#[macro_use]
+extern crate diesel;
 
 #[cfg(feature = "base_node")]
 pub mod blocks;
