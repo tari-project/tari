@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+#
+# Installer script for Tari base node.
+# This script is bundled with OSX PGK verion
+# of the Tari base node binary distribution.
+#
+
+# Debugging enabled
+#set -x
+set -e
+
+if [ ! "$(uname)" == "Darwin" ]; then
+  echo "Installer script meant for OSX"
+  echo "Please visit https://tari.com/downloads/"
+  echo " and download the binary distro for your platform"
+  exit 1
+fi
+
+logging_file=/tmp/my_postinstall.log
+echo "Running postinstall - $(date +'%Y-%m-%d %Hh%M:%S')" > "$logging_file"
+
+loggedInUserID=`id -u "${USER}"`
+
+if [[ -n "$logging_file" ]] && [[ -f "$logging_file" ]]; then
+  echo "Redirecting out too an logging file $logging_file ..."
+
+  # all output to log file
+  exec > >(tee -a "$logging_file")
+  exec 2>&1
+
+  echo "Redirecting should be working ..."
+else
+  echo "No logging."
+fi
+
+#env
+#echo "Positional arguments" $@
+
+# Detects if /Users is present. If /Users is present,
+# the chflags command will unhide it
+if [[ -d "$3/Users" ]]; then
+  #chflags nohidden "$3/Users"
+  echo "chflags nohidden $3/Users"
+fi
+
+# Detects if /Users/Shared is present. If /Users/Shared is present,
+# the chflags command will unhide it
+if [[ -d "$3/Users/Shared" ]]; then
+  #chflags nohidden "$3/Users/Shared"
+  echo "chflags nohidden $3/Users/Shared"
+fi
+
+echo "Checking XCode ..."
+if !xcode-select -p 1>&2 2>/dev/null; then
+  echo "XCode not installed. Installing..."
+#  xcode-select --install 1>&2
+  echo "XCode successfully installed"
+else
+  echo "XCode already installed."
+fi
+
+if [ "${COMMAND_LINE_INSTALL}" = "" ]; then
+  #/bin/launchctl asuser "${loggedInUserID}" /usr/bin/open -g "$3"/usr/local/share/tari_base_node/
+  /bin/launchctl asuser "${loggedInUserID}" /usr/bin/open "$3"/usr/local/share/doc/tari_base_node/
+  /bin/launchctl asuser "${loggedInUserID}" /usr/bin/open "$3"/usr/local/share/tari_base_node/
+  #osascript -e 'tell app "Terminal" to do script "echo hello"'
+  /bin/launchctl asuser "${loggedInUserID}" /usr/bin/open -a Terminal.app -g "$3"/usr/local/share/tari_base_node/post-install.sh
+fi
+
+echo "Done postinstall - $(date +'%Y-%m-%d %Hh%M:%S')"
+
+exit 0 # all good
