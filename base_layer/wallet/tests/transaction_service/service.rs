@@ -765,9 +765,6 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
             futures::select! {
                 event = alice_event_stream.select_next_some() => {
                     if let TransactionEvent::Error(s) = &*event.unwrap() {
-                        if s == &"Error handling Transaction Recipient Reply message".to_string() {
-                            errors+=1;
-                        }
                         if s == &"TransactionError(ValidationError(\"Transaction could not be finalized\"))".to_string() {
                             errors+=1;
                         }
@@ -781,7 +778,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
                 },
             }
         }
-        assert!(errors >= 2);
+        assert!(errors >= 1);
     });
 }
 
@@ -798,63 +795,6 @@ fn test_accepting_unknown_tx_id_and_malformed_reply_sqlite_db() {
         let alice_db_path = format!("{}/{}", path_string, alice_db_name);
         let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
         test_accepting_unknown_tx_id_and_malformed_reply(TransactionServiceSqliteDatabase::new(connection_alice));
-    });
-}
-
-fn finalize_tx_with_nonexistent_txid<T: TransactionBackend + Clone + 'static>(alice_backend: T) {
-    let mut runtime = create_runtime();
-    let factories = CryptoFactories::default();
-
-    let (
-        alice_ts,
-        _alice_output_manager,
-        _alice_outbound_service,
-        _alice_tx_sender,
-        _alice_tx_ack_sender,
-        mut alice_tx_finalized,
-        _,
-        _,
-    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend, None);
-    let alice_event_stream = alice_ts.get_event_stream_fused();
-
-    let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng));
-    let finalized_transaction_message = proto::TransactionFinalizedMessage {
-        tx_id: 88u64,
-        transaction: Some(tx.clone().into()),
-    };
-
-    runtime
-        .block_on(alice_tx_finalized.send(create_dummy_message(
-            finalized_transaction_message.clone(),
-            &PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        )))
-        .unwrap();
-
-    assert!(runtime
-        .block_on(async { collect_stream!(alice_event_stream, take = 1, timeout = Duration::from_secs(10)) })
-        .iter()
-        .find(|i| if let TransactionEvent::Error(s) = &**(**i).as_ref().unwrap() {
-            s == &"Error handling Transaction Finalized message".to_string()
-        } else {
-            false
-        })
-        .is_some());
-}
-
-#[test]
-fn finalize_tx_with_nonexistent_txid_memory_db() {
-    finalize_tx_with_nonexistent_txid(TransactionMemoryDatabase::new());
-}
-
-#[test]
-fn finalize_tx_with_nonexistent_txid_sqlite_db() {
-    with_temp_dir(|dir_path| {
-        let path_string = dir_path.to_str().unwrap().to_string();
-        let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
-        let alice_db_path = format!("{}/{}", path_string, alice_db_name);
-        let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
-
-        finalize_tx_with_nonexistent_txid(TransactionServiceSqliteDatabase::new(connection_alice));
     });
 }
 

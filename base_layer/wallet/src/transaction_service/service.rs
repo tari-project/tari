@@ -290,13 +290,17 @@ where
                 msg = transaction_reply_stream.select_next_some() => {
                     trace!(target: LOG_TARGET, "Handling Transaction Reply Message");
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
-                    let result = self.accept_recipient_reply(origin_public_key, inner_msg).await.or_else(|err| {
-                        error!(target: LOG_TARGET, "Failed to handle incoming Transaction Reply message: {:?} for NodeId: {}", err, self.node_identity.node_id().short_str());
-                        Err(err)
-                    });
+                    let result = self.accept_recipient_reply(origin_public_key, inner_msg).await;
 
-                    if result.is_err() {
-                        let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling Transaction Recipient Reply message".to_string(),)));
+                    match result {
+                        Err(TransactionServiceError::TransactionDoesNotExistError) => {
+                            debug!(target: LOG_TARGET, "Unable to handle incoming Transaction Reply message from NodeId: {} due to Transaction not Existing. This usually means the message was a repeated message from Store and Forward", self.node_identity.node_id().short_str());
+                        },
+                        Err(e) => {
+                            error!(target: LOG_TARGET, "Failed to handle incoming Transaction Reply message: {:?} for NodeId: {}", e, self.node_identity.node_id().short_str());
+                            let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling Transaction Recipient Reply message".to_string())));
+                        },
+                        Ok(_) => (),
                     }
                 },
                // Incoming messages from the Comms layer
@@ -777,14 +781,17 @@ where
                 )
             })?;
 
-        let inbound_tx = self.db.get_pending_inbound_transaction(tx_id).await.map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "Finalized transaction TxId does not exist in Pending Inbound Transactions, could be a repeat Store \
-                 and Forward message"
-            );
-            e
-        })?;
+        let inbound_tx = match self.db.get_pending_inbound_transaction(tx_id).await {
+            Ok(tx) => tx,
+            Err(_e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "TxId for received Finalized Transaction does not exist in Pending Inbound Transactions, could be \
+                     a repeat Store and Forward message"
+                );
+                return Ok(());
+            },
+        };
 
         info!(
             target: LOG_TARGET,
@@ -1105,7 +1112,14 @@ where
         let tx_id = response.request_key;
 
         let sender = match self.mempool_response_senders.get_mut(&tx_id) {
-            None => return Err(TransactionServiceError::UnexpectedMempoolResponse),
+            None => {
+                trace!(
+                    target: LOG_TARGET,
+                    "Received Mempool response with unexpected key: {}. Not for this service",
+                    response.request_key
+                );
+                return Ok(());
+            },
             Some(s) => s,
         };
         sender
