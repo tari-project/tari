@@ -66,7 +66,8 @@ pub trait OutputManagerBackend: Send + Sync {
     /// transaction negotiation
     fn clear_short_term_encumberances(&self) -> Result<(), OutputManagerStorageError>;
     /// This method must take all the `outputs_to_be_spent` from the specified transaction and move them back into the
-    /// `UnspentOutputs` pool.
+    /// `UnspentOutputs` pool. The `outputs_to_be_received`'` will be marked as cancelled inbound outputs in case they
+    /// need to be recovered.
     fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
     /// This method must run through all the `PendingTransactionOutputs` and test if any have existed for longer that
     /// the specified duration. If they have they should be cancelled.

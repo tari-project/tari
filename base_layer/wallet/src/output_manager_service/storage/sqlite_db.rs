@@ -346,7 +346,13 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
                 for o in outputs {
                     if o.status == (OutputStatus::EncumberedToBeReceived as i32) {
-                        o.delete(&(*conn))?;
+                        o.update(
+                            UpdateOutput {
+                                status: Some(OutputStatus::CancelledInbound),
+                                tx_id: None,
+                            },
+                            &(*conn),
+                        )?;
                     } else if o.status == (OutputStatus::EncumberedToBeSpent as i32) {
                         o.update(
                             UpdateOutput {
@@ -446,6 +452,7 @@ enum OutputStatus {
     EncumberedToBeReceived,
     EncumberedToBeSpent,
     Invalid,
+    CancelledInbound,
 }
 
 impl TryFrom<i32> for OutputStatus {
@@ -458,6 +465,7 @@ impl TryFrom<i32> for OutputStatus {
             2 => Ok(OutputStatus::EncumberedToBeReceived),
             3 => Ok(OutputStatus::EncumberedToBeSpent),
             4 => Ok(OutputStatus::Invalid),
+            5 => Ok(OutputStatus::CancelledInbound),
             _ => Err(OutputManagerStorageError::ConversionError),
         }
     }
