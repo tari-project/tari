@@ -36,6 +36,9 @@ pub fn checksum(arr: &[usize], dict_len: usize) -> usize {
 
 /// Checks whether the last digit in the array matches the checksum for the array minus the last digit.
 pub fn is_valid(arr: &[usize], dict_len: usize) -> bool {
+    if arr.len() < 2 {
+        return false;
+    }
     let cs = checksum(&arr[..arr.len() - 1], dict_len);
     cs == arr[arr.len() - 1]
 }
