@@ -3,6 +3,9 @@
 # build OSX pkg and submit too Apple for signing and notarization
 #
 
+# Debugging enabled
+set -x
+
 # ToDo
 #  Check options
 
@@ -66,10 +69,16 @@ for COPY_DOC_FILE in "${COPY_DOC_FILES[@]}"; do
   cp "$destDir/dist/"$COPY_DOC_FILE "$destDir/pkgRoot/usr/local/share/doc/$instName/"
 done
 
-pkgbuild --root $destDir/pkgRoot \
+mkdir -p "$destDir/scripts"
+cp -r "${sPath}/scripts/"* "$destDir/scripts/"
+
+pkgbuildResult=$(pkgbuild --root $destDir/pkgRoot \
   --identifier "com.tarilabs.pkg.basenode" \
   --version "$pkgVersion" --install-location "/" \
-  --sign "$osxSigDevIDInstaller" $destDir/$instName-$pkgVersion.pkg
+  --scripts "$destDir/scripts" \
+  --sign "$osxSigDevIDInstaller" $destDir/$instName-$pkgVersion.pkg)
+
+echo $pkgbuildResult
 
 echo "Submitting package, please wait ..."
 RequestUUIDR=$(xcrun altool --notarize-app \
@@ -78,8 +87,19 @@ RequestUUIDR=$(xcrun altool --notarize-app \
   --asc-provider "$osxASCProvider" \
   --file $destDir/$instName-$pkgVersion.pkg)
 
-RequestUUID=${RequestUUIDR#RequestUUID\ =\ }
-echo "Our request UUID is $RequestUUID ..."
+requestStatus=$?
+if [ $requestStatus -eq 0 ]; then
+  RequestLen=${#RequestUUIDR}
+  echo "Let length of ... $RequestLen ..."
+  echo "|$RequestUUIDR|"
+  RequestUUID=${RequestUUIDR#*RequestUUID = }
+  echo "Our request UUID is $RequestUUID ..."
+  echo "|$RequestUUID|"
+else
+  echo "Error submitting ..."
+  echo $RequestUUIDR
+  exit 1
+fi
 
 RequestResult=$(xcrun altool --notarization-info "$RequestUUID" \
   --username "$osxUsername" --password "$osxPassword")
