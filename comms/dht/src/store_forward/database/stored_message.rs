@@ -29,7 +29,7 @@ use crate::{
 use chrono::NaiveDateTime;
 use std::convert::TryInto;
 use tari_comms::message::MessageExt;
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 #[derive(Clone, Debug, Insertable, Default)]
 #[table_name = "stored_messages"]

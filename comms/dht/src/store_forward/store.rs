@@ -192,7 +192,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .map_err(PipelineError::from_debug)?;
         }
 
-        trace!(target: LOG_TARGET, "Passing message to next service");
+        debug!(target: LOG_TARGET, "Passing message {} to next service", message.tag);
         self.next_service.oneshot(message).await?;
 
         Ok(())
@@ -369,13 +369,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                             Ok(Some(StoredMessagePriority::High))
                         }
                     },
-                    Err(err) if err.is_peer_not_found() => {
-                        log_not_eligible(&format!(
-                            "this node does not know the destination public key '{}'",
-                            dest_public_key
-                        ));
-                        Ok(None)
-                    },
+                    Err(err) if err.is_peer_not_found() => Ok(Some(StoredMessagePriority::Low)),
                     Err(err) => Err(err.into()),
                 }
             },
@@ -435,8 +429,8 @@ mod test {
     use chrono::Utc;
     use std::time::Duration;
     use tari_comms::{message::MessageExt, wrap_in_envelope_body};
-    use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
     use tari_test_utils::async_assert_eventually;
+    use tari_utilities::{hex::Hex, ByteArray};
 
     #[tokio_macros::test_basic]
     async fn cleartext_message_no_origin() {

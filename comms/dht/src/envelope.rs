@@ -29,7 +29,7 @@ use std::{
     fmt::Display,
 };
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
-use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
+use tari_utilities::{ByteArray, ByteArrayError};
 
 // Re-export applicable protos
 pub use crate::proto::envelope::{dht_header::Destination, DhtEnvelope, DhtHeader, DhtMessageType, Network};

@@ -59,6 +59,7 @@ impl StoredMessagesRequest {
         }
     }
 
+    #[allow(unused)]
     pub fn since(since: DateTime<Utc>) -> Self {
         Self {
             since: Some(datetime_to_timestamp(since)),

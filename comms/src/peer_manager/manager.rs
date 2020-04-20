@@ -296,6 +296,12 @@ impl PeerManager {
             .await
             .get_region_stats(region_node_id, n, features)
     }
+
+    pub async fn get_peer_features(&self, node_id: &NodeId) -> Result<PeerFeatures, PeerManagerError> {
+        // TODO: #sqliterefactor fetch the features with a sql query
+        let peer = self.find_by_node_id(node_id).await?;
+        Ok(peer.features)
+    }
 }
 
 #[cfg(test)]

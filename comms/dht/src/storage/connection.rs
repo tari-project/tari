@@ -22,12 +22,15 @@
 
 use crate::storage::error::StorageError;
 use diesel::{Connection, SqliteConnection};
+use log::*;
 use std::{
     io,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
 use tokio::task;
+
+const LOG_TARGET: &str = "comms::dht::storage::connection";
 
 #[derive(Clone, Debug)]
 pub enum DbConnectionUrl {
@@ -65,6 +68,7 @@ impl DbConnection {
     }
 
     pub async fn connect_url(db_url: DbConnectionUrl) -> Result<Self, StorageError> {
+        debug!(target: LOG_TARGET, "Connecting to database using '{:?}'", db_url);
         let conn = task::spawn_blocking(move || {
             let conn = SqliteConnection::establish(&db_url.to_url_string())?;
             conn.execute("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 60000;")?;
@@ -73,6 +77,13 @@ impl DbConnection {
         .await??;
 
         Ok(Self::new(conn))
+    }
+
+    pub async fn connect_and_migrate(db_url: DbConnectionUrl) -> Result<Self, StorageError> {
+        let conn = Self::connect_url(db_url).await?;
+        let output = conn.migrate().await?;
+        info!(target: LOG_TARGET, "DHT database migration: {}", output.trim());
+        Ok(conn)
     }
 
     fn new(conn: SqliteConnection) -> Self {
@@ -111,6 +122,7 @@ impl DbConnection {
 #[cfg(test)]
 mod test {
     use super::*;
+    use diesel::{expression::sql_literal::sql, sql_types::Integer, RunQueryDsl};
     use tari_test_utils::random;
 
     #[tokio_macros::test_basic]
@@ -118,5 +130,22 @@ mod test {
         let conn = DbConnection::connect_memory(random::string(8)).await.unwrap();
         let output = conn.migrate().await.unwrap();
         assert!(output.starts_with("Running migration"));
+    }
+
+    #[tokio_macros::test_basic]
+    async fn memory_connections() {
+        let id = random::string(8);
+        let conn = DbConnection::connect_memory(id.clone()).await.unwrap();
+        conn.migrate().await.unwrap();
+        let conn = DbConnection::connect_memory(id).await.unwrap();
+        let count: i32 = conn
+            .with_connection_async(|c| {
+                sql::<Integer>("SELECT COUNT(*) FROM stored_messages")
+                    .get_result(c)
+                    .map_err(Into::into)
+            })
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
     }
 }

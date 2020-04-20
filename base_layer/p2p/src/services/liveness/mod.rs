@@ -165,25 +165,6 @@ impl ServiceInitializer for LivenessInitializer {
                 }
             }
 
-            if config.enable_auto_stored_message_request {
-                // TODO: Record when store message request was last requested
-                //       and request messages from after that time
-                match dht_requester.send_request_stored_messages().await {
-                    Ok(_) => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "Stored message request has been sent to closest peers",
-                        );
-                    },
-                    Err(err) => {
-                        error!(
-                            target: LOG_TARGET,
-                            "Failed to send stored message on startup because '{}'", err
-                        );
-                    },
-                }
-            }
-
             let state = LivenessState::new();
 
             let service = LivenessService::new(

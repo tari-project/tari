@@ -40,7 +40,7 @@ use tari_comms::{
     pipeline::PipelineError,
     types::CommsPublicKey,
 };
-use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{hex::Hex, ByteArray};
 use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::dht_handler";
@@ -177,6 +177,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             dht_header,
             source_peer,
             authenticated_origin,
+            is_saf_message,
             ..
         } = message;
 
@@ -251,6 +252,14 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             );
 
             self.send_join_direct(origin_peer.public_key).await?;
+        }
+
+        if is_saf_message {
+            debug!(
+                target: LOG_TARGET,
+                "Not re-propagating join message received from store and forward"
+            );
+            return Ok(());
         }
 
         debug!(

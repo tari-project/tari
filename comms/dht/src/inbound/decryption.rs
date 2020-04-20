@@ -38,7 +38,7 @@ use tari_comms::{
     types::CommsPublicKey,
     utils::signature,
 };
-use tari_crypto::tari_utilities::ByteArray;
+use tari_utilities::ByteArray;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::middleware::decryption";

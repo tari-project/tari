@@ -20,13 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{dht_setting_entry::DhtSettingsEntry, DbConnection, StorageError};
+use super::{dht_setting_entry::DhtMetadataEntry, DbConnection, StorageError};
 use crate::{
-    schema::dht_settings,
-    storage::{dht_setting_entry::NewDhtSettingEntry, DhtSettingKey},
+    schema::dht_metadata,
+    storage::{dht_setting_entry::NewDhtMetadataEntry, DhtMetadataKey},
 };
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
-use tari_crypto::tari_utilities::message_format::MessageFormat;
+use tari_utilities::message_format::MessageFormat;
 
 #[derive(Clone)]
 pub struct DhtDatabase {
@@ -38,20 +38,20 @@ impl DhtDatabase {
         Self { connection }
     }
 
-    pub async fn get_value<T: MessageFormat>(&self, key: DhtSettingKey) -> Result<Option<T>, StorageError> {
-        match self.get_value_bytes(key).await? {
+    pub async fn get_metadata_value<T: MessageFormat>(&self, key: DhtMetadataKey) -> Result<Option<T>, StorageError> {
+        match self.get_metadata_value_bytes(key).await? {
             Some(bytes) => T::from_binary(&bytes).map(Some).map_err(Into::into),
             None => Ok(None),
         }
     }
 
-    pub async fn get_value_bytes(&self, key: DhtSettingKey) -> Result<Option<Vec<u8>>, StorageError> {
+    pub async fn get_metadata_value_bytes(&self, key: DhtMetadataKey) -> Result<Option<Vec<u8>>, StorageError> {
         self.connection
             .with_connection_async(move |conn| {
-                dht_settings::table
-                    .filter(dht_settings::key.eq(key.to_string()))
+                dht_metadata::table
+                    .filter(dht_metadata::key.eq(key.to_string()))
                     .first(conn)
-                    .map(|rec: DhtSettingsEntry| Some(rec.value))
+                    .map(|rec: DhtMetadataEntry| Some(rec.value))
                     .or_else(|err| match err {
                         diesel::result::Error::NotFound => Ok(None),
                         err => Err(err.into()),
@@ -60,11 +60,21 @@ impl DhtDatabase {
             .await
     }
 
-    pub async fn set_value(&self, key: DhtSettingKey, value: Vec<u8>) -> Result<(), StorageError> {
+    pub async fn set_metadata_value<T: MessageFormat>(
+        &self,
+        key: DhtMetadataKey,
+        value: T,
+    ) -> Result<(), StorageError>
+    {
+        let bytes = value.to_binary()?;
+        self.set_metadata_value_bytes(key, bytes).await
+    }
+
+    pub async fn set_metadata_value_bytes(&self, key: DhtMetadataKey, value: Vec<u8>) -> Result<(), StorageError> {
         self.connection
             .with_connection_async(move |conn| {
-                diesel::replace_into(dht_settings::table)
-                    .values(NewDhtSettingEntry {
+                diesel::replace_into(dht_metadata::table)
+                    .values(NewDhtMetadataEntry {
                         key: key.to_string(),
                         value,
                     })

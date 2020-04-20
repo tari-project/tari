@@ -25,7 +25,7 @@ use derive_error::Error;
 use prost::DecodeError;
 use std::io;
 use tari_comms::{message::MessageError, peer_manager::PeerManagerError};
-use tari_crypto::tari_utilities::{byte_array::ByteArrayError, ciphers::cipher::CipherError};
+use tari_utilities::{byte_array::ByteArrayError, ciphers::cipher::CipherError};
 
 #[derive(Debug, Error)]
 pub enum StoreAndForwardError {
@@ -75,4 +75,7 @@ pub enum StoreAndForwardError {
     InvalidNodeDistanceThreshold,
     /// DHT message type should not have been forwarded
     InvalidDhtMessageType,
+    /// Failed to send request for store and forward messages
+    #[error(no_from)]
+    RequestMessagesFailed(DhtOutboundError),
 }

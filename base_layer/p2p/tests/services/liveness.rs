@@ -57,7 +57,6 @@ pub async fn setup_liveness_service(
         .add_initializer(LivenessInitializer::new(
             LivenessConfig {
                 enable_auto_join: false,
-                enable_auto_stored_message_request: false,
                 auto_ping_interval: None,
                 refresh_neighbours_interval: Duration::from_secs(60),
             },

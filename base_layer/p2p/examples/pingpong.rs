@@ -202,7 +202,6 @@ mod pingpong {
                     .add_initializer(LivenessInitializer::new(
                         LivenessConfig {
                             auto_ping_interval: None, // Some(Duration::from_secs(5)),
-                            enable_auto_stored_message_request: false,
                             enable_auto_join: true,
                             ..Default::default()
                         },

@@ -20,31 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::schema::dht_settings;
+use crate::schema::dht_metadata;
 use std::fmt;
 
 #[derive(Debug, Clone, Copy)]
-pub enum DhtSettingKey {
-    /// The timestamp of the last time this node made a SAF request
-    SafLastRequestTimestamp,
+pub enum DhtMetadataKey {
+    /// Timestamp each time the DHT is shut down
+    OfflineTimestamp,
 }
 
-impl fmt::Display for DhtSettingKey {
+impl fmt::Display for DhtMetadataKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
 #[derive(Clone, Debug, Insertable)]
-#[table_name = "dht_settings"]
-pub struct NewDhtSettingEntry {
+#[table_name = "dht_metadata"]
+pub struct NewDhtMetadataEntry {
     pub key: String,
     pub value: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Queryable, Identifiable)]
-#[table_name = "dht_settings"]
-pub struct DhtSettingsEntry {
+#[table_name = "dht_metadata"]
+pub struct DhtMetadataEntry {
     pub id: i32,
     pub key: String,
     pub value: Vec<u8>,
