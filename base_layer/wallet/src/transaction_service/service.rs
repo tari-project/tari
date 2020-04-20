@@ -423,6 +423,10 @@ where
                 .add_utxo_import_transaction(value, source_public_key, message)
                 .await
                 .map(TransactionServiceResponse::UtxoImported),
+            TransactionServiceRequest::SubmitTransaction((tx_id, tx, fee, amount, message)) => self
+                .submit_transaction(transaction_broadcast_join_handles, tx_id, tx, fee, amount, message)
+                .await
+                .map(|_| TransactionServiceResponse::TransactionSubmitted),
             #[cfg(feature = "test_harness")]
             TransactionServiceRequest::CompletePendingOutboundTransaction(completed_transaction) => {
                 self.complete_pending_outbound_transaction(completed_transaction)
@@ -1302,6 +1306,43 @@ where
             )
             .await?;
         Ok(tx_id)
+    }
+
+    /// Submit a completed transaction to the Transaction Manager
+    pub async fn submit_transaction(
+        &mut self,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
+        >,
+        tx_id: TxId,
+        tx: Transaction,
+        fee: MicroTari,
+        amount: MicroTari,
+        message: String,
+    ) -> Result<(), TransactionServiceError>
+    {
+        trace!(target: LOG_TARGET, "Submit transaction ({}) to db.", tx_id);
+        self.db
+            .insert_completed_transaction(tx_id, CompletedTransaction {
+                tx_id,
+                source_public_key: self.node_identity.public_key().clone(),
+                destination_public_key: self.node_identity.public_key().clone(),
+                amount,
+                fee,
+                transaction: tx,
+                status: TransactionStatus::Completed,
+                message,
+                timestamp: Utc::now().naive_utc(),
+            })
+            .await?;
+        trace!(
+            target: LOG_TARGET,
+            "Launch the transaction broadcast protocol for submitted transaction ({}).",
+            tx_id
+        );
+        self.complete_send_transaction_protocol(Ok(tx_id), transaction_broadcast_join_handles)
+            .await;
+        Ok(())
     }
 
     /// This function is only available for testing by the client of LibWallet. It simulates a receiver accepting and

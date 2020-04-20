@@ -39,6 +39,7 @@ use crate::transactions::{
 };
 use digest::Digest;
 use std::{
+    cmp::max,
     collections::HashMap,
     fmt::{Debug, Error, Formatter},
 };
@@ -166,7 +167,6 @@ impl SenderTransactionInitializer {
         let num_inputs = self.inputs.len();
         let total_being_spent = self.unblinded_inputs.iter().map(|i| i.value).sum::<MicroTari>();
         let total_to_self = self.outputs.iter().map(|o| o.value).sum::<MicroTari>();
-
         let total_amount = self.amounts.sum().ok_or_else(|| "Not all amounts have been provided")?;
         let fee_per_gram = self.fee_per_gram.ok_or_else(|| "Fee per gram was not provided")?;
         let fee_without_change = Fee::calculate(fee_per_gram, 1, num_inputs, num_outputs);
@@ -272,8 +272,9 @@ impl SenderTransactionInitializer {
             1 => RecipientInfo::Single(None),
             _ => RecipientInfo::Multiple(HashMap::new()),
         };
-        let mut ids = Vec::with_capacity(self.num_recipients);
-        for i in 0..self.num_recipients {
+        let num_ids = max(1, self.num_recipients);
+        let mut ids = Vec::with_capacity(num_ids);
+        for i in 0..num_ids {
             ids.push(calculate_tx_id::<D>(&public_nonce, i));
         }
         let sender_info = RawTransactionInfo {
@@ -362,7 +363,7 @@ mod test {
         if let SenderState::Finalizing(info) = result.state {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
             assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.ids.len(), 0, "Number of tx_ids");
+            assert_eq!(info.ids.len(), 1, "Number of tx_ids");
             assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 100, "Lock height");
             assert_eq!(info.metadata.fee, expected_fee, "Fee");
@@ -396,7 +397,7 @@ mod test {
         if let SenderState::Finalizing(info) = result.state {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
             assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.ids.len(), 0, "Number of tx_ids");
+            assert_eq!(info.ids.len(), 1, "Number of tx_ids");
             assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 0, "Lock height");
             assert_eq!(info.metadata.fee, expected_fee, "Fee");
@@ -432,7 +433,7 @@ mod test {
         if let SenderState::Finalizing(info) = result.state {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
             assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.ids.len(), 0, "Number of tx_ids");
+            assert_eq!(info.ids.len(), 1, "Number of tx_ids");
             assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 0, "Lock height");
             assert_eq!(info.metadata.fee, expected_fee + MicroTari(50), "Fee");
