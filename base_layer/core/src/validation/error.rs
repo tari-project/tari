@@ -46,4 +46,6 @@ pub enum ValidationError {
     InvalidAccountingBalance,
     // Transaction contains already spent inputs
     ContainsSTxO,
+    // The recorded chain accumulated difficulty was stronger
+    WeakerAccumulatedDifficulty,
 }

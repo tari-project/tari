@@ -88,13 +88,20 @@ pub struct MutableMmrState {
 pub struct Validators<B: BlockchainBackend> {
     block: Arc<Validator<Block, B>>,
     orphan: Arc<StatelessValidator<Block>>,
+    accum_difficulty: Arc<Validator<Difficulty, B>>,
 }
 
 impl<B: BlockchainBackend> Validators<B> {
-    pub fn new(block: impl Validation<Block, B> + 'static, orphan: impl StatelessValidation<Block> + 'static) -> Self {
+    pub fn new(
+        block: impl Validation<Block, B> + 'static,
+        orphan: impl StatelessValidation<Block> + 'static,
+        accum_difficulty: impl Validation<Difficulty, B> + 'static,
+    ) -> Self
+    {
         Self {
             block: Arc::new(Box::new(block)),
             orphan: Arc::new(Box::new(orphan)),
+            accum_difficulty: Arc::new(Box::new(accum_difficulty)),
         }
     }
 }
@@ -104,6 +111,7 @@ impl<B: BlockchainBackend> Clone for Validators<B> {
         Validators {
             block: Arc::clone(&self.block),
             orphan: Arc::clone(&self.orphan),
+            accum_difficulty: Arc::clone(&self.accum_difficulty),
         }
     }
 }
@@ -202,10 +210,14 @@ macro_rules! fetch {
 ///     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
 ///     consensus::{ConsensusManagerBuilder, Network},
 ///     transactions::types::HashDigest,
-///     validation::{mocks::MockValidator, Validation},
+///     validation::{accum_difficulty_validators::AccumDifficultyValidator, mocks::MockValidator, Validation},
 /// };
 /// let db_backend = MemoryDatabase::<HashDigest>::default();
-/// let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+/// let validators = Validators::new(
+///     MockValidator::new(true),
+///     MockValidator::new(true),
+///     AccumDifficultyValidator {},
+/// );
 /// let db = MemoryDatabase::<HashDigest>::default();
 /// let network = Network::LocalNet;
 /// let rules = ConsensusManagerBuilder::new(network).build();
@@ -413,6 +425,7 @@ where T: BlockchainBackend
         add_block(
             &mut db,
             &self.validators.block,
+            &self.validators.accum_difficulty,
             block,
             self.config.orphan_storage_capacity,
         )
@@ -553,6 +566,7 @@ fn fetch_mmr_proof<T: BlockchainBackend>(db: &T, tree: MmrTree, pos: usize) -> R
 fn add_block<T: BlockchainBackend>(
     db: &mut RwLockWriteGuard<T>,
     block_validator: &Arc<Validator<Block, T>>,
+    accum_difficulty_validator: &Arc<Validator<Difficulty, T>>,
     block: Block,
     orphan_storage_capacity: usize,
 ) -> Result<BlockAddResult, ChainStorageError>
@@ -561,7 +575,7 @@ fn add_block<T: BlockchainBackend>(
     if db.contains(&DbKey::BlockHash(block_hash))? {
         return Ok(BlockAddResult::BlockExists);
     }
-    let block_add_result = handle_possible_reorg(db, block_validator, block)?;
+    let block_add_result = handle_possible_reorg(db, block_validator, accum_difficulty_validator, block)?;
     // Cleanup orphan block pool
     match block_add_result {
         BlockAddResult::Ok => {},
@@ -785,6 +799,7 @@ fn rewind_to_height<T: BlockchainBackend>(
 fn handle_possible_reorg<T: BlockchainBackend>(
     db: &mut RwLockWriteGuard<T>,
     block_validator: &Arc<Validator<Block, T>>,
+    accum_difficulty_validator: &Arc<Validator<Difficulty, T>>,
     block: Block,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
@@ -809,7 +824,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     trace!(target: LOG_TARGET, "{}", block);
     // Trigger a reorg check for all blocks in the orphan block pool
     debug!(target: LOG_TARGET, "Checking for chain re-org.");
-    handle_reorg(db, block_validator, block)
+    handle_reorg(db, block_validator, accum_difficulty_validator, block)
 }
 
 // The handle_reorg function is triggered by the adding of orphaned blocks. Reorg chains are constructed by
@@ -821,6 +836,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
 fn handle_reorg<T: BlockchainBackend>(
     db: &mut RwLockWriteGuard<T>,
     block_validator: &Arc<Validator<Block, T>>,
+    accum_difficulty_validator: &Arc<Validator<Difficulty, T>>,
     new_block: Block,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
@@ -852,8 +868,7 @@ fn handle_reorg<T: BlockchainBackend>(
         tip_header.total_accumulated_difficulty_inclusive(),
         tip_header.hash().to_hex()
     );
-    if fork_accum_difficulty >= tip_header.total_accumulated_difficulty_inclusive() {
-        // TODO: this should be > and not >=, this breaks some of the tests that assume that they can be the same.
+    if accum_difficulty_validator.validate(&fork_accum_difficulty, db).is_ok() {
         // We've built the strongest orphan chain we can by going backwards and forwards from the new orphan block
         // that is linked with the main chain.
         let fork_tip_block = fetch_orphan(&**db, fork_tip_hash.clone())?;
