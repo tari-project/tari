@@ -42,6 +42,7 @@ pub mod async_db;
 pub use blockchain_database::{
     calculate_mmr_roots,
     fetch_header,
+    fetch_headers,
     is_stxo,
     is_utxo,
     BlockAddResult,

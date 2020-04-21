@@ -491,6 +491,18 @@ pub fn fetch_header<T: BlockchainBackend>(db: &T, block_num: u64) -> Result<Bloc
     fetch!(db, block_num, BlockHeader)
 }
 
+pub fn fetch_headers<T: BlockchainBackend>(
+    db: &T,
+    block_nums: Vec<u64>,
+) -> Result<Vec<BlockHeader>, ChainStorageError>
+{
+    let mut headers = Vec::<BlockHeader>::with_capacity(block_nums.len());
+    for block_num in block_nums {
+        headers.push(fetch_header(db, block_num)?);
+    }
+    Ok(headers)
+}
+
 fn fetch_header_with_block_hash<T: BlockchainBackend>(
     db: &T,
     hash: HashOutput,
