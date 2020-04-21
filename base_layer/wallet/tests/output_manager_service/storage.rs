@@ -387,6 +387,10 @@ pub async fn test_short_term_encumberance<T: OutputManagerBackend + 'static>(bac
     let balance = db.get_balance().await.unwrap();
     assert_eq!(available_balance, balance.available_balance);
 
+    pending_tx.outputs_to_be_received.clear();
+    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(50), &factories.commitment);
+    pending_tx.outputs_to_be_received.push(uo);
+
     db.encumber_outputs(pending_tx.tx_id, pending_tx.outputs_to_be_spent.clone(), vec![
         pending_tx.outputs_to_be_received[0].clone(),
     ])
@@ -398,6 +402,10 @@ pub async fn test_short_term_encumberance<T: OutputManagerBackend + 'static>(bac
 
     let balance = db.get_balance().await.unwrap();
     assert_eq!(balance.available_balance, MicroTari(0));
+
+    pending_tx.outputs_to_be_received.clear();
+    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(50), &factories.commitment);
+    pending_tx.outputs_to_be_received.push(uo);
 
     db.cancel_pending_transaction_outputs(pending_tx.tx_id).await.unwrap();
 
