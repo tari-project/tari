@@ -55,7 +55,9 @@ pub struct PendingPoolConfig {
 }
 impl Default for PendingPoolConfig {
     fn default() -> Self {
-        Self { storage_capacity: PENDING_STORAGE_CAPACITY }
+        Self {
+            storage_capacity: PENDING_STORAGE_CAPACITY,
+        }
     }
 }
 
