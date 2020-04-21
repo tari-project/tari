@@ -89,17 +89,17 @@ impl PeerConnectionStats {
 
 impl fmt::Display for PeerConnectionStats {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.last_connected_at.as_ref() {
-            Some(dt) => {
-                write!(f, "Last connected at '{}'.", dt)?;
-
-                if self.last_failed_at().is_some() {
-                    write!(f, " {}", self.last_connection_attempt)?;
-                }
+        match self.last_failed_at() {
+            Some(_) => {
+                write!(f, "{}", self.last_connection_attempt)?;
             },
-            None => {
-                write!(f, "Never connected to this peer.")?;
-                write!(f, " {}", self.last_connection_attempt)?;
+            None => match self.last_connected_at.as_ref() {
+                Some(dt) => {
+                    write!(f, "Last connected at {}", dt.format("%Y-%m-%d %H:%M:%S"))?;
+                },
+                None => {
+                    write!(f, "{}", self.last_connection_attempt)?;
+                },
             },
         }
 
@@ -145,8 +145,9 @@ impl Display for LastConnectionAttempt {
                 num_attempts,
             } => write!(
                 f,
-                "Connection failed at {} after {} attempt(s)",
-                failed_at, num_attempts
+                "Connection failed at {} ({} attempt(s))",
+                failed_at.format("%Y-%m-%d %H:%M:%S"),
+                num_attempts
             ),
         }
     }

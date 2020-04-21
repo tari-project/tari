@@ -61,7 +61,7 @@ impl DhtDiscoveryMockState {
     }
 
     pub fn set_discover_peer_response(&self, peer: Peer) -> &Self {
-        *acquire_write_lock!(self.discover_peer) = peer;
+        *self.discover_peer.write().unwrap() = peer;
         self
     }
 

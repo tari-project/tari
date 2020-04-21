@@ -73,6 +73,10 @@
 /// `quit` - Exits the Base Node
 /// `exit` - Same as quit
 
+/// Used to display tabulated data
+#[macro_use]
+mod table;
+
 /// Utilities and helpers for building the base node instance
 mod builder;
 /// The command line interface definition and configuration

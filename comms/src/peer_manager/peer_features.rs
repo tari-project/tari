@@ -22,6 +22,7 @@
 
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 bitflags! {
     #[derive(Serialize, Deserialize)]
@@ -38,5 +39,11 @@ bitflags! {
 impl Default for PeerFeatures {
     fn default() -> Self {
         PeerFeatures::NONE
+    }
+}
+
+impl fmt::Display for PeerFeatures {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }

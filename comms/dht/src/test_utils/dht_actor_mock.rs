@@ -65,7 +65,7 @@ impl DhtMockState {
     }
 
     pub fn set_select_peers_response(&self, peers: Vec<Peer>) -> &Self {
-        *acquire_write_lock!(self.select_peers) = peers;
+        *self.select_peers.write().unwrap() = peers;
         self
     }
 
