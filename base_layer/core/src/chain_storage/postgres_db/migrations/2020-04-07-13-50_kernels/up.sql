@@ -14,6 +14,3 @@ create table kernels (
 
 create index index_kernels_hash on kernels(hash);
 create index index_kernels_block_hash on kernels(block_hash);
-cluster kernels using index_kernels_hash;
-
-select diesel_manage_updated_at('kernels');

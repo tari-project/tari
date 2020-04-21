@@ -16,5 +16,3 @@ create table block_headers (
 create index index_block_headers_hash on block_headers(hash);
 create index index_block_headers_height on block_headers(height);
 cluster block_headers using index_block_headers_height;
-
-select diesel_manage_updated_at('block_headers');
