@@ -47,7 +47,7 @@ use tari_core::{
         MempoolValidators,
         OutboundMempoolServiceInterface,
     },
-    proof_of_work::{DiffAdjManager, Difficulty},
+    proof_of_work::Difficulty,
     transactions::types::HashDigest,
     validation::{
         accum_difficulty_validators::MockAccumDifficultyValidator,
@@ -196,8 +196,6 @@ impl BaseNodeBuilder {
             self.mempool_config.unwrap_or(MempoolConfig::default()),
             mempool_validator,
         );
-        let diff_adj_manager = DiffAdjManager::new(&consensus_manager.consensus_constants()).unwrap();
-        consensus_manager.set_diff_manager(diff_adj_manager).unwrap();
         let node_identity = self.node_identity.unwrap_or(random_node_identity());
         let (
             outbound_nci,

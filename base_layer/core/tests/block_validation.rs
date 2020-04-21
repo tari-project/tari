@@ -23,7 +23,6 @@
 use tari_core::{
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
     consensus::{ConsensusManagerBuilder, Network},
-    proof_of_work::DiffAdjManager,
     transactions::types::{CryptoFactories, HashDigest},
     validation::{
         accum_difficulty_validators::AccumDifficultyValidator,
@@ -43,8 +42,6 @@ fn test_genesis_block() {
         AccumDifficultyValidator {},
     );
     let db = BlockchainDatabase::new(backend, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
-    let diff_adj_manager = DiffAdjManager::new(&rules.consensus_constants()).unwrap();
-    rules.set_diff_manager(diff_adj_manager).unwrap();
     let block = rules.get_genesis_block();
     let result = db.add_block(block);
     assert!(result.is_ok());

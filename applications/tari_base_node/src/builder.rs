@@ -75,7 +75,6 @@ use tari_core::{
         MempoolValidators,
     },
     mining::Miner,
-    proof_of_work::DiffAdjManager,
     tari_utilities::{hex::Hex, message_format::MessageFormat},
     transactions::{
         crypto::keys::SecretKey as SK,
@@ -471,8 +470,6 @@ where
     let mempool_validator =
         MempoolValidators::new(FullTxValidator::new(factories.clone()), TxInputAndMaturityValidator {});
     let mempool = Mempool::new(db.clone(), MempoolConfig::default(), mempool_validator);
-    let diff_adj_manager = DiffAdjManager::new(&rules.consensus_constants()).map_err(|e| e.to_string())?;
-    rules.set_diff_manager(diff_adj_manager).map_err(|e| e.to_string())?;
     let handle = runtime::Handle::current();
 
     //---------------------------------- Base Node --------------------------------------------//

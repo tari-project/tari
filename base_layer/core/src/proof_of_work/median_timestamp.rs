@@ -20,10 +20,32 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[allow(clippy::module_inception)]
-mod diff_adj_manager;
-mod diff_adj_storage;
-mod error;
+use crate::blocks::blockheader::BlockHeader;
+use log::*;
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
-pub use diff_adj_manager::DiffAdjManager;
-pub use error::DiffAdjManagerError;
+pub const LOG_TARGET: &str = "c::pow::median_timestamp";
+
+/// Returns the median timestamp for the provided header set.
+pub fn get_median_timestamp(headers: Vec<BlockHeader>) -> Option<EpochTime> {
+    if headers.is_empty() {
+        return None;
+    }
+    let height = headers.last().expect("Header set should not be empty").height;
+    debug!(target: LOG_TARGET, "Calculating median timestamp to height:{}", height);
+    let mut timestamps = headers.iter().map(|h| h.timestamp).collect::<Vec<_>>();
+    timestamps.sort();
+    trace!(target: LOG_TARGET, "Sorted median timestamps: {:?}", timestamps);
+    // Calculate median timestamp
+    let mid_index = timestamps.len() / 2;
+    // let median_timestamp=if timestamps.len()%2==0 {
+    // (timestamps[mid_index-1]+timestamps[mid_index])/2
+    // }
+    // else { timestamps[mid_index] };
+    let median_timestamp = timestamps[mid_index];
+    debug!(
+        target: LOG_TARGET,
+        "Median timestamp:{} at height:{}", median_timestamp, height
+    );
+    Some(median_timestamp)
+}
