@@ -47,7 +47,7 @@ pub struct BlockHeader {
     height: i64,
     version: i32,
     prev_hash: String,
-    timestamp: i64,
+    time_stamp: i64,
     output_mmr: String,
     range_proof_mmr: String,
     kernel_mmr: String,
@@ -145,7 +145,7 @@ impl TryFrom<&blocks::BlockHeader> for BlockHeader {
             height: value.height as i64,
             version: value.version as i32,
             prev_hash: value.prev_hash.to_hex(),
-            timestamp: value.timestamp.as_u64() as i64,
+            time_stamp: value.timestamp.as_u64() as i64,
             output_mmr: value.output_mr.to_hex(),
             range_proof_mmr: value.range_proof_mr.to_hex(),
             kernel_mmr: value.kernel_mr.to_hex(),
@@ -165,7 +165,7 @@ impl TryFrom<BlockHeader> for blocks::BlockHeader {
         header.version = value.version as u16;
         header.prev_hash = BlockHash::from_hex(&value.prev_hash)?;
         header.height = value.height as u64;
-        header.timestamp = (value.timestamp as u64).into();
+        header.timestamp = (value.time_stamp as u64).into();
         header.kernel_mr = BlockHash::from_hex(&value.kernel_mmr)?;
         header.nonce = value.nonce as u64;
         header.output_mr = BlockHash::from_hex(&value.output_mmr)?;

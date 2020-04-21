@@ -3,7 +3,7 @@ create table block_headers (
     height BIGINT NOT NULL,
     version INT NOT NULL,
     prev_hash TEXT NOT NULL,
-    TIMESTAMP BIGINT NOT NULL,
+    time_stamp BIGINT NOT NULL,
     output_mmr TEXT NOT NULL,
     range_proof_mmr TEXT NOT NULL,
     kernel_mmr TEXT NOT NULL,
