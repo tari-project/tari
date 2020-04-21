@@ -22,7 +22,7 @@
 
 use crate::proto::envelope::Network;
 use std::fmt;
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 #[path = "tari.dht.envelope.rs"]
 pub mod envelope;

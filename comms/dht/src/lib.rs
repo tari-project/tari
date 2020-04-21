@@ -132,7 +132,7 @@ mod consts;
 mod crypt;
 
 mod dht;
-pub use dht::Dht;
+pub use dht::{Dht, DhtInitializationError};
 
 mod discovery;
 pub use discovery::DhtDiscoveryRequester;

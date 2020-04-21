@@ -48,7 +48,7 @@ pub fn encrypt(cipher_key: &CommsPublicKey, plain_text: &[u8]) -> Result<Vec<u8>
 #[cfg(test)]
 mod test {
     use super::*;
-    use tari_crypto::tari_utilities::hex::from_hex;
+    use tari_utilities::hex::from_hex;
 
     #[test]
     fn encrypt_decrypt() {

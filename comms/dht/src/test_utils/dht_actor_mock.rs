@@ -19,10 +19,11 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#![allow(dead_code)]
 
 use crate::{
     actor::{DhtRequest, DhtRequester},
-    storage::DhtSettingKey,
+    storage::DhtMetadataKey,
 };
 use futures::{channel::mpsc, stream::Fuse, StreamExt};
 use std::{
@@ -72,7 +73,7 @@ impl DhtMockState {
         self.call_count.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn get_setting(&self, key: &DhtSettingKey) -> Option<Vec<u8>> {
+    pub fn get_setting(&self, key: &DhtMetadataKey) -> Option<Vec<u8>> {
         self.settings.read().unwrap().get(&key.to_string()).map(Clone::clone)
     }
 }
@@ -113,8 +114,7 @@ impl DhtActorMock {
                 let lock = self.state.select_peers.read().unwrap();
                 reply_tx.send(lock.clone()).unwrap();
             },
-            SendRequestStoredMessages => {},
-            GetSetting(key, reply_tx) => {
+            GetMetadata(key, reply_tx) => {
                 let _ = reply_tx.send(Ok(self
                     .state
                     .settings
@@ -123,7 +123,7 @@ impl DhtActorMock {
                     .get(&key.to_string())
                     .map(Clone::clone)));
             },
-            SetSetting(key, value) => {
+            SetMetadata(key, value) => {
                 self.state.settings.write().unwrap().insert(key.to_string(), value);
             },
         }

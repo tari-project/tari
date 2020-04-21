@@ -26,7 +26,7 @@ use std::{sync::Arc, time::Duration};
 use tari_comms::{
     backoff::ConstantBackoff,
     message::MessageExt,
-    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerStorage},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerStorage},
     pipeline,
     pipeline::SinkService,
     protocol::messaging::MessagingEvent,
@@ -41,6 +41,7 @@ use tari_comms_dht::{
     envelope::NodeDestination,
     inbound::DecryptedDhtMessage,
     outbound::{OutboundEncryption, SendMessageParams},
+    DbConnectionUrl,
     Dht,
     DhtBuilder,
 };
@@ -140,9 +141,13 @@ async fn setup_comms_dht(
         comms.shutdown_signal(),
     )
     .local_test()
+    .disable_auto_store_and_forward_requests()
+    .with_database_url(DbConnectionUrl::MemoryShared(random::string(8)))
     .with_discovery_timeout(Duration::from_secs(60))
     .with_num_neighbouring_nodes(8)
-    .finish();
+    .finish()
+    .await
+    .unwrap();
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
 
@@ -266,6 +271,12 @@ async fn dht_store_forward() {
     let node_B = make_node(PeerFeatures::COMMUNICATION_NODE, None).await;
     // Node A knows about Node B
     let node_A = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_B.to_peer())).await;
+    log::info!(
+        "NodeA = {}, NodeB = {}, Node C = {}",
+        node_A.node_identity().node_id().short_str(),
+        node_B.node_identity().node_id().short_str(),
+        node_C_node_identity.node_id().short_str(),
+    );
 
     let dest_public_key = Box::new(node_C_node_identity.public_key().clone());
     let params = SendMessageParams::new()
@@ -279,7 +290,7 @@ async fn dht_store_forward() {
     let secret_msg1 = b"NCZW VUSX PNYM INHZ XMQX SFWX WLKJ AHSH";
     let secret_msg2 = b"NMCO CCAK UQPM KCSM HKSE INJU SBLK";
 
-    let mut node_B_msg_events = node_B.comms.subscribe_messaging_events();
+    let node_B_msg_events = node_B.comms.subscribe_messaging_events();
     node_A
         .dht
         .outbound_requester()
@@ -296,13 +307,20 @@ async fn dht_store_forward() {
         .await
         .unwrap();
 
-    // Wait for node B to receive the 2 propagation messages
-    node_B_msg_events.next().await.unwrap().unwrap();
-    node_B_msg_events.next().await.unwrap().unwrap();
+    // Wait for node B to receive 2 propagation messages
+    collect_stream!(node_B_msg_events, take = 2, timeout = Duration::from_secs(20));
 
-    let mut node_C = make_node_with_node_identity(node_C_node_identity, None).await;
-    node_C.comms.peer_manager().add_peer(node_B.to_peer()).await.unwrap();
-    node_C.dht.dht_requester().send_request_stored_messages().await.unwrap();
+    let mut node_C = make_node_with_node_identity(node_C_node_identity, Some(node_B.to_peer())).await;
+    let node_C_msg_events = node_C.comms.subscribe_messaging_events();
+    // Ask node B for messages
+    node_C
+        .dht
+        .store_and_forward_requester()
+        .request_saf_messages_from_peer(node_B.node_identity().node_id().clone())
+        .await
+        .unwrap();
+    // Wait for node C to send 1 SAF request, and receive a response
+    collect_stream!(node_C_msg_events, take = 2, timeout = Duration::from_secs(20));
 
     let msg = node_C.next_inbound_message(Duration::from_secs(5)).await.unwrap();
     assert_eq!(
@@ -327,14 +345,15 @@ async fn dht_store_forward() {
 #[tokio_macros::test]
 #[allow(non_snake_case)]
 async fn dht_propagate_dedup() {
+    env_logger::init();
     // Node D knows no one
     let mut node_D = make_node(PeerFeatures::COMMUNICATION_NODE, None).await;
     // Node C knows about Node D
-    let node_C = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_D.to_peer())).await;
+    let mut node_C = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_D.to_peer())).await;
     // Node B knows about Node C
-    let node_B = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_C.to_peer())).await;
+    let mut node_B = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_C.to_peer())).await;
     // Node A knows about Node B and C
-    let node_A = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_B.to_peer())).await;
+    let mut node_A = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_B.to_peer())).await;
     node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
     log::info!(
         "NodeA = {}, NodeB = {}, Node C = {}, Node D = {}",
@@ -343,6 +362,21 @@ async fn dht_propagate_dedup() {
         node_C.node_identity().node_id().short_str(),
         node_D.node_identity().node_id().short_str(),
     );
+
+    // Connect the peers that should be connected
+    async fn connect_nodes(node1: &mut TestNode, node2: &mut TestNode) {
+        node1
+            .comms
+            .connection_manager()
+            .dial_peer(node2.node_identity().node_id().clone())
+            .await
+            .unwrap();
+    }
+    // Pre-connect nodes, this helps message passing be more deterministic
+    connect_nodes(&mut node_A, &mut node_B).await;
+    connect_nodes(&mut node_A, &mut node_C).await;
+    connect_nodes(&mut node_B, &mut node_C).await;
+    connect_nodes(&mut node_C, &mut node_D).await;
 
     let mut node_A_messaging = node_A.comms.subscribe_messaging_events();
     let mut node_B_messaging = node_B.comms.subscribe_messaging_events();
@@ -374,7 +408,10 @@ async fn dht_propagate_dedup() {
         .await
         .unwrap();
 
-    let msg = node_D.next_inbound_message(Duration::from_secs(10)).await.unwrap();
+    let msg = node_D
+        .next_inbound_message(Duration::from_secs(10))
+        .await
+        .expect("Node D expected an inbound message but it never arrived");
     assert!(msg.decryption_succeeded());
     let person = msg
         .decryption_result
@@ -387,6 +424,7 @@ async fn dht_propagate_dedup() {
     let node_A_id = node_A.node_identity().node_id().clone();
     let node_B_id = node_B.node_identity().node_id().clone();
     let node_C_id = node_C.node_identity().node_id().clone();
+    let node_D_id = node_D.node_identity().node_id().clone();
 
     node_A.comms.shutdown().await;
     node_B.comms.shutdown().await;
@@ -396,44 +434,27 @@ async fn dht_propagate_dedup() {
     // Check the message flow BEFORE deduping
     let (sent, received) = partition_events(collect_stream!(node_A_messaging, timeout = Duration::from_secs(20)));
     assert_eq!(sent.len(), 2);
-    unpack_enum!(MessagingEvent::MessageSent(_tag) = &*sent[0]);
-    unpack_enum!(MessagingEvent::MessageSent(_tag) = &*sent[1]);
-    // Expected race condition: If A->B->C before A->C then C->A
-    let is_race_condition = received.len() == 1;
-    if is_race_condition {
-        unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*received[0]);
-        assert_eq!(**node_id, node_C_id);
+    // Expected race condition: If A->(B|C)->(C|B) before A->(C|B) then (C|B)->A
+    if received.len() > 0 {
+        assert_eq!(count_messages_received(&received, &[&node_B_id, &node_C_id]), 1);
     }
 
     let (sent, received) = partition_events(collect_stream!(node_B_messaging, timeout = Duration::from_secs(20)));
     assert_eq!(sent.len(), 1);
-    unpack_enum!(MessagingEvent::MessageSent(tag) = &*sent[0]);
-    log::info!("Node B sent {}", tag);
-    unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*received[0]);
-    assert_eq!(**node_id, node_A_id);
-    assert_eq!(received.len(), 1);
-    // Expected race condition: If A->C->B before A->B then C->B
-    if received.len() == 2 {
-        // This being the case, the previous race condition shouldn't have occurred
-        assert_eq!(is_race_condition, false);
-        unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*received[2]);
-        assert_eq!(node_id.to_string(), node_C_id.to_string());
-    }
+    let recv_count = count_messages_received(&received, &[&node_A_id, &node_C_id]);
+    // Expected race condition: If A->B->C before A->C then C->B does not happen
+    assert!(recv_count >= 1 && recv_count <= 2);
 
     let (sent, received) = partition_events(collect_stream!(node_C_messaging, timeout = Duration::from_secs(20)));
-    assert_eq!(sent.len(), 1);
-    assert_eq!(received.len(), 2);
-    unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*received[0]);
-    let mut expected = vec![&node_A_id, &node_B_id];
-    expected.remove(expected.iter().position(|n| n == &&**node_id).unwrap());
-    unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*received[1]);
-    expected.remove(expected.iter().position(|n| n == &&**node_id).unwrap());
+    let recv_count = count_messages_received(&received, &[&node_A_id, &node_B_id]);
+    assert_eq!(recv_count, 2);
+    assert_eq!(sent.len(), 2);
+    assert_eq!(count_messages_received(&received, &[&node_D_id]), 0);
 
     let (sent, received) = partition_events(collect_stream!(node_D_messaging, timeout = Duration::from_secs(20)));
-    assert_eq!(received.len(), 1);
     assert_eq!(sent.len(), 0);
-    unpack_enum!(MessagingEvent::MessageReceived(node_id, _tag) = &*received[0]);
-    assert_eq!(**node_id, node_C_id);
+    assert_eq!(received.len(), 1);
+    assert_eq!(count_messages_received(&received, &[&node_C_id]), 1);
 }
 
 fn partition_events(
@@ -444,4 +465,14 @@ fn partition_events(
         MessagingEvent::MessageSent(_) => true,
         _ => unreachable!(),
     })
+}
+
+fn count_messages_received(events: &[Arc<MessagingEvent>], node_ids: &[&NodeId]) -> usize {
+    events
+        .into_iter()
+        .filter(|event| {
+            unpack_enum!(MessagingEvent::MessageReceived(recv_node_id, _tag) = &***event);
+            node_ids.into_iter().any(|n| &**recv_node_id == *n)
+        })
+        .count()
 }

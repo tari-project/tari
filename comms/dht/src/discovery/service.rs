@@ -30,11 +30,16 @@ use crate::{
 use futures::{
     channel::{mpsc, oneshot},
     future::FutureExt,
+    stream::Fuse,
     StreamExt,
 };
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tari_comms::{
     connection_manager::{ConnectionManagerError, ConnectionManagerRequester},
     log_if_error,
@@ -44,9 +49,9 @@ use tari_comms::{
     validate_peer_addresses,
     ConnectionManagerEvent,
 };
-use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_shutdown::ShutdownSignal;
-use tokio::task;
+use tari_utilities::{hex::Hex, ByteArray};
+use tokio::{sync::broadcast, task, time};
 
 const LOG_TARGET: &str = "comms::dht::discovery_service";
 
@@ -104,7 +109,14 @@ impl DhtDiscoveryService {
         }
     }
 
-    pub async fn run(mut self) {
+    pub fn spawn(self) {
+        let connection_events = self.connection_manager.get_event_subscription().fuse();
+        info!(target: LOG_TARGET, "Discovery service started");
+        task::spawn(async move { self.run(connection_events).await });
+    }
+
+    pub async fn run(mut self, mut connection_events: Fuse<broadcast::Receiver<Arc<ConnectionManagerEvent>>>) {
+        info!(target: LOG_TARGET, "Dht discovery service started");
         let mut shutdown_signal = self
             .shutdown_signal
             .take()
@@ -116,8 +128,6 @@ impl DhtDiscoveryService {
             .take()
             .expect("DiscoveryService initialized without request_rx")
             .fuse();
-
-        let mut connection_events = self.connection_manager.get_event_subscription().fuse();
 
         loop {
             futures::select! {
@@ -485,16 +495,23 @@ impl DhtDiscoveryService {
                 "Discovery sent to {} peer(s). Waiting to see how many got through.",
                 send_states.len()
             );
-            let (succeeded, failed) = send_states.wait_percentage_success(0.51).await;
-            let num_succeeded = succeeded.len();
-            let num_failed = failed.len();
+            let result = time::timeout(Duration::from_secs(10), send_states.wait_percentage_success(0.51)).await;
+            match result {
+                Ok((succeeded, failed)) => {
+                    let num_succeeded = succeeded.len();
+                    let num_failed = failed.len();
 
-            info!(
-                target: LOG_TARGET,
-                "Discovery sent to a majority of neighbouring peers ({} succeeded, {} failed)",
-                num_succeeded,
-                num_failed
-            );
+                    info!(
+                        target: LOG_TARGET,
+                        "Discovery sent to a majority of neighbouring peers ({} succeeded, {} failed)",
+                        num_succeeded,
+                        num_failed
+                    );
+                },
+                Err(_) => {
+                    warn!(target: LOG_TARGET, "Failed to send discovery to a majority of peers");
+                },
+            }
         });
 
         Ok(())
@@ -512,49 +529,47 @@ mod test {
     use std::time::Duration;
     use tari_comms::test_utils::mocks::create_connection_manager_mock;
     use tari_shutdown::Shutdown;
-    use tari_test_utils::runtime;
 
-    #[test]
-    fn send_discovery() {
-        runtime::test_async(|rt| {
-            let node_identity = make_node_identity();
-            let peer_manager = make_peer_manager();
-            let (outbound_requester, outbound_mock) = create_outbound_service_mock(10);
-            let oms_mock_state = outbound_mock.get_state();
-            rt.spawn(outbound_mock.run());
+    #[tokio_macros::test_basic]
+    async fn send_discovery() {
+        let node_identity = make_node_identity();
+        let peer_manager = make_peer_manager();
+        let (outbound_requester, outbound_mock) = create_outbound_service_mock(10);
+        let oms_mock_state = outbound_mock.get_state();
+        task::spawn(outbound_mock.run());
 
-            let (connection_manager, _) = create_connection_manager_mock(1);
-            let (sender, receiver) = mpsc::channel(10);
-            // Requester which timeout instantly
-            let mut requester = DhtDiscoveryRequester::new(sender, Duration::from_millis(1));
-            let mut shutdown = Shutdown::new();
+        let (connection_manager, _) = create_connection_manager_mock(1);
+        let (sender, receiver) = mpsc::channel(10);
+        // Requester which timeout instantly
+        let mut requester = DhtDiscoveryRequester::new(sender, Duration::from_millis(1));
+        let mut shutdown = Shutdown::new();
 
-            let service = DhtDiscoveryService::new(
-                DhtConfig::default(),
-                node_identity,
-                peer_manager,
-                outbound_requester,
-                connection_manager,
-                receiver,
-                shutdown.to_signal(),
-            );
+        DhtDiscoveryService::new(
+            DhtConfig::default(),
+            node_identity,
+            peer_manager,
+            outbound_requester,
+            connection_manager,
+            receiver,
+            shutdown.to_signal(),
+        )
+        .spawn();
 
-            rt.spawn(service.run());
-
-            let dest_public_key = Box::new(CommsPublicKey::default());
-            let result = rt.block_on(requester.discover_peer(
+        let dest_public_key = Box::new(CommsPublicKey::default());
+        let result = requester
+            .discover_peer(
                 dest_public_key.clone(),
                 NodeDestination::PublicKey(dest_public_key.clone()),
-            ));
+            )
+            .await;
 
-            assert!(result.unwrap_err().is_timeout());
+        assert!(result.unwrap_err().is_timeout());
 
-            oms_mock_state.wait_call_count(1, Duration::from_secs(5)).unwrap();
-            let (params, _) = oms_mock_state.pop_call().unwrap();
-            assert_eq!(params.dht_message_type, DhtMessageType::Discovery);
-            assert_eq!(params.encryption, OutboundEncryption::EncryptFor(dest_public_key));
+        oms_mock_state.wait_call_count(1, Duration::from_secs(5)).unwrap();
+        let (params, _) = oms_mock_state.pop_call().unwrap();
+        assert_eq!(params.dht_message_type, DhtMessageType::Discovery);
+        assert_eq!(params.encryption, OutboundEncryption::EncryptFor(dest_public_key));
 
-            shutdown.trigger().unwrap();
-        })
+        shutdown.trigger().unwrap();
     }
 }

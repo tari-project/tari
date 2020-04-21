@@ -59,6 +59,8 @@ pub struct DhtConfig {
     pub saf_high_priority_msg_storage_ttl: Duration,
     /// The limit on the message size to store in SAF storage in bytes. Default 500 KiB
     pub saf_max_message_size: usize,
+    /// When true, store and forward messages are requested from peers on connect (Default: true)
+    pub saf_auto_request: bool,
     /// The max capacity of the message hash cache
     /// Default: 10000
     pub msg_hash_cache_capacity: usize,
@@ -97,6 +99,7 @@ impl DhtConfig {
         Self {
             network: Network::LocalTest,
             database_url: DbConnectionUrl::Memory,
+            saf_auto_request: false,
             ..Default::default()
         }
     }
@@ -112,6 +115,7 @@ impl Default for DhtConfig {
             saf_msg_cache_storage_capacity: SAF_MSG_CACHE_STORAGE_CAPACITY,
             saf_low_priority_msg_storage_ttl: SAF_LOW_PRIORITY_MSG_STORAGE_TTL,
             saf_high_priority_msg_storage_ttl: SAF_HIGH_PRIORITY_MSG_STORAGE_TTL,
+            saf_auto_request: true,
             saf_max_message_size: 512 * 1024, // 500 KiB
             msg_hash_cache_capacity: 10_000,
             msg_hash_cache_ttl: Duration::from_secs(5 * 60),

@@ -30,12 +30,15 @@ use crate::{
     outbound,
     outbound::DhtOutboundRequest,
     proto::envelope::DhtMessageType,
+    storage::{DbConnection, StorageError},
     store_forward,
-    store_forward::{StoreAndForwardRequest, StoreAndForwardRequester, StoreAndForwardService},
+    store_forward::{StoreAndForwardError, StoreAndForwardRequest, StoreAndForwardRequester, StoreAndForwardService},
     tower_filter,
     DedupLayer,
+    DhtActorError,
     DhtConfig,
 };
+use derive_error::Error;
 use futures::{channel::mpsc, future, Future};
 use log::*;
 use std::sync::Arc;
@@ -46,12 +49,21 @@ use tari_comms::{
     pipeline::PipelineError,
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::task;
 use tower::{layer::Layer, Service, ServiceBuilder};
+
+const LOG_TARGET: &str = "comms::dht";
 
 const DHT_ACTOR_CHANNEL_SIZE: usize = 100;
 const DHT_DISCOVERY_CHANNEL_SIZE: usize = 100;
 const DHT_SAF_SERVICE_CHANNEL_SIZE: usize = 100;
+
+#[derive(Debug, Error)]
+pub enum DhtInitializationError {
+    /// Database initialization failed
+    DatabaseMigrationFailed(StorageError),
+    StoreAndForwardInitializationError(StoreAndForwardError),
+    DhtActorInitializationError(DhtActorError),
+}
 
 /// Responsible for starting the DHT actor, building the DHT middleware stack and as a factory
 /// for producing DHT requesters.
@@ -75,14 +87,14 @@ pub struct Dht {
 }
 
 impl Dht {
-    pub fn new(
+    pub async fn initialize(
         config: DhtConfig,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_tx: mpsc::Sender<DhtOutboundRequest>,
         connection_manager: ConnectionManagerRequester,
         shutdown_signal: ShutdownSignal,
-    ) -> Self
+    ) -> Result<Self, DhtInitializationError>
     {
         let (dht_sender, dht_receiver) = mpsc::channel(DHT_ACTOR_CHANNEL_SIZE);
         let (discovery_sender, discovery_receiver) = mpsc::channel(DHT_DISCOVERY_CHANNEL_SIZE);
@@ -99,28 +111,32 @@ impl Dht {
             discovery_sender,
         };
 
-        if dht.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD) {
-            task::spawn(
-                dht.store_and_forward_service(saf_receiver, shutdown_signal.clone())
-                    .run(),
-            );
-        }
+        let conn = DbConnection::connect_and_migrate(dht.config.database_url.clone())
+            .await
+            .map_err(|err| DhtInitializationError::DatabaseMigrationFailed(err))?;
 
-        task::spawn(dht.actor(dht_receiver, shutdown_signal.clone()).run());
-        task::spawn(dht.discovery_service(discovery_receiver, shutdown_signal).run());
+        dht.store_and_forward_service(conn.clone(), saf_receiver, shutdown_signal.clone())
+            .spawn()
+            .await?;
+        dht.actor(conn, dht_receiver, shutdown_signal.clone()).spawn().await?;
+        dht.discovery_service(discovery_receiver, shutdown_signal).spawn();
 
-        dht
+        info!(target: LOG_TARGET, "Dht initialization complete.");
+
+        Ok(dht)
     }
 
     /// Create a DHT actor
     fn actor(
         &self,
+        conn: DbConnection,
         request_receiver: mpsc::Receiver<DhtRequest>,
         shutdown_signal: ShutdownSignal,
     ) -> DhtActor<'static>
     {
         DhtActor::new(
             self.config.clone(),
+            conn,
             Arc::clone(&self.node_identity),
             Arc::clone(&self.peer_manager),
             self.outbound_requester(),
@@ -149,11 +165,22 @@ impl Dht {
 
     fn store_and_forward_service(
         &self,
+        conn: DbConnection,
         request_rx: mpsc::Receiver<StoreAndForwardRequest>,
         shutdown_signal: ShutdownSignal,
     ) -> StoreAndForwardService
     {
-        StoreAndForwardService::new(self.config.clone(), request_rx, shutdown_signal)
+        StoreAndForwardService::new(
+            self.config.clone(),
+            conn,
+            self.node_identity.clone(),
+            self.peer_manager.clone(),
+            self.dht_requester(),
+            self.connection_manager.clone(),
+            self.outbound_requester(),
+            request_rx,
+            shutdown_signal,
+        )
     }
 
     /// Return a new OutboundMessageRequester connected to the receiver
@@ -345,7 +372,9 @@ mod test {
             shutdown.to_signal(),
         )
         .local_test()
-        .finish();
+        .finish()
+        .await
+        .unwrap();
 
         let (out_tx, mut out_rx) = mpsc::channel(10);
 
@@ -384,7 +413,9 @@ mod test {
             connection_manager,
             shutdown.to_signal(),
         )
-        .finish();
+        .finish()
+        .await
+        .unwrap();
 
         let (out_tx, mut out_rx) = mpsc::channel(10);
 
@@ -426,7 +457,9 @@ mod test {
             connection_manager,
             shutdown.to_signal(),
         )
-        .finish();
+        .finish()
+        .await
+        .unwrap();
         let oms_mock_state = oms_mock.get_state();
         task::spawn(oms_mock.run());
 
@@ -473,7 +506,9 @@ mod test {
             connection_manager,
             shutdown.to_signal(),
         )
-        .finish();
+        .finish()
+        .await
+        .unwrap();
 
         let (next_service_tx, mut next_service_rx) = mpsc::channel(10);
 

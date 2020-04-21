@@ -28,9 +28,11 @@ use super::{
 };
 use crate::{
     envelope::DhtMessageType,
-    proto::store_forward::stored_messages_response::SafResponseType,
-    storage::DbConnection,
+    outbound::{OutboundMessageRequester, SendMessageParams},
+    proto::store_forward::{stored_messages_response::SafResponseType, StoredMessagesRequest},
+    storage::{DbConnection, DhtMetadataKey},
     DhtConfig,
+    DhtRequester,
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
 use futures::{
@@ -40,13 +42,18 @@ use futures::{
     StreamExt,
 };
 use log::*;
-use std::{convert::TryFrom, time::Duration};
+use std::{convert::TryFrom, sync::Arc, time::Duration};
 use tari_comms::{
-    peer_manager::{node_id::NodeDistance, NodeId},
+    connection_manager::ConnectionManagerRequester,
+    peer_manager::{node_id::NodeDistance, NodeId, PeerFeatures},
     types::CommsPublicKey,
+    ConnectionManagerEvent,
+    NodeIdentity,
+    PeerManager,
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::time;
+use tari_utilities::ByteArray;
+use tokio::{sync::broadcast, task, time};
 
 const LOG_TARGET: &str = "comms::dht::storeforward::actor";
 /// The interval to initiate a database cleanup.
@@ -93,6 +100,7 @@ impl FetchStoredMessageQuery {
 pub enum StoreAndForwardRequest {
     FetchMessages(FetchStoredMessageQuery, oneshot::Sender<SafResult<Vec<StoredMessage>>>),
     InsertMessage(NewStoredMessage),
+    SendStoreForwardRequestToPeer(Box<NodeId>),
 }
 
 #[derive(Clone)]
@@ -105,11 +113,7 @@ impl StoreAndForwardRequester {
         Self { sender }
     }
 
-    pub async fn fetch_messages(
-        &mut self,
-        request: FetchStoredMessageQuery,
-    ) -> Result<Vec<StoredMessage>, StoreAndForwardError>
-    {
+    pub async fn fetch_messages(&mut self, request: FetchStoredMessageQuery) -> SafResult<Vec<StoredMessage>> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
             .send(StoreAndForwardRequest::FetchMessages(request, reply_tx))
@@ -118,9 +122,17 @@ impl StoreAndForwardRequester {
         reply_rx.await.map_err(|_| StoreAndForwardError::RequestCancelled)?
     }
 
-    pub async fn insert_message(&mut self, message: NewStoredMessage) -> Result<(), StoreAndForwardError> {
+    pub async fn insert_message(&mut self, message: NewStoredMessage) -> SafResult<()> {
         self.sender
             .send(StoreAndForwardRequest::InsertMessage(message))
+            .await
+            .map_err(|_| StoreAndForwardError::RequesterChannelClosed)?;
+        Ok(())
+    }
+
+    pub async fn request_saf_messages_from_peer(&mut self, node_id: NodeId) -> SafResult<()> {
+        self.sender
+            .send(StoreAndForwardRequest::SendStoreForwardRequestToPeer(Box::new(node_id)))
             .await
             .map_err(|_| StoreAndForwardError::RequesterChannelClosed)?;
         Ok(())
@@ -129,6 +141,12 @@ impl StoreAndForwardRequester {
 
 pub struct StoreAndForwardService {
     config: DhtConfig,
+    node_identity: Arc<NodeIdentity>,
+    dht_requester: DhtRequester,
+    database: StoreAndForwardDatabase,
+    peer_manager: Arc<PeerManager>,
+    connection_events: Fuse<broadcast::Receiver<Arc<ConnectionManagerEvent>>>,
+    outbound_requester: OutboundMessageRequester,
     request_rx: Fuse<mpsc::Receiver<StoreAndForwardRequest>>,
     shutdown_signal: Option<ShutdownSignal>,
 }
@@ -136,32 +154,36 @@ pub struct StoreAndForwardService {
 impl StoreAndForwardService {
     pub fn new(
         config: DhtConfig,
+        conn: DbConnection,
+        node_identity: Arc<NodeIdentity>,
+        peer_manager: Arc<PeerManager>,
+        dht_requester: DhtRequester,
+        connection_manager: ConnectionManagerRequester,
+        outbound_requester: OutboundMessageRequester,
         request_rx: mpsc::Receiver<StoreAndForwardRequest>,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
         Self {
             config,
+            database: StoreAndForwardDatabase::new(conn),
+            node_identity,
+            peer_manager,
+            dht_requester,
             request_rx: request_rx.fuse(),
+            connection_events: connection_manager.get_event_subscription().fuse(),
+            outbound_requester,
             shutdown_signal: Some(shutdown_signal),
         }
     }
 
-    pub(crate) async fn connect_database(&self) -> SafResult<StoreAndForwardDatabase> {
-        let conn = DbConnection::connect_url(self.config.database_url.clone()).await?;
-        let output = conn.migrate().await?;
-        info!(target: LOG_TARGET, "Store and forward database migration:\n{}", output);
-        Ok(StoreAndForwardDatabase::new(conn))
+    pub async fn spawn(self) -> SafResult<()> {
+        info!(target: LOG_TARGET, "Store and forward service started");
+        task::spawn(Self::run(self));
+        Ok(())
     }
 
-    pub async fn run(self) {
-        if let Err(err) = self.run_inner().await {
-            error!(target: LOG_TARGET, "Failed to run store and forward service: {:?}", err);
-        }
-    }
-
-    async fn run_inner(mut self) -> SafResult<()> {
-        let db = self.connect_database().await?;
+    async fn run(mut self) {
         let mut shutdown_signal = self
             .shutdown_signal
             .take()
@@ -172,11 +194,19 @@ impl StoreAndForwardService {
         loop {
             futures::select! {
                 request = self.request_rx.select_next_some() => {
-                    self.handle_request(&db, request).await;
+                    self.handle_request(request).await;
+                },
+
+               event = self.connection_events.select_next_some() => {
+                    if let Ok(event) = event {
+                         if let Err(err) = self.handle_connection_manager_event(&event).await {
+                            error!(target: LOG_TARGET, "Error handling connection manager event: {:?}", err);
+                        }
+                    }
                 },
 
                 _ = cleanup_ticker.select_next_some() => {
-                    if let Err(err) = self.cleanup(&db).await {
+                    if let Err(err) = self.cleanup().await {
                         error!(target: LOG_TARGET, "Error when performing store and forward cleanup: {:?}", err);
                     }
                 },
@@ -187,15 +217,13 @@ impl StoreAndForwardService {
                 }
             }
         }
-
-        Ok(())
     }
 
-    async fn handle_request(&self, db: &StoreAndForwardDatabase, request: StoreAndForwardRequest) {
+    async fn handle_request(&mut self, request: StoreAndForwardRequest) {
         use StoreAndForwardRequest::*;
         trace!(target: LOG_TARGET, "Request: {:?}", request);
         match request {
-            FetchMessages(query, reply_tx) => match self.handle_fetch_message_query(db, query).await {
+            FetchMessages(query, reply_tx) => match self.handle_fetch_message_query(query).await {
                 Ok(messages) => {
                     let _ = reply_tx.send(Ok(messages));
                 },
@@ -210,7 +238,7 @@ impl StoreAndForwardService {
             InsertMessage(msg) => {
                 let public_key = msg.destination_pubkey.clone();
                 let node_id = msg.destination_node_id.clone();
-                match db.insert_message(msg).await {
+                match self.database.insert_message(msg).await {
                     Ok(_) => info!(
                         target: LOG_TARGET,
                         "Stored message for {}",
@@ -224,34 +252,100 @@ impl StoreAndForwardService {
                     },
                 }
             },
+            SendStoreForwardRequestToPeer(node_id) => {
+                if let Err(err) = self.request_stored_messages_from_peer(&node_id).await {
+                    error!(target: LOG_TARGET, "Error sending store and forward request: {:?}", err);
+                }
+            },
         }
     }
 
-    async fn handle_fetch_message_query(
-        &self,
-        db: &StoreAndForwardDatabase,
-        query: FetchStoredMessageQuery,
-    ) -> SafResult<Vec<StoredMessage>>
-    {
+    async fn handle_connection_manager_event(&mut self, event: &ConnectionManagerEvent) -> SafResult<()> {
+        use ConnectionManagerEvent::*;
+        if !self.config.saf_auto_request {
+            debug!(
+                target: LOG_TARGET,
+                "Auto store and forward request disabled. Ignoring connection manager event"
+            );
+            return Ok(());
+        }
+
+        match event {
+            PeerConnected(conn) => {
+                // Whenever we connect to a peer, request SAF messages
+                let features = self.peer_manager.get_peer_features(conn.peer_node_id()).await?;
+                if features.contains(PeerFeatures::DHT_STORE_FORWARD) {
+                    info!(
+                        target: LOG_TARGET,
+                        "Connected peer '{}' is a SAF node. Requesting stored messages.",
+                        conn.peer_node_id().short_str()
+                    );
+                    self.request_stored_messages_from_peer(conn.peer_node_id()).await?;
+                }
+            },
+            _ => {},
+        }
+
+        Ok(())
+    }
+
+    async fn request_stored_messages_from_peer(&mut self, node_id: &NodeId) -> SafResult<()> {
+        let mut request = self
+            .dht_requester
+            .get_metadata(DhtMetadataKey::OfflineTimestamp)
+            .await?
+            .map(StoredMessagesRequest::since)
+            .unwrap_or_else(StoredMessagesRequest::new);
+
+        // Calculate the network region threshold for our node id.
+        // i.e. "Give me all messages that are this close to my node ID"
+        let threshold = self
+            .peer_manager
+            .calc_region_threshold(
+                self.node_identity.node_id(),
+                self.config.num_neighbouring_nodes,
+                PeerFeatures::DHT_STORE_FORWARD,
+            )
+            .await?;
+
+        request.dist_threshold = threshold.to_vec();
+
+        info!(
+            target: LOG_TARGET,
+            "Sending store and forward request to peer '{}' (Since = {:?})", node_id, request.since
+        );
+
+        self.outbound_requester
+            .send_message_no_header(
+                SendMessageParams::new()
+                    .direct_node_id(node_id.clone())
+                    .with_dht_message_type(DhtMessageType::SafRequestMessages)
+                    .finish(),
+                request,
+            )
+            .await
+            .map_err(|err| StoreAndForwardError::RequestMessagesFailed(err))?;
+
+        Ok(())
+    }
+
+    async fn handle_fetch_message_query(&self, query: FetchStoredMessageQuery) -> SafResult<Vec<StoredMessage>> {
         use SafResponseType::*;
         let limit = i64::try_from(self.config.saf_max_returned_messages)
             .ok()
             .or(Some(std::i64::MAX))
             .unwrap();
+        let db = &self.database;
         let messages = match query.response_type {
             ForMe => {
                 db.find_messages_for_peer(&query.public_key, &query.node_id, query.since, limit)
                     .await?
             },
-            Join => {
-                db.find_messages_of_type_for_pubkey(&query.public_key, DhtMessageType::Join, query.since, limit)
-                    .await?
-            },
+            Join => db.find_join_messages(query.since, limit).await?,
             Discovery => {
                 db.find_messages_of_type_for_pubkey(&query.public_key, DhtMessageType::Discovery, query.since, limit)
                     .await?
             },
-
             Anonymous => db.find_anonymous_messages(query.since, limit).await?,
             InRegion => {
                 db.find_regional_messages(&query.node_id, query.dist_threshold, query.since, limit)
@@ -262,8 +356,9 @@ impl StoreAndForwardService {
         Ok(messages)
     }
 
-    async fn cleanup(&self, db: &StoreAndForwardDatabase) -> SafResult<()> {
-        let num_removed = db
+    async fn cleanup(&self) -> SafResult<()> {
+        let num_removed = self
+            .database
             .delete_messages_with_priority_older_than(
                 StoredMessagePriority::Low,
                 since(self.config.saf_low_priority_msg_storage_ttl),
@@ -271,7 +366,8 @@ impl StoreAndForwardService {
             .await?;
         info!(target: LOG_TARGET, "Cleaned {} old low priority messages", num_removed);
 
-        let num_removed = db
+        let num_removed = self
+            .database
             .delete_messages_with_priority_older_than(
                 StoredMessagePriority::High,
                 since(self.config.saf_high_priority_msg_storage_ttl),

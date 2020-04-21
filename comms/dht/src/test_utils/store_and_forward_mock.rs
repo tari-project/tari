@@ -129,6 +129,7 @@ impl StoreAndForwardMock {
                 priority: msg.priority,
                 stored_at: Utc::now().naive_utc(),
             }),
+            SendStoreForwardRequestToPeer(_) => {},
         }
     }
 }

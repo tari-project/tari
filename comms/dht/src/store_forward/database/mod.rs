@@ -35,7 +35,7 @@ use tari_comms::{
     peer_manager::{node_id::NodeDistance, NodeId},
     types::CommsPublicKey,
 };
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 pub struct StoreAndForwardDatabase {
     connection: DbConnection,
@@ -159,6 +159,32 @@ impl StoreAndForwardDatabase {
                     .filter(stored_messages::destination_pubkey.is_null())
                     .filter(stored_messages::is_encrypted.eq(true))
                     .filter(stored_messages::message_type.eq(DhtMessageType::None as i32))
+                    .into_boxed();
+
+                if let Some(since) = since {
+                    query = query.filter(stored_messages::stored_at.gt(since.naive_utc()));
+                }
+
+                query
+                    .order_by(stored_messages::stored_at.desc())
+                    .limit(limit)
+                    .get_results(conn)
+                    .map_err(Into::into)
+            })
+            .await
+    }
+
+    pub async fn find_join_messages(
+        &self,
+        since: Option<DateTime<Utc>>,
+        limit: i64,
+    ) -> Result<Vec<StoredMessage>, StorageError>
+    {
+        self.connection
+            .with_connection_async(move |conn| {
+                let mut query = stored_messages::table
+                    .select(stored_messages::all_columns)
+                    .filter(stored_messages::message_type.eq(DhtMessageType::Join as i32))
                     .into_boxed();
 
                 if let Some(since) = since {

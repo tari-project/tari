@@ -29,8 +29,6 @@ pub struct LivenessConfig {
     pub auto_ping_interval: Option<Duration>,
     /// Set to true to enable automatically joining the network on node startup (default: false)
     pub enable_auto_join: bool,
-    /// Set to true to enable a request for stored messages on node startup (default: false)
-    pub enable_auto_stored_message_request: bool,
     /// The length of time between querying peer manager for closest neighbours. (default: 1 minute)
     pub refresh_neighbours_interval: Duration,
 }
@@ -40,7 +38,6 @@ impl Default for LivenessConfig {
         Self {
             auto_ping_interval: None,
             enable_auto_join: false,
-            enable_auto_stored_message_request: false,
             refresh_neighbours_interval: Duration::from_secs(60),
         }
     }

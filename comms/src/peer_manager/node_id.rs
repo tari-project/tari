@@ -116,7 +116,7 @@ impl fmt::Display for NodeDistance {
 }
 
 /// A Node Identity is used as a unique identifier for a node in the Tari communications network.
-#[derive(Clone, Debug, Eq, Deserialize, Serialize, Default)]
+#[derive(Clone, Eq, Deserialize, Serialize, Default)]
 pub struct NodeId(NodeIdArray);
 
 impl NodeId {
@@ -266,6 +266,12 @@ impl AsRef<[u8]> for NodeId {
 impl fmt::Display for NodeId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", to_hex(&self.0))
+    }
+}
+
+impl fmt::Debug for NodeId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "NodeId({})", to_hex(&self.0))
     }
 }
 

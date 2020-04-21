@@ -32,7 +32,7 @@ use tari_comms::{
     peer_manager::Peer,
     types::CommsPublicKey,
 };
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 /// Determines if an outbound message should be Encrypted and, if so, for which public key
 #[derive(Debug, Clone, PartialEq, Eq)]

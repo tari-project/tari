@@ -33,7 +33,7 @@ use tari_comms::{
     pipeline::PipelineError,
     Bytes,
 };
-use tari_crypto::tari_utilities::ByteArray;
+use tari_utilities::ByteArray;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::serialize";

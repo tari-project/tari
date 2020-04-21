@@ -1107,7 +1107,6 @@ where
             LivenessConfig {
                 auto_ping_interval: Some(Duration::from_secs(30)),
                 enable_auto_join: true,
-                enable_auto_stored_message_request: false,
                 refresh_neighbours_interval: Duration::from_secs(3 * 60),
             },
             subscription_factory,
@@ -1143,7 +1142,6 @@ async fn register_wallet_services(
             LivenessConfig{
                 auto_ping_interval: None,
                 enable_auto_join: true,
-                enable_auto_stored_message_request: true,
                 ..Default::default()
             },
             subscription_factory.clone(),

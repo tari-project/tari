@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{outbound::DhtOutboundRequest, DbConnectionUrl, Dht, DhtConfig};
+use crate::{dht::DhtInitializationError, outbound::DhtOutboundRequest, DbConnectionUrl, Dht, DhtConfig};
 use futures::channel::mpsc;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
@@ -70,6 +70,11 @@ impl DhtBuilder {
         self
     }
 
+    pub fn disable_auto_store_and_forward_requests(mut self) -> Self {
+        self.config.saf_auto_request = false;
+        self
+    }
+
     pub fn testnet(mut self) -> Self {
         self.config = DhtConfig::default_testnet();
         self
@@ -105,11 +110,11 @@ impl DhtBuilder {
         self
     }
 
-    /// Build a Dht object.
+    /// Build and initialize a Dht object.
     ///
-    /// Will panic if an executor is not given AND not in a tokio runtime context
-    pub fn finish(self) -> Dht {
-        Dht::new(
+    /// Will panic not in a tokio runtime context
+    pub async fn finish(self) -> Result<Dht, DhtInitializationError> {
+        Dht::initialize(
             self.config,
             self.node_identity,
             self.peer_manager,
@@ -117,5 +122,6 @@ impl DhtBuilder {
             self.connection_manager,
             self.shutdown_signal,
         )
+        .await
     }
 }

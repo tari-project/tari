@@ -96,7 +96,6 @@ fn test_listening_lagging() {
         MempoolServiceConfig::default(),
         LivenessConfig {
             enable_auto_join: false,
-            enable_auto_stored_message_request: false,
             auto_ping_interval: Some(Duration::from_millis(100)),
             refresh_neighbours_interval: Duration::from_secs(60),
         },

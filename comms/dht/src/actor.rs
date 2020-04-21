@@ -31,10 +31,11 @@ use crate::{
     broadcast_strategy::BroadcastStrategy,
     discovery::DhtDiscoveryError,
     outbound::{OutboundMessageRequester, SendMessageParams},
-    proto::{dht::JoinMessage, envelope::DhtMessageType, store_forward::StoredMessagesRequest},
-    storage::{DbConnection, DhtDatabase, DhtSettingKey, StorageError},
+    proto::{dht::JoinMessage, envelope::DhtMessageType},
+    storage::{DbConnection, DhtDatabase, DhtMetadataKey, StorageError},
     DhtConfig,
 };
+use chrono::{DateTime, Utc};
 use derive_error::Error;
 use futures::{
     channel::{mpsc, mpsc::SendError, oneshot},
@@ -60,11 +61,12 @@ use tari_comms::{
     },
     types::CommsPublicKey,
 };
-use tari_crypto::tari_utilities::{
+use tari_shutdown::ShutdownSignal;
+use tari_utilities::{
     message_format::{MessageFormat, MessageFormatError},
     ByteArray,
 };
-use tari_shutdown::ShutdownSignal;
+use tokio::task;
 use ttl_cache::TtlCache;
 
 const LOG_TARGET: &str = "comms::dht::actor";
@@ -105,15 +107,13 @@ impl From<SendError> for DhtActorError {
 pub enum DhtRequest {
     /// Send a Join request to the network
     SendJoin,
-    /// Send requests to neighbours for stored messages
-    SendRequestStoredMessages,
     /// Inserts a message signature to the msg hash cache. This operation replies with a boolean
     /// which is true if the signature already exists in the cache, otherwise false
     MsgHashCacheInsert(Vec<u8>, oneshot::Sender<bool>),
     /// Fetch selected peers according to the broadcast strategy
     SelectPeers(BroadcastStrategy, oneshot::Sender<Vec<Peer>>),
-    GetSetting(DhtSettingKey, oneshot::Sender<Result<Option<Vec<u8>>, DhtActorError>>),
-    SetSetting(DhtSettingKey, Vec<u8>),
+    GetMetadata(DhtMetadataKey, oneshot::Sender<Result<Option<Vec<u8>>, DhtActorError>>),
+    SetMetadata(DhtMetadataKey, Vec<u8>),
 }
 
 impl Display for DhtRequest {
@@ -121,11 +121,10 @@ impl Display for DhtRequest {
         use DhtRequest::*;
         match self {
             SendJoin => f.write_str("SendJoin"),
-            SendRequestStoredMessages => f.write_str("SendRequestStoredMessages"),
             MsgHashCacheInsert(_, _) => f.write_str("MsgHashCacheInsert"),
             SelectPeers(s, _) => f.write_str(&format!("SelectPeers (Strategy={})", s)),
-            GetSetting(key, _) => f.write_str(&format!("GetSetting (key={})", key)),
-            SetSetting(key, value) => f.write_str(&format!("SetSetting (key={}, value={} bytes)", key, value.len())),
+            GetMetadata(key, _) => f.write_str(&format!("GetSetting (key={})", key)),
+            SetMetadata(key, value) => f.write_str(&format!("SetSetting (key={}, value={} bytes)", key, value.len())),
         }
     }
 }
@@ -161,14 +160,9 @@ impl DhtRequester {
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
 
-    pub async fn send_request_stored_messages(&mut self) -> Result<(), DhtActorError> {
-        self.sender.send(DhtRequest::SendRequestStoredMessages).await?;
-        Ok(())
-    }
-
-    pub async fn get_setting<T: MessageFormat>(&mut self, key: DhtSettingKey) -> Result<Option<T>, DhtActorError> {
+    pub async fn get_metadata<T: MessageFormat>(&mut self, key: DhtMetadataKey) -> Result<Option<T>, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender.send(DhtRequest::GetSetting(key, reply_tx)).await?;
+        self.sender.send(DhtRequest::GetMetadata(key, reply_tx)).await?;
         match reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)?? {
             Some(bytes) => T::from_binary(&bytes)
                 .map(Some)
@@ -177,9 +171,9 @@ impl DhtRequester {
         }
     }
 
-    pub async fn set_setting<T: MessageFormat>(&mut self, key: DhtSettingKey, value: T) -> Result<(), DhtActorError> {
+    pub async fn set_metadata<T: MessageFormat>(&mut self, key: DhtMetadataKey, value: T) -> Result<(), DhtActorError> {
         let bytes = value.to_binary().map_err(DhtActorError::FailedToSerializeValue)?;
-        self.sender.send(DhtRequest::SetSetting(key, bytes)).await?;
+        self.sender.send(DhtRequest::SetMetadata(key, bytes)).await?;
         Ok(())
     }
 }
@@ -187,6 +181,7 @@ impl DhtRequester {
 pub struct DhtActor<'a> {
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
+    database: DhtDatabase,
     outbound_requester: OutboundMessageRequester,
     config: DhtConfig,
     shutdown_signal: Option<ShutdownSignal>,
@@ -195,9 +190,17 @@ pub struct DhtActor<'a> {
     pending_jobs: FuturesUnordered<BoxFuture<'a, Result<(), DhtActorError>>>,
 }
 
+impl DhtActor<'static> {
+    pub async fn spawn(self) -> Result<(), DhtActorError> {
+        task::spawn(Self::run(self));
+        Ok(())
+    }
+}
+
 impl<'a> DhtActor<'a> {
     pub fn new(
         config: DhtConfig,
+        conn: DbConnection,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_requester: OutboundMessageRequester,
@@ -208,6 +211,7 @@ impl<'a> DhtActor<'a> {
         Self {
             msg_hash_cache: TtlCache::new(config.msg_hash_cache_capacity),
             config,
+            database: DhtDatabase::new(conn),
             outbound_requester,
             peer_manager,
             node_identity,
@@ -217,11 +221,20 @@ impl<'a> DhtActor<'a> {
         }
     }
 
-    pub async fn run(mut self) -> Result<(), DhtActorError> {
-        let conn = DbConnection::connect_url(self.config.database_url.clone()).await?;
-        let output = conn.migrate().await?;
-        info!(target: LOG_TARGET, "Dht database migration:\n{}", output);
-        let db = DhtDatabase::new(conn);
+    async fn run(mut self) {
+        let offline_ts = self
+            .database
+            .get_metadata_value::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp)
+            .await
+            .ok()
+            .flatten();
+        info!(
+            target: LOG_TARGET,
+            "DhtActor started. {}",
+            offline_ts
+                .map(|dt| format!("Dht has been offline since '{}'", dt))
+                .unwrap_or_else(String::new)
+        );
 
         let mut shutdown_signal = self
             .shutdown_signal
@@ -232,7 +245,7 @@ impl<'a> DhtActor<'a> {
             futures::select! {
                 request = self.request_rx.select_next_some() => {
                     debug!(target: LOG_TARGET, "DhtActor received message: {}", request);
-                    let handler = self.request_handler(db.clone(), request);
+                    let handler = self.request_handler(request);
                     self.pending_jobs.push(handler);
                 },
 
@@ -249,19 +262,24 @@ impl<'a> DhtActor<'a> {
 
                 _ = shutdown_signal => {
                     info!(target: LOG_TARGET, "DhtActor is shutting down because it received a shutdown signal.");
+                    // Called with reference to database otherwise DhtActor is not Send
+                    Self::mark_shutdown_time(&self.database).await;
                     break;
                 },
-                complete => {
-                    info!(target: LOG_TARGET, "DhtActor is shutting down because the request stream ended.");
-                    break;
-                }
             }
         }
-
-        Ok(())
     }
 
-    fn request_handler(&mut self, db: DhtDatabase, request: DhtRequest) -> BoxFuture<'a, Result<(), DhtActorError>> {
+    async fn mark_shutdown_time(db: &DhtDatabase) {
+        if let Err(err) = db
+            .set_metadata_value(DhtMetadataKey::OfflineTimestamp, Utc::now())
+            .await
+        {
+            error!(target: LOG_TARGET, "Failed to mark offline time: {:?}", err);
+        }
+    }
+
+    fn request_handler(&mut self, request: DhtRequest) -> BoxFuture<'a, Result<(), DhtActorError>> {
         use DhtRequest::*;
         match request {
             SendJoin => {
@@ -297,33 +315,27 @@ impl<'a> DhtActor<'a> {
                     }
                 })
             },
-            SendRequestStoredMessages => {
-                let node_identity = Arc::clone(&self.node_identity);
-                let peer_manager = Arc::clone(&self.peer_manager);
-                let outbound_requester = self.outbound_requester.clone();
-                Box::pin(Self::request_stored_messages(
-                    node_identity,
-                    peer_manager,
-                    outbound_requester,
-                    db,
-                    self.config.num_neighbouring_nodes,
-                ))
+            GetMetadata(key, reply_tx) => {
+                let db = self.database.clone();
+                Box::pin(async move {
+                    let _ = reply_tx.send(db.get_metadata_value_bytes(key).await.map_err(Into::into));
+                    Ok(())
+                })
             },
-            GetSetting(key, reply_tx) => Box::pin(async move {
-                let _ = reply_tx.send(db.get_value_bytes(key).await.map_err(Into::into));
-                Ok(())
-            }),
-            SetSetting(key, value) => Box::pin(async move {
-                match db.set_value(key, value).await {
-                    Ok(_) => {
-                        info!(target: LOG_TARGET, "Dht setting '{}' set", key);
-                    },
-                    Err(err) => {
-                        error!(target: LOG_TARGET, "set_setting failed because {:?}", err);
-                    },
-                }
-                Ok(())
-            }),
+            SetMetadata(key, value) => {
+                let db = self.database.clone();
+                Box::pin(async move {
+                    match db.set_metadata_value_bytes(key, value).await {
+                        Ok(_) => {
+                            info!(target: LOG_TARGET, "Dht setting '{}' set", key);
+                        },
+                        Err(err) => {
+                            error!(target: LOG_TARGET, "set_setting failed because {:?}", err);
+                        },
+                    }
+                    Ok(())
+                })
+            },
         }
     }
 
@@ -355,50 +367,6 @@ impl<'a> DhtActor<'a> {
             )
             .await
             .map_err(|err| DhtActorError::SendFailed(format!("Failed to send join message: {}", err)))?;
-
-        Ok(())
-    }
-
-    async fn request_stored_messages(
-        node_identity: Arc<NodeIdentity>,
-        peer_manager: Arc<PeerManager>,
-        mut outbound_requester: OutboundMessageRequester,
-        db: DhtDatabase,
-        num_neighbouring_nodes: usize,
-    ) -> Result<(), DhtActorError>
-    {
-        let mut request = db
-            .get_value(DhtSettingKey::SafLastRequestTimestamp)
-            .await?
-            .map(StoredMessagesRequest::since)
-            .unwrap_or_else(StoredMessagesRequest::new);
-
-        // Calculate the network region threshold for our node id.
-        // i.e. "Give me all messages that are this close to my node ID"
-        let threshold = peer_manager
-            .calc_region_threshold(
-                node_identity.node_id(),
-                num_neighbouring_nodes,
-                PeerFeatures::DHT_STORE_FORWARD,
-            )
-            .await?;
-        request.dist_threshold = threshold.to_vec();
-
-        info!(
-            target: LOG_TARGET,
-            "Sending store and forward request to neighbours (Since = {:?})", request.since
-        );
-
-        outbound_requester
-            .send_message_no_header(
-                SendMessageParams::new()
-                    .neighbours(Vec::new())
-                    .with_dht_message_type(DhtMessageType::SafRequestMessages)
-                    .finish(),
-                request,
-            )
-            .await
-            .map_err(|err| DhtActorError::SendFailed(format!("Failed to send request for stored messages: {}", err)))?;
 
         Ok(())
     }
@@ -627,7 +595,6 @@ mod test {
     use crate::{
         broadcast_strategy::BroadcastClosestRequest,
         test_utils::{make_node_identity, make_peer_manager},
-        DbConnectionUrl,
     };
     use chrono::{DateTime, Utc};
     use tari_comms::{
@@ -636,7 +603,12 @@ mod test {
     };
     use tari_shutdown::Shutdown;
     use tari_test_utils::random;
-    use tokio::runtime;
+
+    async fn db_connection() -> DbConnection {
+        let conn = DbConnection::connect_memory(random::string(8)).await.unwrap();
+        conn.migrate().await.unwrap();
+        conn
+    }
 
     #[tokio_macros::test_basic]
     async fn send_join_request() {
@@ -649,6 +621,7 @@ mod test {
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
             Default::default(),
+            db_connection().await,
             node_identity,
             peer_manager,
             outbound_requester,
@@ -656,7 +629,7 @@ mod test {
             shutdown.to_signal(),
         );
 
-        runtime::Handle::current().spawn(actor.run());
+        actor.spawn().await.unwrap();
 
         requester.send_join().await.unwrap();
         let (params, _) = unwrap_oms_send_msg!(out_rx.next().await.unwrap());
@@ -674,6 +647,7 @@ mod test {
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
             Default::default(),
+            db_connection().await,
             node_identity,
             peer_manager,
             outbound_requester,
@@ -681,7 +655,7 @@ mod test {
             shutdown.to_signal(),
         );
 
-        runtime::Handle::current().spawn(actor.run());
+        actor.spawn().await.unwrap();
 
         let signature = vec![1u8, 2, 3];
         let is_dup = requester.insert_message_hash(signature.clone()).await.unwrap();
@@ -729,6 +703,7 @@ mod test {
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
             Default::default(),
+            db_connection().await,
             Arc::clone(&node_identity),
             peer_manager,
             outbound_requester,
@@ -736,7 +711,7 @@ mod test {
             shutdown.to_signal(),
         );
 
-        runtime::Handle::current().spawn(actor.run());
+        actor.spawn().await.unwrap();
 
         let peers = requester
             .select_peers(BroadcastStrategy::Neighbours(Vec::new(), false))
@@ -774,7 +749,7 @@ mod test {
     }
 
     #[tokio_macros::test_basic]
-    async fn get_and_set_setting() {
+    async fn get_and_set_metadata() {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
         let (out_tx, _out_rx) = mpsc::channel(1);
@@ -783,10 +758,8 @@ mod test {
         let outbound_requester = OutboundMessageRequester::new(out_tx);
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
-            DhtConfig {
-                database_url: DbConnectionUrl::MemoryShared(random::string(8)),
-                ..Default::default()
-            },
+            Default::default(),
+            db_connection().await,
             node_identity,
             peer_manager,
             outbound_requester,
@@ -794,21 +767,21 @@ mod test {
             shutdown.to_signal(),
         );
 
-        runtime::Handle::current().spawn(actor.run());
+        actor.spawn().await.unwrap();
 
         assert!(requester
-            .get_setting::<DateTime<Utc>>(DhtSettingKey::SafLastRequestTimestamp,)
+            .get_metadata::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp,)
             .await
             .unwrap()
             .is_none());
         let ts = Utc::now();
         requester
-            .set_setting(DhtSettingKey::SafLastRequestTimestamp, ts)
+            .set_metadata(DhtMetadataKey::OfflineTimestamp, ts)
             .await
             .unwrap();
 
         let got_ts = requester
-            .get_setting::<DateTime<Utc>>(DhtSettingKey::SafLastRequestTimestamp)
+            .get_metadata::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp)
             .await
             .unwrap()
             .unwrap();
@@ -817,12 +790,12 @@ mod test {
         // Check upsert
         let ts = Utc::now().checked_add_signed(chrono::Duration::seconds(123)).unwrap();
         requester
-            .set_setting(DhtSettingKey::SafLastRequestTimestamp, ts)
+            .set_metadata(DhtMetadataKey::OfflineTimestamp, ts)
             .await
             .unwrap();
 
         let got_ts = requester
-            .get_setting::<DateTime<Utc>>(DhtSettingKey::SafLastRequestTimestamp)
+            .get_metadata::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp)
             .await
             .unwrap()
             .unwrap();
