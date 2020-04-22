@@ -21,7 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::LOG_TARGET;
-use crate::{builder::NodeContainer, table::Table, utils, utils::format_duration_basic};
+use crate::{
+    builder::NodeContainer,
+    table::Table,
+    utils,
+    utils::{format_duration_basic, format_naive_datetime},
+};
 use chrono::Utc;
 use chrono_english::{parse_date_string, Dialect};
 use log::*;
@@ -80,6 +85,9 @@ pub enum BaseNodeCommand {
     Help,
     GetBalance,
     ListUtxos,
+    ListTransactions,
+    ListCompletedTransactions,
+    CancelTransaction,
     SendTari,
     GetChainMetadata,
     ListPeers,
@@ -227,6 +235,15 @@ impl Parser {
             ListUtxos => {
                 self.process_list_unspent_outputs();
             },
+            ListTransactions => {
+                self.process_list_transactions();
+            },
+            ListCompletedTransactions => {
+                self.process_list_completed_transactions(args);
+            },
+            CancelTransaction => {
+                self.process_cancel_transaction(args);
+            },
             SendTari => {
                 self.process_send_tari(args);
             },
@@ -307,6 +324,17 @@ impl Parser {
             },
             ListUtxos => {
                 println!("List your UTXOs");
+            },
+            ListTransactions => {
+                println!("Print a list of pending inbound and outbound transactions");
+            },
+            ListCompletedTransactions => {
+                println!("Print a list of completed transactions.");
+                println!("USAGE: list-completed-transactions [last n] or list-completed-transactions [n] [m]");
+            },
+            CancelTransaction => {
+                println!("Cancel a transaction");
+                println!("USAGE: cancel-transaction [transaction ID]");
             },
             SendTari => {
                 println!("Sends an amount of Tari to a address call this command via:");
@@ -435,6 +463,168 @@ impl Parser {
                     }
                 },
             };
+        });
+    }
+
+    fn process_list_transactions(&mut self) {
+        let mut transactions = self.wallet_transaction_service.clone();
+
+        self.executor.spawn(async move {
+            println!("Inbound Transactions");
+            match transactions.get_pending_inbound_transactions().await {
+                Ok(transactions) => {
+                    if transactions.is_empty() {
+                        println!("No pending inbound transactions found.");
+                    } else {
+                        let mut table = Table::new();
+                        table.set_titles(vec![
+                            "Transaction ID",
+                            "Source Public Key",
+                            "Amount",
+                            "Status",
+                            "Receiver State",
+                            "Timestamp",
+                            "Message",
+                        ]);
+                        for (tx_id, txn) in transactions {
+                            table.add_row(row![
+                                tx_id,
+                                txn.source_public_key,
+                                txn.amount,
+                                txn.status,
+                                txn.receiver_protocol.state,
+                                format_naive_datetime(txn.timestamp),
+                                txn.message
+                            ]);
+                        }
+
+                        table.print_std();
+                    }
+                },
+                Err(err) => {
+                    println!("Failed to retrieve inbound transactions: {:?}", err);
+                    return;
+                },
+            }
+
+            println!();
+            println!("Outbound Transactions");
+            match transactions.get_pending_outbound_transactions().await {
+                Ok(transactions) => {
+                    if transactions.is_empty() {
+                        println!("No pending outbound transactions found.");
+                        return;
+                    }
+
+                    let mut table = Table::new();
+                    table.set_titles(vec![
+                        "Transaction ID",
+                        "Dest Public Key",
+                        "Amount",
+                        "Fee",
+                        "Status",
+                        "Sender State",
+                        "Timestamp",
+                        "Message",
+                    ]);
+                    for (tx_id, txn) in transactions {
+                        table.add_row(row![
+                            tx_id,
+                            txn.destination_public_key,
+                            txn.amount,
+                            txn.fee,
+                            txn.status,
+                            txn.sender_protocol,
+                            format_naive_datetime(txn.timestamp),
+                            txn.message
+                        ]);
+                    }
+
+                    table.print_std();
+                },
+                Err(err) => {
+                    println!("Failed to retrieve inbound transactions: {:?}", err);
+                    return;
+                },
+            }
+        });
+    }
+
+    fn process_list_completed_transactions<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+        let mut transactions = self.wallet_transaction_service.clone();
+        let n = args.next().and_then(|s| s.parse::<usize>().ok()).unwrap_or(10);
+        let m = args.next().and_then(|s| s.parse::<usize>().ok());
+
+        self.executor.spawn(async move {
+            match transactions.get_completed_transactions().await {
+                Ok(transactions) => {
+                    if transactions.is_empty() {
+                        println!("No pending inbound transactions found.");
+                        return;
+                    }
+                    // TODO: This doesn't scale well because hashmap has a random ordering. Support for this query
+                    //       should be added at the database level
+                    let mut transactions = transactions.into_iter().map(|(_, txn)| txn).collect::<Vec<_>>();
+                    transactions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+                    let transactions = match m {
+                        Some(m) => transactions.into_iter().skip(n).take(m).collect::<Vec<_>>(),
+                        None => transactions.into_iter().take(n).collect::<Vec<_>>(),
+                    };
+
+                    let mut table = Table::new();
+                    table.set_titles(vec![
+                        "Transaction ID",
+                        "Sender",
+                        "Receiver",
+                        "Amount",
+                        "Fee",
+                        "Status",
+                        "Timestamp",
+                        "Message",
+                    ]);
+                    for txn in transactions {
+                        table.add_row(row![
+                            txn.tx_id,
+                            txn.source_public_key,
+                            txn.destination_public_key,
+                            txn.amount,
+                            txn.fee,
+                            txn.status,
+                            format_naive_datetime(txn.timestamp),
+                            txn.message
+                        ]);
+                    }
+
+                    table.print_std();
+                },
+                Err(err) => {
+                    println!("Failed to retrieve inbound transactions: {:?}", err);
+                    return;
+                },
+            }
+        });
+    }
+
+    fn process_cancel_transaction<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+        let mut transactions = self.wallet_transaction_service.clone();
+        let tx_id = match args.next().and_then(|s| s.parse::<u64>().ok()) {
+            Some(id) => id,
+            None => {
+                println!("Please enter a valid transaction ID");
+                println!("USAGE: cancel-transaction [transaction id]");
+                return;
+            },
+        };
+
+        self.executor.spawn(async move {
+            match transactions.cancel_transaction(tx_id).await {
+                Ok(_) => {
+                    println!("Transaction {} successfully cancelled", tx_id);
+                },
+                Err(err) => {
+                    println!("Failed to cancel transaction: {:?}", err);
+                },
+            }
         });
     }
 

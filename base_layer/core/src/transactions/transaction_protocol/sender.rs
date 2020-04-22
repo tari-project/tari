@@ -44,6 +44,7 @@ use crate::transactions::{
 };
 use digest::Digest;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use tari_crypto::{ristretto::pedersen::PedersenCommitment, tari_utilities::ByteArray};
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
@@ -458,6 +459,12 @@ impl SenderTransactionProtocol {
     }
 }
 
+impl fmt::Display for SenderTransactionProtocol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.state)
+    }
+}
+
 pub fn calculate_tx_id<D: Digest>(pub_nonce: &PublicKey, index: usize) -> u64 {
     let hash = D::new().chain(pub_nonce.as_bytes()).chain(index.to_le_bytes()).result();
     let mut bytes: [u8; 8] = [0u8; 8];
@@ -498,6 +505,45 @@ impl SenderState {
                 ))),
             },
             _ => Err(TPE::InvalidTransitionError),
+        }
+    }
+}
+
+impl fmt::Display for SenderState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use SenderState::*;
+        match self {
+            Initializing(info) => write!(
+                f,
+                "Initializing({} input(s), {} output(s))",
+                info.inputs.len(),
+                info.outputs.len()
+            ),
+            SingleRoundMessageReady(info) => write!(
+                f,
+                "SingleRoundMessageReady({} input(s), {} output(s))",
+                info.inputs.len(),
+                info.outputs.len()
+            ),
+            CollectingSingleSignature(info) => write!(
+                f,
+                "CollectingSingleSignature({} input(s), {} output(s))",
+                info.inputs.len(),
+                info.outputs.len()
+            ),
+            Finalizing(info) => write!(
+                f,
+                "Finalizing({} input(s), {} output(s))",
+                info.inputs.len(),
+                info.outputs.len()
+            ),
+            FinalizedTransaction(txn) => write!(
+                f,
+                "FinalizedTransaction({} input(s), {} output(s))",
+                txn.body.inputs().len(),
+                txn.body.outputs().len()
+            ),
+            Failed(err) => write!(f, "Failed({:?})", err),
         }
     }
 }

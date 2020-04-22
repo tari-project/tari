@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use chrono::NaiveDateTime;
 use futures::{Stream, StreamExt};
 use std::{sync::Arc, time::Duration};
 use tari_wallet::transaction_service::handle::TransactionEvent;
@@ -71,6 +72,11 @@ pub fn format_duration_basic(duration: Duration) -> String {
     } else {
         format!("{}s", secs)
     }
+}
+
+/// Standard formatting helper function for a NaiveDateTime
+pub fn format_naive_datetime(dt: NaiveDateTime) -> String {
+    dt.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
 #[cfg(test)]

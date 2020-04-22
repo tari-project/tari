@@ -131,6 +131,13 @@ impl Default for TransactionStatus {
     }
 }
 
+impl Display for TransactionStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        // No struct or tuple variants
+        write!(f, "{:?}", self)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InboundTransaction {
     pub tx_id: TxId,
