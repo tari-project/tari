@@ -21,4 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod block_headers;
-pub mod error;
+pub mod kernels;
+pub mod metadata;
+pub mod tx_outputs;
+
+pub use block_headers::*;
+pub use kernels::*;
+pub use metadata::*;
+pub use tx_outputs::*;

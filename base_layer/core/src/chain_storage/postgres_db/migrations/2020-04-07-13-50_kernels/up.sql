@@ -8,7 +8,7 @@ create table  if not exists kernels (
     excess TEXT NOT NULL,
     excess_sig_nonce BYTEA NOT NULL,
     excess_sig_sig BYTEA NOT NULL,
-    block_hash TEXT NOT NULL REFERENCES block_headers(hash),
+    block_hash TEXT NULL REFERENCES block_headers(hash),
     created_at TIMESTAMP NOT NULL DEFAULT current_timestamp
 );
 

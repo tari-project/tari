@@ -21,21 +21,19 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks,
-    blocks::BlockHash,
     chain_storage::{
-        postgres_db::{models::error::PostgresError, schema::*},
-        DbKeyValuePair,
+        postgres_db::{error::PostgresError, schema::*},
         DbValue,
     },
-    transactions::types::{BlindingFactor, HashOutput},
+    transactions::{
+        transaction::{OutputFeatures, OutputFlags, TransactionOutput},
+        types::{Commitment, HashOutput, RangeProof},
+    },
 };
-use chrono::{NaiveDateTime, Utc};
-use diesel::{self, expression::dsl, prelude::*, OptionalExtension};
+use diesel::{self, prelude::*};
 use log::*;
-use serde_json::Value;
 use std::convert::{TryFrom, TryInto};
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tari_crypto::tari_utilities::{byte_array::ByteArray, hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "b::c::storage::postgres:tx_outputs";
 
@@ -47,9 +45,9 @@ pub struct TxOutput {
     features_flags: i16,
     features_maturity: i64,
     commitment: String,
-    proof: Vec<u8>,
-    tx_output: String,
-    spent: String,
+    proof: Option<Vec<u8>>,
+    tx_output: Option<String>,
+    spent: Option<String>,
 }
 
 impl TxOutput {
@@ -115,7 +113,6 @@ impl TxOutput {
 
         Ok(results)
     }
-    
 }
 
 impl TryFrom<&TransactionOutput> for TxOutput {
@@ -128,9 +125,9 @@ impl TryFrom<&TransactionOutput> for TxOutput {
             features_flags: value.features.flags.bits() as i16,
             features_maturity: value.features.maturity as i64,
             commitment: value.commitment.to_hex(),
-            proof: value.proof.0.clone(),
-            tx_output: "".to_string(),
-            spent: "".to_string(),
+            proof: Some(value.proof.0.clone()),
+            tx_output: None,
+            spent: None,
         })
     }
 }
@@ -145,21 +142,13 @@ impl TryFrom<TxOutput> for TransactionOutput {
                 maturity: value.features_maturity as u64,
             },
             commitment: Commitment::from_hex(&value.commitment)?,
-            proof: RangeProof::from_bytes(&value.proof)?,
+            proof: RangeProof::from_bytes(&value.proof.ok_or(PostgresError::Other("No proof found".to_string()))?)
+                .map_err(|e| PostgresError::Other(e.to_string()))?,
         };
 
         if result.hash().to_hex() != value.hash {
             return Err(PostgresError::Other("tx and tx hash don't match".to_string()));
-
+        }
         Ok(result)
-    }
-}
-
-impl TryFrom<TxOutput> for DbValue {
-    type Error = PostgresError;
-
-    fn try_from(value: TxOutput) -> Result<Self, Self::Error> {
-        let result: TransactionOutput = value.try_into()?;
-        Ok(DbValue::TxOutput(Box::new(result)))
     }
 }

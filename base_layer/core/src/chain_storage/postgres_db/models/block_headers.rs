@@ -24,14 +24,12 @@ use crate::{
     blocks,
     blocks::BlockHash,
     chain_storage::{
-        postgres_db::{models::error::PostgresError, schema::*},
-        DbKeyValuePair,
+        postgres_db::{error::PostgresError, schema::*},
         DbValue,
     },
     transactions::types::BlindingFactor,
 };
-use chrono::{NaiveDateTime, Utc};
-use diesel::{self, expression::dsl, prelude::*, OptionalExtension};
+use diesel::{self, prelude::*, OptionalExtension};
 use log::*;
 use serde_json::Value;
 use std::convert::{TryFrom, TryInto};

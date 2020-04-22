@@ -21,23 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks,
     blocks::BlockHash,
     chain_storage::{
-        postgres_db::{models::error::PostgresError, schema::*},
-        DbKeyValuePair,
-        DbValue,
+        postgres_db::{error::PostgresError, schema::*},
+        MetadataKey,
+        MetadataValue,
     },
-    transactions::types::{BlindingFactor, HashOutput},
 };
-use chrono::{NaiveDateTime, Utc};
-use diesel::{self, expression::dsl, prelude::*, OptionalExtension};
-use log::*;
-use serde_json::Value;
-use std::convert::{TryFrom, TryInto};
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
-
-const LOG_TARGET: &str = "b::c::storage::postgres:meta";
+use chrono::NaiveDateTime;
+use diesel::{self, prelude::*};
+use tari_crypto::tari_utilities::hex::Hex;
 
 #[derive(Queryable)]
 pub struct Metadata {

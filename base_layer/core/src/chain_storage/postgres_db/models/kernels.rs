@@ -21,30 +21,22 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks,
-    blocks::BlockHash,
-    chain_storage::{
-        postgres_db::{models::error::PostgresError, schema::*},
-        DbKeyValuePair,
-        DbValue,
-    },
-    transactions::types::{BlindingFactor, HashOutput},
+    chain_storage::postgres_db::{error::PostgresError, schema::*},
+    transactions::{transaction, transaction::TransactionKernel, types::HashOutput},
 };
 use chrono::{NaiveDateTime, Utc};
-use diesel::{self, expression::dsl, prelude::*, OptionalExtension};
+use diesel::{self, prelude::*};
 use log::*;
-use serde_json::Value;
-use std::convert::{TryFrom, TryInto};
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tari_crypto::tari_utilities::{byte_array::ByteArray, hex::Hex, Hashable};
 
-const LOG_TARGET: &str = "b::c::storage::postgres:block_headers";
+const LOG_TARGET: &str = "b::c::storage::postgres:kernels";
 
 #[derive(Queryable, Identifiable, Insertable)]
 #[table_name = "kernels"]
 #[primary_key(hash)]
 pub struct Kernels {
     hash: String,
-    features: i32,
+    features: i16,
     fee: i64,
     lock_height: i64,
     meta_info: Option<String>,
@@ -52,14 +44,16 @@ pub struct Kernels {
     excess: String,
     excess_sig_nonce: Vec<u8>,
     excess_sig_sig: Vec<u8>,
+    block_hash: Option<String>,
     created_at: NaiveDateTime,
 }
 
 impl Kernels {
     /// This function will seach for a block header via hash, it will return orphan block headers as well.
-    pub fn fetch_by_hash(hash: HashOutput, conn: &PgConnection) -> Result<Option<BlockHeader>, PostgresError> {
+    pub fn fetch_by_hash(hash: &HashOutput, conn: &PgConnection) -> Result<Option<Kernels>, PostgresError> {
+        let hex_hash = hash.to_hex();
         let mut results: Vec<Kernels> = kernels::table
-            .filter(kernels::hash.eq(&hash))
+            .filter(kernels::hash.eq(&hex_hash))
             .get_results(conn)
             .map_err(|e| PostgresError::NotFound(e.to_string()))?;
 
@@ -82,12 +76,12 @@ impl Kernels {
             return Ok(());
         }
 
-        let row: TransactionKernel = kernel.into();
+        let row: Kernels = kernel.into();
         if row.hash != hash.to_hex() {
             return Err(PostgresError::Other("Kernel and kernel hash don't match".to_string()));
         }
 
-        diesel::insert_into(transaction_kernels::table)
+        diesel::insert_into(kernels::table)
             .values(row)
             .execute(conn)
             .map_err(|e| PostgresError::CouldNotAdd(e.to_string()))?;
@@ -97,18 +91,19 @@ impl Kernels {
 
     /// This function will delete the  kernel with the provided hash
     pub fn delete_at_hash(hash: HashOutput, conn: &PgConnection) -> Result<(), PostgresError> {
-        diesel::delete(kernels::table.filter(kernels::hash.eq(hash)))
+        let hash_key = hash.to_hex();
+        diesel::delete(kernels::table.filter(kernels::hash.eq(hash_key)))
             .execute(conn)
             .map_err(|e| PostgresError::CouldDelete(e.to_string()))?;
         Ok(())
     }
 }
 
-impl From<transaction::TransactionKernel> for TransactionKernel {
+impl From<transaction::TransactionKernel> for Kernels {
     fn from(value: transaction::TransactionKernel) -> Self {
         Self {
             hash: value.hash().to_hex(),
-            features: value.features.bits() as i32,
+            features: value.features.bits() as i16,
             fee: value.fee.0 as i64,
             lock_height: value.lock_height as i64,
             meta_info: value.meta_info.map(|mi| mi.to_hex()),
@@ -116,6 +111,7 @@ impl From<transaction::TransactionKernel> for TransactionKernel {
             excess: value.excess.to_hex(),
             excess_sig_nonce: value.excess_sig.get_public_nonce().to_vec(),
             excess_sig_sig: value.excess_sig.get_signature().to_vec(),
+            block_hash: None,
             created_at: Utc::now().naive_utc(),
         }
     }

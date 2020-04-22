@@ -26,7 +26,7 @@ table! {
         excess -> Text,
         excess_sig_nonce -> Bytea,
         excess_sig_sig -> Bytea,
-        block_hash -> Text,
+        block_hash -> Nullable<Text>,
         created_at -> Timestamp,
     }
 }
