@@ -61,7 +61,7 @@ impl Kernels {
     }
 
     /// This function will insert a new kernel only if the kernel does not exist.
-    pub fn insert_if_not_exists(
+    pub fn insert(
         hash: HashOutput,
         kernel: transaction::TransactionKernel,
         conn: &PgConnection,

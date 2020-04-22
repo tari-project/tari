@@ -52,7 +52,7 @@ pub struct TxOutput {
 
 impl TxOutput {
     /// This will insert a transactional output if it does not exist.
-    pub fn insert_if_not_exists(output: &TransactionOutput, conn: &PgConnection) -> Result<bool, PostgresError> {
+    pub fn insert(output: &TransactionOutput, conn: &PgConnection) -> Result<bool, PostgresError> {
         let hash = output.hash();
 
         let row: TxOutput = output.try_into()?;

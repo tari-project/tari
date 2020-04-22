@@ -79,12 +79,7 @@ impl BlockHeader {
     }
 
     /// This function will insert a new block header only if the block header does not exist.
-    pub fn insert_if_not_exists(
-        block_header: &blocks::BlockHeader,
-        orphan: bool,
-        conn: &PgConnection,
-    ) -> Result<(), PostgresError>
-    {
+    pub fn insert(block_header: &blocks::BlockHeader, orphan: bool, conn: &PgConnection) -> Result<(), PostgresError> {
         if BlockHeader::fetch_by_hash(&block_header.hash(), conn)?.is_some() {
             warn!(
                 target: LOG_TARGET,
