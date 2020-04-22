@@ -113,7 +113,7 @@ impl Dht {
 
         let conn = DbConnection::connect_and_migrate(dht.config.database_url.clone())
             .await
-            .map_err(|err| DhtInitializationError::DatabaseMigrationFailed(err))?;
+            .map_err(DhtInitializationError::DatabaseMigrationFailed)?;
 
         dht.store_and_forward_service(conn.clone(), saf_receiver, shutdown_signal.clone())
             .spawn()

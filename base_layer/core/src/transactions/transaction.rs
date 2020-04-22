@@ -45,6 +45,7 @@ use digest::Input;
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::{max, min, Ordering},
+    fmt,
     fmt::{Display, Formatter},
     hash::{Hash, Hasher},
     ops::Add,
@@ -130,6 +131,16 @@ impl PartialOrd for OutputFeatures {
 impl Ord for OutputFeatures {
     fn cmp(&self, other: &Self) -> Ordering {
         self.maturity.cmp(&other.maturity)
+    }
+}
+
+impl Display for OutputFeatures {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "OutputFeatures: Flags = {:?}, Maturity = {}",
+            self.flags, self.maturity
+        )
     }
 }
 
