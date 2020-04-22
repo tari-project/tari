@@ -1,6 +1,0 @@
-syntax = "proto3";
-
-package tari.comms.control_service;
-
-message PingMessage {  }
-message PongMessage {  }

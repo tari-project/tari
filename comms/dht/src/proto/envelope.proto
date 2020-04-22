@@ -22,8 +22,7 @@ enum DhtMessageType {
 message DhtHeader {
     uint32 version = 1;
     oneof destination {
-        // The sender has chosen not to disclose the message destination, or the destination is
-        // the peer being sent to.
+        // The sender has chosen not to disclose the message destination
         bool unknown = 2;
         // Destined for a particular public key
         bytes public_key = 3;
