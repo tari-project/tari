@@ -102,7 +102,7 @@ impl TxOutput {
     pub fn fetch_unspent_output(hash: &HashOutput, conn: &PgConnection) -> Result<Vec<TxOutput>, PostgresError> {
         let mut results: Vec<TxOutput> = tx_outputs::table
             .filter(tx_outputs::hash.eq(hash.to_hex()))
-            .filter(tx_outputs::spent.eq("".to_string()))
+            .filter(tx_outputs::spent.is_null())
             .get_results(conn)
             .map_err(|e| PostgresError::NotFound(e.to_string()))?;
 
