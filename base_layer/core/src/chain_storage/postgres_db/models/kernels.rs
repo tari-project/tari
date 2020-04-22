@@ -49,7 +49,7 @@ pub struct Kernels {
 }
 
 impl Kernels {
-    /// This function will seach for a block header via hash, it will return orphan block headers as well.
+    /// This function will seach for a kernel via hash.
     pub fn fetch_by_hash(hash: &HashOutput, conn: &PgConnection) -> Result<Option<Kernels>, PostgresError> {
         let hex_hash = hash.to_hex();
         let mut results: Vec<Kernels> = kernels::table
@@ -60,22 +60,13 @@ impl Kernels {
         Ok(results.pop())
     }
 
-    /// This function will insert a new block header only if the block header does not exist.
+    /// This function will insert a new kernel only if the kernel does not exist.
     pub fn insert_if_not_exists(
         hash: HashOutput,
         kernel: transaction::TransactionKernel,
         conn: &PgConnection,
     ) -> Result<(), PostgresError>
     {
-        if Kernels::fetch_by_hash(&hash, conn)?.is_some() {
-            warn!(
-                target: LOG_TARGET,
-                "Tried to insert kernel with hash:{} but it already exists",
-                hash.to_hex()
-            );
-            return Ok(());
-        }
-
         let row: Kernels = kernel.into();
         if row.hash != hash.to_hex() {
             return Err(PostgresError::Other("Kernel and kernel hash don't match".to_string()));

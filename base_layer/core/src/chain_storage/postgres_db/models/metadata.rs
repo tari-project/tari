@@ -63,7 +63,7 @@ impl Metadata {
         Ok(value)
     }
 
-    /// This will fetch current meta form the database
+    /// This will update current meta form the database
     pub fn update(value: MetadataValue, conn: &PgConnection) -> Result<(), PostgresError> {
         let mut fields = MetadataFields::default();
         match &value {

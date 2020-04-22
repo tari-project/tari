@@ -46,23 +46,14 @@ pub struct TxOutput {
     features_maturity: i64,
     commitment: String,
     proof: Option<Vec<u8>>,
-    tx_output: Option<String>,
+    created_in_block: Option<String>,
     spent: Option<String>,
 }
 
 impl TxOutput {
+    /// This will insert a transactional output if it does not exist.
     pub fn insert_if_not_exists(output: &TransactionOutput, conn: &PgConnection) -> Result<bool, PostgresError> {
         let hash = output.hash();
-
-        if TxOutput::fetch(&hash, conn)?.is_some() {
-            warn!(
-                target: LOG_TARGET,
-                "Tried to insert transactional output with hash:{} but it already exists",
-                hash.to_hex()
-            );
-
-            return Ok(false);
-        }
 
         let row: TxOutput = output.try_into()?;
         if row.hash != hash.to_hex() {
@@ -77,6 +68,7 @@ impl TxOutput {
         Ok(true)
     }
 
+    /// This will fetch a transactional output via a hash
     pub fn fetch(hash: &HashOutput, conn: &PgConnection) -> Result<Option<TxOutput>, PostgresError> {
         let mut results: Vec<TxOutput> = tx_outputs::table
             .filter(tx_outputs::hash.eq(hash.to_hex()))
@@ -86,16 +78,18 @@ impl TxOutput {
         Ok(results.pop())
     }
 
-    pub fn fetch_output(hash: &HashOutput, conn: &PgConnection) -> Result<Vec<TxOutput>, PostgresError> {
+    /// This will fetch all block outputs of the given block
+    pub fn fetch_block_outputs(hash: &HashOutput, conn: &PgConnection) -> Result<Vec<TxOutput>, PostgresError> {
         let mut results: Vec<TxOutput> = tx_outputs::table
-            .filter(tx_outputs::tx_output.eq(hash.to_hex()))
+            .filter(tx_outputs::created_in_block.eq(hash.to_hex()))
             .get_results(conn)
             .map_err(|e| PostgresError::NotFound(e.to_string()))?;
 
         Ok(results)
     }
 
-    pub fn fetch_spent_output(hash: &HashOutput, conn: &PgConnection) -> Result<Vec<TxOutput>, PostgresError> {
+    /// This will fetch all block inputs of the given block
+    pub fn fetch_block_inputs(hash: &HashOutput, conn: &PgConnection) -> Result<Vec<TxOutput>, PostgresError> {
         let mut results: Vec<TxOutput> = tx_outputs::table
             .filter(tx_outputs::spent.eq(hash.to_hex()))
             .get_results(conn)
@@ -104,6 +98,7 @@ impl TxOutput {
         Ok(results)
     }
 
+    // This will a transactional output only if the output is unspent
     pub fn fetch_unspent_output(hash: &HashOutput, conn: &PgConnection) -> Result<Vec<TxOutput>, PostgresError> {
         let mut results: Vec<TxOutput> = tx_outputs::table
             .filter(tx_outputs::hash.eq(hash.to_hex()))
@@ -126,7 +121,7 @@ impl TryFrom<&TransactionOutput> for TxOutput {
             features_maturity: value.features.maturity as i64,
             commitment: value.commitment.to_hex(),
             proof: Some(value.proof.0.clone()),
-            tx_output: None,
+            created_in_block: None,
             spent: None,
         })
     }
