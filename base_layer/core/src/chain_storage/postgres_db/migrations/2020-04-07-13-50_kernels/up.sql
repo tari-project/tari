@@ -1,4 +1,4 @@
-create table kernels (
+create table  if not exists kernels (
     hash TEXT NOT NULL PRIMARY KEY,
     features SMALLINT NOT NULL,
     fee BIGINT NOT NULL,

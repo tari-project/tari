@@ -1,4 +1,4 @@
-create table metadata
+create table if not exists metadata
 (
     id               INT       NOT NULL PRIMARY KEY check (id = 0),
     chain_height     BIGINT   NULL,
