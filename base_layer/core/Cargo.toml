@@ -64,6 +64,8 @@ croaring = { version = "=0.3.9", optional = true }
 config = { version = "0.9.3" }
 strum = "0.17.1"
 strum_macros = "0.17.1"
+diesel = {version="1.4.4", default_features=false, features = ["postgres", "uuid", "chrono", "serde_json", "32-column-tables"]}
+diesel_derives = "1.4.1"
 
 [dev-dependencies]
 tari_p2p = {path = "../../base_layer/p2p", version = "^0.0", features=["test-mocks"]}
