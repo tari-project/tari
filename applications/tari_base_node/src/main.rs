@@ -93,7 +93,7 @@ use parser::Parser;
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
 use std::{path::PathBuf, sync::Arc};
 use structopt::StructOpt;
-use tari_common::GlobalConfig;
+use tari_common::{ConfigBootstrap, GlobalConfig};
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
 use tari_shutdown::Shutdown;
 use tokio::runtime::Runtime;
@@ -124,16 +124,16 @@ fn main() {
 /// Sets up the base node and runs the cli_loop
 fn main_inner() -> Result<(), ExitCodes> {
     // Parse and validate command-line arguments
-    let mut arguments = cli::Arguments::from_args();
+    let mut bootstrap = ConfigBootstrap::from_args();
 
-    // check and initialize configuration files
-    arguments.bootstrap.init_dirs()?;
-
-    // Initialise the logger
-    arguments.bootstrap.initialize_logging()?;
+    // Check and initialize configuration files
+    bootstrap.init_dirs()?;
 
     // Load and apply configuration file
-    let cfg = arguments.bootstrap.load_configuration()?;
+    let cfg = bootstrap.load_configuration()?;
+
+    // Initialise the logger
+    bootstrap.initialize_logging()?;
 
     // Populate the configuration struct
     let node_config = GlobalConfig::convert_from(cfg).map_err(|err| {
@@ -153,7 +153,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     let wallet_identity = setup_node_identity(
         &node_config.wallet_identity_file,
         &node_config.public_address,
-        arguments.create_id ||
+        bootstrap.create_id ||
             // If the base node identity exists, we want to be sure that the wallet identity exists
             node_config.identity_file.exists(),
         PeerFeatures::COMMUNICATION_CLIENT,
@@ -161,7 +161,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     let node_identity = setup_node_identity(
         &node_config.identity_file,
         &node_config.public_address,
-        arguments.create_id,
+        bootstrap.create_id,
         PeerFeatures::COMMUNICATION_NODE,
     )?;
 
@@ -180,7 +180,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         })?;
 
     // Exit if create_id or init arguments were run
-    if arguments.create_id {
+    if bootstrap.create_id {
         info!(
             target: LOG_TARGET,
             "Node ID created at '{}'. Done.",
@@ -189,7 +189,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         return Ok(());
     }
 
-    if arguments.bootstrap.init {
+    if bootstrap.init {
         info!(target: LOG_TARGET, "Default configuration created. Done.");
         return Ok(());
     }

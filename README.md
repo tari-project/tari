@@ -67,19 +67,10 @@ A successful build should output something as follows
     Finished release [optimized] target(s) in 12m 24s
 ```
 
-#### Run
+Alternatively, cargo can build and install the executable into `~/.cargo/bin`, so it will be executable from anywhere 
+on your system.
 
-The executable is currently inside your `target/release` folder. You can run it from that folder if you like, but you'll
-more likely want to copy it somewhere more convenient. You can simply run
-
-    cargo install -p tari_base_node
-
-and cargo will copy the executable into `~/.cargo/bin`. This folder was added to your path in a previous step, so it
-will be executable from anywhere on your system.
-
-Alternatively, you can run the node from your source folder with the command
-
-    cargo run -p tari_base_node
+    cargo install tari_base_node
 
 ### Building from source (Windows 10)
 
@@ -172,21 +163,39 @@ A successful build should output something as follows
     Finished release [optimized] target(s) in 12m 24s
 ```
 
-Alternatively, cargo can build and install the executable into `%USERPROFILE%\.cargo\bin`:
+Alternatively, cargo can build and install the executable into `%USERPROFILE%\.cargo\bin`, so it will be executable from 
+anywhere on your system.
 
     cargo install tari_base_node
 
-#### Run
+### Running the base node
 
-The executable will either be inside your `%USERPROFILE%\Code\tari\target\release` or the `%USERPROFILE%\.cargo\bin` 
-folder, depending on the build choice above. If the former build method was used, you can run it from that folder, 
-or you more likely want to copy it somewhere more convenient. Using the latter method,  it will be executable from 
-anywhere on your system, as `%USERPROFILE%\.cargo\bin` was added to your path in a previous step.
+The executable will either be inside your `~/tari/target/release` (on Linux) or `%USERPROFILE%\Code\tari\target\release` 
+(on Windows) folder, or alternatively, inside your `~/.cargo/bin` (on Linux) `%USERPROFILE%\.cargo\bin` (on Windows)
+folder, depending on the build choice above, and must be run from the command line. If the former build method was used, 
+you can run it from that folder, or you more likely want to copy it somewhere more convenient.
 
-Alternatively, you can run the node from your source folder with the command
+To run from any folder of your choice, where the executable is visible in the path (first time use):
 
-    cargo run --bin tari_base_node
+    tari_base_node --init --create-id
+    tari_base_node
 
+Consecutive runs:
+
+    tari_base_node
+
+Alternatively, you can run the node from your source folder using `cargo` (first time use):
+
+    cargo run --bin tari_base_node --release --  --init --create-id
+    cargo run --bin tari_base_node --release
+
+Consecutive runs:
+
+    cargo run --bin tari_base_node --release
+
+Using all the default options, the blockchain database, wallet database, log files and all configuration files will be 
+created in the `~/.tari` (on Linux) or `%USERPROFILE%\.tari` (on Windows) folder. Alternatively, by specifying 
+`--base-path <base-path>` on the command line as well, all of this will be created in that folder.  
 
 ### Building a docker image
 
@@ -209,8 +218,6 @@ Test your image
 ### Advanced build configurations
 
 * [Building with Vagrant](https://github.com/tari-project/tari/issues/1407)
-
-
 
 # Project documentation
 
@@ -256,36 +263,6 @@ and other Tari-related discussions.
 the first to know about important updates and announcements about the project.
 
 Most of the technical conversation about Tari development happens on [#FreeNode IRC](https://freenode.net/) in the #tari-dev room.
-
-
-and cargo will copy the executable into `~/.cargo/bin`. This folder was added to your path in a previous step, so it
-will be executable from anywhere on your system.
-
-Alternatively, you can run the node from your source folder with the command
-
-    cargo run -p tari_base_node
-
-### Building a docker image
-
-If you don't want to use the docker images provided by the community, you can roll your own!
-
-First, clone the Tari repo
-```bash
-git clone git@github.com:tari-project/tari.git
-```
-
-Then build the image using the dockerfile in `buildtools`. The base node docker file build the application and then
-places the binary inside a small container, keeping the executable binary to a minimum.
-
-    docker build -t tari_base_node:latest -f ./buildtools/base_node.Dockerfile .
-
-Test your image
-
-    docker run tari_base_node tari_base_node --help
-
-### Advanced build configurations
-
-Our community has contr
 
 # Project documentation
 

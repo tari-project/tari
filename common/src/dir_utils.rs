@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use path_clean::PathClean;
 use std::path::PathBuf;
 
 /// Create the default data directory (`~/.tari` on OSx and Linux, for example) if it doesn't already exist
@@ -28,7 +29,7 @@ pub fn create_data_directory(base_dir: Option<&PathBuf>) -> Result<(), std::io::
 
     if !home.exists() {
         println!("Creating {:?}", home);
-        std::fs::create_dir(home)
+        std::fs::create_dir_all(home)
     } else {
         Ok(())
     }
@@ -52,4 +53,51 @@ pub fn default_path(filename: &str, base_path: Option<&PathBuf>) -> PathBuf {
     });
     home.push(filename);
     home
+}
+
+pub fn absolute_path<P>(path: P) -> PathBuf
+where P: AsRef<std::path::Path> {
+    let path = path.as_ref();
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir().unwrap_or_default().join(path)
+    }
+    .clean()
+}
+
+#[cfg(test)]
+mod test {
+    use crate::dir_utils;
+    use std::path::PathBuf;
+    use tari_test_utils::random::string;
+    use tempdir::TempDir;
+
+    #[test]
+    fn test_multiple_levels_create_data_directory() {
+        let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+        let dir = &PathBuf::from(
+            temp_dir.path().to_path_buf().display().to_string().to_owned() +
+                "/" +
+                &(0..12)
+                    .collect::<Vec<usize>>()
+                    .iter()
+                    .map(|_| string(2))
+                    .collect::<Vec<std::string::String>>()
+                    .join("/") +
+                "/",
+        );
+
+        assert_eq!(std::path::Path::new(&dir.display().to_string()).exists(), false);
+        dir_utils::create_data_directory(Some(&dir)).unwrap();
+        assert_eq!(std::path::Path::new(&dir.display().to_string()).exists(), true);
+    }
+
+    #[test]
+    fn test_absolute_path_from_relative_path() {
+        let current_path = std::env::current_dir().unwrap_or_default();
+        let relative_path = PathBuf::from("./01/02/");
+        let joined_path = current_path.join(&relative_path);
+        assert_eq!(dir_utils::absolute_path(&relative_path), joined_path);
+    }
 }
