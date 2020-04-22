@@ -95,6 +95,7 @@ impl Kernels {
         Ok(())
     }
 
+    /// This function will delete the  kernel with the provided hash
     pub fn delete_at_hash(hash: HashOutput, conn: &PgConnection) -> Result<(), PostgresError> {
         diesel::delete(kernels::table.filter(kernels::hash.eq(hash)))
             .execute(conn)

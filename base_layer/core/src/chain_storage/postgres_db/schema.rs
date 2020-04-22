@@ -49,7 +49,7 @@ table! {
         features_maturity -> Int8,
         commitment -> Text,
         proof -> Nullable<Bytea>,
-        input -> Text,
+        tx_output -> Nullable<Text>,
         spent -> Nullable<Text>,
     }
 }

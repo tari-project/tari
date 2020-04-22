@@ -4,12 +4,12 @@ create table tx_outputs(
     features_maturity BIGINT NOT NULL,
     commitment TEXT NOT NULL,
     proof BYTEA NULL,
-    input TEXT NOT NULL REFERENCES block_headers(hash),
+    tx_output TEXT NULL REFERENCES block_headers(hash),
     spent TEXT NULL REFERENCES block_headers(hash)
 );
 
 create index index_tx_outputs_hash on tx_outputs(hash);
-create index index_tx_outputs_input on tx_outputs(input);
+create index index_tx_outputs_tx_output on tx_outputs(tx_output);
 create index index_tx_outputs_spent on tx_outputs(spent);
 cluster tx_outputs using index_tx_outputs_hash;
 
