@@ -1,0 +1,208 @@
+// Copyright 2019. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+syntax = "proto3";
+
+package tari.base_node;
+
+import "google/protobuf/wrappers.proto";
+import "google/protobuf/timestamp.proto";
+
+// The gRPC interface for interacting with the base node.
+service BaseNode {
+    // Lists headers in the current best chain
+    rpc ListHeaders(ListHeadersRequest) returns (ListHeadersResponse);
+    // Returns blocks in the current best chain. Currently only supports querying by height
+    rpc GetBlocks(GetBlocksRequest) returns (GetBlocksResponse);
+}
+
+// The request used for querying headers from the base node. The parameters `from_height` and `num_headers` can be used
+// to page through the current best chain.
+message ListHeadersRequest {
+    // The height to start at. Depending on sorting, will either default to use the tip or genesis block, for `SORTING_DESC`
+    // and `SORTING_ASC` respectively, if a value is not provided. The first header returned will be at this height
+    // followed by `num_headers` - 1 headers in the direction specified by `sorting`.
+    uint64 from_height = 1;
+    // The number of headers to return. If not specified, it will default to 10
+    uint64 num_headers = 2;
+    // The ordering to return the headers in. If not specified will default to SORTING_DESC. Note that if `from_height`
+    // is not specified or is 0, if `sorting` is SORTING_DESC, the tip will be used as `from_height`, otherwise the
+    // block at height 0 will be used.
+    Sorting sorting = 3;
+}
+
+// The return type of rpc ListHeaders. See ListHeadersRequest for more info.
+message ListHeadersResponse {
+   repeated BlockHeader headers = 1;
+}
+
+// The request used for querying blocks in the base node's current best chain. Currently only querying by height is
+// available. Multiple blocks may be queried.e.g. [189092,100023,122424]. The order in which they are returned is not
+// guarenteed.
+message GetBlocksRequest {
+  repeated uint64 heights = 1;
+}
+
+// The return type of the rpc GetBlocks. Blocks are not guaranteed to be returned in the order requested.
+message GetBlocksResponse {
+    repeated HistoricalBlock blocks = 1;
+}
+
+// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
+// and the transaction kernels.
+message BlockHeader {
+    // The hash of the block
+    bytes hash = 1;
+    // Version of the block
+    uint32 version = 2;
+    // Height of this block since the genesis block (height 0)
+    uint64 height = 3;
+    // Hash of the block previous to this in the chain.
+    bytes prev_hash = 4;
+    // Timestamp at which the block was built.
+    google.protobuf.Timestamp timestamp = 5;
+    // This is the UTXO merkle root of the outputs
+    // This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
+    bytes output_mr = 6;
+    // This is the MMR root of the range proofs
+    bytes range_proof_mr = 7;
+    // This is the MMR root of the kernels
+    bytes kernel_mr = 8;
+    // Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
+    // block from the total kernel offset of the previous block header.
+    bytes total_kernel_offset = 9;
+    // Nonce increment used to mine this block.
+    uint64 nonce = 10;
+    // Proof of work metadata
+    ProofOfWork pow = 11;
+}
+
+// Metadata required for validating the Proof of Work calculation
+message ProofOfWork {
+    // 0 = Monero
+    // 1 = Blake
+    uint64 pow_algo = 1;
+    uint64 accumulated_monero_difficulty = 2;
+    uint64 accumulated_blake_difficulty = 3;
+    bytes pow_data = 4;
+}
+
+enum Sorting {
+    SORTING_DESC = 0;
+    SORTING_ASC = 1;
+}
+
+// A Tari block. Blocks are linked together into a blockchain.
+message Block {
+    BlockHeader header = 1;
+    AggregateBody body = 2;
+}
+
+// The representation of a historical block in the blockchain. It is essentially identical to a protocol-defined
+// block but contains some extra metadata that clients such as Block Explorers will find interesting.
+message HistoricalBlock {
+    // The number of blocks that have been mined since this block, including this one. The current tip will have one
+    // confirmation.
+    uint64 confirmations = 1;
+    // An array of commitments of the outputs from this block that have subsequently been spent.
+    repeated bytes spent_commitments = 2;
+    // The underlying block
+    Block block = 3;
+}
+
+
+// The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
+// why it is necessary, refer to the
+// [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
+// The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
+// this transaction can be mined) and the transaction fee, in cleartext.
+message TransactionKernel {
+    // Options for a kernel's structure or use
+    uint32 features = 1;
+    /// Fee originally included in the transaction this proof is for (in MicroTari)
+    uint64 fee = 2;
+    // This kernel is not valid earlier than lock_height blocks
+    // The max lock_height of all *inputs* to this transaction
+    uint64 lock_height = 3;
+    // This is an optional field used by committing to additional tx meta data between the two parties
+    bytes meta_info = 4;
+    // This is an optional field and is the hash of the kernel this kernel is linked to.
+    // This field is for example for relative time-locked transactions
+    bytes linked_kernel = 5;
+    // Remainder of the sum of all transaction commitments. If the transaction
+    // is well formed, amounts components should sum to zero and the excess
+    // is hence a valid public key.
+    bytes excess = 6;
+    // The signature proving the excess is a valid public key, which signs
+    // the transaction fee.
+    Signature excess_sig = 7;
+}
+
+// A transaction input.
+//
+// Primarily a reference to an output being spent by the transaction.
+message TransactionInput {
+    // The features of the output being spent. We will check maturity for all outputs.
+    OutputFeatures features = 1;
+    // The commitment referencing the output being spent.
+    bytes commitment = 2;
+}
+
+// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
+// blinded value for the output while the range proof guarantees the commitment includes a positive value without
+// overflow and the ownership of the private key.
+message TransactionOutput {
+    // Options for an output's structure or use
+    OutputFeatures features = 1;
+    // The homomorphic commitment representing the output amount
+    bytes commitment = 2;
+    // A proof that the commitment is in the right range
+    bytes range_proof = 3;
+}
+
+// Options for UTXO's
+message OutputFeatures {
+    // Flags are the feature flags that differentiate between outputs, eg Coinbase all of which has different rules
+    uint32 flags = 1;
+    // The maturity of the specific UTXO. This is the min lock height at which an UTXO can be spend. Coinbase UTXO
+    // require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
+    uint64 maturity = 2;
+}
+
+// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
+// cut-through means that blocks and transactions have the same structure. The inputs, outputs and kernels should
+// be sorted by their Blake2b-256bit digest hash
+message AggregateBody {
+    // List of inputs spent by the transaction.
+    repeated TransactionInput inputs = 1;
+    // List of outputs the transaction produces.
+    repeated TransactionOutput outputs = 2;
+    // Kernels contain the excesses and their signatures for transaction
+    repeated TransactionKernel kernels = 3;
+}
+
+
+// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
+// employed by redefining this type.
+message Signature {
+    bytes public_nonce = 1;
+    bytes signature = 2;
+}

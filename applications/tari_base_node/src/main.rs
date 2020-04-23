@@ -79,6 +79,7 @@ mod builder;
 mod cli;
 /// Application-specific constants
 mod consts;
+mod grpc;
 /// Miner lib Todo hide behind feature flag
 mod miner;
 /// Parser module used to control user commands
@@ -86,6 +87,7 @@ mod parser;
 mod utils;
 
 use crate::builder::{create_new_base_node_identity, load_identity};
+
 use log::*;
 use parser::Parser;
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
@@ -94,7 +96,7 @@ use structopt::StructOpt;
 use tari_common::GlobalConfig;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
 use tari_shutdown::Shutdown;
-use tokio::runtime::Runtime;
+use tokio::{runtime, runtime::Runtime};
 
 pub const LOG_TARGET: &str = "base_node::app";
 
@@ -197,6 +199,10 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     cli::print_banner(parser.get_commands(), 3);
 
+    let grpc = crate::grpc::BaseNodeGrpcServer::new(rt.handle().clone(), &ctx);
+
+    rt.spawn(start_grpc(grpc));
+
     let base_node_handle = rt.spawn(ctx.run(rt.handle().clone()));
 
     info!(
@@ -213,6 +219,19 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     println!("Goodbye!");
     Ok(())
+}
+
+/// Runs the gRPC server
+async fn start_grpc(grpc: crate::grpc::BaseNodeGrpcServer) {
+    info!(target: LOG_TARGET, "Starting GRPC");
+    let addr = "0.0.0.0:50051".parse().unwrap();
+
+    Server::builder()
+        .add_service(crate::grpc::base_node_grpc::base_node_server::BaseNodeServer::new(grpc))
+        .serve(addr)
+        .await
+        .expect("Could not start GRPC");
+    info!(target: LOG_TARGET, "Stopping GRPC");
 }
 
 /// Sets up the tokio runtime based on the configuration

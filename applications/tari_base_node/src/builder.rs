@@ -243,7 +243,7 @@ impl NodeContainer {
 /// `BaseNodeContext` is not intended to be ever used directly, so is a private struct. It is only ever created in the
 /// [NodeContainer] enum, which serves the purpose  of abstracting the specific `BlockchainBackend` instance away
 /// from users of the full base node stack.
-struct BaseNodeContext<B: BlockchainBackend> {
+pub struct BaseNodeContext<B: BlockchainBackend> {
     pub base_node_comms: CommsNode,
     pub base_node_dht: Dht,
     pub wallet_comms: CommsNode,
