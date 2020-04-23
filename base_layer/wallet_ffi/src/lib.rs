@@ -3772,6 +3772,22 @@ pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
     }
 }
 
+/// This function will log the provided string at debug level. To be used to have a client log messages to the LibWallet
+/// logs.
+///
+/// ## Arguments
+/// `msg` - A string that will be logged at the debug level. If msg is null nothing will be done.
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn log_debug_message(msg: *const c_char) {
+    if !msg.is_null() {
+        let message = CStr::from_ptr(msg).to_str().unwrap().to_owned();
+        debug!(target: LOG_TARGET, "{}", message);
+    }
+}
+
 #[cfg(test)]
 mod test {
     extern crate libc;
