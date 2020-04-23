@@ -96,10 +96,9 @@ where TBackend: TransactionBackend + Clone + 'static
 
     /// Execute the Transaction Send Protocol as an async task.
     pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
-        trace!(
+        info!(
             "Starting Transaction Send protocol for TxId: {} at Stage {:?}",
-            self.id,
-            self.stage
+            self.id, self.stage
         );
 
         // Only Send the transaction of the protocol stage is Initial. If the protocol is started in a later stage

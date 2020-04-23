@@ -138,10 +138,9 @@ fn verify_inputs<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<(), V
     for input in tx.body.inputs() {
         if is_stxo(db, input.hash()).map_err(|e| ValidationError::CustomError(e.to_string()))? {
             // we dont want to log this as a node or wallet might retransmit a transaction
-            trace!(
+            debug!(
                 target: LOG_TARGET,
-                "Transaction validation failed due to already spent input: {}",
-                input
+                "Transaction validation failed due to already spent input: {}", input
             );
             return Err(ValidationError::ContainsSTxO);
         }
