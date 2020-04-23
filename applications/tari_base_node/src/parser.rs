@@ -559,7 +559,7 @@ impl Parser {
             match transactions.get_completed_transactions().await {
                 Ok(transactions) => {
                     if transactions.is_empty() {
-                        println!("No pending inbound transactions found.");
+                        println!("No completed transactions found.");
                         return;
                     }
                     // TODO: This doesn't scale well because hashmap has a random ordering. Support for this query
@@ -1034,7 +1034,7 @@ impl Parser {
             let start = start.unwrap();
             let temp_height = height.clone().unwrap();
             if temp_height <= start {
-                println!("start hight should be bigger than the end height");
+                println!("Start height should be bigger than the end height");
                 return Vec::new();
             }
             (temp_height - start) as usize

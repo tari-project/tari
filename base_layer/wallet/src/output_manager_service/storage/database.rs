@@ -72,7 +72,7 @@ pub trait OutputManagerBackend: Send + Sync {
     /// This method must run through all the `PendingTransactionOutputs` and test if any have existed for longer that
     /// the specified duration. If they have they should be cancelled.
     fn timeout_pending_transactions(&self, period: Duration) -> Result<(), OutputManagerStorageError>;
-    /// This method will increment the currently stored key index for the key manager config. Increment this after eac
+    /// This method will increment the currently stored key index for the key manager config. Increment this after each
     /// key is generated
     fn increment_key_index(&self) -> Result<(), OutputManagerStorageError>;
     /// If an unspent output is detected as invalid (i.e. not available on the blockchain) then it should be moved to

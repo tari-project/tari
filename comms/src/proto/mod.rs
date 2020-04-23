@@ -23,8 +23,5 @@
 #[path = "tari.comms.envelope.rs"]
 pub(crate) mod envelope;
 
-#[path = "tari.comms.control_service.rs"]
-pub(crate) mod control_service;
-
 #[path = "tari.comms.identity.rs"]
 pub(crate) mod identity;
