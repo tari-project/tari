@@ -22,6 +22,7 @@
 
 use crate::chain_storage::ChainMetadata;
 use futures::{stream::Fuse, StreamExt};
+use std::fmt::{Display, Error, Formatter};
 use tari_broadcast_channel::Subscriber;
 use tari_comms::peer_manager::NodeId;
 
@@ -37,6 +38,13 @@ impl PeerChainMetadata {
             node_id,
             chain_metadata,
         }
+    }
+}
+
+impl Display for PeerChainMetadata {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        writeln!(f, "Node ID: {}", self.node_id)?;
+        writeln!(f, "Chain metadata: {}", self.chain_metadata)
     }
 }
 
