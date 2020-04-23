@@ -432,6 +432,9 @@ bool wallet_cancel_pending_transaction(struct TariWallet *wallet, unsigned long 
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);
 
+/// This function will log the provided string at debug level. To be used to have a client log messages to the LibWallet
+void log_debug_message(const char* msg);
+
 #ifdef __cplusplus
 }
 #endif
