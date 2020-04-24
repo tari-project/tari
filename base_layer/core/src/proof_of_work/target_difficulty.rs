@@ -21,55 +21,24 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::blockheader::BlockHeader,
-    proof_of_work::{
-        difficulty::DifficultyAdjustment,
-        error::DifficultyAdjustmentError,
-        lwma_diff::LinearWeightedMovingAverage,
-        Difficulty,
-        PowAlgorithm,
-    },
+    consensus::ConsensusManagerError,
+    proof_of_work::{difficulty::DifficultyAdjustment, lwma_diff::LinearWeightedMovingAverage, Difficulty},
 };
-use log::*;
-use std::cmp;
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
-pub const LOG_TARGET: &str = "c::pow::target_difficulty";
-
-/// Returns the estimated target difficulty for the specified PoW algorithm and provided header set.
+/// Returns the estimated target difficulty for the provided set of target difficulties.
 pub fn get_target_difficulty(
-    headers: Vec<BlockHeader>,
-    pow_algo: PowAlgorithm,
+    target_difficulties: Vec<(EpochTime, Difficulty)>,
     block_window: usize,
     target_time: u64,
+    initial_difficulty: Difficulty,
     max_block_time: u64,
-    min_pow_difficulty: Difficulty,
-) -> Result<Difficulty, DifficultyAdjustmentError>
+) -> Result<Difficulty, ConsensusManagerError>
 {
-    let height = headers.last().expect("Header set should not be empty").height;
-    debug!(target: LOG_TARGET, "Calculating target difficulty to height:{}", height);
-    let mut monero_lwma =
-        LinearWeightedMovingAverage::new(block_window, target_time, min_pow_difficulty, max_block_time);
-    let mut blake_lwma =
-        LinearWeightedMovingAverage::new(block_window, target_time, min_pow_difficulty, max_block_time);
-
-    // TODO: Store the target difficulty so that we don't have to calculate it for the whole chain
-    for header in headers {
-        match header.pow.pow_algo {
-            PowAlgorithm::Monero => monero_lwma.add(header.timestamp, monero_lwma.get_difficulty())?,
-            PowAlgorithm::Blake => blake_lwma.add(
-                header.timestamp,
-                cmp::max(min_pow_difficulty, blake_lwma.get_difficulty()),
-            )?,
-        }
+    let mut lwma = LinearWeightedMovingAverage::new(block_window, target_time, initial_difficulty, max_block_time);
+    for target_difficulty in target_difficulties {
+        lwma.add(target_difficulty.0, target_difficulty.1)?
     }
-
-    let target_difficulty = match pow_algo {
-        PowAlgorithm::Monero => monero_lwma.get_difficulty(),
-        PowAlgorithm::Blake => cmp::max(min_pow_difficulty, blake_lwma.get_difficulty()),
-    };
-    debug!(
-        target: LOG_TARGET,
-        "Target difficulty:{} at height:{} for PoW:{}", target_difficulty, height, pow_algo
-    );
+    let target_difficulty = lwma.get_difficulty();
     Ok(target_difficulty)
 }

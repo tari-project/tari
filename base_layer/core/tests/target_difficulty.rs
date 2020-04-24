@@ -23,17 +23,21 @@
 #[allow(dead_code)]
 mod helpers;
 
-use helpers::pow_blockchain::{append_to_pow_blockchain, calculate_accumulated_difficulty, create_test_pow_blockchain};
+use helpers::pow_blockchain::{calculate_accumulated_difficulty, create_test_pow_blockchain};
 use tari_core::{
     consensus::{ConsensusManagerBuilder, Network},
     helpers::create_mem_db,
-    proof_of_work::PowAlgorithm,
+    proof_of_work::{get_target_difficulty, PowAlgorithm},
 };
 
 #[test]
-fn test_initial_sync() {
+fn test_target_difficulty_at_tip() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let constants = consensus_manager.consensus_constants();
+    let block_window = constants.get_difficulty_block_window() as usize;
+    let target_time = constants.get_diff_target_block_interval();
+    let max_block_time = constants.get_difficulty_max_block_interval();
     let store = create_mem_db(&consensus_manager);
 
     let pow_algos = vec![
@@ -45,83 +49,45 @@ fn test_initial_sync() {
         PowAlgorithm::Monero,
         PowAlgorithm::Monero,
         PowAlgorithm::Blake,
-    ];
-    create_test_pow_blockchain(&store, pow_algos.clone(), &consensus_manager.consensus_constants());
-
-    assert_eq!(
-        consensus_manager.get_target_difficulty(&*store.db_read_access().unwrap(), PowAlgorithm::Monero),
-        Ok(calculate_accumulated_difficulty(
-            &store,
-            vec![2, 5, 6],
-            &consensus_manager.consensus_constants()
-        ))
-    );
-    assert_eq!(
-        consensus_manager.get_target_difficulty(&*store.db_read_access().unwrap(), PowAlgorithm::Blake),
-        Ok(calculate_accumulated_difficulty(
-            &store,
-            vec![0, 1, 3, 4, 7],
-            &consensus_manager.consensus_constants()
-        ))
-    );
-}
-
-#[test]
-fn test_sync_to_chain_tip() {
-    let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(&consensus_manager);
-
-    let pow_algos = vec![
-        PowAlgorithm::Blake, // Genesis block default
-        PowAlgorithm::Monero,
-        PowAlgorithm::Blake,
-        PowAlgorithm::Blake,
         PowAlgorithm::Monero,
         PowAlgorithm::Blake,
     ];
-    create_test_pow_blockchain(&store, pow_algos, &consensus_manager.consensus_constants());
-    assert_eq!(store.get_height(), Ok(Some(5)));
+    create_test_pow_blockchain(&store, pow_algos.clone(), &consensus_manager);
+
+    let height = store.get_metadata().unwrap().height_of_longest_chain.unwrap();
+    let pow_algo = PowAlgorithm::Monero;
+    let target_difficulties = store.fetch_target_difficulties(pow_algo, height, block_window).unwrap();
     assert_eq!(
-        consensus_manager.get_target_difficulty(&*store.db_read_access().unwrap(), PowAlgorithm::Monero),
+        get_target_difficulty(
+            target_difficulties,
+            block_window,
+            target_time,
+            constants.min_pow_difficulty(pow_algo),
+            max_block_time
+        ),
         Ok(calculate_accumulated_difficulty(
             &store,
-            vec![1, 4],
-            &consensus_manager.consensus_constants()
-        ))
-    );
-    assert_eq!(
-        consensus_manager.get_target_difficulty(&*store.db_read_access().unwrap(), PowAlgorithm::Blake),
-        Ok(calculate_accumulated_difficulty(
-            &store,
-            vec![0, 2, 3, 5],
-            &consensus_manager.consensus_constants()
+            pow_algo,
+            vec![2, 5, 6, 8],
+            &constants
         ))
     );
 
-    let pow_algos = vec![
-        PowAlgorithm::Blake,
-        PowAlgorithm::Monero,
-        PowAlgorithm::Blake,
-        PowAlgorithm::Monero,
-    ];
-    let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
-    append_to_pow_blockchain(&store, tip, pow_algos, &consensus_manager.consensus_constants());
-    assert_eq!(store.get_height(), Ok(Some(9)));
+    let pow_algo = PowAlgorithm::Blake;
+    let target_difficulties = store.fetch_target_difficulties(pow_algo, height, block_window).unwrap();
     assert_eq!(
-        consensus_manager.get_target_difficulty(&*store.db_read_access().unwrap(), PowAlgorithm::Monero),
+        get_target_difficulty(
+            target_difficulties,
+            block_window,
+            target_time,
+            constants.min_pow_difficulty(pow_algo),
+            max_block_time
+        ),
         Ok(calculate_accumulated_difficulty(
             &store,
-            vec![1, 4, 7, 9],
-            &consensus_manager.consensus_constants()
-        ))
-    );
-    assert_eq!(
-        consensus_manager.get_target_difficulty(&*store.db_read_access().unwrap(), PowAlgorithm::Blake),
-        Ok(calculate_accumulated_difficulty(
-            &store,
-            vec![0, 2, 3, 5, 6, 8],
-            &consensus_manager.consensus_constants()
+            pow_algo,
+            vec![0, 1, 3, 4, 7, 9],
+            &constants
         ))
     );
 }
@@ -130,13 +96,11 @@ fn test_sync_to_chain_tip() {
 fn test_target_difficulty_with_height() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let constants = consensus_manager.consensus_constants();
+    let block_window = constants.get_difficulty_block_window() as usize;
+    let target_time = constants.get_diff_target_block_interval();
+    let max_block_time = constants.get_difficulty_max_block_interval();
     let store = create_mem_db(&consensus_manager);
-    assert!(consensus_manager
-        .get_target_difficulty_with_height(&*store.db_read_access().unwrap(), PowAlgorithm::Monero, 5)
-        .is_err());
-    assert!(consensus_manager
-        .get_target_difficulty_with_height(&*store.db_read_access().unwrap(), PowAlgorithm::Blake, 5)
-        .is_err());
 
     let pow_algos = vec![
         PowAlgorithm::Blake, // GB default
@@ -146,56 +110,97 @@ fn test_target_difficulty_with_height() {
         PowAlgorithm::Monero,
         PowAlgorithm::Blake,
     ];
-    create_test_pow_blockchain(&store, pow_algos, &consensus_manager.consensus_constants());
+    create_test_pow_blockchain(&store, pow_algos, &consensus_manager);
 
+    let pow_algo = PowAlgorithm::Monero;
     assert_eq!(
-        consensus_manager.get_target_difficulty_with_height(&*store.db_read_access().unwrap(), PowAlgorithm::Monero, 5),
+        get_target_difficulty(
+            store.fetch_target_difficulties(pow_algo, 5, block_window).unwrap(),
+            block_window,
+            target_time,
+            constants.min_pow_difficulty(pow_algo),
+            max_block_time
+        ),
         Ok(calculate_accumulated_difficulty(
             &store,
+            pow_algo,
             vec![1, 4],
-            &consensus_manager.consensus_constants()
+            &constants
         ))
     );
+
+    let pow_algo = PowAlgorithm::Blake;
     assert_eq!(
-        consensus_manager.get_target_difficulty_with_height(&*store.db_read_access().unwrap(), PowAlgorithm::Blake, 5),
+        get_target_difficulty(
+            store.fetch_target_difficulties(pow_algo, 5, block_window).unwrap(),
+            block_window,
+            target_time,
+            constants.min_pow_difficulty(pow_algo),
+            max_block_time
+        ),
         Ok(calculate_accumulated_difficulty(
             &store,
+            pow_algo,
             vec![0, 2, 3, 5],
-            &consensus_manager.consensus_constants()
+            &constants
         ))
     );
 
+    let pow_algo = PowAlgorithm::Monero;
     assert_eq!(
-        consensus_manager.get_target_difficulty_with_height(&*store.db_read_access().unwrap(), PowAlgorithm::Monero, 2),
-        Ok(calculate_accumulated_difficulty(
-            &store,
-            vec![1],
-            &consensus_manager.consensus_constants()
-        ))
+        get_target_difficulty(
+            store.fetch_target_difficulties(pow_algo, 2, block_window).unwrap(),
+            block_window,
+            target_time,
+            constants.min_pow_difficulty(pow_algo),
+            max_block_time
+        ),
+        Ok(calculate_accumulated_difficulty(&store, pow_algo, vec![1], &constants))
     );
+
+    let pow_algo = PowAlgorithm::Blake;
     assert_eq!(
-        consensus_manager.get_target_difficulty_with_height(&*store.db_read_access().unwrap(), PowAlgorithm::Blake, 2),
+        get_target_difficulty(
+            store.fetch_target_difficulties(pow_algo, 2, block_window).unwrap(),
+            block_window,
+            target_time,
+            constants.min_pow_difficulty(pow_algo),
+            max_block_time
+        ),
         Ok(calculate_accumulated_difficulty(
             &store,
+            pow_algo,
             vec![0, 2],
-            &consensus_manager.consensus_constants()
+            &constants
         ))
     );
 
+    let pow_algo = PowAlgorithm::Monero;
     assert_eq!(
-        consensus_manager.get_target_difficulty_with_height(&*store.db_read_access().unwrap(), PowAlgorithm::Monero, 3),
-        Ok(calculate_accumulated_difficulty(
-            &store,
-            vec![1],
-            &consensus_manager.consensus_constants()
-        ))
+        get_target_difficulty(
+            store.fetch_target_difficulties(pow_algo, 3, block_window).unwrap(),
+            block_window,
+            target_time,
+            constants.min_pow_difficulty(pow_algo),
+            max_block_time
+        ),
+        Ok(calculate_accumulated_difficulty(&store, pow_algo, vec![1], &constants))
     );
+
+    let pow_algo = PowAlgorithm::Blake;
     assert_eq!(
-        consensus_manager.get_target_difficulty_with_height(&*store.db_read_access().unwrap(), PowAlgorithm::Blake, 3),
+        get_target_difficulty(
+            store.fetch_target_difficulties(pow_algo, 3, block_window).unwrap(),
+            block_window,
+            target_time,
+            constants.min_pow_difficulty(pow_algo),
+            max_block_time
+        ),
         Ok(calculate_accumulated_difficulty(
             &store,
+            pow_algo,
             vec![0, 2, 3],
-            &consensus_manager.consensus_constants()
+            &constants
         ))
     );
 }

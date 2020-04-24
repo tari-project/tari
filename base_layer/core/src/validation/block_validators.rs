@@ -31,7 +31,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{transaction::OutputFlags, types::CryptoFactories},
     validation::{
-        helpers::{check_achieved_difficulty, check_median_timestamp},
+        helpers::{check_achieved_and_target_difficulty, check_median_timestamp},
         StatelessValidation,
         Validation,
         ValidationError,
@@ -114,7 +114,7 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator {
             .height_of_longest_chain
             .unwrap_or(0);
         check_median_timestamp(db, &block.header, tip_height, self.rules.clone())?;
-        check_achieved_difficulty(db, &block.header, tip_height, self.rules.clone())?;
+        check_achieved_and_target_difficulty(db, &block.header, tip_height, self.rules.clone())?;
         Ok(())
     }
 }
