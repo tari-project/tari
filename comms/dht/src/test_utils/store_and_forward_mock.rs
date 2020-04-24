@@ -130,6 +130,7 @@ impl StoreAndForwardMock {
                 stored_at: Utc::now().naive_utc(),
             }),
             SendStoreForwardRequestToPeer(_) => {},
+            SendStoreForwardRequestNeighbours => {},
         }
     }
 }

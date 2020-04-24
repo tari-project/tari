@@ -25,8 +25,7 @@ pub struct DhtHeader {
 pub mod dht_header {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Destination {
-        /// The sender has chosen not to disclose the message destination, or the destination is
-        /// the peer being sent to.
+        /// The sender has chosen not to disclose the message destination
         #[prost(bool, tag = "2")]
         Unknown(bool),
         /// Destined for a particular public key
