@@ -56,9 +56,4 @@ table! {
 
 joinable!(kernels -> block_headers (block_hash));
 
-allow_tables_to_appear_in_same_query!(
-    block_headers,
-    kernels,
-    metadata,
-    tx_outputs,
-);
+allow_tables_to_appear_in_same_query!(block_headers, kernels, metadata, tx_outputs,);
