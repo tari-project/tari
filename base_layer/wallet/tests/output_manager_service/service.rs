@@ -905,7 +905,7 @@ fn coin_split_with_change<T: Clone + OutputManagerBackend + 'static>(backend: T)
     assert_eq!(coin_split_tx.body.inputs().len(), 2);
     assert_eq!(coin_split_tx.body.outputs().len(), split_count + 1);
     assert_eq!(fee, Fee::calculate(fee_per_gram, 1, 2, split_count + 1));
-    assert_eq!(amount, val1 + val2);
+    assert_eq!(amount, val2 + val3);
 }
 
 #[test]

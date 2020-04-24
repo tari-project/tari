@@ -549,9 +549,7 @@ where
         message: String,
     ) -> Result<SenderTransactionProtocol, OutputManagerError>
     {
-        let (outputs, _) = self
-            .select_utxos(amount, fee_per_gram, 1, UTXOSelectionStrategy::MaturityThenSmallest)
-            .await?;
+        let (outputs, _) = self.select_utxos(amount, fee_per_gram, 1, None).await?;
         let total = outputs.iter().fold(MicroTari::from(0), |acc, x| acc + x.value);
 
         let offset = PrivateKey::random(&mut OsRng);
@@ -685,7 +683,7 @@ where
         amount: MicroTari,
         fee_per_gram: MicroTari,
         output_count: usize,
-        strategy: UTXOSelectionStrategy,
+        strategy: Option<UTXOSelectionStrategy>,
     ) -> Result<(Vec<UnblindedOutput>, bool), OutputManagerError>
     {
         let mut utxos = Vec::new();
@@ -694,6 +692,21 @@ where
         let mut fee_with_change = MicroTari::from(0);
 
         let uo = self.db.fetch_sorted_unspent_outputs().await?;
+
+        // Heuristic for selecting strategy: Default to MaturityThenSmallest, but if amount >
+        // alpha * largest UTXO, use Largest
+        let strategy = match (strategy, uo.is_empty()) {
+            (Some(s), _) => s,
+            (None, true) => UTXOSelectionStrategy::Smallest,
+            (None, false) => {
+                let largest_utxo = &uo[uo.len() - 1];
+                if amount > largest_utxo.value {
+                    UTXOSelectionStrategy::Largest
+                } else {
+                    UTXOSelectionStrategy::MaturityThenSmallest
+                }
+            },
+        };
 
         let uo = match strategy {
             UTXOSelectionStrategy::Smallest => uo,
@@ -708,6 +721,7 @@ where
                 });
                 new_uo
             },
+            UTXOSelectionStrategy::Largest => uo.into_iter().rev().collect(),
         };
 
         let mut require_change_output = false;
@@ -788,7 +802,7 @@ where
                 total_split_amount,
                 fee_per_gram,
                 output_count,
-                UTXOSelectionStrategy::MaturityThenSmallest,
+                Some(UTXOSelectionStrategy::Largest),
             )
             .await?;
         let utxo_total = inputs.iter().fold(MicroTari::from(0), |acc, x| acc + x.value);
@@ -876,6 +890,8 @@ pub enum UTXOSelectionStrategy {
     Smallest,
     // Start from oldest maturity to reduce the likelihood of grabbing locked up UTXOs
     MaturityThenSmallest,
+    // A strategy that selects the largest UTXOs first. Preferred when the amount is large
+    Largest,
 }
 
 /// This struct holds the detailed balance of the Output Manager Service.
