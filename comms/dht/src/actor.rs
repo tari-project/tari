@@ -411,9 +411,9 @@ impl<'a> DhtActor<'a> {
                 )
                 .await
             },
-            Random(n) => {
+            Random(n, excluded) => {
                 // Send to a random set of peers of size n that are Communication Nodes
-                peer_manager.random_peers(n).await.map_err(Into::into)
+                peer_manager.random_peers(n, excluded).await.map_err(Into::into)
             },
             // TODO: This is a common and expensive search - values here should be cached
             Neighbours(exclude, include_all_communication_clients) => {

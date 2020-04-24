@@ -349,12 +349,17 @@ where DS: KeyValueStore<PeerId, Peer>
         Ok(nearest_identities)
     }
 
-    /// Compile a random list of peers of size _n_
-    pub fn random_peers(&self, n: usize) -> Result<Vec<Peer>, PeerManagerError> {
-        // TODO: Send to a random set of Communication Nodes
+    /// Compile a random list of communication node peers of size _n_ that are not banned or offline
+    pub fn random_peers(&self, n: usize, exclude_peers: Vec<NodeId>) -> Result<Vec<Peer>, PeerManagerError> {
         let mut peer_keys = self
             .peer_db
-            .filter(|(_, peer)| !peer.is_banned() && peer.features == PeerFeatures::COMMUNICATION_NODE)
+            .filter(|(_, peer)| {
+                !peer.is_recently_offline() &&
+                    !peer.is_offline() &&
+                    !peer.is_banned() &&
+                    peer.features == PeerFeatures::COMMUNICATION_NODE &&
+                    !exclude_peers.contains(&peer.node_id)
+            })
             .map(|pairs| pairs.into_iter().map(|(k, _)| k).collect::<Vec<_>>())
             .map_err(PeerManagerError::DatabaseError)?;
 

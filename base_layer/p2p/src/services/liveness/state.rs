@@ -74,7 +74,7 @@ pub struct LivenessState {
     pongs_received: AtomicUsize,
     pings_sent: AtomicUsize,
     pongs_sent: AtomicUsize,
-    num_active_neighbours: AtomicUsize,
+    num_active_peers: AtomicUsize,
 
     pong_metadata: Metadata,
     nodes_to_monitor: HashMap<NodeId, NodeStats>,
@@ -109,13 +109,12 @@ impl LivenessState {
         self.pongs_received.load(Ordering::Relaxed)
     }
 
-    pub fn num_active_neighbours(&self) -> usize {
-        self.num_active_neighbours.load(Ordering::Relaxed)
+    pub fn num_active_peers(&self) -> usize {
+        self.num_active_peers.load(Ordering::Relaxed)
     }
 
-    pub fn set_num_active_neighbours(&self, num_active_neighbours: usize) {
-        self.num_active_neighbours
-            .store(num_active_neighbours, Ordering::Relaxed);
+    pub fn set_num_active_peers(&self, n: usize) {
+        self.num_active_peers.store(n, Ordering::Relaxed);
     }
 
     #[cfg(test)]
@@ -155,6 +154,11 @@ impl LivenessState {
             .drain()
             .filter(|(_, (_, time))| convert_to_std_duration(Utc::now().naive_utc() - *time) <= MAX_INFLIGHT_TTL)
             .collect();
+    }
+
+    /// Returns true if the nonce is inflight, otherwise false
+    pub fn is_inflight(&self, nonce: u64) -> bool {
+        self.inflight_pings.get(&nonce).is_some()
     }
 
     /// Records a pong. Specifically, the pong counter is incremented and

@@ -41,8 +41,6 @@ pub enum LivenessRequest {
     GetAvgLatency(NodeId),
     /// Set the metadata attached to each pong message
     SetPongMetadata(MetadataKey, Vec<u8>),
-    /// Request the number of active neighbours
-    GetNumActiveNeighbours,
     /// Add NodeId to be monitored
     AddNodeId(NodeId),
     /// Get stats for a monitored NodeId

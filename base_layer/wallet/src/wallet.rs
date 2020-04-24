@@ -142,10 +142,11 @@ where
                 LivenessConfig {
                     auto_ping_interval: Some(Duration::from_secs(30)),
                     enable_auto_join: true,
-                    refresh_neighbours_interval: Default::default(),
+                    ..Default::default()
                 },
                 Arc::clone(&subscription_factory),
                 dht.dht_requester(),
+                comms.connection_manager(),
             ))
             .add_initializer(OutputManagerServiceInitializer::new(
                 OutputManagerServiceConfig::default(),

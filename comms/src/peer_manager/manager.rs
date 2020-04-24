@@ -211,9 +211,9 @@ impl PeerManager {
     }
 
     /// Fetch n random peers
-    pub async fn random_peers(&self, n: usize) -> Result<Vec<Peer>, PeerManagerError> {
+    pub async fn random_peers(&self, n: usize, excluded: Vec<NodeId>) -> Result<Vec<Peer>, PeerManagerError> {
         // Send to a random set of peers of size n that are Communication Nodes
-        self.peer_storage.read().await.random_peers(n)
+        self.peer_storage.read().await.random_peers(n, excluded)
     }
 
     /// Check if a specific node_id is in the network region of the N nearest neighbours of the region specified by
@@ -438,8 +438,8 @@ mod test {
         }
 
         // Test Random
-        let identities1 = peer_manager.random_peers(10).await.unwrap();
-        let identities2 = peer_manager.random_peers(10).await.unwrap();
+        let identities1 = peer_manager.random_peers(10, vec![]).await.unwrap();
+        let identities2 = peer_manager.random_peers(10, vec![]).await.unwrap();
         assert_ne!(identities1, identities2);
     }
 

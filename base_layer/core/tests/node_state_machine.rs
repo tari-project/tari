@@ -97,7 +97,7 @@ fn test_listening_lagging() {
         LivenessConfig {
             enable_auto_join: false,
             auto_ping_interval: Some(Duration::from_millis(100)),
-            refresh_neighbours_interval: Duration::from_secs(60),
+            ..Default::default()
         },
         consensus_manager,
         temp_dir.path().to_str().unwrap(),

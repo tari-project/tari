@@ -1105,9 +1105,12 @@ where
                 auto_ping_interval: Some(Duration::from_secs(30)),
                 enable_auto_join: true,
                 refresh_neighbours_interval: Duration::from_secs(3 * 60),
+                random_peer_selection_ratio: 0.4,
+                ..Default::default()
             },
             subscription_factory,
             dht.dht_requester(),
+            comms.connection_manager(),
         ))
         .add_initializer(ChainMetadataServiceInitializer)
         .finish()
@@ -1142,9 +1145,10 @@ async fn register_wallet_services(
                 ..Default::default()
             },
             subscription_factory.clone(),
-            wallet_dht.dht_requester()
+            wallet_dht.dht_requester(),
+    wallet_comms.connection_manager()
 
-        ))
+    ))
         // Wallet services
         .add_initializer(OutputManagerServiceInitializer::new(
             OutputManagerServiceConfig::default(),

@@ -518,6 +518,7 @@ fn setup_base_node_services(
             liveness_service_config,
             Arc::clone(&subscription_factory),
             dht.dht_requester(),
+            comms.connection_manager(),
         ))
         .add_initializer(BaseNodeServiceInitializer::new(
             subscription_factory.clone(),

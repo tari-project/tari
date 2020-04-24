@@ -493,7 +493,7 @@ impl Parser {
                                 txn.amount,
                                 txn.status,
                                 txn.receiver_protocol.state,
-                                format_naive_datetime(txn.timestamp),
+                                format_naive_datetime(&txn.timestamp),
                                 txn.message
                             ]);
                         }
@@ -535,7 +535,7 @@ impl Parser {
                             txn.fee,
                             txn.status,
                             txn.sender_protocol,
-                            format_naive_datetime(txn.timestamp),
+                            format_naive_datetime(&txn.timestamp),
                             txn.message
                         ]);
                     }
@@ -590,7 +590,7 @@ impl Parser {
                             txn.amount,
                             txn.fee,
                             txn.status,
-                            format_naive_datetime(txn.timestamp),
+                            format_naive_datetime(&txn.timestamp),
                             txn.message
                         ]);
                     }
@@ -768,10 +768,23 @@ impl Parser {
                         "Public Key",
                         "Flags",
                         "Role",
+                        "Status",
                         "Added at",
                         "Last connection",
                     ]);
+
                     for peer in peers {
+                        let status_str = {
+                            let mut s = Vec::new();
+                            if let Some(offline_at) = peer.offline_at.as_ref() {
+                                s.push(format!("OFFLINE since {}", format_naive_datetime(offline_at)));
+                            }
+
+                            if let Some(dt) = peer.banned_until() {
+                                s.push(format!("BANNED until {}", format_naive_datetime(dt)));
+                            }
+                            s.join(", ")
+                        };
                         table.add_row(row![
                             peer.node_id.short_str(),
                             peer.public_key,
@@ -783,6 +796,7 @@ impl Parser {
                                     "Base node"
                                 }
                             },
+                            status_str,
                             peer.added_at.date(),
                             peer.connection_stats,
                         ]);

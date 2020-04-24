@@ -75,7 +75,7 @@ pub fn format_duration_basic(duration: Duration) -> String {
 }
 
 /// Standard formatting helper function for a NaiveDateTime
-pub fn format_naive_datetime(dt: NaiveDateTime) -> String {
+pub fn format_naive_datetime(dt: &NaiveDateTime) -> String {
     dt.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
