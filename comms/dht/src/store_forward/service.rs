@@ -101,6 +101,7 @@ pub enum StoreAndForwardRequest {
     FetchMessages(FetchStoredMessageQuery, oneshot::Sender<SafResult<Vec<StoredMessage>>>),
     InsertMessage(NewStoredMessage),
     SendStoreForwardRequestToPeer(Box<NodeId>),
+    SendStoreForwardRequestNeighbours,
 }
 
 #[derive(Clone)]
@@ -133,6 +134,14 @@ impl StoreAndForwardRequester {
     pub async fn request_saf_messages_from_peer(&mut self, node_id: NodeId) -> SafResult<()> {
         self.sender
             .send(StoreAndForwardRequest::SendStoreForwardRequestToPeer(Box::new(node_id)))
+            .await
+            .map_err(|_| StoreAndForwardError::RequesterChannelClosed)?;
+        Ok(())
+    }
+
+    pub async fn request_saf_messages_from_neighbours(&mut self) -> SafResult<()> {
+        self.sender
+            .send(StoreAndForwardRequest::SendStoreForwardRequestNeighbours)
             .await
             .map_err(|_| StoreAndForwardError::RequesterChannelClosed)?;
         Ok(())
@@ -257,6 +266,14 @@ impl StoreAndForwardService {
                     error!(target: LOG_TARGET, "Error sending store and forward request: {:?}", err);
                 }
             },
+            SendStoreForwardRequestNeighbours => {
+                if let Err(err) = self.request_stored_messages_neighbours().await {
+                    error!(
+                        target: LOG_TARGET,
+                        "Error sending store and forward request to neighbours: {:?}", err
+                    );
+                }
+            },
         }
     }
 
@@ -290,6 +307,47 @@ impl StoreAndForwardService {
     }
 
     async fn request_stored_messages_from_peer(&mut self, node_id: &NodeId) -> SafResult<()> {
+        let request = self.get_saf_request().await?;
+        info!(
+            target: LOG_TARGET,
+            "Sending store and forward request to peer '{}' (Since = {:?})", node_id, request.since
+        );
+
+        self.outbound_requester
+            .send_message_no_header(
+                SendMessageParams::new()
+                    .direct_node_id(node_id.clone())
+                    .with_dht_message_type(DhtMessageType::SafRequestMessages)
+                    .finish(),
+                request,
+            )
+            .await
+            .map_err(StoreAndForwardError::RequestMessagesFailed)?;
+
+        Ok(())
+    }
+
+    async fn request_stored_messages_neighbours(&mut self) -> SafResult<()> {
+        let request = self.get_saf_request().await?;
+        info!(
+            target: LOG_TARGET,
+            "Sending store and forward request to neighbours (Since = {:?})", request.since
+        );
+        self.outbound_requester
+            .send_message_no_header(
+                SendMessageParams::new()
+                    .neighbours(vec![])
+                    .with_dht_message_type(DhtMessageType::SafRequestMessages)
+                    .finish(),
+                request,
+            )
+            .await
+            .map_err(StoreAndForwardError::RequestMessagesFailed)?;
+
+        Ok(())
+    }
+
+    async fn get_saf_request(&mut self) -> SafResult<StoredMessagesRequest> {
         let mut request = self
             .dht_requester
             .get_metadata(DhtMetadataKey::OfflineTimestamp)
@@ -310,23 +368,7 @@ impl StoreAndForwardService {
 
         request.dist_threshold = threshold.to_vec();
 
-        info!(
-            target: LOG_TARGET,
-            "Sending store and forward request to peer '{}' (Since = {:?})", node_id, request.since
-        );
-
-        self.outbound_requester
-            .send_message_no_header(
-                SendMessageParams::new()
-                    .direct_node_id(node_id.clone())
-                    .with_dht_message_type(DhtMessageType::SafRequestMessages)
-                    .finish(),
-                request,
-            )
-            .await
-            .map_err(|err| StoreAndForwardError::RequestMessagesFailed(err))?;
-
-        Ok(())
+        Ok(request)
     }
 
     async fn handle_fetch_message_query(&self, query: FetchStoredMessageQuery) -> SafResult<Vec<StoredMessage>> {
