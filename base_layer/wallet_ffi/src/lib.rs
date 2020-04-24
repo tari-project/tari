@@ -3721,7 +3721,8 @@ pub unsafe extern "C" fn wallet_cancel_pending_transaction(
 }
 
 /// This function will tell the wallet to query the set base node to confirm the status of wallet data. For example this
-/// will check that Unspent Outputs stored in the wallet are still available as UTXO's on the blockchain
+/// will check that Unspent Outputs stored in the wallet are still available as UTXO's on the blockchain. This will also
+/// trigger a request for outstanding SAF messages to you neighbours
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
