@@ -28,6 +28,8 @@ pub enum PowError {
     InvalidProofOfWork,
     // Target difficulty not achieved
     AchievedDifficultyTooLow,
+    // Invalid target difficulty
+    InvalidTargetDifficulty,
 }
 
 #[derive(Debug, Error, Clone, PartialEq)]
