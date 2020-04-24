@@ -28,10 +28,8 @@ use crate::{
     },
 };
 use diesel::{self, prelude::*};
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use tari_crypto::tari_utilities::{byte_array::ByteArray, hex::Hex, Hashable};
-
-const LOG_TARGET: &str = "b::c::storage::postgres:tx_outputs";
 
 #[derive(Queryable, Identifiable, Insertable)]
 #[table_name = "tx_outputs"]
@@ -45,7 +43,7 @@ pub struct TxOutput {
     created_in_block: String,
     spent: Option<String>,
 }
-
+#[allow(clippy::ptr_arg)]
 impl TxOutput {
     /// This will insert a transactional output if it does not exist.
     pub fn insert(output: &TransactionOutput, block: String, conn: &PgConnection) -> Result<bool, PostgresError> {
@@ -76,7 +74,7 @@ impl TxOutput {
 
     /// This will fetch all block outputs of the given block
     pub fn fetch_block_outputs(hash: &HashOutput, conn: &PgConnection) -> Result<Vec<TxOutput>, PostgresError> {
-        let mut results: Vec<TxOutput> = tx_outputs::table
+        let results: Vec<TxOutput> = tx_outputs::table
             .filter(tx_outputs::created_in_block.eq(hash.to_hex()))
             .get_results(conn)
             .map_err(|e| PostgresError::NotFound(e.to_string()))?;
@@ -96,7 +94,7 @@ impl TxOutput {
 
     // This will a transactional output only if the output is unspent
     pub fn fetch_unspent_output(hash: &HashOutput, conn: &PgConnection) -> Result<Vec<TxOutput>, PostgresError> {
-        let mut results: Vec<TxOutput> = tx_outputs::table
+        let results: Vec<TxOutput> = tx_outputs::table
             .filter(tx_outputs::hash.eq(hash.to_hex()))
             .filter(tx_outputs::spent.is_null())
             .get_results(conn)
@@ -130,8 +128,12 @@ impl TryFrom<TxOutput> for TransactionOutput {
                 maturity: value.features_maturity as u64,
             },
             commitment: Commitment::from_hex(&value.commitment)?,
-            proof: RangeProof::from_bytes(&value.proof.ok_or(PostgresError::Other("No proof found".to_string()))?)
-                .map_err(|e| PostgresError::Other(e.to_string()))?,
+            proof: RangeProof::from_bytes(
+                &value
+                    .proof
+                    .ok_or_else(|| PostgresError::Other("No proof found".to_string()))?,
+            )
+            .map_err(|e| PostgresError::Other(e.to_string()))?,
         };
 
         if result.hash().to_hex() != value.hash {
