@@ -40,3 +40,7 @@ chrono = "0.4"
 chrono-english = "0.1"
 regex = "1"
 
+[build-dependencies]
+serde = "1.0.90"
+toml = "0.5"
+git2 = "0.8"

@@ -81,8 +81,6 @@ mod table;
 mod builder;
 /// The command line interface definition and configuration
 mod cli;
-/// Application-specific constants
-mod consts;
 /// Miner lib Todo hide behind feature flag
 mod miner;
 /// Parser module used to control user commands
