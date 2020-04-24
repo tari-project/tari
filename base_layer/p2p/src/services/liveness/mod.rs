@@ -39,7 +39,7 @@ mod config;
 pub mod error;
 mod handle;
 mod message;
-mod neighbours;
+mod peer_pool;
 mod service;
 mod state;
 
@@ -75,6 +75,7 @@ pub use self::{
     state::Metadata,
 };
 pub use crate::proto::liveness::MetadataKey;
+use tari_comms::connection_manager::ConnectionManagerRequester;
 
 const LOG_TARGET: &str = "p2p::services::liveness";
 
@@ -83,6 +84,7 @@ pub struct LivenessInitializer {
     config: Option<LivenessConfig>,
     inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
     dht_requester: Option<DhtRequester>,
+    connection_manager_requester: Option<ConnectionManagerRequester>,
 }
 
 impl LivenessInitializer {
@@ -91,12 +93,14 @@ impl LivenessInitializer {
         config: LivenessConfig,
         inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
         dht_requester: DhtRequester,
+        connection_manager_requester: ConnectionManagerRequester,
     ) -> Self
     {
         Self {
             config: Some(config),
             inbound_message_subscription_factory,
             dht_requester: Some(dht_requester),
+            connection_manager_requester: Some(connection_manager_requester),
         }
     }
 
@@ -136,6 +140,11 @@ impl ServiceInitializer for LivenessInitializer {
             .take()
             .expect("Liveness service initialized more than once.");
 
+        let connection_manager_requester = self
+            .connection_manager_requester
+            .take()
+            .expect("Liveness service initialized without a ConnectionManagerRequester");
+
         // Register handle before waiting for handles to be ready
         handles_fut.register(liveness_handle);
 
@@ -173,6 +182,7 @@ impl ServiceInitializer for LivenessInitializer {
                 ping_stream,
                 state,
                 dht_requester,
+                connection_manager_requester,
                 outbound_handle,
                 publisher,
                 shutdown,

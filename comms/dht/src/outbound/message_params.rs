@@ -150,9 +150,9 @@ impl SendMessageParams {
         self
     }
 
-    /// Set broadcast_strategy to Random
+    /// Set broadcast_strategy to Random.
     pub fn random(&mut self, n: usize) -> &mut Self {
-        self.params_mut().broadcast_strategy = BroadcastStrategy::Random(n);
+        self.params_mut().broadcast_strategy = BroadcastStrategy::Random(n, vec![]);
         self
     }
 

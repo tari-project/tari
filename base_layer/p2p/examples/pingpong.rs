@@ -207,6 +207,7 @@ mod pingpong {
                         },
                         Arc::clone(&subscription_factory),
                         dht.dht_requester(),
+                        comms.connection_manager(),
                     ))
                     .finish(),
             )
