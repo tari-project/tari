@@ -1,4 +1,4 @@
-create table block_headers (
+create table  if not exists block_headers (
     hash TEXT NOT NULL PRIMARY KEY,
     height BIGINT NOT NULL,
     version INT NOT NULL,

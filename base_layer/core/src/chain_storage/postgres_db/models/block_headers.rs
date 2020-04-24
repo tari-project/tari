@@ -24,14 +24,12 @@ use crate::{
     blocks,
     blocks::BlockHash,
     chain_storage::{
-        postgres_db::{models::error::PostgresError, schema::*},
-        DbKeyValuePair,
+        postgres_db::{error::PostgresError, schema::*},
         DbValue,
     },
     transactions::types::BlindingFactor,
 };
-use chrono::{NaiveDateTime, Utc};
-use diesel::{self, expression::dsl, prelude::*, OptionalExtension};
+use diesel::{self, prelude::*, OptionalExtension};
 use log::*;
 use serde_json::Value;
 use std::convert::{TryFrom, TryInto};
@@ -81,12 +79,7 @@ impl BlockHeader {
     }
 
     /// This function will insert a new block header only if the block header does not exist.
-    pub fn insert_if_not_exists(
-        block_header: &blocks::BlockHeader,
-        orphan: bool,
-        conn: &PgConnection,
-    ) -> Result<(), PostgresError>
-    {
+    pub fn insert(block_header: &blocks::BlockHeader, orphan: bool, conn: &PgConnection) -> Result<(), PostgresError> {
         if BlockHeader::fetch_by_hash(&block_header.hash(), conn)?.is_some() {
             warn!(
                 target: LOG_TARGET,
@@ -122,6 +115,17 @@ impl BlockHeader {
         diesel::delete(block_headers::table.filter(block_headers::hash.eq(key)))
             .execute(conn)
             .map_err(|e| PostgresError::CouldDelete(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn delete_at_height(height: u64, conn: &PgConnection) -> Result<(), PostgresError> {
+        diesel::delete(
+            block_headers::table
+                .filter(block_headers::height.eq(height as i64))
+                .filter(block_headers::orphan.eq(false)),
+        )
+        .execute(conn)
+        .map_err(|e| PostgresError::CouldDelete(e.to_string()))?;
         Ok(())
     }
 

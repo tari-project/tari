@@ -49,16 +49,11 @@ table! {
         features_maturity -> Int8,
         commitment -> Text,
         proof -> Nullable<Bytea>,
-        input -> Text,
+        created_in_block -> Text,
         spent -> Nullable<Text>,
     }
 }
 
 joinable!(kernels -> block_headers (block_hash));
 
-allow_tables_to_appear_in_same_query!(
-    block_headers,
-    kernels,
-    metadata,
-    tx_outputs,
-);
+allow_tables_to_appear_in_same_query!(block_headers, kernels, metadata, tx_outputs,);
