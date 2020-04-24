@@ -24,7 +24,7 @@ use crate::{blocks::BlockHeader, proof_of_work::Difficulty};
 use bigint::uint::U256;
 use derive_error::Error;
 use monero::blockdata::{block::BlockHeader as MoneroBlockHeader, Transaction as MoneroTransaction};
-use randomx_rs::{RandomXCache, RandomXError, RandomXFlag, RandomXVM};
+use randomx_rs::{RandomXCache, RandomXDataset, RandomXError, RandomXFlag, RandomXVM};
 use serde::{Deserialize, Serialize};
 use tari_mmr::MerkleProof;
 
@@ -78,13 +78,13 @@ pub fn monero_difficulty(header: &BlockHeader) -> Difficulty {
 fn monero_difficulty_calculation(header: &BlockHeader) -> Result<Difficulty, MergeMineError> {
     let monero = MoneroData::new(header)?;
     verify_header(&header, &monero)?;
-    let flags = RandomXFlag::FLAG_DEFAULT;
+    let flags = RandomXFlag::get_recommended_flags();
     let key = monero.key.clone();
     let input = create_input_blob(&monero)?;
     let cache = RandomXCache::new(flags, &key)?;
-    let vm = RandomXVM::new(flags, &cache, None)?;
+    let dataset = RandomXDataset::new(flags, &cache, 0)?;
+    let vm = RandomXVM::new(flags, Some(&cache), Some(&dataset))?;
     let hash = vm.calculate_hash(&input)?;
-
     let scalar = U256::from_big_endian(&hash); // Big endian so the hash has leading zeroes
     let result = MAX_TARGET / scalar;
     let difficulty = u64::from(result).into();

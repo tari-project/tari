@@ -31,7 +31,7 @@ tari_pubsub = "^0.1"
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0"}
 tari_mmr = { path = "../../base_layer/mmr", version = "^0.0", optional = true }
 
-randomx-rs = { version = "0.1.2", optional = true }
+randomx-rs = { version = "0.2.0", optional = true }
 monero = { version = "0.5", features= ["serde_support"], optional = true }
 bitflags = "1.0.4"
 chrono = { version = "0.4.6", features = ["serde"]}
