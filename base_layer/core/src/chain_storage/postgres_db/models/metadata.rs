@@ -24,9 +24,11 @@ use crate::{
     blocks::BlockHash,
     chain_storage::{
         postgres_db::{error::PostgresError, schema::*},
+        ChainMetadata,
         MetadataKey,
         MetadataValue,
     },
+    proof_of_work::Difficulty,
 };
 use chrono::NaiveDateTime;
 use diesel::{self, prelude::*};
@@ -44,22 +46,12 @@ pub struct Metadata {
 
 impl Metadata {
     /// This will fetch the current meta from the database
-    pub fn fetch(key: &MetadataKey, conn: &PgConnection) -> Result<MetadataValue, PostgresError> {
+    pub fn fetch(conn: &PgConnection) -> Result<ChainMetadata, PostgresError> {
         let row: Metadata = metadata::table
             .first(conn)
             .map_err(|e| PostgresError::NotFound(e.to_string()))?;
 
-        let value = match key {
-            MetadataKey::ChainHeight => MetadataValue::ChainHeight(row.chain_height.map(|ch| ch as u64)),
-            MetadataKey::BestBlock => MetadataValue::BestBlock(match row.best_block {
-                Some(b) => Some(BlockHash::from_hex(&b)?),
-                None => None,
-            }),
-            MetadataKey::AccumulatedWork => {
-                MetadataValue::AccumulatedWork(row.accumulated_work.map(|w| (w as u64).into()))
-            },
-            MetadataKey::PruningHorizon => MetadataValue::PruningHorizon(row.pruning_horizon as u64),
-        };
+        let value = row.into();
         Ok(value)
     }
 
@@ -92,4 +84,27 @@ struct MetadataFields {
     best_block: Option<Option<String>>,
     accumulated_work: Option<Option<i64>>,
     pruning_horizon: Option<i64>,
+}
+
+impl From<Metadata> for ChainMetadata {
+    fn from(mut value: Metadata) -> Self {
+        let block = match value.best_block.take() {
+            Some(v) => Some(BlockHash::from_hex(&v).ok()).flatten(),
+            None => None,
+        };
+        let height = match value.chain_height.take() {
+            Some(v) => Some(v as u64),
+            None => None,
+        };
+        let diff = match value.accumulated_work.take() {
+            Some(v) => Some(Difficulty::from(v as u64)),
+            None => None,
+        };
+        Self {
+            height_of_longest_chain: height,
+            best_block: block,
+            pruning_horizon: value.pruning_horizon as u64,
+            accumulated_difficulty: diff,
+        }
+    }
 }

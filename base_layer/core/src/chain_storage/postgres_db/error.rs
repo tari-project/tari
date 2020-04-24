@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::chain_storage::ChainStorageError;
+use diesel::{result::Error as DieselError, ConnectionError};
 use tari_crypto::tari_utilities::hex::HexError;
 use thiserror::Error;
 
@@ -43,4 +45,20 @@ pub enum PostgresError {
         #[from]
         source: serde_json::error::Error,
     },
+    #[error("Could not connect to db")]
+    AccessError {
+        #[from]
+        source: ConnectionError,
+    },
+    #[error("Some diesel error")]
+    DBError {
+        #[from]
+        source: DieselError,
+    },
+}
+
+impl From<PostgresError> for ChainStorageError {
+    fn from(e: PostgresError) -> Self {
+        ChainStorageError::AccessError(format!("Postgres error:{}", e))
+    }
 }

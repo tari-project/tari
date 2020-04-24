@@ -118,6 +118,17 @@ impl BlockHeader {
         Ok(())
     }
 
+    pub fn delete_at_height(height: u64, conn: &PgConnection) -> Result<(), PostgresError> {
+        diesel::delete(
+            block_headers::table
+                .filter(block_headers::height.eq(height as i64))
+                .filter(block_headers::orphan.eq(false)),
+        )
+        .execute(conn)
+        .map_err(|e| PostgresError::CouldDelete(e.to_string()))?;
+        Ok(())
+    }
+
     pub fn try_into_db_block_hash(self) -> Result<DbValue, PostgresError> {
         let header: blocks::BlockHeader = self.try_into()?;
         Ok(DbValue::BlockHash(Box::new(header)))
