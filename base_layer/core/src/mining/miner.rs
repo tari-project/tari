@@ -29,7 +29,7 @@ use crate::{
     chain_storage::BlockAddResult,
     consensus::ConsensusManager,
     mining::{blake_miner::CpuBlakePow, error::MinerError, CoinbaseBuilder},
-    proof_of_work::{Difficulty, PowAlgorithm},
+    proof_of_work::PowAlgorithm,
     transactions::{
         transaction::UnblindedOutput,
         types::{CryptoFactories, PrivateKey},
@@ -150,7 +150,6 @@ impl Miner {
         };
         let mut block = block.unwrap();
         debug!(target: LOG_TARGET, "Miner got new block to mine.");
-        let difficulty = self.get_req_difficulty().await?;
         let (tx, mut rx): (Sender<Option<BlockHeader>>, Receiver<Option<BlockHeader>>) = mpsc::channel(self.threads);
         for _ in 0..self.threads {
             let stop_mining_flag = self.stop_mining_flag.clone();
@@ -158,7 +157,7 @@ impl Miner {
             let mut tx_channel = tx.clone();
             trace!("spawning mining thread");
             spawn_blocking(move || {
-                let result = CpuBlakePow::mine(difficulty, header, stop_mining_flag);
+                let result = CpuBlakePow::mine(header, stop_mining_flag);
                 // send back what the miner found, None will be sent if the miner did not find a nonce
                 if let Err(e) = tx_channel.try_send(result) {
                     warn!(target: LOG_TARGET, "Could not return mining result: {}", e);
@@ -286,7 +285,7 @@ impl Miner {
         trace!(target: LOG_TARGET, "Requesting new block template from node.");
         Ok(self
             .node_interface
-            .get_new_block_template()
+            .get_new_block_template(PowAlgorithm::Blake)
             .await
             .or_else(|e| {
                 error!(
@@ -313,24 +312,6 @@ impl Miner {
                     target: LOG_TARGET,
                     "Could not get a new block from the base node. {:?}.", e
                 );
-                Err(e)
-            })
-            .map_err(|e| MinerError::CommunicationError(e.to_string()))?)
-    }
-
-    /// function to get the required difficulty
-    pub async fn get_req_difficulty(&mut self) -> Result<Difficulty, MinerError> {
-        trace!(target: LOG_TARGET, "Requesting target difficulty from node");
-        Ok(self
-            .node_interface
-            .get_target_difficulty(PowAlgorithm::Blake)
-            .await
-            .or_else(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not get the required difficulty from the base node. {:?}.", e
-                );
-
                 Err(e)
             })
             .map_err(|e| MinerError::CommunicationError(e.to_string()))?)

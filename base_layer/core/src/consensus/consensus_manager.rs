@@ -32,7 +32,7 @@ use crate::{
     },
     chain_storage::{fetch_headers, BlockchainBackend, ChainStorageError},
     consensus::{emission::EmissionSchedule, network::Network, ConsensusConstants},
-    proof_of_work::{get_median_timestamp, get_target_difficulty, Difficulty, DifficultyAdjustmentError, PowAlgorithm},
+    proof_of_work::{get_median_timestamp, DifficultyAdjustmentError},
     transactions::tari_amount::MicroTari,
 };
 use derive_error::Error;
@@ -88,43 +88,6 @@ impl ConsensusManager {
     /// Get a pointer to the consensus constants
     pub fn consensus_constants(&self) -> &ConsensusConstants {
         &self.inner.consensus_constants
-    }
-
-    /// Returns the estimated target difficulty for the specified PoW algorithm at the chain tip.
-    pub fn get_target_difficulty<B: BlockchainBackend>(
-        &self,
-        db: &B,
-        pow_algo: PowAlgorithm,
-    ) -> Result<Difficulty, ConsensusManagerError>
-    {
-        let height = db
-            .fetch_metadata()?
-            .height_of_longest_chain
-            .ok_or_else(|| ConsensusManagerError::EmptyBlockchain)?;
-        self.get_target_difficulty_with_height(db, pow_algo, height)
-    }
-
-    /// Returns the estimated target difficulty for the specified PoW algorithm and provided height.
-    pub fn get_target_difficulty_with_height<B: BlockchainBackend>(
-        &self,
-        db: &B,
-        pow_algo: PowAlgorithm,
-        height: u64,
-    ) -> Result<Difficulty, ConsensusManagerError>
-    {
-        // TODO: store and use the target difficulty at horizon height as the initial difficulty for the
-        // LinearWeightedMovingAverage, then only the header set from horizon_height+1 to height need to be
-        // requested and processed.
-        let block_nums = (0..=height).collect();
-        let headers = fetch_headers(db, block_nums)?;
-        Ok(get_target_difficulty(
-            headers,
-            pow_algo,
-            self.inner.consensus_constants.get_difficulty_block_window() as usize,
-            self.inner.consensus_constants.get_diff_target_block_interval(),
-            self.inner.consensus_constants.get_difficulty_max_block_interval(),
-            self.inner.consensus_constants.min_pow_difficulty(),
-        )?)
     }
 
     /// Returns the median timestamp of the past 11 blocks at the chain tip.

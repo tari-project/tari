@@ -23,7 +23,7 @@ message BaseNodeServiceRequest {
         // Indicates a FetchBlocksWithHashes request.
         HashOutputs fetch_blocks_with_hashes = 8;
         // Indicates a GetNewBlockTemplate request.
-        bool get_new_block_template = 9;
+        uint64 get_new_block_template = 9;
         // Indicates a GetNewBlock request.
         tari.core.NewBlockTemplate get_new_block = 10;
         // Indicates a GetTargetDifficulty request.

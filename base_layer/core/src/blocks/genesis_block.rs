@@ -120,6 +120,7 @@ pub fn get_rincewind_genesis_block_raw() -> Block {
             pow: ProofOfWork {
                 accumulated_monero_difficulty: 1.into(),
                 accumulated_blake_difficulty: 1.into(),
+                target_difficulty: 1.into(),
                 pow_algo: PowAlgorithm::Blake,
                 pow_data: vec![],
             },

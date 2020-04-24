@@ -37,6 +37,7 @@ use tari_core::{
     },
     consensus::{ConsensusConstants, Network},
     helpers::create_orphan_block,
+    proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         helpers::{create_test_kernel, create_utxo},
         tari_amount::MicroTari,
@@ -44,7 +45,7 @@ use tari_core::{
     },
     tx,
 };
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, Hashable};
 use tari_mmr::{MmrCacheConfig, MutableMmr};
 use tari_test_utils::paths::create_temporary_data_path;
 
@@ -1368,6 +1369,102 @@ fn lmdb_fetch_last_header() {
     {
         let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
         fetch_last_header(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
+}
+
+fn fetch_target_difficulties<T: BlockchainBackend>(mut db: T) {
+    let mut header0 = BlockHeader::new(0);
+    header0.pow.pow_algo = PowAlgorithm::Blake;
+    header0.pow.target_difficulty = Difficulty::from(100);
+    let mut header1 = BlockHeader::from_previous(&header0);
+    header1.pow.pow_algo = PowAlgorithm::Monero;
+    header1.pow.target_difficulty = Difficulty::from(1000);
+    let mut header2 = BlockHeader::from_previous(&header1);
+    header2.pow.pow_algo = PowAlgorithm::Blake;
+    header2.pow.target_difficulty = Difficulty::from(2000);
+    let mut header3 = BlockHeader::from_previous(&header2);
+    header3.pow.pow_algo = PowAlgorithm::Blake;
+    header3.pow.target_difficulty = Difficulty::from(3000);
+    let mut header4 = BlockHeader::from_previous(&header3);
+    header4.pow.pow_algo = PowAlgorithm::Monero;
+    header4.pow.target_difficulty = Difficulty::from(200);
+    let mut header5 = BlockHeader::from_previous(&header4);
+    header5.pow.pow_algo = PowAlgorithm::Blake;
+    header5.pow.target_difficulty = Difficulty::from(4000);
+    assert!(db.fetch_target_difficulties(PowAlgorithm::Blake, 5, 100).is_err());
+    assert!(db.fetch_target_difficulties(PowAlgorithm::Monero, 5, 100).is_err());
+
+    let mut txn = DbTransaction::new();
+    txn.insert_header(header0.clone());
+    txn.insert_header(header1.clone());
+    txn.insert_header(header2.clone());
+    txn.insert_header(header3.clone());
+    txn.insert_header(header4.clone());
+    txn.insert_header(header5.clone());
+    txn.insert(DbKeyValuePair::Metadata(
+        MetadataKey::ChainHeight,
+        MetadataValue::ChainHeight(Some(header5.height)),
+    ));
+    assert!(db.write(txn).is_ok());
+
+    // Check block window constraint
+    let desired_targets: Vec<(EpochTime, Difficulty)> = vec![
+        (header2.timestamp, header2.pow.target_difficulty),
+        (header3.timestamp, header3.pow.target_difficulty),
+    ];
+    assert_eq!(
+        db.fetch_target_difficulties(PowAlgorithm::Blake, header4.height, 2),
+        Ok(desired_targets)
+    );
+    let desired_targets: Vec<(EpochTime, Difficulty)> = vec![
+        (header1.timestamp, header1.pow.target_difficulty),
+        (header4.timestamp, header4.pow.target_difficulty),
+    ];
+    assert_eq!(
+        db.fetch_target_difficulties(PowAlgorithm::Monero, header4.height, 2),
+        Ok(desired_targets)
+    );
+    // Check search from tip to genesis block
+    let desired_targets: Vec<(EpochTime, Difficulty)> = vec![
+        (header0.timestamp, header0.pow.target_difficulty),
+        (header2.timestamp, header2.pow.target_difficulty),
+        (header3.timestamp, header3.pow.target_difficulty),
+        (header5.timestamp, header5.pow.target_difficulty),
+    ];
+    assert_eq!(
+        db.fetch_target_difficulties(PowAlgorithm::Blake, header5.height, 100),
+        Ok(desired_targets)
+    );
+    let desired_targets: Vec<(EpochTime, Difficulty)> = vec![
+        (header1.timestamp, header1.pow.target_difficulty),
+        (header4.timestamp, header4.pow.target_difficulty),
+    ];
+    assert_eq!(
+        db.fetch_target_difficulties(PowAlgorithm::Monero, header5.height, 100),
+        Ok(desired_targets)
+    );
+}
+
+#[test]
+fn memory_fetch_target_difficulties() {
+    let db = MemoryDatabase::<HashDigest>::default();
+    fetch_target_difficulties(db);
+}
+
+#[test]
+fn lmdb_fetch_target_difficulties() {
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        fetch_target_difficulties(db);
     }
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files

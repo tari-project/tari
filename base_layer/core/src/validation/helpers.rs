@@ -24,12 +24,13 @@ use crate::{
     blocks::blockheader::{BlockHeader, BlockHeaderValidationError},
     chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
-    proof_of_work::PowError,
+    proof_of_work::{get_target_difficulty, PowError},
     validation::ValidationError,
 };
 use log::*;
 use tari_crypto::tari_utilities::hash::Hashable;
 pub const LOG_TARGET: &str = "c::val::helpers";
+use crate::chain_storage::fetch_target_difficulties;
 use tari_crypto::tari_utilities::hex::Hex;
 
 /// This function tests that the block timestamp is greater than the median timestamp at the specified height.
@@ -68,7 +69,7 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
 }
 
 /// Calculates the achieved and target difficulties at the specified height and compares them.
-pub fn check_achieved_difficulty<B: BlockchainBackend>(
+pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
     db: &B,
     block_header: &BlockHeader,
     height: u64,
@@ -80,19 +81,39 @@ pub fn check_achieved_difficulty<B: BlockchainBackend>(
         "Checking block has acheived the required difficulty",
     );
     let achieved = block_header.achieved_difficulty();
-    let mut target = 1.into();
-    if block_header.height > 0 || rules.get_genesis_block_hash() != block_header.hash() {
-        target = rules
-            .get_target_difficulty_with_height(db, block_header.pow.pow_algo, height)
-            .or_else(|e| {
-                error!(target: LOG_TARGET, "Validation could not get achieved difficulty");
-                Err(e)
-            })
-            .map_err(|_| {
-                ValidationError::BlockHeaderError(BlockHeaderValidationError::ProofOfWorkError(
-                    PowError::InvalidProofOfWork,
-                ))
-            })?;
+    let pow_algo = block_header.pow.pow_algo;
+    let target = if block_header.height > 0 || rules.get_genesis_block_hash() != block_header.hash() {
+        let constants = rules.consensus_constants();
+        let target_difficulties =
+            fetch_target_difficulties(db, pow_algo, height, constants.get_difficulty_block_window() as usize)
+                .map_err(|e| ValidationError::CustomError(e.to_string()))?;
+        get_target_difficulty(
+            target_difficulties,
+            constants.get_difficulty_block_window() as usize,
+            constants.get_diff_target_block_interval(),
+            constants.min_pow_difficulty(pow_algo),
+            constants.get_difficulty_max_block_interval(),
+        )
+        .or_else(|e| {
+            error!(target: LOG_TARGET, "Validation could not get target difficulty");
+            Err(e)
+        })
+        .map_err(|_| {
+            ValidationError::BlockHeaderError(BlockHeaderValidationError::ProofOfWorkError(
+                PowError::InvalidProofOfWork,
+            ))
+        })?
+    } else {
+        1.into()
+    };
+    if block_header.pow.target_difficulty != target {
+        warn!(
+            target: LOG_TARGET,
+            "Recorded header target difficulty {} was incorrect: {}", block_header.pow.target_difficulty, target
+        );
+        return Err(ValidationError::BlockHeaderError(
+            BlockHeaderValidationError::ProofOfWorkError(PowError::InvalidTargetDifficulty),
+        ));
     }
     if achieved < target {
         warn!(
