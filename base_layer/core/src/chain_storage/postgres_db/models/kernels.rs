@@ -22,11 +22,10 @@
 
 use crate::{
     chain_storage::postgres_db::{error::PostgresError, schema::*},
-    transactions::{transaction, transaction::TransactionKernel, types::HashOutput},
+    transactions::{transaction, types::HashOutput},
 };
 use chrono::{NaiveDateTime, Utc};
 use diesel::{self, prelude::*};
-use log::*;
 use tari_crypto::tari_utilities::{byte_array::ByteArray, hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "b::c::storage::postgres:kernels";
@@ -44,7 +43,7 @@ pub struct Kernels {
     excess: String,
     excess_sig_nonce: Vec<u8>,
     excess_sig_sig: Vec<u8>,
-    block_hash: Option<String>,
+    block_hash: String,
     created_at: NaiveDateTime,
 }
 
@@ -63,11 +62,12 @@ impl Kernels {
     /// This function will insert a new kernel only if the kernel does not exist.
     pub fn insert(
         hash: HashOutput,
+        block: String,
         kernel: transaction::TransactionKernel,
         conn: &PgConnection,
     ) -> Result<(), PostgresError>
     {
-        let row: Kernels = kernel.into();
+        let row: Kernels = Kernels::from_transaction_kernel(kernel, block)?;
         if row.hash != hash.to_hex() {
             return Err(PostgresError::Other("Kernel and kernel hash don't match".to_string()));
         }
@@ -88,11 +88,9 @@ impl Kernels {
             .map_err(|e| PostgresError::CouldDelete(e.to_string()))?;
         Ok(())
     }
-}
 
-impl From<transaction::TransactionKernel> for Kernels {
-    fn from(value: transaction::TransactionKernel) -> Self {
-        Self {
+    fn from_transaction_kernel(value: transaction::TransactionKernel, block: String) -> Result<Kernels, PostgresError> {
+        Ok(Kernels {
             hash: value.hash().to_hex(),
             features: value.features.bits() as i16,
             fee: value.fee.0 as i64,
@@ -102,8 +100,8 @@ impl From<transaction::TransactionKernel> for Kernels {
             excess: value.excess.to_hex(),
             excess_sig_nonce: value.excess_sig.get_public_nonce().to_vec(),
             excess_sig_sig: value.excess_sig.get_signature().to_vec(),
-            block_hash: None,
+            block_hash: block,
             created_at: Utc::now().naive_utc(),
-        }
+        })
     }
 }
