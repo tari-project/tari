@@ -21,17 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::{
-        postgres_db::{error::PostgresError, schema::*},
-        DbValue,
-    },
+    chain_storage::postgres_db::{error::PostgresError, schema::*},
     transactions::{
         transaction::{OutputFeatures, OutputFlags, TransactionOutput},
         types::{Commitment, HashOutput, RangeProof},
     },
 };
 use diesel::{self, prelude::*};
-use log::*;
 use std::convert::{TryFrom, TryInto};
 use tari_crypto::tari_utilities::{byte_array::ByteArray, hex::Hex, Hashable};
 
@@ -46,16 +42,16 @@ pub struct TxOutput {
     features_maturity: i64,
     commitment: String,
     proof: Option<Vec<u8>>,
-    created_in_block: Option<String>,
+    created_in_block: String,
     spent: Option<String>,
 }
 
 impl TxOutput {
     /// This will insert a transactional output if it does not exist.
-    pub fn insert(output: &TransactionOutput, conn: &PgConnection) -> Result<bool, PostgresError> {
+    pub fn insert(output: &TransactionOutput, block: String, conn: &PgConnection) -> Result<bool, PostgresError> {
         let hash = output.hash();
 
-        let row: TxOutput = output.try_into()?;
+        let row: TxOutput = TxOutput::from_transaction_output(output, block)?;
         if row.hash != hash.to_hex() {
             return Err(PostgresError::Other("tx and tx hash don't match".to_string()));
         }
@@ -108,20 +104,17 @@ impl TxOutput {
 
         Ok(results)
     }
-}
 
-impl TryFrom<&TransactionOutput> for TxOutput {
-    type Error = PostgresError;
+    /// Creates a TxOutput from the provided TransactionalOutput
+    pub fn from_transaction_output(output: &TransactionOutput, block: String) -> Result<TxOutput, PostgresError> {
+        Ok(TxOutput {
+            hash: output.hash().to_hex(),
 
-    fn try_from(value: &TransactionOutput) -> Result<Self, Self::Error> {
-        Ok(Self {
-            hash: value.hash().to_hex(),
-
-            features_flags: value.features.flags.bits() as i16,
-            features_maturity: value.features.maturity as i64,
-            commitment: value.commitment.to_hex(),
-            proof: Some(value.proof.0.clone()),
-            created_in_block: None,
+            features_flags: output.features.flags.bits() as i16,
+            features_maturity: output.features.maturity as i64,
+            commitment: output.commitment.to_hex(),
+            proof: Some(output.proof.0.clone()),
+            created_in_block: block,
             spent: None,
         })
     }

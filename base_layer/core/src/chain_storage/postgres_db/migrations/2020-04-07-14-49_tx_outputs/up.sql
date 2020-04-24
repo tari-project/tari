@@ -4,7 +4,7 @@ create table  if not exists  tx_outputs(
     features_maturity BIGINT NOT NULL,
     commitment TEXT NOT NULL,
     proof BYTEA NULL,
-    created_in_block TEXT NULL REFERENCES block_headers(hash),
+    created_in_block TEXT NOT NULL REFERENCES block_headers(hash),
     spent TEXT NULL REFERENCES block_headers(hash)
 );
 
