@@ -47,7 +47,7 @@ use tari_comms::{
     types::CommsPublicKey,
     CommsNode,
 };
-use tari_comms_dht::Dht;
+use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, UnblindedOutput},
@@ -90,6 +90,7 @@ where
 {
     pub comms: CommsNode,
     pub dht_service: Dht,
+    pub store_and_forward_requester: StoreAndForwardRequester,
     pub liveness_service: LivenessHandle,
     pub output_manager_service: OutputManagerHandle,
     pub transaction_service: TransactionServiceHandle,
@@ -182,9 +183,12 @@ where
             runtime.block_on(output_manager_handle.set_base_node_public_key(p.public_key.clone()))?;
         }
 
+        let store_and_forward_requester = dht.store_and_forward_requester();
+
         Ok(Wallet {
             comms,
             dht_service: dht,
+            store_and_forward_requester,
             liveness_service: liveness_handle,
             output_manager_service: output_manager_handle,
             transaction_service: transaction_service_handle,
@@ -299,6 +303,9 @@ where
     /// Have all the wallet components that need to start a sync process with the set base node to confirm the wallets
     /// state is accurately reflected on the blockchain
     pub fn sync_with_base_node(&mut self) -> Result<u64, WalletError> {
+        self.runtime
+            .block_on(self.store_and_forward_requester.request_saf_messages_from_neighbours())?;
+
         let request_key = self
             .runtime
             .block_on(self.output_manager_service.sync_with_base_node())?;

@@ -208,6 +208,10 @@ impl From<WalletError> for LibWalletError {
                 code: 301,
                 message: format!("{:?}", w),
             },
+            WalletError::StoreAndForwardError(_) => Self {
+                code: 302,
+                message: format!("{:?}", w),
+            },
             WalletError::ContactsServiceError(ContactsServiceError::ContactNotFound) => Self {
                 code: 401,
                 message: format!("{:?}", w),
