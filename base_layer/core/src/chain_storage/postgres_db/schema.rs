@@ -49,7 +49,7 @@ table! {
         features_maturity -> Int8,
         commitment -> Text,
         proof -> Nullable<Bytea>,
-        created_in_block -> Nullable<Text>,
+        created_in_block -> Text,
         spent -> Nullable<Text>,
     }
 }
