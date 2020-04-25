@@ -6,17 +6,28 @@ if [ "x$VERSION" == "x" ]; then
   exit 1
 fi
 
+#   infrastructure/derive
+#   infrastructure/shutdown
+#   infrastructure/storage
+#   infrastructure/test_utils
+#   base_layer/core
+#   base_layer/key_manager
+#   base_layer/mmr
+#   base_layer/p2p
+#   base_layer/service_framework
+#   base_layer/wallet
+#   base_layer/wallet_ffi
+#   common
+#   comms
+#   comms/dht
+#   applications/tari_base_node
+
 function update_versions {
     packages=${@:-'
-   infrastructure/derive
-   infrastructure/shutdown
    infrastructure/storage
-   infrastructure/test_utils
    base_layer/core
-   base_layer/key_manager
    base_layer/mmr
    base_layer/p2p
-   base_layer/service_framework
    base_layer/wallet
    base_layer/wallet_ffi
    common
@@ -35,7 +46,8 @@ function update_versions {
 function update_version {
     CARGO=$1
     VERSION=$2
-    SCRIPT='s/^version = "[0-9]\.[0-9]\.[0-9]"$/version = "'"$VERSION"'"/g'
+    SCRIPT='s/^version = ".+\..+\..+"/version = "'"$VERSION"'"/'
+    echo "$SCRIPT" "$CARGO"
     sed -i.bak -e "$SCRIPT" "$CARGO"
     rm $CARGO.bak
 }

@@ -12,3 +12,21 @@ THings to do before pushing a new commit to `master`:
 * Write release notes on GitHub.
 * Merge back into development (where appropriate)
 * Delete branch
+
+| Crate                        | Version | Last change                              |
+|:-----------------------------|:--------|:-----------------------------------------|
+| infrastructure/derive        | 0.0.10  | 7d734a2e79bfe2dd5d4ae00a2b760614d21e69c4 |
+| infrastructure/shutdown      | 0.0.10  | 7d734a2e79bfe2dd5d4ae00a2b760614d21e69c4 |
+| infrastructure/storage       | 0.1.0   |                                          |
+| infrastructure/test_utils    | 0.0.10  | 7d734a2e79bfe2dd5d4ae00a2b760614d21e69c4 |
+| base_layer/core              | 0.1.0   |                                          |
+| base_layer/key_manager       | 0.0.10  | 7d734a2e79bfe2dd5d4ae00a2b760614d21e69c4 |
+| base_layer/mmr               | 0.1.0   |                                          |
+| base_layer/p2p               | 0.1.0   |                                          |
+| base_layer/service_framework | 0.0.10  | 7d734a2e79bfe2dd5d4ae00a2b760614d21e69c4 |
+| base_layer/wallet            | 0.1.0   |                                          |
+| base_layer/wallet_ffi        | 0.1.0   |                                          |
+| common                       | 0.1.0   |                                          |
+| comms                        | 0.1.0   |                                          |
+| comms/dht                    | 0.1.0   |                                          |
+| applications/tari_base_node  | 0.1.0   |                                          |

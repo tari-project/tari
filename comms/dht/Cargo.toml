@@ -1,6 +1,6 @@
 [package]
 name = "tari_comms_dht"
-version = "0.0.10"
+version = "0.1.0"
 authors = ["The Tari Development Community"]
 description = "Tari comms DHT module"
 repository = "https://github.com/tari-project/tari"
@@ -13,11 +13,11 @@ edition = "2018"
 test-mocks = []
 
 [dependencies]
-tari_comms = { version = "^0.0", path = "../"}
+tari_comms = { version = "^0.1", path = "../"}
 tari_crypto = { version = "^0.3" }
 tari_utilities = { version = "^0.1" }
 tari_shutdown = { version = "^0.0", path = "../../infrastructure/shutdown"}
-tari_storage = { version = "^0.0", path = "../../infrastructure/storage"}
+tari_storage = { version = "^0.1", path = "../../infrastructure/storage"}
 
 bitflags = "1.2.0"
 bytes = "0.4.12"
@@ -59,4 +59,4 @@ futures-util = "^0.3.1"
 lazy_static = "1.4.0"
 
 [build-dependencies]
-tari_common = { version = "^0.0", path="../../common"}
+tari_common = { version = "^0.1", path="../../common"}

@@ -6,12 +6,12 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.0.10"
+version = "0.1.0"
 edition = "2018"
 
 [dependencies]
 tari_crypto = { version = "^0.3" }
-tari_storage = { version="^0.0", path = "../infrastructure/storage" }
+tari_storage = { version="^0.1", path = "../infrastructure/storage" }
 tari_shutdown = { version="^0.0",  path = "../infrastructure/shutdown" }
 
 bitflags = "1.0.4"
@@ -48,4 +48,4 @@ tokio-macros = "0.2.3"
 tempdir = "0.3.7"
 
 [build-dependencies]
-tari_common = { version = "^0.0", path="../common"}
+tari_common = { version = "^0.1", path="../common"}
