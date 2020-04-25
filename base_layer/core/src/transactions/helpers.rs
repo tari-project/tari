@@ -372,3 +372,55 @@ pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction
     });
     (tx, utxos)
 }
+
+/// Return a currency styled `String`
+/// # Examples
+///
+/// ```
+/// use tari_core::transactions::helpers::display_currency;
+/// assert_eq!(String::from("12,345.12"), display_currency(12345.12, 2, ","));
+/// assert_eq!(String::from("12,345"), display_currency(12345.12, 0, ","));
+/// ```
+pub fn display_currency(value: f64, precision: usize, separator: &str) -> String {
+    let whole = value as usize;
+    let decimal = ((value - whole as f64) * 10_f64.powf(precision as f64)).round() as usize;
+    let formatted_whole_value = whole
+        .to_string()
+        .chars()
+        .rev()
+        .enumerate()
+        .fold(String::new(), |acc, (i, c)| {
+            if i != 0 && i % 3 == 0 {
+                format!("{}{}{}", acc, separator, c)
+            } else {
+                format!("{}{}", acc, c)
+            }
+        })
+        .chars()
+        .rev()
+        .collect::<String>();
+
+    if precision > 0 {
+        format!("{}.{:0>2$}", formatted_whole_value, decimal, precision)
+    } else {
+        format!("{}", formatted_whole_value)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn display_currency() {
+        assert_eq!(String::from("0.00"), super::display_currency(0.0f64, 2, ","));
+        assert_eq!(String::from("0.000000000000"), super::display_currency(0.0f64, 12, ","));
+        assert_eq!(
+            String::from("123,456.123456789"),
+            super::display_currency(123456.123456789012_f64, 9, ",")
+        );
+        assert_eq!(
+            String::from("123,456"),
+            super::display_currency(123456.123456789012_f64, 0, ",")
+        );
+        assert_eq!(String::from("1,234"), super::display_currency(1234.1f64, 0, ","));
+    }
+}

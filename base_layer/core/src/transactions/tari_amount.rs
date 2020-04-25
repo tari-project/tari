@@ -22,9 +22,10 @@
 
 use newtype_ops::newtype_ops;
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Error, Formatter};
 
+use crate::transactions::helpers::display_currency;
 use std::{
+    fmt::{Display, Error, Formatter},
     iter::Sum,
     ops::{Add, Mul},
 };
@@ -77,6 +78,10 @@ impl MicroTari {
         }
         None
     }
+
+    pub fn formatted(self) -> FormattedMicroTari {
+        self.into()
+    }
 }
 
 #[allow(clippy::identity_op)]
@@ -126,6 +131,36 @@ impl Sum<MicroTari> for MicroTari {
     }
 }
 
+#[derive(Copy, Default, Clone, Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct FormattedMicroTari(pub u64);
+
+impl From<MicroTari> for FormattedMicroTari {
+    fn from(v: MicroTari) -> Self {
+        FormattedMicroTari(v.0)
+    }
+}
+
+impl Display for FormattedMicroTari {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "{} µT", display_currency(self.0 as f64, 0, ","))
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
+pub struct FormattedTari(pub f64);
+
+impl From<Tari> for FormattedTari {
+    fn from(v: Tari) -> Self {
+        FormattedTari(v.0)
+    }
+}
+
+impl Display for FormattedTari {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "{} T", display_currency(self.0, 2, ","))
+    }
+}
+
 /// A convenience struct for representing full Tari. You should **never** use Tari in consensus calculations, because
 /// Tari wraps a floating point value. Use MicroTari for that instead.
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
@@ -133,6 +168,12 @@ pub struct Tari(f64);
 
 newtype_ops! { [Tari] {add sub} {:=} Self Self }
 newtype_ops! { [Tari] {mul div rem} {:=} Self f64 }
+
+impl Tari {
+    pub fn formatted(self) -> FormattedTari {
+        self.into()
+    }
+}
 
 impl Display for Tari {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
@@ -186,6 +227,14 @@ mod test {
     }
 
     #[test]
+    fn formatted_micro_tari_display() {
+        let s = format!("{}", MicroTari::from(99_100_000).formatted());
+        assert_eq!(s, "99,100,000 µT");
+        let s = format!("{}", MicroTari::from(1_000_000_000).formatted());
+        assert_eq!(s, "1,000,000,000 µT");
+    }
+
+    #[test]
     fn add_tari_and_microtari() {
         let a = MicroTari::from(100_000);
         let b = Tari::from(0.23);
@@ -211,5 +260,15 @@ mod test {
     fn tari_display() {
         let s = format!("{}", Tari::from(1.234));
         assert_eq!(s, "1.234000 T");
+        let s = format!("{}", Tari::from(99.100));
+        assert_eq!(s, "99.100000 T");
+    }
+
+    #[test]
+    fn formatted_tari_display() {
+        let s = format!("{}", Tari::from(1.234).formatted());
+        assert_eq!(s, "1.23 T");
+        let s = format!("{}", Tari::from(99999.100).formatted());
+        assert_eq!(s, "99,999.10 T");
     }
 }
