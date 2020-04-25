@@ -40,7 +40,7 @@ use crate::{
         memory_db::MemDbVec,
         ChainMetadata,
     },
-    proof_of_work::Difficulty,
+    proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
         types::HashOutput,
@@ -49,10 +49,10 @@ use crate::{
 use croaring::Bitmap;
 use digest::Digest;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-use tari_crypto::tari_utilities::hash::Hashable;
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable};
 use tari_mmr::{
     functions::{prune_mutable_mmr, PrunedMutableMmr},
     ArrayLike,
@@ -529,6 +529,38 @@ where D: Digest + Send + Sync
             pruning_horizon: self.fetch_pruning_horizon()?,
             accumulated_difficulty: self.fetch_accumulated_work()?,
         })
+    }
+
+    /// Returns the set of target difficulties for the specified proof of work algorithm.
+    fn fetch_target_difficulties(
+        &self,
+        pow_algo: PowAlgorithm,
+        height: u64,
+        block_window: usize,
+    ) -> Result<Vec<(EpochTime, Difficulty)>, ChainStorageError>
+    {
+        let mut target_difficulties = VecDeque::<(EpochTime, Difficulty)>::with_capacity(block_window);
+        let tip_height = self.fetch_chain_height()?.ok_or_else(|| {
+            ChainStorageError::InvalidQuery("Cannot retrieve chain height. Blockchain DB is empty".into())
+        })?;
+        if height <= tip_height {
+            let db = self.db_access()?;
+            for height in (0..=height).rev() {
+                let header = db
+                    .headers
+                    .get(&height)
+                    .ok_or_else(|| ChainStorageError::InvalidQuery("Cannot retrieve header.".into()))?;
+                if header.pow.pow_algo == pow_algo {
+                    target_difficulties.push_front((header.timestamp, header.pow.target_difficulty));
+                    if target_difficulties.len() >= block_window {
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(target_difficulties
+            .into_iter()
+            .collect::<Vec<(EpochTime, Difficulty)>>())
     }
 }
 

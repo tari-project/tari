@@ -96,10 +96,14 @@ impl LocalNodeCommsInterface {
     }
 
     /// Request the construction of a new mineable block template from the base node service.
-    pub async fn get_new_block_template(&mut self) -> Result<NewBlockTemplate, CommsInterfaceError> {
+    pub async fn get_new_block_template(
+        &mut self,
+        pow_algorithm: PowAlgorithm,
+    ) -> Result<NewBlockTemplate, CommsInterfaceError>
+    {
         match self
             .request_sender
-            .call(NodeCommsRequest::GetNewBlockTemplate)
+            .call(NodeCommsRequest::GetNewBlockTemplate(pow_algorithm))
             .await??
         {
             NodeCommsResponse::NewBlockTemplate(new_block_template) => Ok(new_block_template),

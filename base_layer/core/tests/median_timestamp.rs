@@ -28,66 +28,21 @@ use helpers::{
     pow_blockchain::{append_to_pow_blockchain, create_test_pow_blockchain},
 };
 use tari_core::{
+    chain_storage::{fetch_headers, BlockchainBackend},
     consensus::{ConsensusManagerBuilder, Network},
     helpers::create_mem_db,
-    proof_of_work::PowAlgorithm,
+    proof_of_work::{get_median_timestamp, PowAlgorithm},
 };
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
-#[test]
-fn test_median_timestamp() {
-    let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(&consensus_manager);
-    let pow_algos = vec![PowAlgorithm::Blake]; // GB default
-    create_test_pow_blockchain(&store, pow_algos, &consensus_manager.consensus_constants());
-    let start_timestamp = store.fetch_block(0).unwrap().block().header.timestamp.clone();
-    let mut timestamp = consensus_manager
-        .get_median_timestamp(&*store.db_read_access().unwrap())
-        .expect("median returned an error");
-    assert_eq!(timestamp, start_timestamp);
-
-    let pow_algos = vec![PowAlgorithm::Blake];
-    // lets add 1
-    let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
-    append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager.consensus_constants());
-    let mut prev_timestamp: EpochTime =
-        start_timestamp.increase(consensus_manager.consensus_constants().get_target_block_interval());
-    timestamp = consensus_manager
-        .get_median_timestamp(&*store.db_read_access().unwrap())
-        .expect("median returned an error");
-    assert_eq!(timestamp, prev_timestamp);
-    // lets add 1
-    let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
-    append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager.consensus_constants());
-    prev_timestamp = start_timestamp.increase(consensus_manager.consensus_constants().get_target_block_interval());
-    timestamp = consensus_manager
-        .get_median_timestamp(&*store.db_read_access().unwrap())
-        .expect("median returned an error");
-    assert_eq!(timestamp, prev_timestamp);
-
-    // lets build up 11 blocks
-    for i in 4..12 {
-        let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
-        append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager.consensus_constants());
-        prev_timestamp =
-            start_timestamp.increase(consensus_manager.consensus_constants().get_target_block_interval() * (i / 2));
-        timestamp = consensus_manager
-            .get_median_timestamp(&*store.db_read_access().unwrap())
-            .expect("median returned an error");
-        assert_eq!(timestamp, prev_timestamp);
-    }
-
-    // lets add many1 blocks
-    for _i in 1..20 {
-        let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
-        append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager.consensus_constants());
-        prev_timestamp = prev_timestamp.increase(consensus_manager.consensus_constants().get_target_block_interval());
-        timestamp = consensus_manager
-            .get_median_timestamp(&*store.db_read_access().unwrap())
-            .expect("median returned an error");
-        assert_eq!(timestamp, prev_timestamp);
-    }
+pub fn get_header_timestamps<B: BlockchainBackend>(db: &B, height: u64, timestamp_count: u64) -> Vec<EpochTime> {
+    let min_height = height.checked_sub(timestamp_count).unwrap_or(0);
+    let block_nums = (min_height..=height).collect();
+    fetch_headers(db, block_nums)
+        .unwrap()
+        .iter()
+        .map(|h| h.timestamp)
+        .collect::<Vec<_>>()
 }
 
 #[test]
@@ -102,70 +57,80 @@ fn test_median_timestamp_with_height() {
         PowAlgorithm::Monero,
         PowAlgorithm::Blake,
     ];
-    create_test_pow_blockchain(&store, pow_algos, &consensus_manager.consensus_constants());
+    create_test_pow_blockchain(&store, pow_algos, &consensus_manager);
+    let timestamp_count = 10;
 
     let header0_timestamp = store.fetch_header(0).unwrap().timestamp;
     let header1_timestamp = store.fetch_header(1).unwrap().timestamp;
     let header2_timestamp = store.fetch_header(2).unwrap().timestamp;
 
-    let timestamp = consensus_manager
-        .get_median_timestamp_at_height(&*store.db_read_access().unwrap(), 0)
-        .expect("median returned an error");
-    assert_eq!(timestamp, header0_timestamp);
+    let db = &*store.db_read_access().unwrap();
+    let median_timestamp =
+        get_median_timestamp(get_header_timestamps(db, 0, timestamp_count)).expect("median returned an error");
+    assert_eq!(median_timestamp, header0_timestamp);
 
-    let timestamp = consensus_manager
-        .get_median_timestamp_at_height(&*store.db_read_access().unwrap(), 3)
-        .expect("median returned an error");
-    assert_eq!(timestamp, header2_timestamp);
+    let median_timestamp =
+        get_median_timestamp(get_header_timestamps(db, 3, timestamp_count)).expect("median returned an error");
+    assert_eq!(median_timestamp, (header1_timestamp + header2_timestamp) / 2);
 
-    let timestamp = consensus_manager
-        .get_median_timestamp_at_height(&*store.db_read_access().unwrap(), 2)
-        .expect("median returned an error");
-    assert_eq!(timestamp, header1_timestamp);
+    let median_timestamp =
+        get_median_timestamp(get_header_timestamps(db, 2, timestamp_count)).expect("median returned an error");
+    assert_eq!(median_timestamp, header1_timestamp);
 
-    let timestamp = consensus_manager
-        .get_median_timestamp_at_height(&*store.db_read_access().unwrap(), 4)
-        .expect("median returned an error");
-    assert_eq!(timestamp, header2_timestamp);
+    let median_timestamp =
+        get_median_timestamp(get_header_timestamps(db, 4, timestamp_count)).expect("median returned an error");
+    assert_eq!(median_timestamp, header2_timestamp);
 }
 
 #[test]
 fn test_median_timestamp_odd_order() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let timestamp_count = consensus_manager.consensus_constants().get_median_timestamp_count() as u64;
     let store = create_mem_db(&consensus_manager);
     let pow_algos = vec![PowAlgorithm::Blake]; // GB default
-    create_test_pow_blockchain(&store, pow_algos, &consensus_manager.consensus_constants());
-    let start_timestamp = store.fetch_block(0).unwrap().block().header.timestamp.clone();
-    let mut timestamp = consensus_manager
-        .get_median_timestamp(&*store.db_read_access().unwrap())
-        .expect("median returned an error");
-    assert_eq!(timestamp, start_timestamp);
+    create_test_pow_blockchain(&store, pow_algos, &consensus_manager);
+    let mut timestamps = vec![store.fetch_block(0).unwrap().block().header.timestamp.clone()];
+    let height = store.get_metadata().unwrap().height_of_longest_chain.unwrap();
+    let mut median_timestamp = get_median_timestamp(get_header_timestamps(
+        &*store.db_read_access().unwrap(),
+        height,
+        timestamp_count,
+    ))
+    .expect("median returned an error");
+    assert_eq!(median_timestamp, timestamps[0]);
     let pow_algos = vec![PowAlgorithm::Blake];
     // lets add 1
     let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
-    append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager.consensus_constants());
-    let mut prev_timestamp: EpochTime =
-        start_timestamp.increase(consensus_manager.consensus_constants().get_target_block_interval());
-    timestamp = consensus_manager
-        .get_median_timestamp(&*store.db_read_access().unwrap())
-        .expect("median returned an error");
-    assert_eq!(timestamp, prev_timestamp);
+    append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager);
+    timestamps.push(timestamps[0].increase(consensus_manager.consensus_constants().get_target_block_interval()));
+    let height = store.get_metadata().unwrap().height_of_longest_chain.unwrap();
+    median_timestamp = get_median_timestamp(get_header_timestamps(
+        &*store.db_read_access().unwrap(),
+        height,
+        timestamp_count,
+    ))
+    .expect("median returned an error");
+    assert_eq!(median_timestamp, (timestamps[0] + timestamps[1]) / 2);
 
     // lets add 1 that's further back then
     let append_height = store.get_height().unwrap().unwrap();
     let prev_block = store.fetch_block(append_height).unwrap().block().clone();
     let new_block = chain_block(&prev_block, Vec::new(), &consensus_manager.consensus_constants());
     let mut new_block = store.calculate_mmr_roots(new_block).unwrap();
-    new_block.header.timestamp =
-        start_timestamp.increase(&consensus_manager.consensus_constants().get_target_block_interval() / 2);
+    timestamps.push(timestamps[0].increase(&consensus_manager.consensus_constants().get_target_block_interval() / 2));
+    new_block.header.timestamp = timestamps[2];
     new_block.header.pow.pow_algo = PowAlgorithm::Blake;
     store.add_block(new_block).unwrap();
 
-    prev_timestamp = start_timestamp.increase(consensus_manager.consensus_constants().get_target_block_interval() / 2);
-    timestamp = consensus_manager
-        .get_median_timestamp(&*store.db_read_access().unwrap())
-        .expect("median returned an error");
+    timestamps.push(timestamps[2].increase(consensus_manager.consensus_constants().get_target_block_interval() / 2));
+    let height = store.get_metadata().unwrap().height_of_longest_chain.unwrap();
+    median_timestamp = get_median_timestamp(get_header_timestamps(
+        &*store.db_read_access().unwrap(),
+        height,
+        timestamp_count,
+    ))
+    .expect("median returned an error");
     // Median timestamp should be block 3 and not block 2
-    assert_eq!(timestamp, prev_timestamp);
+    assert_eq!(median_timestamp, timestamps[2]);
 }

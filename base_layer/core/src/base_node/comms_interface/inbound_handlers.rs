@@ -36,6 +36,7 @@ use crate::{
     },
     consensus::ConsensusManager,
     mempool::{async_mempool, Mempool},
+    proof_of_work::{get_target_difficulty, Difficulty, PowAlgorithm},
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 use futures::SinkExt;
@@ -202,15 +203,18 @@ where T: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
-            NodeCommsRequest::GetNewBlockTemplate => {
+            NodeCommsRequest::GetNewBlockTemplate(pow_algo) => {
                 let metadata = async_db::get_metadata(self.blockchain_db.clone()).await?;
                 let best_block_hash = metadata
                     .best_block
                     .ok_or_else(|| CommsInterfaceError::UnexpectedApiResponse)?;
                 let best_block_header =
                     async_db::fetch_header_with_block_hash(self.blockchain_db.clone(), best_block_hash).await?;
+
+                let constants = self.consensus_manager.consensus_constants();
                 let mut header = BlockHeader::from_previous(&best_block_header);
-                header.version = self.consensus_manager.consensus_constants().blockchain_version();
+                header.version = constants.blockchain_version();
+                header.pow.target_difficulty = self.get_target_difficulty(*pow_algo).await?;
 
                 let transactions = async_mempool::retrieve(
                     self.mempool.clone(),
@@ -233,12 +237,9 @@ where T: BlockchainBackend + 'static
                 let block = async_db::calculate_mmr_roots(self.blockchain_db.clone(), block_template.clone()).await?;
                 Ok(NodeCommsResponse::NewBlock(block))
             },
-            NodeCommsRequest::GetTargetDifficulty(pow_algo) => {
-                let db = &self.blockchain_db.db_read_access()?;
-                Ok(NodeCommsResponse::TargetDifficulty(
-                    self.consensus_manager.get_target_difficulty(&**db, *pow_algo)?,
-                ))
-            },
+            NodeCommsRequest::GetTargetDifficulty(pow_algo) => Ok(NodeCommsResponse::TargetDifficulty(
+                self.get_target_difficulty(*pow_algo).await?,
+            )),
         }
     }
 
@@ -295,6 +296,32 @@ where T: BlockchainBackend + 'static
             }
         }
         Ok(())
+    }
+
+    async fn get_target_difficulty(&self, pow_algo: PowAlgorithm) -> Result<Difficulty, CommsInterfaceError> {
+        let height_of_longest_chain = async_db::get_metadata(self.blockchain_db.clone())
+            .await?
+            .height_of_longest_chain
+            .ok_or_else(|| CommsInterfaceError::UnexpectedApiResponse)?;
+        debug!(
+            target: LOG_TARGET,
+            "Calculating target difficulty at height:{} for PoW:{}", height_of_longest_chain, pow_algo
+        );
+        let constants = self.consensus_manager.consensus_constants();
+        let target_difficulties = self.blockchain_db.fetch_target_difficulties(
+            pow_algo,
+            height_of_longest_chain,
+            constants.get_difficulty_block_window() as usize,
+        )?;
+        let target = get_target_difficulty(
+            target_difficulties,
+            constants.get_difficulty_block_window() as usize,
+            constants.get_diff_target_block_interval(),
+            constants.min_pow_difficulty(pow_algo),
+            constants.get_difficulty_max_block_interval(),
+        )?;
+        debug!(target: LOG_TARGET, "Target difficulty:{} for PoW:{}", target, pow_algo);
+        Ok(target)
     }
 }
 

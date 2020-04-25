@@ -30,7 +30,7 @@ use crate::{
         HistoricalBlock,
     },
     consensus::ConsensusManager,
-    proof_of_work::{Difficulty, ProofOfWork},
+    proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::{Commitment, HashOutput},
@@ -45,7 +45,7 @@ use std::{
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use strum_macros::Display;
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, Hashable};
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof, MutableMmrLeafNodes};
 
 const LOG_TARGET: &str = "c::cs::database";
@@ -181,6 +181,13 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_last_header(&self) -> Result<Option<BlockHeader>, ChainStorageError>;
     /// Returns the stored chain metadata.
     fn fetch_metadata(&self) -> Result<ChainMetadata, ChainStorageError>;
+    /// Returns the set of target difficulties for the specified proof of work algorithm.
+    fn fetch_target_difficulties(
+        &self,
+        pow_algo: PowAlgorithm,
+        height: u64,
+        block_window: usize,
+    ) -> Result<Vec<(EpochTime, Difficulty)>, ChainStorageError>;
 }
 
 // Private macro that pulls out all the boiler plate of extracting a DB query result from its variants
@@ -312,6 +319,12 @@ where T: BlockchainBackend
         fetch_header(&*db, block_num)
     }
 
+    /// Returns the set of block headers specified by the block numbers.
+    pub fn fetch_headers(&self, block_nums: Vec<u64>) -> Result<Vec<BlockHeader>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        fetch_headers(&*db, block_nums)
+    }
+
     /// Returns the block header corresponding` to the provided BlockHash
     pub fn fetch_header_with_block_hash(&self, hash: HashOutput) -> Result<BlockHeader, ChainStorageError> {
         let db = self.db_read_access()?;
@@ -345,6 +358,18 @@ where T: BlockchainBackend
     pub fn fetch_orphan(&self, hash: HashOutput) -> Result<Block, ChainStorageError> {
         let db = self.db_read_access()?;
         fetch_orphan(&*db, hash)
+    }
+
+    /// Returns the set of target difficulties for the specified proof of work algorithm.
+    pub fn fetch_target_difficulties(
+        &self,
+        pow_algo: PowAlgorithm,
+        height: u64,
+        block_window: usize,
+    ) -> Result<Vec<(EpochTime, Difficulty)>, ChainStorageError>
+    {
+        let db = self.db_read_access()?;
+        fetch_target_difficulties(&*db, pow_algo, height, block_window)
     }
 
     /// Returns true if the given UTXO, represented by its hash exists in the UTXO set.
@@ -530,6 +555,16 @@ fn fetch_stxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<Transact
 
 fn fetch_orphan<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<Block, ChainStorageError> {
     fetch!(db, hash, OrphanBlock)
+}
+
+pub fn fetch_target_difficulties<T: BlockchainBackend>(
+    db: &T,
+    pow_algo: PowAlgorithm,
+    height: u64,
+    block_window: usize,
+) -> Result<Vec<(EpochTime, Difficulty)>, ChainStorageError>
+{
+    db.fetch_target_difficulties(pow_algo, height, block_window)
 }
 
 pub fn is_utxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, ChainStorageError> {
