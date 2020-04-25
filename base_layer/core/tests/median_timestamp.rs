@@ -40,7 +40,7 @@ fn test_median_timestamp() {
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_mem_db(&consensus_manager);
     let pow_algos = vec![PowAlgorithm::Blake]; // GB default
-    create_test_pow_blockchain(&store, pow_algos, &consensus_manager.consensus_constants());
+    create_test_pow_blockchain(&store, pow_algos, &consensus_manager);
     let start_timestamp = store.fetch_block(0).unwrap().block().header.timestamp.clone();
     let mut timestamp = consensus_manager
         .get_median_timestamp(&*store.db_read_access().unwrap())
@@ -50,7 +50,7 @@ fn test_median_timestamp() {
     let pow_algos = vec![PowAlgorithm::Blake];
     // lets add 1
     let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
-    append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager.consensus_constants());
+    append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager);
     let mut prev_timestamp: EpochTime =
         start_timestamp.increase(consensus_manager.consensus_constants().get_target_block_interval());
     timestamp = consensus_manager
@@ -59,7 +59,7 @@ fn test_median_timestamp() {
     assert_eq!(timestamp, prev_timestamp);
     // lets add 1
     let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
-    append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager.consensus_constants());
+    append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager);
     prev_timestamp = start_timestamp.increase(consensus_manager.consensus_constants().get_target_block_interval());
     timestamp = consensus_manager
         .get_median_timestamp(&*store.db_read_access().unwrap())
@@ -69,7 +69,7 @@ fn test_median_timestamp() {
     // lets build up 11 blocks
     for i in 4..12 {
         let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
-        append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager.consensus_constants());
+        append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager);
         prev_timestamp =
             start_timestamp.increase(consensus_manager.consensus_constants().get_target_block_interval() * (i / 2));
         timestamp = consensus_manager
@@ -81,7 +81,7 @@ fn test_median_timestamp() {
     // lets add many1 blocks
     for _i in 1..20 {
         let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
-        append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager.consensus_constants());
+        append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager);
         prev_timestamp = prev_timestamp.increase(consensus_manager.consensus_constants().get_target_block_interval());
         timestamp = consensus_manager
             .get_median_timestamp(&*store.db_read_access().unwrap())
@@ -102,7 +102,7 @@ fn test_median_timestamp_with_height() {
         PowAlgorithm::Monero,
         PowAlgorithm::Blake,
     ];
-    create_test_pow_blockchain(&store, pow_algos, &consensus_manager.consensus_constants());
+    create_test_pow_blockchain(&store, pow_algos, &consensus_manager);
 
     let header0_timestamp = store.fetch_header(0).unwrap().timestamp;
     let header1_timestamp = store.fetch_header(1).unwrap().timestamp;
@@ -135,7 +135,7 @@ fn test_median_timestamp_odd_order() {
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_mem_db(&consensus_manager);
     let pow_algos = vec![PowAlgorithm::Blake]; // GB default
-    create_test_pow_blockchain(&store, pow_algos, &consensus_manager.consensus_constants());
+    create_test_pow_blockchain(&store, pow_algos, &consensus_manager);
     let start_timestamp = store.fetch_block(0).unwrap().block().header.timestamp.clone();
     let mut timestamp = consensus_manager
         .get_median_timestamp(&*store.db_read_access().unwrap())
@@ -144,7 +144,7 @@ fn test_median_timestamp_odd_order() {
     let pow_algos = vec![PowAlgorithm::Blake];
     // lets add 1
     let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
-    append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager.consensus_constants());
+    append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager);
     let mut prev_timestamp: EpochTime =
         start_timestamp.increase(consensus_manager.consensus_constants().get_target_block_interval());
     timestamp = consensus_manager
