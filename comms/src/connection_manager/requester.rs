@@ -42,6 +42,8 @@ pub enum ConnectionManagerRequest {
     GetActiveConnection(NodeId, oneshot::Sender<Option<PeerConnection>>),
     /// Retrieve all active connections
     GetActiveConnections(oneshot::Sender<Vec<PeerConnection>>),
+    /// Retrieve the number of active connections
+    GetNumActiveConnections(oneshot::Sender<usize>),
     /// Disconnect a peer
     DisconnectPeer(NodeId, oneshot::Sender<Result<(), ConnectionManagerError>>),
 }
@@ -94,6 +96,8 @@ macro_rules! request_fn {
 
 impl ConnectionManagerRequester {
     request_fn!(get_active_connections() -> Vec<PeerConnection>, request = ConnectionManagerRequest::GetActiveConnections);
+
+    request_fn!(get_num_active_connections() -> usize, request = ConnectionManagerRequest::GetNumActiveConnections);
 
     request_fn!(get_active_connection(node_id: NodeId) -> Option<PeerConnection>, request = ConnectionManagerRequest::GetActiveConnection);
 

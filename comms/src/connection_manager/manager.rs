@@ -348,7 +348,21 @@ where
                 let _ = reply_tx.send(self.active_connections.get(&node_id).map(Clone::clone));
             },
             GetActiveConnections(reply_tx) => {
-                let _ = reply_tx.send(self.active_connections.values().cloned().collect());
+                let _ = reply_tx.send(
+                    self.active_connections
+                        .values()
+                        .filter(|conn| conn.is_connected())
+                        .cloned()
+                        .collect(),
+                );
+            },
+            GetNumActiveConnections(reply_tx) => {
+                let _ = reply_tx.send(
+                    self.active_connections
+                        .values()
+                        .filter(|conn| conn.is_connected())
+                        .count(),
+                );
             },
             DisconnectPeer(node_id, reply_tx) => match self.active_connections.remove(&node_id) {
                 Some(mut conn) => {
