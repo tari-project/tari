@@ -177,6 +177,15 @@ impl DhtDiscoveryService {
         // The connection manager could not dial the peer on any address
         match event {
             PeerConnectFailed(node_id, ConnectionManagerError::ConnectFailedMaximumAttemptsReached) => {
+                if self.connection_manager.get_num_active_connections().await? == 0 {
+                    info!(
+                        target: LOG_TARGET,
+                        "Unsure if we're online because we have no connections. Ignoring connection failed event for \
+                         peer '{}'.",
+                        node_id
+                    );
+                    return Ok(());
+                }
                 let peer = self.peer_manager.find_by_node_id(node_id).await?;
                 if peer.connection_stats.failed_attempts() > MAX_FAILED_ATTEMPTS_MARK_PEER_OFFLINE {
                     debug!(
@@ -394,7 +403,6 @@ impl DhtDiscoveryService {
                     None,
                 )
                 .await?;
-            peer_manager.set_offline(pubkey, false).await?;
         } else {
             peer_manager
                 .add_peer(Peer::new(
@@ -542,7 +550,7 @@ mod test {
         let (sender, receiver) = mpsc::channel(10);
         // Requester which timeout instantly
         let mut requester = DhtDiscoveryRequester::new(sender, Duration::from_millis(1));
-        let mut shutdown = Shutdown::new();
+        let shutdown = Shutdown::new();
 
         DhtDiscoveryService::new(
             DhtConfig::default(),
@@ -569,7 +577,5 @@ mod test {
         let (params, _) = oms_mock_state.pop_call().unwrap();
         assert_eq!(params.dht_message_type, DhtMessageType::Discovery);
         assert_eq!(params.encryption, OutboundEncryption::EncryptFor(dest_public_key));
-
-        shutdown.trigger().unwrap();
     }
 }

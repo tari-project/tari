@@ -210,9 +210,7 @@ impl Peer {
 
     /// Returns the ban status of the peer
     pub fn is_banned(&self) -> bool {
-        self.banned_until
-            .map(|dt| dt >= Utc::now().naive_utc())
-            .unwrap_or(false)
+        self.banned_until().is_some()
     }
 
     /// Bans the peer for a specified duration
@@ -227,7 +225,7 @@ impl Peer {
     }
 
     pub fn banned_until(&self) -> Option<&NaiveDateTime> {
-        self.banned_until.as_ref()
+        self.banned_until.as_ref().filter(|dt| *dt >= &Utc::now().naive_utc())
     }
 
     /// Marks the peer as offline
