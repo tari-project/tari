@@ -13,6 +13,37 @@
 //! illustrates the progression of the two state machines and shows where the public data messages are constructed and
 //! accepted in each state machine
 //!
+//! The sequence diagram for the single receiver protocol is:
+//!
+//! <div class="mermaid">
+//!   sequenceDiagram
+//!   participant Sender
+//!   participant Receiver
+//! #
+//!   activate Sender
+//!     Sender-->>Sender: initialize transaction
+//!   deactivate Sender
+//! #
+//!   activate Sender
+//!   Sender-->>+Receiver: partial tx info
+//!   Receiver-->>Receiver: validate tx info
+//!   Receiver-->>Receiver: create new output and sign
+//!   Receiver-->>-Sender: signed partial transaction
+//!   deactivate Sender
+//! #
+//!   activate Sender
+//!     Sender-->>Sender: validate and sign
+//!   deactivate Sender
+//! #
+//!   alt tx is valid
+//!   Sender-->>Network: Broadcast transaction
+//!   else tx is invalid
+//!   Sender--XSender: Failed
+//!   end
+//! </div>
+//!
+//! If there are multiple recipients, the protocol is more involved and requires three rounds of communication:
+//!
 //! <div class="mermaid">
 //!   sequenceDiagram
 //!   participant Sender

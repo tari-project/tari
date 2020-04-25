@@ -135,9 +135,6 @@ impl LivenessMock {
             SetPongMetadata(_, _) => {
                 reply_tx.send(Ok(LivenessResponse::Ok)).unwrap();
             },
-            GetNumActiveNeighbours => {
-                reply_tx.send(Ok(LivenessResponse::NumActiveNeighbours(8))).unwrap();
-            },
             AddNodeId(_n) => reply_tx.send(Ok(LivenessResponse::NodeIdAdded)).unwrap(),
             GetNodeIdStats(_n) => reply_tx
                 .send(Ok(LivenessResponse::NodeIdStats(NodeStats::new())))

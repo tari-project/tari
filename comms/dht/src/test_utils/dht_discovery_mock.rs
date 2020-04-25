@@ -61,7 +61,7 @@ impl DhtDiscoveryMockState {
     }
 
     pub fn set_discover_peer_response(&self, peer: Peer) -> &Self {
-        *acquire_write_lock!(self.discover_peer) = peer;
+        *self.discover_peer.write().unwrap() = peer;
         self
     }
 
@@ -102,8 +102,7 @@ impl DhtDiscoveryMock {
         trace!(target: LOG_TARGET, "DhtDiscoveryMock received request {:?}", req);
         self.state.inc_call_count();
         match req {
-            DiscoverPeer(boxed) => {
-                let (_, reply_tx) = *boxed;
+            DiscoverPeer(_, _, reply_tx) => {
                 let lock = self.state.discover_peer.read().unwrap();
                 reply_tx.send(Ok(lock.clone())).unwrap();
             },

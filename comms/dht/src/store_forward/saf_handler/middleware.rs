@@ -26,7 +26,7 @@ use crate::{
     config::DhtConfig,
     inbound::DecryptedDhtMessage,
     outbound::OutboundMessageRequester,
-    store_forward::SafStorage,
+    store_forward::StoreAndForwardRequester,
 };
 use futures::{task::Context, Future};
 use std::{sync::Arc, task::Poll};
@@ -40,7 +40,7 @@ use tower::Service;
 pub struct MessageHandlerMiddleware<S> {
     config: DhtConfig,
     next_service: S,
-    store: Arc<SafStorage>,
+    saf_requester: StoreAndForwardRequester,
     dht_requester: DhtRequester,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
@@ -51,7 +51,7 @@ impl<S> MessageHandlerMiddleware<S> {
     pub fn new(
         config: DhtConfig,
         next_service: S,
-        store: Arc<SafStorage>,
+        saf_requester: StoreAndForwardRequester,
         dht_requester: DhtRequester,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
@@ -60,7 +60,7 @@ impl<S> MessageHandlerMiddleware<S> {
     {
         Self {
             config,
-            store,
+            saf_requester,
             dht_requester,
             next_service,
             node_identity,
@@ -86,7 +86,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Cl
         MessageHandlerTask::new(
             self.config.clone(),
             self.next_service.clone(),
-            Arc::clone(&self.store),
+            self.saf_requester.clone(),
             self.dht_requester.clone(),
             Arc::clone(&self.peer_manager),
             self.outbound_service.clone(),

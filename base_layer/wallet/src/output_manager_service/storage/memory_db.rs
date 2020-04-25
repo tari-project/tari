@@ -140,7 +140,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                     db.unspent_outputs.push(*o);
                 },
                 DbKeyValuePair::PendingTransactionOutputs(t, p) => {
-                    db.pending_transactions.insert(t, *p);
+                    db.short_term_pending_transactions.insert(t, *p);
                 },
                 DbKeyValuePair::KeyManagerState(km) => db.key_manager_state = Some(km),
             },
@@ -204,7 +204,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         &self,
         tx_id: TxId,
         outputs_to_send: &[UnblindedOutput],
-        change_output: Option<UnblindedOutput>,
+        outputs_to_receive: &[UnblindedOutput],
     ) -> Result<(), OutputManagerStorageError>
     {
         let mut db = acquire_write_lock!(self.db);
@@ -224,8 +224,8 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             timestamp: Utc::now().naive_utc(),
         };
 
-        if let Some(co) = change_output {
-            pending_transaction.outputs_to_be_received.push(co);
+        for co in outputs_to_receive {
+            pending_transaction.outputs_to_be_received.push(co.clone());
         }
 
         db.short_term_pending_transactions.insert(tx_id, pending_transaction);

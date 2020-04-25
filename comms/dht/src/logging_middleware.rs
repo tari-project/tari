@@ -22,47 +22,47 @@
 
 use futures::{task::Context, Future, TryFutureExt};
 use log::*;
-use std::{fmt::Display, marker::PhantomData, task::Poll};
+use std::{borrow::Cow, fmt::Display, marker::PhantomData, task::Poll};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::middleware::message_logging";
 
 /// This layer is responsible for logging messages for debugging.
-pub struct MessageLoggingLayer<R> {
-    prefix_msg: &'static str,
+pub struct MessageLoggingLayer<'a, R> {
+    prefix_msg: Cow<'a, str>,
     _r: PhantomData<R>,
 }
 
-impl<R> MessageLoggingLayer<R> {
-    pub fn new(prefix_msg: &'static str) -> Self {
+impl<'a, R> MessageLoggingLayer<'a, R> {
+    pub fn new<T: Into<Cow<'a, str>>>(prefix_msg: T) -> Self {
         Self {
-            prefix_msg,
+            prefix_msg: prefix_msg.into(),
             _r: PhantomData,
         }
     }
 }
 
-impl<S, R> Layer<S> for MessageLoggingLayer<R>
+impl<'a, S, R> Layer<S> for MessageLoggingLayer<'a, R>
 where
     S: Service<R>,
     S::Error: std::error::Error + Send + Sync + 'static,
     R: Display,
 {
-    type Service = MessageLoggingService<S>;
+    type Service = MessageLoggingService<'a, S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        MessageLoggingService::new(self.prefix_msg, service)
+        MessageLoggingService::new(self.prefix_msg.clone(), service)
     }
 }
 
 #[derive(Clone)]
-pub struct MessageLoggingService<S> {
-    prefix_msg: &'static str,
+pub struct MessageLoggingService<'a, S> {
+    prefix_msg: Cow<'a, str>,
     inner: S,
 }
 
-impl<S> MessageLoggingService<S> {
-    pub fn new(prefix_msg: &'static str, service: S) -> Self {
+impl<'a, S> MessageLoggingService<'a, S> {
+    pub fn new(prefix_msg: Cow<'a, str>, service: S) -> Self {
         Self {
             inner: service,
             prefix_msg,
@@ -70,7 +70,7 @@ impl<S> MessageLoggingService<S> {
     }
 }
 
-impl<S, R> Service<R> for MessageLoggingService<S>
+impl<S, R> Service<R> for MessageLoggingService<'_, S>
 where
     S: Service<R> + Clone,
     S::Error: std::error::Error + Send + Sync + 'static,

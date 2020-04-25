@@ -47,7 +47,9 @@ impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchUtxos(hash_outputs) => ci::NodeCommsRequest::FetchUtxos(hash_outputs.outputs),
             FetchBlocks(block_heights) => ci::NodeCommsRequest::FetchBlocks(block_heights.heights),
             FetchBlocksWithHashes(block_hashes) => ci::NodeCommsRequest::FetchBlocksWithHashes(block_hashes.outputs),
-            GetNewBlockTemplate(_) => ci::NodeCommsRequest::GetNewBlockTemplate,
+            GetNewBlockTemplate(pow_algo) => {
+                ci::NodeCommsRequest::GetNewBlockTemplate(PowAlgorithm::try_from(pow_algo)?)
+            },
             GetNewBlock(block_template) => ci::NodeCommsRequest::GetNewBlock(block_template.try_into()?),
             GetTargetDifficulty(pow_algo) => {
                 ci::NodeCommsRequest::GetTargetDifficulty(PowAlgorithm::try_from(pow_algo)?)
@@ -66,15 +68,12 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchHeaders(block_heights) => ProtoNodeCommsRequest::FetchHeaders(block_heights.into()),
             FetchHeadersWithHashes(block_hashes) => ProtoNodeCommsRequest::FetchHeadersWithHashes(block_hashes.into()),
             FetchHeadersAfter(hashes, stopping_hash) => {
-                ProtoNodeCommsRequest::FetchHeadersAfter(ProtoFetchHeadersAfter {
-                    hashes: hashes.into(),
-                    stopping_hash: stopping_hash.into(),
-                })
+                ProtoNodeCommsRequest::FetchHeadersAfter(ProtoFetchHeadersAfter { hashes, stopping_hash })
             },
             FetchUtxos(hash_outputs) => ProtoNodeCommsRequest::FetchUtxos(hash_outputs.into()),
             FetchBlocks(block_heights) => ProtoNodeCommsRequest::FetchBlocks(block_heights.into()),
             FetchBlocksWithHashes(block_hashes) => ProtoNodeCommsRequest::FetchBlocksWithHashes(block_hashes.into()),
-            GetNewBlockTemplate => ProtoNodeCommsRequest::GetNewBlockTemplate(true),
+            GetNewBlockTemplate(pow_algo) => ProtoNodeCommsRequest::GetNewBlockTemplate(pow_algo as u64),
             GetNewBlock(block_template) => ProtoNodeCommsRequest::GetNewBlock(block_template.into()),
             GetTargetDifficulty(pow_algo) => ProtoNodeCommsRequest::GetTargetDifficulty(pow_algo as u64),
         }

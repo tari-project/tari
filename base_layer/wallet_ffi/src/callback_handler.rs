@@ -55,7 +55,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     output_manager_service::{handle::OutputManagerEvent, TxId},
     transaction_service::{
-        handle::TransactionEvent,
+        handle::{TransactionEvent, TransactionEventReceiver},
         storage::database::{CompletedTransaction, InboundTransaction, TransactionBackend, TransactionDatabase},
     },
 };
@@ -70,10 +70,12 @@ where TBackend: TransactionBackend + 'static
     callback_received_finalized_transaction: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_transaction_broadcast: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_transaction_mined: unsafe extern "C" fn(*mut CompletedTransaction),
-    callback_discovery_process_complete: unsafe extern "C" fn(TxId, bool),
+    callback_direct_send_result: unsafe extern "C" fn(TxId, bool),
+    callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
+    callback_transaction_cancellation: unsafe extern "C" fn(TxId),
     callback_base_node_sync_complete: unsafe extern "C" fn(TxId, bool),
     db: TransactionDatabase<TBackend>,
-    transaction_service_event_stream: Fuse<Subscriber<TransactionEvent>>,
+    transaction_service_event_stream: Fuse<TransactionEventReceiver>,
     output_manager_service_event_stream: Fuse<Subscriber<OutputManagerEvent>>,
     shutdown_signal: Option<ShutdownSignal>,
 }
@@ -84,7 +86,7 @@ where TBackend: TransactionBackend + 'static
 {
     pub fn new(
         db: TransactionDatabase<TBackend>,
-        transaction_service_event_stream: Fuse<Subscriber<TransactionEvent>>,
+        transaction_service_event_stream: Fuse<TransactionEventReceiver>,
         output_manager_service_event_stream: Fuse<Subscriber<OutputManagerEvent>>,
         shutdown_signal: ShutdownSignal,
         callback_received_transaction: unsafe extern "C" fn(*mut InboundTransaction),
@@ -92,7 +94,9 @@ where TBackend: TransactionBackend + 'static
         callback_received_finalized_transaction: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_transaction_broadcast: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_transaction_mined: unsafe extern "C" fn(*mut CompletedTransaction),
-        callback_discovery_process_complete: unsafe extern "C" fn(TxId, bool),
+        callback_direct_send_result: unsafe extern "C" fn(TxId, bool),
+        callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
+        callback_transaction_cancellation: unsafe extern "C" fn(TxId),
         callback_base_node_sync_complete: unsafe extern "C" fn(u64, bool),
     ) -> Self
     {
@@ -118,7 +122,15 @@ where TBackend: TransactionBackend + 'static
         );
         info!(
             target: LOG_TARGET,
-            "DiscoveryProcessCompleteCallback -> Assigning Fn:  {:?}", callback_discovery_process_complete
+            "DirectSendResultCallback -> Assigning Fn:  {:?}", callback_direct_send_result
+        );
+        info!(
+            target: LOG_TARGET,
+            "StoreAndForwardSendResultCallback -> Assigning Fn:  {:?}", callback_store_and_forward_send_result
+        );
+        info!(
+            target: LOG_TARGET,
+            "TransactionCancellationCallback -> Assigning Fn:  {:?}", callback_transaction_cancellation
         );
         info!(
             target: LOG_TARGET,
@@ -131,7 +143,9 @@ where TBackend: TransactionBackend + 'static
             callback_received_finalized_transaction,
             callback_transaction_broadcast,
             callback_transaction_mined,
-            callback_discovery_process_complete,
+            callback_direct_send_result,
+            callback_store_and_forward_send_result,
+            callback_transaction_cancellation,
             callback_base_node_sync_complete,
             db,
             transaction_service_event_stream,
@@ -150,38 +164,40 @@ where TBackend: TransactionBackend + 'static
 
         loop {
             futures::select! {
-                msg = self.transaction_service_event_stream.select_next_some() => {
-                    trace!(target: LOG_TARGET, "Transaction Service Callback Handler event {:?}", msg);
-                    match (*msg).clone() {
-                        TransactionEvent::ReceivedTransaction(tx_id) => {
-                            self.receive_transaction_event(tx_id).await;
-                        },
-                        TransactionEvent::ReceivedTransactionReply(tx_id) => {
-                            self.receive_transaction_reply_event(tx_id).await;
-                        },
-                        TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
-                            self.receive_finalized_transaction_event(tx_id).await;
-                        },
-                        TransactionEvent::TransactionSendDiscoveryComplete(tx_id, result) => {
-                            // If this event result is false we will return that result via the callback as
-                            // no further action will be taken on this send attempt. However if it is true
-                            // then we must wait for a `TransactionSendResult` which
-                            // will tell us the final result of the send
-                            if !result {
-                                self.receive_discovery_process_result(tx_id, result);
+                result = self.transaction_service_event_stream.select_next_some() => {
+                    match result {
+                        Ok(msg) => {
+                            trace!(target: LOG_TARGET, "Transaction Service Callback Handler event {:?}", msg);
+                            match (*msg).clone() {
+                                TransactionEvent::ReceivedTransaction(tx_id) => {
+                                    self.receive_transaction_event(tx_id).await;
+                                },
+                                TransactionEvent::ReceivedTransactionReply(tx_id) => {
+                                    self.receive_transaction_reply_event(tx_id).await;
+                                },
+                                TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
+                                    self.receive_finalized_transaction_event(tx_id).await;
+                                },
+                                TransactionEvent::TransactionDirectSendResult(tx_id, result) => {
+                                    self.receive_direct_send_result(tx_id, result);
+                                },
+                                TransactionEvent::TransactionStoreForwardSendResult(tx_id, result) => {
+                                    self.receive_store_and_forward_send_result(tx_id, result);
+                                },
+                                 TransactionEvent::TransactionCancelled(tx_id) => {
+                                    self.receive_transaction_cancellation(tx_id);
+                                },
+                                TransactionEvent::TransactionBroadcast(tx_id) => {
+                                    self.receive_transaction_broadcast_event(tx_id).await;
+                                },
+                                TransactionEvent::TransactionMined(tx_id) => {
+                                    self.receive_transaction_mined_event(tx_id).await;
+                                },
+                                /// Only the above variants are mapped to callbacks
+                                _ => (),
                             }
                         },
-                        TransactionEvent::TransactionBroadcast(tx_id) => {
-                            self.receive_transaction_broadcast_event(tx_id).await;
-                        },
-                        TransactionEvent::TransactionMined(tx_id) => {
-                            self.receive_transaction_mined_event(tx_id).await;
-                        },
-                        TransactionEvent::TransactionSendResult(tx_id, result) => {
-                            self.receive_discovery_process_result(tx_id, result);
-                        },
-                        /// Only the above variants are mapped to callbacks
-                        _ => (),
+                        Err(e) => error!(target: LOG_TARGET, "Error reading from Transaction Service event broadcast channel"),
                     }
                 },
                 msg = self.output_manager_service_event_stream.select_next_some() => {
@@ -260,13 +276,33 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    fn receive_discovery_process_result(&mut self, tx_id: TxId, result: bool) {
+    fn receive_direct_send_result(&mut self, tx_id: TxId, result: bool) {
         debug!(
             target: LOG_TARGET,
-            "Calling Discovery Process Completed callback function for TxId: {} with result {}", tx_id, result
+            "Calling Direct Send Result callback function for TxId: {} with result {}", tx_id, result
         );
         unsafe {
-            (self.callback_discovery_process_complete)(tx_id, result);
+            (self.callback_direct_send_result)(tx_id, result);
+        }
+    }
+
+    fn receive_store_and_forward_send_result(&mut self, tx_id: TxId, result: bool) {
+        debug!(
+            target: LOG_TARGET,
+            "Calling Store and Forward Send Result callback function for TxId: {} with result {}", tx_id, result
+        );
+        unsafe {
+            (self.callback_store_and_forward_send_result)(tx_id, result);
+        }
+    }
+
+    fn receive_transaction_cancellation(&mut self, tx_id: TxId) {
+        debug!(
+            target: LOG_TARGET,
+            "Calling Transaction Cancellation callback function for TxId: {}", tx_id
+        );
+        unsafe {
+            (self.callback_transaction_cancellation)(tx_id);
         }
     }
 

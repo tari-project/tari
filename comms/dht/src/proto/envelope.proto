@@ -22,8 +22,7 @@ enum DhtMessageType {
 message DhtHeader {
     uint32 version = 1;
     oneof destination {
-        // The sender has chosen not to disclose the message destination, or the destination is
-        // the peer being sent to.
+        // The sender has chosen not to disclose the message destination
         bool unknown = 2;
         // Destined for a particular public key
         bytes public_key = 3;
@@ -32,14 +31,17 @@ message DhtHeader {
     }
 
     // Origin public key of the message. This can be the same peer that sent the message
-    // or another peer if the message should be forwarded. This is optional but must be specified
+    // or another peer if the message should be forwarded. This is optional but MUST be specified
     // if the ENCRYPTED flag is set.
-    DhtOrigin origin = 5;
+    // If an ephemeral_public_key is specified, this MUST be encrypted using a derived ECDH shared key
+    bytes origin_mac = 5;
+    // Ephemeral public key component of the ECDH shared key. MUST be specified if the ENCRYPTED flag is set.
+    bytes ephemeral_public_key = 6;
     // The type of message
-    DhtMessageType message_type = 6;
+    DhtMessageType message_type = 7;
     // The network for which this message is intended (e.g. TestNet, MainNet etc.)
-    Network network = 7;
-    uint32 flags = 8;
+    Network network = 8;
+    uint32 flags = 9;
 }
 
 enum Network {
@@ -56,7 +58,8 @@ message DhtEnvelope {
     bytes body = 2;
 }
 
-message DhtOrigin {
+// The Message Authentication Code (MAC) message format of the decrypted `DhtHeader::origin_mac` field
+message OriginMac {
     bytes public_key = 1;
     bytes signature = 2;
 }

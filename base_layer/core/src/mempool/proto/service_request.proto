@@ -11,9 +11,11 @@ message MempoolServiceRequest {
     oneof request {
         // Indicates a GetStats request. The value of the bool should be ignored.
         bool get_stats = 2;
+        // Indicates a GetState request. The value of the bool should be ignored.
+        bool get_state = 3;
         // Indicates a GetTxStateWithExcessSig request.
-        tari.types.Signature get_tx_state_with_excess_sig = 3;
+        tari.types.Signature get_tx_state_with_excess_sig = 4;
         // Indicates a SubmitTransaction request.
-        tari.types.Transaction submit_transaction = 4;
+        tari.types.Transaction submit_transaction = 5;
     }
 }

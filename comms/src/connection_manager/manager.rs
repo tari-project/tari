@@ -315,7 +315,7 @@ where
         use ConnectionManagerRequest::*;
         trace!(target: LOG_TARGET, "Connection manager got request: {:?}", request);
         match request {
-            DialPeer(node_id, is_forced, reply_tx) => match self.get_active_connection(&node_id) {
+            DialPeer(node_id, reply_tx) => match self.get_active_connection(&node_id) {
                 Some(conn) => {
                     debug!(target: LOG_TARGET, "[{}] Found existing active connection", conn);
                     log_if_error_fmt!(
@@ -333,7 +333,7 @@ where
                         self.node_identity.node_id().short_str(),
                         node_id.short_str()
                     );
-                    self.dial_peer(node_id, reply_tx, is_forced).await
+                    self.dial_peer(node_id, reply_tx).await
                 },
             },
             NotifyListening(reply_tx) => match self.listener_address.as_ref() {
@@ -348,7 +348,21 @@ where
                 let _ = reply_tx.send(self.active_connections.get(&node_id).map(Clone::clone));
             },
             GetActiveConnections(reply_tx) => {
-                let _ = reply_tx.send(self.active_connections.values().cloned().collect());
+                let _ = reply_tx.send(
+                    self.active_connections
+                        .values()
+                        .filter(|conn| conn.is_connected())
+                        .cloned()
+                        .collect(),
+                );
+            },
+            GetNumActiveConnections(reply_tx) => {
+                let _ = reply_tx.send(
+                    self.active_connections
+                        .values()
+                        .filter(|conn| conn.is_connected())
+                        .count(),
+                );
             },
             DisconnectPeer(node_id, reply_tx) => match self.active_connections.remove(&node_id) {
                 Some(mut conn) => {
@@ -412,7 +426,7 @@ where
                 self.send_dialer_request(DialerRequest::CancelPendingDial(node_id.clone()))
                     .await;
 
-                match self.active_connections.remove(&node_id) {
+                match self.active_connections.get(&node_id) {
                     Some(existing_conn) => {
                         debug!(
                             target: LOG_TARGET,
@@ -421,7 +435,7 @@ where
                             existing_conn.peer_node_id()
                         );
 
-                        if self.tie_break_existing_connection(&existing_conn, &new_conn) {
+                        if self.tie_break_existing_connection(existing_conn, &new_conn) {
                             debug!(
                                 target: LOG_TARGET,
                                 "Disconnecting existing {} connection to peer '{}' because of simultaneous dial",
@@ -434,8 +448,14 @@ where
                                 Box::new(existing_conn.peer_node_id().clone()),
                                 existing_conn.direction(),
                             ));
+
+                            // Replace existing connection with new one
+                            let existing_conn = self
+                                .active_connections
+                                .insert(node_id, new_conn.clone())
+                                .expect("Already checked");
+
                             self.delayed_disconnect(existing_conn);
-                            self.active_connections.insert(node_id, new_conn.clone());
                             self.publish_event(PeerConnected(new_conn));
                         } else {
                             debug!(
@@ -447,7 +467,6 @@ where
                             );
 
                             self.delayed_disconnect(new_conn);
-                            self.active_connections.insert(node_id, existing_conn);
                         }
                     },
                     None => {
@@ -567,38 +586,12 @@ where
         &mut self,
         node_id: NodeId,
         reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
-        force_dial: bool,
     )
     {
         match self.peer_manager.find_by_node_id(&node_id).await {
             Ok(peer) => {
-                if !force_dial && peer.is_recently_offline() {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Peer '{}' is offline (i.e. we failed to connect to them recently).",
-                        peer.node_id.short_str()
-                    );
-                    let _ = reply_tx.send(Err(ConnectionManagerError::PeerOffline));
-                    self.publish_event(ConnectionManagerEvent::PeerConnectFailed(
-                        Box::new(peer.node_id),
-                        ConnectionManagerError::PeerOffline,
-                    ));
-                    return;
-                }
-
-                if let Err(err) = self.dialer_tx.try_send(DialerRequest::Dial(Box::new(peer), reply_tx)) {
+                if let Err(err) = self.dialer_tx.send(DialerRequest::Dial(Box::new(peer), reply_tx)).await {
                     error!(target: LOG_TARGET, "Failed to send request to dialer because '{}'", err);
-                    // TODO: If the channel is full - we'll fail to dial. This function should block until the dial
-                    //       request channel has cleared
-
-                    if let DialerRequest::Dial(_, reply_tx) = err.into_inner() {
-                        log_if_error_fmt!(
-                            target: LOG_TARGET,
-                            reply_tx.send(Err(ConnectionManagerError::EstablisherChannelError)),
-                            "Failed to send dial peer result for peer '{}'",
-                            node_id.short_str()
-                        );
-                    }
                 }
             },
             Err(err) => {

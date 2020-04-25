@@ -46,6 +46,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
+    time::{Duration, Instant},
 };
 use tari_shutdown::Shutdown;
 
@@ -107,6 +108,7 @@ pub struct PeerConnection {
     request_tx: mpsc::Sender<PeerConnectionRequest>,
     address: Multiaddr,
     direction: ConnectionDirection,
+    started_at: Instant,
 }
 
 impl PeerConnection {
@@ -124,6 +126,7 @@ impl PeerConnection {
             peer_node_id: Arc::new(peer_node_id),
             address,
             direction,
+            started_at: Instant::now(),
         }
     }
 
@@ -135,12 +138,20 @@ impl PeerConnection {
         self.direction
     }
 
+    pub fn address(&self) -> &Multiaddr {
+        &self.address
+    }
+
     pub fn id(&self) -> ConnId {
         self.id
     }
 
     pub fn is_connected(&self) -> bool {
         !self.request_tx.is_closed()
+    }
+
+    pub fn connected_since(&self) -> Duration {
+        self.started_at.elapsed()
     }
 
     pub fn reference_count(&self) -> usize {

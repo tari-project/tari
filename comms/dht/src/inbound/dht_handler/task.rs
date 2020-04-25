@@ -40,7 +40,7 @@ use tari_comms::{
     pipeline::PipelineError,
     types::CommsPublicKey,
 };
-use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{hex::Hex, ByteArray};
 use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::dht_handler";
@@ -56,9 +56,7 @@ pub struct ProcessDhtMessage<S> {
 }
 
 impl<S> ProcessDhtMessage<S>
-where
-    S: Service<DecryptedDhtMessage, Response = ()>,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 {
     pub fn new(
         config: DhtConfig,
@@ -87,12 +85,12 @@ where
             .take()
             .expect("ProcessDhtMessage initialized without message");
 
-        // If this message failed to decrypt, this middleware is not interested in it
+        // If this message failed to decrypt, we stop it going further at this layer
         if message.decryption_failed() {
-            self.next_service
-                .oneshot(message)
-                .await
-                .map_err(PipelineError::from_debug)?;
+            debug!(
+                target: LOG_TARGET,
+                "Message that failed to decrypt will be discarded here. DhtHeader={}", message.dht_header
+            );
             return Ok(());
         }
 
@@ -110,10 +108,7 @@ where
             // Not a DHT message, call downstream middleware
             _ => {
                 trace!(target: LOG_TARGET, "Passing message onto next service");
-                self.next_service
-                    .oneshot(message)
-                    .await
-                    .map_err(PipelineError::from_debug)?
+                self.next_service.oneshot(message).await?;
             },
         }
 
@@ -137,12 +132,13 @@ where
                     Some(node_id),
                     Some(net_addresses),
                     None,
+                    None,
+                    Some(false),
                     Some(peer_features),
                     None,
                     None,
                 )
                 .await?;
-            peer_manager.set_offline(&pubkey, false).await?;
         } else {
             peer_manager
                 .add_peer(Peer::new(
@@ -180,25 +176,29 @@ where
             decryption_result,
             dht_header,
             source_peer,
+            authenticated_origin,
+            is_saf_message,
             ..
         } = message;
 
-        let origin = dht_header
-            .origin
-            .as_ref()
-            .ok_or_else(|| DhtInboundError::OriginRequired("Origin is required for this message type".to_string()))?;
+        let authenticated_pk = authenticated_origin.ok_or_else(|| {
+            DhtInboundError::OriginRequired("Authenticated origin is required for this message type".to_string())
+        })?;
 
-        if &origin.public_key == self.node_identity.public_key() {
-            trace!(target: LOG_TARGET, "Received our own join message. Discarding it.");
+        if &authenticated_pk == self.node_identity.public_key() {
+            warn!(target: LOG_TARGET, "Received our own join message. Discarding it.");
             return Ok(());
         }
-
-        trace!(target: LOG_TARGET, "Received Join Message from {}", origin.public_key);
 
         let body = decryption_result.expect("already checked that this message decrypted successfully");
         let join_msg = body
             .decode_part::<JoinMessage>(0)?
-            .ok_or_else(|| DhtInboundError::InvalidJoinNetAddresses)?;
+            .ok_or_else(|| DhtInboundError::InvalidMessageBody)?;
+
+        info!(
+            target: LOG_TARGET,
+            "Received join Message from '{}' {}", authenticated_pk, join_msg
+        );
 
         let addresses = join_msg
             .addresses
@@ -210,11 +210,11 @@ where
             return Err(DhtInboundError::InvalidAddresses);
         }
 
-        let node_id = self.validate_raw_node_id(&origin.public_key, &join_msg.node_id)?;
+        let node_id = self.validate_raw_node_id(&authenticated_pk, &join_msg.node_id)?;
 
         let origin_peer = self
             .add_or_update_peer(
-                &origin.public_key,
+                &authenticated_pk,
                 node_id,
                 addresses,
                 PeerFeatures::from_bits_truncate(join_msg.peer_features),
@@ -250,13 +250,21 @@ where
                 "Sending Join to joining peer with public key '{}'",
                 origin_peer.public_key
             );
+
             self.send_join_direct(origin_peer.public_key).await?;
         }
 
-        trace!(
+        if is_saf_message {
+            debug!(
+                target: LOG_TARGET,
+                "Not re-propagating join message received from store and forward"
+            );
+            return Ok(());
+        }
+
+        debug!(
             target: LOG_TARGET,
-            "Propagating join message to at most {} peer(s)",
-            self.config.num_neighbouring_nodes
+            "Propagating join message to at most {} peer(s)", self.config.num_neighbouring_nodes
         );
 
         // Propagate message to closer peers
@@ -266,12 +274,12 @@ where
                     .closest(
                         origin_peer.node_id,
                         self.config.num_neighbouring_nodes,
-                        vec![origin.public_key.clone(), source_peer.public_key.clone()],
+                        vec![authenticated_pk, source_peer.public_key.clone()],
                         PeerFeatures::MESSAGE_PROPAGATION,
                     )
                     .with_dht_header(dht_header)
                     .finish(),
-                body.to_encoded_bytes()?,
+                body.to_encoded_bytes(),
             )
             .await?;
 
@@ -304,10 +312,9 @@ where
             target: LOG_TARGET,
             "Received Discover Response Message from {}",
             message
-                .dht_header
-                .origin
+                .authenticated_origin
                 .as_ref()
-                .map(|o| o.public_key.to_hex())
+                .map(|pk| pk.to_hex())
                 .unwrap_or_else(|| "<unknown>".to_string())
         );
 
@@ -335,13 +342,13 @@ where
             .decode_part::<DiscoveryMessage>(0)?
             .ok_or_else(|| DhtInboundError::InvalidMessageBody)?;
 
-        let origin = message.dht_header.origin.ok_or_else(|| {
+        let authenticated_pk = message.authenticated_origin.ok_or_else(|| {
             DhtInboundError::OriginRequired("Origin header required for Discovery message".to_string())
         })?;
 
         info!(
             target: LOG_TARGET,
-            "Received discovery message from '{}'", origin.public_key,
+            "Received discovery message from '{}', forwarded by {}", authenticated_pk, message.source_peer
         );
 
         let addresses = discover_msg
@@ -354,10 +361,10 @@ where
             return Err(DhtInboundError::InvalidAddresses);
         }
 
-        let node_id = self.validate_raw_node_id(&origin.public_key, &discover_msg.node_id)?;
+        let node_id = self.validate_raw_node_id(&authenticated_pk, &discover_msg.node_id)?;
         let origin_peer = self
             .add_or_update_peer(
-                &origin.public_key,
+                &authenticated_pk,
                 node_id,
                 addresses,
                 PeerFeatures::from_bits_truncate(discover_msg.peer_features),
@@ -368,13 +375,13 @@ where
         if origin_peer.is_banned() {
             warn!(
                 target: LOG_TARGET,
-                "Received Discovery request for banned peer. This request will be ignored."
+                "Received Discovery request for banned peer '{}'. This request will be ignored.", authenticated_pk
             );
             return Ok(());
         }
 
         // Send the origin the current nodes latest contact info
-        self.send_discovery_response(origin.public_key, discover_msg.nonce)
+        self.send_discovery_response(origin_peer.public_key, discover_msg.nonce)
             .await?;
 
         Ok(())

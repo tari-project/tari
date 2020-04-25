@@ -62,7 +62,11 @@ use tari_core::{
     helpers::create_mem_db,
     mempool::MempoolServiceConfig,
     transactions::types::CryptoFactories,
-    validation::{block_validators::StatelessBlockValidator, mocks::MockValidator},
+    validation::{
+        accum_difficulty_validators::MockAccumDifficultyValidator,
+        block_validators::StatelessBlockValidator,
+        mocks::MockValidator,
+    },
 };
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::services::liveness::LivenessConfig;
@@ -92,9 +96,8 @@ fn test_listening_lagging() {
         MempoolServiceConfig::default(),
         LivenessConfig {
             enable_auto_join: false,
-            enable_auto_stored_message_request: false,
             auto_ping_interval: Some(Duration::from_millis(100)),
-            refresh_neighbours_interval: Duration::from_secs(60),
+            ..Default::default()
         },
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
@@ -611,7 +614,11 @@ fn test_sync_peer_banning() {
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config)
         .with_consensus_manager(consensus_manager)
-        .with_validators(mock_validator, stateless_block_validator)
+        .with_validators(
+            mock_validator,
+            stateless_block_validator,
+            MockAccumDifficultyValidator {},
+        )
         .start(&mut runtime, data_path);
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity)

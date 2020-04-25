@@ -7,4 +7,5 @@ pub mod block_builders;
 pub mod chain_metadata;
 pub mod event_stream;
 pub mod nodes;
+pub mod pow_blockchain;
 pub mod sample_blockchains;

@@ -20,78 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    collections::HashMap,
-    convert::{TryFrom, TryInto},
-    sync::Arc,
-    time::Duration,
-};
-
-use chrono::Utc;
-use futures::{
-    channel::oneshot,
-    future::{BoxFuture, FutureExt},
-    pin_mut,
-    stream::FuturesUnordered,
-    SinkExt,
-    Stream,
-    StreamExt,
-};
-use log::*;
-use rand::{rngs::OsRng, RngCore};
-use tari_broadcast_channel::Publisher;
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::SecretKey,
-    tari_utilities::{hash::Hashable, hex::Hex},
-};
-
-use tari_comms::{
-    message::MessageTag,
-    peer_manager::NodeIdentity,
-    protocol::messaging::{MessagingEvent, MessagingEventReceiver},
-    types::CommsPublicKey,
-};
-use tari_comms_dht::{
-    domain_message::OutboundDomainMessage,
-    outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageResponse},
-};
-#[cfg(feature = "test_harness")]
-use tari_core::transactions::{tari_amount::uT, types::BlindingFactor};
-use tari_core::{
-    base_node::proto::{
-        base_node as BaseNodeProto,
-        base_node::{
-            base_node_service_request::Request as BaseNodeRequestProto,
-            base_node_service_response::Response as BaseNodeResponseProto,
-        },
-    },
-    mempool::{
-        proto::mempool as MempoolProto,
-        service::{MempoolResponse, MempoolServiceResponse},
-        TxStorageResponse,
-    },
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::{KernelFeatures, OutputFeatures, OutputFlags, Transaction, TransactionOutput},
-        transaction_protocol::{
-            proto,
-            recipient::{RecipientSignedMessage, RecipientState},
-            sender::TransactionSenderMessage,
-        },
-        types::{CryptoFactories, PrivateKey},
-        ReceiverTransactionProtocol,
-    },
-};
-use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
-use tari_service_framework::{reply_channel, reply_channel::Receiver};
-
 use crate::{
     output_manager_service::{handle::OutputManagerHandle, TxId},
     transaction_service::{
         config::TransactionServiceConfig,
-        error::TransactionServiceError,
-        handle::{TransactionEvent, TransactionServiceRequest, TransactionServiceResponse},
+        error::{TransactionServiceError, TransactionServiceProtocolError},
+        handle::{TransactionEvent, TransactionEventSender, TransactionServiceRequest, TransactionServiceResponse},
+        protocols::{
+            transaction_broadcast_protocol::TransactionBroadcastProtocol,
+            transaction_chain_monitoring_protocol::TransactionChainMonitoringProtocol,
+            transaction_send_protocol::{TransactionProtocolStage, TransactionSendProtocol},
+        },
         storage::database::{
             CompletedTransaction,
             InboundTransaction,
@@ -102,8 +41,53 @@ use crate::{
             TransactionStatus,
         },
     },
-    util::futures::StateDelay,
 };
+use chrono::Utc;
+use futures::{
+    channel::{mpsc, mpsc::Sender, oneshot},
+    pin_mut,
+    stream::FuturesUnordered,
+    SinkExt,
+    Stream,
+    StreamExt,
+};
+use log::*;
+use rand::{rngs::OsRng, RngCore};
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+};
+use tari_comms::{
+    peer_manager::{NodeId, NodeIdentity},
+    types::CommsPublicKey,
+};
+use tari_comms_dht::{
+    domain_message::OutboundDomainMessage,
+    envelope::NodeDestination,
+    outbound::{OutboundEncryption, OutboundMessageRequester},
+};
+#[cfg(feature = "test_harness")]
+use tari_core::transactions::{tari_amount::uT, types::BlindingFactor};
+use tari_core::{
+    base_node::proto::base_node as BaseNodeProto,
+    mempool::{proto::mempool as MempoolProto, service::MempoolServiceResponse},
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{KernelFeatures, OutputFeatures, OutputFlags, Transaction},
+        transaction_protocol::{
+            proto,
+            recipient::{RecipientSignedMessage, RecipientState},
+            sender::TransactionSenderMessage,
+        },
+        types::{CryptoFactories, PrivateKey},
+        ReceiverTransactionProtocol,
+    },
+};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
+use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
+use tari_service_framework::{reply_channel, reply_channel::Receiver};
+use tokio::task::JoinHandle;
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
 
@@ -136,7 +120,6 @@ where TBackend: TransactionBackend + Clone + 'static
     config: TransactionServiceConfig,
     db: TransactionDatabase<TBackend>,
     outbound_message_service: OutboundMessageRequester,
-    message_event_receiver: Option<MessagingEventReceiver>,
     output_manager_service: OutputManagerHandle,
     transaction_stream: Option<TTxStream>,
     transaction_reply_stream: Option<TTxReplyStream>,
@@ -146,12 +129,15 @@ where TBackend: TransactionBackend + Clone + 'static
     request_stream: Option<
         reply_channel::Receiver<TransactionServiceRequest, Result<TransactionServiceResponse, TransactionServiceError>>,
     >,
-    event_publisher: Publisher<TransactionEvent>,
+    event_publisher: TransactionEventSender,
     node_identity: Arc<NodeIdentity>,
     factories: CryptoFactories,
     base_node_public_key: Option<CommsPublicKey>,
-    pending_outbound_message_results: HashMap<MessageTag, OutboundTransaction>,
-    pending_transaction_mined_queries: HashMap<TxId, TransactionMinedRequestResult>,
+    service_resources: TransactionServiceResources<TBackend>,
+    pending_transaction_reply_senders: HashMap<TxId, Sender<(CommsPublicKey, RecipientSignedMessage)>>,
+    mempool_response_senders: HashMap<u64, Sender<MempoolServiceResponse>>,
+    base_node_response_senders: HashMap<u64, Sender<BaseNodeProto::BaseNodeServiceResponse>>,
+    send_transaction_cancellation_senders: HashMap<u64, oneshot::Sender<()>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -179,17 +165,25 @@ where
         base_node_response_stream: BNResponseStream,
         output_manager_service: OutputManagerHandle,
         outbound_message_service: OutboundMessageRequester,
-        message_event_receiver: MessagingEventReceiver,
-        event_publisher: Publisher<TransactionEvent>,
+        event_publisher: TransactionEventSender,
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
     ) -> Self
     {
+        // Collect the resources that all protocols will need so that they can be neatly cloned as the protocols are
+        // spawned.
+        let service_resources = TransactionServiceResources {
+            db: db.clone(),
+            output_manager_service: output_manager_service.clone(),
+            outbound_message_service: outbound_message_service.clone(),
+            event_publisher: event_publisher.clone(),
+            node_identity: node_identity.clone(),
+            factories: factories.clone(),
+        };
         TransactionService {
             config,
             db,
             outbound_message_service,
-            message_event_receiver: Some(message_event_receiver),
             output_manager_service,
             transaction_stream: Some(transaction_stream),
             transaction_reply_stream: Some(transaction_reply_stream),
@@ -201,8 +195,11 @@ where
             node_identity,
             factories,
             base_node_public_key: None,
-            pending_outbound_message_results: HashMap::new(),
-            pending_transaction_mined_queries: HashMap::new(),
+            service_resources,
+            pending_transaction_reply_senders: HashMap::new(),
+            mempool_response_senders: HashMap::new(),
+            base_node_response_senders: HashMap::new(),
+            send_transaction_cancellation_senders: HashMap::new(),
         }
     }
 
@@ -244,27 +241,27 @@ where
             .expect("Transaction Service initialized without base_node_response_stream")
             .fuse();
         pin_mut!(base_node_response_stream);
-        let message_event_receiver = self
-            .message_event_receiver
-            .take()
-            .expect("Transaction Service initialized without message_event_subscription")
-            .fuse();
-        pin_mut!(message_event_receiver);
 
-        let mut discovery_process_futures: FuturesUnordered<
-            BoxFuture<'static, Result<(MessageTag, OutboundTransaction), TransactionServiceError>>,
+        let mut send_transaction_protocol_handles: FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         > = FuturesUnordered::new();
 
-        let mut broadcast_timeout_futures: FuturesUnordered<BoxFuture<'static, TxId>> = FuturesUnordered::new();
-        let mut mined_request_timeout_futures: FuturesUnordered<BoxFuture<'static, TxId>> = FuturesUnordered::new();
+        let mut transaction_broadcast_protocol_handles: FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
+        > = FuturesUnordered::new();
 
+        let mut transaction_chain_monitoring_protocol_handles: FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
+        > = FuturesUnordered::new();
+
+        info!(target: LOG_TARGET, "Transaction Service started");
         loop {
             futures::select! {
                 //Incoming request
                 request_context = request_stream.select_next_some() => {
                     trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
-                    let _ = reply_tx.send(self.handle_request(request, &mut discovery_process_futures, &mut  broadcast_timeout_futures, &mut  mined_request_timeout_futures).await.or_else(|resp| {
+                    let _ = reply_tx.send(self.handle_request(request, &mut send_transaction_protocol_handles,  &mut transaction_broadcast_protocol_handles, &mut transaction_chain_monitoring_protocol_handles).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling request: {:?}", resp);
                         Err(resp)
                     })).or_else(|resp| {
@@ -276,58 +273,54 @@ where
                 msg = transaction_stream.select_next_some() => {
                     trace!(target: LOG_TARGET, "Handling Transaction Message");
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
-                    let result  = self.accept_transaction(origin_public_key, inner_msg).await.or_else(|err| {
-                        error!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {:?} for NodeID: {}", err, self.node_identity.node_id().short_str());
-                        Err(err)
-                    });
+                    let result  = self.accept_transaction(origin_public_key, inner_msg).await;
 
-                    if result.is_err() {
-                        let _ = self.event_publisher
-                                .send(TransactionEvent::Error(
-                                    "Error handling Transaction Sender message".to_string(),
-                                ))
-                                .await;
+                    match result {
+                        Err(TransactionServiceError::RepeatedMessageError) => {
+                            trace!(target: LOG_TARGET, "A repeated Transaction message was received");
+                        }
+                        Err(e) => {
+                            error!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {:?} for NodeID: {}", e, self.node_identity.node_id().short_str());
+                            let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error(format!("Error handling Transaction Sender message: {:?}", e).to_string())));
+                        }
+                        _ => (),
                     }
                 },
                  // Incoming messages from the Comms layer
                 msg = transaction_reply_stream.select_next_some() => {
                     trace!(target: LOG_TARGET, "Handling Transaction Reply Message");
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
-                    let result = self.accept_recipient_reply(origin_public_key, inner_msg, &mut broadcast_timeout_futures).await.or_else(|err| {
-                        error!(target: LOG_TARGET, "Failed to handle incoming Transaction Reply message: {:?} for NodeId: {}", err, self.node_identity.node_id().short_str());
-                        Err(err)
-                    });
+                    let result = self.accept_recipient_reply(origin_public_key, inner_msg).await;
 
-                    if result.is_err() {
-                        let _ = self.event_publisher
-                                .send(TransactionEvent::Error(
-                                    "Error handling Transaction Recipient Reply message".to_string(),
-                                ))
-                                .await;
+                    match result {
+                        Err(TransactionServiceError::TransactionDoesNotExistError) => {
+                            debug!(target: LOG_TARGET, "Unable to handle incoming Transaction Reply message from NodeId: {} due to Transaction not Existing. This usually means the message was a repeated message from Store and Forward", self.node_identity.node_id().short_str());
+                        },
+                        Err(e) => {
+                            error!(target: LOG_TARGET, "Failed to handle incoming Transaction Reply message: {:?} for NodeId: {}", e, self.node_identity.node_id().short_str());
+                            let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling Transaction Recipient Reply message".to_string())));
+                        },
+                        Ok(_) => (),
                     }
                 },
                // Incoming messages from the Comms layer
                 msg = transaction_finalized_stream.select_next_some() => {
                     trace!(target: LOG_TARGET, "Handling Transaction Finalized Message");
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
-                    let result = self.accept_finalized_transaction(origin_public_key, inner_msg, &mut broadcast_timeout_futures).await.or_else(|err| {
+                    let result = self.accept_finalized_transaction(origin_public_key, inner_msg, &mut transaction_broadcast_protocol_handles).await.or_else(|err| {
                         error!(target: LOG_TARGET, "Failed to handle incoming Transaction Finalized message: {:?} for NodeID: {}", err , self.node_identity.node_id().short_str());
                         Err(err)
                     });
 
                     if result.is_err() {
-                        let _ = self.event_publisher
-                                .send(TransactionEvent::Error(
-                                    "Error handling Transaction Finalized message".to_string(),
-                                ))
-                                .await;
+                        let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling Transaction Finalized message".to_string(),)));
                     }
                 },
                 // Incoming messages from the Comms layer
                 msg = mempool_response_stream.select_next_some() => {
                     trace!(target: LOG_TARGET, "Handling Mempool Response");
                     let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
-                    let _ = self.handle_mempool_response(inner_msg, &mut mined_request_timeout_futures).await.or_else(|resp| {
+                    let _ = self.handle_mempool_response(inner_msg).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling mempool service response: {:?}", resp);
                         Err(resp)
                     });
@@ -341,57 +334,26 @@ where
                         Err(resp)
                     });
                 }
-                response = discovery_process_futures.select_next_some() => {
-                    trace!(target: LOG_TARGET, "Handling Discovery Process Completion");
-                    match response {
-                        Ok((message_tag, outbound_tx)) => {
-                            info!(
-                                target: LOG_TARGET,
-                                "Discovery process completed for TxId: {} with Message Tag: {} now waiting for MessageSent event",
-                                outbound_tx.tx_id,
-                                message_tag,
-                            );
-                            self.db
-                                .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx.clone())
-                                .await?;
-                            self.pending_outbound_message_results.insert(message_tag.clone(), outbound_tx);
-                        },
-                        Err(TransactionServiceError::DiscoveryProcessFailed(tx_id)) => {
-                            if let Err(e) = self.output_manager_service.cancel_transaction(tx_id).await {
-                                error!(target: LOG_TARGET, "Failed to Cancel TX_ID: {} after failed sending attempt", tx_id);
-                            }
-                            error!(target: LOG_TARGET, "Discovery and Send failed for TX_ID: {}", tx_id);
-                            let _ = self.event_publisher
-                                .send(TransactionEvent::TransactionSendDiscoveryComplete(tx_id, false))
-                                .await;
-                        }
-                        Err(e) => error!(target: LOG_TARGET, "Discovery and Send failed with Error: {:?}", e),
-                    }
-                },
-                message_event = message_event_receiver.select_next_some() => {
-                   match message_event {
-                   Ok(event) => {
-                       let _ = self.handle_message_event((*event).clone()).await.or_else(|resp| {
-                            error!(target: LOG_TARGET, "Error handling outbound message event: {:?}", resp);
-                            Err(resp)
-                        });
-                    },
-                    Err(e) => error!(target: LOG_TARGET, "Error handling Outbound Message Event: {:?}", e),
-                   }
+                join_result = send_transaction_protocol_handles.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Send Protocol for Transaction has ended with result {:?}", join_result);
+                    match join_result {
+                        Ok(join_result_inner) => self.complete_send_transaction_protocol(join_result_inner, &mut transaction_broadcast_protocol_handles).await,
+                        Err(e) => error!(target: LOG_TARGET, "Error resolving Join Handle: {:?}", e),
+                    };
                 }
-                tx_id = broadcast_timeout_futures.select_next_some() => {
-                    trace!(target: LOG_TARGET, "Handling Broadcast Timeout");
-                    let _ = self.handle_mempool_broadcast_timeout(tx_id, &mut  broadcast_timeout_futures).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling mempool broadcast timeout : {:?}", resp);
-                        Err(resp)
-                    });
+                join_result = transaction_broadcast_protocol_handles.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Transaction Broadcast protocol has ended with result {:?}", join_result);
+                    match join_result {
+                        Ok(join_result_inner) => self.complete_transaction_broadcast_protocol(join_result_inner, &mut transaction_chain_monitoring_protocol_handles).await,
+                        Err(e) => error!(target: LOG_TARGET, "Error resolving Join Handle: {:?}", e),
+                    };
                 }
-                tx_id = mined_request_timeout_futures.select_next_some() => {
-                    trace!(target: LOG_TARGET, "Handling Mined Request Timeout");
-                    let _ = self.handle_transaction_mined_request_timeout(tx_id, &mut  mined_request_timeout_futures).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling transaction mined? request timeout : {:?}", resp);
-                        Err(resp)
-                    });
+                join_result = transaction_chain_monitoring_protocol_handles.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Transaction chain monitoring protocol has ended with result {:?}", join_result);
+                    match join_result {
+                        Ok(join_result_inner) => self.complete_transaction_chain_monitoring_protocol(join_result_inner),
+                        Err(e) => error!(target: LOG_TARGET, "Error resolving Join Handle: {:?}", e),
+                    };
                 }
                 complete => {
                     info!(target: LOG_TARGET, "Transaction service shutting down");
@@ -406,19 +368,29 @@ where
     async fn handle_request(
         &mut self,
         request: TransactionServiceRequest,
-        discovery_process_futures: &mut FuturesUnordered<
-            BoxFuture<'static, Result<(MessageTag, OutboundTransaction), TransactionServiceError>>,
+        send_transaction_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
-        broadcast_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
-        mined_request_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
+        chain_monitoring_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<TransactionServiceResponse, TransactionServiceError>
     {
         trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
         match request {
             TransactionServiceRequest::SendTransaction((dest_pubkey, amount, fee_per_gram, message)) => self
-                .send_transaction(dest_pubkey, amount, fee_per_gram, message, discovery_process_futures)
+                .send_transaction(
+                    dest_pubkey,
+                    amount,
+                    fee_per_gram,
+                    message,
+                    send_transaction_join_handles,
+                )
                 .await
-                .map(|_| TransactionServiceResponse::TransactionSent),
+                .map(TransactionServiceResponse::TransactionSent),
+            TransactionServiceRequest::CancelTransaction(tx_id) => self
+                .cancel_transaction(tx_id)
+                .await
+                .map(|_| TransactionServiceResponse::TransactionCancelled),
             TransactionServiceRequest::GetPendingInboundTransactions => Ok(
                 TransactionServiceResponse::PendingInboundTransactions(self.get_pending_inbound_transactions().await?),
             ),
@@ -443,13 +415,22 @@ where
                 Ok(TransactionServiceResponse::CoinbaseTransactionCancelled)
             },
             TransactionServiceRequest::SetBaseNodePublicKey(public_key) => self
-                .set_base_node_public_key(public_key, broadcast_timeout_futures, mined_request_timeout_futures)
+                .set_base_node_public_key(
+                    public_key,
+                    transaction_broadcast_join_handles,
+                    chain_monitoring_join_handles,
+                    send_transaction_join_handles,
+                )
                 .await
                 .map(|_| TransactionServiceResponse::BaseNodePublicKeySet),
             TransactionServiceRequest::ImportUtxo(value, source_public_key, message) => self
                 .add_utxo_import_transaction(value, source_public_key, message)
                 .await
                 .map(TransactionServiceResponse::UtxoImported),
+            TransactionServiceRequest::SubmitTransaction((tx_id, tx, fee, amount, message)) => self
+                .submit_transaction(transaction_broadcast_join_handles, tx_id, tx, fee, amount, message)
+                .await
+                .map(|_| TransactionServiceResponse::TransactionSubmitted),
             #[cfg(feature = "test_harness")]
             TransactionServiceRequest::CompletePendingOutboundTransaction(completed_transaction) => {
                 self.complete_pending_outbound_transaction(completed_transaction)
@@ -479,62 +460,6 @@ where
         }
     }
 
-    async fn handle_message_event(&mut self, message_event: MessagingEvent) -> Result<(), TransactionServiceError> {
-        let (message_tag, result) = match message_event {
-            MessagingEvent::MessageSent(message_tag) => (message_tag, true),
-            MessagingEvent::SendMessageFailed(outbound_message, _reason) => (outbound_message.tag, false),
-            _ => return Ok(()),
-        };
-        match self.pending_outbound_message_results.remove(&message_tag) {
-            None => (),
-            Some(outbound_tx) => {
-                // If the message was successfully sent then add it to the pending transaction list
-                if result {
-                    self.output_manager_service
-                        .confirm_pending_transaction(outbound_tx.tx_id)
-                        .await?;
-                    info!(
-                        target: LOG_TARGET,
-                        "Pending Outbound Transaction TxId: {:?} was successfully sent with Message Tag: {:?}",
-                        outbound_tx.tx_id,
-                        message_tag
-                    );
-                } else {
-                    error!(
-                        target: LOG_TARGET,
-                        "Pending Outbound Transaction TxId: {:?} with Message Tag {:?} could not be sent",
-                        outbound_tx.tx_id,
-                        message_tag,
-                    );
-                    if let Err(e) = self.db.remove_pending_outbound_transaction(outbound_tx.tx_id).await {
-                        error!(
-                            target: LOG_TARGET,
-                            "Failed to remove pending transaction TX_ID: {} after failed sending attempt with error \
-                             {:?}",
-                            outbound_tx.tx_id,
-                            e
-                        );
-                    }
-                    if let Err(e) = self.output_manager_service.cancel_transaction(outbound_tx.tx_id).await {
-                        error!(
-                            target: LOG_TARGET,
-                            "Failed to Cancel TX_ID: {} after failed sending attempt with error {:?}",
-                            outbound_tx.tx_id,
-                            e
-                        );
-                    }
-                }
-
-                let _ = self
-                    .event_publisher
-                    .send(TransactionEvent::TransactionSendResult(outbound_tx.tx_id, result))
-                    .await;
-            },
-        }
-
-        Ok(())
-    }
-
     /// Sends a new transaction to a recipient
     /// # Arguments
     /// 'dest_pubkey': The Comms pubkey of the recipient node
@@ -546,107 +471,37 @@ where
         amount: MicroTari,
         fee_per_gram: MicroTari,
         message: String,
-        discovery_process_futures: &mut FuturesUnordered<
-            BoxFuture<'static, Result<(MessageTag, OutboundTransaction), TransactionServiceError>>,
-        >,
-    ) -> Result<(), TransactionServiceError>
+        join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
+    ) -> Result<TxId, TransactionServiceError>
     {
-        let mut sender_protocol = self
+        let sender_protocol = self
             .output_manager_service
             .prepare_transaction_to_send(amount, fee_per_gram, None, message.clone())
             .await?;
 
-        if !sender_protocol.is_single_round_message_ready() {
-            return Err(TransactionServiceError::InvalidStateError);
-        }
+        let tx_id = sender_protocol.get_tx_id()?;
 
-        let msg = sender_protocol.build_single_round_message()?;
-        let tx_id = msg.tx_id;
-        let proto_message = proto::TransactionSenderMessage::single(msg.into());
-
-        match self
-            .outbound_message_service
-            .send_direct(
-                dest_pubkey.clone(),
-                OutboundEncryption::EncryptForPeer,
-                OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message),
-            )
-            .await?
-        {
-            SendMessageResponse::Queued(tags) => match tags.len() {
-                0 => error!(
-                    target: LOG_TARGET,
-                    "Queuing Transaction TX_ID: {} for send was unsuccessful and no message was sent", tx_id
-                ),
-                1 => {
-                    info!(
-                        target: LOG_TARGET,
-                        "Transaction (TxId: {}) Send successfully queued for send with Message Tag: {:?}",
-                        tx_id,
-                        tags[0],
-                    );
-
-                    let outbound_tx = OutboundTransaction {
-                        tx_id,
-                        destination_public_key: dest_pubkey.clone(),
-                        amount,
-                        fee: sender_protocol.get_fee_amount()?,
-                        sender_protocol,
-                        status: TransactionStatus::Pending,
-                        message,
-                        timestamp: Utc::now().naive_utc(),
-                    };
-                    self.db
-                        .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx.clone())
-                        .await?;
-                    self.pending_outbound_message_results
-                        .insert(tags[0].clone(), outbound_tx);
-                },
-                _ => error!(
-                    target: LOG_TARGET,
-                    "Send process for TX_ID: {} was unsuccessful due to more than 1 MessageTag being returned", tx_id
-                ),
-            },
-            SendMessageResponse::Failed => return Err(TransactionServiceError::OutboundSendFailure),
-            SendMessageResponse::PendingDiscovery(r) => {
-                // The sending of the message resulted in a long running Discovery process being performed by the Comms
-                // layer. This can take minutes so we will spawn a task to wait for the result and then act
-                // appropriately on it
-                let tx_id_clone = tx_id;
-                let outbound_tx_clone = OutboundTransaction {
-                    tx_id,
-                    destination_public_key: dest_pubkey.clone(),
-                    amount,
-                    fee: sender_protocol.get_fee_amount()?,
-                    sender_protocol: sender_protocol.clone(),
-                    status: TransactionStatus::Pending,
-                    message: message.clone(),
-                    timestamp: Utc::now().naive_utc(),
-                };
-
-                info!(
-                    target: LOG_TARGET,
-                    "Send Transaction request for TxID: {:?} to recipient with public_key {} requires that a \
-                     Discovery Process be conducted",
-                    tx_id,
-                    dest_pubkey
-                );
-
-                let discovery_future = async move {
-                    transaction_send_discovery_process_completion(r, tx_id_clone, outbound_tx_clone).await
-                };
-                discovery_process_futures.push(discovery_future.boxed());
-
-                return Err(TransactionServiceError::OutboundSendDiscoveryInProgress(tx_id));
-            },
-        }
-
-        info!(
-            target: LOG_TARGET,
-            "Transaction with TX_ID = {} queued to be sent to {}", tx_id, dest_pubkey
+        let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
+        let (cancellation_sender, cancellation_receiver) = oneshot::channel();
+        self.pending_transaction_reply_senders.insert(tx_id, tx_reply_sender);
+        self.send_transaction_cancellation_senders
+            .insert(tx_id, cancellation_sender);
+        let protocol = TransactionSendProtocol::new(
+            tx_id,
+            self.service_resources.clone(),
+            tx_reply_receiver,
+            cancellation_receiver,
+            dest_pubkey,
+            amount,
+            message,
+            sender_protocol,
+            TransactionProtocolStage::Initial,
         );
 
-        Ok(())
+        let join_handle = tokio::spawn(protocol.execute());
+        join_handles.push(join_handle);
+
+        Ok(tx_id)
     }
 
     /// Accept the public reply from a recipient and apply the reply to the relevant transaction protocol
@@ -656,82 +511,137 @@ where
         &mut self,
         source_pubkey: CommsPublicKey,
         recipient_reply: proto::RecipientSignedMessage,
-        broadcast_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
     ) -> Result<(), TransactionServiceError>
     {
         let recipient_reply: RecipientSignedMessage = recipient_reply
             .try_into()
             .map_err(TransactionServiceError::InvalidMessageError)?;
 
-        let mut outbound_tx = self.db.get_pending_outbound_transaction(recipient_reply.tx_id).await?;
-
         let tx_id = recipient_reply.tx_id;
-        if !outbound_tx.sender_protocol.check_tx_id(tx_id.clone()) ||
-            !outbound_tx.sender_protocol.is_collecting_single_signature()
-        {
-            return Err(TransactionServiceError::InvalidStateError);
-        }
 
-        outbound_tx
-            .sender_protocol
-            .add_single_recipient_info(recipient_reply, &self.factories.range_proof)?;
-        outbound_tx
-            .sender_protocol
-            .finalize(KernelFeatures::empty(), &self.factories)?;
-        let tx = outbound_tx.sender_protocol.get_transaction()?;
-
-        let completed_transaction = CompletedTransaction {
-            tx_id,
-            source_public_key: self.node_identity.public_key().clone(),
-            destination_public_key: outbound_tx.destination_public_key,
-            amount: outbound_tx.amount,
-            fee: outbound_tx.fee,
-            transaction: tx.clone(),
-            status: TransactionStatus::Completed,
-            message: outbound_tx.message.clone(),
-            timestamp: Utc::now().naive_utc(),
-        };
-        self.db
-            .complete_outbound_transaction(tx_id.clone(), completed_transaction.clone())
-            .await?;
-        info!(
-            target: LOG_TARGET,
-            "Transaction Recipient Reply for TX_ID = {} received", tx_id,
-        );
-
-        let finalized_transaction_message = proto::TransactionFinalizedMessage {
-            tx_id,
-            transaction: Some(tx.clone().into()),
+        let sender = match self.pending_transaction_reply_senders.get_mut(&tx_id) {
+            None => return Err(TransactionServiceError::TransactionDoesNotExistError),
+            Some(s) => s,
         };
 
-        self.outbound_message_service
-            .send_direct(
-                source_pubkey.clone(),
-                OutboundEncryption::EncryptForPeer,
-                OutboundDomainMessage::new(TariMessageType::TransactionFinalized, finalized_transaction_message),
-            )
-            .await?;
-
-        // Logging this error here instead of propogating it up to the select! catchall which generates the Error Event.
-        let _ = self
-            .broadcast_completed_transaction_to_mempool(
-                tx_id,
-                self.config.initial_mempool_broadcast_timeout,
-                broadcast_timeout_futures,
-            )
+        sender
+            .send((source_pubkey, recipient_reply))
             .await
-            .map_err(|e| {
+            .map_err(|_| TransactionServiceError::ProtocolChannelError)?;
+
+        Ok(())
+    }
+
+    /// Handle the final clean up after a Send Transaction protocol completes
+    async fn complete_send_transaction_protocol(
+        &mut self,
+        join_result: Result<u64, TransactionServiceProtocolError>,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
+        >,
+    )
+    {
+        match join_result {
+            Ok(id) => {
+                let _ = self.pending_transaction_reply_senders.remove(&id);
+                let _ = self.send_transaction_cancellation_senders.remove(&id);
+                let _ = self
+                    .broadcast_completed_transaction_to_mempool(id, transaction_broadcast_join_handles)
+                    .await
+                    .or_else(|resp| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Error starting Broadcast Protocol after completed Send Transaction Protocol : {:?}", resp
+                        );
+                        Err(resp)
+                    });
+                trace!(
+                    target: LOG_TARGET,
+                    "Send Transaction Protocol for TxId: {} completed successfully",
+                    id
+                );
+            },
+            Err(TransactionServiceProtocolError { id, error }) => {
+                let _ = self.pending_transaction_reply_senders.remove(&id);
+                let _ = self.send_transaction_cancellation_senders.remove(&id);
                 error!(
                     target: LOG_TARGET,
-                    "Error broadcasting completed transaction to mempool: {:?}", e
+                    "Error completing Send Transaction Protocol (Id: {}): {:?}", id, error
+                );
+                let _ = self
+                    .event_publisher
+                    .send(Arc::new(TransactionEvent::Error(format!("{:?}", error))));
+            },
+        }
+    }
+
+    /// Cancel a pending outbound transaction
+    async fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
+        self.db.cancel_pending_transaction(tx_id).await.map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Pending Transaction does not exist and could not be cancelled: {:?}", e
+            );
+            e
+        })?;
+
+        self.output_manager_service.cancel_transaction(tx_id).await?;
+
+        if let Some(cancellation_sender) = self.send_transaction_cancellation_senders.remove(&tx_id) {
+            let _ = cancellation_sender.send(());
+        }
+        let _ = self.pending_transaction_reply_senders.remove(&tx_id);
+
+        let _ = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCancelled(tx_id)))
+            .map_err(|e| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Error sending event, usually because there are no subscribers: {:?}",
+                    e
                 );
                 e
             });
 
-        self.event_publisher
-            .send(TransactionEvent::ReceivedTransactionReply(tx_id))
-            .await
-            .map_err(|_| TransactionServiceError::EventStreamError)?;
+        info!(target: LOG_TARGET, "Pending Transaction (TxId: {}) cancelled", tx_id);
+
+        Ok(())
+    }
+
+    async fn restart_all_send_transaction_protocols(
+        &mut self,
+        join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
+    ) -> Result<(), TransactionServiceError>
+    {
+        let outbound_txs = self.db.get_pending_outbound_transactions().await?;
+        for (tx_id, tx) in outbound_txs {
+            if !self.pending_transaction_reply_senders.contains_key(&tx_id) {
+                debug!(
+                    target: LOG_TARGET,
+                    "Restarting listening for Reply for Pending Outbound Transaction TxId: {}", tx_id
+                );
+                let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
+                let (cancellation_sender, cancellation_receiver) = oneshot::channel();
+                self.pending_transaction_reply_senders.insert(tx_id, tx_reply_sender);
+                self.send_transaction_cancellation_senders
+                    .insert(tx_id, cancellation_sender);
+                let protocol = TransactionSendProtocol::new(
+                    tx_id,
+                    self.service_resources.clone(),
+                    tx_reply_receiver,
+                    cancellation_receiver,
+                    tx.destination_public_key,
+                    tx.amount,
+                    tx.message,
+                    tx.sender_protocol,
+                    TransactionProtocolStage::WaitForReply,
+                );
+
+                let join_handle = tokio::spawn(protocol.execute());
+                join_handles.push(join_handle);
+            }
+        }
 
         Ok(())
     }
@@ -752,6 +662,23 @@ where
 
         // Currently we will only reply to a Single sender transaction protocol
         if let TransactionSenderMessage::Single(data) = sender_message.clone() {
+            trace!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) received from {}",
+                data.tx_id,
+                source_pubkey
+            );
+            // Check this is not a repeat message i.e. tx_id doesn't already exist in our pending or completed
+            // transactions
+            if self.db.transaction_exists(data.tx_id).await? {
+                trace!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) already present in database.",
+                    data.tx_id
+                );
+                return Err(TransactionServiceError::RepeatedMessageError);
+            }
+
             let amount = data.amount;
 
             let spending_key = self
@@ -769,18 +696,21 @@ where
             );
             let recipient_reply = rtp.get_signed_data()?.clone();
 
-            // Check this is not a repeat message i.e. tx_id doesn't already exist in our pending or completed
-            // transactions
-            if self.db.transaction_exists(recipient_reply.tx_id).await? {
-                return Err(TransactionServiceError::RepeatedMessageError);
-            }
-
             let tx_id = recipient_reply.tx_id;
             let proto_message: proto::RecipientSignedMessage = recipient_reply.into();
             self.outbound_message_service
                 .send_direct(
                     source_pubkey.clone(),
-                    OutboundEncryption::EncryptForPeer,
+                    OutboundEncryption::None,
+                    OutboundDomainMessage::new(TariMessageType::ReceiverPartialTransactionReply, proto_message.clone()),
+                )
+                .await?;
+
+            self.outbound_message_service
+                .propagate(
+                    NodeDestination::NodeId(Box::new(NodeId::from_key(&source_pubkey)?)),
+                    OutboundEncryption::EncryptFor(Box::new(source_pubkey.clone())),
+                    vec![],
                     OutboundDomainMessage::new(TariMessageType::ReceiverPartialTransactionReply, proto_message),
                 )
                 .await?;
@@ -808,10 +738,17 @@ where
                 "Transaction (TX_ID: {}) - Amount: {} - Message: {}", tx_id, amount, data.message
             );
 
-            self.event_publisher
-                .send(TransactionEvent::ReceivedTransaction(tx_id))
-                .await
-                .map_err(|_| TransactionServiceError::EventStreamError)?;
+            let _ = self
+                .event_publisher
+                .send(Arc::new(TransactionEvent::ReceivedTransaction(tx_id)))
+                .map_err(|e| {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Error sending event, usually because there are no subscribers: {:?}",
+                        e
+                    );
+                    e
+                });
         }
         Ok(())
     }
@@ -824,7 +761,9 @@ where
         &mut self,
         source_pubkey: CommsPublicKey,
         finalized_transaction: proto::TransactionFinalizedMessage,
-        broadcast_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
+        >,
     ) -> Result<(), TransactionServiceError>
     {
         let tx_id = finalized_transaction.tx_id;
@@ -841,24 +780,25 @@ where
                     "Cannot convert Transaction field from TransactionFinalized message".to_string(),
                 )
             })?;
+
+        let inbound_tx = match self.db.get_pending_inbound_transaction(tx_id).await {
+            Ok(tx) => tx,
+            Err(_e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "TxId for received Finalized Transaction does not exist in Pending Inbound Transactions, could be \
+                     a repeat Store and Forward message"
+                );
+                return Ok(());
+            },
+        };
+
         info!(
             target: LOG_TARGET,
             "Finalized Transaction with TX_ID = {} received from {}",
             tx_id,
             source_pubkey.clone()
         );
-
-        let inbound_tx = self
-            .db
-            .get_pending_inbound_transaction(tx_id.clone())
-            .await
-            .map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Finalized transaction TxId does not exist in Pending Inbound Transactions"
-                );
-                e
-            })?;
 
         if inbound_tx.source_public_key != source_pubkey {
             error!(
@@ -896,13 +836,8 @@ where
         };
 
         self.db
-            .complete_inbound_transaction(tx_id.clone(), completed_transaction.clone())
+            .complete_inbound_transaction(tx_id, completed_transaction.clone())
             .await?;
-
-        self.event_publisher
-            .send(TransactionEvent::ReceivedFinalizedTransaction(tx_id))
-            .await
-            .map_err(|_| TransactionServiceError::EventStreamError)?;
 
         info!(
             target: LOG_TARGET,
@@ -913,16 +848,24 @@ where
 
         // Logging this error here instead of propogating it up to the select! catchall which generates the Error Event.
         let _ = self
-            .broadcast_completed_transaction_to_mempool(
-                tx_id,
-                self.config.initial_mempool_broadcast_timeout,
-                broadcast_timeout_futures,
-            )
+            .broadcast_completed_transaction_to_mempool(tx_id, transaction_broadcast_join_handles)
             .await
             .map_err(|e| {
                 error!(
                     target: LOG_TARGET,
                     "Error broadcasting completed transaction to mempool: {:?}", e
+                );
+                e
+            });
+
+        let _ = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::ReceivedFinalizedTransaction(tx_id)))
+            .map_err(|e| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Error sending event, usually because there are no subscribers: {:?}",
+                    e
                 );
                 e
             });
@@ -941,11 +884,11 @@ where
 
         let spending_key = self
             .output_manager_service
-            .get_coinbase_spending_key(tx_id.clone(), amount.clone(), maturity_height)
+            .get_coinbase_spending_key(tx_id, amount.clone(), maturity_height)
             .await?;
 
         self.db
-            .add_pending_coinbase_transaction(tx_id.clone(), PendingCoinbaseTransaction {
+            .add_pending_coinbase_transaction(tx_id, PendingCoinbaseTransaction {
                 tx_id,
                 amount,
                 commitment: self.factories.commitment.commit_value(&spending_key, u64::from(amount)),
@@ -964,17 +907,13 @@ where
         completed_transaction: Transaction,
     ) -> Result<(), TransactionServiceError>
     {
-        let coinbase_tx = self
-            .db
-            .get_pending_coinbase_transaction(tx_id.clone())
-            .await
-            .map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Finalized coinbase transaction TxId does not exist in Pending Inbound Transactions"
-                );
-                e
-            })?;
+        let coinbase_tx = self.db.get_pending_coinbase_transaction(tx_id).await.map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Finalized coinbase transaction TxId does not exist in Pending Inbound Transactions"
+            );
+            e
+        })?;
 
         if !completed_transaction.body.inputs().is_empty() ||
             completed_transaction.body.outputs().len() != 1 ||
@@ -1018,17 +957,13 @@ where
 
     /// If a specific coinbase transaction will not be mined then the Miner can cancel it
     pub async fn cancel_pending_coinbase_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
-        let _ = self
-            .db
-            .get_pending_coinbase_transaction(tx_id.clone())
-            .await
-            .map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Finalized coinbase transaction TxId does not exist in Pending Inbound Transactions"
-                );
-                e
-            })?;
+        let _ = self.db.get_pending_coinbase_transaction(tx_id).await.map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Finalized coinbase transaction TxId does not exist in Pending Inbound Transactions"
+            );
+            e
+        })?;
 
         self.output_manager_service.cancel_transaction(tx_id).await?;
 
@@ -1061,8 +996,9 @@ where
     async fn set_base_node_public_key(
         &mut self,
         base_node_public_key: CommsPublicKey,
-        broadcast_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
-        mined_request_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
+        broadcast_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
+        chain_monitoring_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
+        send_transaction_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError>
     {
         let startup_broadcast = self.base_node_public_key.is_none();
@@ -1071,7 +1007,7 @@ where
 
         if startup_broadcast {
             let _ = self
-                .broadcast_all_completed_transactions_to_mempool(broadcast_timeout_futures)
+                .broadcast_all_completed_transactions_to_mempool(broadcast_join_handles)
                 .await
                 .or_else(|resp| {
                     error!(
@@ -1082,12 +1018,23 @@ where
                 });
 
             let _ = self
-                .monitor_all_completed_transactions_for_mining(mined_request_timeout_futures)
+                .start_chain_monitoring_for_all_broadcast_transactions(chain_monitoring_join_handles)
                 .await
                 .or_else(|resp| {
                     error!(
                         target: LOG_TARGET,
                         "Error querying base_node for all completed transactions: {:?}", resp
+                    );
+                    Err(resp)
+                });
+
+            let _ = self
+                .restart_all_send_transaction_protocols(send_transaction_join_handles)
+                .await
+                .or_else(|resp| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Error restarting protocols for all pending outbound transactions: {:?}", resp
                     );
                     Err(resp)
                 });
@@ -1101,11 +1048,10 @@ where
     pub async fn broadcast_completed_transaction_to_mempool(
         &mut self,
         tx_id: TxId,
-        timeout: Duration,
-        broadcast_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
+        join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError>
     {
-        let completed_tx = self.db.get_completed_transaction(tx_id.clone()).await?;
+        let completed_tx = self.db.get_completed_transaction(tx_id).await?;
 
         if completed_tx.status != TransactionStatus::Completed || completed_tx.transaction.body.kernels().is_empty() {
             return Err(TransactionServiceError::InvalidCompletedTransaction);
@@ -1113,35 +1059,20 @@ where
         match self.base_node_public_key.clone() {
             None => return Err(TransactionServiceError::NoBaseNodeKeysProvided),
             Some(pk) => {
-                info!(
-                    target: LOG_TARGET,
-                    "Attempting to Broadcast Transaction (TxId: {} and Kernel Signature: {}) to Mempool",
-                    completed_tx.tx_id,
-                    completed_tx.transaction.body.kernels()[0]
-                        .excess_sig
-                        .get_signature()
-                        .to_hex()
+                let (mempool_response_sender, mempool_response_receiver) = mpsc::channel(100);
+                let (base_node_response_sender, base_node_response_receiver) = mpsc::channel(100);
+                self.mempool_response_senders.insert(tx_id, mempool_response_sender);
+                self.base_node_response_senders.insert(tx_id, base_node_response_sender);
+                let protocol = TransactionBroadcastProtocol::new(
+                    tx_id,
+                    self.service_resources.clone(),
+                    self.config.mempool_broadcast_timeout,
+                    pk,
+                    mempool_response_receiver,
+                    base_node_response_receiver,
                 );
-                trace!(target: LOG_TARGET, "{}", completed_tx.transaction);
-
-                // Send  Mempool Request
-                let mempool_request = MempoolProto::MempoolServiceRequest {
-                    request_key: completed_tx.tx_id,
-                    request: Some(MempoolProto::mempool_service_request::Request::SubmitTransaction(
-                        completed_tx.transaction.into(),
-                    )),
-                };
-                self.outbound_message_service
-                    .send_direct(
-                        pk.clone(),
-                        OutboundEncryption::EncryptForPeer,
-                        OutboundDomainMessage::new(TariMessageType::MempoolRequest, mempool_request),
-                    )
-                    .await?;
-                // Start Timeout
-                let state_timeout = StateDelay::new(timeout, completed_tx.tx_id);
-
-                broadcast_timeout_futures.push(state_timeout.delay().boxed());
+                let join_handle = tokio::spawn(protocol.execute());
+                join_handles.push(join_handle);
             },
         }
 
@@ -1152,53 +1083,18 @@ where
     /// node followed by mempool requests to confirm that they have been received
     async fn broadcast_all_completed_transactions_to_mempool(
         &mut self,
-        broadcast_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
+        join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError>
     {
-        trace!(target: LOG_TARGET, "Querying Broadcast? for all completed Transactions");
+        trace!(target: LOG_TARGET, "Attempting to Broadcast all Completed Transactions");
         let completed_txs = self.db.get_completed_transactions().await?;
         for completed_tx in completed_txs.values() {
-            if completed_tx.status == TransactionStatus::Completed {
-                self.broadcast_completed_transaction_to_mempool(
-                    completed_tx.tx_id.clone(),
-                    self.config.initial_mempool_broadcast_timeout,
-                    broadcast_timeout_futures,
-                )
-                .await?;
+            if completed_tx.status == TransactionStatus::Completed &&
+                !self.mempool_response_senders.contains_key(&completed_tx.tx_id)
+            {
+                self.broadcast_completed_transaction_to_mempool(completed_tx.tx_id, join_handles)
+                    .await?;
             }
-        }
-
-        Ok(())
-    }
-
-    /// Handle the timeout of a pending transaction broadcast request. This will check if the transaction's status has
-    /// been updated by received MempoolRepsonse during the course of this timeout. If it has not been updated the
-    /// transaction is broadcast again
-    pub async fn handle_mempool_broadcast_timeout(
-        &mut self,
-        tx_id: TxId,
-        broadcast_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
-    ) -> Result<(), TransactionServiceError>
-    {
-        let completed_tx = self.db.get_completed_transaction(tx_id.clone()).await?;
-
-        if completed_tx.status == TransactionStatus::Completed {
-            info!(
-                target: LOG_TARGET,
-                "Mempool broadcast timed out for Transaction with TX_ID: {}", tx_id
-            );
-
-            self.broadcast_completed_transaction_to_mempool(
-                tx_id,
-                self.config.mempool_broadcast_timeout,
-                broadcast_timeout_futures,
-            )
-            .await?;
-
-            self.event_publisher
-                .send(TransactionEvent::MempoolBroadcastTimedOut(tx_id))
-                .await
-                .map_err(|_| TransactionServiceError::EventStreamError)?;
         }
 
         Ok(())
@@ -1208,247 +1104,153 @@ where
     pub async fn handle_mempool_response(
         &mut self,
         response: MempoolProto::MempoolServiceResponse,
-        mined_request_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
     ) -> Result<(), TransactionServiceError>
     {
         let response = MempoolServiceResponse::try_from(response).unwrap();
+        trace!(target: LOG_TARGET, "Received Mempool Response: {:?}", response);
+
         let tx_id = response.request_key;
-        match response.response {
-            MempoolResponse::Stats(_) => {
-                return Err(TransactionServiceError::InvalidMessageError(
-                    "Mempool Response of invalid type".to_string(),
-                ))
+
+        let sender = match self.mempool_response_senders.get_mut(&tx_id) {
+            None => {
+                trace!(
+                    target: LOG_TARGET,
+                    "Received Mempool response with unexpected key: {}. Not for this service",
+                    response.request_key
+                );
+                return Ok(());
             },
-            MempoolResponse::TxStorage(ts) => {
-                let completed_tx = self.db.get_completed_transaction(response.request_key.clone()).await?;
+            Some(s) => s,
+        };
+        sender
+            .send(response)
+            .await
+            .map_err(|_| TransactionServiceError::ProtocolChannelError)?;
 
-                match completed_tx.status {
-                    TransactionStatus::Completed => match ts {
-                        // Getting this response means the Mempool Rejected this transaction so it will be cancelled.
-                        TxStorageResponse::NotStored => {
-                            // If this transaction is still in the Completed State it should be upgraded to the
-                            // Broadcast state
-                            error!(
+        Ok(())
+    }
+
+    /// Handle the final clean up after a Transaction Broadcast protocol completes
+    async fn complete_transaction_broadcast_protocol(
+        &mut self,
+        join_result: Result<u64, TransactionServiceProtocolError>,
+        transaction_chain_monitoring_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
+        >,
+    )
+    {
+        match join_result {
+            Ok(id) => {
+                // Cleanup any registered senders
+                let _ = self.mempool_response_senders.remove(&id);
+                let _ = self.base_node_response_senders.remove(&id);
+                trace!(
+                    target: LOG_TARGET,
+                    "Transaction Broadcast Protocol for TxId: {} completed successfully",
+                    id
+                );
+                let _ = self
+                    .start_transaction_chain_monitoring_protocol(id, transaction_chain_monitoring_join_handles)
+                    .await
+                    .or_else(|resp| {
+                        match resp {
+                            TransactionServiceError::InvalidCompletedTransaction => trace!(
                                 target: LOG_TARGET,
-                                "Mempool response received for TxId: {:?}. Transaction was REJECTED. Cancelling \
-                                 transaction.",
-                                tx_id
-                            );
-                            if let Err(e) = self.output_manager_service.cancel_transaction(completed_tx.tx_id).await {
-                                error!(
-                                    target: LOG_TARGET,
-                                    "Failed to Cancel outputs for TX_ID: {} after failed sending attempt with error \
-                                     {:?}",
-                                    completed_tx.tx_id,
-                                    e
-                                );
-                            }
-                            if let Err(e) = self.db.cancel_completed_transaction(completed_tx.tx_id).await {
-                                error!(
-                                    target: LOG_TARGET,
-                                    "Failed to Cancel TX_ID: {} after failed sending attempt with error {:?}",
-                                    completed_tx.tx_id,
-                                    e
-                                );
-                            }
-                            self.event_publisher
-                                .send(TransactionEvent::TransactionSendDiscoveryComplete(tx_id, false))
-                                .await
-                                .map_err(|_| TransactionServiceError::EventStreamError)?;
-                        },
-                        // Any other variant of this enum means the transaction has been received by the base_node and
-                        // is in one of the various mempools
-                        _ => {
-                            // If this transaction is still in the Completed State it should be upgraded to the
-                            // Broadcast state
-
-                            info!(
+                                "Not starting Chain monitoring protocol as transaction cannot be found, either \
+                                 cancelled or already mined."
+                            ),
+                            _ => error!(
                                 target: LOG_TARGET,
-                                "Completed Transaction (TxId: {} and Kernel Excess Sig: {}) detected as Broadcast to \
-                                 Base Node Mempool",
-                                tx_id,
-                                completed_tx.transaction.body.kernels()[0]
-                                    .excess_sig
-                                    .get_signature()
-                                    .to_hex()
-                            );
-                            self.db.broadcast_completed_transaction(tx_id.clone()).await?;
-                            // Start monitoring the base node to see if this Tx has been mined
-                            self.send_transaction_mined_request(
-                                tx_id.clone(),
-                                self.config.base_node_mined_timeout,
-                                mined_request_timeout_futures,
-                            )
-                            .await?;
-
-                            self.event_publisher
-                                .send(TransactionEvent::TransactionBroadcast(tx_id))
-                                .await
-                                .map_err(|_| TransactionServiceError::EventStreamError)?;
-                        },
-                    },
-                    TransactionStatus::Broadcast => {
-                        info!(
-                            target: LOG_TARGET,
-                            "Mempool query for transaction Tx_ID: {} returned {:?}", completed_tx.tx_id, ts
-                        );
-                        if let Some(result) = self.pending_transaction_mined_queries.get_mut(&completed_tx.tx_id) {
-                            match ts {
-                                TxStorageResponse::NotStored => result.mempool_response = Some(false),
-                                _ => result.mempool_response = Some(true),
-                            }
-                            debug!(target: LOG_TARGET, "Current Mempool/Mined state {:?}", result);
-                            if result.is_complete() {
-                                self.handle_transaction_mined_request_result(completed_tx.tx_id).await;
-                            }
+                                "Error starting Chain Monitoring Protocol after completed Broadcast Protocol : {:?}",
+                                resp
+                            ),
                         }
-                    },
-                    _ => (),
-                }
+                        Err(resp)
+                    });
+            },
+            Err(TransactionServiceProtocolError { id, error }) => {
+                let _ = self.mempool_response_senders.remove(&id);
+                let _ = self.base_node_response_senders.remove(&id);
+                error!(
+                    target: LOG_TARGET,
+                    "Error completing Transaction Broadcast Protocol (Id: {}): {:?}", id, error
+                );
+                let _ = self
+                    .event_publisher
+                    .send(Arc::new(TransactionEvent::Error(format!("{:?}", error))));
             },
         }
-        Ok(())
     }
 
     /// Send a request to the Base Node to see if the specified transaction has been mined yet. This function will send
     /// the request and store a timeout future to check in on the status of the transaction in the future.
-    async fn send_transaction_mined_request(
+    async fn start_transaction_chain_monitoring_protocol(
         &mut self,
         tx_id: TxId,
-        timeout: Duration,
-        mined_request_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
+        join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError>
     {
-        let completed_tx = self.db.get_completed_transaction(tx_id.clone()).await?;
+        let completed_tx = self.db.get_completed_transaction(tx_id).await?;
 
-        if (completed_tx.status != TransactionStatus::Broadcast && completed_tx.status != TransactionStatus::Completed) ||
-            completed_tx.transaction.body.kernels().is_empty()
-        {
+        if completed_tx.status != TransactionStatus::Broadcast || completed_tx.transaction.body.kernels().is_empty() {
             return Err(TransactionServiceError::InvalidCompletedTransaction);
         }
 
         match self.base_node_public_key.clone() {
             None => return Err(TransactionServiceError::NoBaseNodeKeysProvided),
             Some(pk) => {
-                let mut hashes = Vec::new();
-                for o in completed_tx.transaction.body.outputs() {
-                    hashes.push(o.hash());
-                }
+                let protocol_id = OsRng.next_u64();
 
-                info!(
-                    target: LOG_TARGET,
-                    "Sending Transaction Mined? request for TxId: {} to Base Node with {} outputs",
-                    tx_id,
-                    hashes.len(),
+                let (mempool_response_sender, mempool_response_receiver) = mpsc::channel(100);
+                let (base_node_response_sender, base_node_response_receiver) = mpsc::channel(100);
+                self.mempool_response_senders
+                    .insert(protocol_id, mempool_response_sender);
+                self.base_node_response_senders
+                    .insert(protocol_id, base_node_response_sender);
+                let protocol = TransactionChainMonitoringProtocol::new(
+                    protocol_id,
+                    completed_tx.tx_id,
+                    self.service_resources.clone(),
+                    self.config.base_node_mined_timeout,
+                    pk,
+                    mempool_response_receiver,
+                    base_node_response_receiver,
                 );
-
-                // Send a request to the mempool to find the state of the Tx there
-                let tx_excess_sig = completed_tx.transaction.body.kernels()[0].excess_sig.clone();
-                let mempool_request = MempoolProto::MempoolServiceRequest {
-                    request_key: completed_tx.tx_id,
-                    request: Some(MempoolProto::mempool_service_request::Request::GetTxStateWithExcessSig(
-                        tx_excess_sig.into(),
-                    )),
-                };
-                self.outbound_message_service
-                    .send_direct(
-                        pk.clone(),
-                        OutboundEncryption::EncryptForPeer,
-                        OutboundDomainMessage::new(TariMessageType::MempoolRequest, mempool_request),
-                    )
-                    .await?;
-
-                // Ask the base node if the outputs are in the chain
-                let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
-                let service_request = BaseNodeProto::BaseNodeServiceRequest {
-                    request_key: tx_id,
-                    request: Some(request),
-                };
-                self.outbound_message_service
-                    .send_direct(
-                        pk.clone(),
-                        OutboundEncryption::EncryptForPeer,
-                        OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request),
-                    )
-                    .await?;
-                // Start Timeout
-                let state_timeout = StateDelay::new(timeout, completed_tx.tx_id);
-                let _ = self
-                    .pending_transaction_mined_queries
-                    .insert(tx_id, TransactionMinedRequestResult::default());
-                mined_request_timeout_futures.push(state_timeout.delay().boxed());
+                let join_handle = tokio::spawn(protocol.execute());
+                join_handles.push(join_handle);
             },
         }
         Ok(())
     }
 
-    /// Handle the timeout of a pending transaction mined? request. This will check if the transaction's status has
-    /// been updated by received BaseNodeRepsonse during the course of this timeout. If it has not been updated the
-    /// transaction is broadcast again
-    pub async fn handle_transaction_mined_request_timeout(
+    /// Handle the final clean up after a Transaction Chain Monitoring protocol completes
+    fn complete_transaction_chain_monitoring_protocol(
         &mut self,
-        tx_id: TxId,
-        mined_request_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
-    ) -> Result<(), TransactionServiceError>
+        join_result: Result<u64, TransactionServiceProtocolError>,
+    )
     {
-        let completed_tx = self.db.get_completed_transaction(tx_id.clone()).await?;
-
-        if completed_tx.status == TransactionStatus::Broadcast || completed_tx.status == TransactionStatus::Completed {
-            info!(
-                target: LOG_TARGET,
-                "Transaction Mined? request timed out for TX_ID: {}", tx_id
-            );
-
-            self.send_transaction_mined_request(
-                tx_id,
-                self.config.base_node_mined_timeout,
-                mined_request_timeout_futures,
-            )
-            .await?;
-
-            self.event_publisher
-                .send(TransactionEvent::TransactionMinedRequestTimedOut(tx_id))
-                .await
-                .map_err(|_| TransactionServiceError::EventStreamError)?;
-        }
-
-        Ok(())
-    }
-
-    /// Handle the result of receiving all the stages needed to complete a Transaction Mined request
-    pub async fn handle_transaction_mined_request_result(&mut self, tx_id: TxId) {
-        if let Some(result) = self.pending_transaction_mined_queries.remove(&tx_id) {
-            // If the transaction is not in mempool AND not mined then the Tx was reorged out and will never appear
-            // in the chain and should be cancelled
-            if result.mempool_response == Some(false) && result.chain_response == Some(false) {
+        match join_result {
+            Ok(id) => {
+                // Cleanup any registered senders
+                let _ = self.mempool_response_senders.remove(&id);
+                let _ = self.base_node_response_senders.remove(&id);
+                trace!(
+                    target: LOG_TARGET,
+                    "Transaction chain monitoring Protocol for TxId: {} completed successfully",
+                    id
+                );
+            },
+            Err(TransactionServiceProtocolError { id, error }) => {
+                let _ = self.mempool_response_senders.remove(&id);
+                let _ = self.base_node_response_senders.remove(&id);
                 error!(
                     target: LOG_TARGET,
-                    "Transaction (TxId: {}) has left the Mempool while not being Mined. It will be cancelled.", tx_id,
+                    "Error completing Transaction chain monitoring Protocol (Id: {}): {:?}", id, error
                 );
                 let _ = self
-                    .output_manager_service
-                    .cancel_transaction(tx_id)
-                    .await
-                    .map_err(|e| {
-                        error!(
-                            target: LOG_TARGET,
-                            "Failed to Cancel outputs for TX_ID: {} after failed sending attempt with error {:?}",
-                            tx_id,
-                            e
-                        );
-                    });
-                let _ = self.db.cancel_completed_transaction(tx_id).await.map_err(|e| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to Cancel TX_ID: {} after failed sending attempt with error {:?}", tx_id, e
-                    );
-                });
-                let _ = self
                     .event_publisher
-                    .send(TransactionEvent::TransactionSendDiscoveryComplete(tx_id, false))
-                    .await
-                    .map_err(|e| error!(target: LOG_TARGET, "Failed send event {:?}", e));
-            }
+                    .send(Arc::new(TransactionEvent::Error(format!("{:?}", error))));
+            },
         }
     }
 
@@ -1458,115 +1260,41 @@ where
         response: BaseNodeProto::BaseNodeServiceResponse,
     ) -> Result<(), TransactionServiceError>
     {
-        let tx_id = response.request_key;
-        let response: Vec<tari_core::transactions::proto::types::TransactionOutput> = match response.response {
-            Some(BaseNodeResponseProto::TransactionOutputs(outputs)) => outputs.outputs,
-            _ => {
-                return Ok(());
-            },
-        };
-
-        let completed_tx = match self.db.get_completed_transaction(tx_id.clone()).await {
-            Ok(tx) => tx,
-            Err(_) => {
-                debug!(
+        let sender = match self.base_node_response_senders.get_mut(&response.request_key) {
+            None => {
+                trace!(
                     target: LOG_TARGET,
-                    "Base Node Response received with unexpected key {:?}", tx_id
+                    "Received Base Node response with unexpected key: {}. Not for this service",
+                    response.request_key
                 );
                 return Ok(());
             },
+            Some(s) => s,
         };
-        // If this transaction is still in the Broadcast or Completed State it should be upgraded to the Mined state
-        if completed_tx.status == TransactionStatus::Broadcast || completed_tx.status == TransactionStatus::Completed {
-            // Confirm that all outputs were reported as mined for the transaction
-            if response.len() != completed_tx.transaction.body.outputs().len() {
-                info!(
-                    target: LOG_TARGET,
-                    "Base node response received. TxId: {:?} not mined yet. ({} outputs requested but {} returned)",
-                    tx_id,
-                    completed_tx.transaction.body.outputs().len(),
-                    response.len(),
-                );
-
-                if completed_tx.status == TransactionStatus::Broadcast {
-                    if let Some(result) = self.pending_transaction_mined_queries.get_mut(&completed_tx.tx_id) {
-                        result.chain_response = Some(false);
-                        debug!(target: LOG_TARGET, "Current Mempool/Mined state {:?}", result);
-                        if result.is_complete() {
-                            self.handle_transaction_mined_request_result(completed_tx.tx_id).await;
-                        }
-                    }
-                }
-            } else {
-                let mut check = true;
-
-                for output in response.iter() {
-                    let transaction_output = TransactionOutput::try_from(output.clone())
-                        .map_err(TransactionServiceError::ConversionError)?;
-
-                    check = check &&
-                        completed_tx
-                            .transaction
-                            .body
-                            .outputs()
-                            .iter()
-                            .any(|item| item == &transaction_output);
-                }
-                // If all outputs are present then mark this transaction as mined.
-                if check {
-                    self.output_manager_service
-                        .confirm_transaction(
-                            tx_id.clone(),
-                            completed_tx.transaction.body.inputs().clone(),
-                            completed_tx.transaction.body.outputs().clone(),
-                        )
-                        .await?;
-
-                    self.db.mine_completed_transaction(tx_id).await?;
-
-                    self.event_publisher
-                        .send(TransactionEvent::TransactionMined(tx_id))
-                        .await
-                        .map_err(|_| TransactionServiceError::EventStreamError)?;
-
-                    info!(
-                        target: LOG_TARGET,
-                        "Transaction (TxId: {:?}) detected as mined on the Base Layer", tx_id
-                    );
-                }
-            }
-        } else {
-            debug!(
-                target: LOG_TARGET,
-                "Base node response received for TxId: {:?} but this transaction is not in the Broadcast state", tx_id
-            );
-        }
+        sender
+            .send(response.clone())
+            .await
+            .map_err(|_| TransactionServiceError::ProtocolChannelError)?;
 
         Ok(())
     }
 
-    /// Go through all completed transactions that have  been broadcast and start querying the base_node to see if they
+    /// Go through all completed transactions that have been broadcast and start querying the base_node to see if they
     /// have been mined
-    async fn monitor_all_completed_transactions_for_mining(
+    async fn start_chain_monitoring_for_all_broadcast_transactions(
         &mut self,
-        mined_request_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, TxId>>,
+        join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError>
     {
         trace!(
             target: LOG_TARGET,
-            "Querying Transaction Mined? for all Broadcast Transactions"
+            "Starting Chain monitoring for all Broadcast Transactions"
         );
         let completed_txs = self.db.get_completed_transactions().await?;
         for completed_tx in completed_txs.values() {
-            if completed_tx.status == TransactionStatus::Broadcast ||
-                completed_tx.status == TransactionStatus::Completed
-            {
-                self.send_transaction_mined_request(
-                    completed_tx.tx_id.clone(),
-                    self.config.initial_base_node_mined_timeout,
-                    mined_request_timeout_futures,
-                )
-                .await?;
+            if completed_tx.status == TransactionStatus::Broadcast {
+                self.start_transaction_chain_monitoring_protocol(completed_tx.tx_id, join_handles)
+                    .await?;
             }
         }
 
@@ -1584,7 +1312,7 @@ where
         let tx_id = OsRng.next_u64();
         self.db
             .add_utxo_import_transaction(
-                tx_id.clone(),
+                tx_id,
                 value,
                 source_public_key,
                 self.node_identity.public_key().clone(),
@@ -1592,6 +1320,43 @@ where
             )
             .await?;
         Ok(tx_id)
+    }
+
+    /// Submit a completed transaction to the Transaction Manager
+    pub async fn submit_transaction(
+        &mut self,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
+        >,
+        tx_id: TxId,
+        tx: Transaction,
+        fee: MicroTari,
+        amount: MicroTari,
+        message: String,
+    ) -> Result<(), TransactionServiceError>
+    {
+        trace!(target: LOG_TARGET, "Submit transaction ({}) to db.", tx_id);
+        self.db
+            .insert_completed_transaction(tx_id, CompletedTransaction {
+                tx_id,
+                source_public_key: self.node_identity.public_key().clone(),
+                destination_public_key: self.node_identity.public_key().clone(),
+                amount,
+                fee,
+                transaction: tx,
+                status: TransactionStatus::Completed,
+                message,
+                timestamp: Utc::now().naive_utc(),
+            })
+            .await?;
+        trace!(
+            target: LOG_TARGET,
+            "Launch the transaction broadcast protocol for submitted transaction ({}).",
+            tx_id
+        );
+        self.complete_send_transaction_protocol(Ok(tx_id), transaction_broadcast_join_handles)
+            .await;
+        Ok(())
     }
 
     /// This function is only available for testing by the client of LibWallet. It simulates a receiver accepting and
@@ -1604,7 +1369,7 @@ where
     ) -> Result<(), TransactionServiceError>
     {
         self.db
-            .complete_outbound_transaction(completed_tx.tx_id.clone(), completed_tx.clone())
+            .complete_outbound_transaction(completed_tx.tx_id, completed_tx.clone())
             .await?;
         Ok(())
     }
@@ -1615,16 +1380,23 @@ where
     #[cfg(feature = "test_harness")]
     pub async fn broadcast_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         let completed_txs = self.db.get_completed_transactions().await?;
-        completed_txs.get(&tx_id.clone()).ok_or_else(|| {
+        completed_txs.get(&tx_id).ok_or_else(|| {
             TransactionServiceError::TestHarnessError("Could not find Completed TX to broadcast.".to_string())
         })?;
 
         self.db.broadcast_completed_transaction(tx_id).await?;
 
-        self.event_publisher
-            .send(TransactionEvent::TransactionBroadcast(tx_id))
-            .await
-            .map_err(|_| TransactionServiceError::EventStreamError)?;
+        let _ = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionBroadcast(tx_id)))
+            .map_err(|e| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Error sending event, usually because there are no subscribers: {:?}",
+                    e
+                );
+                e
+            });
 
         Ok(())
     }
@@ -1636,18 +1408,18 @@ where
     #[cfg(feature = "test_harness")]
     pub async fn mine_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         let completed_txs = self.db.get_completed_transactions().await?;
-        let _found_tx = completed_txs.get(&tx_id.clone()).ok_or_else(|| {
+        let _found_tx = completed_txs.get(&tx_id).ok_or_else(|| {
             TransactionServiceError::TestHarnessError("Could not find Completed TX to mine.".to_string())
         })?;
 
         let pending_tx_outputs = self.output_manager_service.get_pending_transactions().await?;
-        let pending_tx = pending_tx_outputs.get(&tx_id.clone()).ok_or_else(|| {
+        let pending_tx = pending_tx_outputs.get(&tx_id).ok_or_else(|| {
             TransactionServiceError::TestHarnessError("Could not find Pending TX to complete.".to_string())
         })?;
 
         self.output_manager_service
             .confirm_transaction(
-                tx_id.clone(),
+                tx_id,
                 pending_tx
                     .outputs_to_be_spent
                     .iter()
@@ -1666,10 +1438,17 @@ where
 
         self.db.mine_completed_transaction(tx_id).await?;
 
-        self.event_publisher
-            .send(TransactionEvent::TransactionMined(tx_id))
-            .await
-            .map_err(|_| TransactionServiceError::EventStreamError)?;
+        let _ = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionMined(tx_id)))
+            .map_err(|e| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Error sending event, usually because there are no subscribers: {:?}",
+                    e
+                );
+                e
+            });
 
         Ok(())
     }
@@ -1689,7 +1468,7 @@ where
             service::OutputManagerService,
             storage::{database::OutputManagerDatabase, memory_db::OutputManagerMemoryDatabase},
         };
-        use futures::{channel::mpsc, stream};
+        use futures::stream;
         use tari_broadcast_channel::bounded;
 
         let (_sender, receiver) = reply_channel::unbounded();
@@ -1713,7 +1492,7 @@ where
         fake_oms.add_output(uo).await?;
 
         let mut stp = fake_oms
-            .prepare_transaction_to_send(amount, MicroTari::from(100), None, "".to_string())
+            .prepare_transaction_to_send(amount, MicroTari::from(25), None, "".to_string())
             .await?;
 
         let msg = stp.build_single_round_message()?;
@@ -1724,7 +1503,7 @@ where
 
         let spending_key = self
             .output_manager_service
-            .get_recipient_spending_key(tx_id.clone(), amount.clone())
+            .get_recipient_spending_key(tx_id, amount.clone())
             .await?;
         let nonce = PrivateKey::random(&mut OsRng);
         let rtp = ReceiverTransactionProtocol::new(
@@ -1746,13 +1525,20 @@ where
         };
 
         self.db
-            .add_pending_inbound_transaction(tx_id.clone(), inbound_transaction.clone())
+            .add_pending_inbound_transaction(tx_id, inbound_transaction.clone())
             .await?;
 
-        self.event_publisher
-            .send(TransactionEvent::ReceivedTransaction(tx_id))
-            .await
-            .map_err(|_| TransactionServiceError::EventStreamError)?;
+        let _ = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::ReceivedTransaction(tx_id)))
+            .map_err(|e| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Error sending event, usually because there are no subscribers: {:?}",
+                    e
+                );
+                e
+            });
 
         Ok(())
     }
@@ -1763,7 +1549,7 @@ where
     pub async fn finalize_received_test_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         let inbound_txs = self.db.get_pending_inbound_transactions().await?;
 
-        let found_tx = inbound_txs.get(&tx_id.clone()).ok_or_else(|| {
+        let found_tx = inbound_txs.get(&tx_id).ok_or_else(|| {
             TransactionServiceError::TestHarnessError("Could not find Pending Inbound TX to finalize.".to_string())
         })?;
 
@@ -1780,85 +1566,32 @@ where
         };
 
         self.db
-            .complete_inbound_transaction(tx_id.clone(), completed_transaction.clone())
+            .complete_inbound_transaction(tx_id, completed_transaction.clone())
             .await?;
-        self.event_publisher
-            .send(TransactionEvent::ReceivedFinalizedTransaction(tx_id))
-            .await
-            .map_err(|_| TransactionServiceError::EventStreamError)?;
+        let _ = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::ReceivedFinalizedTransaction(tx_id)))
+            .map_err(|e| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Error sending event, usually because there are no subscribers: {:?}",
+                    e
+                );
+                e
+            });
         Ok(())
     }
 }
 
-// Asynchronous Tasks
-
-async fn transaction_send_discovery_process_completion(
-    response_channel: oneshot::Receiver<SendMessageResponse>,
-    tx_id: TxId,
-    outbound_tx: OutboundTransaction,
-) -> Result<(MessageTag, OutboundTransaction), TransactionServiceError>
+/// This struct is a collection of the common resources that a protocol in the service requires.
+#[derive(Clone)]
+pub struct TransactionServiceResources<TBackend>
+where TBackend: TransactionBackend + Clone + 'static
 {
-    let mut message_tag: Option<MessageTag> = None;
-    match response_channel.await {
-        Ok(response) => match response {
-            SendMessageResponse::Queued(tags) => match tags.len() {
-                0 => error!(
-                    target: LOG_TARGET,
-                    "Send Discovery process for TX_ID: {} was unsuccessful and no message was sent", tx_id
-                ),
-                1 => {
-                    message_tag = Some(tags[0]);
-
-                    info!(
-                        target: LOG_TARGET,
-                        "Transaction (TxId: {}) Send Discovery process successful with Message Tag: {:?}",
-                        tx_id,
-                        message_tag,
-                    );
-                },
-                _ => error!(
-                    target: LOG_TARGET,
-                    "Send Discovery process for TX_ID: {} was unsuccessful due to more than 1 MessageTag being \
-                     returned",
-                    tx_id
-                ),
-            },
-            _ => {
-                error!(
-                    target: LOG_TARGET,
-                    "Transaction (TxId: {}) Send Discovery process failed", tx_id
-                );
-            },
-        },
-        Err(_) => {
-            error!(
-                target: LOG_TARGET,
-                "Transaction (TxId: {}) Send Response One-shot channel dropped", tx_id
-            );
-        },
-    }
-
-    if let Some(mt) = message_tag {
-        let updated_outbound_tx = OutboundTransaction {
-            timestamp: Utc::now().naive_utc(),
-            ..outbound_tx.clone()
-        };
-        Ok((mt, updated_outbound_tx))
-    } else {
-        Err(TransactionServiceError::DiscoveryProcessFailed(tx_id))
-    }
-}
-
-/// This struct holds the responses of a multistage base node monitoring request to see if a Transaction has been mined.
-/// This is used to keep track of the status of the transaction in both the mempool and chain.
-#[derive(Debug, Default)]
-struct TransactionMinedRequestResult {
-    mempool_response: Option<bool>,
-    chain_response: Option<bool>,
-}
-
-impl TransactionMinedRequestResult {
-    fn is_complete(&self) -> bool {
-        self.mempool_response.is_some() && self.chain_response.is_some()
-    }
+    pub db: TransactionDatabase<TBackend>,
+    pub output_manager_service: OutputManagerHandle,
+    pub outbound_message_service: OutboundMessageRequester,
+    pub event_publisher: TransactionEventSender,
+    pub node_identity: Arc<NodeIdentity>,
+    pub factories: CryptoFactories,
 }

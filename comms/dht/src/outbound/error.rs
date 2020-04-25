@@ -23,7 +23,10 @@
 use derive_error::Error;
 use futures::channel::mpsc::SendError;
 use tari_comms::message::MessageError;
-use tari_crypto::{signatures::SchnorrSignatureError, tari_utilities::message_format::MessageFormatError};
+use tari_crypto::{
+    signatures::SchnorrSignatureError,
+    tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError},
+};
 
 #[derive(Debug, Error)]
 pub enum DhtOutboundError {
@@ -31,6 +34,7 @@ pub enum DhtOutboundError {
     MessageSerializationError(MessageError),
     MessageFormatError(MessageFormatError),
     SignatureError(SchnorrSignatureError),
+    CipherError(CipherError),
     /// Requester reply channel closed before response was received
     RequesterReplyChannelClosed,
     /// Peer selection failed
@@ -41,4 +45,6 @@ pub enum DhtOutboundError {
     ReplyChannelCanceled,
     /// Attempted to send a message to ourselves
     SendToOurselves,
+    /// Discovery process failed
+    DiscoveryFailed,
 }

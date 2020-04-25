@@ -11,6 +11,8 @@ package tari.dht.store_forward;
 // will be sent.
 message StoredMessagesRequest {
     google.protobuf.Timestamp since = 1;
+    uint32 request_id = 2;
+    bytes dist_threshold = 3;
 }
 
 // Storage for a single message envelope, including the date and time when the element was stored
@@ -18,10 +20,24 @@ message StoredMessage {
     google.protobuf.Timestamp stored_at = 1;
     uint32 version = 2;
     tari.dht.envelope.DhtHeader dht_header = 3;
-    bytes encrypted_body = 4;
+    bytes body = 4;
 }
 
 // The StoredMessages contains the set of applicable messages retrieved from a neighbouring peer node.
 message StoredMessagesResponse {
     repeated StoredMessage messages = 1;
+    uint32 request_id = 2;
+    enum SafResponseType {
+        // Messages for the requested public key or node ID
+        ForMe = 0;
+        // Discovery messages that could be for the requester
+        Discovery = 1;
+        // Join messages that the requester could be interested in
+        Join = 2;
+        // Messages without an explicit destination and with an unidentified encrypted source
+        Anonymous = 3;
+        // Messages within the requesting node's region
+        InRegion = 4;
+    }
+    SafResponseType response_type = 3;
 }

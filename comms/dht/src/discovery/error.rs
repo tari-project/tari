@@ -23,15 +23,13 @@
 use crate::outbound::DhtOutboundError;
 use derive_error::Error;
 use futures::channel::mpsc::SendError;
-use tari_comms::peer_manager::PeerManagerError;
+use tari_comms::{connection_manager::ConnectionManagerError, peer_manager::PeerManagerError};
 
 #[derive(Debug, Error)]
 pub enum DhtDiscoveryError {
     /// The reply channel was canceled
     ReplyCanceled,
     DhtOutboundError(DhtOutboundError),
-    /// Received a discovery response which did not match an inflight discovery request
-    InflightDiscoveryRequestNotFound,
     /// Received public key in peer discovery response which does not match the requested public key
     DiscoveredPeerMismatch,
     /// Received an invalid `NodeId`
@@ -42,9 +40,12 @@ pub enum DhtDiscoveryError {
     SendBufferFull,
     /// The discovery request timed out
     DiscoveryTimeout,
+    /// Failed to send discovery message
+    DiscoverySendFailed,
     PeerManagerError(PeerManagerError),
     #[error(msg_embedded, non_std, no_from)]
     InvalidPeerMultiaddr(String),
+    ConnectionManagerError(ConnectionManagerError),
 }
 
 impl DhtDiscoveryError {

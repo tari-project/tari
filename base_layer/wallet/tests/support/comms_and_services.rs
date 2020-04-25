@@ -77,13 +77,15 @@ pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainM
     );
     DomainMessage {
         dht_header: DhtMessageHeader {
-            origin: None,
+            ephemeral_public_key: None,
+            origin_mac: Vec::new(),
             version: Default::default(),
             message_type: Default::default(),
             flags: Default::default(),
             network: Network::LocalTest,
             destination: Default::default(),
         },
+        authenticated_origin: None,
         source_peer: peer_source,
         inner,
     }

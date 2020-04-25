@@ -176,7 +176,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     let outputs_to_encumber = vec![outputs[0].clone(), outputs[1].clone()];
     let total_encumbered = outputs[0].clone().value + outputs[1].clone().value;
     runtime
-        .block_on(db.encumber_outputs(2, outputs_to_encumber, Some(uo_change.clone())))
+        .block_on(db.encumber_outputs(2, outputs_to_encumber, vec![uo_change.clone()]))
         .unwrap();
     runtime.block_on(db.confirm_encumbered_outputs(2)).unwrap();
 
@@ -373,11 +373,9 @@ pub async fn test_short_term_encumberance<T: OutputManagerBackend + 'static>(bac
     let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(50), &factories.commitment);
     pending_tx.outputs_to_be_received.push(uo);
 
-    db.encumber_outputs(
-        pending_tx.tx_id,
-        pending_tx.outputs_to_be_spent.clone(),
-        Some(pending_tx.outputs_to_be_received[0].clone()),
-    )
+    db.encumber_outputs(pending_tx.tx_id, pending_tx.outputs_to_be_spent.clone(), vec![
+        pending_tx.outputs_to_be_received[0].clone(),
+    ])
     .await
     .unwrap();
 
@@ -389,11 +387,13 @@ pub async fn test_short_term_encumberance<T: OutputManagerBackend + 'static>(bac
     let balance = db.get_balance().await.unwrap();
     assert_eq!(available_balance, balance.available_balance);
 
-    db.encumber_outputs(
-        pending_tx.tx_id,
-        pending_tx.outputs_to_be_spent.clone(),
-        Some(pending_tx.outputs_to_be_received[0].clone()),
-    )
+    pending_tx.outputs_to_be_received.clear();
+    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(50), &factories.commitment);
+    pending_tx.outputs_to_be_received.push(uo);
+
+    db.encumber_outputs(pending_tx.tx_id, pending_tx.outputs_to_be_spent.clone(), vec![
+        pending_tx.outputs_to_be_received[0].clone(),
+    ])
     .await
     .unwrap();
 
@@ -403,13 +403,15 @@ pub async fn test_short_term_encumberance<T: OutputManagerBackend + 'static>(bac
     let balance = db.get_balance().await.unwrap();
     assert_eq!(balance.available_balance, MicroTari(0));
 
+    pending_tx.outputs_to_be_received.clear();
+    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(50), &factories.commitment);
+    pending_tx.outputs_to_be_received.push(uo);
+
     db.cancel_pending_transaction_outputs(pending_tx.tx_id).await.unwrap();
 
-    db.encumber_outputs(
-        pending_tx.tx_id,
-        pending_tx.outputs_to_be_spent.clone(),
-        Some(pending_tx.outputs_to_be_received[0].clone()),
-    )
+    db.encumber_outputs(pending_tx.tx_id, pending_tx.outputs_to_be_spent.clone(), vec![
+        pending_tx.outputs_to_be_received[0].clone(),
+    ])
     .await
     .unwrap();
 

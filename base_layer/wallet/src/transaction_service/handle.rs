@@ -29,13 +29,12 @@ use crate::{
     },
 };
 use futures::{stream::Fuse, StreamExt};
-use std::{collections::HashMap, fmt};
-use tari_broadcast_channel::Subscriber;
+use std::{collections::HashMap, fmt, sync::Arc};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
 use tari_service_framework::reply_channel::SenderService;
+use tokio::sync::broadcast;
 use tower::Service;
-
 /// API Request enum
 #[derive(Debug)]
 pub enum TransactionServiceRequest {
@@ -44,10 +43,12 @@ pub enum TransactionServiceRequest {
     GetCompletedTransactions,
     SetBaseNodePublicKey(CommsPublicKey),
     SendTransaction((CommsPublicKey, MicroTari, MicroTari, String)),
+    CancelTransaction(TxId),
     RequestCoinbaseSpendingKey((MicroTari, u64)),
     CompleteCoinbaseTransaction((TxId, Transaction)),
     CancelPendingCoinbaseTransaction(TxId),
     ImportUtxo(MicroTari, CommsPublicKey, String),
+    SubmitTransaction((TxId, Transaction, MicroTari, MicroTari, String)),
     #[cfg(feature = "test_harness")]
     CompletePendingOutboundTransaction(CompletedTransaction),
     #[cfg(feature = "test_harness")]
@@ -70,6 +71,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::SendTransaction((k, v, _, msg)) => {
                 f.write_str(&format!("SendTransaction (to {}, {}, {})", k, v, msg))
             },
+            Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
             Self::RequestCoinbaseSpendingKey((v, h)) => {
                 f.write_str(&format!("RequestCoinbaseSpendingKey ({}, maturity={})", v, h))
             },
@@ -78,6 +80,7 @@ impl fmt::Display for TransactionServiceRequest {
                 f.write_str(&format!("CancelPendingCoinbaseTransaction ({}) ", id))
             },
             Self::ImportUtxo(v, k, msg) => f.write_str(&format!("ImportUtxo (from {}, {}, {})", k, v, msg)),
+            Self::SubmitTransaction((id, _, _, _, _)) => f.write_str(&format!("SubmitTransaction ({})", id)),
             #[cfg(feature = "test_harness")]
             Self::CompletePendingOutboundTransaction(tx) => {
                 f.write_str(&format!("CompletePendingOutboundTransaction ({})", tx.tx_id))
@@ -99,7 +102,8 @@ impl fmt::Display for TransactionServiceRequest {
 /// API Response enum
 #[derive(Debug)]
 pub enum TransactionServiceResponse {
-    TransactionSent,
+    TransactionSent(TxId),
+    TransactionCancelled,
     PendingInboundTransactions(HashMap<u64, InboundTransaction>),
     PendingOutboundTransactions(HashMap<u64, OutboundTransaction>),
     CompletedTransactions(HashMap<u64, CompletedTransaction>),
@@ -108,6 +112,7 @@ pub enum TransactionServiceResponse {
     CoinbaseTransactionCancelled,
     BaseNodePublicKeySet,
     UtxoImported(TxId),
+    TransactionSubmitted,
     #[cfg(feature = "test_harness")]
     CompletedPendingTransaction,
     #[cfg(feature = "test_harness")]
@@ -127,33 +132,39 @@ pub enum TransactionEvent {
     ReceivedTransaction(TxId),
     ReceivedTransactionReply(TxId),
     ReceivedFinalizedTransaction(TxId),
-    TransactionSendResult(TxId, bool),
-    TransactionSendDiscoveryComplete(TxId, bool),
+    TransactionDirectSendResult(TxId, bool),
+    TransactionStoreForwardSendResult(TxId, bool),
+    TransactionCancelled(TxId),
     TransactionBroadcast(TxId),
     TransactionMined(TxId),
     TransactionMinedRequestTimedOut(TxId),
     Error(String),
 }
 
+pub type TransactionEventSender = broadcast::Sender<Arc<TransactionEvent>>;
+pub type TransactionEventReceiver = broadcast::Receiver<Arc<TransactionEvent>>;
 /// The Transaction Service Handle is a struct that contains the interfaces used to communicate with a running
 /// Transaction Service
 #[derive(Clone)]
 pub struct TransactionServiceHandle {
     handle: SenderService<TransactionServiceRequest, Result<TransactionServiceResponse, TransactionServiceError>>,
-    event_stream: Subscriber<TransactionEvent>,
+    event_stream_sender: TransactionEventSender,
 }
 
 impl TransactionServiceHandle {
     pub fn new(
         handle: SenderService<TransactionServiceRequest, Result<TransactionServiceResponse, TransactionServiceError>>,
-        event_stream: Subscriber<TransactionEvent>,
+        event_stream_sender: TransactionEventSender,
     ) -> Self
     {
-        Self { handle, event_stream }
+        Self {
+            handle,
+            event_stream_sender,
+        }
     }
 
-    pub fn get_event_stream_fused(&self) -> Fuse<Subscriber<TransactionEvent>> {
-        self.event_stream.clone().fuse()
+    pub fn get_event_stream_fused(&self) -> Fuse<TransactionEventReceiver> {
+        self.event_stream_sender.subscribe().fuse()
     }
 
     pub async fn send_transaction(
@@ -162,7 +173,7 @@ impl TransactionServiceHandle {
         amount: MicroTari,
         fee_per_gram: MicroTari,
         message: String,
-    ) -> Result<(), TransactionServiceError>
+    ) -> Result<TxId, TransactionServiceError>
     {
         match self
             .handle
@@ -174,7 +185,18 @@ impl TransactionServiceHandle {
             )))
             .await??
         {
-            TransactionServiceResponse::TransactionSent => Ok(()),
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::CancelTransaction(tx_id))
+            .await??
+        {
+            TransactionServiceResponse::TransactionCancelled => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
@@ -299,6 +321,27 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::UtxoImported(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn submit_transaction(
+        &mut self,
+        tx_id: u64,
+        tx: Transaction,
+        fee: MicroTari,
+        amount: MicroTari,
+        message: String,
+    ) -> Result<(), TransactionServiceError>
+    {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SubmitTransaction((
+                tx_id, tx, fee, amount, message,
+            )))
+            .await??
+        {
+            TransactionServiceResponse::TransactionSubmitted => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

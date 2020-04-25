@@ -112,7 +112,6 @@ async fn run() -> Result<(), Error> {
     outbound_tx1
         .send(OutboundMessage::new(
             comms_node2.node_identity().node_id().clone(),
-            Default::default(),
             Bytes::from_static(b"START"),
         ))
         .await?;
@@ -152,7 +151,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
 {
     let datastore = LMDBBuilder::new()
         .set_path(database_path.to_str().unwrap())
-        .set_environment_size(10)
+        .set_environment_size(50)
         .set_max_number_of_databases(1)
         .add_database("peerdb", lmdb_zero::db::CREATE)
         .build()
@@ -272,5 +271,5 @@ async fn start_ping_ponger(
 
 fn make_msg(node_id: &NodeId, msg: String) -> OutboundMessage {
     let msg = Bytes::copy_from_slice(msg.as_bytes());
-    OutboundMessage::new(node_id.clone(), Default::default(), msg)
+    OutboundMessage::new(node_id.clone(), msg)
 }

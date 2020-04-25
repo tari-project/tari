@@ -21,10 +21,22 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{blockheader::BlockHeader, Block},
+    blocks::{
+        blockheader::{BlockHash, BlockHeader},
+        Block,
+    },
     chain_storage::{
         blockchain_database::BlockchainBackend,
-        db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataValue, MmrTree, WriteOperation},
+        db_transaction::{
+            DbKey,
+            DbKeyValuePair,
+            DbTransaction,
+            DbValue,
+            MetadataKey,
+            MetadataValue,
+            MmrTree,
+            WriteOperation,
+        },
         error::ChainStorageError,
         lmdb_db::{
             lmdb::{lmdb_delete, lmdb_exists, lmdb_for_each, lmdb_get, lmdb_insert, lmdb_len, lmdb_replace},
@@ -42,7 +54,9 @@ use crate::{
             LMDB_DB_UTXO_MMR_CP_BACKEND,
         },
         memory_db::MemDbVec,
+        ChainMetadata,
     },
+    proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
         types::{HashDigest, HashOutput},
@@ -52,8 +66,8 @@ use croaring::Bitmap;
 use digest::Digest;
 use lmdb_zero::{Database, Environment, WriteTransaction};
 use log::*;
-use std::{path::Path, sync::Arc};
-use tari_crypto::tari_utilities::hash::Hashable;
+use std::{collections::VecDeque, path::Path, sync::Arc};
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable};
 use tari_mmr::{
     functions::{prune_mutable_mmr, PrunedMutableMmr},
     ArrayLike,
@@ -76,6 +90,7 @@ where D: Digest
 {
     env: Arc<Environment>,
     metadata_db: DatabaseRef,
+    mem_metadata: ChainMetadata, // Memory copy of stored metadata
     headers_db: DatabaseRef,
     block_hashes_db: DatabaseRef,
     utxos_db: DatabaseRef,
@@ -102,7 +117,7 @@ where D: Digest + Send + Sync
             store.env(),
             store
                 .get_handle(LMDB_DB_UTXO_MMR_CP_BACKEND)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError("Could not create UTXO MMR backend".to_string()))?
                 .db()
                 .clone(),
         );
@@ -110,7 +125,7 @@ where D: Digest + Send + Sync
             store.env(),
             store
                 .get_handle(LMDB_DB_KERNEL_MMR_CP_BACKEND)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError("Could not create kernel MMR backend".to_string()))?
                 .db()
                 .clone(),
         );
@@ -118,49 +133,64 @@ where D: Digest + Send + Sync
             store.env(),
             store
                 .get_handle(LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| {
+                    ChainStorageError::CriticalError("Could not create range proof MMR backend".to_string())
+                })?
                 .db()
                 .clone(),
         );
+        // Restore memory metadata
+        let env = store.env();
+        let metadata_db = store
+            .get_handle(LMDB_DB_METADATA)
+            .ok_or_else(|| ChainStorageError::CriticalError("Could not create metadata backend".to_string()))?
+            .db()
+            .clone();
+        let metadata = ChainMetadata {
+            height_of_longest_chain: fetch_chain_height(&env, &metadata_db)?,
+            best_block: fetch_best_block(&env, &metadata_db)?,
+            pruning_horizon: fetch_pruning_horizon(&env, &metadata_db)?,
+            accumulated_difficulty: fetch_accumulated_work(&env, &metadata_db)?,
+        };
+
         Ok(Self {
-            metadata_db: store
-                .get_handle(LMDB_DB_METADATA)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
-                .db()
-                .clone(),
+            metadata_db,
+            mem_metadata: metadata,
             headers_db: store
                 .get_handle(LMDB_DB_HEADERS)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError("Could not get handle to headers DB".to_string()))?
                 .db()
                 .clone(),
             block_hashes_db: store
                 .get_handle(LMDB_DB_BLOCK_HASHES)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| {
+                    ChainStorageError::CriticalError("Could not create handle to block hashes DB".to_string())
+                })?
                 .db()
                 .clone(),
             utxos_db: store
                 .get_handle(LMDB_DB_UTXOS)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError("Could not create handle to UTXOs DB".to_string()))?
                 .db()
                 .clone(),
             stxos_db: store
                 .get_handle(LMDB_DB_STXOS)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError("Could not create handle to STXOs DB".to_string()))?
                 .db()
                 .clone(),
             txos_hash_to_index_db: store
                 .get_handle(LMDB_DB_TXOS_HASH_TO_INDEX)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError("Could not create handle to TXOs DB".to_string()))?
                 .db()
                 .clone(),
             kernels_db: store
                 .get_handle(LMDB_DB_KERNELS)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError("Could not create handle to kernels DB".to_string()))?
                 .db()
                 .clone(),
             orphans_db: store
                 .get_handle(LMDB_DB_ORPHANS)
-                .ok_or_else(|| ChainStorageError::CriticalError)?
+                .ok_or_else(|| ChainStorageError::CriticalError("Could not create handle to orphans DB".to_string()))?
                 .db()
                 .clone(),
             utxo_mmr: MmrCache::new(MemDbVec::new(), utxo_checkpoints.clone(), mmr_cache_config)?,
@@ -172,7 +202,7 @@ where D: Digest + Send + Sync
             range_proof_mmr: MmrCache::new(MemDbVec::new(), range_proof_checkpoints.clone(), mmr_cache_config)?,
             range_proof_checkpoints,
             curr_range_proof_checkpoint: MerkleCheckPoint::new(Vec::new(), Bitmap::create()),
-            env: store.env(),
+            env,
         })
     }
 
@@ -276,6 +306,7 @@ where D: Digest + Send + Sync
     // changes committed to the backend databases. CreateMmrCheckpoint and RewindMmr txns will be performed after these
     // txns have been successfully applied.
     fn apply_mmr_and_storage_txs(&mut self, tx: &DbTransaction) -> Result<(), ChainStorageError> {
+        let mut update_mem_metadata = false;
         let txn = WriteTransaction::new(self.env.clone()).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
         {
             for op in tx.operations.iter() {
@@ -283,6 +314,7 @@ where D: Digest + Send + Sync
                     WriteOperation::Insert(insert) => match insert {
                         DbKeyValuePair::Metadata(k, v) => {
                             lmdb_replace(&txn, &self.metadata_db, &(k.clone() as u32), &v)?;
+                            update_mem_metadata = true;
                         },
                         DbKeyValuePair::BlockHeader(k, v) => {
                             if lmdb_exists(&self.env, &self.headers_db, &k)? {
@@ -389,7 +421,18 @@ where D: Digest + Send + Sync
                 }
             }
         }
-        txn.commit().map_err(|e| ChainStorageError::AccessError(e.to_string()))
+        txn.commit()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+
+        if update_mem_metadata {
+            self.mem_metadata = ChainMetadata {
+                height_of_longest_chain: fetch_chain_height(&self.env, &self.metadata_db)?,
+                best_block: fetch_best_block(&self.env, &self.metadata_db)?,
+                pruning_horizon: fetch_pruning_horizon(&self.env, &self.metadata_db)?,
+                accumulated_difficulty: fetch_accumulated_work(&self.env, &self.metadata_db)?,
+            };
+        }
+        Ok(())
     }
 
     // Returns the leaf index of the hash. If the hash is in the newly added hashes it returns the future MMR index for
@@ -464,7 +507,7 @@ pub fn create_lmdb_database(
     std::fs::create_dir_all(&path).unwrap_or_default();
     let lmdb_store = LMDBBuilder::new()
         .set_path(path.to_str().unwrap())
-        .set_environment_size(15)
+        .set_environment_size(50000)
         .set_max_number_of_databases(15)
         .add_database(LMDB_DB_METADATA, flags)
         .add_database(LMDB_DB_HEADERS, flags)
@@ -478,7 +521,7 @@ pub fn create_lmdb_database(
         .add_database(LMDB_DB_KERNEL_MMR_CP_BACKEND, flags)
         .add_database(LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND, flags)
         .build()
-        .map_err(|_| ChainStorageError::CriticalError)?;
+        .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
     LMDBDatabase::<HashDigest>::new(lmdb_store, mmr_cache_config)
 }
 
@@ -617,6 +660,11 @@ where D: Digest + Send + Sync
         lmdb_for_each::<F, HashOutput, Block>(&self.env, &self.orphans_db, f)
     }
 
+    /// Returns the number of blocks in the block orphan pool.
+    fn get_orphan_count(&self) -> Result<usize, ChainStorageError> {
+        lmdb_len(&self.env, &self.orphans_db)
+    }
+
     /// Iterate over all the stored transaction kernels and execute the function `f` for each kernel.
     fn for_each_kernel<F>(&self, f: F) -> Result<(), ChainStorageError>
     where F: FnMut(Result<(HashOutput, TransactionKernel), ChainStorageError>) {
@@ -645,6 +693,96 @@ where D: Digest + Send + Sync
             Ok(None)
         }
     }
+
+    /// Returns the metadata of the chain.
+    fn fetch_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
+        Ok(self.mem_metadata.clone())
+    }
+
+    /// Returns the set of target difficulties for the specified proof of work algorithm.
+    fn fetch_target_difficulties(
+        &self,
+        pow_algo: PowAlgorithm,
+        height: u64,
+        block_window: usize,
+    ) -> Result<Vec<(EpochTime, Difficulty)>, ChainStorageError>
+    {
+        let mut target_difficulties = VecDeque::<(EpochTime, Difficulty)>::with_capacity(block_window);
+        let tip_height = self.mem_metadata.height_of_longest_chain.ok_or_else(|| {
+            ChainStorageError::InvalidQuery("Cannot retrieve chain height. Blockchain DB is empty".into())
+        })?;
+        if height <= tip_height {
+            for height in (0..=height).rev() {
+                let header: BlockHeader = lmdb_get(&self.env, &self.headers_db, &height)?
+                    .ok_or_else(|| ChainStorageError::InvalidQuery("Cannot retrieve header.".into()))?;
+                if header.pow.pow_algo == pow_algo {
+                    target_difficulties.push_front((header.timestamp, header.pow.target_difficulty));
+                    if target_difficulties.len() >= block_window {
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(target_difficulties
+            .into_iter()
+            .collect::<Vec<(EpochTime, Difficulty)>>())
+    }
+}
+
+// Fetches the chain height from the provided metadata db.
+fn fetch_chain_height(env: &Environment, db: &Database) -> Result<Option<u64>, ChainStorageError> {
+    let k = MetadataKey::ChainHeight;
+    let val: Option<MetadataValue> = lmdb_get(&env, &db, &(k as u32))?;
+    let val: Option<DbValue> = val.map(DbValue::Metadata);
+    Ok(
+        if let Some(DbValue::Metadata(MetadataValue::ChainHeight(height))) = val {
+            height
+        } else {
+            None
+        },
+    )
+}
+
+// Fetches the best block hash from the provided metadata db.
+fn fetch_best_block(env: &Environment, db: &Database) -> Result<Option<BlockHash>, ChainStorageError> {
+    let k = MetadataKey::BestBlock;
+    let val: Option<MetadataValue> = lmdb_get(&env, &db, &(k as u32))?;
+    let val: Option<DbValue> = val.map(DbValue::Metadata);
+    Ok(
+        if let Some(DbValue::Metadata(MetadataValue::BestBlock(best_block))) = val {
+            best_block
+        } else {
+            None
+        },
+    )
+}
+
+// Fetches the accumulated work from the provided metadata db.
+fn fetch_accumulated_work(env: &Environment, db: &Database) -> Result<Option<Difficulty>, ChainStorageError> {
+    let k = MetadataKey::AccumulatedWork;
+    let val: Option<MetadataValue> = lmdb_get(&env, &db, &(k as u32))?;
+    let val: Option<DbValue> = val.map(DbValue::Metadata);
+    Ok(
+        if let Some(DbValue::Metadata(MetadataValue::AccumulatedWork(accumulated_work))) = val {
+            accumulated_work
+        } else {
+            None
+        },
+    )
+}
+
+// Fetches the pruning horizon from the provided metadata db.
+fn fetch_pruning_horizon(env: &Environment, db: &Database) -> Result<u64, ChainStorageError> {
+    let k = MetadataKey::PruningHorizon;
+    let val: Option<MetadataValue> = lmdb_get(&env, &db, &(k as u32))?;
+    let val: Option<DbValue> = val.map(DbValue::Metadata);
+    Ok(
+        if let Some(DbValue::Metadata(MetadataValue::PruningHorizon(pruning_horizon))) = val {
+            pruning_horizon
+        } else {
+            2880
+        },
+    )
 }
 
 // Calculated the new checkpoint count after rewinding a set number of steps back.

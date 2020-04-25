@@ -41,7 +41,7 @@ use tari_comms::{
     CommsBuilderError,
     CommsNode,
 };
-use tari_comms_dht::{Dht, DhtBuilder, DhtConfig};
+use tari_comms_dht::{Dht, DhtBuilder, DhtConfig, DhtInitializationError};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tower::ServiceBuilder;
 
@@ -50,6 +50,7 @@ const LOG_TARGET: &str = "b::p2p::initialization";
 #[derive(Debug, Error)]
 pub enum CommsInitializationError {
     CommsBuilderError(CommsBuilderError),
+    DhtInitializationError(DhtInitializationError),
     HiddenServiceBuilderError(tor::HiddenServiceBuilderError),
     #[error(non_std, no_from, msg_embedded)]
     InvalidLivenessCidrs(String),
@@ -104,7 +105,7 @@ where
     };
     let datastore = LMDBBuilder::new()
         .set_path(data_path)
-        .set_environment_size(10)
+        .set_environment_size(50)
         .set_max_number_of_databases(1)
         .add_database(&peer_database_name, lmdb_zero::db::CREATE)
         .build()
@@ -136,7 +137,8 @@ where
     )
     .local_test()
     .with_discovery_timeout(discovery_request_timeout)
-    .finish();
+    .finish()
+    .await?;
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
 
@@ -268,7 +270,7 @@ where
 {
     let datastore = LMDBBuilder::new()
         .set_path(&config.datastore_path)
-        .set_environment_size(10)
+        .set_environment_size(50)
         .set_max_number_of_databases(1)
         .add_database(&config.peer_database_name, lmdb_zero::db::CREATE)
         .build()
@@ -297,7 +299,8 @@ where
         comms.shutdown_signal(),
     )
     .with_config(config.dht)
-    .finish();
+    .finish()
+    .await?;
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
 

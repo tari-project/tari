@@ -28,6 +28,7 @@ use crate::{
         proto,
         service::{
             inbound_handlers::MempoolInboundHandlers,
+            local_service::LocalMempoolService,
             outbound_interface::OutboundMempoolServiceInterface,
             service::{MempoolService, MempoolStreams},
         },
@@ -120,10 +121,9 @@ async fn extract_transaction(msg: Arc<PeerMessage>) -> Option<DomainMessage<Tran
         Ok(tx) => {
             let tx = match Transaction::try_from(tx) {
                 Err(e) => {
-                    let origin = msg.origin_public_key();
                     warn!(
                         target: LOG_TARGET,
-                        "Inbound transaction message from {} was ill-formed. {}", origin, e
+                        "Inbound transaction message from {} was ill-formed. {}", msg.source_peer.public_key, e
                     );
                     return None;
                 },
@@ -132,6 +132,7 @@ async fn extract_transaction(msg: Arc<PeerMessage>) -> Option<DomainMessage<Tran
             Some(DomainMessage {
                 source_peer: msg.source_peer.clone(),
                 dht_header: msg.dht_header.clone(),
+                authenticated_origin: msg.authenticated_origin.clone(),
                 inner: tx,
             })
         },
@@ -157,13 +158,17 @@ where T: BlockchainBackend + 'static
         // Connect MempoolOutboundServiceHandle to MempoolService
         let (outbound_tx_sender_service, outbound_tx_stream) = futures_mpsc_channel_unbounded();
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
+        let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
         let outbound_mp_interface =
             OutboundMempoolServiceInterface::new(outbound_request_sender_service, outbound_tx_sender_service);
+        let local_mp_interface = LocalMempoolService::new(local_request_sender_service);
         let config = self.config;
         let mempool = self.mempool.clone();
         let inbound_handlers = MempoolInboundHandlers::new(mempool, outbound_mp_interface.clone());
+
         // Register handle to OutboundMempoolServiceInterface before waiting for handles to be ready
         handles_fut.register(outbound_mp_interface);
+        handles_fut.register(local_mp_interface);
 
         executor.spawn(async move {
             let handles = handles_fut.await;
@@ -182,6 +187,7 @@ where T: BlockchainBackend + 'static
                 inbound_request_stream,
                 inbound_response_stream,
                 inbound_transaction_stream,
+                local_request_stream,
                 base_node.get_block_event_stream(),
             );
             let service = MempoolService::new(outbound_message_service, inbound_handlers, config).start(streams);

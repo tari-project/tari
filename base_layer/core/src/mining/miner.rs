@@ -29,7 +29,7 @@ use crate::{
     chain_storage::BlockAddResult,
     consensus::ConsensusManager,
     mining::{blake_miner::CpuBlakePow, error::MinerError, CoinbaseBuilder},
-    proof_of_work::{Difficulty, PowAlgorithm},
+    proof_of_work::PowAlgorithm,
     transactions::{
         transaction::UnblindedOutput,
         types::{CryptoFactories, PrivateKey},
@@ -125,11 +125,31 @@ impl Miner {
     async fn mining(mut self) -> Result<Miner, MinerError> {
         // Lets make sure its set to mine
         debug!(target: LOG_TARGET, "Miner asking for new candidate block to mine.");
-        let mut block_template = self.get_block_template().await?;
-        let output = self.add_coinbase(&mut block_template)?;
-        let mut block = self.get_block(block_template).await?;
+        let block_template = self.get_block_template().await;
+        if block_template.is_err() {
+            error!(
+                target: LOG_TARGET,
+                "Could not get block template from basenode {:?}.", block_template
+            );
+            return Ok(self);
+        };
+        let mut block_template = block_template.unwrap();
+        let output = self.add_coinbase(&mut block_template);
+        if output.is_err() {
+            error!(
+                target: LOG_TARGET,
+                "Could not add coinbase to block template {:?}.", output
+            );
+            return Ok(self);
+        };
+        let output = output.unwrap();
+        let block = self.get_block(block_template).await;
+        if block.is_err() {
+            error!(target: LOG_TARGET, "Could not get block from basenode {:?}.", block);
+            return Ok(self);
+        };
+        let mut block = block.unwrap();
         debug!(target: LOG_TARGET, "Miner got new block to mine.");
-        let difficulty = self.get_req_difficulty().await?;
         let (tx, mut rx): (Sender<Option<BlockHeader>>, Receiver<Option<BlockHeader>>) = mpsc::channel(self.threads);
         for _ in 0..self.threads {
             let stop_mining_flag = self.stop_mining_flag.clone();
@@ -137,7 +157,7 @@ impl Miner {
             let mut tx_channel = tx.clone();
             trace!("spawning mining thread");
             spawn_blocking(move || {
-                let result = CpuBlakePow::mine(difficulty, header, stop_mining_flag);
+                let result = CpuBlakePow::mine(header, stop_mining_flag);
                 // send back what the miner found, None will be sent if the miner did not find a nonce
                 if let Err(e) = tx_channel.try_send(result) {
                     warn!(target: LOG_TARGET, "Could not return mining result: {}", e);
@@ -151,17 +171,25 @@ impl Miner {
                 // found block, lets ensure we kill all other threads
                 self.stop_mining_flag.store(true, Ordering::Relaxed);
                 block.header = r;
-                self.send_block(block).await.or_else(|e| {
-                    error!(target: LOG_TARGET, "Could not send block to base node. {:?}.", e);
-                    Err(e)
-                })?;
-                self.utxo_sender
+                if self
+                    .send_block(block)
+                    .await
+                    .or_else(|e| {
+                        error!(target: LOG_TARGET, "Could not send block to base node. {:?}.", e);
+                        Err(e)
+                    })
+                    .is_err()
+                {
+                    break;
+                };
+                let _ = self
+                    .utxo_sender
                     .try_send(output)
                     .or_else(|e| {
                         error!(target: LOG_TARGET, "Could not send utxo to wallet. {:?}.", e);
                         Err(e)
                     })
-                    .map_err(|e| MinerError::CommunicationError(e.to_string()))?;
+                    .map_err(|e| MinerError::CommunicationError(e.to_string()));
                 break;
             }
         }
@@ -197,44 +225,56 @@ impl Miner {
             if !self.enabled.load(Ordering::Relaxed) {
                 start_mining = false;
             }
+            #[allow(clippy::match_bool)]
             let mining_future = match start_mining {
                 true => task::spawn(self.mining()),
                 false => task::spawn(self.not_mining()),
             };
-            futures::select! {
-            msg = block_event.select_next_some() => {
-                match *msg {
-                    BlockEvent::Verified((_, ref result)) => {
-                    if *result == BlockAddResult::Ok{
-                        stop_mining_flag.store(true, Ordering::Relaxed);
-                        start_mining = true;
-                    };
+            // This flag will let the future select loop again if the miner has not been issued a shutdown command.
+            let mut wait_for_miner = false;
+            while !wait_for_miner {
+                futures::select! {
+                msg = block_event.select_next_some() => {
+                    match *msg {
+                        BlockEvent::Verified((_, ref result)) => {
+                            //Miner does not care if the chain reorg'ed or just added a new block. Both cases means a new chain tip, so it needs to restart.
+                        match *result {
+                            BlockAddResult::Ok | BlockAddResult::ChainReorg(_) => {
+                            stop_mining_flag.store(true, Ordering::Relaxed);
+                            start_mining = true;
+                            wait_for_miner = true;
+                        },
+                        _ => {}
+                    }
+                    },
+                    _ => (),
+                    }
                 },
-                _ => (),
+                event = state_event.select_next_some() => {
+                    use StateEvent::*;
+                    stop_mining_flag.store(true, Ordering::Relaxed);
+                    match *event {
+                        BlocksSynchronized | NetworkSilence => {
+                            info!(target: LOG_TARGET,
+                            "Our chain has synchronised with the network, or is a seed node. Starting miner");
+                            start_mining = true;
+                            wait_for_miner = true;
+                        },
+                        FallenBehind(SyncStatus::Lagging(_, _)) => {
+                            info!(target: LOG_TARGET, "Our chain has fallen behind the network. Pausing miner");
+                            start_mining = false;
+                            wait_for_miner = true;
+                        },
+                        _ => {wait_for_miner = true;},
+                    }
+                },
+                _ = kill_signal => {
+                    info!(target: LOG_TARGET, "Mining kill signal received! Miner is shutting down");
+                    stop_mining_flag.store(true, Ordering::Relaxed);
+                    break 'main;
                 }
-            },
-            event = state_event.select_next_some() => {
-                use StateEvent::*;
-                stop_mining_flag.store(true, Ordering::Relaxed);
-                match *event {
-                    BlocksSynchronized | NetworkSilence => {
-                        info!(target: LOG_TARGET,
-                        "Our chain has synchronised with the network, or is a seed node. Starting miner");
-                        start_mining = true;
-                    },
-                    FallenBehind(SyncStatus::Lagging(_, _)) => {
-                        info!(target: LOG_TARGET, "Our chain has fallen behind the network. Pausing miner");
-                        start_mining = false;
-                    },
-                    _ => {},
-                }
-            },
-            _ = kill_signal => {
-                info!(target: LOG_TARGET, "Mining kill signal received! Miner is shutting down");
-                stop_mining_flag.store(true, Ordering::Relaxed);
-                break 'main;
+                };
             }
-            };
             self = mining_future.await.expect("Miner crashed").expect("Miner crashed");
         }
         debug!(target: LOG_TARGET, "Mining thread stopped.");
@@ -245,7 +285,7 @@ impl Miner {
         trace!(target: LOG_TARGET, "Requesting new block template from node.");
         Ok(self
             .node_interface
-            .get_new_block_template()
+            .get_new_block_template(PowAlgorithm::Blake)
             .await
             .or_else(|e| {
                 error!(
@@ -272,24 +312,6 @@ impl Miner {
                     target: LOG_TARGET,
                     "Could not get a new block from the base node. {:?}.", e
                 );
-                Err(e)
-            })
-            .map_err(|e| MinerError::CommunicationError(e.to_string()))?)
-    }
-
-    /// function to get the required difficulty
-    pub async fn get_req_difficulty(&mut self) -> Result<Difficulty, MinerError> {
-        trace!(target: LOG_TARGET, "Requesting target difficulty from node");
-        Ok(self
-            .node_interface
-            .get_target_difficulty(PowAlgorithm::Blake)
-            .await
-            .or_else(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not get the required difficulty from the base node. {:?}.", e
-                );
-
                 Err(e)
             })
             .map_err(|e| MinerError::CommunicationError(e.to_string()))?)

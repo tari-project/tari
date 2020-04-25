@@ -275,6 +275,11 @@ impl CommsNode {
         self.messaging_event_tx.subscribe()
     }
 
+    /// Return a clone of the of the messaging event Sender to allow for other services to create subscriptions
+    pub fn message_event_sender(&self) -> messaging::MessagingEventSender {
+        self.messaging_event_tx.clone()
+    }
+
     /// Return an owned copy of a ConnectionManagerRequester. Used to initiate connections to peers.
     pub fn connection_manager(&self) -> ConnectionManagerRequester {
         self.connection_manager_requester.clone()

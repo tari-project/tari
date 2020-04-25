@@ -19,36 +19,21 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use thiserror::Error;
 
-use derive_error::Error;
-
-#[derive(Debug, Error)]
+#[derive(Error, Debug)]
 pub enum LMDBError {
-    /// Cannot create LMDB. The path does not exist
+    #[error("Cannot create LMDB. The path does not exist")]
     InvalidPath,
-    /// An error occurred with the underlying data store implementation
-    #[error(embedded_msg, no_from, non_std)]
-    InternalError(String),
-    /// An error occurred during serialization
-    #[error(no_from, non_std)]
+    #[error("An error occurred during serialization:{0}")]
     SerializationErr(String),
-    /// An error occurred during deserialization
-    #[error(no_from, non_std)]
-    DeserializationErr(String),
-    /// Occurs when trying to perform an action that requires us to be in a live transaction
-    TransactionNotLiveError,
-    /// A transaction or query was attempted while no database was open.
-    DatabaseNotOpen,
-    /// A database with the requested name does not exist
-    UnknownDatabase,
-    /// An error occurred during a put query
-    #[error(embedded_msg, no_from, non_std)]
-    PutError(String),
-    /// An error occurred during a get query
-    #[error(embedded_msg, no_from, non_std)]
+    #[error("An error occurred during a get query:{0}")]
     GetError(String),
-    #[error(embedded_msg, no_from, non_std)]
+    #[error("An error occurred during commit:{0}")]
     CommitError(String),
-    /// An LMDB error occurred
-    DatabaseError(lmdb_zero::error::Error),
+    #[error("An LMDB error occurred:{source}")]
+    DatabaseError {
+        #[from]
+        source: lmdb_zero::error::Error,
+    },
 }

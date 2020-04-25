@@ -269,7 +269,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         &self,
         tx_id: u64,
         outputs_to_send: &[UnblindedOutput],
-        change_output: Option<UnblindedOutput>,
+        outputs_to_receive: &[UnblindedOutput],
     ) -> Result<(), OutputManagerStorageError>
     {
         let conn = acquire_lock!(self.database_connection);
@@ -295,8 +295,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             )?;
         }
 
-        if let Some(co) = change_output {
-            OutputSql::new(co, OutputStatus::EncumberedToBeReceived, Some(tx_id)).commit(&(*conn))?;
+        for co in outputs_to_receive {
+            OutputSql::new(co.clone(), OutputStatus::EncumberedToBeReceived, Some(tx_id)).commit(&(*conn))?;
         }
 
         Ok(())
@@ -346,7 +346,13 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
                 for o in outputs {
                     if o.status == (OutputStatus::EncumberedToBeReceived as i32) {
-                        o.delete(&(*conn))?;
+                        o.update(
+                            UpdateOutput {
+                                status: Some(OutputStatus::CancelledInbound),
+                                tx_id: None,
+                            },
+                            &(*conn),
+                        )?;
                     } else if o.status == (OutputStatus::EncumberedToBeSpent as i32) {
                         o.update(
                             UpdateOutput {
@@ -446,6 +452,7 @@ enum OutputStatus {
     EncumberedToBeReceived,
     EncumberedToBeSpent,
     Invalid,
+    CancelledInbound,
 }
 
 impl TryFrom<i32> for OutputStatus {
@@ -458,6 +465,7 @@ impl TryFrom<i32> for OutputStatus {
             2 => Ok(OutputStatus::EncumberedToBeReceived),
             3 => Ok(OutputStatus::EncumberedToBeSpent),
             4 => Ok(OutputStatus::Invalid),
+            5 => Ok(OutputStatus::CancelledInbound),
             _ => Err(OutputManagerStorageError::ConversionError),
         }
     }
@@ -650,7 +658,7 @@ impl From<UpdateOutput> for UpdateOutputSql {
 
 /// This struct represents a PendingTransactionOutputs  in the Sql database. A distinct struct is required to define the
 /// Sql friendly equivalent datatypes for the members.
-#[derive(Clone, Queryable, Insertable)]
+#[derive(Debug, Clone, Queryable, Insertable)]
 #[table_name = "pending_transaction_outputs"]
 struct PendingTransactionOutputSql {
     tx_id: i64,

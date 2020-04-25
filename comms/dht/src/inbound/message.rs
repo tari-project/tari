@@ -20,27 +20,38 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{consts::DHT_ENVELOPE_HEADER_VERSION, envelope::DhtMessageHeader};
+use crate::{
+    consts::DHT_ENVELOPE_HEADER_VERSION,
+    envelope::{DhtMessageFlags, DhtMessageHeader},
+};
 use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
-use tari_comms::{message::EnvelopeBody, peer_manager::Peer, types::CommsPublicKey};
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_comms::{
+    message::{EnvelopeBody, MessageTag},
+    peer_manager::Peer,
+    types::CommsPublicKey,
+};
 
 #[derive(Debug, Clone)]
 pub struct DhtInboundMessage {
+    pub tag: MessageTag,
     pub version: u32,
     pub source_peer: Arc<Peer>,
     pub dht_header: DhtMessageHeader,
+    /// True if forwarded via store and forward, otherwise false
+    pub is_saf_message: bool,
     pub body: Vec<u8>,
 }
 impl DhtInboundMessage {
-    pub fn new(dht_header: DhtMessageHeader, source_peer: Arc<Peer>, body: Vec<u8>) -> Self {
+    pub fn new(tag: MessageTag, dht_header: DhtMessageHeader, source_peer: Arc<Peer>, body: Vec<u8>) -> Self {
         Self {
+            tag,
             version: DHT_ENVELOPE_HEADER_VERSION,
             dht_header,
             source_peer,
+            is_saf_message: false,
             body,
         }
     }
@@ -50,11 +61,12 @@ impl Display for DhtInboundMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(
             f,
-            "DhtInboundMessage (v{}, Peer:{}, Header:{}, Body:{})",
-            self.version,
+            "\n---- Inbound Message ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\n{}\n----",
+            self.body.len(),
+            self.dht_header.message_type,
             self.source_peer,
             self.dht_header,
-            self.body.to_hex()
+            self.tag,
         )
     }
 }
@@ -62,29 +74,43 @@ impl Display for DhtInboundMessage {
 /// Represents a decrypted InboundMessage.
 #[derive(Debug, Clone)]
 pub struct DecryptedDhtMessage {
+    pub tag: MessageTag,
     pub version: u32,
     /// The _connected_ peer which sent or forwarded this message. This may not be the peer
     /// which created this message.
     pub source_peer: Arc<Peer>,
+    pub authenticated_origin: Option<CommsPublicKey>,
     pub dht_header: DhtMessageHeader,
+    pub is_saf_message: bool,
     pub decryption_result: Result<EnvelopeBody, Vec<u8>>,
 }
 
 impl DecryptedDhtMessage {
-    pub fn succeeded(decrypted_message: EnvelopeBody, message: DhtInboundMessage) -> Self {
+    pub fn succeeded(
+        message_body: EnvelopeBody,
+        authenticated_origin: Option<CommsPublicKey>,
+        message: DhtInboundMessage,
+    ) -> Self
+    {
         Self {
+            tag: message.tag,
             version: message.version,
             source_peer: message.source_peer,
+            authenticated_origin,
             dht_header: message.dht_header,
-            decryption_result: Ok(decrypted_message),
+            is_saf_message: message.is_saf_message,
+            decryption_result: Ok(message_body),
         }
     }
 
     pub fn failed(message: DhtInboundMessage) -> Self {
         Self {
+            tag: message.tag,
             version: message.version,
             source_peer: message.source_peer,
+            authenticated_origin: None,
             dht_header: message.dht_header,
+            is_saf_message: message.is_saf_message,
             decryption_result: Err(message.body),
         }
     }
@@ -113,11 +139,23 @@ impl DecryptedDhtMessage {
         self.decryption_result.is_err()
     }
 
-    pub fn origin_public_key(&self) -> &CommsPublicKey {
-        self.dht_header
-            .origin
-            .as_ref()
-            .map(|o| &o.public_key)
-            .unwrap_or(&self.source_peer.public_key)
+    pub fn authenticated_origin(&self) -> Option<&CommsPublicKey> {
+        self.authenticated_origin.as_ref()
+    }
+
+    /// Returns true if the message is or was encrypted by
+    pub fn is_encrypted(&self) -> bool {
+        self.dht_header.flags.contains(DhtMessageFlags::ENCRYPTED)
+    }
+
+    pub fn has_origin_mac(&self) -> bool {
+        !self.dht_header.origin_mac.is_empty()
+    }
+
+    pub fn body_len(&self) -> usize {
+        match self.decryption_result.as_ref() {
+            Ok(b) => b.total_size(),
+            Err(b) => b.len(),
+        }
     }
 }

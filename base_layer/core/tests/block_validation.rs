@@ -21,11 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_core::{
-    chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
+    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
     consensus::{ConsensusManagerBuilder, Network},
-    proof_of_work::DiffAdjManager,
     transactions::types::{CryptoFactories, HashDigest},
-    validation::block_validators::{FullConsensusValidator, StatelessBlockValidator},
+    validation::{
+        accum_difficulty_validators::AccumDifficultyValidator,
+        block_validators::{FullConsensusValidator, StatelessBlockValidator},
+    },
 };
 
 #[test]
@@ -37,10 +39,9 @@ fn test_genesis_block() {
     let validators = Validators::new(
         FullConsensusValidator::new(rules.clone(), factories),
         StatelessBlockValidator::new(&rules.consensus_constants()),
+        AccumDifficultyValidator {},
     );
-    let db = BlockchainDatabase::new(backend, &rules, validators).unwrap();
-    let diff_adj_manager = DiffAdjManager::new(&rules.consensus_constants()).unwrap();
-    rules.set_diff_manager(diff_adj_manager).unwrap();
+    let db = BlockchainDatabase::new(backend, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
     let block = rules.get_genesis_block();
     let result = db.add_block(block);
     assert!(result.is_ok());

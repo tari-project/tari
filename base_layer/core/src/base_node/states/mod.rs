@@ -57,7 +57,6 @@
 //! required, and then shutdown.
 
 mod block_sync;
-mod error;
 mod events_and_states;
 mod forward_block_sync;
 mod listening;

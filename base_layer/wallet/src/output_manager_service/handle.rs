@@ -31,7 +31,7 @@ use tari_broadcast_channel::Subscriber;
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{TransactionInput, TransactionOutput, UnblindedOutput},
+    transaction::{Transaction, TransactionInput, TransactionOutput, UnblindedOutput},
     types::PrivateKey,
     SenderTransactionProtocol,
 };
@@ -57,6 +57,7 @@ pub enum OutputManagerRequest {
     GetSeedWords,
     SetBaseNodePublicKey(CommsPublicKey),
     SyncWithBaseNode,
+    CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -80,6 +81,7 @@ impl fmt::Display for OutputManagerRequest {
             Self::GetSeedWords => f.write_str("GetSeedWords"),
             Self::SetBaseNodePublicKey(k) => f.write_str(&format!("SetBaseNodePublicKey ({})", k)),
             Self::SyncWithBaseNode => f.write_str("SyncWithBaseNode"),
+            Self::CreateCoinSplit(v) => f.write_str(&format!("CreateCoinSplit ({})", v.0)),
         }
     }
 }
@@ -102,6 +104,7 @@ pub enum OutputManagerResponse {
     SeedWords(Vec<String>),
     BaseNodePublicKeySet,
     StartedBaseNodeSync(u64),
+    Transaction((u64, Transaction, MicroTari, MicroTari)),
 }
 
 /// Events that can be published on the Text Message Service Event Stream
@@ -306,6 +309,29 @@ impl OutputManagerHandle {
     pub async fn sync_with_base_node(&mut self) -> Result<u64, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::SyncWithBaseNode).await?? {
             OutputManagerResponse::StartedBaseNodeSync(request_key) => Ok(request_key),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_coin_split(
+        &mut self,
+        amount_per_split: MicroTari,
+        split_count: usize,
+        fee_per_gram: MicroTari,
+        lock_height: Option<u64>,
+    ) -> Result<(u64, Transaction, MicroTari, MicroTari), OutputManagerError>
+    {
+        match self
+            .handle
+            .call(OutputManagerRequest::CreateCoinSplit((
+                amount_per_split,
+                split_count,
+                fee_per_gram,
+                lock_height,
+            )))
+            .await??
+        {
+            OutputManagerResponse::Transaction(ct) => Ok(ct),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

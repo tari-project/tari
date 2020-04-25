@@ -19,7 +19,7 @@ fi
 BUNDLE='
 target/release/tari_base_node
 scripts/install_tor.sh
-config/presets/rincewind-simple.toml
+common/config/presets/rincewind-simple.toml
 common/logging/log4rs-sample.yml
 applications/tari_base_node/install-osx.sh
 applications/tari_base_node/start_tor.sh

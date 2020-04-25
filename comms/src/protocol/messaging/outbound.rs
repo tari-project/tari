@@ -23,11 +23,10 @@
 use super::{error::MessagingProtocolError, MessagingEvent, MessagingProtocol, SendFailReason, MESSAGING_PROTOCOL};
 use crate::{
     connection_manager::{ConnectionManagerError, ConnectionManagerRequester, NegotiatedSubstream, PeerConnection},
-    message::{Envelope, MessageExt, OutboundMessage},
+    message::OutboundMessage,
     peer_manager::{NodeId, NodeIdentity},
     types::CommsSubstream,
 };
-use bytes::Bytes;
 use futures::{channel::mpsc, SinkExt, StreamExt};
 use log::*;
 use std::sync::Arc;
@@ -87,17 +86,6 @@ impl OutboundMessaging {
                     );
                     continue;
                 },
-                Err(err @ ConnectionManagerError::PeerOffline) => {
-                    error!(
-                        target: LOG_TARGET,
-                        "MessagingProtocol failed to dial peer '{}' because '{:?}'",
-                        self.peer_node_id.short_str(),
-                        err
-                    );
-                    self.flush_all_messages_to_failed_event(SendFailReason::PeerOffline)
-                        .await;
-                    break Err(MessagingProtocolError::PeerDialFailed);
-                },
                 Err(err) => {
                     error!(
                         target: LOG_TARGET,
@@ -136,36 +124,16 @@ impl OutboundMessaging {
 
     async fn start_forwarding_messages(mut self, substream: CommsSubstream) -> Result<(), MessagingProtocolError> {
         let mut framed = MessagingProtocol::framed(substream);
-        while let Some(out_msg) = self.request_rx.next().await {
-            match self.to_envelope_bytes(&out_msg).await {
-                Ok(body) => {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Sending message ({} bytes) ({:?}) on outbound messaging substream",
-                        body.len(),
-                        out_msg.tag,
-                    );
-                    if let Err(err) = framed.send(body).await {
-                        debug!(
-                            target: LOG_TARGET,
-                            "[ThisNode={}] OutboundMessaging failed to send message to peer '{}' because '{}'",
-                            self.node_identity.node_id().short_str(),
-                            self.peer_node_id.short_str(),
-                            err
-                        );
-                        let _ = self
-                            .messaging_events_tx
-                            .send(MessagingEvent::SendMessageFailed(
-                                out_msg,
-                                SendFailReason::SubstreamSendFailed,
-                            ))
-                            .await;
-                        // FATAL: Failed to send on the substream
-                        self.flush_all_messages_to_failed_event(SendFailReason::SubstreamSendFailed)
-                            .await;
-                        return Err(MessagingProtocolError::OutboundSubstreamFailure);
-                    }
-
+        while let Some(mut out_msg) = self.request_rx.next().await {
+            trace!(
+                target: LOG_TARGET,
+                "Sending message ({} bytes) ({:?}) on outbound messaging substream",
+                out_msg.body.len(),
+                out_msg.tag,
+            );
+            match framed.send(out_msg.body.clone()).await {
+                Ok(_) => {
+                    out_msg.reply_success();
                     let _ = self
                         .messaging_events_tx
                         .send(MessagingEvent::MessageSent(out_msg.tag))
@@ -174,18 +142,23 @@ impl OutboundMessaging {
                 Err(err) => {
                     debug!(
                         target: LOG_TARGET,
-                        "Failed to send message to peer '{}' because '{:?}'",
-                        out_msg.peer_node_id.short_str(),
+                        "[ThisNode={}] OutboundMessaging failed to send message to peer '{}' because '{}'",
+                        self.node_identity.node_id().short_str(),
+                        self.peer_node_id.short_str(),
                         err
                     );
-
+                    out_msg.reply_fail();
                     let _ = self
                         .messaging_events_tx
                         .send(MessagingEvent::SendMessageFailed(
                             out_msg,
-                            SendFailReason::EnvelopeFailedToSerialize,
+                            SendFailReason::SubstreamSendFailed,
                         ))
                         .await;
+                    // FATAL: Failed to send on the substream
+                    self.flush_all_messages_to_failed_event(SendFailReason::SubstreamSendFailed)
+                        .await;
+                    return Err(MessagingProtocolError::OutboundSubstreamFailure);
                 },
             }
         }
@@ -203,32 +176,5 @@ impl OutboundMessaging {
                 .send(MessagingEvent::SendMessageFailed(out_msg, reason))
                 .await;
         }
-    }
-
-    async fn to_envelope_bytes(&self, out_msg: &OutboundMessage) -> Result<Bytes, MessagingProtocolError> {
-        let OutboundMessage {
-            flags,
-            body,
-            peer_node_id,
-            ..
-        } = out_msg;
-
-        let envelope = Envelope::construct_signed(
-            self.node_identity.secret_key(),
-            self.node_identity.public_key(),
-            body.clone(),
-            *flags,
-        )?;
-        let body = envelope.to_encoded_bytes()?;
-
-        trace!(
-            target: LOG_TARGET,
-            "[Node={}] Sending message ({} bytes) to peer '{}'",
-            self.node_identity.node_id().short_str(),
-            body.len(),
-            peer_node_id.short_str(),
-        );
-
-        Ok(body.into())
     }
 }

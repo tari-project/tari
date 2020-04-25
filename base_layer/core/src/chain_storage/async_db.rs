@@ -54,12 +54,11 @@ where F: FnOnce() -> R {
         trace_id
     );
     let ret = f();
-    let end = Instant::now();
     trace!(
         target: LOG_TARGET,
         "[{}] Exited blocking thread after {}ms. trace_id: '{}'",
         name,
-        (end - start).as_millis(),
+        start.elapsed().as_millis(),
         trace_id
     );
     ret
@@ -99,13 +98,13 @@ make_async!(fetch_utxo(hash: HashOutput) -> TransactionOutput, "fetch_utxo");
 make_async!(fetch_stxo(hash: HashOutput) -> TransactionOutput, "fetch_stxo");
 make_async!(fetch_orphan(hash: HashOutput) -> Block, "fetch_orphan");
 make_async!(is_utxo(hash: HashOutput) -> bool, "is_utxo");
+make_async!(is_stxo(hash: HashOutput) -> bool, "is_stxo");
 make_async!(fetch_mmr_root(tree: MmrTree) -> HashOutput, "fetch_mmr_root");
 make_async!(fetch_mmr_only_root(tree: MmrTree) -> HashOutput, "fetch_mmr_only_root");
 make_async!(calculate_mmr_root(tree: MmrTree,additions: Vec<HashOutput>,deletions: Vec<HashOutput>) -> HashOutput, "calculate_mmr_root");
 make_async!(add_block(block: Block) -> BlockAddResult, "add_block");
 make_async!(calculate_mmr_roots(template: NewBlockTemplate) -> Block, "calculate_mmr_roots");
 
-// make_async!(is_new_best_block(block: &Block) -> bool);
 make_async!(fetch_block(height: u64) -> HistoricalBlock, "fetch_block");
 make_async!(fetch_block_with_hash(hash: HashOutput) -> Option<HistoricalBlock>, "fetch_block_with_hash");
 make_async!(rewind_to_height(height: u64) -> Vec<Block>, "rewind_to_height");

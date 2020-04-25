@@ -39,6 +39,7 @@ use crate::transactions::{
 };
 use digest::Digest;
 use std::{
+    cmp::max,
     collections::HashMap,
     fmt::{Debug, Error, Formatter},
 };
@@ -166,11 +167,10 @@ impl SenderTransactionInitializer {
         let num_inputs = self.inputs.len();
         let total_being_spent = self.unblinded_inputs.iter().map(|i| i.value).sum::<MicroTari>();
         let total_to_self = self.outputs.iter().map(|o| o.value).sum::<MicroTari>();
-
         let total_amount = self.amounts.sum().ok_or_else(|| "Not all amounts have been provided")?;
         let fee_per_gram = self.fee_per_gram.ok_or_else(|| "Fee per gram was not provided")?;
-        let fee_without_change = Fee::calculate(fee_per_gram, num_inputs, num_outputs);
-        let fee_with_change = Fee::calculate(fee_per_gram, num_inputs, num_outputs + 1);
+        let fee_without_change = Fee::calculate(fee_per_gram, 1, num_inputs, num_outputs);
+        let fee_with_change = Fee::calculate(fee_per_gram, 1, num_inputs, num_outputs + 1);
         let extra_fee = fee_with_change - fee_without_change;
         // Subtract with a check on going negative
         let change_amount = total_being_spent.checked_sub(total_to_self + total_amount + fee_without_change);
@@ -272,8 +272,9 @@ impl SenderTransactionInitializer {
             1 => RecipientInfo::Single(None),
             _ => RecipientInfo::Multiple(HashMap::new()),
         };
-        let mut ids = Vec::with_capacity(self.num_recipients);
-        for i in 0..self.num_recipients {
+        let num_ids = max(1, self.num_recipients);
+        let mut ids = Vec::with_capacity(num_ids);
+        for i in 0..num_ids {
             ids.push(calculate_tx_id::<D>(&public_nonce, i));
         }
         let sender_info = RawTransactionInfo {
@@ -313,7 +314,7 @@ impl SenderTransactionInitializer {
 #[cfg(test)]
 mod test {
     use crate::transactions::{
-        fee::{Fee, BASE_COST, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
+        fee::{Fee, KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
         helpers::{make_input, TestParams},
         tari_amount::*,
         transaction::{UnblindedOutput, MAX_TRANSACTION_INPUTS},
@@ -347,10 +348,10 @@ mod test {
             .with_offset(p.offset)
             .with_private_nonce(p.nonce);
         builder.with_output(UnblindedOutput::new(MicroTari(100), p.spend_key, None));
-        let (utxo, input) = make_input(&mut OsRng, MicroTari(500), &factories.commitment);
+        let (utxo, input) = make_input(&mut OsRng, MicroTari(5_000), &factories.commitment);
         builder.with_input(utxo, input);
         builder.with_fee_per_gram(MicroTari(20));
-        let expected_fee = Fee::calculate(MicroTari(20), 1, 2);
+        let expected_fee = Fee::calculate(MicroTari(20), 1, 1, 2);
         // We needed a change input, so this should fail
         let err = builder.build::<Blake256>(&factories).unwrap_err();
         assert_eq!(err.message, "Change spending key was not provided");
@@ -362,7 +363,7 @@ mod test {
         if let SenderState::Finalizing(info) = result.state {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
             assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.ids.len(), 0, "Number of tx_ids");
+            assert_eq!(info.ids.len(), 1, "Number of tx_ids");
             assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 100, "Lock height");
             assert_eq!(info.metadata.fee, expected_fee, "Fee");
@@ -380,7 +381,7 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         let (utxo, input) = make_input(&mut OsRng, MicroTari(500), &factories.commitment);
-        let expected_fee = Fee::calculate(MicroTari(20), 1, 1);
+        let expected_fee = Fee::calculate(MicroTari(20), 1, 1, 1);
         let output = UnblindedOutput::new(MicroTari(500) - expected_fee, p.spend_key, None);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
@@ -396,7 +397,7 @@ mod test {
         if let SenderState::Finalizing(info) = result.state {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
             assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.ids.len(), 0, "Number of tx_ids");
+            assert_eq!(info.ids.len(), 1, "Number of tx_ids");
             assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 0, "Lock height");
             assert_eq!(info.metadata.fee, expected_fee, "Fee");
@@ -414,8 +415,9 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         let (utxo, input) = make_input(&mut OsRng, MicroTari(500), &factories.commitment);
-        let expected_fee = MicroTari::from(BASE_COST + (WEIGHT_PER_INPUT + 1 * WEIGHT_PER_OUTPUT) * 20); // 101, output = 80
-                                                                                                         // Pay out so that I should get change, but not enough to pay for the output
+        let expected_fee = MicroTari::from((KERNEL_WEIGHT + WEIGHT_PER_INPUT + 1 * WEIGHT_PER_OUTPUT) * 20);
+        // fee == 340, output = 80
+        // Pay out so that I should get change, but not enough to pay for the output
         let output = UnblindedOutput::new(MicroTari(500) - expected_fee - MicroTari(50), p.spend_key, None);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
@@ -431,7 +433,7 @@ mod test {
         if let SenderState::Finalizing(info) = result.state {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
             assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.ids.len(), 0, "Number of tx_ids");
+            assert_eq!(info.ids.len(), 1, "Number of tx_ids");
             assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 0, "Lock height");
             assert_eq!(info.metadata.fee, expected_fee + MicroTari(50), "Fee");
@@ -511,7 +513,7 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input) = make_input(&mut OsRng, MicroTari(1000), &factories.commitment);
+        let (utxo, input) = make_input(&mut OsRng, MicroTari(100_000), &factories.commitment);
         let output = UnblindedOutput::new(MicroTari(150), p.spend_key, None);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(2);
@@ -542,7 +544,7 @@ mod test {
         let (utxo1, input1) = make_input(&mut OsRng, MicroTari(2000), &factories.commitment);
         let (utxo2, input2) = make_input(&mut OsRng, MicroTari(3000), &factories.commitment);
         let weight = MicroTari(30);
-        let expected_fee = Fee::calculate(weight, 2, 3);
+        let expected_fee = Fee::calculate(weight, 1, 2, 3);
         let output = UnblindedOutput::new(MicroTari(1500) - expected_fee, p.spend_key, None);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(1);

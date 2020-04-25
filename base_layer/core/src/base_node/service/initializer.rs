@@ -136,6 +136,7 @@ async fn extract_block(msg: Arc<PeerMessage>) -> Option<DomainMessage<Block>> {
             Some(DomainMessage {
                 source_peer: msg.source_peer.clone(),
                 dht_header: msg.dht_header.clone(),
+                authenticated_origin: msg.authenticated_origin.clone(),
                 inner: block,
             })
         },

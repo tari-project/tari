@@ -68,7 +68,7 @@ impl NodeDistance {
         nd
     }
 
-    pub fn max_distance() -> NodeDistance {
+    pub const fn max_distance() -> NodeDistance {
         NodeDistance([255; NODE_ID_ARRAY_SIZE])
     }
 }
@@ -94,6 +94,21 @@ impl TryFrom<&[u8]> for NodeDistance {
     }
 }
 
+impl ByteArray for NodeDistance {
+    /// Try and convert the given byte array to a NodeDistance. Any failures (incorrect array length,
+    /// implementation-specific checks, etc) return a [ByteArrayError](enum.ByteArrayError.html).
+    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
+        bytes
+            .try_into()
+            .map_err(|err| ByteArrayError::ConversionError(format!("{:?}", err)))
+    }
+
+    /// Return the NodeDistance as a byte array
+    fn as_bytes(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
 impl fmt::Display for NodeDistance {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", to_hex(&self.0))
@@ -101,7 +116,7 @@ impl fmt::Display for NodeDistance {
 }
 
 /// A Node Identity is used as a unique identifier for a node in the Tari communications network.
-#[derive(Clone, Debug, Eq, Deserialize, Serialize, Default)]
+#[derive(Clone, Eq, Deserialize, Serialize, Default)]
 pub struct NodeId(NodeIdArray);
 
 impl NodeId {
@@ -254,6 +269,12 @@ impl fmt::Display for NodeId {
     }
 }
 
+impl fmt::Debug for NodeId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "NodeId({})", to_hex(&self.0))
+    }
+}
+
 pub fn deserialize_node_id_from_hex<'de, D>(des: D) -> Result<NodeId, D::Error>
 where D: Deserializer<'de> {
     struct KeyStringVisitor<K> {
@@ -355,6 +376,12 @@ mod test {
         assert!(n1_to_n2_dist < n1_to_n3_dist);
         assert_eq!(n1_to_n2_dist, desired_n1_to_n2_dist);
         assert_eq!(n1_to_n3_dist, desired_n1_to_n3_dist);
+
+        // Commutative
+        let n1_to_n2_dist = node_id1.distance(&node_id2);
+        let n2_to_n1_dist = node_id2.distance(&node_id1);
+
+        assert_eq!(n1_to_n2_dist, n2_to_n1_dist);
     }
 
     #[test]

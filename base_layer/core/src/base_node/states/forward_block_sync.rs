@@ -105,7 +105,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             Ok(headers) => {
                 if let Some(first_header) = headers.first() {
                     if let Ok(block) = shared.db.fetch_header_with_block_hash(first_header.prev_hash.clone()) {
-                        if &shared.db.fetch_tip_header().map_err(|e| e.to_string())? != &block {
+                        if shared.db.fetch_tip_header().map_err(|e| e.to_string())? != block {
                             // If peer returns genesis block, it means that there is a split, but it is further back
                             // than the headers we sent.
                             let oldest_header_sent = from_headers.last().unwrap();
@@ -148,7 +148,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                         target: LOG_TARGET,
                         "Could not sync with node '{}': Node did not return headers", sync_node_string
                     );
-                    sync_node = sync_nodes.pop().map(|n| n.clone());
+                    sync_node = sync_nodes.pop().map(|n| n);
                     continue;
                 }
 
@@ -245,11 +245,12 @@ async fn download_blocks<B: BlockchainBackend + 'static>(
                             );
                             return Ok(false);
                         },
-                        Err(ChainStorageError::ValidationError(_)) => {
+                        Err(ChainStorageError::ValidationError { source }) => {
                             warn!(
                                 target: LOG_TARGET,
-                                "Validation on block {} from peer failed. Retrying",
+                                "Validation on block {} because of {} from peer failed. Retrying",
                                 block_hash.to_hex(),
+                                source
                             );
                             return Ok(false);
                         },

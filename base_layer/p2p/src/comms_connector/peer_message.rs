@@ -34,28 +34,13 @@ pub struct PeerMessage {
     pub source_peer: Peer,
     /// Domain message header
     pub message_header: MessageHeader,
+    /// This messages authenticated origin, otherwise None
+    pub authenticated_origin: Option<CommsPublicKey>,
     /// Serialized message data
     pub body: Vec<u8>,
 }
 
 impl PeerMessage {
-    pub fn new(dht_header: DhtMessageHeader, source_peer: Peer, message_header: MessageHeader, body: Vec<u8>) -> Self {
-        Self {
-            body,
-            message_header,
-            dht_header,
-            source_peer,
-        }
-    }
-
-    pub fn origin_public_key(&self) -> &CommsPublicKey {
-        self.dht_header
-            .origin
-            .as_ref()
-            .map(|o| &o.public_key)
-            .unwrap_or(&self.source_peer.public_key)
-    }
-
     pub fn decode_message<T>(&self) -> Result<T, prost::DecodeError>
     where T: prost::Message + Default {
         let msg = T::decode(self.body.as_slice())?;

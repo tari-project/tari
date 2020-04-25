@@ -57,7 +57,7 @@ pub trait OutputManagerBackend: Send + Sync {
         &self,
         tx_id: TxId,
         outputs_to_send: &[UnblindedOutput],
-        change_output: Option<UnblindedOutput>,
+        outputs_to_receive: &[UnblindedOutput],
     ) -> Result<(), OutputManagerStorageError>;
     /// This method confirms that a transaction negotiation is complete and outputs can be fully encumbered. This
     /// reserves these outputs until the transaction is confirmed or cancelled
@@ -66,12 +66,13 @@ pub trait OutputManagerBackend: Send + Sync {
     /// transaction negotiation
     fn clear_short_term_encumberances(&self) -> Result<(), OutputManagerStorageError>;
     /// This method must take all the `outputs_to_be_spent` from the specified transaction and move them back into the
-    /// `UnspentOutputs` pool.
+    /// `UnspentOutputs` pool. The `outputs_to_be_received`'` will be marked as cancelled inbound outputs in case they
+    /// need to be recovered.
     fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
     /// This method must run through all the `PendingTransactionOutputs` and test if any have existed for longer that
     /// the specified duration. If they have they should be cancelled.
     fn timeout_pending_transactions(&self, period: Duration) -> Result<(), OutputManagerStorageError>;
-    /// This method will increment the currently stored key index for the key manager config. Increment this after eac
+    /// This method will increment the currently stored key index for the key manager config. Increment this after each
     /// key is generated
     fn increment_key_index(&self) -> Result<(), OutputManagerStorageError>;
     /// If an unspent output is detected as invalid (i.e. not available on the blockchain) then it should be moved to
@@ -335,12 +336,12 @@ where T: OutputManagerBackend + 'static
         &self,
         tx_id: TxId,
         outputs_to_send: Vec<UnblindedOutput>,
-        change_output: Option<UnblindedOutput>,
+        outputs_to_receive: Vec<UnblindedOutput>,
     ) -> Result<(), OutputManagerStorageError>
     {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
-            db_clone.short_term_encumber_outputs(tx_id, &outputs_to_send, change_output)
+            db_clone.short_term_encumber_outputs(tx_id, &outputs_to_send, &outputs_to_receive)
         })
         .await
         .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))

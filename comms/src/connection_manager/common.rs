@@ -139,6 +139,8 @@ pub async fn validate_and_add_peer_from_peer_identity(
                     Some(peer_node_id.clone()),
                     Some(addresses),
                     None,
+                    None,
+                    Some(false),
                     Some(PeerFeatures::from_bits_truncate(peer_identity.features)),
                     Some(conn_stats),
                     Some(supported_protocols),

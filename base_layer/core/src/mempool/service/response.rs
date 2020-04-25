@@ -22,19 +22,20 @@
 
 use crate::{
     base_node::RequestKey,
-    mempool::{StatsResponse, TxStorageResponse},
+    mempool::{StateResponse, StatsResponse, TxStorageResponse},
 };
 use serde::{Deserialize, Serialize};
 
 /// API Response enum for Mempool responses.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum MempoolResponse {
     Stats(StatsResponse),
+    State(StateResponse),
     TxStorage(TxStorageResponse),
 }
 
 /// Response type for a received MempoolService requests
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MempoolServiceResponse {
     pub request_key: RequestKey,
     pub response: MempoolResponse,

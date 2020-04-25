@@ -63,21 +63,23 @@ use tokio::task;
 const LOG_TARGET: &str = "c::mempool::service::service";
 
 /// A convenience struct to hold all the Mempool service streams
-pub struct MempoolStreams<SOutReq, SInReq, SInRes, STxIn> {
+pub struct MempoolStreams<SOutReq, SInReq, SInRes, STxIn, SLocalReq> {
     outbound_request_stream: SOutReq,
     outbound_tx_stream: UnboundedReceiver<(Transaction, Vec<CommsPublicKey>)>,
     inbound_request_stream: SInReq,
     inbound_response_stream: SInRes,
     inbound_transaction_stream: STxIn,
+    local_request_stream: SLocalReq,
     block_event_stream: Subscriber<BlockEvent>,
 }
 
-impl<SOutReq, SInReq, SInRes, STxIn> MempoolStreams<SOutReq, SInReq, SInRes, STxIn>
+impl<SOutReq, SInReq, SInRes, STxIn, SLocalReq> MempoolStreams<SOutReq, SInReq, SInRes, STxIn, SLocalReq>
 where
     SOutReq: Stream<Item = RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>>,
     SInReq: Stream<Item = DomainMessage<proto::MempoolServiceRequest>>,
     SInRes: Stream<Item = DomainMessage<proto::MempoolServiceResponse>>,
     STxIn: Stream<Item = DomainMessage<Transaction>>,
+    SLocalReq: Stream<Item = RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>>,
 {
     pub fn new(
         outbound_request_stream: SOutReq,
@@ -85,6 +87,7 @@ where
         inbound_request_stream: SInReq,
         inbound_response_stream: SInRes,
         inbound_transaction_stream: STxIn,
+        local_request_stream: SLocalReq,
         block_event_stream: Subscriber<BlockEvent>,
     ) -> Self
     {
@@ -94,6 +97,7 @@ where
             inbound_request_stream,
             inbound_response_stream,
             inbound_transaction_stream,
+            local_request_stream,
             block_event_stream,
         }
     }
@@ -130,15 +134,16 @@ where B: BlockchainBackend + 'static
         }
     }
 
-    pub async fn start<SOutReq, SInReq, SInRes, STxIn>(
+    pub async fn start<SOutReq, SInReq, SInRes, STxIn, SLocalReq>(
         mut self,
-        streams: MempoolStreams<SOutReq, SInReq, SInRes, STxIn>,
+        streams: MempoolStreams<SOutReq, SInReq, SInRes, STxIn, SLocalReq>,
     ) -> Result<(), MempoolServiceError>
     where
         SOutReq: Stream<Item = RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>>,
         SInReq: Stream<Item = DomainMessage<proto::MempoolServiceRequest>>,
         SInRes: Stream<Item = DomainMessage<proto::MempoolServiceResponse>>,
         STxIn: Stream<Item = DomainMessage<Transaction>>,
+        SLocalReq: Stream<Item = RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>>,
     {
         let outbound_request_stream = streams.outbound_request_stream.fuse();
         pin_mut!(outbound_request_stream);
@@ -150,6 +155,8 @@ where B: BlockchainBackend + 'static
         pin_mut!(inbound_response_stream);
         let inbound_transaction_stream = streams.inbound_transaction_stream.fuse();
         pin_mut!(inbound_transaction_stream);
+        let local_request_stream = streams.local_request_stream.fuse();
+        pin_mut!(local_request_stream);
         let block_event_stream = streams.block_event_stream.fuse();
         pin_mut!(block_event_stream);
         let timeout_receiver_stream = self
@@ -184,6 +191,11 @@ where B: BlockchainBackend + 'static
                 transaction_msg = inbound_transaction_stream.select_next_some() => {
                     self.spawn_handle_incoming_tx(transaction_msg);
                 }
+
+                // Incoming local request messages from the LocalMempoolServiceInterface and other local services
+                local_request_context = local_request_stream.select_next_some() => {
+                    self.spawn_handle_local_request(local_request_context);
+                },
 
                 // Block events from local Base Node.
                 block_event = block_event_stream.select_next_some() => {
@@ -291,6 +303,26 @@ where B: BlockchainBackend + 'static
         });
     }
 
+    fn spawn_handle_local_request(
+        &self,
+        request_context: RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
+    )
+    {
+        let mut inbound_handlers = self.inbound_handlers.clone();
+        task::spawn(async move {
+            let (request, reply_tx) = request_context.split();
+            let _ = reply_tx
+                .send(inbound_handlers.handle_request(&request).await)
+                .or_else(|err| {
+                    error!(
+                        target: LOG_TARGET,
+                        "MempoolService failed to send reply to local request {:?}", err
+                    );
+                    Err(err)
+                });
+        });
+    }
+
     fn spawn_handle_block_event(&self, block_event: Arc<BlockEvent>) {
         let inbound_handlers = self.inbound_handlers.clone();
         task::spawn(async move {
@@ -339,7 +371,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     outbound_message_service
         .send_direct(
             origin_public_key,
-            OutboundEncryption::EncryptForPeer,
+            OutboundEncryption::None,
             OutboundDomainMessage::new(TariMessageType::MempoolResponse, message),
         )
         .await?;
@@ -389,7 +421,7 @@ async fn handle_outbound_request(
         .send_random(
             1,
             NodeDestination::Unknown,
-            OutboundEncryption::EncryptForPeer,
+            OutboundEncryption::None,
             OutboundDomainMessage::new(TariMessageType::MempoolRequest, service_request),
         )
         .await
@@ -400,7 +432,7 @@ async fn handle_outbound_request(
         .map_err(|e| MempoolServiceError::OutboundMessageService(e.to_string()))?;
 
     match send_result.resolve_ok().await {
-        Some(tags) if !tags.is_empty() => {
+        Some(send_states) if !send_states.is_empty() => {
             // Spawn timeout and wait for matching response to arrive
             waiting_requests.insert(request_key, Some(reply_tx))?;
             // Spawn timeout for waiting_request
@@ -484,7 +516,7 @@ async fn handle_outbound_tx(
     outbound_message_service
         .propagate(
             NodeDestination::Unknown,
-            OutboundEncryption::EncryptForPeer,
+            OutboundEncryption::None,
             exclude_peers,
             OutboundDomainMessage::new(TariMessageType::NewTransaction, ProtoTransaction::from(tx)),
         )

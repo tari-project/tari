@@ -37,7 +37,7 @@ use tari_core::{
         OutboundNodeCommsInterface,
     },
     blocks::Block,
-    chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
+    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
     mempool::{
         Mempool,
@@ -47,13 +47,14 @@ use tari_core::{
         MempoolValidators,
         OutboundMempoolServiceInterface,
     },
-    proof_of_work::DiffAdjManager,
+    proof_of_work::Difficulty,
     transactions::types::HashDigest,
     validation::{
+        accum_difficulty_validators::MockAccumDifficultyValidator,
         mocks::MockValidator,
         transaction_validators::TxInputAndMaturityValidator,
         StatelessValidation,
-        ValidationWriteGuard,
+        Validation,
     },
 };
 use tari_mmr::MmrCacheConfig;
@@ -159,11 +160,12 @@ impl BaseNodeBuilder {
 
     pub fn with_validators(
         mut self,
-        block: impl ValidationWriteGuard<Block, MemoryDatabase<HashDigest>> + 'static,
+        block: impl Validation<Block, MemoryDatabase<HashDigest>> + 'static,
         orphan: impl StatelessValidation<Block> + 'static,
+        accum_difficulty: impl Validation<Difficulty, MemoryDatabase<HashDigest>> + 'static,
     ) -> Self
     {
-        let validators = Validators::new(block, orphan);
+        let validators = Validators::new(block, orphan, accum_difficulty);
         self.validators = Some(validators);
         self
     }
@@ -177,22 +179,23 @@ impl BaseNodeBuilder {
     /// Build the test base node and start its services.
     pub fn start(self, runtime: &mut Runtime, data_path: &str) -> (NodeInterfaces, ConsensusManager) {
         let mmr_cache_config = self.mmr_cache_config.unwrap_or(MmrCacheConfig { rewind_hist_len: 10 });
-        let validators = self
-            .validators
-            .unwrap_or(Validators::new(MockValidator::new(true), MockValidator::new(true)));
+        let validators = self.validators.unwrap_or(Validators::new(
+            MockValidator::new(true),
+            MockValidator::new(true),
+            MockAccumDifficultyValidator {},
+        ));
         let consensus_manager = self
             .consensus_manager
             .unwrap_or(ConsensusManagerBuilder::new(self.network).build());
         let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
-        let blockchain_db = BlockchainDatabase::new(db, &consensus_manager, validators).unwrap();
+        let blockchain_db =
+            BlockchainDatabase::new(db, &consensus_manager, validators, BlockchainDatabaseConfig::default()).unwrap();
         let mempool_validator = MempoolValidators::new(TxInputAndMaturityValidator {}, TxInputAndMaturityValidator {});
         let mempool = Mempool::new(
             blockchain_db.clone(),
             self.mempool_config.unwrap_or(MempoolConfig::default()),
             mempool_validator,
         );
-        let diff_adj_manager = DiffAdjManager::new(&consensus_manager.consensus_constants()).unwrap();
-        consensus_manager.set_diff_manager(diff_adj_manager).unwrap();
         let node_identity = self.node_identity.unwrap_or(random_node_identity());
         let (
             outbound_nci,
@@ -515,6 +518,7 @@ fn setup_base_node_services(
             liveness_service_config,
             Arc::clone(&subscription_factory),
             dht.dht_requester(),
+            comms.connection_manager(),
         ))
         .add_initializer(BaseNodeServiceInitializer::new(
             subscription_factory.clone(),

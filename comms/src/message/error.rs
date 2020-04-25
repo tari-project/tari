@@ -22,7 +22,7 @@
 
 use crate::peer_manager::node_id::NodeIdError;
 use derive_error::Error;
-use prost::{DecodeError, EncodeError};
+use prost::DecodeError;
 use tari_crypto::{
     signatures::SchnorrSignatureError,
     tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError},
@@ -53,8 +53,6 @@ pub enum MessageError {
     InvalidHeaderPublicKey,
     /// Failed to decode protobuf message
     DecodeError(DecodeError),
-    /// Failed to encode protobuf message
-    EncodeError(EncodeError),
     /// Failed to decode message part of envelope body
     EnvelopeBodyDecodeFailed,
 }

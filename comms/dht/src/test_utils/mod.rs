@@ -32,17 +32,22 @@ macro_rules! unwrap_oms_send_msg {
     ($var:expr) => {
         unwrap_oms_send_msg!(
             $var,
-            reply_value = $crate::outbound::SendMessageResponse::Queued(vec![])
+            reply_value = $crate::outbound::SendMessageResponse::Queued(vec![].into())
         );
     };
 }
 
 mod dht_actor_mock;
-mod dht_discovery_mock;
-mod makers;
-mod service;
-
 pub use dht_actor_mock::{create_dht_actor_mock, DhtMockState};
+
+mod dht_discovery_mock;
 pub use dht_discovery_mock::{create_dht_discovery_mock, DhtDiscoveryMockState};
+
+mod makers;
 pub use makers::*;
+
+mod service;
 pub use service::{service_fn, service_spy};
+
+mod store_and_forward_mock;
+pub use store_and_forward_mock::{create_store_and_forward_mock, StoreAndForwardMockState};

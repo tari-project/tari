@@ -22,7 +22,7 @@
 
 use crate::{
     connection_manager::PeerConnectionError,
-    message::{MessageError, OutboundMessage},
+    message::MessageError,
     peer_manager::PeerManagerError,
     protocol::ProtocolError,
 };
@@ -31,12 +31,6 @@ use derive_error::Error;
 #[derive(Debug, Error)]
 pub enum InboundMessagingError {
     PeerManagerError(PeerManagerError),
-    /// Inbound message signatures are invalid
-    InvalidMessageSignature,
-    /// The received envelope is invalid
-    InvalidEnvelope,
-    /// The connected peer sent a public key which did not match the public key of the connected peer
-    PeerPublicKeyMismatch,
     /// Failed to decode message
     MessageDecodeError(prost::DecodeError),
     MessageError(MessageError),
@@ -45,7 +39,7 @@ pub enum InboundMessagingError {
 pub enum MessagingProtocolError {
     /// Failed to send message
     #[error(no_from, non_std)]
-    MessageSendFailed(OutboundMessage), // Msg returned to sender
+    MessageSendFailed,
     ProtocolError(ProtocolError),
     PeerConnectionError(PeerConnectionError),
     /// Failed to dial peer

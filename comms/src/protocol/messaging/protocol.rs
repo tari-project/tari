@@ -26,11 +26,7 @@ use crate::{
     connection_manager::{ConnectionManagerEvent, ConnectionManagerRequester},
     message::{InboundMessage, MessageTag, OutboundMessage},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManagerError},
-    protocol::{
-        messaging::{inbound::InboundMessaging, outbound::OutboundMessaging},
-        ProtocolEvent,
-        ProtocolNotification,
-    },
+    protocol::{messaging::outbound::OutboundMessaging, ProtocolEvent, ProtocolNotification},
     runtime::current_executor,
     types::CommsSubstream,
     PeerManager,
@@ -65,19 +61,15 @@ pub enum MessagingRequest {
 /// occurred
 #[derive(Debug, Error, Copy, Clone)]
 pub enum SendFailReason {
-    /// Dial was not attempted because the peer is offline
-    PeerOffline,
     /// Dial was attempted, but failed
     PeerDialFailed,
-    /// Outbound message envelope failed to serialize
-    EnvelopeFailedToSerialize,
     /// Failed to open a messaging substream to peer
     SubstreamOpenFailed,
     /// Failed to send on substream channel
     SubstreamSendFailed,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum MessagingEvent {
     MessageReceived(Box<NodeId>, MessageTag),
     InvalidMessageReceived(Box<NodeId>),
@@ -92,7 +84,7 @@ impl fmt::Display for MessagingEvent {
             MessageReceived(node_id, tag) => write!(f, "MessageReceived({}, {})", node_id.short_str(), tag),
             InvalidMessageReceived(node_id) => write!(f, "InvalidMessageReceived({})", node_id.short_str()),
             SendMessageFailed(out_msg, reason) => write!(f, "SendMessageFailed({}, Reason = {})", out_msg, reason),
-            MessageSent(tag) => write!(f, "SendMessageSucceeded({})", tag),
+            MessageSent(tag) => write!(f, "MessageSent({})", tag),
         }
     }
 }
@@ -305,8 +297,9 @@ impl MessagingProtocol {
     }
 
     async fn send_message(&mut self, out_msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
+        let peer_node_id = out_msg.peer_node_id.clone();
         let sender = loop {
-            match self.active_queues.entry(Box::new(out_msg.peer_node_id.clone())) {
+            match self.active_queues.entry(Box::new(peer_node_id.clone())) {
                 Entry::Occupied(entry) => {
                     if entry.get().is_closed() {
                         entry.remove();
@@ -320,7 +313,7 @@ impl MessagingProtocol {
                         self.node_identity.clone(),
                         self.connection_manager_requester.clone(),
                         self.internal_messaging_event_tx.clone(),
-                        out_msg.peer_node_id.clone(),
+                        peer_node_id.clone(),
                     )
                     .await?;
                     break entry.insert(sender);
@@ -328,18 +321,18 @@ impl MessagingProtocol {
             }
         };
 
-        match sender.send(out_msg.clone()).await {
+        match sender.send(out_msg).await {
             Ok(_) => Ok(()),
             Err(err) => {
                 debug!(
                     target: LOG_TARGET,
                     "Failed to send message on channel because '{:?}'", err
                 );
-                // Lazily remove Senders from the active queue if the MessagingProtocolHandler has shut down
+                // Lazily remove Senders from the active queue if the `OutboundMessaging` task has shut down
                 if err.is_disconnected() {
-                    self.active_queues.remove(&out_msg.peer_node_id);
+                    self.active_queues.remove(&peer_node_id);
                 }
-                Err(MessagingProtocolError::MessageSendFailed(out_msg))
+                Err(MessagingProtocolError::MessageSendFailed)
             },
         }
     }
@@ -363,7 +356,6 @@ impl MessagingProtocol {
         let messaging_events_tx = self.messaging_events_tx.clone();
         let mut inbound_message_tx = self.inbound_message_tx.clone();
         let mut framed_substream = Self::framed(substream);
-        let inbound = InboundMessaging;
 
         self.executor.spawn(async move {
             while let Some(result) = framed_substream.next().await {
@@ -376,42 +368,23 @@ impl MessagingProtocol {
                             raw_msg.len()
                         );
 
-                        let mut raw_msg = raw_msg.freeze();
-                        let (event, in_msg) = match inbound.process_message(Arc::clone(&peer), &mut raw_msg).await {
-                            Ok(inbound_msg) => (
-                                MessagingEvent::MessageReceived(
-                                    Box::new(inbound_msg.source_peer.node_id.clone()),
-                                    inbound_msg.tag,
-                                ),
-                                Some(inbound_msg),
-                            ),
-                            Err(err) => {
-                                // TODO: #banheuristic
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Received invalid message from peer '{}' ({})",
-                                    peer.node_id.short_str(),
-                                    err
-                                );
-                                (
-                                    MessagingEvent::InvalidMessageReceived(Box::new(peer.node_id.clone())),
-                                    None,
-                                )
-                            },
-                        };
+                        let inbound_msg = InboundMessage::new(Arc::clone(&peer), raw_msg.freeze());
 
-                        if let Some(in_msg) = in_msg {
-                            if let Err(err) = inbound_message_tx.send(in_msg).await {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Failed to send InboundMessage for peer '{}' because '{}'",
-                                    peer.node_id.short_str(),
-                                    err
-                                );
+                        let event = MessagingEvent::MessageReceived(
+                            Box::new(inbound_msg.source_peer.node_id.clone()),
+                            inbound_msg.tag,
+                        );
 
-                                if err.is_disconnected() {
-                                    break;
-                                }
+                        if let Err(err) = inbound_message_tx.send(inbound_msg).await {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Failed to send InboundMessage for peer '{}' because '{}'",
+                                peer.node_id.short_str(),
+                                err
+                            );
+
+                            if err.is_disconnected() {
+                                break;
                             }
                         }
 
@@ -426,16 +399,19 @@ impl MessagingProtocol {
                             );
                         }
                     },
-                    Err(err) => debug!(
-                        target: LOG_TARGET,
-                        "Failed to receive from peer '{}' because '{}'",
-                        peer.node_id.short_str(),
-                        err
-                    ),
+                    Err(err) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Failed to receive from peer '{}' because '{}'",
+                            peer.node_id.short_str(),
+                            err
+                        );
+                        break;
+                    },
                 }
             }
 
-            trace!(
+            debug!(
                 target: LOG_TARGET,
                 "Inbound messaging handler for peer '{}' has stopped",
                 peer.node_id.short_str()

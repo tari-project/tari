@@ -25,7 +25,6 @@
 
 use crate::transactions::{
     aggregated_body::AggregateBody,
-    fee::Fee,
     tari_amount::{uT, MicroTari},
     transaction_protocol::{build_challenge, TransactionMetadata},
     types::{
@@ -46,6 +45,7 @@ use digest::Input;
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::{max, min, Ordering},
+    fmt,
     fmt::{Display, Formatter},
     hash::{Hash, Hasher},
     ops::Add,
@@ -131,6 +131,16 @@ impl PartialOrd for OutputFeatures {
 impl Ord for OutputFeatures {
     fn cmp(&self, other: &Self) -> Ordering {
         self.maturity.cmp(&other.maturity)
+    }
+}
+
+impl Display for OutputFeatures {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "OutputFeatures: Flags = {:?}, Maturity = {}",
+            self.flags, self.maturity
+        )
     }
 }
 
@@ -623,7 +633,7 @@ impl Transaction {
 
     /// Returns the byte size or weight of a transaction
     pub fn calculate_weight(&self) -> u64 {
-        Fee::calculate_weight(self.body.inputs().len(), self.body.outputs().len())
+        self.body.calculate_weight()
     }
 
     /// Returns the total fee allocated to each byte of the transaction

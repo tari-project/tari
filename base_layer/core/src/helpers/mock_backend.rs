@@ -19,16 +19,17 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
 
 use crate::{
     blocks::{Block, BlockHeader},
-    chain_storage::{BlockchainBackend, ChainStorageError, DbKey, DbTransaction, DbValue, MmrTree},
+    chain_storage::{BlockchainBackend, ChainMetadata, ChainStorageError, DbKey, DbTransaction, DbValue, MmrTree},
+    proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
         types::HashOutput,
     },
 };
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof};
 
 // This is a test backend. This is used so that the ConsensusManager can be called without actually having a backend.
@@ -86,6 +87,10 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
+    fn get_orphan_count(&self) -> Result<usize, ChainStorageError> {
+        unimplemented!()
+    }
+
     fn for_each_kernel<F>(&self, _f: F) -> Result<(), ChainStorageError>
     where
         Self: Sized,
@@ -111,6 +116,20 @@ impl BlockchainBackend for MockBackend {
     }
 
     fn fetch_last_header(&self) -> Result<Option<BlockHeader>, ChainStorageError> {
+        unimplemented!()
+    }
+
+    fn fetch_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
+        unimplemented!()
+    }
+
+    fn fetch_target_difficulties(
+        &self,
+        _pow_algo: PowAlgorithm,
+        _height: u64,
+        _block_window: usize,
+    ) -> Result<Vec<(EpochTime, Difficulty)>, ChainStorageError>
+    {
         unimplemented!()
     }
 }

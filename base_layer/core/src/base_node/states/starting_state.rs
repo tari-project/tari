@@ -22,7 +22,7 @@
 //
 use crate::{
     base_node::{
-        states::{error::BaseNodeError, listening::ListeningInfo, StateEvent},
+        states::{listening::ListeningInfo, StateEvent},
         BaseNodeStateMachine,
     },
     chain_storage::BlockchainBackend,
@@ -36,22 +36,12 @@ const LOG_TARGET: &str = "c::bn::states::starting_state";
 pub struct Starting;
 
 impl Starting {
-    /// Apply the configuration settings for this node.
-    fn apply_config(&mut self) -> Result<(), BaseNodeError> {
-        // TODO apply configuration
-        Ok(())
-    }
-
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
         _shared: &BaseNodeStateMachine<B>,
     ) -> StateEvent
     {
-        info!(target: LOG_TARGET, "Configuring node.");
-        if let Err(err) = self.apply_config() {
-            return err.as_fatal("There was an error with the base node configuration.");
-        }
-        info!(target: LOG_TARGET, "Node configuration complete.");
+        info!(target: LOG_TARGET, "Starting node.");
         StateEvent::Initialized
     }
 }

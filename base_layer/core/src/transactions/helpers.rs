@@ -264,7 +264,7 @@ pub fn create_tx(
     unblinded_inputs.push(input.clone());
     stx_builder.with_input(utxo, input);
 
-    let estimated_fee = Fee::calculate(fee_per_gram, input_count as usize, output_count as usize);
+    let estimated_fee = Fee::calculate(fee_per_gram, 1, input_count as usize, output_count as usize);
     let amount_per_output = (amount - estimated_fee) / output_count;
     let amount_for_last_output = (amount - estimated_fee) - amount_per_output * (output_count - 1);
     for i in 0..output_count {

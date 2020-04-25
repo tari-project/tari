@@ -1,0 +1,10 @@
+#!/bin/sh
+#
+#
+#
+echo "Running preinstall - $(date +'%Y-%m-%d %Hh%M:%S')" > /tmp/my_preinstall.log
+env >> /tmp/my_preinstall.log
+echo "Positional arguments" $@ >> /tmp/my_preinstall_envs.log
+echo "Done preinstall - $(date +'%Y-%m-%d %Hh%M:%S')" >> /tmp/my_preinstall.log
+
+exit 0 # all good

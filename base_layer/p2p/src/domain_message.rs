@@ -32,6 +32,8 @@ pub struct DomainMessage<T> {
     /// This DHT header of this message. If `DhtMessageHeader::origin_public_key` is different from the
     /// `source_peer.public_key`, this message was forwarded.
     pub dht_header: DhtMessageHeader,
+    /// The authenticated origin public key of this message or None a message origin was not provided.
+    pub authenticated_origin: Option<CommsPublicKey>,
     /// The domain-level message
     pub inner: T,
 }
@@ -48,32 +50,15 @@ impl<T> DomainMessage<T> {
     /// Consumes this object returning the public key of the original sender of this message and the message itself
     pub fn into_origin_and_inner(self) -> (CommsPublicKey, T) {
         let inner = self.inner;
-        let pk = self
-            .dht_header
-            .origin
-            .map(|o| o.public_key)
-            .unwrap_or(self.source_peer.public_key);
+        let pk = self.authenticated_origin.unwrap_or(self.source_peer.public_key);
         (pk, inner)
-    }
-
-    /// Returns true of this message was forwarded from another peer, otherwise false
-    pub fn is_forwarded(&self) -> bool {
-        self.dht_header
-            .origin
-            .as_ref()
-            // If the source and origin are different, then the message was forwarded
-            .map(|o| o.public_key != self.source_peer.public_key)
-            // Otherwise, if no origin is specified, the message was sent directly from the peer
-            .unwrap_or(false)
     }
 
     /// Returns the public key that sent this message. If no origin is specified, then the source peer
     /// sent this message.
     pub fn origin_public_key(&self) -> &CommsPublicKey {
-        self.dht_header
-            .origin
+        self.authenticated_origin
             .as_ref()
-            .map(|o| &o.public_key)
             .unwrap_or(&self.source_peer.public_key)
     }
 
@@ -88,6 +73,7 @@ impl<T> DomainMessage<T> {
         DomainMessage {
             source_peer: self.source_peer,
             dht_header: self.dht_header,
+            authenticated_origin: self.authenticated_origin,
             inner,
         }
     }
@@ -103,6 +89,7 @@ impl<T> DomainMessage<T> {
         Ok(DomainMessage {
             source_peer: self.source_peer,
             dht_header: self.dht_header,
+            authenticated_origin: self.authenticated_origin,
             inner,
         })
     }

@@ -30,6 +30,13 @@ use tari_core::{
 use tari_service_framework::handles::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
 
+/// Builds the miner for the base node
+/// ## Parameters
+/// `handles` - Handles to the base node services
+/// `kill_signal` - Signal to stop the miner
+/// `event_stream` - Message stream of the publish-subscribe message system
+/// `consensus_manager`- The rules for the blockchain
+/// `num_threads` - The number of threads on which to run the miner
 pub fn build_miner<H: AsRef<ServiceHandles>>(
     handles: H,
     kill_signal: ShutdownSignal,

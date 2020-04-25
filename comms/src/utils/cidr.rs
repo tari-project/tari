@@ -28,7 +28,7 @@ pub fn parse_cidrs<'a, I: IntoIterator<Item = T>, T: AsRef<str>>(cidr_strs: I) -
         .map(|s| ::cidr::AnyIpCidr::from_str(s.as_ref()))
         .partition::<Vec<_>, _>(Result::is_ok);
 
-    if failed.len() > 0 {
+    if !failed.is_empty() {
         return Err(format!("Invalid CIDR strings: {:?}", failed));
     }
 

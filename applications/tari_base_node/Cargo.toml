@@ -4,24 +4,25 @@ authors = ["The Tari Development Community"]
 description = "The tari full base node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.0.10"
+version = "0.1.0"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tari_common = {path = "../../common", version= "^0.0"}
-tari_comms = { version = "^0.0", path = "../../comms"}
-tari_comms_dht = { version = "^0.0", path = "../../comms/dht"}
-tari_core = {path = "../../base_layer/core", version= "^0.0"}
-tari_p2p = {path = "../../base_layer/p2p", version= "^0.0"}
+tari_common = { version= "^0.1", path = "../../common" }
+tari_comms = { version = "^0.1", path = "../../comms"}
+tari_comms_dht = { version = "^0.1", path = "../../comms/dht"}
+tari_core = {path = "../../base_layer/core", version= "^0.1"}
+tari_p2p = {path = "../../base_layer/p2p", version= "^0.1"}
 tari_service_framework = { version = "^0.0", path = "../../base_layer/service_framework"}
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0" }
-tari_mmr = { path = "../../base_layer/mmr", version = "^0.0" }
-tari_wallet = { path = "../../base_layer/wallet", version = "^0.0" }
+tari_mmr = { path = "../../base_layer/mmr", version = "^0.1" }
+tari_wallet = { path = "../../base_layer/wallet", version = "^0.1" }
 tari_broadcast_channel = "^0.1"
+tari_crypto = { version = "^0.3" }
 
-clap = "2.33.0"
+structopt = { version = "0.3.13", default_features = false }
 config = { version = "0.9.3" }
 dirs = "2.0.2"
 futures = { version = "^0.3.1", default-features = false, features = ["alloc"]}
@@ -35,3 +36,11 @@ rustyline-derive = "0.3"
 strum = "0.18.0"
 strum_macros = "0.18.0"
 qrcode = { version = "0.12" }
+chrono = "0.4"
+chrono-english = "0.1"
+regex = "1"
+
+[build-dependencies]
+serde = "1.0.90"
+toml = "0.5"
+git2 = "0.8"

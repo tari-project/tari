@@ -21,5 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod cidr;
+pub mod datetime;
 pub mod multiaddr;
 pub mod signature;

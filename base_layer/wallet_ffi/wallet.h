@@ -319,11 +319,12 @@ void pending_inbound_transactions_destroy(struct TariPendingInboundTransactions 
 
 /// -------------------------------- TariCommsConfig ----------------------------------------------- ///
 // Creates a TariCommsConfig
-struct TariCommsConfig *comms_config_create(char *public_address,
+struct TariCommsConfig *comms_config_create(const char *public_address,
                                      struct TariTransportType *transport,
-                                     char *database_name,
-                                     char *datastore_path,
+                                     const char *database_name,
+                                     const char *datastore_path,
                                      struct TariPrivateKey *secret_key,
+                                     unsigned long long discovery_timeout_in_secs,
                                      int* error_out);
 
 // Frees memory for a TariCommsConfig
@@ -333,13 +334,15 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 
 // Creates a TariWallet
 struct TariWallet *wallet_create(struct TariWalletConfig *config,
-                                    char *log_path,
+                                    const char *log_path,
                                     void (*callback_received_transaction)(struct TariPendingInboundTransaction*),
                                     void (*callback_received_transaction_reply)(struct TariCompletedTransaction*),
                                     void (*callback_received_finalized_transaction)(struct TariCompletedTransaction*),
                                     void (*callback_transaction_broadcast)(struct TariCompletedTransaction*),
                                     void (*callback_transaction_mined)(struct TariCompletedTransaction*),
-                                    void (*callback_discovery_process_complete)(unsigned long long, bool),
+                                    void (*callback_direct_send_result)(unsigned long long, bool),
+                                    void (*callback_store_and_forward_send_result)(unsigned long long, bool),
+                                    void (*callback_transaction_cancellation)(unsigned long long),
                                     void (*callback_base_node_sync_complete)(unsigned long long, bool),
                                     int* error_out);
 
@@ -350,7 +353,7 @@ char* wallet_sign_message(struct TariWallet *wallet, const char* msg, int* error
 bool wallet_verify_message_signature(struct TariWallet *wallet, struct TariPublicKey *public_key, const char* hex_sig_nonce, const char* msg, int* error_out);
 
 /// Generates test data
-bool wallet_test_generate_data(struct TariWallet *wallet, char *datastore_path,int* error_out);
+bool wallet_test_generate_data(struct TariWallet *wallet, const char *datastore_path,int* error_out);
 
 // Adds a base node peer to the TariWallet
 bool wallet_add_base_node_peer(struct TariWallet *wallet, struct TariPublicKey *public_key, const char *address,int* error_out);
@@ -371,7 +374,7 @@ unsigned long long wallet_get_pending_incoming_balance(struct TariWallet *wallet
 unsigned long long wallet_get_pending_outgoing_balance(struct TariWallet *wallet,int* error_out);
 
 // Sends a TariPendingOutboundTransaction
-bool wallet_send_transaction(struct TariWallet *wallet, struct TariPublicKey *destination, unsigned long long amount, unsigned long long fee_per_gram,const char *message,int* error_out);
+unsigned long long wallet_send_transaction(struct TariWallet *wallet, struct TariPublicKey *destination, unsigned long long amount, unsigned long long fee_per_gram,const char *message,int* error_out);
 
 // Get the TariContacts from a TariWallet
 struct TariContacts *wallet_get_contacts(struct TariWallet *wallet,int* error_out);
@@ -423,8 +426,14 @@ bool wallet_test_mine_transaction(struct TariWallet *wallet, unsigned long long 
 // Simulates a TariPendingInboundtransaction being received
 bool wallet_test_receive_transaction(struct TariWallet *wallet,int* error_out);
 
+/// Cancel a Pending Outbound Transaction
+bool wallet_cancel_pending_transaction(struct TariWallet *wallet, unsigned long long transaction_id, int* error_out);
+
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);
+
+/// This function will log the provided string at debug level. To be used to have a client log messages to the LibWallet
+void log_debug_message(const char* msg);
 
 #ifdef __cplusplus
 }

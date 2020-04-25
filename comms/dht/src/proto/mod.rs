@@ -22,6 +22,7 @@
 
 use crate::proto::envelope::Network;
 use std::fmt;
+use tari_utilities::hex::Hex;
 
 #[path = "tari.dht.envelope.rs"]
 pub mod envelope;
@@ -65,5 +66,19 @@ impl envelope::Network {
 impl fmt::Display for dht::RejectMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "RejectMessage(Reason = {})", self.reason)
+    }
+}
+
+//---------------------------------- JoinMessage --------------------------------------------//
+
+impl fmt::Display for dht::JoinMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "JoinMessage(NodeId = {}, Addresses = {:?}, Features = {:?})",
+            self.node_id.to_hex(),
+            self.addresses,
+            self.peer_features
+        )
     }
 }

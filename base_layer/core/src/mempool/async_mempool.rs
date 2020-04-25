@@ -23,7 +23,7 @@
 use crate::{
     blocks::Block,
     chain_storage::BlockchainBackend,
-    mempool::{error::MempoolError, Mempool, StatsResponse, TxStorageResponse},
+    mempool::{error::MempoolError, Mempool, StateResponse, StatsResponse, TxStorageResponse},
     transactions::{transaction::Transaction, types::Signature},
 };
 use std::sync::Arc;
@@ -69,3 +69,4 @@ make_async!(snapshot() -> Vec<Arc<Transaction>>);
 make_async!(retrieve(total_weight: u64) -> Vec<Arc<Transaction>>);
 make_async!(has_tx_with_excess_sig(excess_sig: Signature) -> TxStorageResponse);
 make_async!(stats() -> StatsResponse);
+make_async!(state() -> StateResponse);

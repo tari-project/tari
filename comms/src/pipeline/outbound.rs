@@ -128,13 +128,8 @@ mod test {
     #[tokio_macros::test_basic]
     async fn run() {
         const NUM_ITEMS: usize = 10;
-        let items = (0..NUM_ITEMS).map(|i| {
-            OutboundMessage::new(
-                Default::default(),
-                Default::default(),
-                Bytes::copy_from_slice(&i.to_be_bytes()),
-            )
-        });
+        let items =
+            (0..NUM_ITEMS).map(|i| OutboundMessage::new(Default::default(), Bytes::copy_from_slice(&i.to_be_bytes())));
         let stream = stream::iter(items).fuse();
         let (out_tx, out_rx) = mpsc::channel(NUM_ITEMS);
         let (msg_tx, msg_rx) = mpsc::channel(NUM_ITEMS);

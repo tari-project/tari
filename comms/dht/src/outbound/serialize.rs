@@ -20,19 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{outbound::message::DhtOutboundMessage, proto::envelope::DhtEnvelope};
+use crate::{
+    consts::DHT_ENVELOPE_HEADER_VERSION,
+    outbound::message::DhtOutboundMessage,
+    proto::envelope::{DhtEnvelope, DhtHeader},
+};
 use futures::{task::Context, Future};
 use log::*;
-use rand::rngs::OsRng;
-use std::{sync::Arc, task::Poll};
+use std::task::Poll;
 use tari_comms::{
     message::{MessageExt, OutboundMessage},
-    peer_manager::NodeIdentity,
     pipeline::PipelineError,
-    utils::signature,
     Bytes,
 };
-use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat};
+use tari_utilities::ByteArray;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::serialize";
@@ -40,22 +41,16 @@ const LOG_TARGET: &str = "comms::dht::serialize";
 #[derive(Clone)]
 pub struct SerializeMiddleware<S> {
     inner: S,
-    node_identity: Arc<NodeIdentity>,
 }
 
 impl<S> SerializeMiddleware<S> {
-    pub fn new(service: S, node_identity: Arc<NodeIdentity>) -> Self {
-        Self {
-            inner: service,
-            node_identity,
-        }
+    pub fn new(service: S) -> Self {
+        Self { inner: service }
     }
 }
 
 impl<S> Service<DhtOutboundMessage> for SerializeMiddleware<S>
-where
-    S: Service<OutboundMessage, Response = ()> + Clone + 'static,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone + 'static
 {
     type Error = PipelineError;
     type Response = ();
@@ -66,84 +61,56 @@ where
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, msg: DhtOutboundMessage) -> Self::Future {
-        Self::serialize(self.inner.clone(), Arc::clone(&self.node_identity), msg)
-    }
-}
+    fn call(&mut self, message: DhtOutboundMessage) -> Self::Future {
+        let next_service = self.inner.clone();
+        async move {
+            debug!(target: LOG_TARGET, "Serializing outbound message {:?}", message.tag);
 
-impl<S> SerializeMiddleware<S>
-where
-    S: Service<OutboundMessage, Response = ()>,
-    S::Error: std::error::Error + Send + Sync + 'static,
-{
-    pub async fn serialize(
-        next_service: S,
-        node_identity: Arc<NodeIdentity>,
-        message: DhtOutboundMessage,
-    ) -> Result<(), PipelineError>
-    {
-        debug!(target: LOG_TARGET, "Serializing outbound message {:?}", message.tag);
-
-        let DhtOutboundMessage {
-            mut dht_header,
-            body,
-            destination_peer,
-            comms_flags,
-            ..
-        } = message;
-
-        // The message is being forwarded if the origin public_key is specified and it is not this node
-        let is_forwarded = dht_header
-            .origin
-            .as_ref()
-            .map(|o| &o.public_key != node_identity.public_key())
-            .unwrap_or(false);
-
-        // If forwarding the message, the DhtHeader already has a signature that should not change
-        if is_forwarded {
-            trace!(
-                target: LOG_TARGET,
-                "Forwarded message {:?}. Message will not be signed",
-                message.tag
-            );
-        } else {
-            // Sign the body if the origin public key was previously specified.
-            if let Some(origin) = dht_header.origin.as_mut() {
-                let signature = signature::sign(&mut OsRng, node_identity.secret_key().clone(), &body)
-                    .map_err(PipelineError::from_debug)?;
-                origin.signature = signature.to_binary().map_err(PipelineError::from_debug)?;
-                trace!(
-                    target: LOG_TARGET,
-                    "Signed message {:?}: {}",
-                    message.tag,
-                    origin.signature.to_hex()
-                );
-            }
-        }
-
-        let envelope = DhtEnvelope::new(dht_header.into(), body);
-
-        let body = Bytes::from(envelope.to_encoded_bytes().map_err(PipelineError::from_debug)?);
-
-        next_service
-            .oneshot(OutboundMessage::with_tag(
-                message.tag,
-                destination_peer.node_id,
-                comms_flags,
+            let DhtOutboundMessage {
+                tag,
+                destination_peer,
+                custom_header,
                 body,
-            ))
-            .await
-            .map_err(PipelineError::from_debug)
+                ephemeral_public_key,
+                destination,
+                dht_message_type,
+                network,
+                dht_flags,
+                origin_mac,
+                reply_tx,
+                ..
+            } = message;
+
+            let dht_header = custom_header.map(DhtHeader::from).unwrap_or_else(|| DhtHeader {
+                version: DHT_ENVELOPE_HEADER_VERSION,
+                origin_mac: origin_mac.map(|b| b.to_vec()).unwrap_or_else(Vec::new),
+                ephemeral_public_key: ephemeral_public_key.map(|e| e.to_vec()).unwrap_or_else(Vec::new),
+                message_type: dht_message_type as i32,
+                network: network as i32,
+                flags: dht_flags.bits(),
+                destination: Some(destination.into()),
+            });
+            let envelope = DhtEnvelope::new(dht_header, body);
+
+            let body = Bytes::from(envelope.to_encoded_bytes());
+
+            next_service
+                .oneshot(OutboundMessage {
+                    tag,
+                    peer_node_id: destination_peer.node_id,
+                    reply_tx: reply_tx.into_inner(),
+                    body,
+                })
+                .await
+        }
     }
 }
 
-pub struct SerializeLayer {
-    node_identity: Arc<NodeIdentity>,
-}
+pub struct SerializeLayer;
 
 impl SerializeLayer {
-    pub fn new(node_identity: Arc<NodeIdentity>) -> Self {
-        Self { node_identity }
+    pub fn new() -> Self {
+        Self
     }
 }
 
@@ -151,52 +118,29 @@ impl<S> Layer<S> for SerializeLayer {
     type Service = SerializeMiddleware<S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        SerializeMiddleware::new(service, Arc::clone(&self.node_identity))
+        SerializeMiddleware::new(service)
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        envelope::DhtMessageFlags,
-        outbound::OutboundEncryption,
-        test_utils::{make_dht_header, make_node_identity, service_spy},
-    };
+    use crate::test_utils::{create_outbound_message, service_spy};
     use futures::executor::block_on;
     use prost::Message;
-    use tari_comms::{
-        message::MessageFlags,
-        net_address::MultiaddressesWithStats,
-        peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-        types::CommsPublicKey,
-    };
+    use tari_comms::peer_manager::NodeId;
     use tari_test_utils::panic_context;
 
     #[test]
     fn serialize() {
         let spy = service_spy();
-        let node_identity = make_node_identity();
-        let mut serialize = SerializeLayer::new(Arc::clone(&node_identity)).layer(spy.to_service::<PipelineError>());
+        let mut serialize = SerializeLayer.layer(spy.to_service::<PipelineError>());
 
         panic_context!(cx);
 
         assert!(serialize.poll_ready(&mut cx).is_ready());
-        let body = b"A".to_vec();
-        let msg = DhtOutboundMessage::new(
-            Peer::new(
-                CommsPublicKey::default(),
-                NodeId::default(),
-                MultiaddressesWithStats::new(vec![]),
-                PeerFlags::empty(),
-                PeerFeatures::COMMUNICATION_NODE,
-                &[],
-            ),
-            make_dht_header(&node_identity, &body, DhtMessageFlags::empty()),
-            OutboundEncryption::None,
-            MessageFlags::empty(),
-            body,
-        );
+        let body = b"A";
+        let msg = create_outbound_message(body);
         block_on(serialize.call(msg)).unwrap();
 
         let mut msg = spy.pop_request().unwrap();

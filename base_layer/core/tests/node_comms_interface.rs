@@ -36,7 +36,6 @@ use tari_core::{
     consensus::{ConsensusManagerBuilder, Network},
     helpers::create_mem_db,
     mempool::{Mempool, MempoolConfig, MempoolValidators},
-    proof_of_work::DiffAdjManager,
     transactions::{
         helpers::{create_test_kernel, create_utxo},
         tari_amount::MicroTari,
@@ -92,9 +91,7 @@ fn inbound_get_metadata() {
 
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let diff_adj_manager = DiffAdjManager::new(&consensus_manager.consensus_constants()).unwrap();
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
-    assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender.clone());
@@ -147,9 +144,7 @@ fn inbound_fetch_kernels() {
     let (mempool, store) = new_mempool();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let diff_adj_manager = DiffAdjManager::new(&consensus_manager.consensus_constants()).unwrap();
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
-    assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
@@ -210,9 +205,7 @@ fn inbound_fetch_headers() {
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
         .build();
-    let diff_adj_manager = DiffAdjManager::new(&consensus_manager.consensus_constants()).unwrap();
     let (block_event_publisher, _block_event_subscriber) = bounded(100);
-    assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
@@ -271,8 +264,6 @@ fn inbound_fetch_utxos() {
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
         .build();
-    let diff_adj_manager = DiffAdjManager::new(&consensus_manager.consensus_constants()).unwrap();
-    assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
@@ -335,8 +326,6 @@ fn inbound_fetch_blocks() {
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
         .build();
-    let diff_adj_manager = DiffAdjManager::new(&consensus_manager.consensus_constants()).unwrap();
-    assert!(consensus_manager.set_diff_manager(diff_adj_manager).is_ok());
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);

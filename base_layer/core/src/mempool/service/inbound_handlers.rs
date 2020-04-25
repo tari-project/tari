@@ -62,6 +62,9 @@ where T: BlockchainBackend + 'static
             MempoolRequest::GetStats => Ok(MempoolResponse::Stats(
                 async_mempool::stats(self.mempool.clone()).await?,
             )),
+            MempoolRequest::GetState => Ok(MempoolResponse::State(
+                async_mempool::state(self.mempool.clone()).await?,
+            )),
             MempoolRequest::GetTxStateWithExcessSig(excess_sig) => Ok(MempoolResponse::TxStorage(
                 async_mempool::has_tx_with_excess_sig(self.mempool.clone(), excess_sig.clone()).await?,
             )),

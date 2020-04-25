@@ -164,7 +164,7 @@ fn test_insert_and_process_published_block() {
     assert_eq!(stats.orphan_txs, 1);
     assert_eq!(stats.timelocked_txs, 2);
     assert_eq!(stats.published_txs, 0);
-    assert_eq!(stats.total_weight, 36);
+    assert_eq!(stats.total_weight, 120);
 
     // Spend tx2, so it goes in Reorg pool, tx5 matures, so goes in Unconfirmed pool
     generate_block(
@@ -219,7 +219,7 @@ fn test_insert_and_process_published_block() {
     assert_eq!(stats.orphan_txs, 1);
     assert_eq!(stats.timelocked_txs, 1);
     assert_eq!(stats.published_txs, 1);
-    assert_eq!(stats.total_weight, 36);
+    assert_eq!(stats.total_weight, 120);
 }
 
 #[test]
@@ -382,10 +382,16 @@ fn test_reorg() {
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 0);
     assert_eq!(stats.timelocked_txs, 1);
+    assert_eq!(stats.published_txs, 5);
 
     db.rewind_to_height(2).unwrap();
 
-    mempool.process_reorg(vec![blocks[3].clone()], vec![]).unwrap();
+    let template = chain_block(&blocks[2], vec![], consensus_manager.consensus_constants());
+    let reorg_block3 = db.calculate_mmr_roots(template).unwrap();
+
+    mempool
+        .process_reorg(vec![blocks[3].clone()], vec![reorg_block3])
+        .unwrap();
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 2);
     assert_eq!(stats.timelocked_txs, 1);
@@ -501,7 +507,7 @@ fn request_response_get_stats() {
     bob.mempool.insert(orphan1.clone()).unwrap();
     bob.mempool.insert(orphan2.clone()).unwrap();
 
-    // The coinbase tx cannot be spent until maturity, so rxn1 will be in the timelocked pool. The other 2 txns are
+    // The coinbase tx cannot be spent until maturity, so txn1 will be in the timelocked pool. The other 2 txns are
     // orphans.
     let stats = bob.mempool.stats().unwrap();
     assert_eq!(stats.total_txs, 3);
@@ -509,7 +515,7 @@ fn request_response_get_stats() {
     assert_eq!(stats.unconfirmed_txs, 0);
     assert_eq!(stats.timelocked_txs, 1);
     assert_eq!(stats.published_txs, 0);
-    assert_eq!(stats.total_weight, 35);
+    assert_eq!(stats.total_weight, 116);
 
     runtime.block_on(async {
         // Alice will request mempool stats from Bob, and thus should be identical
@@ -519,7 +525,7 @@ fn request_response_get_stats() {
         assert_eq!(received_stats.orphan_txs, 2);
         assert_eq!(received_stats.timelocked_txs, 1);
         assert_eq!(received_stats.published_txs, 0);
-        assert_eq!(received_stats.total_weight, 35);
+        assert_eq!(received_stats.total_weight, 116);
 
         alice.comms.shutdown().await;
         bob.comms.shutdown().await;

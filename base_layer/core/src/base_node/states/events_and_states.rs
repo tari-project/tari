@@ -72,7 +72,7 @@ impl Display for SyncStatus {
                 "Lagging behind {} peers (#{}, Difficulty: {})",
                 v.len(),
                 m.height_of_longest_chain.unwrap_or(0),
-                m.accumulated_difficulty.unwrap_or(Difficulty::min())
+                m.accumulated_difficulty.unwrap_or_else(Difficulty::min)
             ),
             UpToDate => f.write_str("UpToDate"),
         }

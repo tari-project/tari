@@ -26,12 +26,14 @@ use crate::{
 };
 use derive_error::Error;
 use diesel::result::Error as DieselError;
+use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
 use tari_comms::peer_manager::node_id::NodeIdError;
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
 use tari_service_framework::reply_channel::TransportChannelError;
 use time::OutOfRangeError;
+use tokio::sync::broadcast::RecvError;
 
 #[derive(Debug, Error)]
 pub enum TransactionServiceError {
@@ -73,6 +75,16 @@ pub enum TransactionServiceError {
     InvalidCompletedTransaction,
     /// No Base Node public keys are provided for Base chain broadcast and monitoring
     NoBaseNodeKeysProvided,
+    /// Error sending data to Protocol via register channels
+    ProtocolChannelError,
+    /// Transaction detected as rejected by mempool
+    MempoolRejection,
+    /// Mempool response key does not match on that is expected
+    UnexpectedMempoolResponse,
+    /// Base Node response key does not match on that is expected
+    UnexpectedBaseNodeResponse,
+    /// The current transaction has been cancelled
+    TransactionCancelled,
     DhtOutboundError(DhtOutboundError),
     OutputManagerError(OutputManagerError),
     TransportChannelError(TransportChannelError),
@@ -86,6 +98,8 @@ pub enum TransactionServiceError {
     #[error(msg_embedded, no_from, non_std)]
     ConversionError(String),
     NodeIdError(NodeIdError),
+    BroadcastRecvError(RecvError),
+    OneshotCancelled(Canceled),
 }
 
 #[derive(Debug, Error)]
@@ -113,4 +127,24 @@ pub enum TransactionStorageError {
     DatabaseMigrationError(String),
     #[error(msg_embedded, non_std, no_from)]
     BlockingTaskSpawnError(String),
+}
+
+/// This error type is used to return TransactionServiceErrors from inside a Transaction Service protocol but also
+/// include the ID of the protocol
+#[derive(Debug)]
+pub struct TransactionServiceProtocolError {
+    pub id: u64,
+    pub error: TransactionServiceError,
+}
+
+impl TransactionServiceProtocolError {
+    pub fn new(id: u64, error: TransactionServiceError) -> Self {
+        Self { id, error }
+    }
+}
+
+impl From<TransactionServiceProtocolError> for TransactionServiceError {
+    fn from(tspe: TransactionServiceProtocolError) -> Self {
+        tspe.error
+    }
 }

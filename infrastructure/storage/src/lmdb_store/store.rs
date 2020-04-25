@@ -46,8 +46,9 @@ type DatabaseRef = Arc<Database<'static>>;
 /// ```
 /// # use tari_storage::lmdb_store::LMDBBuilder;
 /// # use lmdb_zero::db;
+/// # use std::env;
 /// let mut store = LMDBBuilder::new()
-///     .set_path("/tmp/")
+///     .set_path(env::temp_dir())
 ///     .set_environment_size(500)
 ///     .set_max_number_of_databases(10)
 ///     .add_database("db1", db::CREATE)
@@ -377,9 +378,7 @@ impl LMDBDatabase {
     /// Return statistics about the database, See [Stat](lmdb_zero/struct.Stat.html) for more details.
     pub fn get_stats(&self) -> Result<Stat, LMDBError> {
         let env = &(*self.db.env());
-        ReadTransaction::new(env)
-            .and_then(|txn| txn.db_stat(&self.db))
-            .map_err(LMDBError::DatabaseError)
+        Ok(ReadTransaction::new(env).and_then(|txn| txn.db_stat(&self.db))?)
     }
 
     /// Log some pretty printed stats.See [Stat](lmdb_zero/struct.Stat.html) for more details.
@@ -440,10 +439,10 @@ impl LMDBDatabase {
     {
         let env = self.env.clone();
         let db = self.db.clone();
-        let txn = ReadTransaction::new(env).map_err(LMDBError::DatabaseError)?;
+        let txn = ReadTransaction::new(env)?;
 
         let access = txn.access();
-        let cursor = txn.cursor(db).map_err(LMDBError::DatabaseError)?;
+        let cursor = txn.cursor(db)?;
 
         let head = |c: &mut Cursor, a: &ConstAccessor| {
             let (key_bytes, val_bytes) = c.first(a)?;
@@ -451,7 +450,7 @@ impl LMDBDatabase {
         };
 
         let cursor = MaybeOwned::Owned(cursor);
-        let iter = CursorIter::new(cursor, &access, head, ReadOnlyIterator::next).map_err(LMDBError::DatabaseError)?;
+        let iter = CursorIter::new(cursor, &access, head, ReadOnlyIterator::next)?;
 
         for p in iter {
             match f(p.map_err(|e| KeyValStoreError::DatabaseError(e.to_string()))) {
@@ -602,7 +601,7 @@ impl<'txn, 'db: 'txn> LMDBWriteTransaction<'txn, 'db> {
 
     pub fn delete<K>(&mut self, key: &K) -> Result<(), LMDBError>
     where K: AsLmdbBytes + ?Sized {
-        self.access.del_key(&self.db, key).map_err(LMDBError::DatabaseError)
+        Ok(self.access.del_key(&self.db, key)?)
     }
 
     fn convert_value<V>(value: &V, size_estimate: usize) -> Result<Vec<u8>, LMDBError>
@@ -610,5 +609,25 @@ impl<'txn, 'db: 'txn> LMDBWriteTransaction<'txn, 'db> {
         let mut buf = Vec::with_capacity(size_estimate);
         bincode::serialize_into(&mut buf, value).map_err(|e| LMDBError::SerializationErr(e.to_string()))?;
         Ok(buf)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::lmdb_store::LMDBBuilder;
+    use lmdb_zero::db;
+    use std::env;
+
+    #[test]
+    fn test_lmdb_builder() {
+        let store = LMDBBuilder::new()
+            .set_path(env::temp_dir())
+            .set_environment_size(500)
+            .set_max_number_of_databases(10)
+            .add_database("db1", db::CREATE)
+            .add_database("db2", db::CREATE)
+            .build()
+            .unwrap();
+        assert!(&store.databases.len() == &2);
     }
 }

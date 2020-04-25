@@ -27,6 +27,7 @@
 //! backed by LMDB, while the merkle trees are stored in flat files for example.
 
 mod blockchain_database;
+mod consts;
 mod db_transaction;
 mod error;
 mod historical_block;
@@ -40,14 +41,15 @@ pub mod async_db;
 // Public API exports
 pub use blockchain_database::{
     calculate_mmr_roots,
-    calculate_mmr_roots_writeguard,
     fetch_header,
-    fetch_header_writeguard,
+    fetch_headers,
+    fetch_target_difficulties,
+    is_stxo,
     is_utxo,
-    is_utxo_writeguard,
     BlockAddResult,
     BlockchainBackend,
     BlockchainDatabase,
+    BlockchainDatabaseConfig,
     MutableMmrState,
     Validators,
 };

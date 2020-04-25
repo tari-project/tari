@@ -273,7 +273,7 @@ fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
     let (mut oms, _, _shutdown, _) = setup_output_manager_service(&mut runtime, backend);
 
     let fee_per_gram = MicroTari::from(20);
-    let fee_without_change = Fee::calculate(fee_per_gram, 2, 1);
+    let fee_without_change = Fee::calculate(fee_per_gram, 1, 2, 1);
     let key1 = PrivateKey::random(&mut OsRng);
     let value1 = 500;
     runtime
@@ -347,7 +347,7 @@ fn send_not_enough_for_change<T: OutputManagerBackend + 'static>(backend: T) {
     let (mut oms, _, _shutdown, _) = setup_output_manager_service(&mut runtime, backend);
 
     let fee_per_gram = MicroTari::from(20);
-    let fee_without_change = Fee::calculate(fee_per_gram, 2, 1);
+    let fee_without_change = Fee::calculate(fee_per_gram, 1, 2, 1);
     let key1 = PrivateKey::random(&mut OsRng);
     let value1 = 500;
     runtime
@@ -680,8 +680,8 @@ fn test_startup_utxo_scan() {
     let output3 = UnblindedOutput::new(MicroTari::from(value3), key3, None);
     runtime.block_on(oms.add_output(output3.clone())).unwrap();
 
-    let call = outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(&mut call.1.as_slice()).unwrap();
+    let (_, body) = outbound_service.pop_call().unwrap();
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let bn_request: BaseNodeProto::BaseNodeServiceRequest = envelope_body
         .decode_part::<BaseNodeProto::BaseNodeServiceRequest>(1)
         .unwrap()
@@ -755,8 +755,8 @@ fn test_startup_utxo_scan() {
 
     runtime.block_on(oms.sync_with_base_node()).unwrap();
 
-    let call = outbound_service.pop_call().unwrap();
-    let envelope_body = EnvelopeBody::decode(&mut call.1.as_slice()).unwrap();
+    let (_, body) = outbound_service.pop_call().unwrap();
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let bn_request: BaseNodeProto::BaseNodeServiceRequest = envelope_body
         .decode_part::<BaseNodeProto::BaseNodeServiceRequest>(1)
         .unwrap()
@@ -880,4 +880,89 @@ fn sending_transaction_with_short_term_clear_sqlite_db() {
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
     sending_transaction_with_short_term_clear(OutputManagerSqliteDatabase::new(connection));
+}
+
+fn coin_split_with_change<T: Clone + OutputManagerBackend + 'static>(backend: T) {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+    let (mut oms, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
+
+    let val1 = 6_000 * uT;
+    let val2 = 7_000 * uT;
+    let val3 = 8_000 * uT;
+    let (_ti, uo1) = make_input(&mut OsRng.clone(), val1, &factories.commitment);
+    let (_ti, uo2) = make_input(&mut OsRng.clone(), val2, &factories.commitment);
+    let (_ti, uo3) = make_input(&mut OsRng.clone(), val3, &factories.commitment);
+    assert!(runtime.block_on(oms.add_output(uo1)).is_ok());
+    assert!(runtime.block_on(oms.add_output(uo2)).is_ok());
+    assert!(runtime.block_on(oms.add_output(uo3)).is_ok());
+
+    let fee_per_gram = MicroTari::from(25);
+    let split_count = 8;
+    let (_tx_id, coin_split_tx, fee, amount) = runtime
+        .block_on(oms.create_coin_split(1000.into(), split_count, fee_per_gram, None))
+        .unwrap();
+    assert_eq!(coin_split_tx.body.inputs().len(), 2);
+    assert_eq!(coin_split_tx.body.outputs().len(), split_count + 1);
+    assert_eq!(fee, Fee::calculate(fee_per_gram, 1, 2, split_count + 1));
+    assert_eq!(amount, val2 + val3);
+}
+
+#[test]
+fn coin_split_with_change_memory_db() {
+    coin_split_with_change(OutputManagerMemoryDatabase::new());
+}
+
+#[test]
+fn coin_split_with_change_sqlite_db() {
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    coin_split_with_change(OutputManagerSqliteDatabase::new(connection));
+}
+
+fn coin_split_no_change<T: Clone + OutputManagerBackend + 'static>(backend: T) {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+    let (mut oms, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
+
+    let fee_per_gram = MicroTari::from(25);
+    let split_count = 15;
+    let fee = Fee::calculate(fee_per_gram, 1, 3, 15);
+    let val1 = 4_000 * uT;
+    let val2 = 5_000 * uT;
+    let val3 = 6_000 * uT + fee;
+    let (_ti, uo1) = make_input(&mut OsRng.clone(), val1, &factories.commitment);
+    let (_ti, uo2) = make_input(&mut OsRng.clone(), val2, &factories.commitment);
+    let (_ti, uo3) = make_input(&mut OsRng.clone(), val3, &factories.commitment);
+    assert!(runtime.block_on(oms.add_output(uo1)).is_ok());
+    assert!(runtime.block_on(oms.add_output(uo2)).is_ok());
+    assert!(runtime.block_on(oms.add_output(uo3)).is_ok());
+
+    let (_tx_id, coin_split_tx, fee, amount) = runtime
+        .block_on(oms.create_coin_split(1000.into(), split_count, fee_per_gram, None))
+        .unwrap();
+    assert_eq!(coin_split_tx.body.inputs().len(), 3);
+    assert_eq!(coin_split_tx.body.outputs().len(), split_count);
+    assert_eq!(fee, Fee::calculate(fee_per_gram, 1, 3, split_count));
+    assert_eq!(amount, val1 + val2 + val3);
+}
+
+#[test]
+fn coin_split_no_change_memory_db() {
+    coin_split_no_change(OutputManagerMemoryDatabase::new());
+}
+
+#[test]
+fn coin_split_no_change_sqlite_db() {
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    coin_split_no_change(OutputManagerSqliteDatabase::new(connection));
 }

@@ -35,11 +35,36 @@ For macOS Mojave additional headers need to be installed, run
 ```Shell Script
 open /Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg
 ```
-and follow the prompts
+and follow the prompts.
+
+For Catalina, if you get compilation errors such as these:
+
+    xcrun: error: SDK "iphoneos" cannot be located 
+    xcrun: error: unable to lookup item 'Path' in SDK 'iphoneos'
+
+Switch the XCode app defaults with:
+
+    sudo xcode-select --switch /Applications/Xcode.app
+
+**Note:** If this command fails, XCode was not found and needs to be installed/re-installed.
 
 ## Android Dependencies
 
-Download the [Android NDK Bundle](https://developer.android.com/ndk/downloads)
+Install [Android Studio](https://developer.android.com/studio) and then use the SDK Manager to install the Android NDK
+along with the SDK of your choice (Android Q is recommended). Not all of these tools are required, but will come in
+handy during Rust / Android development:
+
+* LLDB
+* NDK (Side by side)
+* Android SDK Command-line Tools (latest)
+* Android SDK Platform Tools
+* Android SDK Tools
+* CMake
+
+When setting up an AVD (Android Virtual Device) please note that a 64-bit image (x86_64) needs to be used and not a
+32-bit image (x86). This is to run the application on the simulator with these libraries.
+
+Alternatively, download the [Android NDK Bundle](https://developer.android.com/ndk/downloads) directly.
 
 ## Enable Hidden Files
 
@@ -67,10 +92,12 @@ Install [Rust](https://www.rust-lang.org/tools/install)
 
 Install the following tools and system images
 ```Shell Script
-rustup toolchain add nightly-2019-10-04
-rustup default nightly-2019-10-04
+rustup toolchain add nightly-2020-01-08
+rustup default nightly-2020-01-08
 rustup component add rustfmt --toolchain nightly
 rustup component add clippy
+rustup target add x86_64-apple-ios aarch64-apple-ios # iPhone and emulator cross compiling
+rustup target add x86_64-linux-android aarch64-linux-android armv7-linux-androideabi # Android device cross compiling
 ```
 
 ## Build Configuration

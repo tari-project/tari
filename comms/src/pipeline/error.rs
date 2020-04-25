@@ -22,7 +22,6 @@
 
 use std::{error, fmt};
 
-#[derive(Debug)]
 pub struct PipelineError {
     err_string: String,
 }
@@ -35,9 +34,18 @@ impl PipelineError {
     }
 }
 
+impl fmt::Debug for PipelineError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("PipelineError: ")?;
+        f.write_str(&self.err_string)
+    }
+}
+
 impl From<&str> for PipelineError {
     fn from(s: &str) -> Self {
-        Self::from_debug(s)
+        Self {
+            err_string: s.to_owned(),
+        }
     }
 }
 

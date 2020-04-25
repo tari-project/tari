@@ -20,14 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    chain_storage::{BlockchainBackend, ChainMetadata},
-    validation::error::ValidationError,
-};
-use std::sync::{RwLockReadGuard, RwLockWriteGuard};
+use crate::{chain_storage::BlockchainBackend, validation::error::ValidationError};
 
 pub type Validator<T, B> = Box<dyn Validation<T, B>>;
-pub type ValidatorWriteGuard<T, B> = Box<dyn ValidationWriteGuard<T, B>>;
 pub type StatelessValidator<T> = Box<dyn StatelessValidation<T>>;
 
 /// The core validation trait. Multiple `Validation` implementors can be chained together in a [ValidatorPipeline] to
@@ -37,25 +32,7 @@ pub trait Validation<T, B>: Send + Sync
 where B: BlockchainBackend
 {
     /// General validation code that can run independent of external state
-    fn validate(
-        &self,
-        item: &T,
-        db: &RwLockReadGuard<B>,
-        metadata: &RwLockReadGuard<ChainMetadata>,
-    ) -> Result<(), ValidationError>;
-}
-
-/// A write guard version of the core validation trait that allows access to the db backend using a lock write guard.
-pub trait ValidationWriteGuard<T, B>: Send + Sync
-where B: BlockchainBackend
-{
-    /// General validation code that can run independent of external state
-    fn validate(
-        &self,
-        item: &T,
-        db: &RwLockWriteGuard<B>,
-        metadata: &RwLockWriteGuard<ChainMetadata>,
-    ) -> Result<(), ValidationError>;
+    fn validate(&self, item: &T, db: &B) -> Result<(), ValidationError>;
 }
 
 /// Stateless version of the core validation trait.

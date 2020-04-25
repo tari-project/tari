@@ -30,12 +30,26 @@ use crate::transactions::{
     types::{CryptoFactories, MessageHash, PrivateKey, PublicKey, Signature},
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum RecipientState {
     Finalized(Box<RecipientSignedMessage>),
     Failed(TransactionProtocolError),
+}
+
+impl fmt::Display for RecipientState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use RecipientState::*;
+        match self {
+            Finalized(signed_message) => write!(
+                f,
+                "Finalized({:?}, maturity = {})",
+                signed_message.output.features.flags, signed_message.output.features.maturity
+            ),
+            Failed(err) => write!(f, "Failed({:?})", err),
+        }
+    }
 }
 
 /// An enum describing the types of information that a recipient can send back to the receiver

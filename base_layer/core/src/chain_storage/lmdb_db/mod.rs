@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod lmdb;
+#[allow(clippy::module_inception)]
 mod lmdb_db;
 mod lmdb_vec;
 

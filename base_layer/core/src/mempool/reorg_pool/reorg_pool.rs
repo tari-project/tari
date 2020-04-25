@@ -78,6 +78,16 @@ impl ReorgPool {
         Ok(())
     }
 
+    /// Insert a new transaction into the ReorgPool. Published transactions will have a limited Time-to-live in
+    /// the ReorgPool and will be discarded once the Time-to-live threshold has been reached.
+    pub fn insert(&self, transaction: Arc<Transaction>) -> Result<(), ReorgPoolError> {
+        self.pool_storage
+            .write()
+            .map_err(|e| ReorgPoolError::BackendError(e.to_string()))?
+            .insert(transaction);
+        Ok(())
+    }
+
     /// Check if a transaction is stored in the ReorgPool
     pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> Result<bool, ReorgPoolError> {
         Ok(self
@@ -111,6 +121,15 @@ impl ReorgPool {
             .len())
     }
 
+    /// Returns all transaction stored in the ReorgPool.
+    pub fn snapshot(&self) -> Result<Vec<Arc<Transaction>>, ReorgPoolError> {
+        Ok(self
+            .pool_storage
+            .write()
+            .map_err(|e| ReorgPoolError::BackendError(e.to_string()))?
+            .snapshot())
+    }
+
     /// Returns the total weight of all transactions stored in the pool.
     pub fn calculate_weight(&self) -> Result<u64, ReorgPoolError> {
         Ok(self
@@ -137,12 +156,12 @@ mod test {
 
     #[test]
     fn test_insert_rlu_and_ttl() {
-        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(500), lock: 4000, inputs: 2, outputs: 1).0);
-        let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(300), lock: 3000, inputs: 2, outputs: 1).0);
-        let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(100), lock: 2500, inputs: 2, outputs: 1).0);
-        let tx4 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(200), lock: 1000, inputs: 2, outputs: 1).0);
-        let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(500), lock: 2000, inputs: 2, outputs: 1).0);
-        let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(600), lock: 5500, inputs: 2, outputs: 1).0);
+        let tx1 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(500), lock: 4000, inputs: 2, outputs: 1).0);
+        let tx2 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(300), lock: 3000, inputs: 2, outputs: 1).0);
+        let tx3 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(100), lock: 2500, inputs: 2, outputs: 1).0);
+        let tx4 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(200), lock: 1000, inputs: 2, outputs: 1).0);
+        let tx5 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(500), lock: 2000, inputs: 2, outputs: 1).0);
+        let tx6 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(600), lock: 5500, inputs: 2, outputs: 1).0);
 
         let reorg_pool = ReorgPool::new(ReorgPoolConfig {
             storage_capacity: 3,

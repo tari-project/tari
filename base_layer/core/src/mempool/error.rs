@@ -44,4 +44,7 @@ pub enum MempoolError {
     ChainHeightUndefined,
     #[error(msg_embedded, non_std, no_from)]
     BlockingTaskSpawnError(String),
+    /// A problem has been encountered with the storage backend.
+    #[error(non_std, no_from)]
+    BackendError(String),
 }

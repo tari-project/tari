@@ -365,9 +365,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 }
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
-                return Err(TransactionStorageError::ValueNotFound(
-                    DbKey::PendingInboundTransaction(tx_id),
-                ))
+                return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
+                    tx_id,
+                )))
             },
             Err(e) => return Err(e),
         };
@@ -388,11 +388,48 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 )?;
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
-                return Err(TransactionStorageError::ValueNotFound(
-                    DbKey::PendingInboundTransaction(tx_id),
-                ))
+                return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
+                    tx_id,
+                )))
             },
             Err(e) => return Err(e),
+        };
+        Ok(())
+    }
+
+    fn cancel_completed_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
+        let conn = acquire_lock!(self.database_connection);
+        match CompletedTransactionSql::find(tx_id, &(*conn)) {
+            Ok(v) => {
+                v.cancel(&(*conn))?;
+            },
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
+                return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
+                    tx_id,
+                )));
+            },
+            Err(e) => return Err(e),
+        };
+        Ok(())
+    }
+
+    fn cancel_pending_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
+        let conn = acquire_lock!(self.database_connection);
+        match InboundTransactionSql::find(tx_id, &(*conn)) {
+            Ok(v) => {
+                let _ = v.cancel(&(*conn))?;
+            },
+            Err(_) => {
+                match OutboundTransactionSql::find(tx_id, &(*conn)) {
+                    Ok(v) => {
+                        let _ = v.cancel(&(*conn))?;
+                    },
+                    Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
+                        return Err(TransactionStorageError::ValuesNotFound);
+                    },
+                    Err(e) => return Err(e),
+                };
+            },
         };
         Ok(())
     }
@@ -459,6 +496,11 @@ impl InboundTransactionSql {
         }
 
         Ok(())
+    }
+
+    pub fn cancel(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+        // TODO Once sqlite migrations are implemented have cancellation be done with a Status flag
+        self.delete(conn)
     }
 }
 
@@ -535,6 +577,11 @@ impl OutboundTransactionSql {
         }
 
         Ok(())
+    }
+
+    pub fn cancel(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+        // TODO Once sqlite migrations are implemented have cancellation be done with a Status flag
+        self.delete(conn)
     }
 }
 
@@ -664,12 +711,15 @@ impl CompletedTransactionSql {
     }
 
     pub fn index(conn: &SqliteConnection) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError> {
-        Ok(completed_transactions::table.load::<CompletedTransactionSql>(conn)?)
+        Ok(completed_transactions::table
+            .filter(completed_transactions::status.ne(TransactionStatus::Cancelled as i32))
+            .load::<CompletedTransactionSql>(conn)?)
     }
 
     pub fn find(tx_id: TxId, conn: &SqliteConnection) -> Result<CompletedTransactionSql, TransactionStorageError> {
         Ok(completed_transactions::table
             .filter(completed_transactions::tx_id.eq(tx_id as i64))
+            .filter(completed_transactions::status.ne(TransactionStatus::Cancelled as i32))
             .first::<CompletedTransactionSql>(conn)?)
     }
 
@@ -703,6 +753,24 @@ impl CompletedTransactionSql {
         }
 
         Ok(CompletedTransactionSql::find(self.tx_id as u64, conn)?)
+    }
+
+    pub fn cancel(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+        let num_updated =
+            diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(&self.tx_id)))
+                .set(UpdateCompletedTransactionSql {
+                    status: Some(TransactionStatus::Cancelled as i32),
+                    timestamp: None,
+                })
+                .execute(conn)?;
+
+        if num_updated == 0 {
+            return Err(TransactionStorageError::UnexpectedResult(
+                "Database update error".to_string(),
+            ));
+        }
+
+        Ok(())
     }
 }
 

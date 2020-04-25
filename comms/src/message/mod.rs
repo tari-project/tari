@@ -59,12 +59,10 @@
 //! [MessageHeader]: ./message/struct.MessageHeader.html
 //! [MessageData]: ./message/struct.MessageData.html
 //! [DomainConnector]: ../domain_connector/struct.DomainConnector.html
-use bitflags::*;
-use serde::{Deserialize, Serialize};
 
 #[macro_use]
 mod envelope;
-pub use envelope::{Envelope, EnvelopeBody, EnvelopeHeader, MessageEnvelopeHeader};
+pub use envelope::EnvelopeBody;
 
 mod error;
 pub use error::MessageError;
@@ -73,28 +71,21 @@ mod inbound;
 pub use inbound::InboundMessage;
 
 mod outbound;
-pub use outbound::OutboundMessage;
+pub use outbound::{MessagingReplyRx, MessagingReplyTx, OutboundMessage};
 
 mod tag;
 pub use tag::MessageTag;
 
 pub trait MessageExt: prost::Message {
     /// Encodes a message, allocating the buffer on the heap as necessary
-    fn to_encoded_bytes(&self) -> Result<Vec<u8>, MessageError>
+    fn to_encoded_bytes(&self) -> Vec<u8>
     where Self: Sized {
         let mut buf = Vec::with_capacity(self.encoded_len());
-        self.encode(&mut buf)?;
-        Ok(buf)
+        self.encode(&mut buf).expect(
+            "prost::Message::encode documentation says it is infallible unless the buffer has insufficient capacity. \
+             This buffer's capacity was set with encoded_len",
+        );
+        buf
     }
 }
 impl<T: prost::Message> MessageExt for T {}
-
-bitflags! {
-    /// Used to indicate characteristics of the incoming or outgoing message, such
-    /// as whether the message is encrypted.
-    #[derive(Default, Deserialize, Serialize)]
-    pub struct MessageFlags: u32 {
-        const NONE = 0b0000_0000;
-        const ENCRYPTED = 0b0000_0001;
-    }
-}

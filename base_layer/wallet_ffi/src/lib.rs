@@ -142,7 +142,7 @@ use tari_comms::{
     socks,
     tor,
 };
-use tari_comms_dht::DhtConfig;
+use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
 use tari_crypto::{
     keys::{PublicKey, SecretKey},
@@ -215,6 +215,7 @@ pub struct ByteVector(Vec<c_uchar>); // declared like this so that it can be exp
 /// `()` - Does not return a value, equivalent to void in C.
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn string_destroy(ptr: *mut c_char) {
     if !ptr.is_null() {
@@ -240,6 +241,7 @@ pub unsafe extern "C" fn string_destroy(ptr: *mut c_char) {
 /// element_count when it is created
 ///
 /// # Safety
+/// The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn byte_vector_create(
     byte_array: *const c_uchar,
@@ -275,6 +277,7 @@ pub unsafe extern "C" fn byte_vector_create(
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn byte_vector_destroy(bytes: *mut ByteVector) {
     if !bytes.is_null() {
@@ -295,6 +298,7 @@ pub unsafe extern "C" fn byte_vector_destroy(bytes: *mut ByteVector) {
 /// is null or if the position is invalid
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_uint, error_out: *mut c_int) -> c_uchar {
     let mut error = 0;
@@ -325,6 +329,7 @@ pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_ui
 /// if ptr is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector, error_out: *mut c_int) -> c_uint {
     let mut error = 0;
@@ -353,6 +358,7 @@ pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector, error_ou
 /// if there was an error with the contents of bytes
 ///
 /// # Safety
+/// The ```public_key_destroy``` function must be called when finished with a TariPublicKey to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn public_key_create(bytes: *mut ByteVector, error_out: *mut c_int) -> *mut TariPublicKey {
     let mut error = 0;
@@ -385,6 +391,7 @@ pub unsafe extern "C" fn public_key_create(bytes: *mut ByteVector, error_out: *m
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn public_key_destroy(pk: *mut TariPublicKey) {
     if !pk.is_null() {
@@ -403,6 +410,7 @@ pub unsafe extern "C" fn public_key_destroy(pk: *mut TariPublicKey) {
 /// `*mut ByteVector` - Returns a pointer to a ByteVector. Note that it returns ptr::null_mut() if pk is null
 ///
 /// # Safety
+/// The ```byte_vector_destroy``` function must be called when finished with the ByteVector to prevent a memory leak.
 #[no_mangle]
 pub unsafe extern "C" fn public_key_get_bytes(pk: *mut TariPublicKey, error_out: *mut c_int) -> *mut ByteVector {
     let mut error = 0;
@@ -429,6 +437,7 @@ pub unsafe extern "C" fn public_key_get_bytes(pk: *mut TariPublicKey, error_out:
 /// `*mut TariPublicKey` - Returns a pointer to a TariPublicKey
 ///
 /// # Safety
+/// The ```private_key_destroy``` method must be called when finished with a private key to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn public_key_from_private_key(
     secret_key: *mut TariPrivateKey,
@@ -458,6 +467,7 @@ pub unsafe extern "C" fn public_key_from_private_key(
 /// if key is null or if there was an error creating the TariPublicKey from key
 ///
 /// # Safety
+/// The ```public_key_destroy``` method must be called when finished with a TariPublicKey to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut c_int) -> *mut TariPublicKey {
     let mut error = 0;
@@ -494,6 +504,7 @@ pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut
 /// if emoji is null or if there was an error creating the emoji string from TariPublicKey
 ///
 /// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn public_key_to_emoji_id(pk: *mut TariPublicKey, error_out: *mut c_int) -> *mut c_char {
     let mut error = 0;
@@ -521,6 +532,7 @@ pub unsafe extern "C" fn public_key_to_emoji_id(pk: *mut TariPublicKey, error_ou
 /// `*mut c_char` - Returns a pointer to a TariPublicKey. Note that it returns null on error.
 ///
 /// # Safety
+/// The ```public_key_destroy``` method must be called when finished with a TariPublicKey to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn emoji_id_to_public_key(emoji: *const c_char, error_out: *mut c_int) -> *mut TariPublicKey {
     let mut error = 0;
@@ -561,6 +573,7 @@ pub unsafe extern "C" fn emoji_id_to_public_key(emoji: *const c_char, error_out:
 /// if bytes is null or if there was an error creating the TariPrivateKey from bytes
 ///
 /// # Safety
+/// The ```private_key_destroy``` method must be called when finished with a TariPrivateKey to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn private_key_create(bytes: *mut ByteVector, error_out: *mut c_int) -> *mut TariPrivateKey {
     let mut error = 0;
@@ -593,6 +606,7 @@ pub unsafe extern "C" fn private_key_create(bytes: *mut ByteVector, error_out: *
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn private_key_destroy(pk: *mut TariPrivateKey) {
     if !pk.is_null() {
@@ -612,6 +626,7 @@ pub unsafe extern "C" fn private_key_destroy(pk: *mut TariPrivateKey) {
 /// if pk is null
 ///
 /// # Safety
+/// The ```byte_vector_destroy``` must be called when finished with a ByteVector to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn private_key_get_bytes(pk: *mut TariPrivateKey, error_out: *mut c_int) -> *mut ByteVector {
     let mut error = 0;
@@ -636,6 +651,7 @@ pub unsafe extern "C" fn private_key_get_bytes(pk: *mut TariPrivateKey, error_ou
 /// `*mut TariPrivateKey` - Returns a pointer to a TariPrivateKey
 ///
 /// # Safety
+/// The ```private_key_destroy``` method must be called when finished with a TariPrivateKey to prevent a memory leak.
 #[no_mangle]
 pub unsafe extern "C" fn private_key_generate() -> *mut TariPrivateKey {
     let secret_key = TariPrivateKey::random(&mut OsRng);
@@ -654,6 +670,7 @@ pub unsafe extern "C" fn private_key_generate() -> *mut TariPrivateKey {
 /// if key is null or if there was an error creating the TariPrivateKey from key
 ///
 /// # Safety
+/// The ```private_key_destroy``` method must be called when finished with a TariPrivateKey to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mut c_int) -> *mut TariPrivateKey {
     let mut error = 0;
@@ -696,6 +713,7 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
 /// if alias is null or if pk is null
 ///
 /// # Safety
+/// The ```contact_destroy``` method must be called when finished with a TariContact
 #[no_mangle]
 pub unsafe extern "C" fn contact_create(
     alias: *const c_char,
@@ -739,6 +757,7 @@ pub unsafe extern "C" fn contact_create(
 /// contact is null
 ///
 /// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn contact_get_alias(contact: *mut TariContact, error_out: *mut c_int) -> *mut c_char {
     let mut error = 0;
@@ -765,6 +784,7 @@ pub unsafe extern "C" fn contact_get_alias(contact: *mut TariContact, error_out:
 /// ptr::null_mut() if contact is null
 ///
 /// # Safety
+/// The ```public_key_destroy``` method must be called when finished with a TariPublicKey to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn contact_get_public_key(
     contact: *mut TariContact,
@@ -790,6 +810,7 @@ pub unsafe extern "C" fn contact_get_public_key(
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn contact_destroy(contact: *mut TariContact) {
     if !contact.is_null() {
@@ -810,6 +831,7 @@ pub unsafe extern "C" fn contact_destroy(contact: *mut TariContact) {
 /// `c_uint` - Returns number of elements in , zero if contacts is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn contacts_get_length(contacts: *mut TariContacts, error_out: *mut c_int) -> c_uint {
     let mut error = 0;
@@ -837,6 +859,7 @@ pub unsafe extern "C" fn contacts_get_length(contacts: *mut TariContacts, error_
 /// null or position is invalid
 ///
 /// # Safety
+/// The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn contacts_get_at(
     contacts: *mut TariContacts,
@@ -869,6 +892,7 @@ pub unsafe extern "C" fn contacts_get_at(
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn contacts_destroy(contacts: *mut TariContacts) {
     if !contacts.is_null() {
@@ -892,6 +916,7 @@ pub unsafe extern "C" fn contacts_destroy(contacts: *mut TariContacts) {
 /// zero if transactions is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn completed_transactions_get_length(
     transactions: *mut TariCompletedTransactions,
@@ -923,6 +948,8 @@ pub unsafe extern "C" fn completed_transactions_get_length(
 /// note that ptr::null_mut() is returned if transactions is null or position is invalid
 ///
 /// # Safety
+/// The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
+/// prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn completed_transactions_get_at(
     transactions: *mut TariCompletedTransactions,
@@ -955,6 +982,7 @@ pub unsafe extern "C" fn completed_transactions_get_at(
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn completed_transactions_destroy(transactions: *mut TariCompletedTransactions) {
     if !transactions.is_null() {
@@ -978,6 +1006,7 @@ pub unsafe extern "C" fn completed_transactions_destroy(transactions: *mut TariC
 /// zero if transactions is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transactions_get_length(
     transactions: *mut TariPendingOutboundTransactions,
@@ -1010,6 +1039,8 @@ pub unsafe extern "C" fn pending_outbound_transactions_get_length(
 /// note that ptr::null_mut() is returned if transactions is null or position is invalid
 ///
 /// # Safety
+/// The ```pending_outbound_transaction_destroy``` method must be called when finished with a
+/// TariPendingOutboundTransaction to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transactions_get_at(
     transactions: *mut TariPendingOutboundTransactions,
@@ -1042,6 +1073,7 @@ pub unsafe extern "C" fn pending_outbound_transactions_get_at(
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transactions_destroy(transactions: *mut TariPendingOutboundTransactions) {
     if !transactions.is_null() {
@@ -1065,6 +1097,7 @@ pub unsafe extern "C" fn pending_outbound_transactions_destroy(transactions: *mu
 /// it will be zero if transactions is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transactions_get_length(
     transactions: *mut TariPendingInboundTransactions,
@@ -1096,6 +1129,8 @@ pub unsafe extern "C" fn pending_inbound_transactions_get_length(
 /// note that ptr::null_mut() is returned if transactions is null or position is invalid
 ///
 /// # Safety
+/// The ```pending_inbound_transaction_destroy``` method must be called when finished with a
+/// TariPendingOutboundTransaction to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transactions_get_at(
     transactions: *mut TariPendingInboundTransactions,
@@ -1128,6 +1163,7 @@ pub unsafe extern "C" fn pending_inbound_transactions_get_at(
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transactions_destroy(transactions: *mut TariPendingInboundTransactions) {
     if !transactions.is_null() {
@@ -1150,6 +1186,7 @@ pub unsafe extern "C" fn pending_inbound_transactions_destroy(transactions: *mut
 /// `c_ulonglong` - Returns the TransactionID, note that it will be zero if transaction is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_transaction_id(
     transaction: *mut TariCompletedTransaction,
@@ -1178,6 +1215,7 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_id(
 /// ptr::null_mut() if transaction is null
 ///
 /// # Safety
+/// The ```public_key_destroy``` method must be called when finished with a TariPublicKey to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_destination_public_key(
     transaction: *mut TariCompletedTransaction,
@@ -1207,6 +1245,7 @@ pub unsafe extern "C" fn completed_transaction_get_destination_public_key(
 /// ptr::null_mut() if transaction is null
 ///
 /// # Safety
+/// The ```public_key_destroy``` method must be called when finished with a TariPublicKey to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_source_public_key(
     transaction: *mut TariCompletedTransaction,
@@ -1243,6 +1282,7 @@ pub unsafe extern "C" fn completed_transaction_get_source_public_key(
 /// |   4 | Pending     |
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_status(
     transaction: *mut TariCompletedTransaction,
@@ -1271,6 +1311,7 @@ pub unsafe extern "C" fn completed_transaction_get_status(
 /// `c_ulonglong` - Returns the amount, note that it will be zero if transaction is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_amount(
     transaction: *mut TariCompletedTransaction,
@@ -1298,6 +1339,7 @@ pub unsafe extern "C" fn completed_transaction_get_amount(
 /// `c_ulonglong` - Returns the fee, note that it will be zero if transaction is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_fee(
     transaction: *mut TariCompletedTransaction,
@@ -1325,6 +1367,7 @@ pub unsafe extern "C" fn completed_transaction_get_fee(
 /// `c_ulonglong` - Returns the timestamp, note that it will be zero if transaction is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_timestamp(
     transaction: *mut TariCompletedTransaction,
@@ -1353,6 +1396,7 @@ pub unsafe extern "C" fn completed_transaction_get_timestamp(
 /// to an empty char array if transaction is null
 ///
 /// # Safety
+/// The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_message(
     transaction: *mut TariCompletedTransaction,
@@ -1382,6 +1426,7 @@ pub unsafe extern "C" fn completed_transaction_get_message(
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_destroy(transaction: *mut TariCompletedTransaction) {
     if !transaction.is_null() {
@@ -1404,6 +1449,7 @@ pub unsafe extern "C" fn completed_transaction_destroy(transaction: *mut TariCom
 /// `c_ulonglong` - Returns the TransactionID, note that it will be zero if transaction is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_get_transaction_id(
     transaction: *mut TariPendingOutboundTransaction,
@@ -1432,6 +1478,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_transaction_id(
 /// ptr::null_mut() if transaction is null
 ///
 /// # Safety
+/// The ```public_key_destroy``` method must be called when finished with a TariPublicKey to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_get_destination_public_key(
     transaction: *mut TariPendingOutboundTransaction,
@@ -1460,6 +1507,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_destination_public_key
 /// `c_ulonglong` - Returns the amount, note that it will be zero if transaction is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_get_amount(
     transaction: *mut TariPendingOutboundTransaction,
@@ -1487,6 +1535,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_amount(
 /// `c_ulonglong` - Returns the fee, note that it will be zero if transaction is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_get_fee(
     transaction: *mut TariPendingOutboundTransaction,
@@ -1514,6 +1563,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_fee(
 /// `c_ulonglong` - Returns the timestamp, note that it will be zero if transaction is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_get_timestamp(
     transaction: *mut TariPendingOutboundTransaction,
@@ -1542,6 +1592,8 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_timestamp(
 /// to an empty char array if transaction is null
 ///
 /// # Safety
+///  The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory
+/// leak
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_get_message(
     transaction: *mut TariPendingOutboundTransaction,
@@ -1581,6 +1633,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_message(
 /// |   4 | Pending     |
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_get_status(
     transaction: *mut TariPendingOutboundTransaction,
@@ -1607,6 +1660,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_status(
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_destroy(transaction: *mut TariPendingOutboundTransaction) {
     if !transaction.is_null() {
@@ -1629,6 +1683,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_destroy(transaction: *mut 
 /// `c_ulonglong` - Returns the TransactonId, note that it will be zero if transaction is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transaction_get_transaction_id(
     transaction: *mut TariPendingInboundTransaction,
@@ -1657,6 +1712,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_transaction_id(
 /// ptr::null_mut() if transaction is null
 ///
 /// # Safety
+///  The ```public_key_destroy``` method must be called when finished with a TariPublicKey to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transaction_get_source_public_key(
     transaction: *mut TariPendingInboundTransaction,
@@ -1685,6 +1741,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_source_public_key(
 /// `c_ulonglong` - Returns the amount, note that it will be zero if transaction is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transaction_get_amount(
     transaction: *mut TariPendingInboundTransaction,
@@ -1712,6 +1769,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_amount(
 /// `c_ulonglong` - Returns the timestamp, note that it will be zero if transaction is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transaction_get_timestamp(
     transaction: *mut TariPendingInboundTransaction,
@@ -1740,6 +1798,8 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_timestamp(
 /// to an empty char array if transaction is null
 ///
 /// # Safety
+///  The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory
+/// leak
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transaction_get_message(
     transaction: *mut TariPendingInboundTransaction,
@@ -1779,6 +1839,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_message(
 /// |   4 | Pending     |
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transaction_get_status(
     transaction: *mut TariPendingInboundTransaction,
@@ -1805,6 +1866,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_status(
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut TariPendingInboundTransaction) {
     if !transaction.is_null() {
@@ -1825,6 +1887,8 @@ pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut T
 /// `*mut TariTransportType` - Returns a pointer to a memory TariTransportType
 ///
 /// # Safety
+/// The ```transport_type_destroy``` method must be called when finished with a TariTransportType to prevent a memory
+/// leak
 #[no_mangle]
 pub unsafe extern "C" fn transport_memory_create() -> *mut TariTransportType {
     let transport = TariTransportType::Memory {
@@ -1844,6 +1908,8 @@ pub unsafe extern "C" fn transport_memory_create() -> *mut TariTransportType {
 /// `*mut TariTransportType` - Returns a pointer to a tcp TariTransportType, null on error.
 ///
 /// # Safety
+/// The ```transport_type_destroy``` method must be called when finished with a TariTransportType to prevent a memory
+/// leak
 #[no_mangle]
 pub unsafe extern "C" fn transport_tcp_create(
     listener_address: *const c_char,
@@ -1884,6 +1950,8 @@ pub unsafe extern "C" fn transport_tcp_create(
 /// `*mut TariTransportType` - Returns a pointer to a tor TariTransportType, null on error.
 ///
 /// # Safety
+/// The ```transport_type_destroy``` method must be called when finished with a TariTransportType to prevent a memory
+/// leak
 #[no_mangle]
 pub unsafe extern "C" fn transport_tor_create(
     control_server_address: *const c_char,
@@ -1967,6 +2035,7 @@ pub unsafe extern "C" fn transport_tor_create(
 /// `*mut c_char` - Returns the address as a pointer to a char array, array will be empty on error
 ///
 /// # Safety
+/// Can only be used with a memory transport type, will crash otherwise
 #[no_mangle]
 pub unsafe extern "C" fn transport_memory_get_address(
     transport: *const TariTransportType,
@@ -2006,6 +2075,7 @@ pub unsafe extern "C" fn transport_memory_get_address(
 /// be empty on error.
 ///
 /// # Safety
+/// Can only be used with a tor transport type, will crash otherwise
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_tor_identity(wallet: *const TariWallet, error_out: *mut c_int) -> *mut ByteVector {
     let mut error = 0;
@@ -2073,6 +2143,7 @@ pub unsafe extern "C" fn transport_type_destroy(transport: *mut TariTransportTyp
 /// null or a problem is encountered when constructing the NetAddress a ptr::null_mut() is returned
 ///
 /// # Safety
+/// The ```comms_config_destroy``` method must be called when finished with a TariCommsConfig to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn comms_config_create(
     public_address: *const c_char,
@@ -2080,6 +2151,7 @@ pub unsafe extern "C" fn comms_config_create(
     database_name: *const c_char,
     datastore_path: *const c_char,
     secret_key: *mut TariPrivateKey,
+    discovery_timeout_in_secs: c_ulonglong,
     error_out: *mut c_int,
 ) -> *mut TariCommsConfig
 {
@@ -2111,7 +2183,9 @@ pub unsafe extern "C" fn comms_config_create(
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
+    let datastore_path = PathBuf::from(datastore_path_string);
 
+    let dht_database_path = datastore_path.join("dht.db");
     let public_address = public_address_str.parse::<Multiaddr>();
 
     match public_address {
@@ -2126,12 +2200,13 @@ pub unsafe extern "C" fn comms_config_create(
                     let config = TariCommsConfig {
                         node_identity: Arc::new(ni),
                         transport_type: (*transport_type).clone(),
-                        datastore_path: PathBuf::from(datastore_path_string),
+                        datastore_path,
                         peer_database_name: database_name_string,
                         max_concurrent_inbound_tasks: 100,
                         outbound_buffer_size: 100,
                         dht: DhtConfig {
-                            discovery_request_timeout: Duration::from_secs(30),
+                            discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
+                            database_url: DbConnectionUrl::File(dht_database_path),
                             ..Default::default()
                         },
                         // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
@@ -2167,6 +2242,7 @@ pub unsafe extern "C" fn comms_config_create(
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
     if !wc.is_null() {
@@ -2208,6 +2284,7 @@ pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
 /// if config is null, a wallet error was encountered or if the runtime could not be created
 ///
 /// # Safety
+/// The ```wallet_destroy``` method must be called when finished with a TariWallet to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_create(
     config: *mut TariCommsConfig,
@@ -2217,7 +2294,9 @@ pub unsafe extern "C" fn wallet_create(
     callback_received_finalized_transaction: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_transaction_broadcast: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_transaction_mined: unsafe extern "C" fn(*mut TariCompletedTransaction),
-    callback_discovery_process_complete: unsafe extern "C" fn(c_ulonglong, bool),
+    callback_direct_send_result: unsafe extern "C" fn(c_ulonglong, bool),
+    callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
+    callback_transaction_cancellation: unsafe extern "C" fn(c_ulonglong),
     callback_base_node_sync_complete: unsafe extern "C" fn(u64, bool),
     error_out: *mut c_int,
 ) -> *mut TariWallet
@@ -2230,17 +2309,8 @@ pub unsafe extern "C" fn wallet_create(
         return ptr::null_mut();
     }
 
-    let logging_path_string = if !log_path.is_null() {
-        Some(CStr::from_ptr(log_path).to_str().unwrap().to_owned())
-    } else {
-        None
-    };
-
-    let runtime = Runtime::new();
-    let factories = CryptoFactories::default();
-    let w;
-
-    if let Some(path) = logging_path_string {
+    if !log_path.is_null() {
+        let path = CStr::from_ptr(log_path).to_str().unwrap().to_owned();
         let logfile = FileAppender::builder()
             .encoder(Box::new(PatternEncoder::new(
                 "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}",
@@ -2257,6 +2327,10 @@ pub unsafe extern "C" fn wallet_create(
         log4rs::init_config(lconfig).expect("Should be able to start logging");
         debug!(target: LOG_TARGET, "Logging started");
     }
+
+    let runtime = Runtime::new();
+    let factories = CryptoFactories::default();
+    let w;
 
     match runtime {
         Ok(runtime) => {
@@ -2305,7 +2379,9 @@ pub unsafe extern "C" fn wallet_create(
                         callback_received_finalized_transaction,
                         callback_transaction_broadcast,
                         callback_transaction_mined,
-                        callback_discovery_process_complete,
+                        callback_direct_send_result,
+                        callback_store_and_forward_send_result,
+                        callback_transaction_cancellation,
                         callback_base_node_sync_complete,
                     );
 
@@ -2340,6 +2416,7 @@ pub unsafe extern "C" fn wallet_create(
 /// public nonce, seperated by a pipe character. Empty if an error occured.
 ///
 /// # Safety
+/// The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_sign_message(
     wallet: *mut TariWallet,
@@ -2398,6 +2475,7 @@ pub unsafe extern "C" fn wallet_sign_message(
 /// `bool` - Returns if the signature is valid or not, will be false if an error occurs.
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_verify_message_signature(
     wallet: *mut TariWallet,
@@ -2479,6 +2557,7 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
 /// `bool` - Returns if successful or not
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_test_generate_data(
     wallet: *mut TariWallet,
@@ -2528,6 +2607,7 @@ pub unsafe extern "C" fn wallet_test_generate_data(
 /// `bool` - Returns if successful or not
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_test_receive_transaction(wallet: *mut TariWallet, error_out: *mut c_int) -> bool {
     let mut error = 0;
@@ -2561,6 +2641,7 @@ pub unsafe extern "C" fn wallet_test_receive_transaction(wallet: *mut TariWallet
 /// `bool` - Returns if successful or not
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_test_complete_sent_transaction(
     wallet: *mut TariWallet,
@@ -2602,6 +2683,7 @@ pub unsafe extern "C" fn wallet_test_complete_sent_transaction(
 /// `bool` - Returns if the transaction was originally sent from the wallet
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_is_completed_transaction_outbound(
     wallet: *mut TariWallet,
@@ -2642,6 +2724,7 @@ pub unsafe extern "C" fn wallet_is_completed_transaction_outbound(
 /// `bool` - Returns if successful or not
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_test_finalize_received_transaction(
     wallet: *mut TariWallet,
@@ -2680,6 +2763,7 @@ pub unsafe extern "C" fn wallet_test_finalize_received_transaction(
 /// `bool` - Returns if successful or not
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_test_broadcast_transaction(
     wallet: *mut TariWallet,
@@ -2719,6 +2803,7 @@ pub unsafe extern "C" fn wallet_test_broadcast_transaction(
 /// `bool` - Returns if successful or not
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_test_mine_transaction(
     wallet: *mut TariWallet,
@@ -2756,6 +2841,7 @@ pub unsafe extern "C" fn wallet_test_mine_transaction(
 /// `bool` - Returns if successful or not
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_add_base_node_peer(
     wallet: *mut TariWallet,
@@ -2810,6 +2896,7 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
 /// `bool` - Returns if successful or not
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_upsert_contact(
     wallet: *mut TariWallet,
@@ -2855,6 +2942,7 @@ pub unsafe extern "C" fn wallet_upsert_contact(
 /// `bool` - Returns if successful or not
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_remove_contact(
     wallet: *mut TariWallet,
@@ -2899,6 +2987,7 @@ pub unsafe extern "C" fn wallet_remove_contact(
 /// `c_ulonglong` - The available balance, 0 if wallet is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_available_balance(wallet: *mut TariWallet, error_out: *mut c_int) -> c_ulonglong {
     let mut error = 0;
@@ -2934,6 +3023,7 @@ pub unsafe extern "C" fn wallet_get_available_balance(wallet: *mut TariWallet, e
 /// `c_ulonglong` - The incoming balance, 0 if wallet is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_pending_incoming_balance(
     wallet: *mut TariWallet,
@@ -2973,6 +3063,7 @@ pub unsafe extern "C" fn wallet_get_pending_incoming_balance(
 /// `c_ulonglong` - The outgoing balance, 0 if wallet is null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_pending_outgoing_balance(
     wallet: *mut TariWallet,
@@ -3012,9 +3103,10 @@ pub unsafe extern "C" fn wallet_get_pending_outgoing_balance(
 /// as an out parameter.
 ///
 /// ## Returns
-/// `bool` - Returns if successful or not
+/// `unsigned long long` - Returns 0 if unsuccessful or the TxId of the sent transaction if successful
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_send_transaction(
     wallet: *mut TariWallet,
@@ -3023,20 +3115,20 @@ pub unsafe extern "C" fn wallet_send_transaction(
     fee_per_gram: c_ulonglong,
     message: *const c_char,
     error_out: *mut c_int,
-) -> bool
+) -> c_ulonglong
 {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
+        return 0;
     }
 
     if dest_public_key.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("dest_public_key".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
+        return 0;
     }
 
     let message_string = if !message.is_null() {
@@ -3055,11 +3147,11 @@ pub unsafe extern "C" fn wallet_send_transaction(
             MicroTari::from(fee_per_gram),
             message_string,
         )) {
-        Ok(_) => true,
+        Ok(tx_id) => tx_id,
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            false
+            0
         },
     }
 }
@@ -3076,6 +3168,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
 /// wallet is null
 ///
 /// # Safety
+/// The ```contacts_destroy``` method must be called when finished with a TariContacts to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariContacts {
     let mut error = 0;
@@ -3113,6 +3206,8 @@ pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TariWallet, error_out:
 /// wallet is null or an error is encountered
 ///
 /// # Safety
+/// The ```completed_transactions_destroy``` method must be called when finished with a TariCompletedTransactions to
+/// prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_completed_transactions(
     wallet: *mut TariWallet,
@@ -3168,6 +3263,8 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
 /// wallet is null or and error is encountered
 ///
 /// # Safety
+/// The ```pending_inbound_transactions_destroy``` method must be called when finished with a
+/// TariPendingInboundTransactions to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
     wallet: *mut TariWallet,
@@ -3235,6 +3332,8 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
 /// wallet is null or and error is encountered
 ///
 /// # Safety
+/// The ```pending_outbound_transactions_destroy``` method must be called when finished with a
+/// TariPendingOutboundTransactions to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
     wallet: *mut TariWallet,
@@ -3298,6 +3397,8 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
 /// wallet is null, an error is encountered or if the transaction is not found
 ///
 /// # Safety
+/// The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
+/// prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
     wallet: *mut TariWallet,
@@ -3350,6 +3451,8 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
 /// wallet is null, an error is encountered or if the transaction is not found
 ///
 /// # Safety
+/// The ```pending_inbound_transaction_destroy``` method must be called when finished with a
+/// TariPendingInboundTransaction to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
     wallet: *mut TariWallet,
@@ -3420,6 +3523,8 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
 /// wallet is null, an error is encountered or if the transaction is not found
 ///
 /// # Safety
+/// The ```pending_outbound_transaction_destroy``` method must be called when finished with a
+/// TariPendingOutboundtransaction to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
     wallet: *mut TariWallet,
@@ -3489,6 +3594,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
 /// if wc is null
 ///
 /// # Safety
+/// The ```public_key_destroy``` method must be called when finished with a TariPublicKey to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_public_key(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariPublicKey {
     let mut error = 0;
@@ -3519,6 +3625,7 @@ pub unsafe extern "C" fn wallet_get_public_key(wallet: *mut TariWallet, error_ou
 /// null
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_import_utxo(
     wallet: *mut TariWallet,
@@ -3572,8 +3679,50 @@ pub unsafe extern "C" fn wallet_import_utxo(
     }
 }
 
+/// Cancel a Pending Outbound Transaction
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `transaction_id` - The TransactionId
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - returns whether the transaction could be cancelled
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_cancel_pending_transaction(
+    wallet: *mut TariWallet,
+    transaction_id: c_ulonglong,
+    error_out: *mut c_int,
+) -> bool
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).transaction_service.cancel_transaction(transaction_id))
+    {
+        Ok(_) => true,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
+    }
+}
+
 /// This function will tell the wallet to query the set base node to confirm the status of wallet data. For example this
-/// will check that Unspent Outputs stored in the wallet are still available as UTXO's on the blockchain
+/// will check that Unspent Outputs stored in the wallet are still available as UTXO's on the blockchain. This will also
+/// trigger a request for outstanding SAF messages to you neighbours
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
@@ -3585,6 +3734,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
 /// request. Note the result will be 0 if there was an error
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_sync_with_base_node(wallet: *mut TariWallet, error_out: *mut c_int) -> c_ulonglong {
     let mut error = 0;
@@ -3614,11 +3764,28 @@ pub unsafe extern "C" fn wallet_sync_with_base_node(wallet: *mut TariWallet, err
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
     if !wallet.is_null() {
         let m = Box::from_raw(wallet);
         m.shutdown();
+    }
+}
+
+/// This function will log the provided string at debug level. To be used to have a client log messages to the LibWallet
+/// logs.
+///
+/// ## Arguments
+/// `msg` - A string that will be logged at the debug level. If msg is null nothing will be done.
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn log_debug_message(msg: *const c_char) {
+    if !msg.is_null() {
+        let message = CStr::from_ptr(msg).to_str().unwrap().to_owned();
+        debug!(target: LOG_TARGET, "{}", message);
     }
 }
 
@@ -3644,7 +3811,9 @@ mod test {
         pub received_finalized_tx_callback_called: bool,
         pub broadcast_tx_callback_called: bool,
         pub mined_tx_callback_called: bool,
-        pub discovery_send_callback_called: bool,
+        pub direct_send_callback_called: bool,
+        pub store_and_forward_send_callback_called: bool,
+        pub tx_cancellation_callback_called: bool,
         pub base_node_sync_callback_called: bool,
     }
 
@@ -3656,8 +3825,10 @@ mod test {
                 received_finalized_tx_callback_called: false,
                 broadcast_tx_callback_called: false,
                 mined_tx_callback_called: false,
-                discovery_send_callback_called: false,
+                direct_send_callback_called: false,
+                store_and_forward_send_callback_called: false,
                 base_node_sync_callback_called: false,
+                tx_cancellation_callback_called: false,
             }
         }
 
@@ -3667,7 +3838,9 @@ mod test {
             self.received_finalized_tx_callback_called = false;
             self.broadcast_tx_callback_called = false;
             self.mined_tx_callback_called = false;
-            self.discovery_send_callback_called = false;
+            self.direct_send_callback_called = false;
+            self.store_and_forward_send_callback_called = false;
+            self.tx_cancellation_callback_called = false;
             self.base_node_sync_callback_called = false;
         }
     }
@@ -3743,7 +3916,15 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn discovery_process_complete_callback(_tx_id: c_ulonglong, _result: bool) {
+    unsafe extern "C" fn direct_send_callback(_tx_id: c_ulonglong, _result: bool) {
+        assert!(true);
+    }
+
+    unsafe extern "C" fn store_and_forward_send_callback(_tx_id: c_ulonglong, _result: bool) {
+        assert!(true);
+    }
+
+    unsafe extern "C" fn tx_cancellation_callback(_tx_id: c_ulonglong) {
         assert!(true);
     }
 
@@ -3800,7 +3981,15 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn discovery_process_complete_callback_bob(_tx_id: c_ulonglong, _result: bool) {
+    unsafe extern "C" fn direct_send_callback_bob(_tx_id: c_ulonglong, _result: bool) {
+        assert!(true);
+    }
+
+    unsafe extern "C" fn store_and_forward_send_callback_bob(_tx_id: c_ulonglong, _result: bool) {
+        assert!(true);
+    }
+
+    unsafe extern "C" fn tx_cancellation_callback_bob(_tx_id: c_ulonglong) {
         assert!(true);
     }
 
@@ -4046,7 +4235,6 @@ mod test {
                 let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
                 lock.reset();
             }
-
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let secret_key_alice = private_key_generate();
@@ -4067,9 +4255,10 @@ mod test {
                 db_name_alice_str,
                 db_path_alice_str,
                 secret_key_alice,
+                20,
                 error_ptr,
             );
-            (*alice_config).allow_test_addresses = true;
+
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
@@ -4078,7 +4267,9 @@ mod test {
                 received_tx_finalized_callback,
                 broadcast_callback,
                 mined_callback,
-                discovery_process_complete_callback,
+                direct_send_callback,
+                store_and_forward_send_callback,
+                tx_cancellation_callback,
                 base_node_sync_process_complete_callback,
                 error_ptr,
             );
@@ -4099,6 +4290,7 @@ mod test {
                 db_name_bob_str,
                 db_path_bob_str,
                 secret_key_bob,
+                20,
                 error_ptr,
             );
             let bob_wallet = wallet_create(
@@ -4109,7 +4301,9 @@ mod test {
                 received_tx_finalized_callback_bob,
                 broadcast_callback_bob,
                 mined_callback_bob,
-                discovery_process_complete_callback_bob,
+                direct_send_callback_bob,
+                store_and_forward_send_callback_bob,
+                tx_cancellation_callback_bob,
                 base_node_sync_process_complete_callback_bob,
                 error_ptr,
             );

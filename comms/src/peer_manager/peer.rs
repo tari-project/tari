@@ -31,19 +31,19 @@ use crate::{
     net_address::MultiaddressesWithStats,
     protocol::ProtocolId,
     types::CommsPublicKey,
+    utils::datetime::safe_future_datetime_from_duration,
 };
 use bitflags::bitflags;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
-use std::fmt::Display;
+use std::{fmt::Display, time::Duration};
 use tari_crypto::tari_utilities::hex::serialize_to_hex;
 
 bitflags! {
     #[derive(Default, Deserialize, Serialize)]
     pub struct PeerFlags: u8 {
-        const BANNED = 0x01;
-        const OFFLINE = 0x02;
+        const NONE = 0x00;
     }
 }
 
@@ -68,8 +68,10 @@ pub struct Peer {
     pub node_id: NodeId,
     /// Peer's addresses
     pub addresses: MultiaddressesWithStats,
-    /// Flags for the peer. Indicates if the peer is banned.
+    /// Flags for the peer.
     pub flags: PeerFlags,
+    pub banned_until: Option<NaiveDateTime>,
+    pub offline_at: Option<NaiveDateTime>,
     /// Features supported by the peer
     pub features: PeerFeatures,
     /// Connection statics for the peer
@@ -99,6 +101,8 @@ impl Peer {
             addresses,
             flags,
             features,
+            banned_until: None,
+            offline_at: None,
             connection_stats: Default::default(),
             added_at: Utc::now().naive_utc(),
             supported_protocols: supported_protocols.into_iter().cloned().collect(),
@@ -137,7 +141,7 @@ impl Peer {
 
     /// Returns true if the peer is marked as offline
     pub fn is_offline(&self) -> bool {
-        self.flags.contains(PeerFlags::OFFLINE)
+        self.offline_at.is_some()
     }
 
     /// TODO: Remove once we don't have to sync wallet and base node db
@@ -146,7 +150,6 @@ impl Peer {
     }
 
     pub(super) fn set_id(&mut self, id: PeerId) {
-        debug_assert!(self.id.is_none());
         self.id = Some(id);
     }
 
@@ -160,6 +163,8 @@ impl Peer {
         node_id: Option<NodeId>,
         net_addresses: Option<Vec<Multiaddr>>,
         flags: Option<PeerFlags>,
+        #[allow(clippy::option_option)] banned_until: Option<Option<Duration>>,
+        #[allow(clippy::option_option)] is_offline: Option<bool>,
         features: Option<PeerFeatures>,
         connection_stats: Option<PeerConnectionStats>,
         supported_protocols: Option<Vec<ProtocolId>>,
@@ -173,6 +178,14 @@ impl Peer {
         }
         if let Some(new_flags) = flags {
             self.flags = new_flags
+        }
+        if let Some(banned_until) = banned_until {
+            self.banned_until = banned_until
+                .map(safe_future_datetime_from_duration)
+                .map(|dt| dt.naive_utc());
+        }
+        if let Some(is_offline) = is_offline {
+            self.set_offline(is_offline);
         }
         if let Some(new_features) = features {
             self.features = new_features;
@@ -197,33 +210,66 @@ impl Peer {
 
     /// Returns the ban status of the peer
     pub fn is_banned(&self) -> bool {
-        self.flags.contains(PeerFlags::BANNED)
+        self.banned_until().is_some()
     }
 
-    /// Changes the BANNED flag bit of the peer
-    pub fn set_banned(&mut self, ban_flag: bool) {
-        self.flags.set(PeerFlags::BANNED, ban_flag);
+    /// Bans the peer for a specified duration
+    pub fn ban_for(&mut self, duration: Duration) {
+        let dt = safe_future_datetime_from_duration(duration);
+        self.banned_until = Some(dt.naive_utc());
     }
 
-    /// Changes the OFFLINE flag bit of the peer
+    /// Unban the peer
+    pub fn unban(&mut self) {
+        self.banned_until = None;
+    }
+
+    pub fn banned_until(&self) -> Option<&NaiveDateTime> {
+        self.banned_until.as_ref().filter(|dt| *dt > &Utc::now().naive_utc())
+    }
+
+    /// Marks the peer as offline
     pub fn set_offline(&mut self, is_offline: bool) {
-        self.flags.set(PeerFlags::OFFLINE, is_offline);
+        if is_offline {
+            self.offline_at = Some(Utc::now().naive_utc());
+        } else {
+            self.offline_at = None;
+        }
     }
 }
 
 /// Display Peer as `[peer_id]: <pubkey>`
 impl Display for Peer {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let flags_str = if self.flags == PeerFlags::empty() {
+            "".to_string()
+        } else {
+            format!("{:?}", self.flags)
+        };
+
+        let status_str = {
+            let mut s = Vec::new();
+            if let Some(offline_at) = self.offline_at.as_ref() {
+                s.push(format!("OFFLINE since {}", offline_at));
+            }
+
+            if let Some(dt) = self.banned_until() {
+                s.push(format!("BANNED until {}", dt));
+            }
+            s.join(", ")
+        };
         f.write_str(&format!(
-            "{}[{}] PK={} {} {:?} {}",
-            if self.is_banned() { "BANNED " } else { "" },
+            "{}[{}] PK={} ({}) {} {:?} {}",
+            flags_str,
             self.node_id.short_str(),
             self.public_key,
             self.addresses
-                .address_iter()
-                .next()
+                .addresses
+                .iter()
                 .map(ToString::to_string)
-                .unwrap_or_else(|| "<none>".to_string()),
+                .collect::<Vec<_>>()
+                .join(","),
+            status_str,
             match self.features {
                 PeerFeatures::COMMUNICATION_NODE => "BASE_NODE".to_string(),
                 PeerFeatures::COMMUNICATION_CLIENT => "WALLET".to_string(),
@@ -246,16 +292,16 @@ mod test {
     };
 
     #[test]
-    fn test_is_and_set_banned() {
+    fn test_is_banned_and_ban_for() {
         let mut rng = rand::rngs::OsRng;
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let addresses = MultiaddressesWithStats::from("/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap());
         let mut peer: Peer = Peer::new(pk, node_id, addresses, PeerFlags::default(), PeerFeatures::empty(), &[]);
         assert_eq!(peer.is_banned(), false);
-        peer.set_banned(true);
+        peer.ban_for(Duration::from_millis(std::u64::MAX));
         assert_eq!(peer.is_banned(), true);
-        peer.set_banned(false);
+        peer.ban_for(Duration::from_millis(0));
         assert_eq!(peer.is_banned(), false);
     }
 
@@ -282,7 +328,9 @@ mod test {
         peer.update(
             Some(node_id2.clone()),
             Some(vec![net_address2.clone(), net_address3.clone()]),
-            Some(PeerFlags::BANNED),
+            None,
+            Some(Some(Duration::from_secs(1000))),
+            None,
             Some(PeerFeatures::MESSAGE_PROPAGATION),
             Some(PeerConnectionStats::new()),
             Some(vec![protocol::IDENTITY_PROTOCOL.clone()]),
@@ -305,7 +353,7 @@ mod test {
             .addresses
             .iter()
             .any(|net_address_with_stats| net_address_with_stats.address == net_address3));
-        assert_eq!(peer.flags, PeerFlags::BANNED);
+        assert!(peer.is_banned());
         assert_eq!(peer.has_features(PeerFeatures::MESSAGE_PROPAGATION), true);
         assert_eq!(peer.supported_protocols, vec![protocol::IDENTITY_PROTOCOL.clone()]);
     }

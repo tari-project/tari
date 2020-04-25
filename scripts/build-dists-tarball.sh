@@ -23,6 +23,13 @@ if [ -f "$envFile" ]; then
   source "$envFile"
 fi
 
+if [ -f "Cargo.toml" ]; then
+  cargo build --release
+else
+  echo "Can't find Cargo.toml, exiting"
+  exit 1
+fi
+
 if [ "$(uname)" == "Darwin" ]; then
   osname="osx"
   osversion="catalina"
@@ -89,12 +96,20 @@ fi
 distFullName="$distName-$osname-$osversion-$osarch"
 echo $distFullName
 
+if [ -f "applications/tari_base_node/src/consts.rs" ];then
+  rustver=$(grep -i 'VERSION' applications/tari_base_node/src/consts.rs | cut -d "\"" -f 2)
+else
+  rustver="unversion"
+fi
+
 # Just a basic clean check
 if [ -n "$(git status --porcelain)" ]; then
   echo "There are changes, please clean up before re-running $0";
-#  exit 1
+  gitclean="uncommited"
+#  exit 2
 else
   echo "No changes";
+  gitclean="gitclean"
 fi
 
 git fetch --all --tags
@@ -122,12 +137,9 @@ git rev-parse --symbolic-full-name --abbrev-ref HEAD
 #git pull
 
 shaSumVal="256"
-#hashFile="$distFullName-$gitTagVersion.sha"
-#hashFile+="$shaSumVal"
-#hashFile+="sum"
 
-hashFile="$distFullName-$gitTagVersion.sha${shaSumVal}sum"
-archiveFile="$distFullName-$gitTagVersion.zip"
+hashFile="$distFullName-$rustver-$gitTagVersion-$gitclean.sha${shaSumVal}sum"
+archiveFile="$distFullName-$rustver-$gitTagVersion-$gitclean.zip"
 echo $hashFile
 
 distDir=$(mktemp -d)
@@ -135,17 +147,15 @@ if [ -d $distDir ]; then
   echo "Temporary directory $distDir exists"
 else
   echo "Temporary directory $distDir does not exist"
-  exit 2
+  exit 3
 fi
 
 mkdir $distDir/dist
 
-cargo build --release
-
 COPY_FILES=(
   "target/release/tari_base_node"
-  "config/presets/rincewind-simple.toml"
-  "config/tari_config_sample.toml"
+  "common/config/presets/rincewind-simple.toml"
+  "common/config/tari_config_sample.toml"
 #  "log4rs.yml"
   "common/logging/log4rs-sample.yml"
   "applications/tari_base_node/README.md"
@@ -160,7 +170,10 @@ done
 pushd $distDir/dist
 if [ "$osname" == "osx" ]  && [ -n "${osxsign}" ]; then
   echo "Signing OSX Binary ..."
-  codesign --force --verify --verbose --sign "${osxsign}" "${distDir}/dist/tari_base_node"
+  codesign --options runtime --force --verify --verbose --sign "${osxsign}" "${distDir}/dist/tari_base_node"
+  echo "Verify signed OSX Binary ..."
+  codesign --verify --deep --display --verbose=4 "${distDir}/dist/tari_base_node"
+  spctl -a -v "${distDir}/dist/tari_base_node"
 fi
 shasum -a $shaSumVal * >> "$distDir/$hashFile"
 #echo "$(cat $distDir/$hashFile)" | shasum -a $shaSumVal --check --status

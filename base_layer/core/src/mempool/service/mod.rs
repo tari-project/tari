@@ -30,6 +30,7 @@ mod initializer;
 mod local_service;
 #[cfg(feature = "base_node")]
 mod outbound_interface;
+#[allow(clippy::module_inception)]
 #[cfg(feature = "base_node")]
 mod service;
 
@@ -38,6 +39,8 @@ mod service;
 pub use error::MempoolServiceError;
 #[cfg(feature = "base_node")]
 pub use initializer::MempoolServiceInitializer;
+#[cfg(feature = "base_node")]
+pub use local_service::LocalMempoolService;
 #[cfg(feature = "base_node")]
 pub use outbound_interface::OutboundMempoolServiceInterface;
 #[cfg(feature = "base_node")]

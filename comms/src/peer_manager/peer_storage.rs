@@ -37,7 +37,7 @@ use crate::{
 use log::*;
 use multiaddr::Multiaddr;
 use rand::{rngs::OsRng, Rng};
-use std::{cmp::min, collections::HashMap};
+use std::{cmp, collections::HashMap, fmt, time::Duration};
 use tari_storage::{IterationResult, KeyValueStore};
 
 const LOG_TARGET: &str = "comms::peer_manager::peer_storage";
@@ -121,6 +121,8 @@ where DS: KeyValueStore<PeerId, Peer>
         node_id: Option<NodeId>,
         net_addresses: Option<Vec<Multiaddr>>,
         flags: Option<PeerFlags>,
+        #[allow(clippy::option_option)] banned_until: Option<Option<Duration>>,
+        #[allow(clippy::option_option)] is_offline: Option<bool>,
         peer_features: Option<PeerFeatures>,
         connection_stats: Option<PeerConnectionStats>,
         supported_protocols: Option<Vec<ProtocolId>>,
@@ -149,6 +151,8 @@ where DS: KeyValueStore<PeerId, Peer>
                     node_id,
                     net_addresses,
                     flags,
+                    banned_until,
+                    is_offline,
                     peer_features,
                     connection_stats,
                     supported_protocols,
@@ -301,13 +305,18 @@ where DS: KeyValueStore<PeerId, Peer>
         node_id: &NodeId,
         n: usize,
         excluded_peers: &[CommsPublicKey],
+        features: Option<PeerFeatures>,
     ) -> Result<Vec<Peer>, PeerManagerError>
     {
         let mut peer_keys = Vec::new();
         let mut dists = Vec::new();
         self.peer_db
             .for_each_ok(|(peer_key, peer)| {
-                if !peer.is_banned() && !excluded_peers.contains(&peer.public_key) {
+                if features.map(|f| peer.features == f).unwrap_or(true) &&
+                    !peer.is_banned() &&
+                    !peer.is_offline() &&
+                    !excluded_peers.contains(&peer.public_key)
+                {
                     peer_keys.push(peer_key);
                     dists.push(node_id.distance(&peer.node_id));
                 }
@@ -315,7 +324,7 @@ where DS: KeyValueStore<PeerId, Peer>
             })
             .map_err(PeerManagerError::DatabaseError)?;
         // Use all available peers up to a maximum of N
-        let max_available = min(peer_keys.len(), n);
+        let max_available = cmp::min(peer_keys.len(), n);
         if max_available == 0 {
             return Ok(Vec::new());
         }
@@ -340,17 +349,22 @@ where DS: KeyValueStore<PeerId, Peer>
         Ok(nearest_identities)
     }
 
-    /// Compile a random list of peers of size _n_
-    pub fn random_peers(&self, n: usize) -> Result<Vec<Peer>, PeerManagerError> {
-        // TODO: Send to a random set of Communication Nodes
+    /// Compile a random list of communication node peers of size _n_ that are not banned or offline
+    pub fn random_peers(&self, n: usize, exclude_peers: Vec<NodeId>) -> Result<Vec<Peer>, PeerManagerError> {
         let mut peer_keys = self
             .peer_db
-            .filter(|(_, peer)| !peer.is_banned())
+            .filter(|(_, peer)| {
+                !peer.is_recently_offline() &&
+                    !peer.is_offline() &&
+                    !peer.is_banned() &&
+                    peer.features == PeerFeatures::COMMUNICATION_NODE &&
+                    !exclude_peers.contains(&peer.node_id)
+            })
             .map(|pairs| pairs.into_iter().map(|(k, _)| k).collect::<Vec<_>>())
             .map_err(PeerManagerError::DatabaseError)?;
 
         // Use all available peers up to a maximum of N
-        let max_available = min(peer_keys.len(), n);
+        let max_available = cmp::min(peer_keys.len(), n);
         if max_available == 0 {
             return Ok(Vec::new());
         }
@@ -383,35 +397,52 @@ where DS: KeyValueStore<PeerId, Peer>
         n: usize,
     ) -> Result<bool, PeerManagerError>
     {
-        let region2node_dist = region_node_id.distance(node_id);
-        let mut dists = vec![NodeDistance::max_distance(); n];
-        let last_index = dists.len() - 1;
-        self.peer_db
-            .for_each_ok(|(_, peer)| {
-                if !peer.is_banned() {
-                    let curr_dist = region_node_id.distance(&peer.node_id);
-                    for i in 0..dists.len() {
-                        if dists[i] > curr_dist {
-                            dists.insert(i, curr_dist);
-                            dists.pop();
-                            break;
-                        }
-                    }
-
-                    if region2node_dist > dists[last_index] {
-                        return IterationResult::Break;
-                    }
-                }
-
-                IterationResult::Continue
-            })
-            .map_err(PeerManagerError::DatabaseError)?;
-
-        Ok(region2node_dist <= dists[last_index])
+        let region_node_distance = region_node_id.distance(node_id);
+        let node_threshold = self.calc_region_threshold(region_node_id, n, PeerFeatures::COMMUNICATION_NODE)?;
+        // Is node ID in the base node threshold?
+        if region_node_distance <= node_threshold {
+            return Ok(true);
+        }
+        let client_threshold = self.calc_region_threshold(region_node_id, n, PeerFeatures::COMMUNICATION_CLIENT)?;
+        // Is node ID in the base client threshold?
+        Ok(region_node_distance <= client_threshold)
     }
 
-    /// Changes the ban flag bit of the peer
-    pub fn set_banned(&mut self, public_key: &CommsPublicKey, ban_flag: bool) -> Result<NodeId, PeerManagerError> {
+    pub fn calc_region_threshold(
+        &self,
+        region_node_id: &NodeId,
+        n: usize,
+        features: PeerFeatures,
+    ) -> Result<NodeDistance, PeerManagerError>
+    {
+        self.get_region_stats(region_node_id, n, features)
+            .map(|stats| stats.distance)
+    }
+
+    /// Unban the peer
+    pub fn unban(&mut self, public_key: &CommsPublicKey) -> Result<NodeId, PeerManagerError> {
+        let peer_key = *self
+            .public_key_index
+            .get(&public_key)
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+        let mut peer = self
+            .peer_db
+            .get(&peer_key)
+            .map_err(PeerManagerError::DatabaseError)?
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+        let node_id = peer.node_id.clone();
+
+        if peer.banned_until.is_some() {
+            peer.unban();
+            self.peer_db
+                .insert(peer_key, peer)
+                .map_err(PeerManagerError::DatabaseError)?;
+        }
+        Ok(node_id)
+    }
+
+    /// Ban the peer for the given duration
+    pub fn ban_for(&mut self, public_key: &CommsPublicKey, duration: Duration) -> Result<NodeId, PeerManagerError> {
         let peer_key = *self
             .public_key_index
             .get(&public_key)
@@ -421,7 +452,7 @@ where DS: KeyValueStore<PeerId, Peer>
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
-        peer.set_banned(ban_flag);
+        peer.ban_for(duration);
         let node_id = peer.node_id.clone();
         self.peer_db
             .insert(peer_key, peer)
@@ -464,11 +495,103 @@ where DS: KeyValueStore<PeerId, Peer>
             .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)
     }
+
+    /// Return some basic stats for the region surrounding the region_node_id
+    pub fn get_region_stats<'a>(
+        &self,
+        region_node_id: &'a NodeId,
+        n: usize,
+        features: PeerFeatures,
+    ) -> Result<RegionStats<'a>, PeerManagerError>
+    {
+        let mut dists = vec![NodeDistance::max_distance(); n];
+        let last_index = n - 1;
+
+        let mut neighbours = vec![None; n];
+        self.peer_db
+            .for_each_ok(|(_, peer)| {
+                if peer.features != features {
+                    return IterationResult::Continue;
+                }
+
+                if peer.is_banned() {
+                    return IterationResult::Continue;
+                }
+                if peer.is_offline() {
+                    return IterationResult::Continue;
+                }
+
+                let curr_dist = region_node_id.distance(&peer.node_id);
+                for i in 0..dists.len() {
+                    if dists[i] > curr_dist {
+                        dists.insert(i, curr_dist);
+                        dists.pop();
+                        neighbours.insert(i, Some(peer));
+                        neighbours.pop();
+                        break;
+                    }
+                }
+
+                IterationResult::Continue
+            })
+            .map_err(PeerManagerError::DatabaseError)?;
+
+        let distance = dists.remove(last_index);
+        let total = neighbours.iter().filter(|p| p.is_some()).count();
+        let num_offline = neighbours
+            .iter()
+            .filter(|p| p.as_ref().map(|p| p.is_offline()).unwrap_or(false))
+            .count();
+        let num_banned = neighbours
+            .iter()
+            .filter(|p| p.as_ref().map(|p| p.is_banned()).unwrap_or(false))
+            .count();
+
+        Ok(RegionStats {
+            distance,
+            ref_node_id: region_node_id,
+            total,
+            num_offline,
+            num_banned,
+        })
+    }
 }
 
 impl Into<CommsDatabase> for PeerStorage<CommsDatabase> {
     fn into(self) -> CommsDatabase {
         self.peer_db
+    }
+}
+
+pub struct RegionStats<'a> {
+    distance: NodeDistance,
+    ref_node_id: &'a NodeId,
+    total: usize,
+    num_offline: usize,
+    num_banned: usize,
+}
+
+impl RegionStats<'_> {
+    pub fn in_region(&self, node_id: &NodeId) -> bool {
+        node_id.distance(self.ref_node_id) <= self.distance
+    }
+
+    pub fn offline_ratio(&self) -> f32 {
+        self.num_offline as f32 / self.total as f32
+    }
+
+    pub fn banned_ratio(&self) -> f32 {
+        self.num_banned as f32 / self.total as f32
+    }
+}
+
+impl fmt::Display for RegionStats<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "RegionStats(distance = {}, total = {}, num offline = {}, num banned = {})",
+            self.distance, self.total, self.num_offline, self.num_banned
+        )
     }
 }
 

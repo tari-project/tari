@@ -27,18 +27,17 @@ use crate::{
         BlockValidationError,
         NewBlockTemplate,
     },
-    chain_storage::{calculate_mmr_roots_writeguard, is_utxo_writeguard, BlockchainBackend, ChainMetadata},
+    chain_storage::{calculate_mmr_roots, is_utxo, BlockchainBackend},
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{transaction::OutputFlags, types::CryptoFactories},
     validation::{
-        helpers::{check_achieved_difficulty, check_median_timestamp},
+        helpers::{check_achieved_and_target_difficulty, check_median_timestamp},
         StatelessValidation,
+        Validation,
         ValidationError,
-        ValidationWriteGuard,
     },
 };
 use log::*;
-use std::sync::RwLockWriteGuard;
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 
 pub const LOG_TARGET: &str = "c::val::block_validators";
@@ -64,6 +63,7 @@ impl StatelessValidation<Block> for StatelessBlockValidator {
     /// 1. Are all inputs allowed to be spent (Are the feature flags satisfied)
     fn validate(&self, block: &Block) -> Result<(), ValidationError> {
         check_coinbase_output(block, &self.consensus_constants)?;
+        check_block_weight(block, &self.consensus_constants)?;
         // Check that the inputs are are allowed to be spent
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
         check_cut_through(block)?;
@@ -84,7 +84,7 @@ impl FullConsensusValidator {
     }
 }
 
-impl<B: BlockchainBackend> ValidationWriteGuard<Block, B> for FullConsensusValidator {
+impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Does the block satisfy the stateless checks?
     /// 1. Are all inputs currently in the UTXO set?
@@ -93,13 +93,7 @@ impl<B: BlockchainBackend> ValidationWriteGuard<Block, B> for FullConsensusValid
     /// 1. Is the block header timestamp greater than the median timestamp?
     /// 1. Is the Proof of Work valid?
     /// 1. Is the achieved difficulty of this block >= the target difficulty for this block?
-    fn validate(
-        &self,
-        block: &Block,
-        db: &RwLockWriteGuard<B>,
-        metadata: &RwLockWriteGuard<ChainMetadata>,
-    ) -> Result<(), ValidationError>
-    {
+    fn validate(&self, block: &Block, db: &B) -> Result<(), ValidationError> {
         trace!(
             target: LOG_TARGET,
             "Validating block at height {} with hash: {}",
@@ -107,15 +101,20 @@ impl<B: BlockchainBackend> ValidationWriteGuard<Block, B> for FullConsensusValid
             block.hash().to_hex()
         );
         check_coinbase_output(block, &self.rules.consensus_constants())?;
+        check_block_weight(block, &self.rules.consensus_constants())?;
         check_cut_through(block)?;
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
         check_accounting_balance(block, self.rules.clone(), &self.factories)?;
-        check_inputs_are_utxos(block, &db)?;
-        check_mmr_roots(block, &db)?;
+        check_inputs_are_utxos(block, db)?;
+        check_mmr_roots(block, db)?;
         check_timestamp_ftl(&block.header, &self.rules)?;
-        let tip_height = metadata.height_of_longest_chain.unwrap_or(0);
+        let tip_height = db
+            .fetch_metadata()
+            .map_err(|e| ValidationError::CustomError(e.to_string()))?
+            .height_of_longest_chain
+            .unwrap_or(0);
         check_median_timestamp(db, &block.header, tip_height, self.rules.clone())?;
-        check_achieved_difficulty(db, &block.header, tip_height, self.rules.clone())?;
+        check_achieved_and_target_difficulty(db, &block.header, tip_height, self.rules.clone())?;
         Ok(())
     }
 }
@@ -148,6 +147,22 @@ fn check_accounting_balance(
         })
 }
 
+fn check_block_weight(block: &Block, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
+    trace!(
+        target: LOG_TARGET,
+        "Checking weight of block with hash {}",
+        block.hash().to_hex()
+    );
+    // The genesis block has a larger weight than other blocks may have so we have to exclude it here
+    if block.body.calculate_weight() <= consensus_constants.get_max_block_transaction_weight() ||
+        block.header.height == 0
+    {
+        Ok(())
+    } else {
+        Err(BlockValidationError::BlockTooLarge).map_err(ValidationError::from)
+    }
+}
+
 fn check_coinbase_output(block: &Block, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
     trace!(
         target: LOG_TARGET,
@@ -160,15 +175,11 @@ fn check_coinbase_output(block: &Block, consensus_constants: &ConsensusConstants
 }
 
 /// This function checks that all inputs in the blocks are valid UTXO's to be spend
-fn check_inputs_are_utxos<B: BlockchainBackend>(
-    block: &Block,
-    db: &RwLockWriteGuard<B>,
-) -> Result<(), ValidationError>
-{
+fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
     trace!(target: LOG_TARGET, "Checking input UXTOs exist",);
     for utxo in block.body.inputs() {
         if !(utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT)) &&
-            !(is_utxo_writeguard(db, utxo.hash())).map_err(|e| ValidationError::CustomError(e.to_string()))?
+            !(is_utxo(db, utxo.hash())).map_err(|e| ValidationError::CustomError(e.to_string()))?
         {
             warn!(
                 target: LOG_TARGET,
@@ -203,32 +214,43 @@ fn check_timestamp_ftl(
     Ok(())
 }
 
-fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &RwLockWriteGuard<B>) -> Result<(), ValidationError> {
+fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
     trace!(target: LOG_TARGET, "Checking MMR roots match",);
     let template = NewBlockTemplate::from(block.clone());
-    let tmp_block =
-        calculate_mmr_roots_writeguard(db, template).map_err(|e| ValidationError::CustomError(e.to_string()))?;
+    let tmp_block = calculate_mmr_roots(db, template).map_err(|e| ValidationError::CustomError(e.to_string()))?;
     let tmp_header = &tmp_block.header;
     let header = &block.header;
-    if header.kernel_mr != tmp_header.kernel_mr ||
-        header.output_mr != tmp_header.output_mr ||
-        header.range_proof_mr != tmp_header.range_proof_mr
-    {
+    if header.kernel_mr != tmp_header.kernel_mr {
         warn!(
             target: LOG_TARGET,
-            "Block header MMR roots in {} do not match calculated roots",
+            "Block header kernel MMR roots in {} do not match calculated roots",
             block.hash().to_hex()
         );
-        Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots))
-    } else {
-        Ok(())
-    }
+        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
+    };
+    if header.output_mr != tmp_header.output_mr {
+        warn!(
+            target: LOG_TARGET,
+            "Block header output MMR roots in {} do not match calculated roots",
+            block.hash().to_hex()
+        );
+        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
+    };
+    if header.range_proof_mr != tmp_header.range_proof_mr {
+        warn!(
+            target: LOG_TARGET,
+            "Block header range_proof MMR roots in {} do not match calculated roots",
+            block.hash().to_hex()
+        );
+        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
+    };
+    Ok(())
 }
 
 fn check_cut_through(block: &Block) -> Result<(), ValidationError> {
     trace!(
         target: LOG_TARGET,
-        "Checking coinbase output on block with hash {}",
+        "Checking cut through on block with hash {}",
         block.hash().to_hex()
     );
     if !block.body.cut_through_check() {

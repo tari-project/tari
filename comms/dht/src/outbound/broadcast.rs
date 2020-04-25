@@ -24,15 +24,18 @@ use super::{error::DhtOutboundError, message::DhtOutboundRequest};
 use crate::{
     actor::DhtRequester,
     broadcast_strategy::BroadcastStrategy,
+    crypt,
     discovery::DhtDiscoveryRequester,
-    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageOrigin, NodeDestination},
+    envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     outbound::{
         message::{DhtOutboundMessage, OutboundEncryption},
         message_params::FinalSendMessageParams,
+        message_send_state::MessageSendState,
         SendMessageResponse,
     },
-    proto::envelope::{DhtMessageType, Network},
+    proto::envelope::{DhtMessageType, Network, OriginMac},
 };
+use bytes::Bytes;
 use futures::{
     channel::oneshot,
     future,
@@ -41,12 +44,18 @@ use futures::{
     Future,
 };
 use log::*;
+use rand::rngs::OsRng;
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
-    message::MessageFlags,
-    peer_manager::{NodeId, NodeIdentity, Peer},
+    message::{MessageExt, MessageTag},
+    peer_manager::{NodeIdentity, Peer},
     pipeline::PipelineError,
     types::CommsPublicKey,
+    utils::signature,
+};
+use tari_crypto::{
+    keys::PublicKey,
+    tari_utilities::{message_format::MessageFormat, ByteArray},
 };
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -121,9 +130,7 @@ impl<S> BroadcastMiddleware<S> {
 }
 
 impl<S> Service<DhtOutboundRequest> for BroadcastMiddleware<S>
-where
-    S: Service<DhtOutboundMessage, Response = ()> + Clone,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError> + Clone
 {
     type Error = PipelineError;
     type Response = ();
@@ -157,9 +164,7 @@ struct BroadcastTask<S> {
 }
 
 impl<S> BroadcastTask<S>
-where
-    S: Service<DhtOutboundMessage, Response = ()>,
-    S::Error: std::error::Error + Send + Sync + 'static,
+where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 {
     pub fn new(
         service: S,
@@ -221,10 +226,11 @@ where
     async fn handle_send_message(
         &mut self,
         params: FinalSendMessageParams,
-        body: Vec<u8>,
+        body: Bytes,
         reply_tx: oneshot::Sender<SendMessageResponse>,
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
     {
+        trace!(target: LOG_TARGET, "Send params: {:?}", params);
         if params
             .broadcast_strategy
             .direct_public_key()
@@ -262,6 +268,8 @@ where
                     is_discovery_enabled,
                 );
 
+                let is_broadcast = broadcast_strategy.is_broadcast();
+
                 // Discovery is required if:
                 //  - Discovery is enabled for this request
                 //  - There where no peers returned
@@ -283,7 +291,7 @@ where
                         },
                         Ok(None) => {
                             // Message sent to 0 peers
-                            let _ = discovery_reply_tx.send(SendMessageResponse::Queued(vec![]));
+                            let _ = discovery_reply_tx.send(SendMessageResponse::Queued(vec![].into()));
                             return Ok(Vec::new());
                         },
                         Err(err) => {
@@ -302,20 +310,21 @@ where
                         dht_header,
                         dht_message_flags,
                         force_origin,
+                        is_broadcast,
                         body,
                     )
                     .await
                 {
-                    Ok(msgs) => {
-                        // Reply with the number of messages to be sent
+                    Ok((msgs, send_states)) => {
+                        // Reply with the `MessageTag`s for each message
                         let _ = reply_tx
                             .take()
                             .expect("cannot fail")
-                            .send(SendMessageResponse::Queued(msgs.iter().map(|m| m.tag).collect()));
+                            .send(SendMessageResponse::Queued(send_states.into()));
+
                         Ok(msgs)
                     },
                     Err(err) => {
-                        // Reply 0 messages sent
                         let _ = reply_tx.take().expect("cannot fail").send(SendMessageResponse::Failed);
                         Err(err)
                     },
@@ -349,22 +358,10 @@ where
             dest_public_key
         );
 
-        // TODO: This works because we know that all non-DAN node IDs are/should be derived from the public key.
-        //       Once the DAN launches, this may not be the case and we'll need to query the blockchain for the node id
-        let derived_node_id = NodeId::from_key(&*dest_public_key).ok();
-
-        // TODO: Target a general region instead of the actual destination node id
-        let regional_destination = derived_node_id
-            .as_ref()
-            .map(Clone::clone)
-            .map(Box::new)
-            .map(NodeDestination::NodeId)
-            .unwrap_or_else(|| NodeDestination::Unknown);
-
         // Peer not found, let's try and discover it
         match self
             .dht_discovery_requester
-            .discover_peer(dest_public_key, derived_node_id, regional_destination)
+            .discover_peer(dest_public_key.clone(), NodeDestination::PublicKey(dest_public_key))
             .await
         {
             // Peer found!
@@ -387,7 +384,7 @@ where
             // Error during discovery
             Err(err) => {
                 debug!(target: LOG_TARGET, "Peer discovery failed because '{}'.", err);
-                Ok(None)
+                Err(DhtOutboundError::DiscoveryFailed)
             },
         }
     }
@@ -402,54 +399,92 @@ where
         custom_header: Option<DhtMessageHeader>,
         extra_flags: DhtMessageFlags,
         force_origin: bool,
-        body: Vec<u8>,
-    ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError>
+        is_broadcast: bool,
+        body: Bytes,
+    ) -> Result<(Vec<DhtOutboundMessage>, Vec<MessageSendState>), DhtOutboundError>
     {
         let dht_flags = encryption.flags() | extra_flags;
 
-        // Create a DHT header
-        let dht_header = custom_header
-            .or_else(|| {
-                // The origin is specified if encryption is turned on, otherwise it is not
-                let origin = if force_origin || encryption.is_encrypt() {
-                    Some(DhtMessageOrigin {
-                        // Origin public key used to identify the origin and verify the signature
-                        public_key: self.node_identity.public_key().clone(),
-                        // Signing will happen later in the pipeline (SerializeMiddleware), left empty to prevent double
-                        // work
-                        signature: Vec::new(),
-                    })
-                } else {
-                    None
-                };
+        let (ephemeral_public_key, origin_mac, body) = self.process_encryption(&encryption, force_origin, body)?;
 
-                Some(DhtMessageHeader::new(
-                    // Final destination for this message
-                    destination,
-                    dht_message_type,
-                    origin,
-                    self.target_network,
-                    dht_flags,
-                ))
-            })
-            .expect("always Some");
-
-        // Construct a MessageEnvelope for each recipient
+        // Construct a DhtOutboundMessage for each recipient
         let messages = selected_peers
             .into_iter()
             .map(|peer| {
-                DhtOutboundMessage::new(
-                    peer,
-                    dht_header.clone(),
-                    encryption.clone(),
-                    MessageFlags::NONE,
-                    body.clone(),
+                let (reply_tx, reply_rx) = oneshot::channel();
+                let tag = MessageTag::new();
+                let send_state = MessageSendState::new(tag, reply_rx);
+                (
+                    DhtOutboundMessage {
+                        tag,
+                        destination_peer: peer,
+                        destination: destination.clone(),
+                        dht_message_type,
+                        network: self.target_network,
+                        dht_flags,
+                        custom_header: custom_header.clone(),
+                        body: body.clone(),
+                        reply_tx: reply_tx.into(),
+                        ephemeral_public_key: ephemeral_public_key.clone(),
+                        origin_mac: origin_mac.clone(),
+                        is_broadcast,
+                    },
+                    send_state,
                 )
             })
             .collect::<Vec<_>>();
 
-        Ok(messages)
+        Ok(messages.into_iter().unzip())
     }
+
+    fn process_encryption(
+        &self,
+        encryption: &OutboundEncryption,
+        include_origin: bool,
+        body: Bytes,
+    ) -> Result<(Option<Arc<CommsPublicKey>>, Option<Bytes>, Bytes), DhtOutboundError>
+    {
+        match encryption {
+            OutboundEncryption::EncryptFor(public_key) => {
+                debug!(target: LOG_TARGET, "Encrypting message for {}", public_key);
+                // Generate ephemeral public/private key pair and ECDH shared secret
+                let (e_sk, e_pk) = CommsPublicKey::random_keypair(&mut OsRng);
+                let shared_ephemeral_secret = crypt::generate_ecdh_secret(&e_sk, &**public_key);
+                // Encrypt the message with the body
+                let encrypted_body = crypt::encrypt(&shared_ephemeral_secret, &body)?;
+
+                // Sign the encrypted message
+                let origin_mac = create_origin_mac(&self.node_identity, &encrypted_body)?;
+                // Encrypt and set the origin field
+                let encrypted_origin_mac = crypt::encrypt(&shared_ephemeral_secret, &origin_mac)?;
+                Ok((
+                    Some(Arc::new(e_pk)),
+                    Some(encrypted_origin_mac.into()),
+                    encrypted_body.into(),
+                ))
+            },
+            OutboundEncryption::None => {
+                debug!(target: LOG_TARGET, "Encryption not requested for message");
+
+                if include_origin {
+                    let origin_mac = create_origin_mac(&self.node_identity, &body)?;
+                    Ok((None, Some(origin_mac.into()), body))
+                } else {
+                    Ok((None, None, body))
+                }
+            },
+        }
+    }
+}
+
+fn create_origin_mac(node_identity: &NodeIdentity, body: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
+    let signature = signature::sign(&mut OsRng, node_identity.secret_key().clone(), body)?;
+
+    let mac = OriginMac {
+        public_key: node_identity.public_key().to_vec(),
+        signature: signature.to_binary()?,
+    };
+    Ok(mac.to_encoded_bytes())
 }
 
 #[cfg(test)]
@@ -531,7 +566,7 @@ mod test {
 
         rt.block_on(service.call(DhtOutboundRequest::SendMessage(
             Box::new(SendMessageParams::new().flood().finish()),
-            "custom_msg".as_bytes().to_vec(),
+            "custom_msg".as_bytes().into(),
             reply_tx,
         )))
         .unwrap();
@@ -581,7 +616,7 @@ mod test {
                         .with_discovery(false)
                         .finish(),
                 ),
-                "custom_msg".as_bytes().to_vec(),
+                Bytes::from_static(b"custom_msg"),
                 reply_tx,
             )),
         )
@@ -632,7 +667,7 @@ mod test {
                         .direct_public_key(peer_to_discover.public_key.clone())
                         .finish(),
                 ),
-                "custom_msg".as_bytes().to_vec(),
+                "custom_msg".as_bytes().into(),
                 reply_tx,
             )),
         )

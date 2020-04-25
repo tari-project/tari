@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod mem_db_vec;
+#[allow(clippy::module_inception)]
 mod memory_db;
 
 // Public API exports

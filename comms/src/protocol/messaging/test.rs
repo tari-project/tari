@@ -28,10 +28,9 @@ use super::protocol::{
     MESSAGING_PROTOCOL,
 };
 use crate::{
-    message::{InboundMessage, MessageExt, MessageFlags, MessageTag, OutboundMessage},
+    message::{InboundMessage, MessageTag, OutboundMessage},
     net_address::MultiaddressesWithStats,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
-    proto::envelope::Envelope,
     protocol::{messaging::SendFailReason, ProtocolEvent, ProtocolNotification},
     test_utils::{
         mocks::{create_connection_manager_mock, create_peer_connection_mock_pair, ConnectionManagerMockState},
@@ -42,8 +41,12 @@ use crate::{
     types::{CommsDatabase, CommsPublicKey, CommsSubstream},
 };
 use bytes::Bytes;
-use futures::{channel::mpsc, SinkExt, StreamExt};
-use prost::Message;
+use futures::{
+    channel::{mpsc, oneshot},
+    stream::FuturesUnordered,
+    SinkExt,
+    StreamExt,
+};
 use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_crypto::keys::PublicKey;
@@ -110,7 +113,7 @@ async fn new_inbound_substream_handling() {
         spawn_messaging_protocol().await;
 
     let expected_node_id = node_id::random();
-    let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+    let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
     peer_manager
         .add_peer(Peer::new(
             pk.clone(),
@@ -139,12 +142,7 @@ async fn new_inbound_substream_handling() {
     let stream_theirs = muxer_theirs.incoming_mut().next().await.unwrap();
     let mut framed_theirs = MessagingProtocol::framed(stream_theirs);
 
-    let envelope = Envelope::construct_signed(&sk, &pk, TEST_MSG1, MessageFlags::empty()).unwrap();
-
-    framed_theirs
-        .send(Bytes::copy_from_slice(&envelope.to_encoded_bytes().unwrap()))
-        .await
-        .unwrap();
+    framed_theirs.send(TEST_MSG1).await.unwrap();
 
     let in_msg = time::timeout(Duration::from_secs(5), inbound_msg_rx.next())
         .await
@@ -177,15 +175,14 @@ async fn send_message_request() {
     conn_man_mock.add_active_connection(peer_node_id.clone(), conn1).await;
 
     // Send a message to node
-    let out_msg = OutboundMessage::new(peer_node_id, MessageFlags::NONE, TEST_MSG1);
+    let out_msg = OutboundMessage::new(peer_node_id, TEST_MSG1);
     request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
 
     // Check that node got the message
     let stream = peer_conn_mock2.next_incoming_substream().await.unwrap();
     let mut framed = MessagingProtocol::framed(stream);
     let msg = framed.next().await.unwrap().unwrap();
-    let msg = Envelope::decode(msg).unwrap();
-    assert_eq!(msg.body, TEST_MSG1);
+    assert_eq!(msg, TEST_MSG1);
 
     // Got the call to create a substream
     assert_eq!(peer_conn_mock1.call_count(), 1);
@@ -196,7 +193,7 @@ async fn send_message_dial_failed() {
     let (_, _, conn_manager_mock, _, mut request_tx, _, mut event_tx, _shutdown) = spawn_messaging_protocol().await;
 
     let node_id = node_id::random();
-    let out_msg = OutboundMessage::new(node_id, MessageFlags::NONE, TEST_MSG1);
+    let out_msg = OutboundMessage::new(node_id, TEST_MSG1);
     let expected_out_msg_tag = out_msg.tag;
     // Send a message to node 2
     request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
@@ -228,7 +225,7 @@ async fn send_message_substream_bulk_failure() {
         .await;
 
     async fn send_msg(request_tx: &mut mpsc::Sender<MessagingRequest>, node_id: NodeId) -> MessageTag {
-        let out_msg = OutboundMessage::new(node_id, MessageFlags::NONE, TEST_MSG1);
+        let out_msg = OutboundMessage::new(node_id, TEST_MSG1);
         let msg_tag = out_msg.tag;
         // Send a message to node 2
         request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
@@ -274,9 +271,17 @@ async fn many_concurrent_send_message_requests() {
 
     // Send many messages to node
     let mut msg_tags = Vec::with_capacity(NUM_MSGS);
+    let mut reply_rxs = Vec::with_capacity(NUM_MSGS);
     for _ in 0..NUM_MSGS {
-        let out_msg = OutboundMessage::new(node_id2.clone(), MessageFlags::NONE, TEST_MSG1);
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let out_msg = OutboundMessage {
+            tag: MessageTag::new(),
+            reply_tx: Some(reply_tx),
+            peer_node_id: node_id2.clone(),
+            body: TEST_MSG1,
+        };
         msg_tags.push(out_msg.tag);
+        reply_rxs.push(reply_rx);
         request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
     }
 
@@ -297,6 +302,11 @@ async fn many_concurrent_send_message_requests() {
         msg_tags.remove(index);
     }
 
+    let unordered = FuturesUnordered::new();
+    reply_rxs.into_iter().for_each(|rx| unordered.push(rx));
+    let results = unordered.collect::<Vec<_>>().await;
+    assert_eq!(results.into_iter().map(|r| r.unwrap()).all(|r| r.is_ok()), true);
+
     // Got a single call to create a substream
     assert_eq!(peer_conn_mock1.call_count(), 1);
 }
@@ -310,9 +320,17 @@ async fn many_concurrent_send_message_requests_that_fail() {
 
     // Send many messages to node
     let mut msg_tags = Vec::with_capacity(NUM_MSGS);
+    let mut reply_rxs = Vec::with_capacity(NUM_MSGS);
     for _ in 0..NUM_MSGS {
-        let out_msg = OutboundMessage::new(node_id2.clone(), MessageFlags::NONE, TEST_MSG1);
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let out_msg = OutboundMessage {
+            tag: MessageTag::new(),
+            reply_tx: Some(reply_tx),
+            peer_node_id: node_id2.clone(),
+            body: TEST_MSG1,
+        };
         msg_tags.push(out_msg.tag);
+        reply_rxs.push(reply_rx);
         request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
     }
 
@@ -327,5 +345,11 @@ async fn many_concurrent_send_message_requests_that_fail() {
         let index = msg_tags.iter().position(|t| t == &out_msg.tag).unwrap();
         msg_tags.remove(index);
     }
+
+    let unordered = FuturesUnordered::new();
+    reply_rxs.into_iter().for_each(|rx| unordered.push(rx));
+    let results = unordered.collect::<Vec<_>>().await;
+    assert_eq!(results.into_iter().map(|r| r.unwrap()).all(|r| r.is_err()), true);
+
     assert_eq!(msg_tags.len(), 0);
 }

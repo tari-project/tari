@@ -401,7 +401,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     outbound_message_service
         .send_direct(
             origin_public_key,
-            OutboundEncryption::EncryptForPeer,
+            OutboundEncryption::None,
             OutboundDomainMessage::new(TariMessageType::BaseNodeResponse, message),
         )
         .await?;
@@ -463,7 +463,7 @@ async fn handle_outbound_request(
         .map_err(|e| CommsInterfaceError::OutboundMessageService(e.to_string()))?;
 
     match send_result.resolve_ok().await {
-        Some(tags) if tags.is_empty() => {
+        Some(send_states) if send_states.is_empty() => {
             let _ = reply_tx
                 .send(Err(CommsInterfaceError::NoBootstrapNodesConfigured))
                 .or_else(|resp| {
@@ -506,7 +506,7 @@ async fn handle_outbound_block(
     outbound_message_service
         .propagate(
             NodeDestination::Unknown,
-            OutboundEncryption::EncryptForPeer,
+            OutboundEncryption::None,
             exclude_peers,
             OutboundDomainMessage::new(TariMessageType::NewBlock, ProtoBlock::from(block)),
         )

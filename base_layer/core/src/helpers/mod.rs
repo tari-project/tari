@@ -27,10 +27,10 @@ mod mock_backend;
 
 use crate::{
     blocks::{Block, BlockHeader},
-    chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
+    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{transaction::Transaction, types::HashDigest},
-    validation::mocks::MockValidator,
+    validation::{accum_difficulty_validators::MockAccumDifficultyValidator, mocks::MockValidator},
 };
 
 pub use mock_backend::MockBackend;
@@ -49,7 +49,11 @@ pub fn create_orphan_block(
 }
 
 pub fn create_mem_db(consensus_manager: &ConsensusManager) -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockAccumDifficultyValidator {},
+    );
     let db = MemoryDatabase::<HashDigest>::default();
-    BlockchainDatabase::new(db, consensus_manager, validators).unwrap()
+    BlockchainDatabase::new(db, consensus_manager, validators, BlockchainDatabaseConfig::default()).unwrap()
 }

@@ -21,17 +21,18 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    envelope::{DhtMessageFlags, DhtMessageHeader},
-    outbound::message_params::FinalSendMessageParams,
+    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, Network, NodeDestination},
+    outbound::{message_params::FinalSendMessageParams, message_send_state::MessageSendStates},
 };
+use bytes::Bytes;
 use futures::channel::oneshot;
-use std::{fmt, fmt::Display};
+use std::{fmt, fmt::Display, sync::Arc};
 use tari_comms::{
-    message::{MessageFlags, MessageTag},
+    message::{MessageTag, MessagingReplyTx},
     peer_manager::Peer,
     types::CommsPublicKey,
 };
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 /// Determines if an outbound message should be Encrypted and, if so, for which public key
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,18 +41,13 @@ pub enum OutboundEncryption {
     None,
     /// Message should be encrypted using a shared secret derived from the given public key
     EncryptFor(Box<CommsPublicKey>),
-    // TODO: Remove this option as it is redundant (message encryption only needed for forwarded private messages)
-    /// Message should be encrypted using a shared secret derived from the destination peer's
-    /// public key. Each message sent according to the broadcast strategy will be encrypted for
-    /// the destination peer.
-    EncryptForPeer,
 }
 
 impl OutboundEncryption {
     /// Return the correct DHT flags for the encryption setting
     pub fn flags(&self) -> DhtMessageFlags {
         match self {
-            OutboundEncryption::EncryptFor(_) | OutboundEncryption::EncryptForPeer => DhtMessageFlags::ENCRYPTED,
+            OutboundEncryption::EncryptFor(_) => DhtMessageFlags::ENCRYPTED,
             _ => DhtMessageFlags::NONE,
         }
     }
@@ -61,7 +57,7 @@ impl OutboundEncryption {
         use OutboundEncryption::*;
         match self {
             None => false,
-            EncryptFor(_) | EncryptForPeer => true,
+            EncryptFor(_) => true,
         }
     }
 }
@@ -71,7 +67,6 @@ impl Display for OutboundEncryption {
         match self {
             OutboundEncryption::None => write!(f, "None"),
             OutboundEncryption::EncryptFor(ref key) => write!(f, "EncryptFor:{}", key.to_hex()),
-            OutboundEncryption::EncryptForPeer => write!(f, "EncryptForPeer"),
         }
     }
 }
@@ -86,7 +81,7 @@ impl Default for OutboundEncryption {
 pub enum SendMessageResponse {
     /// Returns the message tags which are queued for sending. These tags will be used in a subsequent OutboundEvent to
     /// indicate if the message succeeded/failed to send
-    Queued(Vec<MessageTag>),
+    Queued(MessageSendStates),
     /// A failure occurred when sending
     Failed,
     /// DHT Discovery has been initiated. The caller may wait on the receiver
@@ -101,19 +96,19 @@ impl SendMessageResponse {
     /// A `SendMessageResponse::Failed` will resolve immediately returning a `None`.
     /// If DHT discovery is initiated, this will resolve once discovery has completed, either
     /// succeeding (`Some(n)`) or failing (`None`).
-    pub async fn resolve_ok(self) -> Option<Vec<MessageTag>> {
+    pub async fn resolve_ok(self) -> Option<MessageSendStates> {
         use SendMessageResponse::*;
         match self {
-            Queued(tags) => Some(tags),
+            Queued(send_states) => Some(send_states),
             Failed => None,
             PendingDiscovery(rx) => rx.await.ok()?.queued_or_failed(),
         }
     }
 
-    fn queued_or_failed(self) -> Option<Vec<MessageTag>> {
+    fn queued_or_failed(self) -> Option<MessageSendStates> {
         use SendMessageResponse::*;
         match self {
-            Queued(tags) => Some(tags),
+            Queued(send_states) => Some(send_states),
             Failed => None,
             PendingDiscovery(_) => panic!("ok_or_failed() called on PendingDiscovery"),
         }
@@ -124,11 +119,7 @@ impl SendMessageResponse {
 #[derive(Debug)]
 pub enum DhtOutboundRequest {
     /// Send a message using the given broadcast strategy
-    SendMessage(
-        Box<FinalSendMessageParams>,
-        Vec<u8>,
-        oneshot::Sender<SendMessageResponse>,
-    ),
+    SendMessage(Box<FinalSendMessageParams>, Bytes, oneshot::Sender<SendMessageResponse>),
 }
 
 impl fmt::Display for DhtOutboundRequest {
@@ -141,52 +132,75 @@ impl fmt::Display for DhtOutboundRequest {
     }
 }
 
-/// DhtOutboundMessage consists of the DHT and comms information required to
-/// send a message
-#[derive(Clone, Debug)]
-pub struct DhtOutboundMessage {
-    pub tag: MessageTag,
-    pub destination_peer: Peer,
-    pub dht_header: DhtMessageHeader,
-    pub comms_flags: MessageFlags,
-    pub encryption: OutboundEncryption,
-    pub body: Vec<u8>,
+/// Wrapper struct for a oneshot reply sender. When this struct is dropped, an automatic fail is sent on the oneshot if
+/// a response has not already been sent.
+#[derive(Debug)]
+pub struct WrappedReplyTx(Option<MessagingReplyTx>);
+
+impl WrappedReplyTx {
+    pub fn into_inner(mut self) -> Option<MessagingReplyTx> {
+        self.0.take()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn none() -> Self {
+        Self(None)
+    }
 }
 
-impl DhtOutboundMessage {
-    /// Create a new DhtOutboundMessage
-    pub fn new(
-        destination_peer: Peer,
-        dht_header: DhtMessageHeader,
-        encryption: OutboundEncryption,
-        comms_flags: MessageFlags,
-        body: Vec<u8>,
-    ) -> Self
-    {
-        Self {
-            tag: MessageTag::new(),
-            destination_peer,
-            dht_header,
-            encryption,
-            comms_flags,
-            body,
+impl From<MessagingReplyTx> for WrappedReplyTx {
+    fn from(inner: MessagingReplyTx) -> Self {
+        Self(Some(inner))
+    }
+}
+
+impl Drop for WrappedReplyTx {
+    fn drop(&mut self) {
+        // If this is dropped and the reply tx has not been used already, send an error reply
+        if let Some(reply_tx) = self.0.take() {
+            let _ = reply_tx.send(Err(()));
         }
     }
 }
 
+/// DhtOutboundMessage consists of the DHT and comms information required to
+/// send a message
+#[derive(Debug)]
+pub struct DhtOutboundMessage {
+    pub tag: MessageTag,
+    pub destination_peer: Peer,
+    pub custom_header: Option<DhtMessageHeader>,
+    pub body: Bytes,
+    pub ephemeral_public_key: Option<Arc<CommsPublicKey>>,
+    pub origin_mac: Option<Bytes>,
+    pub destination: NodeDestination,
+    pub dht_message_type: DhtMessageType,
+    pub reply_tx: WrappedReplyTx,
+    pub network: Network,
+    pub dht_flags: DhtMessageFlags,
+    pub is_broadcast: bool,
+}
+
 impl fmt::Display for DhtOutboundMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        let header_str = self
+            .custom_header
+            .as_ref()
+            .map(|h| format!("{} (Propagated)", h))
+            .unwrap_or_else(|| {
+                format!(
+                    "Network: {:?}, Flags: {:?}, Destination: {}",
+                    self.network, self.dht_flags, self.destination
+                )
+            });
         write!(
             f,
-            "\n---- DhtOutboundMessage ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {} \nFlags: \
-             {:?}\nEncryption: {}\n{}\n----",
+            "\n---- Outgoing message ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\n{}\n----",
             self.body.len(),
-            self.dht_header.message_type,
+            self.dht_message_type,
             self.destination_peer,
-            self.dht_header,
-            self.comms_flags,
-            self.encryption,
-            self.tag
+            header_str,
+            self.tag,
         )
     }
 }

@@ -42,13 +42,13 @@ pub enum BroadcastStrategy {
     DirectPublicKey(Box<CommsPublicKey>),
     /// Send to all known peers
     Flood,
-    /// Send to a random set of peers of size n that are Communication Nodes
-    Random(usize),
+    /// Send to a random set of peers of size n that are Communication Nodes, excluding the given node IDs
+    Random(usize, Vec<NodeId>),
     /// Send to all n nearest Communication Nodes according to the given BroadcastClosestRequest
     Closest(Box<BroadcastClosestRequest>),
     /// A convenient strategy which behaves the same as the `Closest` strategy with the `NodeId` set
-    /// to this node and a pre-configured number of neighbours that have all the matching PeerFeatures flags.
-    /// This strategy excludes the given public keys.
+    /// to this node. Element 0 in the tuple is a public key exclusion list. If element 1 is set to true, all
+    /// neighbouring client peers are also included in addition to node peers.
     Neighbours(Vec<CommsPublicKey>, bool),
 }
 
@@ -60,7 +60,7 @@ impl fmt::Display for BroadcastStrategy {
             DirectNodeId(node_id) => write!(f, "DirectNodeId({})", node_id),
             Flood => write!(f, "Flood"),
             Closest(request) => write!(f, "Closest({})", request.n),
-            Random(n) => write!(f, "Random({})", n),
+            Random(n, excluded) => write!(f, "Random({}, {} excluded)", n, excluded.len()),
             Neighbours(excluded, include_clients) => write!(
                 f,
                 "Neighbours({} excluded{})",
@@ -72,6 +72,14 @@ impl fmt::Display for BroadcastStrategy {
 }
 
 impl BroadcastStrategy {
+    pub fn is_broadcast(&self) -> bool {
+        use BroadcastStrategy::*;
+        match self {
+            Closest(_) | Flood | Neighbours(_, _) | Random(_, _) => true,
+            _ => false,
+        }
+    }
+
     pub fn is_direct(&self) -> bool {
         use BroadcastStrategy::*;
         match self {
@@ -128,7 +136,7 @@ mod test {
             .is_direct(),
             false
         );
-        assert_eq!(BroadcastStrategy::Random(0).is_direct(), false);
+        assert_eq!(BroadcastStrategy::Random(0, vec![]).is_direct(), false);
     }
 
     #[test]
@@ -151,7 +159,10 @@ mod test {
         }))
         .direct_public_key()
         .is_none(),);
-        assert!(BroadcastStrategy::Random(0).direct_public_key().is_none(), false);
+        assert!(
+            BroadcastStrategy::Random(0, vec![]).direct_public_key().is_none(),
+            false
+        );
     }
 
     #[test]
@@ -174,6 +185,6 @@ mod test {
         }))
         .direct_node_id()
         .is_none(),);
-        assert!(BroadcastStrategy::Random(0).direct_node_id().is_none(), false);
+        assert!(BroadcastStrategy::Random(0, vec![]).direct_node_id().is_none(), false);
     }
 }

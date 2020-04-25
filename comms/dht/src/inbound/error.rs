@@ -28,7 +28,6 @@ use tari_comms::{message::MessageError, peer_manager::PeerManagerError};
 #[derive(Debug, Error)]
 pub enum DhtInboundError {
     MessageError(MessageError),
-    //    MessageFormatError(MessageFormatError),
     PeerManagerError(PeerManagerError),
     DhtOutboundError(DhtOutboundError),
     /// Failed to decode message
@@ -39,8 +38,6 @@ pub enum DhtInboundError {
     InvalidNodeId,
     /// All given addresses were invalid
     InvalidAddresses,
-    /// One or more NetAddress in the join message were invalid
-    InvalidJoinNetAddresses,
     DhtDiscoveryError(DhtDiscoveryError),
     #[error(msg_embedded, no_from, non_std)]
     OriginRequired(String),

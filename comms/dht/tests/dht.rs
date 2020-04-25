@@ -20,28 +20,46 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::channel::mpsc;
+use futures::{channel::mpsc, StreamExt};
 use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
     backoff::ConstantBackoff,
-    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerStorage},
+    message::MessageExt,
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerStorage},
     pipeline,
     pipeline::SinkService,
+    protocol::messaging::MessagingEvent,
     transports::MemoryTransport,
     types::CommsDatabase,
+    wrap_in_envelope_body,
     CommsBuilder,
     CommsNode,
 };
-use tari_comms_dht::{envelope::NodeDestination, inbound::DecryptedDhtMessage, Dht, DhtBuilder};
+use tari_comms_dht::{
+    domain_message::OutboundDomainMessage,
+    envelope::NodeDestination,
+    inbound::DecryptedDhtMessage,
+    outbound::{OutboundEncryption, SendMessageParams},
+    DbConnectionUrl,
+    Dht,
+    DhtBuilder,
+};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
-use tari_test_utils::{async_assert_eventually, paths::create_temporary_data_path, random};
+use tari_test_utils::{
+    async_assert_eventually,
+    collect_stream,
+    paths::create_temporary_data_path,
+    random,
+    unpack_enum,
+};
+use tokio::time;
 use tower::ServiceBuilder;
 
 struct TestNode {
     comms: CommsNode,
     dht: Dht,
-    _ims_rx: mpsc::Receiver<DecryptedDhtMessage>,
+    ims_rx: mpsc::Receiver<DecryptedDhtMessage>,
 }
 
 impl TestNode {
@@ -51,6 +69,10 @@ impl TestNode {
 
     pub fn to_peer(&self) -> Peer {
         self.comms.node_identity().to_peer()
+    }
+
+    pub async fn next_inbound_message(&mut self, timeout: Duration) -> Option<DecryptedDhtMessage> {
+        time::timeout(timeout, self.ims_rx.next()).await.ok()?
     }
 }
 
@@ -63,7 +85,7 @@ fn create_peer_storage(peers: Vec<Peer>) -> CommsDatabase {
     let database_name = random::string(8);
     let datastore = LMDBBuilder::new()
         .set_path(create_temporary_data_path().to_str().unwrap())
-        .set_environment_size(10)
+        .set_environment_size(50)
         .set_max_number_of_databases(1)
         .add_database(&database_name, lmdb_zero::db::CREATE)
         .build()
@@ -81,15 +103,14 @@ fn create_peer_storage(peers: Vec<Peer>) -> CommsDatabase {
 
 async fn make_node(features: PeerFeatures, seed_peer: Option<Peer>) -> TestNode {
     let node_identity = make_node_identity(features);
+    make_node_with_node_identity(node_identity, seed_peer).await
+}
 
-    let (tx, ims_rx) = mpsc::channel(1);
+async fn make_node_with_node_identity(node_identity: Arc<NodeIdentity>, seed_peer: Option<Peer>) -> TestNode {
+    let (tx, ims_rx) = mpsc::channel(10);
     let (comms, dht) = setup_comms_dht(node_identity, create_peer_storage(seed_peer.into_iter().collect()), tx).await;
 
-    TestNode {
-        comms,
-        dht,
-        _ims_rx: ims_rx,
-    }
+    TestNode { comms, dht, ims_rx }
 }
 
 async fn setup_comms_dht(
@@ -120,9 +141,13 @@ async fn setup_comms_dht(
         comms.shutdown_signal(),
     )
     .local_test()
+    .disable_auto_store_and_forward_requests()
+    .with_database_url(DbConnectionUrl::MemoryShared(random::string(8)))
     .with_discovery_timeout(Duration::from_secs(60))
     .with_num_neighbouring_nodes(8)
-    .finish();
+    .finish()
+    .await
+    .unwrap();
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
 
@@ -215,9 +240,7 @@ async fn dht_discover_propagation() {
         .discovery_service_requester()
         .discover_peer(
             Box::new(node_D.node_identity().public_key().clone()),
-            None,
-            // Sending to a nonsense NodeId, this should still propagate towards D in a network of 4
-            NodeDestination::NodeId(Box::new(Default::default())),
+            NodeDestination::Unknown,
         )
         .await
         .unwrap();
@@ -238,4 +261,218 @@ async fn dht_discover_propagation() {
     node_B.comms.shutdown().await;
     node_C.comms.shutdown().await;
     node_D.comms.shutdown().await;
+}
+
+#[tokio_macros::test]
+#[allow(non_snake_case)]
+async fn dht_store_forward() {
+    let node_C_node_identity = make_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    // Node B knows about Node C
+    let node_B = make_node(PeerFeatures::COMMUNICATION_NODE, None).await;
+    // Node A knows about Node B
+    let node_A = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_B.to_peer())).await;
+    log::info!(
+        "NodeA = {}, NodeB = {}, Node C = {}",
+        node_A.node_identity().node_id().short_str(),
+        node_B.node_identity().node_id().short_str(),
+        node_C_node_identity.node_id().short_str(),
+    );
+
+    let dest_public_key = Box::new(node_C_node_identity.public_key().clone());
+    let params = SendMessageParams::new()
+        .neighbours(vec![])
+        .with_encryption(OutboundEncryption::EncryptFor(dest_public_key))
+        .with_destination(NodeDestination::NodeId(Box::new(
+            node_C_node_identity.node_id().clone(),
+        )))
+        .finish();
+
+    let secret_msg1 = b"NCZW VUSX PNYM INHZ XMQX SFWX WLKJ AHSH";
+    let secret_msg2 = b"NMCO CCAK UQPM KCSM HKSE INJU SBLK";
+
+    let node_B_msg_events = node_B.comms.subscribe_messaging_events();
+    node_A
+        .dht
+        .outbound_requester()
+        .send_raw(
+            params.clone(),
+            wrap_in_envelope_body!(secret_msg1.to_vec()).to_encoded_bytes(),
+        )
+        .await
+        .unwrap();
+    node_A
+        .dht
+        .outbound_requester()
+        .send_raw(params, wrap_in_envelope_body!(secret_msg2.to_vec()).to_encoded_bytes())
+        .await
+        .unwrap();
+
+    // Wait for node B to receive 2 propagation messages
+    collect_stream!(node_B_msg_events, take = 2, timeout = Duration::from_secs(20));
+
+    let mut node_C = make_node_with_node_identity(node_C_node_identity, Some(node_B.to_peer())).await;
+    let node_C_msg_events = node_C.comms.subscribe_messaging_events();
+    // Ask node B for messages
+    node_C
+        .dht
+        .store_and_forward_requester()
+        .request_saf_messages_from_peer(node_B.node_identity().node_id().clone())
+        .await
+        .unwrap();
+    // Wait for node C to send 1 SAF request, and receive a response
+    collect_stream!(node_C_msg_events, take = 2, timeout = Duration::from_secs(20));
+
+    let msg = node_C.next_inbound_message(Duration::from_secs(5)).await.unwrap();
+    assert_eq!(
+        msg.authenticated_origin.as_ref().unwrap(),
+        node_A.comms.node_identity().public_key()
+    );
+    let secret = msg.success().unwrap().decode_part::<Vec<u8>>(0).unwrap().unwrap();
+    assert_eq!(secret, secret_msg1.to_vec());
+    let msg = node_C.next_inbound_message(Duration::from_secs(5)).await.unwrap();
+    assert_eq!(
+        msg.authenticated_origin.as_ref().unwrap(),
+        node_A.comms.node_identity().public_key()
+    );
+    let secret = msg.success().unwrap().decode_part::<Vec<u8>>(0).unwrap().unwrap();
+    assert_eq!(secret, secret_msg2.to_vec());
+
+    node_A.comms.shutdown().await;
+    node_B.comms.shutdown().await;
+    node_C.comms.shutdown().await;
+}
+
+#[tokio_macros::test]
+#[allow(non_snake_case)]
+async fn dht_propagate_dedup() {
+    env_logger::init();
+    // Node D knows no one
+    let mut node_D = make_node(PeerFeatures::COMMUNICATION_NODE, None).await;
+    // Node C knows about Node D
+    let mut node_C = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_D.to_peer())).await;
+    // Node B knows about Node C
+    let mut node_B = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_C.to_peer())).await;
+    // Node A knows about Node B and C
+    let mut node_A = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_B.to_peer())).await;
+    node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
+    log::info!(
+        "NodeA = {}, NodeB = {}, Node C = {}, Node D = {}",
+        node_A.node_identity().node_id().short_str(),
+        node_B.node_identity().node_id().short_str(),
+        node_C.node_identity().node_id().short_str(),
+        node_D.node_identity().node_id().short_str(),
+    );
+
+    // Connect the peers that should be connected
+    async fn connect_nodes(node1: &mut TestNode, node2: &mut TestNode) {
+        node1
+            .comms
+            .connection_manager()
+            .dial_peer(node2.node_identity().node_id().clone())
+            .await
+            .unwrap();
+    }
+    // Pre-connect nodes, this helps message passing be more deterministic
+    connect_nodes(&mut node_A, &mut node_B).await;
+    connect_nodes(&mut node_A, &mut node_C).await;
+    connect_nodes(&mut node_B, &mut node_C).await;
+    connect_nodes(&mut node_C, &mut node_D).await;
+
+    let mut node_A_messaging = node_A.comms.subscribe_messaging_events();
+    let mut node_B_messaging = node_B.comms.subscribe_messaging_events();
+    let mut node_C_messaging = node_C.comms.subscribe_messaging_events();
+    let mut node_D_messaging = node_D.comms.subscribe_messaging_events();
+
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    struct Person {
+        #[prost(string, tag = "1")]
+        name: String,
+        #[prost(uint32, tag = "2")]
+        age: u32,
+    }
+
+    let out_msg = OutboundDomainMessage::new(123, Person {
+        name: "John Conway".into(),
+        age: 82,
+    });
+    node_A
+        .dht
+        .outbound_requester()
+        .propagate(
+            // Node D is a client node, so an destination is required for domain messages
+            NodeDestination::Unknown, // NodeId(Box::new(node_D.node_identity().node_id().clone())),
+            OutboundEncryption::EncryptFor(Box::new(node_D.node_identity().public_key().clone())),
+            vec![],
+            out_msg,
+        )
+        .await
+        .unwrap();
+
+    let msg = node_D
+        .next_inbound_message(Duration::from_secs(10))
+        .await
+        .expect("Node D expected an inbound message but it never arrived");
+    assert!(msg.decryption_succeeded());
+    let person = msg
+        .decryption_result
+        .unwrap()
+        .decode_part::<Person>(1)
+        .unwrap()
+        .unwrap();
+    assert_eq!(person.name, "John Conway");
+
+    let node_A_id = node_A.node_identity().node_id().clone();
+    let node_B_id = node_B.node_identity().node_id().clone();
+    let node_C_id = node_C.node_identity().node_id().clone();
+    let node_D_id = node_D.node_identity().node_id().clone();
+
+    node_A.comms.shutdown().await;
+    node_B.comms.shutdown().await;
+    node_C.comms.shutdown().await;
+    node_D.comms.shutdown().await;
+
+    // Check the message flow BEFORE deduping
+    let (sent, received) = partition_events(collect_stream!(node_A_messaging, timeout = Duration::from_secs(20)));
+    assert_eq!(sent.len(), 2);
+    // Expected race condition: If A->(B|C)->(C|B) before A->(C|B) then (C|B)->A
+    if received.len() > 0 {
+        assert_eq!(count_messages_received(&received, &[&node_B_id, &node_C_id]), 1);
+    }
+
+    let (sent, received) = partition_events(collect_stream!(node_B_messaging, timeout = Duration::from_secs(20)));
+    assert_eq!(sent.len(), 1);
+    let recv_count = count_messages_received(&received, &[&node_A_id, &node_C_id]);
+    // Expected race condition: If A->B->C before A->C then C->B does not happen
+    assert!(recv_count >= 1 && recv_count <= 2);
+
+    let (sent, received) = partition_events(collect_stream!(node_C_messaging, timeout = Duration::from_secs(20)));
+    let recv_count = count_messages_received(&received, &[&node_A_id, &node_B_id]);
+    assert_eq!(recv_count, 2);
+    assert_eq!(sent.len(), 2);
+    assert_eq!(count_messages_received(&received, &[&node_D_id]), 0);
+
+    let (sent, received) = partition_events(collect_stream!(node_D_messaging, timeout = Duration::from_secs(20)));
+    assert_eq!(sent.len(), 0);
+    assert_eq!(received.len(), 1);
+    assert_eq!(count_messages_received(&received, &[&node_C_id]), 1);
+}
+
+fn partition_events(
+    events: Vec<Result<Arc<MessagingEvent>, tokio::sync::broadcast::RecvError>>,
+) -> (Vec<Arc<MessagingEvent>>, Vec<Arc<MessagingEvent>>) {
+    events.into_iter().map(Result::unwrap).partition(|e| match &**e {
+        MessagingEvent::MessageReceived(_, _) => false,
+        MessagingEvent::MessageSent(_) => true,
+        _ => unreachable!(),
+    })
+}
+
+fn count_messages_received(events: &[Arc<MessagingEvent>], node_ids: &[&NodeId]) -> usize {
+    events
+        .into_iter()
+        .filter(|event| {
+            unpack_enum!(MessagingEvent::MessageReceived(recv_node_id, _tag) = &***event);
+            node_ids.into_iter().any(|n| &**recv_node_id == *n)
+        })
+        .count()
 }
