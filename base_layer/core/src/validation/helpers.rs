@@ -22,7 +22,7 @@
 
 use crate::{
     blocks::blockheader::{BlockHeader, BlockHeaderValidationError},
-    chain_storage::BlockchainBackend,
+    chain_storage::{fetch_headers, BlockchainBackend},
     consensus::ConsensusManager,
     proof_of_work::{get_target_difficulty, PowError},
     validation::ValidationError,
@@ -30,7 +30,7 @@ use crate::{
 use log::*;
 use tari_crypto::tari_utilities::hash::Hashable;
 pub const LOG_TARGET: &str = "c::val::helpers";
-use crate::chain_storage::fetch_target_difficulties;
+use crate::{chain_storage::fetch_target_difficulties, proof_of_work::get_median_timestamp};
 use tari_crypto::tari_utilities::hex::Hex;
 
 /// This function tests that the block timestamp is greater than the median timestamp at the specified height.
@@ -45,14 +45,18 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
     if block_header.height == 0 || rules.get_genesis_block_hash() == block_header.hash() {
         return Ok(()); // Its the genesis block, so we dont have to check median
     }
-    let median_timestamp = rules
-        .get_median_timestamp_at_height(db, height)
-        .or_else(|e| {
-            error!(target: LOG_TARGET, "Validation could not get median timestamp");
-
-            Err(e)
-        })
-        .map_err(|_| ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestamp))?;
+    trace!(target: LOG_TARGET, "Calculating median timestamp to height:{}", height);
+    let min_height = height.saturating_sub(rules.consensus_constants().get_median_timestamp_count() as u64);
+    let block_nums = (min_height..=height).collect();
+    let timestamps = fetch_headers(db, block_nums)
+        .map_err(|e| ValidationError::CustomError(e.to_string()))?
+        .iter()
+        .map(|h| h.timestamp)
+        .collect::<Vec<_>>();
+    let median_timestamp = get_median_timestamp(timestamps).ok_or({
+        error!(target: LOG_TARGET, "Validation could not get median timestamp");
+        ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestamp)
+    })?;
     if block_header.timestamp < median_timestamp {
         warn!(
             target: LOG_TARGET,
