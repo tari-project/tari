@@ -225,7 +225,7 @@ impl Peer {
     }
 
     pub fn banned_until(&self) -> Option<&NaiveDateTime> {
-        self.banned_until.as_ref().filter(|dt| *dt >= &Utc::now().naive_utc())
+        self.banned_until.as_ref().filter(|dt| *dt > &Utc::now().naive_utc())
     }
 
     /// Marks the peer as offline
@@ -292,7 +292,7 @@ mod test {
     };
 
     #[test]
-    fn test_is_and_set_banned() {
+    fn test_is_banned_and_ban_for() {
         let mut rng = rand::rngs::OsRng;
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
