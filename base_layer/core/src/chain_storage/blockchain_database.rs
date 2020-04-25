@@ -444,7 +444,16 @@ where T: BlockchainBackend
     /// If an error does occur while writing the new block parts, all changes are reverted before returning.
     pub fn add_block(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
         // Perform orphan block validation.
-        self.validators.orphan.validate(&block)?;
+        if let Err(e) = self.validators.orphan.validate(&block) {
+            warn!(
+                target: LOG_TARGET,
+                "Block #{} ({}) is INVALID - {}",
+                block.header.height,
+                block.hash().to_hex(),
+                e.to_string()
+            );
+            return Err(e.into());
+        }
 
         let mut db = self.db_write_access()?;
         add_block(
@@ -962,7 +971,7 @@ fn reorganize_chain<T: BlockchainBackend>(
 ) -> Result<Vec<Block>, ChainStorageError>
 {
     let removed_blocks = rewind_to_height(db, height)?;
-    trace!(target: LOG_TARGET, "Validate and add chain blocks.",);
+    debug!(target: LOG_TARGET, "Validate and add chain blocks.",);
     let mut validation_result: Result<(), ValidationError> = Ok(());
     let mut orphan_hashes = Vec::<BlockHash>::with_capacity(chain.len());
     for block in chain {
@@ -970,7 +979,7 @@ fn reorganize_chain<T: BlockchainBackend>(
         orphan_hashes.push(block_hash.clone());
         validation_result = block_validator.validate(&block, db);
         if validation_result.is_err() {
-            debug!(
+            warn!(
                 target: LOG_TARGET,
                 "Orphan block {} failed validation during chain reorganization",
                 block_hash.to_hex(),
@@ -983,7 +992,7 @@ fn reorganize_chain<T: BlockchainBackend>(
 
     match validation_result {
         Ok(_) => {
-            trace!(target: LOG_TARGET, "Removing reorged orphan blocks.",);
+            debug!(target: LOG_TARGET, "Removing reorged orphan blocks.",);
             if !orphan_hashes.is_empty() {
                 let mut txn = DbTransaction::new();
                 for orphan_hash in orphan_hashes {
@@ -994,7 +1003,7 @@ fn reorganize_chain<T: BlockchainBackend>(
             Ok(removed_blocks)
         },
         Err(e) => {
-            trace!(target: LOG_TARGET, "Restoring previous chain after failed reorg.",);
+            info!(target: LOG_TARGET, "Restoring previous chain after failed reorg.",);
             let invalid_chain = rewind_to_height(db, height)?;
             debug!(
                 target: LOG_TARGET,
