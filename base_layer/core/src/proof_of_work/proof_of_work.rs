@@ -210,13 +210,17 @@ impl Display for PowAlgorithm {
 
 impl Display for ProofOfWork {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
-        fmt.write_str(&format!(
-            "Mining algorithm: {}, \nTotal accumulated difficulty: \nMonero={}, Blake={}\nPow data: {}",
-            self.pow_algo,
-            self.accumulated_monero_difficulty,
-            self.accumulated_blake_difficulty,
-            self.pow_data.to_hex(),
-        ))
+        writeln!(
+            fmt,
+            "Mining algorithm: {}, Target difficulty: {}",
+            self.pow_algo, self.target_difficulty
+        )?;
+        writeln!(
+            fmt,
+            "Total accumulated difficulty:\nMonero={}, Blake={}",
+            self.accumulated_monero_difficulty, self.accumulated_blake_difficulty
+        )?;
+        writeln!(fmt, "Pow data: {}", self.pow_data.to_hex())
     }
 }
 
@@ -232,7 +236,8 @@ mod test {
         let pow = ProofOfWork::default();
         assert_eq!(
             &format!("{}", pow),
-            "Mining algorithm: Blake, \nTotal accumulated difficulty: \nMonero=1, Blake=1\nPow data: "
+            "Mining algorithm: Blake, Target difficulty: 1\nTotal accumulated difficulty:\nMonero=1, Blake=1\nPow \
+             data: \n"
         );
     }
 
