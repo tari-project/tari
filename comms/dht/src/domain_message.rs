@@ -20,7 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::RngCore;
+use rand::{rngs::OsRng, RngCore};
+use std::cmp;
 
 pub trait ToProtoEnum {
     fn as_i32(&self) -> i32;
@@ -50,17 +51,32 @@ impl<T> OutboundDomainMessage<T> {
         self.inner
     }
 
+    pub fn to_propagation_header(&self) -> MessageHeader {
+        MessageHeader::for_propagation(self.message_type)
+    }
+
     pub fn to_header(&self) -> MessageHeader {
         MessageHeader::new(self.message_type)
     }
 }
 
 pub use crate::proto::message_header::MessageHeader;
-use rand::rngs::OsRng;
 
 impl MessageHeader {
     pub fn new(message_type: i32) -> Self {
-        let nonce = OsRng.next_u64();
-        Self { message_type, nonce }
+        Self {
+            message_type,
+            // In the unimaginably unlikely case that a nonce of 0 chosen,
+            // change it to 1 because 0 is exclusively for message propagation
+            nonce: cmp::max(1, OsRng.next_u64()),
+        }
+    }
+
+    pub fn for_propagation(message_type: i32) -> Self {
+        const PROPAGATION_NONCE: u64 = 0;
+        Self {
+            message_type,
+            nonce: PROPAGATION_NONCE,
+        }
     }
 }
