@@ -109,10 +109,6 @@ impl LivenessState {
         self.pongs_received.load(Ordering::Relaxed)
     }
 
-    pub fn num_active_peers(&self) -> usize {
-        self.num_active_peers.load(Ordering::Relaxed)
-    }
-
     pub fn set_num_active_peers(&self, n: usize) {
         self.num_active_peers.store(n, Ordering::Relaxed);
     }

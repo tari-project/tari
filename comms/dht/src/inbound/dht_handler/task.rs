@@ -267,21 +267,28 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             "Propagating join message to at most {} peer(s)", self.config.num_neighbouring_nodes
         );
 
-        // Propagate message to closer peers
-        self.outbound_service
-            .send_raw(
-                SendMessageParams::new()
-                    .closest(
-                        origin_peer.node_id,
-                        self.config.num_neighbouring_nodes,
-                        vec![authenticated_pk, source_peer.public_key.clone()],
-                        PeerFeatures::MESSAGE_PROPAGATION,
-                    )
-                    .with_dht_header(dht_header)
-                    .finish(),
-                body.to_encoded_bytes(),
-            )
-            .await?;
+        // Only propagate a join that was not directly sent to this node (presumably in response to a join this node
+        // sent)
+        // TODO: Join should have a response message type
+        if dht_header.destination != self.node_identity.public_key() &&
+            dht_header.destination != self.node_identity.node_id()
+        {
+            // Propagate message to closer peers
+            self.outbound_service
+                .send_raw(
+                    SendMessageParams::new()
+                        .closest(
+                            origin_peer.node_id,
+                            self.config.num_neighbouring_nodes,
+                            vec![authenticated_pk, source_peer.public_key.clone()],
+                            PeerFeatures::MESSAGE_PROPAGATION,
+                        )
+                        .with_dht_header(dht_header)
+                        .finish(),
+                    body.to_encoded_bytes(),
+                )
+                .await?;
+        }
 
         Ok(())
     }
@@ -389,11 +396,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
     /// Send a network join update request directly to a specific known peer
     async fn send_join_direct(&mut self, dest_public_key: CommsPublicKey) -> Result<(), DhtInboundError> {
-        let join_msg = JoinMessage {
-            node_id: self.node_identity.node_id().to_vec(),
-            addresses: vec![self.node_identity.public_address().to_string()],
-            peer_features: self.node_identity.features().bits(),
-        };
+        let join_msg = JoinMessage::from(&self.node_identity);
 
         trace!(target: LOG_TARGET, "Sending direct join request to {}", dest_public_key);
         self.outbound_service

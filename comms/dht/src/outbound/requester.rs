@@ -195,7 +195,12 @@ impl OutboundMessageRequester {
                 message
             );
         }
-        let body = wrap_in_envelope_body!(message.to_header(), message.into_inner()).to_encoded_bytes();
+        let header = if params.broadcast_strategy.is_direct() {
+            message.to_header()
+        } else {
+            message.to_propagation_header()
+        };
+        let body = wrap_in_envelope_body!(header, message.into_inner()).to_encoded_bytes();
         self.send_raw(params, body).await
     }
 
