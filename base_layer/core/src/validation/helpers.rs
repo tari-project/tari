@@ -51,7 +51,7 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
         .iter()
         .map(|h| h.timestamp)
         .collect::<Vec<_>>();
-    let median_timestamp = get_median_timestamp(timestamps).ok_or({
+    let median_timestamp = get_median_timestamp(timestamps).ok_or_else(|| {
         error!(target: LOG_TARGET, "Validation could not get median timestamp");
         ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestamp)
     })?;
