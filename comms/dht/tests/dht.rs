@@ -327,15 +327,25 @@ async fn dht_store_forward() {
         msg.authenticated_origin.as_ref().unwrap(),
         node_A.comms.node_identity().public_key()
     );
+    let mut msgs = vec![secret_msg1.to_vec(), secret_msg2.to_vec()];
     let secret = msg.success().unwrap().decode_part::<Vec<u8>>(0).unwrap().unwrap();
-    assert_eq!(secret, secret_msg1.to_vec());
+    {
+        let pos = msgs.iter().position(|m| m == &secret).unwrap();
+        msgs.remove(pos);
+    }
+
     let msg = node_C.next_inbound_message(Duration::from_secs(5)).await.unwrap();
     assert_eq!(
         msg.authenticated_origin.as_ref().unwrap(),
         node_A.comms.node_identity().public_key()
     );
     let secret = msg.success().unwrap().decode_part::<Vec<u8>>(0).unwrap().unwrap();
-    assert_eq!(secret, secret_msg2.to_vec());
+    {
+        let pos = msgs.iter().position(|m| m == &secret).unwrap();
+        msgs.remove(pos);
+    }
+
+    assert!(msgs.is_empty());
 
     node_A.comms.shutdown().await;
     node_B.comms.shutdown().await;
