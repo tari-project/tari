@@ -22,13 +22,9 @@
 
 use std::convert::TryFrom;
 
-const COMMS_WIRE_MODE: u8 = 0x03;
-const LIVENESS_WIRE_MODE: u8 = 0x45; // E
-
-#[repr(u8)]
 pub enum WireMode {
-    Comms = COMMS_WIRE_MODE,
-    Liveness = LIVENESS_WIRE_MODE,
+    Comms = 0x02,
+    Liveness = 0x45, // E
 }
 
 impl TryFrom<u8> for WireMode {
@@ -36,8 +32,8 @@ impl TryFrom<u8> for WireMode {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            COMMS_WIRE_MODE => Ok(WireMode::Comms),
-            LIVENESS_WIRE_MODE => Ok(WireMode::Liveness),
+            0x02 => Ok(WireMode::Comms),
+            0x45 => Ok(WireMode::Liveness),
             _ => Err(()),
         }
     }

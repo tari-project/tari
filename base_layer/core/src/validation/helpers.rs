@@ -41,9 +41,11 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
     rules: ConsensusManager,
 ) -> Result<(), ValidationError>
 {
+    trace!(target: LOG_TARGET, "Checking timestamp is not too far in the past",);
     if block_header.height == 0 || rules.get_genesis_block_hash() == block_header.hash() {
         return Ok(()); // Its the genesis block, so we dont have to check median
     }
+    trace!(target: LOG_TARGET, "Calculating median timestamp to height:{}", height);
     let min_height = height.saturating_sub(rules.consensus_constants().get_median_timestamp_count() as u64);
     let block_nums = (min_height..=height).collect();
     let timestamps = fetch_headers(db, block_nums)
@@ -51,7 +53,7 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
         .iter()
         .map(|h| h.timestamp)
         .collect::<Vec<_>>();
-    let median_timestamp = get_median_timestamp(timestamps).ok_or_else(|| {
+    let median_timestamp = get_median_timestamp(timestamps).ok_or({
         error!(target: LOG_TARGET, "Validation could not get median timestamp");
         ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestamp)
     })?;
@@ -78,6 +80,10 @@ pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
     rules: ConsensusManager,
 ) -> Result<(), ValidationError>
 {
+    trace!(
+        target: LOG_TARGET,
+        "Checking block has acheived the required difficulty",
+    );
     let achieved = block_header.achieved_difficulty();
     let pow_algo = block_header.pow.pow_algo;
     let target = if block_header.height > 0 || rules.get_genesis_block_hash() != block_header.hash() {

@@ -123,6 +123,11 @@ impl Block {
 
     /// This function will check all stxo to ensure that feature flags where followed
     pub fn check_stxo_rules(&self) -> Result<(), BlockValidationError> {
+        trace!(
+            target: LOG_TARGET,
+            "Checking maturity on inputs on block with hash {}",
+            self.hash().to_hex()
+        );
         for input in self.body.inputs() {
             if input.features.maturity > self.header.height {
                 warn!(

@@ -117,7 +117,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Cl
         let is_enabled = self.is_enabled;
         async move {
             if !is_enabled {
-                debug!(target: LOG_TARGET, "Passing message to next service (Not enabled)");
+                trace!(target: LOG_TARGET, "Passing message to next service (Not enabled)");
                 return next_service.oneshot(message).await;
             }
 
@@ -155,7 +155,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
 
         // The message has been forwarded, but other middleware may be interested (i.e. StoreMiddleware)
-        debug!(target: LOG_TARGET, "Passing message to next service");
+        trace!(target: LOG_TARGET, "Passing message to next service");
         self.next_service.oneshot(message).await?;
         Ok(())
     }

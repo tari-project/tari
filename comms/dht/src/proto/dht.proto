@@ -12,7 +12,6 @@ message JoinMessage {
     bytes node_id = 1;
     repeated string addresses = 2;
     uint64 peer_features = 3;
-    uint64 nonce = 4;
 }
 
 // The DiscoverMessage stores the information required for a network discover request.

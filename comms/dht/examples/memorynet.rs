@@ -368,7 +368,7 @@ async fn network_peer_list_stats(nodes: &[TestNode], wallets: &[TestNode]) {
         );
     }
     println!(
-        "Average {:.2}%",
+        "Average {}%",
         avg.into_iter().sum::<f32>() / wallets.len() as f32 * 100.0
     );
 }
@@ -395,11 +395,7 @@ async fn network_connectivity_stats(nodes: &[TestNode], wallets: &[TestNode]) {
     let (t, a) = display(wallets).await;
     total += t;
     avg += a;
-    println!(
-        "{} total connections on the network. ({} per node on average)",
-        total,
-        avg / (wallets.len() + nodes.len())
-    );
+    println!("{} total connections on the network. ({} average)", total, avg);
 }
 
 async fn do_store_and_forward_discovery(

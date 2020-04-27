@@ -12,8 +12,6 @@ pub struct JoinMessage {
     pub addresses: ::std::vec::Vec<std::string::String>,
     #[prost(uint64, tag = "3")]
     pub peer_features: u64,
-    #[prost(uint64, tag = "4")]
-    pub nonce: u64,
 }
 /// The DiscoverMessage stores the information required for a network discover request.
 ///

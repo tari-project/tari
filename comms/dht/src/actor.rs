@@ -62,7 +62,10 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::message_format::{MessageFormat, MessageFormatError};
+use tari_utilities::{
+    message_format::{MessageFormat, MessageFormatError},
+    ByteArray,
+};
 use tokio::task;
 use ttl_cache::TtlCache;
 
@@ -342,7 +345,11 @@ impl<'a> DhtActor<'a> {
         num_neighbouring_nodes: usize,
     ) -> Result<(), DhtActorError>
     {
-        let message = JoinMessage::from(&node_identity);
+        let message = JoinMessage {
+            node_id: node_identity.node_id().to_vec(),
+            addresses: vec![node_identity.public_address().to_string()],
+            peer_features: node_identity.features().bits(),
+        };
 
         debug!(
             target: LOG_TARGET,
@@ -749,7 +756,7 @@ mod test {
         let (actor_tx, actor_rx) = mpsc::channel(1);
         let mut requester = DhtRequester::new(actor_tx);
         let outbound_requester = OutboundMessageRequester::new(out_tx);
-        let mut shutdown = Shutdown::new();
+        let shutdown = Shutdown::new();
         let actor = DhtActor::new(
             Default::default(),
             db_connection().await,
@@ -793,7 +800,5 @@ mod test {
             .unwrap()
             .unwrap();
         assert_eq!(got_ts, ts);
-
-        shutdown.trigger().unwrap();
     }
 }

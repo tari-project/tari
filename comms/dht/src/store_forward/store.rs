@@ -430,7 +430,7 @@ mod test {
     use std::time::Duration;
     use tari_comms::{message::MessageExt, wrap_in_envelope_body};
     use tari_test_utils::async_assert_eventually;
-    use tari_utilities::hex::Hex;
+    use tari_utilities::{hex::Hex, ByteArray};
 
     #[tokio_macros::test_basic]
     async fn cleartext_message_no_origin() {
@@ -459,7 +459,12 @@ mod test {
         let spy = service_spy();
         let peer_manager = make_peer_manager();
         let node_identity = make_node_identity();
-        let join_msg_bytes = JoinMessage::from(&node_identity).to_encoded_bytes();
+        let join_msg_bytes = JoinMessage {
+            node_id: node_identity.node_id().to_vec(),
+            addresses: vec![],
+            peer_features: 0,
+        }
+        .to_encoded_bytes();
 
         let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, requester)
             .layer(spy.to_service::<PipelineError>());

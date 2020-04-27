@@ -62,20 +62,11 @@ impl StatelessValidation<Block> for StatelessBlockValidator {
     /// 1. Is the accounting correct?
     /// 1. Are all inputs allowed to be spent (Are the feature flags satisfied)
     fn validate(&self, block: &Block) -> Result<(), ValidationError> {
-        let block_id = format!("block #{} ({})", block.header.height, block.hash().to_hex());
         check_coinbase_output(block, &self.consensus_constants)?;
-        trace!(target: LOG_TARGET, "SV - Coinbase output is ok for {} ", &block_id);
         check_block_weight(block, &self.consensus_constants)?;
-        trace!(target: LOG_TARGET, "SV - Block weight is ok for {} ", &block_id);
         // Check that the inputs are are allowed to be spent
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
-        trace!(target: LOG_TARGET, "SV - Output constraints are ok for {} ", &block_id);
         check_cut_through(block)?;
-        trace!(target: LOG_TARGET, "SV - Cut-through is ok for {} ", &block_id);
-        info!(
-            target: LOG_TARGET,
-            "{} has PASSED stateless VALIDATION check.", &block_id
-        );
         Ok(())
     }
 }
@@ -103,37 +94,27 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator {
     /// 1. Is the Proof of Work valid?
     /// 1. Is the achieved difficulty of this block >= the target difficulty for this block?
     fn validate(&self, block: &Block, db: &B) -> Result<(), ValidationError> {
-        let block_id = format!("block #{} ({})", block.header.height, block.hash().to_hex());
+        trace!(
+            target: LOG_TARGET,
+            "Validating block at height {} with hash: {}",
+            block.header.height,
+            block.hash().to_hex()
+        );
         check_coinbase_output(block, &self.rules.consensus_constants())?;
-        trace!(target: LOG_TARGET, "FCV - Coinbase output ok for {}", &block_id);
         check_block_weight(block, &self.rules.consensus_constants())?;
-        trace!(target: LOG_TARGET, "FCV - Block weight ok for {}", &block_id);
         check_cut_through(block)?;
-        trace!(target: LOG_TARGET, "FCV - Cut-though correct for {}", &block_id);
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
-        trace!(target: LOG_TARGET, "FCV - Cut-though correct for {}", &block_id);
         check_accounting_balance(block, self.rules.clone(), &self.factories)?;
-        trace!(target: LOG_TARGET, "FCV - Cut-though correct for {}", &block_id);
         check_inputs_are_utxos(block, db)?;
-        trace!(target: LOG_TARGET, "FCV - All inputs are valid for {}", &block_id);
         check_mmr_roots(block, db)?;
-        trace!(target: LOG_TARGET, "FCV - MMR roots are valid for {}", &block_id);
         check_timestamp_ftl(&block.header, &self.rules)?;
-        trace!(target: LOG_TARGET, "FCV - FTL timetsamp is ok for {} ", &block_id);
         let tip_height = db
             .fetch_metadata()
             .map_err(|e| ValidationError::CustomError(e.to_string()))?
             .height_of_longest_chain
             .unwrap_or(0);
         check_median_timestamp(db, &block.header, tip_height, self.rules.clone())?;
-        trace!(target: LOG_TARGET, "FCV - Median timestamp is ok for {} ", &block_id);
         check_achieved_and_target_difficulty(db, &block.header, tip_height, self.rules.clone())?;
-        trace!(
-            target: LOG_TARGET,
-            "FCV - Achieved difficulty is ok ok for {} ",
-            &block_id
-        );
-        info!(target: LOG_TARGET, "FCV - Block is VALID for {}", &block_id);
         Ok(())
     }
 }
@@ -145,6 +126,11 @@ fn check_accounting_balance(
     factories: &CryptoFactories,
 ) -> Result<(), ValidationError>
 {
+    trace!(
+        target: LOG_TARGET,
+        "Checking accounting on block with hash {}",
+        block.hash().to_hex()
+    );
     let offset = &block.header.total_kernel_offset;
     let total_coinbase = rules.calculate_coinbase_and_fees(block);
     block
@@ -162,6 +148,11 @@ fn check_accounting_balance(
 }
 
 fn check_block_weight(block: &Block, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
+    trace!(
+        target: LOG_TARGET,
+        "Checking weight of block with hash {}",
+        block.hash().to_hex()
+    );
     // The genesis block has a larger weight than other blocks may have so we have to exclude it here
     if block.body.calculate_weight() <= consensus_constants.get_max_block_transaction_weight() ||
         block.header.height == 0
@@ -185,6 +176,7 @@ fn check_coinbase_output(block: &Block, consensus_constants: &ConsensusConstants
 
 /// This function checks that all inputs in the blocks are valid UTXO's to be spend
 fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
+    trace!(target: LOG_TARGET, "Checking input UXTOs exist",);
     for utxo in block.body.inputs() {
         if !(utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT)) &&
             !(is_utxo(db, utxo.hash())).map_err(|e| ValidationError::CustomError(e.to_string()))?
@@ -205,6 +197,10 @@ fn check_timestamp_ftl(
     consensus_manager: &ConsensusManager,
 ) -> Result<(), ValidationError>
 {
+    trace!(
+        target: LOG_TARGET,
+        "Checking timestamp is not too far in the future (FTL)",
+    );
     if block_header.timestamp > consensus_manager.consensus_constants().ftl() {
         warn!(
             target: LOG_TARGET,
@@ -219,6 +215,7 @@ fn check_timestamp_ftl(
 }
 
 fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
+    trace!(target: LOG_TARGET, "Checking MMR roots match",);
     let template = NewBlockTemplate::from(block.clone());
     let tmp_block = calculate_mmr_roots(db, template).map_err(|e| ValidationError::CustomError(e.to_string()))?;
     let tmp_header = &tmp_block.header;
