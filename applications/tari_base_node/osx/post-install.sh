@@ -163,7 +163,7 @@ fi
 brew services start tor
 brew services list
 
-echo "Sleeping fro 30sec while Tor starts up ..."
+echo "Sleeping for 30sec while Tor starts up ..."
 sleep 30
 
 # Check Tor service
