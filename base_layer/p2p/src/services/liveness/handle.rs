@@ -23,9 +23,10 @@
 use super::{error::LivenessError, state::Metadata};
 use crate::{proto::liveness::MetadataKey, services::liveness::state::NodeStats};
 use futures::{stream::Fuse, StreamExt};
-use tari_broadcast_channel::Subscriber;
+use std::sync::Arc;
 use tari_comms::peer_manager::NodeId;
 use tari_service_framework::reply_channel::SenderService;
+use tokio::sync::broadcast;
 use tower::Service;
 
 /// Request types made through the `LivenessHandle` and are handled by the `LivenessService`
@@ -45,6 +46,13 @@ pub enum LivenessRequest {
     AddNodeId(NodeId),
     /// Get stats for a monitored NodeId
     GetNodeIdStats(NodeId),
+    /// Remove a NodeId from the monitored list
+    RemoveNodeId(NodeId),
+    /// Clear all monitored NodeIds
+    ClearNodeIds,
+    /// Get the monitored node that has the best Liveness stats. Returns a NodeId if at least one node is being
+    /// monitored
+    GetBestMonitoredNodeId,
 }
 
 /// Response type for `LivenessService`
@@ -59,7 +67,10 @@ pub enum LivenessResponse {
     /// The number of active neighbouring peers
     NumActiveNeighbours(usize),
     NodeIdAdded,
+    NodeIdRemoved,
     NodeIdStats(NodeStats),
+    NodeIdsCleared,
+    BestMonitoredNodeId(Option<NodeId>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -89,7 +100,7 @@ pub struct PongEvent {
 }
 
 impl PongEvent {
-    pub(super) fn new(
+    pub fn new(
         node_id: NodeId,
         latency: Option<u32>,
         metadata: Metadata,
@@ -107,24 +118,30 @@ impl PongEvent {
     }
 }
 
+pub type LivenessEventSender = broadcast::Sender<Arc<LivenessEvent>>;
+pub type LivenessEventReceiver = broadcast::Receiver<Arc<LivenessEvent>>;
+
 #[derive(Clone)]
 pub struct LivenessHandle {
     handle: SenderService<LivenessRequest, Result<LivenessResponse, LivenessError>>,
-    event_stream: Subscriber<LivenessEvent>,
+    event_stream_sender: LivenessEventSender,
 }
 
 impl LivenessHandle {
     pub fn new(
         handle: SenderService<LivenessRequest, Result<LivenessResponse, LivenessError>>,
-        event_stream: Subscriber<LivenessEvent>,
+        event_stream_sender: LivenessEventSender,
     ) -> Self
     {
-        Self { handle, event_stream }
+        Self {
+            handle,
+            event_stream_sender,
+        }
     }
 
     /// Returns a fused event stream for the liveness service
-    pub fn get_event_stream_fused(&self) -> Fuse<Subscriber<LivenessEvent>> {
-        self.event_stream.clone().fuse()
+    pub fn get_event_stream_fused(&self) -> Fuse<LivenessEventReceiver> {
+        self.event_stream_sender.subscribe().fuse()
     }
 
     /// Send a ping to a given node ID
@@ -167,10 +184,26 @@ impl LivenessHandle {
         }
     }
 
+    /// Add NodeId to be monitored
+    pub async fn remove_node_id(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
+        match self.handle.call(LivenessRequest::RemoveNodeId(node_id)).await?? {
+            LivenessResponse::NodeIdRemoved => Ok(()),
+            _ => Err(LivenessError::UnexpectedApiResponse),
+        }
+    }
+
     /// Get stats for NodeId that is being monitored
     pub async fn get_node_id_stats(&mut self, node_id: NodeId) -> Result<NodeStats, LivenessError> {
         match self.handle.call(LivenessRequest::GetNodeIdStats(node_id)).await?? {
             LivenessResponse::NodeIdStats(n) => Ok(n),
+            _ => Err(LivenessError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Clear all NodeIds that are being monitored
+    pub async fn clear_node_ids(&mut self) -> Result<(), LivenessError> {
+        match self.handle.call(LivenessRequest::ClearNodeIds).await?? {
+            LivenessResponse::NodeIdsCleared => Ok(()),
             _ => Err(LivenessError::UnexpectedApiResponse),
         }
     }

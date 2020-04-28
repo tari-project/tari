@@ -85,7 +85,7 @@ use tari_core::{
     },
 };
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
-use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
+use tari_p2p::{domain_message::DomainMessage, services::liveness::LivenessHandle, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tokio::task::JoinHandle;
 
@@ -121,6 +121,7 @@ where TBackend: TransactionBackend + Clone + 'static
     db: TransactionDatabase<TBackend>,
     outbound_message_service: OutboundMessageRequester,
     output_manager_service: OutputManagerHandle,
+    liveness_service: LivenessHandle,
     transaction_stream: Option<TTxStream>,
     transaction_reply_stream: Option<TTxReplyStream>,
     transaction_finalized_stream: Option<TTxFinalizedStream>,
@@ -165,6 +166,7 @@ where
         base_node_response_stream: BNResponseStream,
         output_manager_service: OutputManagerHandle,
         outbound_message_service: OutboundMessageRequester,
+        liveness_service: LivenessHandle,
         event_publisher: TransactionEventSender,
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
@@ -176,6 +178,7 @@ where
             db: db.clone(),
             output_manager_service: output_manager_service.clone(),
             outbound_message_service: outbound_message_service.clone(),
+            liveness_service: liveness_service.clone(),
             event_publisher: event_publisher.clone(),
             node_identity: node_identity.clone(),
             factories: factories.clone(),
@@ -185,6 +188,7 @@ where
             db,
             outbound_message_service,
             output_manager_service,
+            liveness_service,
             transaction_stream: Some(transaction_stream),
             transaction_reply_stream: Some(transaction_reply_stream),
             transaction_finalized_stream: Some(transaction_finalized_stream),
@@ -338,21 +342,21 @@ where
                     trace!(target: LOG_TARGET, "Send Protocol for Transaction has ended with result {:?}", join_result);
                     match join_result {
                         Ok(join_result_inner) => self.complete_send_transaction_protocol(join_result_inner, &mut transaction_broadcast_protocol_handles).await,
-                        Err(e) => error!(target: LOG_TARGET, "Error resolving Join Handle: {:?}", e),
+                        Err(e) => error!(target: LOG_TARGET, "Error resolving Send Transaction Protocol: {:?}", e),
                     };
                 }
                 join_result = transaction_broadcast_protocol_handles.select_next_some() => {
                     trace!(target: LOG_TARGET, "Transaction Broadcast protocol has ended with result {:?}", join_result);
                     match join_result {
                         Ok(join_result_inner) => self.complete_transaction_broadcast_protocol(join_result_inner, &mut transaction_chain_monitoring_protocol_handles).await,
-                        Err(e) => error!(target: LOG_TARGET, "Error resolving Join Handle: {:?}", e),
+                        Err(e) => error!(target: LOG_TARGET, "Error resolving Broadcast Protocol: {:?}", e),
                     };
                 }
                 join_result = transaction_chain_monitoring_protocol_handles.select_next_some() => {
                     trace!(target: LOG_TARGET, "Transaction chain monitoring protocol has ended with result {:?}", join_result);
                     match join_result {
                         Ok(join_result_inner) => self.complete_transaction_chain_monitoring_protocol(join_result_inner),
-                        Err(e) => error!(target: LOG_TARGET, "Error resolving Join Handle: {:?}", e),
+                        Err(e) => error!(target: LOG_TARGET, "Error resolving Chain Monitoring protocol: {:?}", e),
                     };
                 }
                 complete => {
@@ -541,8 +545,10 @@ where
         >,
     )
     {
+        let tx_id;
         match join_result {
             Ok(id) => {
+                tx_id = id;
                 let _ = self.pending_transaction_reply_senders.remove(&id);
                 let _ = self.send_transaction_cancellation_senders.remove(&id);
                 let _ = self
@@ -562,6 +568,7 @@ where
                 );
             },
             Err(TransactionServiceProtocolError { id, error }) => {
+                tx_id = id;
                 let _ = self.pending_transaction_reply_senders.remove(&id);
                 let _ = self.send_transaction_cancellation_senders.remove(&id);
                 error!(
@@ -573,6 +580,37 @@ where
                     .send(Arc::new(TransactionEvent::Error(format!("{:?}", error))));
             },
         }
+        // Find counter-party's public key to be removed from liveness service monitoring
+        let node_id;
+        if let Ok(pub_key) = self
+            .db
+            .get_pending_transaction_counterparty_pub_key_by_tx_id(tx_id)
+            .await
+        {
+            match NodeId::from_key(&pub_key) {
+                Ok(n) => node_id = n,
+                Err(_) => return,
+            }
+        } else {
+            match self.db.get_completed_transaction(tx_id).await {
+                Ok(tx) => {
+                    if &tx.source_public_key == self.node_identity.public_key() {
+                        match NodeId::from_key(&tx.destination_public_key) {
+                            Ok(n) => node_id = n,
+                            Err(_) => return,
+                        }
+                    } else {
+                        match NodeId::from_key(&tx.source_public_key) {
+                            Ok(n) => node_id = n,
+                            Err(_) => return,
+                        }
+                    }
+                },
+                _ => return,
+            }
+        }
+        // Attempt to remove this node_id from the nodes to be monitored. Error squashed
+        let _ = self.liveness_service.remove_node_id(node_id).await;
     }
 
     /// Cancel a pending outbound transaction
@@ -1591,6 +1629,7 @@ where TBackend: TransactionBackend + Clone + 'static
     pub db: TransactionDatabase<TBackend>,
     pub output_manager_service: OutputManagerHandle,
     pub outbound_message_service: OutboundMessageRequester,
+    pub liveness_service: LivenessHandle,
     pub event_publisher: TransactionEventSender,
     pub node_identity: Arc<NodeIdentity>,
     pub factories: CryptoFactories,

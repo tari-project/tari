@@ -83,6 +83,11 @@ pub trait TransactionBackend: Send + Sync {
     fn cancel_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Cancel Completed transaction, this will update the transaction status
     fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
+    /// Search all oending transaction for the provided tx_id and if it exists return the public key of the counterparty
+    fn get_pending_transaction_counterparty_pub_key_by_tx_id(
+        &self,
+        tx_id: TxId,
+    ) -> Result<CommsPublicKey, TransactionStorageError>;
     /// Update a completed transactions timestamp for use in test data generation
     #[cfg(feature = "test_harness")]
     fn update_completed_transaction_timestamp(
@@ -463,6 +468,19 @@ where T: TransactionBackend + 'static
         .await
         .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(t)
+    }
+
+    pub async fn get_pending_transaction_counterparty_pub_key_by_tx_id(
+        &mut self,
+        tx_id: TxId,
+    ) -> Result<CommsPublicKey, TransactionStorageError>
+    {
+        let db_clone = self.db.clone();
+        let pub_key =
+            tokio::task::spawn_blocking(move || db_clone.get_pending_transaction_counterparty_pub_key_by_tx_id(tx_id))
+                .await
+                .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        Ok(pub_key)
     }
 
     pub async fn get_pending_coinbase_transactions(

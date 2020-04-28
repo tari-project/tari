@@ -107,13 +107,8 @@ async fn end_to_end() {
     )
     .await;
 
-    for _ in 0..5 {
-        liveness2.send_ping(node_1_identity.node_id().clone()).await.unwrap();
-    }
-
-    for _ in 0..4 {
-        liveness1.send_ping(node_2_identity.node_id().clone()).await.unwrap();
-    }
+    let liveness1_event_stream = liveness1.get_event_stream_fused();
+    let liveness2_event_stream = liveness2.get_event_stream_fused();
 
     for _ in 0..5 {
         liveness2.send_ping(node_1_identity.node_id().clone()).await.unwrap();
@@ -123,15 +118,19 @@ async fn end_to_end() {
         liveness1.send_ping(node_2_identity.node_id().clone()).await.unwrap();
     }
 
-    let events = collect_stream!(
-        liveness1.get_event_stream_fused(),
-        take = 18,
-        timeout = Duration::from_secs(20),
-    );
+    for _ in 0..5 {
+        liveness2.send_ping(node_1_identity.node_id().clone()).await.unwrap();
+    }
+
+    for _ in 0..4 {
+        liveness1.send_ping(node_2_identity.node_id().clone()).await.unwrap();
+    }
+
+    let events = collect_stream!(liveness1_event_stream, take = 18, timeout = Duration::from_secs(20),);
 
     let ping_count = events
         .iter()
-        .filter(|event| match ***event {
+        .filter(|event| match **(**event).as_ref().unwrap() {
             LivenessEvent::ReceivedPing => true,
             _ => false,
         })
@@ -141,7 +140,7 @@ async fn end_to_end() {
 
     let pong_count = events
         .iter()
-        .filter(|event| match ***event {
+        .filter(|event| match **(**event).as_ref().unwrap() {
             LivenessEvent::ReceivedPong(_) => true,
             _ => false,
         })
@@ -149,15 +148,11 @@ async fn end_to_end() {
 
     assert_eq!(pong_count, 8);
 
-    let events = collect_stream!(
-        liveness2.get_event_stream_fused(),
-        take = 18,
-        timeout = Duration::from_secs(10),
-    );
+    let events = collect_stream!(liveness2_event_stream, take = 18, timeout = Duration::from_secs(10),);
 
     let ping_count = events
         .iter()
-        .filter(|event| match ***event {
+        .filter(|event| match **(**event).as_ref().unwrap() {
             LivenessEvent::ReceivedPing => true,
             _ => false,
         })
@@ -167,7 +162,7 @@ async fn end_to_end() {
 
     let pong_count = events
         .iter()
-        .filter(|event| match ***event {
+        .filter(|event| match **(**event).as_ref().unwrap() {
             LivenessEvent::ReceivedPong(_) => true,
             _ => false,
         })
