@@ -22,5 +22,5 @@
 
 pub mod error;
 pub mod models;
-// pub mod postgres_db;
+pub mod postgres_db;
 pub mod schema;

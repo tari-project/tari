@@ -45,12 +45,31 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    /// This will fetch the current meta from the database
-    pub fn fetch(conn: &PgConnection) -> Result<ChainMetadata, PostgresError> {
+    /// This will fetch the current meta key from the database
+    pub fn fetch(key: &MetadataKey, conn: &PgConnection) -> Result<MetadataValue, PostgresError> {
         let row: Metadata = metadata::table
             .first(conn)
             .map_err(|e| PostgresError::NotFound(e.to_string()))?;
 
+        let value = match key {
+            MetadataKey::ChainHeight => MetadataValue::ChainHeight(row.chain_height.map(|ch| ch as u64)),
+            MetadataKey::BestBlock => MetadataValue::BestBlock(match row.best_block {
+                Some(b) => Some(BlockHash::from_hex(&b)?),
+                None => None,
+            }),
+            MetadataKey::AccumulatedWork => {
+                MetadataValue::AccumulatedWork(row.accumulated_work.map(|w| (w as u64).into()))
+            },
+            MetadataKey::PruningHorizon => MetadataValue::PruningHorizon(row.pruning_horizon as u64),
+        };
+        Ok(value)
+    }
+
+    /// This will fetch the current meta from the database
+    pub fn fetch_meta(conn: &PgConnection) -> Result<ChainMetadata, PostgresError> {
+        let row: Metadata = metadata::table
+            .first(conn)
+            .map_err(|e| PostgresError::NotFound(e.to_string()))?;
         let value = row.into();
         Ok(value)
     }

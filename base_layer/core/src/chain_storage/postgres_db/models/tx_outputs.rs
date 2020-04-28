@@ -21,14 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::postgres_db::{error::PostgresError, schema::*},
+    chain_storage::{
+        postgres_db::{error::PostgresError, schema::*},
+        DbValue,
+    },
     transactions::{
         transaction::{OutputFeatures, OutputFlags, TransactionOutput},
         types::{Commitment, HashOutput, RangeProof},
     },
 };
 use diesel::{self, prelude::*};
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use tari_crypto::tari_utilities::{byte_array::ByteArray, hex::Hex, Hashable};
 
 #[derive(Queryable, Identifiable, Insertable)]
@@ -84,7 +87,7 @@ impl TxOutput {
 
     /// This will fetch all block inputs of the given block
     pub fn fetch_block_inputs(hash: &HashOutput, conn: &PgConnection) -> Result<Vec<TxOutput>, PostgresError> {
-        let mut results: Vec<TxOutput> = tx_outputs::table
+        let results: Vec<TxOutput> = tx_outputs::table
             .filter(tx_outputs::spent.eq(hash.to_hex()))
             .get_results(conn)
             .map_err(|e| PostgresError::NotFound(e.to_string()))?;
@@ -92,15 +95,26 @@ impl TxOutput {
         Ok(results)
     }
 
-    // This will a transactional output only if the output is unspent
-    pub fn fetch_unspent_output(hash: &HashOutput, conn: &PgConnection) -> Result<Vec<TxOutput>, PostgresError> {
-        let results: Vec<TxOutput> = tx_outputs::table
+    // This will fetch a transactional output only if the output is unspent
+    pub fn fetch_unspent_output(hash: &HashOutput, conn: &PgConnection) -> Result<Option<TxOutput>, PostgresError> {
+        let mut results: Vec<TxOutput> = tx_outputs::table
             .filter(tx_outputs::hash.eq(hash.to_hex()))
             .filter(tx_outputs::spent.is_null())
             .get_results(conn)
             .map_err(|e| PostgresError::NotFound(e.to_string()))?;
 
-        Ok(results)
+        Ok(results.pop())
+    }
+
+    // This will fetch a transactional output only if the output is spent
+    pub fn fetch_spent_output(hash: &HashOutput, conn: &PgConnection) -> Result<Option<TxOutput>, PostgresError> {
+        let mut results: Vec<TxOutput> = tx_outputs::table
+            .filter(tx_outputs::hash.eq(hash.to_hex()))
+            .filter(tx_outputs::spent.is_not_null())
+            .get_results(conn)
+            .map_err(|e| PostgresError::NotFound(e.to_string()))?;
+
+        Ok(results.pop())
     }
 
     /// Creates a TxOutput from the provided TransactionalOutput
@@ -140,5 +154,14 @@ impl TryFrom<TxOutput> for TransactionOutput {
             return Err(PostgresError::Other("tx and tx hash don't match".to_string()));
         }
         Ok(result)
+    }
+}
+
+impl TryFrom<TxOutput> for DbValue {
+    type Error = PostgresError;
+
+    fn try_from(value: TxOutput) -> Result<Self, Self::Error> {
+        let result: TransactionOutput = value.try_into()?;
+        Ok(DbValue::UnspentOutput(Box::new(result)))
     }
 }

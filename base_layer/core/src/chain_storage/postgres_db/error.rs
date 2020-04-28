@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::chain_storage::ChainStorageError;
-use diesel::{result::Error as DieselError, ConnectionError};
-use tari_crypto::tari_utilities::hex::HexError;
+use diesel::ConnectionError;
+use tari_crypto::tari_utilities::{byte_array::ByteArrayError, hex::HexError};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -40,6 +40,11 @@ pub enum PostgresError {
         #[from]
         source: HexError,
     },
+    #[error("Could not deserialize data")]
+    ByteSerializationError {
+        #[from]
+        source: ByteArrayError,
+    },
     #[error("Could not deserialize json data")]
     JsonSerializationError {
         #[from]
@@ -50,10 +55,15 @@ pub enum PostgresError {
         #[from]
         source: ConnectionError,
     },
-    #[error("Some diesel error")]
-    DBError {
+    #[error("Chain storage error")]
+    ChainStorageError {
         #[from]
-        source: DieselError,
+        source: ChainStorageError,
+    },
+    #[error("Diesel rs error")]
+    DieselStorageError {
+        #[from]
+        source: diesel::result::Error,
     },
 }
 
@@ -62,3 +72,9 @@ impl From<PostgresError> for ChainStorageError {
         ChainStorageError::AccessError(format!("Postgres error:{}", e))
     }
 }
+
+// impl From<diesel::result::Error> for PostgresError {
+//     fn from(e: diesel::result::Error) -> Self {
+//         PostgresError::Other("meh".to_string())
+//     }
+// }
