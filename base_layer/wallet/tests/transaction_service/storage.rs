@@ -162,6 +162,20 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         );
     }
 
+    let inbound_pub_key = runtime
+        .block_on(db.get_pending_transaction_counterparty_pub_key_by_tx_id(inbound_txs[0].tx_id))
+        .unwrap();
+    assert_eq!(inbound_pub_key, inbound_txs[0].source_public_key);
+
+    assert!(runtime
+        .block_on(db.get_pending_transaction_counterparty_pub_key_by_tx_id(100))
+        .is_err());
+
+    let outbound_pub_key = runtime
+        .block_on(db.get_pending_transaction_counterparty_pub_key_by_tx_id(outbound_txs[0].tx_id))
+        .unwrap();
+    assert_eq!(outbound_pub_key, outbound_txs[0].destination_public_key);
+
     let mut coinbases = Vec::new();
     for i in 0..messages.len() {
         coinbases.push(PendingCoinbaseTransaction {

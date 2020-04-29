@@ -31,6 +31,7 @@ use serde_json::Error as SerdeJsonError;
 use tari_comms::peer_manager::node_id::NodeIdError;
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
+use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use time::OutOfRangeError;
 use tokio::sync::broadcast::RecvError;
@@ -100,6 +101,7 @@ pub enum TransactionServiceError {
     NodeIdError(NodeIdError),
     BroadcastRecvError(RecvError),
     OneshotCancelled(Canceled),
+    LivenessError(LivenessError),
 }
 
 #[derive(Debug, Error)]

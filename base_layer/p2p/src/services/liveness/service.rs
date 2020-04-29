@@ -31,13 +31,12 @@ use super::{
 };
 use crate::{
     domain_message::DomainMessage,
-    services::liveness::{peer_pool::PeerPool, LivenessEvent, PongEvent},
+    services::liveness::{handle::LivenessEventSender, peer_pool::PeerPool, LivenessEvent, PongEvent},
     tari_message::TariMessageType,
 };
-use futures::{future::Either, pin_mut, stream::StreamExt, SinkExt, Stream};
+use futures::{future::Either, pin_mut, stream::StreamExt, Stream};
 use log::*;
-use std::{cmp, time::Instant};
-use tari_broadcast_channel::Publisher;
+use std::{cmp, sync::Arc, time::Instant};
 use tari_comms::{
     connection_manager::ConnectionManagerRequester,
     peer_manager::NodeId,
@@ -62,7 +61,7 @@ pub struct LivenessService<THandleStream, TPingStream> {
     state: LivenessState,
     dht_requester: DhtRequester,
     oms_handle: OutboundMessageRequester,
-    event_publisher: Publisher<LivenessEvent>,
+    event_publisher: LivenessEventSender,
     connection_manager: ConnectionManagerRequester,
     shutdown_signal: Option<ShutdownSignal>,
     neighbours: PeerPool,
@@ -84,7 +83,7 @@ where
         dht_requester: DhtRequester,
         connection_manager: ConnectionManagerRequester,
         oms_handle: OutboundMessageRequester,
-        event_publisher: Publisher<LivenessEvent>,
+        event_publisher: LivenessEventSender,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
@@ -187,7 +186,7 @@ where
                 self.send_pong(ping_pong_msg.nonce, public_key).await.unwrap();
                 self.state.inc_pongs_sent();
 
-                self.publish_event(LivenessEvent::ReceivedPing).await?;
+                self.publish_event(LivenessEvent::ReceivedPing);
             },
             PingPong::Pong => {
                 if !self.state.is_inflight(ping_pong_msg.nonce) {
@@ -220,8 +219,7 @@ where
                     is_monitored,
                 );
 
-                self.publish_event(LivenessEvent::ReceivedPong(Box::new(pong_event)))
-                    .await?;
+                self.publish_event(LivenessEvent::ReceivedPong(Box::new(pong_event)));
             },
         }
         Ok(())
@@ -304,10 +302,19 @@ where
                 self.send_ping(node_id.clone()).await?;
                 Ok(LivenessResponse::NodeIdAdded)
             },
+            RemoveNodeId(node_id) => {
+                self.state.remove_node_id(&node_id);
+                Ok(LivenessResponse::NodeIdRemoved)
+            },
             GetNodeIdStats(node_id) => self
                 .state
                 .get_node_id_stats(&node_id)
                 .map(LivenessResponse::NodeIdStats),
+            ClearNodeIds => {
+                self.state.clear_node_ids();
+                Ok(LivenessResponse::NodeIdsCleared)
+            },
+            GetBestMonitoredNodeId => Ok(LivenessResponse::BestMonitoredNodeId(self.state.get_best_node_id()?)),
         }
     }
 
@@ -459,8 +466,7 @@ where
                 .await?;
         }
 
-        self.publish_event(LivenessEvent::BroadcastedNeighbourPings(len_peers))
-            .await?;
+        self.publish_event(LivenessEvent::BroadcastedNeighbourPings(len_peers));
 
         Ok(())
     }
@@ -486,17 +492,18 @@ where
                     .map_err(Into::<DhtOutboundError>::into)?;
             }
 
-            self.publish_event(LivenessEvent::BroadcastedMonitoredNodeIdPings(num_nodes))
-                .await?;
+            self.publish_event(LivenessEvent::BroadcastedMonitoredNodeIdPings(num_nodes));
         }
         Ok(())
     }
 
-    async fn publish_event(&mut self, event: LivenessEvent) -> Result<(), LivenessError> {
-        self.event_publisher
-            .send(event)
-            .await
-            .map_err(|_| LivenessError::EventStreamError)
+    fn publish_event(&mut self, event: LivenessEvent) {
+        let _ = self.event_publisher.send(Arc::new(event)).map_err(|_| {
+            trace!(
+                target: LOG_TARGET,
+                "Could not publish LivenessEvent as there are no subscribers"
+            )
+        });
     }
 
     fn get_ping_count(&self) -> usize {
@@ -515,10 +522,9 @@ mod test {
         proto::liveness::MetadataKey,
         services::liveness::{handle::LivenessHandle, state::Metadata},
     };
-    use futures::{channel::mpsc, stream};
+    use futures::{channel::mpsc, stream, FutureExt};
     use rand::rngs::OsRng;
     use std::time::Duration;
-    use tari_broadcast_channel as broadcast_channel;
     use tari_comms::{
         multiaddr::Multiaddr,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
@@ -531,8 +537,7 @@ mod test {
     use tari_crypto::keys::PublicKey;
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
-    use tari_test_utils::collect_stream;
-    use tokio::{sync::broadcast, task};
+    use tokio::{sync::broadcast, task, time::delay_for};
 
     #[tokio_macros::test_basic]
     async fn get_ping_pong_count() {
@@ -547,8 +552,9 @@ mod test {
 
         // Setup liveness service
         let (sender_service, receiver) = reply_channel::unbounded();
-        let (publisher, subscriber) = broadcast_channel::bounded(100);
-        let mut liveness_handle = LivenessHandle::new(sender_service, subscriber);
+        let (publisher, _) = broadcast::channel(200);
+
+        let mut liveness_handle = LivenessHandle::new(sender_service, publisher.clone());
 
         let (dht_tx, _) = mpsc::channel(10);
         let dht_requester = DhtRequester::new(dht_tx);
@@ -590,8 +596,8 @@ mod test {
 
         // Setup liveness service
         let (sender_service, receiver) = reply_channel::unbounded();
-        let (publisher, subscriber) = broadcast_channel::bounded(100);
-        let mut liveness_handle = LivenessHandle::new(sender_service, subscriber);
+        let (publisher, _) = broadcast::channel(200);
+        let mut liveness_handle = LivenessHandle::new(sender_service, publisher.clone());
 
         let (dht_tx, _) = mpsc::channel(10);
         let dht_requester = DhtRequester::new(dht_tx);
@@ -671,12 +677,11 @@ mod test {
         let (dht_tx, _) = mpsc::channel(10);
         let dht_requester = DhtRequester::new(dht_tx);
         // Setup liveness service
-        let (publisher, _subscriber) = broadcast_channel::bounded(100);
+        let (publisher, _) = broadcast::channel(200);
 
         let (tx, _) = mpsc::channel(0);
         let (event_tx, _) = broadcast::channel(1);
         let connection_manager = ConnectionManagerRequester::new(tx, event_tx);
-
         let shutdown = Shutdown::new();
         let service = LivenessService::new(
             Default::default(),
@@ -734,7 +739,7 @@ mod test {
         let connection_manager = ConnectionManagerRequester::new(tx, event_tx);
 
         // Setup liveness service
-        let (publisher, subscriber) = broadcast_channel::bounded(100);
+        let (publisher, _) = broadcast::channel(200);
         let mut shutdown = Shutdown::new();
         let service = LivenessService::new(
             Default::default(),
@@ -744,16 +749,18 @@ mod test {
             dht_requester,
             connection_manager,
             oms_handle,
-            publisher,
+            publisher.clone(),
             shutdown.to_signal(),
         );
 
         task::spawn(service.run());
 
         // Listen for the pong event
-        let mut subscriber = subscriber.fuse();
-        let event = time::timeout(Duration::from_secs(10), subscriber.select_next_some())
+        let subscriber = publisher.subscribe();
+
+        let event = time::timeout(Duration::from_secs(10), subscriber.fuse().select_next_some())
             .await
+            .unwrap()
             .unwrap();
 
         match &*event {
@@ -766,7 +773,20 @@ mod test {
         shutdown.trigger().unwrap();
 
         // No further events (malicious_msg was ignored)
-        let events = collect_stream!(subscriber, timeout = Duration::from_secs(10));
-        assert_eq!(events.len(), 0);
+        let mut subscriber = publisher.subscribe().fuse();
+
+        let mut delay = delay_for(Duration::from_secs(10)).fuse();
+        let mut count: i32 = 0;
+        loop {
+            futures::select! {
+                _ = subscriber.select_next_some() => {
+                    count+=1;
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert_eq!(count, 0);
     }
 }

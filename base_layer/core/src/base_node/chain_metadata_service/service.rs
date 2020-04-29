@@ -90,11 +90,13 @@ impl ChainMetadataService {
                 },
 
                 liveness_event = liveness_event_stream.select_next_some() => {
-                    log_if_error!(
-                        target: LOG_TARGET,
-                        "Failed to handle liveness event because '{}'",
-                        self.handle_liveness_event(&liveness_event).await
-                    );
+                    if let Ok(event) = liveness_event {
+                        log_if_error!(
+                            target: LOG_TARGET,
+                            "Failed to handle liveness event because '{}'",
+                            self.handle_liveness_event(&*event).await
+                        );
+                    }
                 },
 
                 complete => {
@@ -253,7 +255,7 @@ mod test {
     #[test]
     fn update_liveness_chain_metadata() {
         runtime::test_async(|rt| {
-            let (liveness_handle, liveness_mock) = create_p2p_liveness_mock(1);
+            let (liveness_handle, liveness_mock, _) = create_p2p_liveness_mock(1);
             let liveness_mock_state = liveness_mock.get_mock_state();
             rt.spawn(liveness_mock.run());
 
@@ -288,7 +290,7 @@ mod test {
 
     #[tokio_macros::test]
     async fn handle_liveness_event_ok() {
-        let (liveness_handle, _) = create_p2p_liveness_mock(1);
+        let (liveness_handle, _, _) = create_p2p_liveness_mock(1);
         let mut metadata = Metadata::new();
         let proto_chain_metadata = create_sample_proto_chain_metadata();
         metadata.insert(MetadataKey::ChainMetadata, proto_chain_metadata.to_encoded_bytes());
@@ -323,7 +325,7 @@ mod test {
 
     #[tokio_macros::test]
     async fn handle_liveness_event_no_metadata() {
-        let (liveness_handle, _) = create_p2p_liveness_mock(1);
+        let (liveness_handle, _, _) = create_p2p_liveness_mock(1);
         let metadata = Metadata::new();
         let node_id = NodeId::new();
         let pong_event = PongEvent {
@@ -346,7 +348,7 @@ mod test {
 
     #[tokio_macros::test]
     async fn handle_liveness_event_bad_metadata() {
-        let (liveness_handle, _) = create_p2p_liveness_mock(1);
+        let (liveness_handle, _, _) = create_p2p_liveness_mock(1);
         let mut metadata = Metadata::new();
         metadata.insert(MetadataKey::ChainMetadata, b"no-good".to_vec());
         let node_id = NodeId::new();

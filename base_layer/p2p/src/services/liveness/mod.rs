@@ -53,7 +53,6 @@ use crate::{
 use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
-use tari_broadcast_channel as broadcast_channel;
 use tari_comms_dht::{outbound::OutboundMessageRequester, DhtRequester};
 use tari_pubsub::TopicSubscriptionFactory;
 use tari_service_framework::{
@@ -71,11 +70,12 @@ pub mod mock;
 // Public exports
 pub use self::{
     config::LivenessConfig,
-    handle::{LivenessEvent, LivenessHandle, LivenessRequest, LivenessResponse, PongEvent},
+    handle::{LivenessEvent, LivenessEventSender, LivenessHandle, LivenessRequest, LivenessResponse, PongEvent},
     state::Metadata,
 };
 pub use crate::proto::liveness::MetadataKey;
 use tari_comms::connection_manager::ConnectionManagerRequester;
+use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "p2p::services::liveness";
 
@@ -125,9 +125,9 @@ impl ServiceInitializer for LivenessInitializer {
     {
         let (sender, receiver) = reply_channel::unbounded();
 
-        let (publisher, subscriber) = broadcast_channel::bounded(100);
+        let (publisher, _) = broadcast::channel(200);
 
-        let liveness_handle = LivenessHandle::new(sender, subscriber);
+        let liveness_handle = LivenessHandle::new(sender, publisher.clone());
 
         // Saving a clone
         let config = self

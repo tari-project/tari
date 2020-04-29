@@ -292,7 +292,7 @@ mod pingpong {
         loop {
             ::futures::select! {
                 event = event_stream.select_next_some() => {
-                    match &*event {
+                    match &*(event.unwrap()) {
                         LivenessEvent::ReceivedPing => {
                             {
                                 let mut lock = UI_STATE.write().unwrap();

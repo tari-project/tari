@@ -22,44 +22,46 @@
 
 use crate::services::liveness::{
     error::LivenessError,
+    handle::LivenessEventSender,
     state::NodeStats,
     LivenessEvent,
     LivenessHandle,
     LivenessRequest,
     LivenessResponse,
 };
-use futures::{SinkExt, StreamExt};
+use futures::StreamExt;
 use log::*;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
     RwLock,
 };
-use tari_broadcast_channel as broadcast_channel;
-use tari_broadcast_channel::{Publisher, SendError};
+
 use tari_crypto::tari_utilities::acquire_write_lock;
 use tari_service_framework::{reply_channel, RequestContext};
+use tokio::sync::{broadcast, broadcast::SendError};
 
 const LOG_TARGET: &str = "p2p::liveness_mock";
 
-pub fn create_p2p_liveness_mock(buf_size: usize) -> (LivenessHandle, LivenessMock) {
+pub fn create_p2p_liveness_mock(buf_size: usize) -> (LivenessHandle, LivenessMock, LivenessEventSender) {
     let (sender, receiver) = reply_channel::unbounded();
-    let (publisher, subscriber) = broadcast_channel::bounded(buf_size);
+    let (publisher, _) = broadcast::channel(buf_size);
     (
-        LivenessHandle::new(sender, subscriber),
-        LivenessMock::new(receiver, LivenessMockState::new(publisher)),
+        LivenessHandle::new(sender, publisher.clone()),
+        LivenessMock::new(receiver, LivenessMockState::new(publisher.clone())),
+        publisher,
     )
 }
 
 #[derive(Debug, Clone)]
 pub struct LivenessMockState {
     call_count: Arc<AtomicUsize>,
-    event_publisher: Arc<RwLock<Publisher<LivenessEvent>>>,
+    event_publisher: Arc<RwLock<LivenessEventSender>>,
     calls: Arc<RwLock<Vec<LivenessRequest>>>,
 }
 
 impl LivenessMockState {
-    pub fn new(event_publisher: Publisher<LivenessEvent>) -> Self {
+    pub fn new(event_publisher: LivenessEventSender) -> Self {
         Self {
             call_count: Arc::new(AtomicUsize::new(0)),
             event_publisher: Arc::new(RwLock::new(event_publisher)),
@@ -67,8 +69,9 @@ impl LivenessMockState {
         }
     }
 
-    pub async fn publish_event(&self, event: LivenessEvent) -> Result<(), SendError<LivenessEvent>> {
-        acquire_write_lock!(self.event_publisher).send(event).await
+    pub async fn publish_event(&self, event: LivenessEvent) -> Result<(), SendError<Arc<LivenessEvent>>> {
+        acquire_write_lock!(self.event_publisher).send(Arc::new(event))?;
+        Ok(())
     }
 
     pub fn add_request_call(&self, req: LivenessRequest) {
@@ -139,6 +142,15 @@ impl LivenessMock {
             GetNodeIdStats(_n) => reply_tx
                 .send(Ok(LivenessResponse::NodeIdStats(NodeStats::new())))
                 .unwrap(),
+            RemoveNodeId(_) => {
+                reply_tx.send(Ok(LivenessResponse::NodeIdRemoved)).unwrap();
+            },
+            ClearNodeIds => {
+                reply_tx.send(Ok(LivenessResponse::NodeIdsCleared)).unwrap();
+            },
+            GetBestMonitoredNodeId => {
+                reply_tx.send(Ok(LivenessResponse::BestMonitoredNodeId(None))).unwrap();
+            },
         }
     }
 }

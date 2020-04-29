@@ -257,16 +257,26 @@ impl SenderTransactionProtocol {
     pub fn build_single_round_message(&mut self) -> Result<SingleRoundSenderData, TPE> {
         match &self.state {
             SenderState::SingleRoundMessageReady(info) => {
-                let result = SingleRoundSenderData {
+                let result = self.get_single_round_message()?;
+                self.state = SenderState::CollectingSingleSignature(info.clone());
+                Ok(result)
+            },
+            _ => Err(TPE::InvalidStateError),
+        }
+    }
+
+    /// Return the single round sender message
+    pub fn get_single_round_message(&self) -> Result<SingleRoundSenderData, TPE> {
+        match &self.state {
+            SenderState::SingleRoundMessageReady(info) | SenderState::CollectingSingleSignature(info) => {
+                Ok(SingleRoundSenderData {
                     tx_id: info.ids[0],
                     amount: self.get_total_amount().unwrap(),
                     public_nonce: info.public_nonce.clone(),
                     public_excess: info.public_excess.clone(),
                     metadata: info.metadata.clone(),
                     message: info.message.clone(),
-                };
-                self.state = SenderState::CollectingSingleSignature(info.clone());
-                Ok(result)
+                })
             },
             _ => Err(TPE::InvalidStateError),
         }

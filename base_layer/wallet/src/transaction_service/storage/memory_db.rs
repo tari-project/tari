@@ -44,6 +44,7 @@ use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
 };
+use tari_comms::types::CommsPublicKey;
 
 #[derive(Default)]
 struct InnerDatabase {
@@ -248,6 +249,23 @@ impl TransactionBackend for TransactionMemoryDatabase {
             db.pending_inbound_transactions.contains_key(&tx_id) ||
             db.pending_coinbase_transactions.contains_key(&tx_id) ||
             db.completed_transactions.contains_key(&tx_id))
+    }
+
+    fn get_pending_transaction_counterparty_pub_key_by_tx_id(
+        &self,
+        tx_id: u64,
+    ) -> Result<CommsPublicKey, TransactionStorageError>
+    {
+        let db = acquire_read_lock!(self.db);
+
+        if let Some(pending_inbound_tx) = db.pending_inbound_transactions.get(&tx_id) {
+            return Ok(pending_inbound_tx.source_public_key.clone());
+        } else {
+            if let Some(pending_outbound_tx) = db.pending_outbound_transactions.get(&tx_id) {
+                return Ok(pending_outbound_tx.destination_public_key.clone());
+            }
+        }
+        Err(TransactionStorageError::ValuesNotFound)
     }
 
     fn complete_outbound_transaction(

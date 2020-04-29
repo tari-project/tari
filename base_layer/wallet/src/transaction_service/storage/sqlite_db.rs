@@ -46,6 +46,7 @@ use std::{
     convert::TryFrom,
     sync::{Arc, Mutex, MutexGuard},
 };
+use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
     types::{Commitment, PublicKey},
@@ -263,6 +264,24 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             InboundTransactionSql::find(tx_id, &(*conn)).is_ok() ||
             PendingCoinbaseTransactionSql::find(tx_id, &(*conn)).is_ok() ||
             CompletedTransactionSql::find(tx_id, &(*conn)).is_ok())
+    }
+
+    fn get_pending_transaction_counterparty_pub_key_by_tx_id(
+        &self,
+        tx_id: u64,
+    ) -> Result<CommsPublicKey, TransactionStorageError>
+    {
+        let conn = acquire_lock!(self.database_connection);
+        if let Ok(outbound_tx_sql) = OutboundTransactionSql::find(tx_id, &(*conn)) {
+            let outbound_tx = OutboundTransaction::try_from(outbound_tx_sql)?;
+            return Ok(outbound_tx.destination_public_key);
+        }
+        if let Ok(inbound_tx_sql) = InboundTransactionSql::find(tx_id, &(*conn)) {
+            let inbound_tx = InboundTransaction::try_from(inbound_tx_sql)?;
+            return Ok(inbound_tx.source_public_key);
+        }
+
+        Err(TransactionStorageError::ValuesNotFound)
     }
 
     fn complete_outbound_transaction(
