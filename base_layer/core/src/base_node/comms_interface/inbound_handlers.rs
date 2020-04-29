@@ -252,7 +252,9 @@ where T: BlockchainBackend + 'static
     {
         debug!(
             target: LOG_TARGET,
-            "Block received from {}",
+            "Block #{} ({}) received from {}",
+            block.header.height,
+            block.hash().to_hex(),
             source_peer
                 .as_ref()
                 .map(|p| format!("remote peer: {}", p))

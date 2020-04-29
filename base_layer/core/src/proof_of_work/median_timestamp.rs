@@ -27,11 +27,16 @@ pub const LOG_TARGET: &str = "c::pow::median_timestamp";
 
 /// Returns the median timestamp for the provided header set.
 pub fn get_median_timestamp(mut timestamps: Vec<EpochTime>) -> Option<EpochTime> {
+    trace!(
+        target: LOG_TARGET,
+        "Calculate the median timestamp from {} timestamps",
+        timestamps.len()
+    );
     if timestamps.is_empty() {
         return None;
     }
     timestamps.sort();
-    trace!(target: LOG_TARGET, "Sorted median timestamps: {:?}", timestamps);
+    trace!(target: LOG_TARGET, "Sorted timestamps: {:?}", timestamps);
     let mid_index = timestamps.len() / 2;
     let median_timestamp = if timestamps.len() % 2 == 0 {
         (timestamps[mid_index - 1] + timestamps[mid_index]) / 2

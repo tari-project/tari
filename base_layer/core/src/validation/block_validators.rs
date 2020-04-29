@@ -119,7 +119,7 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator {
         check_mmr_roots(block, db)?;
         trace!(target: LOG_TARGET, "FCV - MMR roots are valid for {}", &block_id);
         check_timestamp_ftl(&block.header, &self.rules)?;
-        trace!(target: LOG_TARGET, "FCV - FTL timetsamp is ok for {} ", &block_id);
+        trace!(target: LOG_TARGET, "FCV - FTL timestamp is ok for {} ", &block_id);
         let tip_height = db
             .fetch_metadata()
             .map_err(|e| ValidationError::CustomError(e.to_string()))?
@@ -128,11 +128,7 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator {
         check_median_timestamp(db, &block.header, tip_height, self.rules.clone())?;
         trace!(target: LOG_TARGET, "FCV - Median timestamp is ok for {} ", &block_id);
         check_achieved_and_target_difficulty(db, &block.header, tip_height, self.rules.clone())?;
-        trace!(
-            target: LOG_TARGET,
-            "FCV - Achieved difficulty is ok ok for {} ",
-            &block_id
-        );
+        trace!(target: LOG_TARGET, "FCV - Achieved difficulty is ok for {} ", &block_id);
         info!(target: LOG_TARGET, "FCV - Block is VALID for {}", &block_id);
         Ok(())
     }

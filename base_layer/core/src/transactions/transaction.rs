@@ -359,7 +359,7 @@ impl TransactionOutput {
 /// We can exclude the range proof from this hash. The rationale for this is:
 /// a) It is a significant performance boost, since the RP is the biggest part of an output
 /// b) Range proofs are committed to elsewhere and so we'd be hashing them twice (and as mentioned, this is slow)
-/// c) TransactionInputs will now have the same hash as UTXOs, which makes locating STXOs easier when doing re-orgs
+/// c) TransactionInputs will now have the same hash as UTXOs, which makes locating STXOs easier when doing reorgs
 impl Hashable for TransactionOutput {
     fn hash(&self) -> Vec<u8> {
         HashDigest::new()

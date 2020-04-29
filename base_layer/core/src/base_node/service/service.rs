@@ -53,7 +53,10 @@ use tari_comms_dht::{
     envelope::NodeDestination,
     outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageParams},
 };
-use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_crypto::{
+    ristretto::RistrettoPublicKey,
+    tari_utilities::{hex::Hex, Hashable},
+};
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::RequestContext;
 use tokio::task;
@@ -554,9 +557,10 @@ async fn handle_incoming_block<B: BlockchainBackend + 'static>(
     let DomainMessage::<_> { source_peer, inner, .. } = domain_block_msg;
 
     info!(
-        "New candidate block received for height {} and total accumulated difficulty {}",
+        "New candidate block #{} (accum_diff: {}, hash: ({})) received.",
         inner.header.height,
-        inner.header.total_accumulated_difficulty_inclusive()
+        inner.header.total_accumulated_difficulty_inclusive(),
+        inner.header.hash().to_hex(),
     );
     trace!(
         target: LOG_TARGET,
