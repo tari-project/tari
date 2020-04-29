@@ -66,6 +66,11 @@ impl ChainMetadata {
     pub fn archival_mode(&mut self) {
         self.pruning_horizon = 0;
     }
+
+    /// Set the pruning horizon to indicate that the chain is in pruned mode (i.e. a pruning horizon of 2880)
+    pub fn pruned_mode(&mut self) {
+        self.pruning_horizon = 2880;
+    }
 }
 
 impl Default for ChainMetadata {
@@ -73,7 +78,7 @@ impl Default for ChainMetadata {
         ChainMetadata {
             height_of_longest_chain: None,
             best_block: None,
-            pruning_horizon: 2880,
+            pruning_horizon: 0,
             accumulated_difficulty: None,
         }
     }
@@ -109,8 +114,9 @@ mod test {
     }
 
     #[test]
-    fn horizon_block() {
-        let metadata = ChainMetadata::default();
+    fn pruned_mode() {
+        let mut metadata = ChainMetadata::default();
+        metadata.pruned_mode();
         assert_eq!(metadata.horizon_block(0), 0);
         assert_eq!(metadata.horizon_block(100), 0);
         assert_eq!(metadata.horizon_block(2880), 0);

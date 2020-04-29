@@ -111,7 +111,7 @@ fn inbound_get_metadata() {
             {
                 assert_eq!(received_metadata.height_of_longest_chain, Some(0));
                 assert_eq!(received_metadata.best_block, Some(block.hash()));
-                assert_eq!(received_metadata.pruning_horizon, 2880);
+                assert_eq!(received_metadata.pruning_horizon, 0);
             } else {
                 assert!(false);
             }

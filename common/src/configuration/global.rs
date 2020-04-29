@@ -43,6 +43,8 @@ pub struct GlobalConfig {
     pub listener_liveness_whitelist_cidrs: Vec<String>,
     pub data_dir: PathBuf,
     pub db_type: DatabaseType,
+    pub orphan_storage_capacity: usize,
+    pub pruning_horizon: u64,
     pub core_threads: usize,
     pub blocking_threads: usize,
     pub identity_file: PathBuf,
@@ -97,6 +99,16 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
             &format!("Invalid option: {}", invalid_opt),
         )),
     }?;
+
+    let key = config_string(&net_str, "orphan_storage_capacity");
+    let orphan_storage_capacity = cfg
+        .get_int(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+
+    let key = config_string(&net_str, "pruning_horizon");
+    let pruning_horizon = cfg
+        .get_int(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64;
 
     // Thread counts
     let key = config_string(&net_str, "core_threads");
@@ -203,6 +215,8 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         listener_liveness_whitelist_cidrs: liveness_whitelist_cidrs,
         data_dir,
         db_type,
+        orphan_storage_capacity,
+        pruning_horizon,
         core_threads,
         blocking_threads,
         identity_file,

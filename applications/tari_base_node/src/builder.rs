@@ -464,9 +464,11 @@ where
         StatelessBlockValidator::new(&rules.consensus_constants()),
         AccumDifficultyValidator {},
     );
-    // TODO - make BlockchainDatabaseConfig configurable
-    let db = BlockchainDatabase::new(backend, &rules, validators, BlockchainDatabaseConfig::default())
-        .map_err(|e| e.to_string())?;
+    let db_config = BlockchainDatabaseConfig {
+        orphan_storage_capacity: config.orphan_storage_capacity,
+        pruning_horizon: config.pruning_horizon,
+    };
+    let db = BlockchainDatabase::new(backend, &rules, validators, db_config).map_err(|e| e.to_string())?;
     let mempool_validator =
         MempoolValidators::new(FullTxValidator::new(factories.clone()), TxInputAndMaturityValidator {});
     let mempool = Mempool::new(db.clone(), MempoolConfig::default(), mempool_validator);

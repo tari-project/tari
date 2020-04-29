@@ -23,7 +23,7 @@
 use crate::{
     blocks::{blockheader::BlockHash, Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
-        consts::BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
+        consts::{BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY, BLOCKCHAIN_DATABASE_PRUNING_HORIZON},
         db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree},
         error::ChainStorageError,
         ChainMetadata,
@@ -54,12 +54,14 @@ const LOG_TARGET: &str = "c::cs::database";
 #[derive(Clone, Copy)]
 pub struct BlockchainDatabaseConfig {
     pub orphan_storage_capacity: usize,
+    pub pruning_horizon: u64,
 }
 
 impl Default for BlockchainDatabaseConfig {
     fn default() -> Self {
         Self {
             orphan_storage_capacity: BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
+            pruning_horizon: BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
         }
     }
 }
@@ -258,6 +260,7 @@ where T: BlockchainBackend
         if blockchain_db.get_height()?.is_none() {
             let genesis_block = consensus_manager.get_genesis_block();
             blockchain_db.store_new_block(genesis_block)?;
+            blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
         }
         Ok(blockchain_db)
     }
@@ -304,7 +307,7 @@ where T: BlockchainBackend
     /// Returns a copy of the current blockchain database metadata
     pub fn get_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
         let db = self.db_read_access()?;
-        Ok(db.fetch_metadata()?.clone())
+        db.fetch_metadata()
     }
 
     /// Returns the transaction kernel with the given hash.
@@ -468,6 +471,11 @@ where T: BlockchainBackend
     fn store_new_block(&self, block: Block) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
         store_new_block(&mut db, block)
+    }
+
+    fn store_pruning_horizon(&self, pruning_horizon: u64) -> Result<(), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        store_pruning_horizon(&mut db, pruning_horizon)
     }
 
     /// Fetch a block from the blockchain database.
@@ -673,6 +681,19 @@ fn store_new_block<T: BlockchainBackend>(db: &mut RwLockWriteGuard<T>, block: Bl
     txn.commit_block();
     commit(db, txn)?;
     Ok(())
+}
+
+fn store_pruning_horizon<T: BlockchainBackend>(
+    db: &mut RwLockWriteGuard<T>,
+    pruning_horizon: u64,
+) -> Result<(), ChainStorageError>
+{
+    let mut txn = DbTransaction::new();
+    txn.insert(DbKeyValuePair::Metadata(
+        MetadataKey::PruningHorizon,
+        MetadataValue::PruningHorizon(pruning_horizon),
+    ));
+    commit(db, txn)
 }
 
 fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBlock, ChainStorageError> {
