@@ -78,7 +78,7 @@ pub use configuration::error::ConfigError;
 
 pub mod dir_utils;
 pub use configuration::{
-    bootstrap::{bootstrap_config_from_cli, install_configuration, ConfigBootstrap},
+    bootstrap::{install_configuration, ConfigBootstrap},
     global::{CommsTransport, DatabaseType, GlobalConfig, Network, SocksAuthentication, TorControlAuthentication},
     loader::{ConfigExtractor, ConfigLoader, ConfigPath, ConfigurationError, DefaultConfigLoader, NetworkConfigPath},
     utils::{default_config, install_default_config_file, load_configuration},

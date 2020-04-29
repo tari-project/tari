@@ -21,9 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use structopt::StructOpt;
-use tari_common::ConfigBootstrap;
-
 // Import the auto-generated const values from the Manifest and Git
 include!(concat!(env!("OUT_DIR"), "/consts.rs"));
 
@@ -171,14 +168,4 @@ pub fn print_banner(commands: Vec<String>, chunk_size: i32) {
         println!("{}", row);
     }
     println!("{}", box_line(target_line_length, false));
-}
-
-/// The reference Tari cryptocurrency base node implementation
-#[derive(StructOpt)]
-pub struct Arguments {
-    /// Create and save new node identity if one doesn't exist
-    #[structopt(long)]
-    pub create_id: bool,
-    #[structopt(flatten)]
-    pub bootstrap: ConfigBootstrap,
 }

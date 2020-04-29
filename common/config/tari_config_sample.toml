@@ -13,7 +13,7 @@
 # section holds configuration options that are common to all sections.
 
 # A note about Logging - The logger is initialised before the configuration file is loaded. For this reason, logging
-# is not configured here, but in `~/.tari/log4rs.yml` (*nix / OsX) or `%HOME%/.tari/log4rs.yml` (Windows) by
+# is not configured here, but in `~/.tari/log4rs.yml` (*nix / OsX) or `%USERPROFILE%\.tari\log4rs.yml` (Windows) by
 # default, or the location specified in the TARI_LOGFILE environment variable.
 
 [common]
@@ -27,7 +27,7 @@
 #message_cache_ttl = 1440
 
 # The peer database list is stored in a database file at this location
-#peer_database = "~/.tari/peers"
+#peer_database = "~/.tari/peers" # or "%USERPROFILE%\\.tari\peers"
 
 # If peer nodes spam you with messages, or are otherwise badly behaved, they will be added to your blacklist and banned
 # You can set a time limit to release that ban (in minutes), or otherwise ban them for life (-1). The default is to
@@ -58,10 +58,10 @@
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
 #grpc_address = "tcp://127.0.0.1:80400"
 
-# The folder to store your local key data and transaction history. DO NOT EVER DELETE THIS FILE unless you
+# The relative folder to store your local key data and transaction history. DO NOT EVER DELETE THIS FILE unless you
 #  a) have backed up your seed phrase and
 #  b) know what you are doing!
-#wallet_file = "~/.tari/wallet/wallet.dat"
+#wallet_file = "wallet/wallet.dat" # or "wallet\\wallet.dat"
 
 #[base_node.transport.tor]
 #control_address = "/ip4/127.0.0.1/tcp/9051"
@@ -83,18 +83,21 @@
 
 # Select the network to connect to. Valid options are:
 #   mainnet - the "real" Tari network (default)
-#   testnet - the Tari test net
+#   rincewind - the Tari test net
 #network = "mainnet"
 
 
 # Configuration options for testnet
-[base_node.testnet]
+[base_node.rincewind]
 # The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
 # almost all use cases.
 #db_type = "lmdb"
 
-# The path to store persistent data
-#data_dir = "~/.tari/testnet/"
+# Enable if this node must be a mining node
+#enable_mining = true
+
+# The relative path to store persistent data
+data_dir = "rincewind"
 
 # When first logging onto the Tari network, you need to find a few peers to bootstrap the process. In the absence of
 # any servers, this is a little more challenging than usual. Our best strategy is just to try and connect to the peers
@@ -102,8 +105,28 @@
 # where this whitelist comes in. It's a list of known Tari nodes that are likely to be around for a long time and that
 # new nodes can use to introduce themselves to the network.
 # peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
-peer_seeds = []
+peer_seeds = [
+    #t-tbn-nvir
+    "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/onion3/bsmuof2cn4y2ysz253gzsvg3s72fcgh4f3qcm3hdlxdtcwe6al2dicyd:18141",
 
+    #t-tbn-ncal
+    "3a5081a0c9ff72b2d5cf52f8d78cc5a206d643259cdeb7d934512f519e090e6c::/onion3/gfynjxfm7rcxcekhu6jwuhvyyfdjvmruvvehurmlte565v74oinv2lad:18141",
+
+    #t-tbn-oregon
+    "e6f3c83dc592af45ede5424974f52c776e9e6859e530066e57c1b0dd59d9b61c::/onion3/ixihtmcbvr2q53bj23bsla5hi7ek37odnsxzkapr7znyfneqxzhq7zad:18141",
+
+    #t-tbn-london
+    "ce2254825d0e0294d31a86c6aac18f83c9a7b3d01d9cdb6866b4b2af8fd3fd17::/onion3/gm7kxmr4cyjg5fhcw4onav2ofa3flscrocfxiiohdcys3kshdhcjeuyd:18141",
+
+    #t-tbn-stockholm
+    "461d4d7be657521969896f90e3f611f0c4e902ca33d3b808c03357ad86fd7801::/onion3/4me2aw6auq2ucql34uuvsegtjxmvsmcyk55qprtrpqxvu3whxajvb5ad:18141",
+
+    #t-tbn-seoul
+    "d440b328e69b20dd8ee6c4a61aeb18888939f0f67cf96668840b7f72055d834c::/onion3/j5x7xkcxnrich5lcwibwszd5kylclbf6a5unert5sy6ykio2kphnopad:18141",
+
+    #t-tbn-sydney
+    "b81b4071f72418cc410166d9baf0c6ef7a8c309e64671fafbbed88f7e1ee7709::/onion3/lwwcv4nq7epgem5vdcawom4mquqsw2odbwfcjzv3j6sksx4gr24e52ad:18141",
+]
 
 # Determines the method of syncing blocks when the node is lagging. If you are not struggling with syncing, then
 # it is recommended to leave this setting as it. Available values are ViaBestChainMetadata and ViaRandomPeer.
@@ -131,31 +154,34 @@ peer_seeds = []
 #grpc_address = "tcp://127.0.0.1:18141"
 
 # A path to the file that stores your node identity and secret key
-#identity_file = "~/.tari/testnet/node_id.json"
+identity_file = "./node_id.json" # or ".\\node_id.json"
+
+# A path to the file that stores your wallet's node identity and secret key
+wallet_identity_file = "./wallet-identity.json" # or ".\\wallet-identity.json"
 
 # -------------- Transport configuration --------------
 # Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
 # e.g. tor onion addresses will not be contactable.
-transport = "tcp"
-# # The address and port to listen for peer connections over TCP.
-tcp_listener_address = "/ip4/0.0.0.0/tcp/18189"
+#transport = "tcp"
+# The address and port to listen for peer connections over TCP.
+#tcp_listener_address = "/ip4/0.0.0.0/tcp/18189"
 # Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
 # This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
 # only advertise an onion address.
-tcp_tor_socks_address = "/ip4/127.0.0.1/tcp/36050"
-tcp_tor_socks_auth = "none"
+#tcp_tor_socks_address = "/ip4/127.0.0.1/tcp/36050"
+#tcp_tor_socks_auth = "none"
 
 # Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
 # onion v2, onion v3 and dns addresses.
-#transport = "tor"
+transport = "tor"
 # Address of the tor control server
-#tor_control_address = "/ip4/127.0.0.1/tcp/9051"
+tor_control_address = "/ip4/127.0.0.1/tcp/9051"
 # Authentication to use for the tor control server
-#tor_control_auth = "none" # or "password=xxxxxx"
+tor_control_auth = "none" # or "password=xxxxxx"
 # The onion port to use.
-#tor_onion_port = 18141
+tor_onion_port = 18141
 # The address to which traffic on the node's onion address will be forwarded
-#tor_forward_address = "/ip4/127.0.0.1/tcp/18141"
+tor_forward_address = "/ip4/127.0.0.1/tcp/18141"
 # Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
 # use the first address returned by the tor control port (GETINFO /net/listeners/socks).
 #tor_socks_address_override=
@@ -169,21 +195,25 @@ tcp_tor_socks_auth = "none"
 #socks5_auth = "none" # or "username_password=username:xxxxxxx"
 
 # A path to the file that stores the tor hidden service private key, if using the tor transport.
-# tor_identity_file = "~/.tari/testnet/tor.key"
+tor_identity_file = "./tor.json" # or ".\\tor.json"
+
+# A path to the file that stores the wallet's tor hidden service private key, if using the tor transport.
+wallet_tor_identity_file = "./wallet-tor.json" # or ".\\wallet-tor.json"
 
 [base_node.mainnet]
 # The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
 # almost all use cases.
 #db_type = "lmdb"
 
-# The path to store persistent data
-#data_dir = "~/.tari/mainnet/"
+# The relative path to store persistent data
+#data_dir = "mainnet"
 
 # When first logging onto the Tari network, you need to find a few peers to bootstrap the process. In the absence of
 # any servers, this is a little more challenging than usual. Our best strategy is just to try and connect to the peers
 # you knew about last time you ran the software. But what about when you run the software for the first time? That's
 # where this whitelist comes in. It's a list of known Tari nodes that are likely to be around for a long time and that
 # new nodes can use to introduce themselves to the network.
+# peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
 peer_seeds = []
 
 # Configure the number of threads to spawn for long-running tasks, like block and transaction validation. A good choice
@@ -202,7 +232,10 @@ peer_seeds = []
 #grpc_address = "tcp://127.0.0.1:18041"
 
 # A path to the file that stores your node identity and secret key
-#identity_file = "~/.tari/mainnet/node_id.json"
+#identity_file = "./node_id.json" # or ".\\node_id.json"
+
+# A path to the file that stores your wallet's node identity and secret key
+#wallet_identity_file = "./wallet-identity.json" # or ".\\wallet-identity.json"
 
 # -------------- Transport configuration --------------
 # Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
@@ -237,8 +270,11 @@ peer_seeds = []
 #socks5_listener_address = "/ip4/127.0.0.1/tcp/18189"
 #socks5_auth = "none" # or "username_password=username:xxxxxxx"
 
-# A path to the file that stores the tor hidden service private key, if using the tor transport
-# tor_identity_file = "~/.tari/mainnet/tor.key"
+# A path to the file that stores the tor hidden service private key, if using the tor transport.
+#tor_identity_file = "./tor.json" # or ".\\tor.json"
+
+# A path to the file that stores the wallet's tor hidden service private key, if using the tor transport.
+#wallet_tor_identity_file = "./wallet-tor.json" # or ".\\wallet-tor.json"
 
 ########################################################################################################################
 #                                                                                                                      #
@@ -361,3 +397,4 @@ peer_seeds = []
 # The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
 #grpc_address = "tcp://127.0.0.1:18042"
+ 
