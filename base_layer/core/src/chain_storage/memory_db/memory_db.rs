@@ -192,7 +192,7 @@ where D: Digest + Send + Sync
             {
                 pruning_horizon
             } else {
-                2880
+                0
             },
         )
     }

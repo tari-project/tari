@@ -780,7 +780,7 @@ fn fetch_pruning_horizon(env: &Environment, db: &Database) -> Result<u64, ChainS
         if let Some(DbValue::Metadata(MetadataValue::PruningHorizon(pruning_horizon))) = val {
             pruning_horizon
         } else {
-            2880
+            0
         },
     )
 }

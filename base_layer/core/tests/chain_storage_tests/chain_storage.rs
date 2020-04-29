@@ -825,10 +825,12 @@ fn restore_metadata() {
         let network = Network::LocalNet;
         let rules = ConsensusManagerBuilder::new(network).build();
         let block_hash: BlockHash;
+        let pruning_horizon: u64 = 1000;
         {
             let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
-            let db =
-                BlockchainDatabase::new(db, &rules, validators.clone(), BlockchainDatabaseConfig::default()).unwrap();
+            let mut config = BlockchainDatabaseConfig::default();
+            config.pruning_horizon = pruning_horizon;
+            let db = BlockchainDatabase::new(db, &rules, validators.clone(), config).unwrap();
 
             let block0 = db.fetch_block(0).unwrap().block().clone();
             let block1 = append_block(&db, &block0, vec![], &rules.consensus_constants(), 1.into()).unwrap();
@@ -837,6 +839,7 @@ fn restore_metadata() {
             let metadata = db.get_metadata().unwrap();
             assert_eq!(metadata.height_of_longest_chain, Some(1));
             assert_eq!(metadata.best_block, Some(block_hash.clone()));
+            assert_eq!(metadata.pruning_horizon, pruning_horizon);
         }
         // Restore blockchain db
         let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
@@ -845,6 +848,7 @@ fn restore_metadata() {
         let metadata = db.get_metadata().unwrap();
         assert_eq!(metadata.height_of_longest_chain, Some(1));
         assert_eq!(metadata.best_block, Some(block_hash));
+        assert_eq!(metadata.pruning_horizon, pruning_horizon);
     }
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
@@ -996,6 +1000,7 @@ fn orphan_cleanup_on_block_add() {
     let db = MemoryDatabase::<HashDigest>::default();
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
+        pruning_horizon: 0,
     };
     let store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
 
@@ -1050,6 +1055,7 @@ fn orphan_cleanup_on_reorg() {
     let db = MemoryDatabase::<HashDigest>::default();
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
+        pruning_horizon: 0,
     };
     let mut store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
     let mut blocks = vec![block0];
