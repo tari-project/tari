@@ -39,8 +39,12 @@ qrcode = { version = "0.12" }
 chrono = "0.4"
 chrono-english = "0.1"
 regex = "1"
+tonic = "0.2"
+prost = "0.6"
+prost-types = "0.6.1"
 
 [build-dependencies]
+tonic-build = "0.2"
 serde = "1.0.90"
 toml = "0.5"
 git2 = "0.8"

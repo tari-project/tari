@@ -243,16 +243,16 @@ impl NodeContainer {
 /// `BaseNodeContext` is not intended to be ever used directly, so is a private struct. It is only ever created in the
 /// [NodeContainer] enum, which serves the purpose  of abstracting the specific `BlockchainBackend` instance away
 /// from users of the full base node stack.
-struct BaseNodeContext<B: BlockchainBackend> {
-    pub base_node_comms: CommsNode,
-    pub base_node_dht: Dht,
-    pub wallet_comms: CommsNode,
-    pub wallet_dht: Dht,
-    pub base_node_handles: Arc<ServiceHandles>,
-    pub wallet_handles: Arc<ServiceHandles>,
-    pub node: BaseNodeStateMachine<B>,
-    pub miner: Option<Miner>,
-    pub miner_enabled: Arc<AtomicBool>,
+pub struct BaseNodeContext<B: BlockchainBackend> {
+    base_node_comms: CommsNode,
+    base_node_dht: Dht,
+    wallet_comms: CommsNode,
+    wallet_dht: Dht,
+    base_node_handles: Arc<ServiceHandles>,
+    wallet_handles: Arc<ServiceHandles>,
+    node: BaseNodeStateMachine<B>,
+    miner: Option<Miner>,
+    miner_enabled: Arc<AtomicBool>,
 }
 
 impl<B: BlockchainBackend> BaseNodeContext<B> {

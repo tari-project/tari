@@ -31,3 +31,5 @@ peer_seeds = [
     "b81b4071f72418cc410166d9baf0c6ef7a8c309e64671fafbbed88f7e1ee7709::/onion3/lwwcv4nq7epgem5vdcawom4mquqsw2odbwfcjzv3j6sksx4gr24e52ad:18141",
 ]
 enable_mining = false
+grpc_enabled = true
+grpc_address = "127.0.0.1:18142"
