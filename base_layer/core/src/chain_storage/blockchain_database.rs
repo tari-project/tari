@@ -426,7 +426,7 @@ where T: BlockchainBackend
     ///   * There are no problems with the database backend (e.g. disk full)
     ///
     /// If the block is _not_ next in the chain, the block will be added to the orphan pool if the orphan validator
-    /// passes, and then the database is checked for whether there has been a chain re-organisation.
+    /// passes, and then the database is checked for whether there has been a chain reorganisation.
     ///
     /// # Returns
     ///
@@ -447,7 +447,7 @@ where T: BlockchainBackend
         if let Err(e) = self.validators.orphan.validate(&block) {
             warn!(
                 target: LOG_TARGET,
-                "Block #{} ({}) is INVALID - {}",
+                "Block #{} ({}) failed validation - {}",
                 block.header.height,
                 block.hash().to_hex(),
                 e.to_string()
@@ -870,16 +870,21 @@ fn handle_possible_reorg<T: BlockchainBackend>(
             );
             Err(e)
         })?;
+    let block_hash = block.hash().to_hex();
     insert_orphan(db, block.clone())?;
     info!(
         target: LOG_TARGET,
-        "Added new orphan block to the database. Current best height is {}. Orphan block height is {}",
+        "Added candidate block #{} ({}) to the orphan database. Best height is {}.",
+        block.header.height,
+        block_hash,
         db_height,
-        block.header.height
     );
     trace!(target: LOG_TARGET, "{}", block);
     // Trigger a reorg check for all blocks in the orphan block pool
-    debug!(target: LOG_TARGET, "Checking for chain re-org.");
+    debug!(
+        target: LOG_TARGET,
+        "Checking for chain reorg using candidate block #{} ({}).", block.header.height, block_hash
+    );
     handle_reorg(db, block_validator, accum_difficulty_validator, block)
 }
 
@@ -896,15 +901,18 @@ fn handle_reorg<T: BlockchainBackend>(
     new_block: Block,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
-    // We can assume that the new block is part of the re-org chain if it exists, otherwise the re-org would have
+    // We can assume that the new block is part of the reorg chain if it exists, otherwise the reorg would have
     // happened on the previous call to this function.
     // Try and construct a path from `new_block` to the main chain:
     let mut reorg_chain = try_construct_fork(db, new_block.clone())?;
     if reorg_chain.is_empty() {
         trace!(
             target: LOG_TARGET,
-            "Could not find complete chain to orphan. No need to reorg at this time"
+            "No reorg required, could not construct complete chain using block #{} ({}).",
+            new_block.header.height,
+            new_block.hash().to_hex()
         );
+        trace!(target: LOG_TARGET, "Orphan block received: {}", new_block);
         return Ok(BlockAddResult::OrphanBlock);
     }
     // Try and find all orphaned chain tips that can be linked to the new orphan block, if no better orphan chain
@@ -916,14 +924,32 @@ fn handle_reorg<T: BlockchainBackend>(
     let tip_header = db
         .fetch_last_header()?
         .ok_or_else(|| ChainStorageError::InvalidQuery("Cannot retrieve header. Blockchain DB is empty".into()))?;
-    trace!(
-        target: LOG_TARGET,
-        "Comparing fork diff: ({}) with hash ({}) to main chain diff: ({}) with hash ({}) for possible reorg",
-        fork_accum_difficulty,
-        fork_tip_hash.to_hex(),
-        tip_header.total_accumulated_difficulty_inclusive(),
-        tip_header.hash().to_hex()
-    );
+    if fork_tip_hash == new_block_hash {
+        trace!(
+            target: LOG_TARGET,
+            "Comparing candidate block #{} (accum_diff:{}, hash:{}) to main chain #{} (accum_diff: {}, hash: ({})).",
+            new_block.header.height,
+            fork_accum_difficulty,
+            fork_tip_hash.to_hex(),
+            tip_header.height,
+            tip_header.total_accumulated_difficulty_inclusive(),
+            tip_header.hash().to_hex()
+        );
+    } else {
+        trace!(
+            target: LOG_TARGET,
+            "Comparing fork (accum_diff:{}, hash:{}) with block #{} ({}) to main chain #{} (accum_diff: {}, hash: \
+             ({})).",
+            fork_accum_difficulty,
+            fork_tip_hash.to_hex(),
+            new_block.header.height,
+            new_block_hash.to_hex(),
+            tip_header.height,
+            tip_header.total_accumulated_difficulty_inclusive(),
+            tip_header.hash().to_hex()
+        );
+    }
+
     if accum_difficulty_validator.validate(&fork_accum_difficulty, db).is_ok() {
         // We've built the strongest orphan chain we can by going backwards and forwards from the new orphan block
         // that is linked with the main chain.
@@ -946,7 +972,11 @@ fn handle_reorg<T: BlockchainBackend>(
         } else {
             warn!(
                 target: LOG_TARGET,
-                "Chain reorg happened from difficulty: ({}) to difficulty: ({})", tip_header.pow, fork_tip_header.pow
+                "Chain reorg processed from (accum_diff:{}, hash:{}) to (accum_diff:{}, hash:{})",
+                tip_header.pow,
+                tip_header.hash().to_hex(),
+                fork_tip_header.pow,
+                fork_tip_hash.to_hex()
             );
             debug!(
                 target: LOG_TARGET,
@@ -957,8 +987,17 @@ fn handle_reorg<T: BlockchainBackend>(
                 Box::new(added_blocks),
             )));
         }
+    } else {
+        trace!(
+            target: LOG_TARGET,
+            "Fork chain (accum_diff:{}, hash:{}) with block {} ({}) has a weaker accumulated difficulty.",
+            fork_accum_difficulty,
+            fork_tip_hash.to_hex(),
+            new_block.header.height,
+            new_block_hash.to_hex(),
+        );
     }
-    debug!(target: LOG_TARGET, "Orphan block received: {}", new_block);
+    trace!(target: LOG_TARGET, "Orphan block received: {}", new_block);
     Ok(BlockAddResult::OrphanBlock)
 }
 
@@ -971,7 +1010,12 @@ fn reorganize_chain<T: BlockchainBackend>(
 ) -> Result<Vec<Block>, ChainStorageError>
 {
     let removed_blocks = rewind_to_height(db, height)?;
-    debug!(target: LOG_TARGET, "Validate and add chain blocks.",);
+    debug!(
+        target: LOG_TARGET,
+        "Validate and add {} chain blocks from height {}.",
+        chain.len(),
+        height
+    );
     let mut validation_result: Result<(), ValidationError> = Ok(());
     let mut orphan_hashes = Vec::<BlockHash>::with_capacity(chain.len());
     for block in chain {
@@ -981,7 +1025,8 @@ fn reorganize_chain<T: BlockchainBackend>(
         if validation_result.is_err() {
             warn!(
                 target: LOG_TARGET,
-                "Orphan block {} failed validation during chain reorganization",
+                "Orphan block {} ({}) failed validation during chain reorg.",
+                block.header.height,
                 block_hash.to_hex(),
             );
             remove_orphan(db, block.hash())?;
@@ -992,7 +1037,7 @@ fn reorganize_chain<T: BlockchainBackend>(
 
     match validation_result {
         Ok(_) => {
-            debug!(target: LOG_TARGET, "Removing reorged orphan blocks.",);
+            debug!(target: LOG_TARGET, "Removing orphan blocks used for reorg.",);
             if !orphan_hashes.is_empty() {
                 let mut txn = DbTransaction::new();
                 for orphan_hash in orphan_hashes {
@@ -1052,8 +1097,10 @@ fn try_construct_fork<T: BlockchainBackend>(
 ) -> Result<VecDeque<Block>, ChainStorageError>
 {
     let mut fork_chain = VecDeque::new();
+    let new_block_hash = new_block.hash();
+    let new_block_height = new_block.header.height;
     let mut hash = new_block.header.prev_hash.clone();
-    let mut height = new_block.header.height;
+    let mut height = new_block_height;
     fork_chain.push_front(new_block);
 
     loop {
@@ -1064,7 +1111,7 @@ fn try_construct_fork<T: BlockchainBackend>(
             .clone();
         trace!(
             target: LOG_TARGET,
-            "Checking if block {} ({}) is connected to the main chain.",
+            "Checking if block #{} ({}) is connected to the main chain.",
             fork_start_header.height,
             fork_start_header.hash().to_hex(),
         );
@@ -1072,9 +1119,11 @@ fn try_construct_fork<T: BlockchainBackend>(
             if header.height + 1 == fork_start_header.height {
                 trace!(
                     target: LOG_TARGET,
-                    "Connection with main chain found at block {} ({}).",
+                    "Connection with main chain found at block #{} ({}) from block #{} ({}).",
                     header.height,
                     header.hash().to_hex(),
+                    new_block_height,
+                    new_block_hash.to_hex(),
                 );
                 return Ok(fork_chain);
             }
@@ -1088,7 +1137,7 @@ fn try_construct_fork<T: BlockchainBackend>(
             Ok(prev_block) => {
                 trace!(
                     target: LOG_TARGET,
-                    "Checking if block {} ({}) forms a sequence with next block.",
+                    "Checking if block #{} ({}) forms a sequence with next block.",
                     prev_block.header.height,
                     hash.to_hex(),
                 );
@@ -1098,7 +1147,7 @@ fn try_construct_fork<T: BlockchainBackend>(
                     // point.
                     info!(
                         target: LOG_TARGET,
-                        "A broken blockchain sequence was detected, removing block {} ({}).",
+                        "A broken blockchain sequence was detected, removing block #{} ({}).",
                         prev_block.header.height,
                         hash.to_hex()
                     );
@@ -1107,7 +1156,7 @@ fn try_construct_fork<T: BlockchainBackend>(
                 }
                 trace!(
                     target: LOG_TARGET,
-                    "Fork chain extended with block {} ({}).",
+                    "Fork chain extended with block #{} ({}).",
                     prev_block.header.height,
                     hash.to_hex(),
                 );
@@ -1118,7 +1167,9 @@ fn try_construct_fork<T: BlockchainBackend>(
             Err(ChainStorageError::ValueNotFound(_)) => {
                 trace!(
                     target: LOG_TARGET,
-                    "Fork chain extension not found and it isn't connected to the main chain.",
+                    "Fork chain extension not found, block #{} ({}) not connected to main chain.",
+                    new_block_height,
+                    new_block_hash.to_hex(),
                 );
                 break;
             },

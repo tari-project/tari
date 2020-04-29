@@ -846,7 +846,7 @@ fn block_event_and_reorg_event_handling() {
             TxStorageResponse::NotStored
         );
 
-        // Re-org chain by adding Block2b - tx2 and tx3 will be discarded as double spends.
+        // Reorg chain by adding Block2b - tx2 and tx3 will be discarded as double spends.
         assert!(bob.local_nci.submit_block(block2b.clone()).await.is_ok());
         async_assert_eventually!(
             alice.mempool.has_tx_with_excess_sig(tx2_excess_sig.clone()).unwrap(),

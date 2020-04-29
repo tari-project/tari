@@ -171,7 +171,7 @@ A non-exhaustive list of methods the base node module API will expose includes:
     * requesting the block header for the chain tip;
     * validating signatures for a given transaction kernel;
     * validating a new block without adding it to the state tree;
-    * validating and adding a (validated) new block to the state, and informing of the result (orphaned, fork, re-org, etc.).
+    * validating and adding a (validated) new block to the state, and informing of the result (orphaned, fork, reorg, etc.).
 * Mempool calls
   * The number of unconfirmed transactions
   * The number of orphaned transactions

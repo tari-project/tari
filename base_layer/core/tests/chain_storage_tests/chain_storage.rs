@@ -738,7 +738,7 @@ fn handle_reorg() {
     )
     .is_ok());
 
-    // Now add the fork blocks C4, B2, B4 and B3 (out of order) to the first DB and observe a re-org. Blocks are added
+    // Now add the fork blocks C4, B2, B4 and B3 (out of order) to the first DB and observe a reorg. Blocks are added
     // out of order to test the forward and reverse chaining.
     store.add_block(orphan2_blocks[4].clone()).unwrap(); // C4
     store.add_block(orphan1_blocks[2].clone()).unwrap(); // B2

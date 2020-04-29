@@ -318,7 +318,7 @@ peer_seeds = []
 # added back into the UnconfirmedPool. Transactions in the ReOrg pool have a limited Time-to-live and will be removed
 # from the pool when the Time-to-live thresholds is reached. Also, when the capacity of the pool has been reached, the
 # oldest transactions will be removed to make space for incoming transactions. The pool capacity and TTL parameters
-# have the same meaning as those for the pending pool, but applied to the re-org pool; obviously.
+# have the same meaning as those for the pending pool, but applied to the reorg pool; obviously.
 # Defaults: 10,000 transactions and 300 seconds
 #reorg_pool_storage_capacity = 10_000
 #reorg_tx_ttl = 300
@@ -367,7 +367,7 @@ peer_seeds = []
 # added back into the UnconfirmedPool. Transactions in the ReOrg pool have a limited Time-to-live and will be removed
 # from the pool when the Time-to-live thresholds is reached. Also, when the capacity of the pool has been reached, the
 # oldest transactions will be removed to make space for incoming transactions. The pool capacity and TTL parameters
-# have the same meaning as those for the pending pool, but applied to the re-org pool; obviously.
+# have the same meaning as those for the pending pool, but applied to the reorg pool; obviously.
 # Defaults: 10,000 transactions and 300 seconds
 #reorg_pool_storage_capacity = 10_000
 #reorg_tx_ttl = 300

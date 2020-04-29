@@ -38,7 +38,7 @@ pub enum ChainStorageError {
     CorruptedDatabase(String),
     #[error("A given input could not be spent because it was not in the UTXO set")]
     UnspendableInput,
-    #[error("A problem occurred trying to move a STXO back into the UTXO pool during a re-org.")]
+    #[error("A problem occurred trying to move a STXO back into the UTXO pool during a reorg.")]
     UnspendError,
     #[error(
         "An unexpected result type was received for the given database request. This suggests that there is an \
