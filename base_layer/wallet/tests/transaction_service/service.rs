@@ -518,6 +518,8 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
     );
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
+    runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+
     // Spin up Bob and Carol
     let (mut bob_ts, mut bob_oms, bob_comms) = setup_transaction_service(
         &mut runtime,
@@ -529,6 +531,8 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
         Duration::from_secs(1),
     );
     let mut bob_event_stream = bob_ts.get_event_stream_fused();
+    runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+
     let (mut carol_ts, mut carol_oms, carol_comms) = setup_transaction_service(
         &mut runtime,
         carol_node_identity.clone(),
@@ -539,6 +543,25 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
         Duration::from_secs(1),
     );
     let mut carol_event_stream = carol_ts.get_event_stream_fused();
+
+    // Establish some connections beforehand, to reduce the amount of work done concurrently in tests
+    // Connect Bob and Alice
+    runtime.block_on(async { delay_for(Duration::from_secs(3)).await });
+
+    let _ = runtime.block_on(
+        bob_comms
+            .connection_manager()
+            .dial_peer(alice_node_identity.node_id().clone()),
+    );
+    runtime.block_on(async { delay_for(Duration::from_secs(3)).await });
+
+    // Connect alice to carol
+    let _ = runtime.block_on(
+        alice_comms
+            .connection_manager()
+            .dial_peer(carol_node_identity.node_id().clone()),
+    );
+
     let (_utxo, uo2) = make_input(&mut OsRng, MicroTari(3500), &factories.commitment);
     runtime.block_on(bob_oms.add_output(uo2)).unwrap();
     let (_utxo, uo3) = make_input(&mut OsRng, MicroTari(4500), &factories.commitment);
