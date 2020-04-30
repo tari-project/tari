@@ -198,7 +198,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     }
 
     // Run, node, run!
-    let parser = Parser::new(rt.handle().clone(), &ctx);
+    let parser = Parser::new(rt.handle().clone(), &ctx, &node_config);
 
     cli::print_banner(parser.get_commands(), 3);
     if node_config.grpc_enabled {

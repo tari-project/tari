@@ -45,13 +45,14 @@ use std::{
     str::FromStr,
     string::ToString,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
     time::{Duration, Instant},
 };
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
+use tari_common::GlobalConfig;
 use tari_comms::{
     connection_manager::ConnectionManagerRequester,
     peer_manager::{PeerFeatures, PeerManager, PeerQuery},
@@ -104,6 +105,7 @@ pub enum BaseNodeCommand {
     GetMempoolState,
     Whoami,
     ToggleMining,
+    GetMiningState,
     MakeItRain,
     CoinSplit,
     Quit,
@@ -127,6 +129,8 @@ pub struct Parser {
     mempool_service: LocalMempoolService,
     wallet_transaction_service: TransactionServiceHandle,
     enable_miner: Arc<AtomicBool>,
+    miner_hashrate: Arc<AtomicU64>,
+    miner_thread_count: u64,
 }
 
 const MAKE_IT_RAIN_USAGE: &str = "\nmake-it-rain [Txs/s] [duration (s)] [start amount (uT)] [increment (uT)/Tx] \
@@ -164,7 +168,7 @@ impl Hinter for Parser {
 
 impl Parser {
     /// creates a new parser struct
-    pub fn new(executor: runtime::Handle, ctx: &NodeContainer) -> Self {
+    pub fn new(executor: runtime::Handle, ctx: &NodeContainer, config: &GlobalConfig) -> Self {
         Parser {
             executor,
             wallet_node_identity: ctx.wallet_node_identity(),
@@ -180,6 +184,8 @@ impl Parser {
             mempool_service: ctx.local_mempool(),
             wallet_transaction_service: ctx.wallet_transaction_service(),
             enable_miner: ctx.miner_enabled(),
+            miner_hashrate: ctx.miner_hashrate(),
+            miner_thread_count: config.num_mining_threads as u64,
         }
     }
 
@@ -280,6 +286,9 @@ impl Parser {
             ToggleMining => {
                 self.process_toggle_mining();
             },
+            GetMiningState => {
+                self.process_get_mining_state();
+            },
             GetBlock => {
                 self.process_get_block(args);
             },
@@ -375,6 +384,10 @@ impl Parser {
             ToggleMining => {
                 println!("Enable or disable the miner on this node, calling this command will toggle the state");
             },
+            GetMiningState => println!(
+                "Displays the mining state. The hash rate is estimated based on the last measured hash rate and the \
+                 number of active mining thread."
+            ),
             GetBlock => {
                 println!("View a block of a height, call this command via:");
                 println!("get-block [height of the block]");
@@ -1006,6 +1019,19 @@ impl Parser {
             println!("Mining is OFF");
         }
         debug!(target: LOG_TARGET, "Mining state is now switched to {}", new_state);
+    }
+
+    /// Function to process the get_mining_state command
+    fn process_get_mining_state(&mut self) {
+        let cur_state = self.enable_miner.load(Ordering::SeqCst);
+        if cur_state {
+            println!("Mining is ON");
+        } else {
+            println!("Mining is OFF");
+        };
+        let hashrate = self.miner_hashrate.load(Ordering::SeqCst);
+        let total_hashrate = (self.miner_thread_count * hashrate) as f64 / 1_000_000.0;
+        println!("Mining hash rate is: {:.6} MH/s", total_hashrate);
     }
 
     /// Function to process the list-headers command

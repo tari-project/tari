@@ -26,7 +26,7 @@ use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::{
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
     time::{Duration, Instant},
@@ -45,7 +45,7 @@ pub struct CpuBlakePow;
 impl CpuBlakePow {
     /// A simple miner. It starts with a random nonce and iterates until it finds a header hash that meets the desired
     /// target
-    pub fn mine(mut header: BlockHeader, stop_flag: Arc<AtomicBool>) -> Option<BlockHeader> {
+    pub fn mine(mut header: BlockHeader, stop_flag: Arc<AtomicBool>, hashrate: Arc<AtomicU64>) -> Option<BlockHeader> {
         let mut start = Instant::now();
         let mut nonce: u64 = OsRng.next_u64();
         let mut last_measured_nonce = nonce;
@@ -65,6 +65,7 @@ impl CpuBlakePow {
                     std::u64::MAX - last_measured_nonce + nonce
                 };
                 let hash_rate = hashes as f64 / start.elapsed().as_micros() as f64;
+                hashrate.store((hash_rate * 1_000_000.0) as u64, Ordering::Relaxed);
                 info!(target: LOG_TARGET, "Mining hash rate per thread: {:.6} MH/s", hash_rate);
                 last_measured_nonce = nonce;
                 start = Instant::now();

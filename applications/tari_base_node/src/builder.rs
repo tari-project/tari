@@ -28,7 +28,7 @@ use std::{
     fs,
     path::Path,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
     time::Duration,
@@ -189,6 +189,11 @@ impl NodeContainer {
         using_backend!(self, ctx, ctx.miner_enabled.clone())
     }
 
+    /// Returns this node's miner atomic hash rate.
+    pub fn miner_hashrate(&self) -> Arc<AtomicU64> {
+        using_backend!(self, ctx, ctx.miner_hashrate.clone())
+    }
+
     /// Returns a handle to the wallet transaction service. This function panics if it has not been registered
     /// with the comms service
     pub fn wallet_transaction_service(&self) -> TransactionServiceHandle {
@@ -253,6 +258,7 @@ pub struct BaseNodeContext<B: BlockchainBackend> {
     node: BaseNodeStateMachine<B>,
     miner: Option<Miner>,
     miner_enabled: Arc<AtomicBool>,
+    pub miner_hashrate: Arc<AtomicU64>,
 }
 
 impl<B: BlockchainBackend> BaseNodeContext<B> {
@@ -589,6 +595,7 @@ where
     };
 
     let miner_enabled = miner.enable_mining_flag();
+    let miner_hashrate = miner.get_hashrate_u64();
     Ok(BaseNodeContext {
         base_node_comms,
         base_node_dht,
@@ -599,6 +606,7 @@ where
         node,
         miner: Some(miner),
         miner_enabled,
+        miner_hashrate,
     })
 }
 
