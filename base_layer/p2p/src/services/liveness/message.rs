@@ -34,10 +34,10 @@ impl PingPongMessage {
         }
     }
 
-    /// Construct a ping message
-    pub fn ping() -> Self {
+    /// Construct a ping message with metadata
+    pub fn ping_with_metadata(metadata: Metadata) -> Self {
         let nonce = OsRng.next_u64();
-        Self::new(PingPong::Ping, nonce, Default::default())
+        Self::new(PingPong::Ping, nonce, metadata)
     }
 
     /// Construct a pong message with metadata

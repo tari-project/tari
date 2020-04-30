@@ -131,6 +131,15 @@ impl ChainMetadataService {
 
     async fn handle_liveness_event(&mut self, event: &LivenessEvent) -> Result<(), ChainMetadataSyncError> {
         match event {
+            // Received a ping, check if our neighbour sent it and it contains ChainMetadata
+            LivenessEvent::ReceivedPing(event) => {
+                trace!(
+                    target: LOG_TARGET,
+                    "Received ping from neighbouring node '{}'.",
+                    event.node_id
+                );
+                self.collect_chain_state_from_ping(&event.node_id, &event.metadata)?;
+            },
             // Received a pong, check if our neighbour sent it and it contains ChainMetadata
             LivenessEvent::ReceivedPong(event) => {
                 trace!(
@@ -141,7 +150,7 @@ impl ChainMetadataService {
                 self.collect_chain_state_from_pong(&event.node_id, &event.metadata)?;
 
                 // All peers have responded in this round, send the chain metadata to the base node service
-                if self.peer_chain_metadata.len() == self.peer_chain_metadata.capacity() {
+                if self.peer_chain_metadata.len() >= self.peer_chain_metadata.capacity() {
                     self.flush_chain_metadata_to_event_publisher().await?;
                 }
             },
@@ -192,6 +201,31 @@ impl ChainMetadataService {
         }
     }
 
+    fn collect_chain_state_from_ping(
+        &mut self,
+        node_id: &NodeId,
+        metadata: &Metadata,
+    ) -> Result<(), ChainMetadataSyncError>
+    {
+        if let Some(chain_metadata_bytes) = metadata.get(MetadataKey::ChainMetadata) {
+            let chain_metadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?.into();
+            debug!(target: LOG_TARGET, "Received chain metadata from NodeId '{}'", node_id);
+            trace!(target: LOG_TARGET, "{}", chain_metadata);
+
+            if let Some(pos) = self
+                .peer_chain_metadata
+                .iter()
+                .position(|peer_chainstate| &peer_chainstate.node_id == node_id)
+            {
+                self.peer_chain_metadata.remove(pos);
+            }
+
+            self.peer_chain_metadata
+                .push(PeerChainMetadata::new(node_id.clone(), chain_metadata));
+        }
+        Ok(())
+    }
+
     fn collect_chain_state_from_pong(
         &mut self,
         node_id: &NodeId,
@@ -227,7 +261,7 @@ mod test {
     use crate::base_node::comms_interface::{CommsInterfaceError, NodeCommsRequest, NodeCommsResponse};
     use std::convert::TryInto;
     use tari_broadcast_channel as broadcast_channel;
-    use tari_p2p::services::liveness::{mock::create_p2p_liveness_mock, LivenessRequest, PongEvent};
+    use tari_p2p::services::liveness::{mock::create_p2p_liveness_mock, LivenessRequest, PingPongEvent};
     use tari_service_framework::reply_channel;
     use tari_test_utils::{runtime, unpack_enum};
 
@@ -296,7 +330,7 @@ mod test {
         metadata.insert(MetadataKey::ChainMetadata, proto_chain_metadata.to_encoded_bytes());
 
         let node_id = NodeId::new();
-        let pong_event = PongEvent {
+        let pong_event = PingPongEvent {
             is_neighbour: true,
             metadata,
             node_id: node_id.clone(),
@@ -328,7 +362,7 @@ mod test {
         let (liveness_handle, _, _) = create_p2p_liveness_mock(1);
         let metadata = Metadata::new();
         let node_id = NodeId::new();
-        let pong_event = PongEvent {
+        let pong_event = PingPongEvent {
             is_neighbour: true,
             metadata,
             node_id,
@@ -352,7 +386,7 @@ mod test {
         let mut metadata = Metadata::new();
         metadata.insert(MetadataKey::ChainMetadata, b"no-good".to_vec());
         let node_id = NodeId::new();
-        let pong_event = PongEvent {
+        let pong_event = PingPongEvent {
             is_neighbour: true,
             metadata,
             node_id,

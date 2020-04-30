@@ -84,7 +84,7 @@ use tari_p2p::{
             LivenessInitializer,
             LivenessRequest,
             Metadata,
-            PongEvent,
+            PingPongEvent,
         },
     },
 };
@@ -2948,7 +2948,7 @@ fn test_resend_of_tx_on_pong_event<T: TransactionBackend + Clone + 'static>(back
 
     // Send the event but if the send protocol hasn't subscribed yet the send will error so wait a bit and try again.
     for _ in 0..12 {
-        match liveness_event_sender.send(Arc::new(LivenessEvent::ReceivedPong(Box::new(PongEvent::new(
+        match liveness_event_sender.send(Arc::new(LivenessEvent::ReceivedPong(Box::new(PingPongEvent::new(
             bob_node_identity.node_id().clone(),
             None,
             Metadata::new(),

@@ -70,7 +70,7 @@ pub mod mock;
 // Public exports
 pub use self::{
     config::LivenessConfig,
-    handle::{LivenessEvent, LivenessEventSender, LivenessHandle, LivenessRequest, LivenessResponse, PongEvent},
+    handle::{LivenessEvent, LivenessEventSender, LivenessHandle, LivenessRequest, LivenessResponse, PingPongEvent},
     state::Metadata,
 };
 pub use crate::proto::liveness::MetadataKey;
