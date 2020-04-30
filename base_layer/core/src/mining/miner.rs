@@ -35,7 +35,7 @@ use crate::{
         types::{CryptoFactories, PrivateKey},
     },
 };
-use core::sync::atomic::AtomicBool;
+use core::sync::atomic::{AtomicBool, AtomicU64};
 use futures::{
     channel::{
         mpsc,
@@ -63,6 +63,7 @@ pub struct Miner {
     state_change_event_rx: Option<Subscriber<StateEvent>>,
     threads: usize,
     enabled: Arc<AtomicBool>,
+    hashrate: Arc<AtomicU64>,
 }
 
 impl Miner {
@@ -84,6 +85,7 @@ impl Miner {
             state_change_event_rx: None,
             threads,
             enabled: Arc::new(AtomicBool::new(false)),
+            hashrate: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -107,6 +109,10 @@ impl Miner {
     /// This function returns a arc copy of the atomic bool to start and shutdown the miner.
     pub fn enable_mining_flag(&self) -> Arc<AtomicBool> {
         self.enabled.clone()
+    }
+
+    pub fn get_hashrate_u64(&self) -> Arc<AtomicU64> {
+        self.hashrate.clone()
     }
 
     /// Mine blocks asynchronously.
@@ -154,10 +160,11 @@ impl Miner {
         for _ in 0..self.threads {
             let stop_mining_flag = self.stop_mining_flag.clone();
             let header = block.header.clone();
+            let thread_hash_rate = self.hashrate.clone();
             let mut tx_channel = tx.clone();
             trace!("spawning mining thread");
             spawn_blocking(move || {
-                let result = CpuBlakePow::mine(header, stop_mining_flag);
+                let result = CpuBlakePow::mine(header, stop_mining_flag, thread_hash_rate);
                 // send back what the miner found, None will be sent if the miner did not find a nonce
                 if let Err(e) = tx_channel.try_send(result) {
                     warn!(target: LOG_TARGET, "Could not return mining result: {}", e);
