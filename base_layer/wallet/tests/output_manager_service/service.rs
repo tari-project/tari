@@ -76,9 +76,10 @@ use tari_wallet::{
         },
     },
     storage::connection_manager::run_migration_and_create_sqlite_connection,
+    transaction_service::handle::TransactionServiceHandle,
 };
 use tempdir::TempDir;
-use tokio::{runtime::Runtime, time::delay_for};
+use tokio::{runtime::Runtime, sync::broadcast::channel, time::delay_for};
 
 pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     runtime: &mut Runtime,
@@ -88,6 +89,7 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     OutboundServiceMockState,
     Shutdown,
     Sender<DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>,
+    TransactionServiceHandle,
 )
 {
     let shutdown = Shutdown::new();
@@ -98,12 +100,17 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     let (base_node_response_sender, base_node_response_receiver) = mpsc::channel(20);
     let (oms_event_publisher, oms_event_subscriber) = bounded(100);
 
+    let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
+    let (event_publisher, _) = channel(100);
+    let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
+
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(
             OutputManagerServiceConfig {
                 base_node_query_timeout: Duration::from_secs(3),
             },
             outbound_message_requester.clone(),
+            ts_handle.clone(),
             oms_request_receiver,
             base_node_response_receiver,
             OutputManagerDatabase::new(backend),
@@ -123,6 +130,7 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         outbound_mock_state,
         shutdown,
         base_node_response_sender,
+        ts_handle,
     )
 }
 
@@ -155,7 +163,7 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
 
     let mut runtime = Runtime::new().unwrap();
 
-    let (mut oms, _, _shutdown, _) = setup_output_manager_service(&mut runtime, backend.clone());
+    let (mut oms, _, _shutdown, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
 
     let (_ti, uo) = make_input(
         &mut OsRng.clone(),
@@ -227,7 +235,7 @@ fn send_not_enough_funds<T: OutputManagerBackend + 'static>(backend: T) {
 
     let mut runtime = Runtime::new().unwrap();
 
-    let (mut oms, _, _shutdown, _) = setup_output_manager_service(&mut runtime, backend);
+    let (mut oms, _, _shutdown, _, _) = setup_output_manager_service(&mut runtime, backend);
     let num_outputs = 20;
     for _i in 0..num_outputs {
         let (_ti, uo) = make_input(
@@ -270,7 +278,7 @@ fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
 
     let mut runtime = Runtime::new().unwrap();
 
-    let (mut oms, _, _shutdown, _) = setup_output_manager_service(&mut runtime, backend);
+    let (mut oms, _, _shutdown, _, _) = setup_output_manager_service(&mut runtime, backend);
 
     let fee_per_gram = MicroTari::from(20);
     let fee_without_change = Fee::calculate(fee_per_gram, 1, 2, 1);
@@ -344,7 +352,7 @@ fn send_no_change_sqlite_db() {
 fn send_not_enough_for_change<T: OutputManagerBackend + 'static>(backend: T) {
     let mut runtime = Runtime::new().unwrap();
 
-    let (mut oms, _, _shutdown, _) = setup_output_manager_service(&mut runtime, backend);
+    let (mut oms, _, _shutdown, _, _) = setup_output_manager_service(&mut runtime, backend);
 
     let fee_per_gram = MicroTari::from(20);
     let fee_without_change = Fee::calculate(fee_per_gram, 1, 2, 1);
@@ -391,7 +399,7 @@ fn receiving_and_confirmation<T: OutputManagerBackend + 'static>(backend: T) {
 
     let mut runtime = Runtime::new().unwrap();
 
-    let (mut oms, _, _shutdown, _) = setup_output_manager_service(&mut runtime, backend);
+    let (mut oms, _, _shutdown, _, _) = setup_output_manager_service(&mut runtime, backend);
 
     let value = MicroTari::from(5000);
     let recv_key = runtime.block_on(oms.get_recipient_spending_key(1, value)).unwrap();
@@ -435,7 +443,7 @@ fn cancel_transaction<T: OutputManagerBackend + 'static>(backend: T) {
 
     let mut runtime = Runtime::new().unwrap();
 
-    let (mut oms, _, _shutdown, _) = setup_output_manager_service(&mut runtime, backend);
+    let (mut oms, _, _shutdown, _, _) = setup_output_manager_service(&mut runtime, backend);
 
     let num_outputs = 20;
     for _i in 0..num_outputs {
@@ -484,7 +492,7 @@ fn timeout_transaction<T: OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
-    let (mut oms, _, _shutdown, _) = setup_output_manager_service(&mut runtime, backend);
+    let (mut oms, _, _shutdown, _, _) = setup_output_manager_service(&mut runtime, backend);
 
     let num_outputs = 20;
     for _i in 0..num_outputs {
@@ -539,7 +547,7 @@ fn test_get_balance<T: OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
-    let (mut oms, _, _shutdown, _) = setup_output_manager_service(&mut runtime, backend);
+    let (mut oms, _, _shutdown, _, _) = setup_output_manager_service(&mut runtime, backend);
 
     let balance = runtime.block_on(oms.get_balance()).unwrap();
 
@@ -593,7 +601,7 @@ fn test_confirming_received_output<T: OutputManagerBackend + 'static>(backend: T
 
     let mut runtime = Runtime::new().unwrap();
 
-    let (mut oms, _, _shutdown, _) = setup_output_manager_service(&mut runtime, backend);
+    let (mut oms, _, _shutdown, _, _) = setup_output_manager_service(&mut runtime, backend);
 
     let value = MicroTari::from(5000);
     let recv_key = runtime.block_on(oms.get_recipient_spending_key(1, value)).unwrap();
@@ -633,7 +641,7 @@ fn test_startup_utxo_scan() {
 
     let mut runtime = Runtime::new().unwrap();
 
-    let (mut oms, outbound_service, _shutdown, mut base_node_response_sender) =
+    let (mut oms, outbound_service, _shutdown, mut base_node_response_sender, _) =
         setup_output_manager_service(&mut runtime, OutputManagerMemoryDatabase::new());
     let key1 = PrivateKey::random(&mut OsRng);
     let value1 = 500;
@@ -809,7 +817,7 @@ fn sending_transaction_with_short_term_clear<T: Clone + OutputManagerBackend + '
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
-    let (mut oms, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
+    let (mut oms, _, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
 
     let available_balance = 10_000 * uT;
     let (_ti, uo) = make_input(&mut OsRng.clone(), available_balance, &factories.commitment);
@@ -825,7 +833,7 @@ fn sending_transaction_with_short_term_clear<T: Clone + OutputManagerBackend + '
     assert_eq!(balance.pending_outgoing_balance, available_balance);
 
     drop(oms);
-    let (mut oms, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
+    let (mut oms, _, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
 
     let balance = runtime.block_on(oms.get_balance()).unwrap();
     assert_eq!(balance.available_balance, available_balance);
@@ -851,7 +859,7 @@ fn sending_transaction_with_short_term_clear<T: Clone + OutputManagerBackend + '
     runtime.block_on(oms.confirm_pending_transaction(sender_tx_id)).unwrap();
 
     drop(oms);
-    let (mut oms, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
+    let (mut oms, _, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
 
     let balance = runtime.block_on(oms.get_balance()).unwrap();
     assert_eq!(balance.pending_outgoing_balance, available_balance);
@@ -885,7 +893,7 @@ fn sending_transaction_with_short_term_clear_sqlite_db() {
 fn coin_split_with_change<T: Clone + OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
-    let (mut oms, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
+    let (mut oms, _, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
 
     let val1 = 6_000 * uT;
     let val2 = 7_000 * uT;
@@ -927,7 +935,7 @@ fn coin_split_with_change_sqlite_db() {
 fn coin_split_no_change<T: Clone + OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
-    let (mut oms, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
+    let (mut oms, _, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
 
     let fee_per_gram = MicroTari::from(25);
     let split_count = 15;

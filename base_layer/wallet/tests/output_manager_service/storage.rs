@@ -276,12 +276,17 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     let invalid_outputs = runtime.block_on(db.get_invalid_outputs()).unwrap();
     assert_eq!(invalid_outputs.len(), 0);
     let unspent_outputs = runtime.block_on(db.get_unspent_outputs()).unwrap();
-    runtime
+    let _ = runtime
         .block_on(db.invalidate_output(unspent_outputs[0].clone()))
         .unwrap();
     let invalid_outputs = runtime.block_on(db.get_invalid_outputs()).unwrap();
     assert_eq!(invalid_outputs.len(), 1);
     assert_eq!(invalid_outputs[0], unspent_outputs[0]);
+
+    let tx_id = runtime
+        .block_on(db.invalidate_output(pending_txs[0].outputs_to_be_received[0].clone()))
+        .unwrap();
+    assert_eq!(tx_id, Some(pending_txs[0].tx_id));
 }
 
 #[test]

@@ -87,6 +87,8 @@ use tari_core::{
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
 use tari_p2p::{domain_message::DomainMessage, services::liveness::LivenessHandle, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
+#[cfg(feature = "test_harness")]
+use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
@@ -405,6 +407,9 @@ where
             },
             TransactionServiceRequest::GetCompletedTransactions => Ok(
                 TransactionServiceResponse::CompletedTransactions(self.get_completed_transactions().await?),
+            ),
+            TransactionServiceRequest::GetCompletedTransaction(tx_id) => Ok(
+                TransactionServiceResponse::CompletedTransaction(self.db.get_completed_transaction(tx_id).await?),
             ),
             TransactionServiceRequest::RequestCoinbaseSpendingKey((amount, maturity_height)) => Ok(
                 TransactionServiceResponse::CoinbaseKey(self.request_coinbase_key(amount, maturity_height).await?),
@@ -1501,10 +1506,13 @@ where
         source_public_key: CommsPublicKey,
     ) -> Result<(), TransactionServiceError>
     {
-        use crate::output_manager_service::{
-            config::OutputManagerServiceConfig,
-            service::OutputManagerService,
-            storage::{database::OutputManagerDatabase, memory_db::OutputManagerMemoryDatabase},
+        use crate::{
+            output_manager_service::{
+                config::OutputManagerServiceConfig,
+                service::OutputManagerService,
+                storage::{database::OutputManagerDatabase, memory_db::OutputManagerMemoryDatabase},
+            },
+            transaction_service::handle::TransactionServiceHandle,
         };
         use futures::stream;
         use tari_broadcast_channel::bounded;
@@ -1512,10 +1520,14 @@ where
         let (_sender, receiver) = reply_channel::unbounded();
         let (tx, _rx) = mpsc::channel(20);
         let (oms_event_publisher, _oms_event_subscriber) = bounded(100);
+        let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
+        let (event_publisher, _) = broadcast::channel(100);
+        let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
 
         let mut fake_oms = OutputManagerService::new(
             OutputManagerServiceConfig::default(),
             OutboundMessageRequester::new(tx),
+            ts_handle,
             receiver,
             stream::empty(),
             OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),

@@ -404,9 +404,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn invalidate_unspent_output(&self, output: &UnblindedOutput) -> Result<(), OutputManagerStorageError> {
+    fn invalidate_unspent_output(&self, output: &UnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError> {
         let conn = acquire_lock!(self.database_connection);
         let output = OutputSql::find(&output.spending_key.to_vec(), &conn)?;
+        let tx_id = output.tx_id.clone().map(|id| id as u64);
         let _ = output.update(
             UpdateOutput {
                 status: Some(OutputStatus::Invalid),
@@ -415,7 +416,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             &(*conn),
         )?;
 
-        Ok(())
+        Ok(tx_id)
     }
 }
 

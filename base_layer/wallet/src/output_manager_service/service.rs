@@ -28,6 +28,7 @@ use crate::{
         storage::database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
         TxId,
     },
+    transaction_service::handle::TransactionServiceHandle,
     types::{HashDigest, KeyDigest},
     util::futures::StateDelay,
 };
@@ -64,7 +65,10 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::{keys::SecretKey as SecretKeyTrait, tari_utilities::hash::Hashable};
+use tari_crypto::{
+    keys::SecretKey as SecretKeyTrait,
+    tari_utilities::{hash::Hashable, hex::Hex},
+};
 use tari_key_manager::{
     key_manager::KeyManager,
     mnemonic::{from_secret_key, MnemonicLanguage},
@@ -85,6 +89,7 @@ where TBackend: OutputManagerBackend + 'static
     key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
     db: OutputManagerDatabase<TBackend>,
     outbound_message_service: OutboundMessageRequester,
+    transaction_service: TransactionServiceHandle,
     request_stream:
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_response_stream: Option<BNResponseStream>,
@@ -102,6 +107,7 @@ where
     pub async fn new(
         config: OutputManagerServiceConfig,
         outbound_message_service: OutboundMessageRequester,
+        transaction_service: TransactionServiceHandle,
         request_stream: reply_channel::Receiver<
             OutputManagerRequest,
             Result<OutputManagerResponse, OutputManagerError>,
@@ -133,6 +139,7 @@ where
         Ok(OutputManagerService {
             config,
             outbound_message_service,
+            transaction_service,
             key_manager: Mutex::new(KeyManager::<PrivateKey, KeyDigest>::from(
                 key_manager_state.master_seed,
                 key_manager_state.branch_seed,
@@ -342,11 +349,35 @@ where
 
         // If there are any remaining Unspent Outputs we will move them to the invalid collection
         for (_k, v) in output_hashes {
+            // Get the transaction these belonged to so we can display the kernel signature of the transaction this
+            // output belonged to.
+
             warn!(
                 target: LOG_TARGET,
                 "Output with value {} not returned from Base Node query and is thus being invalidated", v.value
             );
-            self.db.invalidate_output(v).await?;
+            // If the output that is being invalidated has an associated TxId then get the kernel signature of the
+            // transaction and display for easier debugging
+            if let Some(tx_id) = self.db.invalidate_output(v).await? {
+                if let Ok(transaction) = self.transaction_service.get_completed_transaction(tx_id).await {
+                    info!(
+                        target: LOG_TARGET,
+                        "Invalidated Output is from Transaction (TxId: {}) with message: {} and Kernel Signature: {}",
+                        transaction.tx_id,
+                        transaction.message,
+                        transaction.transaction.body.kernels()[0]
+                            .excess_sig
+                            .get_signature()
+                            .to_hex()
+                    )
+                }
+            } else {
+                info!(
+                    target: LOG_TARGET,
+                    "Invalidated Output does not have an associated TxId so it is likely a Coinbase output lost to a \
+                     Re-Org"
+                );
+            }
         }
 
         debug!(
