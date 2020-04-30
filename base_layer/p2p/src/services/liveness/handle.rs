@@ -76,30 +76,30 @@ pub enum LivenessResponse {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LivenessEvent {
     /// A ping was received
-    ReceivedPing,
+    ReceivedPing(Box<PingPongEvent>),
     /// A pong was received. The latency to the peer (if available) and the metadata contained
     /// within the received pong message are included as part of the event
-    ReceivedPong(Box<PongEvent>),
+    ReceivedPong(Box<PingPongEvent>),
     BroadcastedNeighbourPings(usize),
     BroadcastedMonitoredNodeIdPings(usize),
 }
 
-/// Repressents a pong event
+/// Represents a ping or pong event
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PongEvent {
-    /// The node id of the node which sent this pong
+pub struct PingPongEvent {
+    /// The node id of the node which sent this ping or pong
     pub node_id: NodeId,
-    /// Latency if available (i.e. a corresponding ping was sent within the Liveness state inflight ping TTL)
+    /// Latency if available (i.e. a corresponding event was sent within the Liveness state inflight ping TTL)
     pub latency: Option<u32>,
-    /// Pong metadata
+    /// Metadata of the corresponding node
     pub metadata: Metadata,
-    /// True if the pong was from a neighbouring peer, otherwise false
+    /// True if the ping/pong was from a neighbouring peer, otherwise false
     pub is_neighbour: bool,
-    /// True if the pong was from a monitored node, otherwise false
+    /// True if the ping/pong was from a monitored node, otherwise false
     pub is_monitored: bool,
 }
 
-impl PongEvent {
+impl PingPongEvent {
     pub fn new(
         node_id: NodeId,
         latency: Option<u32>,

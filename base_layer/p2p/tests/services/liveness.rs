@@ -131,7 +131,7 @@ async fn end_to_end() {
     let ping_count = events
         .iter()
         .filter(|event| match **(**event).as_ref().unwrap() {
-            LivenessEvent::ReceivedPing => true,
+            LivenessEvent::ReceivedPing(_) => true,
             _ => false,
         })
         .count();
@@ -153,7 +153,7 @@ async fn end_to_end() {
     let ping_count = events
         .iter()
         .filter(|event| match **(**event).as_ref().unwrap() {
-            LivenessEvent::ReceivedPing => true,
+            LivenessEvent::ReceivedPing(_) => true,
             _ => false,
         })
         .count();

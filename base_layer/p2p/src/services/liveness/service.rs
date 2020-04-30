@@ -31,7 +31,7 @@ use super::{
 };
 use crate::{
     domain_message::DomainMessage,
-    services::liveness::{handle::LivenessEventSender, peer_pool::PeerPool, LivenessEvent, PongEvent},
+    services::liveness::{handle::LivenessEventSender, peer_pool::PeerPool, LivenessEvent, PingPongEvent},
     tari_message::TariMessageType,
 };
 use futures::{future::Either, pin_mut, stream::StreamExt, Stream};
@@ -186,7 +186,28 @@ where
                 self.send_pong(ping_pong_msg.nonce, public_key).await.unwrap();
                 self.state.inc_pongs_sent();
 
-                self.publish_event(LivenessEvent::ReceivedPing);
+                let is_neighbour = self.neighbours.contains(&node_id);
+                self.refresh_peer_pools_if_stale().await?;
+                let maybe_latency = None;
+                let is_monitored = self.state.is_monitored_node_id(&node_id);
+
+                trace!(
+                    target: LOG_TARGET,
+                    "Received ping from peer '{}'. {} {} {}",
+                    node_id.short_str(),
+                    maybe_latency.map(|ms| format!("Latency: {}ms", ms)).unwrap_or_default(),
+                    if is_neighbour { "(neighbouring)" } else { "" },
+                    if is_monitored { "(monitored)" } else { "" },
+                );
+                let ping_event = PingPongEvent::new(
+                    node_id,
+                    maybe_latency,
+                    ping_pong_msg.metadata.into(),
+                    is_neighbour,
+                    is_monitored,
+                );
+
+                self.publish_event(LivenessEvent::ReceivedPing(Box::new(ping_event)));
             },
             PingPong::Pong => {
                 if !self.state.is_inflight(ping_pong_msg.nonce) {
@@ -211,7 +232,7 @@ where
                     if is_neighbour { "(neighbouring)" } else { "" },
                     if is_monitored { "(monitored)" } else { "" },
                 );
-                let pong_event = PongEvent::new(
+                let pong_event = PingPongEvent::new(
                     node_id,
                     maybe_latency,
                     ping_pong_msg.metadata.into(),
@@ -238,7 +259,7 @@ where
     }
 
     async fn send_ping(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
-        let msg = PingPongMessage::ping();
+        let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
         self.state.add_inflight_ping(msg.nonce, &node_id);
         trace!(target: LOG_TARGET, "Sending ping to peer '{}'", node_id.short_str());
         if self.neighbours.contains(&node_id) {
@@ -261,7 +282,7 @@ where
     }
 
     async fn send_pong(&mut self, nonce: u64, dest: CommsPublicKey) -> Result<(), LivenessError> {
-        let msg = PingPongMessage::pong_with_metadata(nonce, self.state.pong_metadata().clone());
+        let msg = PingPongMessage::pong_with_metadata(nonce, self.state.metadata().clone());
         self.oms_handle
             .send_direct(
                 dest,
@@ -294,7 +315,7 @@ where
                 Ok(LivenessResponse::AvgLatency(latency))
             },
             SetPongMetadata(key, value) => {
-                self.state.set_pong_metadata_entry(key, value);
+                self.state.set_metadata_entry(key, value);
                 Ok(LivenessResponse::Ok)
             },
             AddNodeId(node_id) => {
@@ -455,7 +476,7 @@ where
         trace!(target: LOG_TARGET, "Sending liveness ping to {} peer(s)", len_peers);
 
         for node_id in node_ids {
-            let msg = PingPongMessage::ping();
+            let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
             self.state.add_inflight_ping(msg.nonce, &node_id);
             self.oms_handle
                 .send_direct_node_id(
@@ -480,7 +501,7 @@ where
                 num_nodes,
             );
             for node_id in self.state.get_monitored_node_ids() {
-                let msg = PingPongMessage::ping();
+                let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
                 self.state.add_inflight_ping(msg.nonce, &node_id);
                 self.oms_handle
                     .send_direct_node_id(
@@ -670,7 +691,8 @@ mod test {
         let (outbound_tx, mut outbound_rx) = mpsc::channel(10);
         let oms_handle = OutboundMessageRequester::new(outbound_tx);
 
-        let msg = create_dummy_message(PingPongMessage::ping());
+        let metadata = Metadata::new();
+        let msg = create_dummy_message(PingPongMessage::ping_with_metadata(metadata));
         // A stream which emits one message and then closes
         let pingpong_stream = stream::iter(std::iter::once(msg));
 

@@ -76,7 +76,7 @@ pub struct LivenessState {
     pongs_sent: AtomicUsize,
     num_active_peers: AtomicUsize,
 
-    pong_metadata: Metadata,
+    local_metadata: Metadata,
     nodes_to_monitor: HashMap<NodeId, NodeStats>,
 }
 
@@ -123,14 +123,14 @@ impl LivenessState {
         self.pongs_sent.load(Ordering::Relaxed)
     }
 
-    /// Returns a reference to pong metadata
-    pub fn pong_metadata(&self) -> &Metadata {
-        &self.pong_metadata
+    /// Returns a reference to local metadata
+    pub fn metadata(&self) -> &Metadata {
+        &self.local_metadata
     }
 
-    /// Set a pong metadata entry. Duplicate entries are replaced.
-    pub fn set_pong_metadata_entry(&mut self, key: MetadataKey, value: Vec<u8>) {
-        self.pong_metadata.insert(key, value);
+    /// Set a metadata entry for the local node. Duplicate entries are replaced.
+    pub fn set_metadata_entry(&mut self, key: MetadataKey, value: Vec<u8>) {
+        self.local_metadata.insert(key, value);
     }
 
     /// Adds a ping to the inflight ping list, while noting the current time that a ping was sent.
@@ -383,13 +383,10 @@ mod test {
     }
 
     #[test]
-    fn set_pong_metadata_entry() {
+    fn set_metadata_entry() {
         let mut state = LivenessState::new();
-        state.set_pong_metadata_entry(MetadataKey::ChainMetadata, b"dummy-data".to_vec());
-        assert_eq!(
-            state.pong_metadata().get(MetadataKey::ChainMetadata).unwrap(),
-            b"dummy-data"
-        );
+        state.set_metadata_entry(MetadataKey::ChainMetadata, b"dummy-data".to_vec());
+        assert_eq!(state.metadata().get(MetadataKey::ChainMetadata).unwrap(), b"dummy-data");
     }
 
     #[test]
