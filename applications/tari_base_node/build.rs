@@ -24,8 +24,10 @@
 use serde::Deserialize;
 use std::{env, fs, path::Path, string::ToString};
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     write_constants_file();
+    tonic_build::compile_protos("proto/base_node.proto")?;
+    Ok(())
 }
 
 #[derive(Deserialize)]

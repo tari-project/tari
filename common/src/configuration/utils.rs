@@ -114,7 +114,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     )
     .unwrap();
     cfg.set_default("base_node.mainnet.grpc_enabled", false).unwrap();
-    cfg.set_default("base_node.mainnet.grpc_address", "tcp://127.0.0.1:18041")
+    cfg.set_default("base_node.mainnet.grpc_address", "127.0.0.1:18042")
         .unwrap();
     cfg.set_default("base_node.mainnet.enable_mining", false).unwrap();
     cfg.set_default("base_node.mainnet.num_mining_threads", 1).unwrap();
@@ -161,8 +161,9 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         format!("{}/tcp/18141", local_ip_addr),
     )
     .unwrap();
+
     cfg.set_default("base_node.rincewind.grpc_enabled", false).unwrap();
-    cfg.set_default("base_node.rincewind.grpc_address", "tcp://127.0.0.1:18141")
+    cfg.set_default("base_node.rincewind.grpc_address", "127.0.0.1:18142")
         .unwrap();
     cfg.set_default("base_node.rincewind.enable_mining", false).unwrap();
     cfg.set_default("base_node.rincewind.num_mining_threads", 1).unwrap();

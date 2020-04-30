@@ -28,6 +28,7 @@ use multiaddr::Multiaddr;
 use std::{
     convert::TryInto,
     fmt::{Display, Formatter, Result as FormatResult},
+    net::SocketAddr,
     num::{NonZeroU16, TryFromIntError},
     path::PathBuf,
     str::FromStr,
@@ -49,6 +50,8 @@ pub struct GlobalConfig {
     pub blocking_threads: usize,
     pub identity_file: PathBuf,
     pub public_address: Multiaddr,
+    pub grpc_enabled: bool,
+    pub grpc_address: SocketAddr,
     pub peer_seeds: Vec<String>,
     pub peer_db_path: PathBuf,
     pub block_sync_strategy: String,
@@ -161,6 +164,21 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
                 .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         })?;
 
+    // GPRC enabled
+    let key = config_string(&net_str, "grpc_enabled");
+    let grpc_enabled = cfg
+        .get_bool(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as bool;
+
+    let key = config_string(&net_str, "grpc_address");
+    let grpc_address = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        .and_then(|addr| {
+            addr.parse::<SocketAddr>()
+                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        })?;
+
     // Peer seeds
     let key = config_string(&net_str, "peer_seeds");
     let peer_seeds = cfg
@@ -221,6 +239,8 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         blocking_threads,
         identity_file,
         public_address,
+        grpc_enabled,
+        grpc_address,
         peer_seeds,
         peer_db_path,
         block_sync_strategy,
