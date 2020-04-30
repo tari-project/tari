@@ -3,7 +3,7 @@
 
 #define MyOrgName "Tari"
 #define MyAppName "Base Node"
-#define MyAppVersion "0.2.1-3435d4c-release"
+#define MyAppVersion "0.2.1-23677a7-release"
 #define MyAppPublisher "The Tari Development Community"
 #define MyAppURL "https://github.com/tari-project/tari"
 #define MyAppSupp "Tari Website"
@@ -11,6 +11,7 @@
 #define MyAppExeName "start_tari_basenode.bat"
 #define TorServicesName "Tor Services"
 #define TorServicesExeName "start_tor.bat"
+#define ReadmeName "README.txt"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
@@ -35,6 +36,7 @@ SolidCompression=yes
 MinVersion=0,6.1
 VersionInfoCompany=The Tari Developer Community
 VersionInfoProductName=tari_base_node
+InfoAfterFile="..\applications\tari_base_node\windows\README.md"
 
 [CustomMessages]
 TariGit=Tari on GitHub
@@ -49,7 +51,9 @@ Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescrip
 
 [Files]
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.md"; Flags: ignoreversion
+Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\tari_base_node\windows\README.md"; DestDir: "{app}"; DestName: "README.txt"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\start_tari_basenode.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\start_tor.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\target\release\tari_base_node.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
@@ -63,6 +67,7 @@ Source: "tor.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversio
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\runtime\{#MyAppExeName}"; WorkingDir: "{app}"
 Name: "{group}\{#TorServicesName}"; Filename: "{app}\runtime\{#TorServicesExeName}"; WorkingDir: "{app}"
+Name: "{group}\{#ReadmeName}"; Filename: "{app}\{#ReadmeName}"; WorkingDir: "{app}"
 Name: "{group}\{cm:ProgramOnTheWeb,{#MyAppName}}"; Filename: "{#MyAppURL}"
 Name: "{group}\{cm:TariWeb,{#MyAppSupp}}"; Filename: "{#MyAppSuppURL}"
 Name: "{group}\{cm:UninstallProgram,{#MyOrgName} {#MyAppName} - Testnet}"; Filename: "{uninstallexe}"
