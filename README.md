@@ -30,7 +30,7 @@ To build the Tari codebase from source, there are a few dependencies you need to
 First you'll need to make sure you have a full development environment set up:
 
 ```
-sudo apt-get -y install openssl libssl-dev pkg-config libsqlite3-dev clang git cmake libc++-dev libc++abi-dev
+sudo apt-get -y install openssl libssl-dev pkg-config libsqlite3-dev clang git cmake libc++-dev libc++abi-dev libprotobuf-dev protobuf-compiler
 ```
 
 #### Install Rust
