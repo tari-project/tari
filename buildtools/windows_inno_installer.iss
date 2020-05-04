@@ -3,7 +3,7 @@
 
 #define MyOrgName "Tari"
 #define MyAppName "Base Node"
-#define MyAppVersion "0.2.1-23677a7-release"
+#define MyAppVersion "0.2.1-ecfe782-release"
 #define MyAppPublisher "The Tari Development Community"
 #define MyAppURL "https://github.com/tari-project/tari"
 #define MyAppSupp "Tari Website"
@@ -37,6 +37,14 @@ MinVersion=0,6.1
 VersionInfoCompany=The Tari Developer Community
 VersionInfoProductName=tari_base_node
 InfoAfterFile="..\applications\tari_base_node\windows\README.md"
+SignTool=SignTool
+;Tools -> Configure Sign Tools (Example configuration)
+;  Name: 
+;    SignTool 
+;  Command: 
+;    "C:\Program Files (x86)\Windows Kits\10\bin\10.0.18362.0\x64\signtool.exe" 
+;    sign /f "<path and filename of the certificate>" 
+;    /p "<password used to create the certificate>" $f
 
 [CustomMessages]
 TariGit=Tari on GitHub
@@ -46,7 +54,7 @@ TariWeb=Tari on the web
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}";
 Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked; OnlyBelowVersion: 0,6.1
 
 [Files]
@@ -63,6 +71,9 @@ Source: "..\applications\tari_base_node\windows\runtime\run_the_base_node.bat"; 
 Source: "..\common\config\presets\windows.toml"; DestDir: "{app}\config"; Flags: ignoreversion
 Source: "tari_logo_purple.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
 Source: "tor.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
+Source: "install_sqlite.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "install_tor_services.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "install_vs2019_redist.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\runtime\{#MyAppExeName}"; WorkingDir: "{app}"
@@ -74,3 +85,11 @@ Name: "{group}\{cm:UninstallProgram,{#MyOrgName} {#MyAppName} - Testnet}"; Filen
 Name: "{commondesktop}\{#MyOrgName} {#MyAppName}"; Filename: "{app}\runtime\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 Name: "{commondesktop}\{#MyOrgName} - {#TorServicesName}"; Filename: "{app}\runtime\{#TorServicesExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: quicklaunchicon
+
+[Setup]
+PrivilegesRequired=admin
+
+[Run]
+Filename: "{app}\runtime\install_sqlite.bat"; Description: "Install SQLite"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall 
+Filename: "{app}\runtime\install_tor_services.bat"; Description: "Install Tor Services"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall 
+Filename: "{app}\runtime\install_vs2019_redist.bat"; Description: "Install Redistributable for Visual Studio 2019"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall 

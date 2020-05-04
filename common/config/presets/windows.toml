@@ -13,7 +13,7 @@
 # section holds configuration options that are common to all sections.
 
 # A note about Logging - The logger is initialised before the configuration file is loaded. For this reason, logging
-# is not configured here, but in `~/.tari/log4rs.yml` (*nix / OsX) or `%HOME%/.tari/log4rs.yml` (Windows) by
+# is not configured here, but in `~/.tari/log4rs.yml` (*nix / OsX) or `%USERPROFILE%\.tari\log4rs.yml` (Windows) by
 # default, or the location specified in the TARI_LOGFILE environment variable.
 
 [common]
@@ -27,7 +27,7 @@
 #message_cache_ttl = 1440
 
 # The peer database list is stored in a database file at this location
-#peer_database = "~/.tari/peers"
+#peer_database = "~/.tari/peers" # or "%USERPROFILE%\\.tari\peers"
 
 # If peer nodes spam you with messages, or are otherwise badly behaved, they will be added to your blacklist and banned
 # You can set a time limit to release that ban (in minutes), or otherwise ban them for life (-1). The default is to
@@ -57,7 +57,7 @@
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
 #grpc_address = "tcp://127.0.0.1:80400"
 
-# The folder to store your local key data and transaction history. DO NOT EVER DELETE THIS FILE unless you
+# The relative folder to store your local key data and transaction history. DO NOT EVER DELETE THIS FILE unless you
 #  a) have backed up your seed phrase and
 #  b) know what you are doing!
 wallet_file = "wallet\\wallet.dat"
@@ -82,8 +82,9 @@ wallet_file = "wallet\\wallet.dat"
 
 # Select the network to connect to. Valid options are:
 #   mainnet - the "real" Tari network (default)
-#   testnet - the Tari test net
+#   rincewind - the Tari test net
 network = "rincewind"
+
 
 # Configuration options for testnet
 [base_node.rincewind]
@@ -91,11 +92,17 @@ network = "rincewind"
 # almost all use cases.
 db_type = "lmdb"
 
+# The maximum number of orphans that can be stored in the Orphan block pool. Default value is "720".
+#orphan_storage_capacity = 720
+# The pruning horizon that indicates how many full blocks without pruning must be kept by the base node. Default value
+# is "0", which indicates an archival node without any pruning.
+#pruning_horizon = 0
+
 # Enable if this node must be a mining node
 enable_mining = true
 num_mining_threads = 1
 
-# The path to store persistent data
+# The relative path to store persistent data
 data_dir="rincewind"
 
 # When first logging onto the Tari network, you need to find a few peers to bootstrap the process. In the absence of
@@ -104,28 +111,36 @@ data_dir="rincewind"
 # where this whitelist comes in. It's a list of known Tari nodes that are likely to be around for a long time and that
 # new nodes can use to introduce themselves to the network.
 # peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
-
 peer_seeds = [
-#Test-03
-"5edb022af1c21d644dfceeea2fcc7d3fac7a57ab44cf775b9a6f692cb75ed767::/onion3/vjkj44zpriqzrlve2qbiasrluaaxagrb6iuavzaascbujri6gw3rcmyd:18141",
-#Test-04
-"d44d23b005dcd364776e4cad69ac800b8ab6d6bf12097a5edb8720ce584ed45a::/onion3/3gficjdxzduuxtbyzt3auwwzjv7xlljnonzer5t2aglczrjb54wxadyd:18141",
-#faucet
-"2e93c460df49d8cfbbf7a06dd9004c25a84f92584f7d0ac5e30bd8e0beee9a43::/onion3/nuuq3e2olck22rudimovhmrdwkmjncxvwdgbvfxhz6myzcnx2j4rssyd:18141",
-#t-tbn-nvir
-"06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/onion3/bsmuof2cn4y2ysz253gzsvg3s72fcgh4f3qcm3hdlxdtcwe6al2dicyd:18141",
-#t-tbn-ncal
-"3a5081a0c9ff72b2d5cf52f8d78cc5a206d643259cdeb7d934512f519e090e6c::/onion3/gfynjxfm7rcxcekhu6jwuhvyyfdjvmruvvehurmlte565v74oinv2lad:18141",
-#t-tbn-oregon
-"e6f3c83dc592af45ede5424974f52c776e9e6859e530066e57c1b0dd59d9b61c::/onion3/ixihtmcbvr2q53bj23bsla5hi7ek37odnsxzkapr7znyfneqxzhq7zad:18141",
-#t-tbn-london
-"ce2254825d0e0294d31a86c6aac18f83c9a7b3d01d9cdb6866b4b2af8fd3fd17::/onion3/gm7kxmr4cyjg5fhcw4onav2ofa3flscrocfxiiohdcys3kshdhcjeuyd:18141",
-#t-tbn-stockholm
-"461d4d7be657521969896f90e3f611f0c4e902ca33d3b808c03357ad86fd7801::/onion3/4me2aw6auq2ucql34uuvsegtjxmvsmcyk55qprtrpqxvu3whxajvb5ad:18141",
-#t-tbn-seoul
-"d440b328e69b20dd8ee6c4a61aeb18888939f0f67cf96668840b7f72055d834c::/onion3/j5x7xkcxnrich5lcwibwszd5kylclbf6a5unert5sy6ykio2kphnopad:18141",
-#t-tbn-sydney
-"b81b4071f72418cc410166d9baf0c6ef7a8c309e64671fafbbed88f7e1ee7709::/onion3/lwwcv4nq7epgem5vdcawom4mquqsw2odbwfcjzv3j6sksx4gr24e52ad:18141"
+    #Test-03
+    "5edb022af1c21d644dfceeea2fcc7d3fac7a57ab44cf775b9a6f692cb75ed767::/onion3/vjkj44zpriqzrlve2qbiasrluaaxagrb6iuavzaascbujri6gw3rcmyd:18141",
+
+    #Test-04
+    "d44d23b005dcd364776e4cad69ac800b8ab6d6bf12097a5edb8720ce584ed45a::/onion3/3gficjdxzduuxtbyzt3auwwzjv7xlljnonzer5t2aglczrjb54wxadyd:18141",
+
+    #faucet
+    "2e93c460df49d8cfbbf7a06dd9004c25a84f92584f7d0ac5e30bd8e0beee9a43::/onion3/nuuq3e2olck22rudimovhmrdwkmjncxvwdgbvfxhz6myzcnx2j4rssyd:18141",
+
+    #t-tbn-nvir
+    "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/onion3/bsmuof2cn4y2ysz253gzsvg3s72fcgh4f3qcm3hdlxdtcwe6al2dicyd:18141",
+
+    #t-tbn-ncal
+    "3a5081a0c9ff72b2d5cf52f8d78cc5a206d643259cdeb7d934512f519e090e6c::/onion3/gfynjxfm7rcxcekhu6jwuhvyyfdjvmruvvehurmlte565v74oinv2lad:18141",
+
+    #t-tbn-oregon
+    "e6f3c83dc592af45ede5424974f52c776e9e6859e530066e57c1b0dd59d9b61c::/onion3/ixihtmcbvr2q53bj23bsla5hi7ek37odnsxzkapr7znyfneqxzhq7zad:18141",
+
+    #t-tbn-london
+    "ce2254825d0e0294d31a86c6aac18f83c9a7b3d01d9cdb6866b4b2af8fd3fd17::/onion3/gm7kxmr4cyjg5fhcw4onav2ofa3flscrocfxiiohdcys3kshdhcjeuyd:18141",
+
+    #t-tbn-stockholm
+    "461d4d7be657521969896f90e3f611f0c4e902ca33d3b808c03357ad86fd7801::/onion3/4me2aw6auq2ucql34uuvsegtjxmvsmcyk55qprtrpqxvu3whxajvb5ad:18141",
+
+    #t-tbn-seoul
+    "d440b328e69b20dd8ee6c4a61aeb18888939f0f67cf96668840b7f72055d834c::/onion3/j5x7xkcxnrich5lcwibwszd5kylclbf6a5unert5sy6ykio2kphnopad:18141",
+
+    #t-tbn-sydney
+    "b81b4071f72418cc410166d9baf0c6ef7a8c309e64671fafbbed88f7e1ee7709::/onion3/lwwcv4nq7epgem5vdcawom4mquqsw2odbwfcjzv3j6sksx4gr24e52ad:18141"
 ]
 
 # Determines the method of syncing blocks when the node is lagging. If you are not struggling with syncing, then
@@ -163,7 +178,7 @@ wallet_identity_file = ".\\config\\wallet-identity.json"
 # Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
 # e.g. tor onion addresses will not be contactable.
 #transport = "tcp"
-# # The address and port to listen for peer connections over TCP.
+# The address and port to listen for peer connections over TCP.
 #tcp_listener_address = "/ip4/0.0.0.0/tcp/18189"
 # Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
 # This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
@@ -205,14 +220,15 @@ wallet_tor_identity_file = ".\\config\\wallet-tor.json"
 # almost all use cases.
 #db_type = "lmdb"
 
-# The path to store persistent data
-#data_dir = "~/.tari/mainnet/"
+# The relative path to store persistent data
+#data_dir = "mainnet"
 
 # When first logging onto the Tari network, you need to find a few peers to bootstrap the process. In the absence of
 # any servers, this is a little more challenging than usual. Our best strategy is just to try and connect to the peers
 # you knew about last time you ran the software. But what about when you run the software for the first time? That's
 # where this whitelist comes in. It's a list of known Tari nodes that are likely to be around for a long time and that
 # new nodes can use to introduce themselves to the network.
+# peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
 peer_seeds = []
 
 # Configure the number of threads to spawn for long-running tasks, like block and transaction validation. A good choice
@@ -231,7 +247,10 @@ peer_seeds = []
 #grpc_address = "tcp://127.0.0.1:18041"
 
 # A path to the file that stores your node identity and secret key
-#identity_file = "~/.tari/mainnet/node_id.json"
+#identity_file = "./node_id.json" # or ".\\node_id.json"
+
+# A path to the file that stores your wallet's node identity and secret key
+#wallet_identity_file = "./wallet-identity.json" # or ".\\config\\wallet-identity.json"
 
 # -------------- Transport configuration --------------
 # Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
@@ -266,8 +285,11 @@ peer_seeds = []
 #socks5_listener_address = "/ip4/127.0.0.1/tcp/18189"
 #socks5_auth = "none" # or "username_password=username:xxxxxxx"
 
-# A path to the file that stores the tor hidden service private key, if using the tor transport
-# tor_identity_file = "~/.tari/mainnet/tor.key"
+# A path to the file that stores the tor hidden service private key, if using the tor transport.
+#tor_identity_file = "./tor.json" # or ".\\tor.json"
+
+# A path to the file that stores the wallet's tor hidden service private key, if using the tor transport.
+#wallet_tor_identity_file = "./wallet-tor.json" # or ".\\wallet-tor.json"
 
 ########################################################################################################################
 #                                                                                                                      #
@@ -311,7 +333,7 @@ peer_seeds = []
 # added back into the UnconfirmedPool. Transactions in the ReOrg pool have a limited Time-to-live and will be removed
 # from the pool when the Time-to-live thresholds is reached. Also, when the capacity of the pool has been reached, the
 # oldest transactions will be removed to make space for incoming transactions. The pool capacity and TTL parameters
-# have the same meaning as those for the pending pool, but applied to the re-org pool; obviously.
+# have the same meaning as those for the pending pool, but applied to the reorg pool; obviously.
 # Defaults: 10,000 transactions and 300 seconds
 #reorg_pool_storage_capacity = 10_000
 #reorg_tx_ttl = 300
@@ -360,7 +382,7 @@ peer_seeds = []
 # added back into the UnconfirmedPool. Transactions in the ReOrg pool have a limited Time-to-live and will be removed
 # from the pool when the Time-to-live thresholds is reached. Also, when the capacity of the pool has been reached, the
 # oldest transactions will be removed to make space for incoming transactions. The pool capacity and TTL parameters
-# have the same meaning as those for the pending pool, but applied to the re-org pool; obviously.
+# have the same meaning as those for the pending pool, but applied to the reorg pool; obviously.
 # Defaults: 10,000 transactions and 300 seconds
 #reorg_pool_storage_capacity = 10_000
 #reorg_tx_ttl = 300

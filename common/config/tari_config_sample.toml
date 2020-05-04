@@ -84,17 +84,24 @@
 # Select the network to connect to. Valid options are:
 #   mainnet - the "real" Tari network (default)
 #   rincewind - the Tari test net
-#network = "mainnet"
+network = "rincewind"
 
 
 # Configuration options for testnet
 [base_node.rincewind]
 # The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
 # almost all use cases.
-#db_type = "lmdb"
+db_type = "lmdb"
+
+# The maximum number of orphans that can be stored in the Orphan block pool. Default value is "720".
+#orphan_storage_capacity = 720
+# The pruning horizon that indicates how many full blocks without pruning must be kept by the base node. Default value
+# is "0", which indicates an archival node without any pruning.
+#pruning_horizon = 0
 
 # Enable if this node must be a mining node
 #enable_mining = true
+#num_mining_threads = 1
 
 # The relative path to store persistent data
 data_dir = "rincewind"
@@ -106,6 +113,15 @@ data_dir = "rincewind"
 # new nodes can use to introduce themselves to the network.
 # peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
 peer_seeds = [
+    #Test-03
+    "5edb022af1c21d644dfceeea2fcc7d3fac7a57ab44cf775b9a6f692cb75ed767::/onion3/vjkj44zpriqzrlve2qbiasrluaaxagrb6iuavzaascbujri6gw3rcmyd:18141",
+
+    #Test-04
+    "d44d23b005dcd364776e4cad69ac800b8ab6d6bf12097a5edb8720ce584ed45a::/onion3/3gficjdxzduuxtbyzt3auwwzjv7xlljnonzer5t2aglczrjb54wxadyd:18141",
+
+    #faucet
+    "2e93c460df49d8cfbbf7a06dd9004c25a84f92584f7d0ac5e30bd8e0beee9a43::/onion3/nuuq3e2olck22rudimovhmrdwkmjncxvwdgbvfxhz6myzcnx2j4rssyd:18141",
+
     #t-tbn-nvir
     "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/onion3/bsmuof2cn4y2ysz253gzsvg3s72fcgh4f3qcm3hdlxdtcwe6al2dicyd:18141",
 
@@ -125,7 +141,7 @@ peer_seeds = [
     "d440b328e69b20dd8ee6c4a61aeb18888939f0f67cf96668840b7f72055d834c::/onion3/j5x7xkcxnrich5lcwibwszd5kylclbf6a5unert5sy6ykio2kphnopad:18141",
 
     #t-tbn-sydney
-    "b81b4071f72418cc410166d9baf0c6ef7a8c309e64671fafbbed88f7e1ee7709::/onion3/lwwcv4nq7epgem5vdcawom4mquqsw2odbwfcjzv3j6sksx4gr24e52ad:18141",
+    "b81b4071f72418cc410166d9baf0c6ef7a8c309e64671fafbbed88f7e1ee7709::/onion3/lwwcv4nq7epgem5vdcawom4mquqsw2odbwfcjzv3j6sksx4gr24e52ad:18141"
 ]
 
 # Determines the method of syncing blocks when the node is lagging. If you are not struggling with syncing, then
@@ -397,4 +413,3 @@ peer_seeds = []
 # The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
 #grpc_address = "tcp://127.0.0.1:18042"
- 
