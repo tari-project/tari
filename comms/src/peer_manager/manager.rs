@@ -162,6 +162,49 @@ impl PeerManager {
         self.peer_storage.read().await.all()
     }
 
+    /// Adds or updates a peer and sets the last connection as successful.
+    /// If the peer is marked as offline, it will be unmarked.
+    pub async fn add_or_update_online_peer(
+        &self,
+        pubkey: &CommsPublicKey,
+        node_id: NodeId,
+        net_addresses: Vec<Multiaddr>,
+        peer_features: PeerFeatures,
+    ) -> Result<Peer, PeerManagerError>
+    {
+        match self.find_by_public_key(&pubkey).await {
+            Ok(mut peer) => {
+                peer.connection_stats.set_connection_success();
+                peer.update(
+                    Some(node_id),
+                    Some(net_addresses),
+                    None,
+                    None,
+                    Some(false),
+                    Some(peer_features),
+                    None,
+                    None,
+                );
+                self.add_peer(peer.clone()).await?;
+                Ok(peer)
+            },
+            Err(PeerManagerError::PeerNotFoundError) => {
+                self.add_peer(Peer::new(
+                    pubkey.clone(),
+                    node_id,
+                    net_addresses.into(),
+                    PeerFlags::default(),
+                    peer_features,
+                    &[],
+                ))
+                .await?;
+
+                self.find_by_public_key(&pubkey).await
+            },
+            Err(err) => Err(err),
+        }
+    }
+
     /// Get a peer matching the given node ID
     pub async fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
         match self.peer_storage.read().await.direct_identity_node_id(&node_id) {
@@ -543,5 +586,23 @@ mod test {
                 .iter()
                 .all(|p| network_region_node_id.distance(&p.node_id) <= node_threshold));
         }
+    }
+
+    #[tokio_macros::test_basic]
+    async fn add_or_update_online_peer() {
+        let peer_manager = PeerManager::new(HashmapDatabase::new()).unwrap();
+        let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        peer.set_offline(true);
+        peer.connection_stats.set_connection_failed();
+
+        peer_manager.add_peer(peer.clone()).await.unwrap();
+
+        let peer = peer_manager
+            .add_or_update_online_peer(&peer.public_key, peer.node_id, vec![], peer.features)
+            .await
+            .unwrap();
+
+        assert_eq!(peer.is_offline(), false);
+        assert_eq!(peer.connection_stats.failed_attempts(), 0);
     }
 }

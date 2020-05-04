@@ -43,8 +43,7 @@ use std::{
 use tari_comms::{
     connection_manager::{ConnectionManagerError, ConnectionManagerRequester},
     log_if_error,
-    multiaddr::Multiaddr,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManager},
     types::CommsPublicKey,
     validate_peer_addresses,
     ConnectionManagerEvent,
@@ -350,7 +349,8 @@ impl DhtDiscoveryService {
             .map_err(|err| DhtDiscoveryError::InvalidPeerMultiaddr(err.to_string()))?;
 
         let peer = self
-            .add_or_update_peer(
+            .peer_manager
+            .add_or_update_online_peer(
                 &public_key,
                 node_id,
                 addresses,
@@ -378,50 +378,6 @@ impl DhtDiscoveryService {
             // TODO: Misbehaviour #banheuristic
             Err(DhtDiscoveryError::InvalidNodeId)
         }
-    }
-
-    async fn add_or_update_peer(
-        &self,
-        pubkey: &CommsPublicKey,
-        node_id: NodeId,
-        net_addresses: Vec<Multiaddr>,
-        peer_features: PeerFeatures,
-    ) -> Result<Peer, DhtDiscoveryError>
-    {
-        let peer_manager = &self.peer_manager;
-        if peer_manager.exists(pubkey).await {
-            peer_manager
-                .update_peer(
-                    pubkey,
-                    Some(node_id),
-                    Some(net_addresses),
-                    None,
-                    None,
-                    Some(false),
-                    Some(peer_features),
-                    None,
-                    None,
-                )
-                .await?;
-        } else {
-            peer_manager
-                .add_peer(Peer::new(
-                    pubkey.clone(),
-                    node_id,
-                    net_addresses.into(),
-                    PeerFlags::default(),
-                    peer_features,
-                    // We don't know which protocols the peer supports. This is ok because:
-                    // 1) supported protocols are considered "extra" information and are not needed for p2p comms, and
-                    // 2) when a connection is established with this node, supported protocols information is obtained
-                    &[],
-                ))
-                .await?;
-        }
-
-        let peer = peer_manager.find_by_public_key(&pubkey).await?;
-
-        Ok(peer)
     }
 
     async fn initiate_peer_discovery(

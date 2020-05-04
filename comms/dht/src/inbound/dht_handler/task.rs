@@ -35,8 +35,7 @@ use log::*;
 use std::sync::Arc;
 use tari_comms::{
     message::MessageExt,
-    multiaddr::Multiaddr,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
+    peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager},
     pipeline::PipelineError,
     types::CommsPublicKey,
 };
@@ -115,48 +114,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         Ok(())
     }
 
-    async fn add_or_update_peer(
-        &self,
-        pubkey: &CommsPublicKey,
-        node_id: NodeId,
-        net_addresses: Vec<Multiaddr>,
-        peer_features: PeerFeatures,
-    ) -> Result<Peer, DhtInboundError>
-    {
-        let peer_manager = &self.peer_manager;
-        // Add peer or modify existing peer using received join request
-        if peer_manager.exists(pubkey).await {
-            peer_manager
-                .update_peer(
-                    pubkey,
-                    Some(node_id),
-                    Some(net_addresses),
-                    None,
-                    None,
-                    Some(false),
-                    Some(peer_features),
-                    None,
-                    None,
-                )
-                .await?;
-        } else {
-            peer_manager
-                .add_peer(Peer::new(
-                    pubkey.clone(),
-                    node_id,
-                    net_addresses.into(),
-                    PeerFlags::default(),
-                    peer_features,
-                    &[],
-                ))
-                .await?;
-        }
-
-        let peer = peer_manager.find_by_public_key(&pubkey).await?;
-
-        Ok(peer)
-    }
-
     fn validate_raw_node_id(&self, public_key: &CommsPublicKey, raw_node_id: &[u8]) -> Result<NodeId, DhtInboundError> {
         // The reason that we check the given node id against what we expect instead of just using the given node id
         // is in future the NodeId may not necessarily be derived from the public key (i.e. DAN node is registered on
@@ -213,7 +170,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let node_id = self.validate_raw_node_id(&authenticated_pk, &join_msg.node_id)?;
 
         let origin_peer = self
-            .add_or_update_peer(
+            .peer_manager
+            .add_or_update_online_peer(
                 &authenticated_pk,
                 node_id,
                 addresses,
@@ -370,7 +328,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let node_id = self.validate_raw_node_id(&authenticated_pk, &discover_msg.node_id)?;
         let origin_peer = self
-            .add_or_update_peer(
+            .peer_manager
+            .add_or_update_online_peer(
                 &authenticated_pk,
                 node_id,
                 addresses,
