@@ -133,10 +133,37 @@ impl LMDBBuilder {
             builder.open(&path, flags, 0o600)?
         };
         let env = Arc::new(env);
+
+        // Increase map size if usage gets close to the db size
+        let mut env_info = env.info()?;
+        let env_stat = env.stat()?;
+        let size_used = env_stat.psize as usize * env_info.last_pgno;
+        let mut space_remaining = env_info.mapsize - size_used;
+        let usage = (size_used as f64 / env_info.mapsize as f64) * 100.0;
+        if space_remaining <= ((self.db_size_mb * 1024 * 1024) as f64 * 0.5) as usize {
+            unsafe {
+                env.set_mapsize(size_used + self.db_size_mb * 1024 * 1024)?;
+            }
+            env_info = env.info()?;
+            space_remaining = env_info.mapsize - size_used;
+            debug!(
+                target: LOG_TARGET,
+                "({}) LMDB environment usage factor {:.*} %., size used {:?} MB, increased by {:?} MB.",
+                path,
+                2,
+                usage,
+                size_used / (1024 * 1024),
+                self.db_size_mb
+            );
+        };
         info!(
             target: LOG_TARGET,
-            "({}) LMDB environment created with a capacity of {} MB.", path, self.db_size_mb
+            "({}) LMDB environment created with a capacity of {} MB, {} MB remaining.",
+            path,
+            env_info.mapsize / (1024 * 1024),
+            space_remaining / (1024 * 1024)
         );
+
         let mut databases: HashMap<String, LMDBDatabase> = HashMap::new();
         if self.db_names.is_empty() {
             self = self.add_database("default", db::CREATE);
