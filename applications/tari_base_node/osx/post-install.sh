@@ -6,7 +6,9 @@
 # Installer script for Tari base node. This script is bundled with OSX 
 # versions of the Tari base node binary distributions.
 
-set -e
+# Debugging enabled
+#set -x
+#set -e
 
 logo="
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣤⣾⣿⣿⣶⣤⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -163,8 +165,14 @@ fi
 brew services start tor
 brew services list
 
-echo "Sleeping for 30sec while Tor starts up ..."
-sleep 30
+# Should rather add a check?
+echo "Sleeping for 30sec while Tor warms up ..."
+sleep 10
+echo " ... 10sec ..."
+sleep 10
+echo " ... 10sec ..."
+sleep 10
+echo " ... 10sec ..."
 
 # Check Tor service
 #curl --socks5 localhost:9050 --socks5-hostname localhost:9050 -s https://check.torproject.org/ | cat | grep -m 1 Congratulations | xargs

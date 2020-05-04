@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 #
-# Uninastall Tari Base Node for OSX
+# Uninstall Tari Base Node for OSX pkg
 #
+
+# Debugging enabled
+#set -x
 
 # ToDo:
 #  Force/Check/Files/PKG
@@ -30,4 +33,4 @@ pkgutil --files com.tarilabs.pkg.basenode
 #   pkgutil --forget $myReceipt
 #done
 
-#pkgutil --forget com.tarilabs.pkg.basenode
+sudo pkgutil --forget com.tarilabs.pkg.basenode

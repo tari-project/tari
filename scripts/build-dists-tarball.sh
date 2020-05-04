@@ -8,14 +8,22 @@
 # ToDo
 #  Check options
 #
-# ./$0 (version|latest-tag)
-#  ie: ./$0 nightly-development-test-$(date +'%Y-%m-%d')
+
+if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+  echo "$0 (clean|latest-tag|'any-string-version')"
+  echo " 'clean' cargo clean and lock remove"
+  echo " 'latest-tag' pull and switch too latest git tag"
+  echo " 'any-string-version' archive string to tag with"
+  echo "   ie: $0 nightly-development-test-\$(date +'%Y-%m-%d')"
+  exit 1
+fi
 
 # Env
 distName="tari_base_node"
 sName=$(basename $0)
 #sPath=$(realpath $0)
 sPath=$(dirname $0)
+tsstamp=$(date +'%Y%m%dT%Hh%M')
 
 envFile="$sPath/.env"
 if [ -f "$envFile" ]; then
@@ -24,10 +32,18 @@ if [ -f "$envFile" ]; then
 fi
 
 if [ -f "Cargo.toml" ]; then
-  cargo build --release
+  if [ "$1" == "clean" ]; then
+    shift
+    echo "Cleaning Cargo ... "
+    if [ -f "Cargo.lock" ]; then
+      echo "Removing Cargo.lock"
+      rm -f Cargo.lock
+    fi
+    cargo clean
+  fi
 else
   echo "Can't find Cargo.toml, exiting"
-  exit 1
+  exit 2
 fi
 
 if [ "$(uname)" == "Darwin" ]; then
@@ -96,34 +112,43 @@ fi
 distFullName="$distName-$osname-$osversion-$osarch"
 echo $distFullName
 
-if [ -f "applications/tari_base_node/src/consts.rs" ];then
-  rustver=$(grep -i 'VERSION' applications/tari_base_node/src/consts.rs | cut -d "\"" -f 2)
+if [ $(git rev-parse --is-inside-work-tree) ]; then
+  echo "Git repo ..."
 else
-  rustver="unversion"
+  echo "Not a git repo, this might not work!"
+#  exit 3
 fi
 
 # Just a basic clean check
 if [ -n "$(git status --porcelain)" ]; then
-  echo "There are changes, please clean up before re-running $0";
-  gitclean="uncommited"
-#  exit 2
+  echo "There are uncommited changes?"
+  echo  "Suggest commit and push before re-running $0";
+  gitclean="uncommitted"
+#  exit 4
 else
   echo "No changes";
   gitclean="gitclean"
 fi
 
-git fetch --all --tags
-
 if [ "$1" == "latest-tag" ]; then
+  if [ "$gitclean" == "uncommitted" ]; then
+    echo "Can't use latest-tag with uncommitted changes"
+    echo  "Suggest commit and push before re-running $0";
+    exit 5
+  fi
+  git fetch --all --tags
   gitTagVersion=$(git describe --tags `git rev-list --tags --max-count=1`)
   git checkout tags/$gitTagVersion -B $gitTagVersion-build
 else
   gitTagVersion="${1}"
 fi
 
-echo $gitTagVersion
+gitBranch="$(git rev-parse --symbolic-full-name --abbrev-ref HEAD)"
+gitCommitHash="$(git rev-parse --short HEAD)"
 
-git rev-parse --symbolic-full-name --abbrev-ref HEAD
+echo $gitTagVersion
+echo $gitBranch
+echo $gitCommitHash
 
 #if [ "git branch --list ${gitTagVersion-build}" ]; then
 #  git checkout tags/$gitTagVersion
@@ -136,18 +161,36 @@ git rev-parse --symbolic-full-name --abbrev-ref HEAD
 #git branch --set-upstream-to=origin/$gitTagVersion $gitTagVersion-build
 #git pull
 
+# Build
+cargo build --release
+
+# ToDo: Might have multiple consts.rs files?
+rustConsts=$(find target -name "consts.rs" | grep -i "tari_base_node")
+if [ -f "$rustConsts" ];then
+  rustVer=$(grep -i 'VERSION' "$rustConsts" | cut -d "\"" -f 2)
+  archiveBase="$distFullName-$rustVer"
+else
+  rustVer="unversion"
+  archiveBase="$distFullName-$rustVer-$gitTagVersion-$gitclean"
+fi
+
+echo $rustVer
+
 shaSumVal="256"
 
-hashFile="$distFullName-$rustver-$gitTagVersion-$gitclean.sha${shaSumVal}sum"
-archiveFile="$distFullName-$rustver-$gitTagVersion-$gitclean.zip"
+#archiveBase="$distFullName-$rustVer-$gitTagVersion-$gitclean"
+hashFile="$archiveBase.sha${shaSumVal}sum"
+archiveFile="$archiveBase.zip"
+echo $archiveBase
 echo $hashFile
+echo $archiveFile
 
 distDir=$(mktemp -d)
 if [ -d $distDir ]; then
   echo "Temporary directory $distDir exists"
 else
   echo "Temporary directory $distDir does not exist"
-  exit 3
+  exit 6
 fi
 
 mkdir $distDir/dist
