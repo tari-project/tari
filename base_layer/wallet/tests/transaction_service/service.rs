@@ -223,20 +223,6 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
     let (oms_event_publisher, oms_event_subscriber) = bounded(100);
     let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock(100);
 
-    let output_manager_service = runtime
-        .block_on(OutputManagerService::new(
-            OutputManagerServiceConfig::default(),
-            outbound_message_requester.clone(),
-            oms_request_receiver,
-            stream::empty(),
-            OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
-            oms_event_publisher,
-            factories.clone(),
-        ))
-        .unwrap();
-
-    let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_subscriber);
-
     let (liveness_handle, liveness_mock, liveness_event_sender) = create_p2p_liveness_mock(50);
     let liveness_mock_state = liveness_mock.get_mock_state();
     runtime.spawn(liveness_mock.run());
@@ -252,6 +238,21 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
 
     let outbound_mock_state = mock_outbound_service.get_state();
     runtime.spawn(mock_outbound_service.run());
+
+    let output_manager_service = runtime
+        .block_on(OutputManagerService::new(
+            OutputManagerServiceConfig::default(),
+            outbound_message_requester.clone(),
+            ts_handle.clone(),
+            oms_request_receiver,
+            stream::empty(),
+            OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
+            oms_event_publisher,
+            factories.clone(),
+        ))
+        .unwrap();
+
+    let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_subscriber);
 
     let ts_service = TransactionService::new(
         TransactionServiceConfig {
@@ -427,16 +428,15 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
         assert_eq!(finalized, 1);
     });
 
-    let mut bob_completed_tx = runtime.block_on(bob_ts.get_completed_transactions()).unwrap();
+    assert!(runtime.block_on(bob_ts.get_completed_transaction(999)).is_err());
 
-    match bob_completed_tx.remove(&tx_id) {
-        None => assert!(false, "Completed transaction could not be found"),
-        Some(tx) => {
-            runtime
-                .block_on(bob_oms.confirm_transaction(tx_id, vec![], tx.transaction.body.outputs().clone()))
-                .unwrap();
-        },
-    }
+    let bob_completed_tx = runtime
+        .block_on(bob_ts.get_completed_transaction(tx_id))
+        .expect("Could not find tx");
+
+    runtime
+        .block_on(bob_oms.confirm_transaction(tx_id, vec![], bob_completed_tx.transaction.body.outputs().clone()))
+        .unwrap();
 
     assert_eq!(
         runtime.block_on(bob_oms.get_balance()).unwrap().available_balance,

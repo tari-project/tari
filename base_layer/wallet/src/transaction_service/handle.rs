@@ -41,6 +41,7 @@ pub enum TransactionServiceRequest {
     GetPendingInboundTransactions,
     GetPendingOutboundTransactions,
     GetCompletedTransactions,
+    GetCompletedTransaction(TxId),
     SetBaseNodePublicKey(CommsPublicKey),
     SendTransaction((CommsPublicKey, MicroTari, MicroTari, String)),
     CancelTransaction(TxId),
@@ -67,6 +68,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetPendingInboundTransactions => f.write_str("GetPendingInboundTransactions"),
             Self::GetPendingOutboundTransactions => f.write_str("GetPendingOutboundTransactions"),
             Self::GetCompletedTransactions => f.write_str("GetCompletedTransactions"),
+            Self::GetCompletedTransaction(t) => f.write_str(&format!("GetCompletedTransaction({})", t)),
             Self::SetBaseNodePublicKey(k) => f.write_str(&format!("SetBaseNodePublicKey ({})", k)),
             Self::SendTransaction((k, v, _, msg)) => {
                 f.write_str(&format!("SendTransaction (to {}, {}, {})", k, v, msg))
@@ -107,6 +109,7 @@ pub enum TransactionServiceResponse {
     PendingInboundTransactions(HashMap<u64, InboundTransaction>),
     PendingOutboundTransactions(HashMap<u64, OutboundTransaction>),
     CompletedTransactions(HashMap<u64, CompletedTransaction>),
+    CompletedTransaction(CompletedTransaction),
     CoinbaseKey(PendingCoinbaseSpendingKey),
     CompletedCoinbaseTransactionReceived,
     CoinbaseTransactionCancelled,
@@ -236,6 +239,21 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::CompletedTransactions(c) => Ok(c),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_completed_transaction(
+        &mut self,
+        tx_id: TxId,
+    ) -> Result<CompletedTransaction, TransactionServiceError>
+    {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetCompletedTransaction(tx_id))
+            .await??
+        {
+            TransactionServiceResponse::CompletedTransaction(t) => Ok(t),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

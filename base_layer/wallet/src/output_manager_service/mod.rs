@@ -22,9 +22,12 @@
 
 use crate::output_manager_service::{handle::OutputManagerHandle, service::OutputManagerService};
 
-use crate::output_manager_service::{
-    config::OutputManagerServiceConfig,
-    storage::database::{OutputManagerBackend, OutputManagerDatabase},
+use crate::{
+    output_manager_service::{
+        config::OutputManagerServiceConfig,
+        storage::database::{OutputManagerBackend, OutputManagerDatabase},
+    },
+    transaction_service::handle::TransactionServiceHandle,
 };
 use futures::{future, Future, Stream, StreamExt};
 use log::*;
@@ -130,9 +133,14 @@ where T: OutputManagerBackend + 'static
                 .get_handle::<OutboundMessageRequester>()
                 .expect("OMS handle required for Output Manager Service");
 
+            let transaction_service = handles
+                .get_handle::<TransactionServiceHandle>()
+                .expect("Transaction Service handle required for Output Manager Service");
+
             let service = OutputManagerService::new(
                 config,
                 outbound_message_service,
+                transaction_service,
                 receiver,
                 base_node_response_stream,
                 OutputManagerDatabase::new(backend),
