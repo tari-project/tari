@@ -263,7 +263,9 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
 
             info!(target: LOG_TARGET, "Synchronize missing blocks.");
             let mut height = sync_height;
+            println!("Starting to sync blocks");
             while height <= network_tip_height {
+                println!("[Syncing block {}/{}] \r", height, network_tip_height);
                 let max_height = min(
                     height + (shared.config.block_sync_config.block_request_size - 1) as u64,
                     network_tip_height,
@@ -276,10 +278,16 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                 }
                 height += block_nums.len() as u64;
             }
+
+            println!("Finished syncing of blocks");
             return Ok(());
         }
+
+        println!("Failed to sync blocks");
         return Err(BlockSyncError::EmptyNetworkBestBlock);
     }
+
+    println!("Failed to sync blocks");
     Err(BlockSyncError::EmptyBlockchain)
 }
 
