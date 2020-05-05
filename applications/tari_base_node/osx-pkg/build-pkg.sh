@@ -4,7 +4,7 @@
 #
 
 # Debugging enabled
-set -x
+#set -x
 
 # ToDo
 #  Check options
@@ -82,7 +82,7 @@ echo $pkgbuildResult
 
 echo "Submitting package, please wait ..."
 RequestUUIDR=$(xcrun altool --notarize-app \
-  --primary-bundle-id "com.tarilabs.com" \
+  --primary-bundle-id "com.tarilabs.pkg" \
   --username "$osxUsername" --password "$osxPassword" \
   --asc-provider "$osxASCProvider" \
   --file $destDir/$instName-$pkgVersion.pkg)

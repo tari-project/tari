@@ -1,10 +1,27 @@
 #!/bin/sh
 #
+# Pre install script for tari_base_node pkg
+# This script is bundled with OSX PGK verion
+# of the Tari base node binary distribution.
 #
-#
-echo "Running preinstall - $(date +'%Y-%m-%d %Hh%M:%S')" > /tmp/my_preinstall.log
-env >> /tmp/my_preinstall.log
-echo "Positional arguments" $@ >> /tmp/my_preinstall_envs.log
-echo "Done preinstall - $(date +'%Y-%m-%d %Hh%M:%S')" >> /tmp/my_preinstall.log
+
+# Debugging enabled
+#set -x
+
+if [ ! "$(uname)" == "Darwin" ]; then
+  echo "Helper script meant for OSX"
+  echo "Please visit https://tari.com/downloads/"
+  echo " and download the binary distro for your platform"
+  exit 1
+fi
+
+tsstamp=$(date +'%Y%m%d_%Hh%Mm%Ss')
+logging_file=/tmp/tari_base_node_preinstall-$tsstamp.log
+
+echo "Running preinstall - $(date +'%Y-%m-%d %Hh%M:%S')" > $logging_file
+echo "Envs " >> $logging_file
+env >> $logging_file
+echo "Positional arguments" $@ >> $logging_file
+echo "Done preinstall - $(date +'%Y-%m-%d %Hh%M:%S')" >> $logging_file
 
 exit 0 # all good
