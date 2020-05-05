@@ -496,7 +496,8 @@ where DS: KeyValueStore<PeerId, Peer>
             .map_err(PeerManagerError::DatabaseError)
     }
 
-    /// Return some basic stats for the region surrounding the region_node_id
+    /// Return some basic stats for the region surrounding the region_node_id. The size of the local region is
+    /// determined by the maximum distance of the n closest valid nodes.
     pub fn get_region_stats<'a>(
         &self,
         region_node_id: &'a NodeId,
@@ -504,49 +505,57 @@ where DS: KeyValueStore<PeerId, Peer>
         features: PeerFeatures,
     ) -> Result<RegionStats<'a>, PeerManagerError>
     {
-        let mut dists = vec![NodeDistance::max_distance(); n];
-        let last_index = n - 1;
-
-        let mut neighbours = vec![None; n];
+        let mut peer_keys = Vec::new();
+        let mut valid_dists = Vec::new();
+        let mut banned_dists = Vec::new();
+        let mut offline_dists = Vec::new();
         self.peer_db
-            .for_each_ok(|(_, peer)| {
+            .for_each_ok(|(peer_key, peer)| {
                 if peer.features != features {
                     return IterationResult::Continue;
                 }
-
-                if peer.is_banned() {
-                    return IterationResult::Continue;
-                }
-                if peer.is_offline() {
-                    return IterationResult::Continue;
-                }
-
                 let curr_dist = region_node_id.distance(&peer.node_id);
-                for i in 0..dists.len() {
-                    if dists[i] > curr_dist {
-                        dists.insert(i, curr_dist);
-                        dists.pop();
-                        neighbours.insert(i, Some(peer));
-                        neighbours.pop();
-                        break;
+                if !peer.is_banned() && !peer.is_offline() {
+                    valid_dists.push(curr_dist);
+                    peer_keys.push(peer_key);
+                } else {
+                    if peer.is_banned() {
+                        banned_dists.push(curr_dist.clone());
+                    }
+                    if peer.is_offline() {
+                        offline_dists.push(curr_dist);
                     }
                 }
-
                 IterationResult::Continue
             })
             .map_err(PeerManagerError::DatabaseError)?;
 
-        let distance = dists.remove(last_index);
-        let total = neighbours.iter().filter(|p| p.is_some()).count();
-        let num_offline = neighbours
-            .iter()
-            .filter(|p| p.as_ref().map(|p| p.is_offline()).unwrap_or(false))
-            .count();
-        let num_banned = neighbours
-            .iter()
-            .filter(|p| p.as_ref().map(|p| p.is_banned()).unwrap_or(false))
-            .count();
+        // Use all available peers up to a maximum of N
+        let total = cmp::min(peer_keys.len(), n);
+        let distance = if total == n {
+            // Perform partial sort of elements only up to N elements
+            let mut neighbours = Vec::with_capacity(total);
+            for i in 0..total {
+                for j in (i + 1)..peer_keys.len() {
+                    if valid_dists[i] > valid_dists[j] {
+                        valid_dists.swap(i, j);
+                        peer_keys.swap(i, j);
+                    }
+                }
+                let peer = self
+                    .peer_db
+                    .get(&peer_keys[i])
+                    .map_err(PeerManagerError::DatabaseError)?
+                    .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+                neighbours.push(peer);
+            }
+            region_node_id.distance(&neighbours.last().expect("Neighbours must be more than 0").node_id)
+        } else {
+            NodeDistance::max_distance()
+        };
 
+        let num_offline = offline_dists.into_iter().filter(|d| *d <= distance).count();
+        let num_banned = banned_dists.into_iter().filter(|d| *d <= distance).count();
         Ok(RegionStats {
             distance,
             ref_node_id: region_node_id,
@@ -824,5 +833,96 @@ mod test {
         assert!(peer_storage.find_by_public_key(&peer1.public_key).is_ok());
         assert!(peer_storage.find_by_public_key(&peer2.public_key).is_err());
         assert!(peer_storage.find_by_public_key(&peer3.public_key).is_ok());
+    }
+
+    fn create_test_peer(features: PeerFeatures, ban: bool, offline: bool) -> Peer {
+        let mut rng = rand::rngs::OsRng;
+        let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
+        let node_id = NodeId::from_key(&pk).unwrap();
+        let net_address = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
+        let net_addresses = MultiaddressesWithStats::from(net_address);
+        let mut peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), features, &[]);
+        if ban {
+            peer.ban_for(Duration::from_secs(600));
+        }
+        peer.set_offline(offline);
+        peer
+    }
+
+    #[test]
+    fn test_get_region_stats() {
+        let mut peer_storage = PeerStorage::new_indexed(HashmapDatabase::new()).unwrap();
+
+        assert!(peer_storage
+            .add_peer(create_test_peer(PeerFeatures::COMMUNICATION_NODE, false, true))
+            .is_ok());
+        assert!(peer_storage
+            .add_peer(create_test_peer(PeerFeatures::COMMUNICATION_NODE, true, true))
+            .is_ok());
+        assert!(peer_storage
+            .add_peer(create_test_peer(PeerFeatures::COMMUNICATION_CLIENT, false, false))
+            .is_ok());
+        assert!(peer_storage
+            .add_peer(create_test_peer(PeerFeatures::COMMUNICATION_CLIENT, false, false))
+            .is_ok());
+        assert!(peer_storage
+            .add_peer(create_test_peer(PeerFeatures::COMMUNICATION_NODE, false, false))
+            .is_ok());
+        assert!(peer_storage
+            .add_peer(create_test_peer(PeerFeatures::COMMUNICATION_CLIENT, false, true))
+            .is_ok());
+        assert!(peer_storage
+            .add_peer(create_test_peer(PeerFeatures::COMMUNICATION_NODE, false, false))
+            .is_ok());
+        assert!(peer_storage
+            .add_peer(create_test_peer(PeerFeatures::COMMUNICATION_CLIENT, false, false))
+            .is_ok());
+        assert_eq!(peer_storage.peer_db.len().unwrap(), 8);
+
+        let main_peer = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false, false);
+        let node_region_stats = peer_storage
+            .get_region_stats(&main_peer.node_id, 4, PeerFeatures::COMMUNICATION_NODE)
+            .unwrap();
+        assert_eq!(node_region_stats.distance, NodeDistance::max_distance());
+        assert_eq!(node_region_stats.num_banned, 1);
+        assert_eq!(node_region_stats.num_offline, 2);
+        assert_eq!(node_region_stats.total, 2);
+        let client_region_stats = peer_storage
+            .get_region_stats(&main_peer.node_id, 4, PeerFeatures::COMMUNICATION_CLIENT)
+            .unwrap();
+        assert_eq!(client_region_stats.distance, NodeDistance::max_distance());
+        assert_eq!(client_region_stats.num_banned, 0);
+        assert_eq!(client_region_stats.num_offline, 1);
+        assert_eq!(client_region_stats.total, 3);
+
+        assert!(peer_storage
+            .add_peer(create_test_peer(PeerFeatures::COMMUNICATION_CLIENT, false, false))
+            .is_ok());
+        assert!(peer_storage
+            .add_peer(create_test_peer(PeerFeatures::COMMUNICATION_NODE, false, false))
+            .is_ok());
+        assert!(peer_storage
+            .add_peer(create_test_peer(PeerFeatures::COMMUNICATION_NODE, false, false))
+            .is_ok());
+        assert!(peer_storage
+            .add_peer(create_test_peer(PeerFeatures::COMMUNICATION_CLIENT, false, false))
+            .is_ok());
+        assert!(peer_storage
+            .add_peer(create_test_peer(PeerFeatures::COMMUNICATION_CLIENT, false, false))
+            .is_ok());
+        assert!(peer_storage
+            .add_peer(create_test_peer(PeerFeatures::COMMUNICATION_NODE, false, false))
+            .is_ok());
+
+        let node_region_stats = peer_storage
+            .get_region_stats(&main_peer.node_id, 4, PeerFeatures::COMMUNICATION_NODE)
+            .unwrap();
+        assert!(node_region_stats.distance < NodeDistance::max_distance());
+        assert_eq!(node_region_stats.total, 4);
+        let client_region_stats = peer_storage
+            .get_region_stats(&main_peer.node_id, 4, PeerFeatures::COMMUNICATION_CLIENT)
+            .unwrap();
+        assert!(client_region_stats.distance < NodeDistance::max_distance());
+        assert_eq!(client_region_stats.total, 4);
     }
 }
