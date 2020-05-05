@@ -47,16 +47,13 @@ use futures::{
 use log::*;
 use rand::rngs::OsRng;
 use std::{convert::TryInto, time::Duration};
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use tari_comms::peer_manager::NodeId;
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
     outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageParams},
 };
-use tari_crypto::{
-    ristretto::RistrettoPublicKey,
-    tari_utilities::{hex::Hex, Hashable},
-};
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::RequestContext;
 use tokio::task;
@@ -84,7 +81,7 @@ impl Default for BaseNodeServiceConfig {
 /// A convenience struct to hold all the BaseNode streams
 pub struct BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock> {
     outbound_request_stream: SOutReq,
-    outbound_block_stream: UnboundedReceiver<(Block, Vec<CommsPublicKey>)>,
+    outbound_block_stream: UnboundedReceiver<(Block, Vec<NodeId>)>,
     inbound_request_stream: SInReq,
     inbound_response_stream: SInRes,
     inbound_block_stream: SBlockIn,
@@ -106,7 +103,7 @@ where
 {
     pub fn new(
         outbound_request_stream: SOutReq,
-        outbound_block_stream: UnboundedReceiver<(Block, Vec<CommsPublicKey>)>,
+        outbound_block_stream: UnboundedReceiver<(Block, Vec<NodeId>)>,
         inbound_request_stream: SInReq,
         inbound_response_stream: SInRes,
         inbound_block_stream: SBlockIn,
@@ -199,8 +196,8 @@ where B: BlockchainBackend + 'static
                 },
 
                 // Outbound block messages from the OutboundNodeCommsInterface
-                outbound_block_context = outbound_block_stream.select_next_some() => {
-                    self.spawn_handle_outbound_block(outbound_block_context);
+                (block, excluded_peers) = outbound_block_stream.select_next_some() => {
+                    self.spawn_handle_outbound_block(block, excluded_peers);
                 },
 
                 // Incoming request messages from the Comms layer
@@ -276,10 +273,9 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_outbound_block(&self, block_context: (Block, Vec<RistrettoPublicKey>)) {
+    fn spawn_handle_outbound_block(&self, block: Block, excluded_peers: Vec<NodeId>) {
         let outbound_message_service = self.outbound_message_service.clone();
         task::spawn(async move {
-            let (block, excluded_peers) = block_context;
             let _ = handle_outbound_block(outbound_message_service, block, excluded_peers)
                 .await
                 .or_else(|err| {
@@ -503,7 +499,7 @@ async fn handle_outbound_request(
 async fn handle_outbound_block(
     mut outbound_message_service: OutboundMessageRequester,
     block: Block,
-    exclude_peers: Vec<CommsPublicKey>,
+    exclude_peers: Vec<NodeId>,
 ) -> Result<(), CommsInterfaceError>
 {
     outbound_message_service
@@ -568,7 +564,7 @@ async fn handle_incoming_block<B: BlockchainBackend + 'static>(
         inner,
         source_peer.public_key
     );
-    inbound_nch.handle_block(&inner, Some(source_peer.public_key)).await?;
+    inbound_nch.handle_block(&inner, Some(source_peer.node_id)).await?;
 
     // TODO - retain peer info for stats and potential banning for sending invalid blocks
 

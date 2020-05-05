@@ -119,7 +119,7 @@ impl SendMessageParams {
         &mut self,
         node_id: NodeId,
         n: usize,
-        excluded_peers: Vec<CommsPublicKey>,
+        excluded_peers: Vec<NodeId>,
         peer_features: PeerFeatures,
     ) -> &mut Self
     {
@@ -134,13 +134,18 @@ impl SendMessageParams {
 
     /// Set broadcast_strategy to Neighbours. `excluded_peers` are excluded. Only Peers that have
     /// `PeerFeatures::MESSAGE_PROPAGATION` are included.
-    pub fn neighbours(&mut self, excluded_peers: Vec<CommsPublicKey>) -> &mut Self {
+    pub fn neighbours(&mut self, excluded_peers: Vec<NodeId>) -> &mut Self {
         self.params_mut().broadcast_strategy = BroadcastStrategy::Neighbours(excluded_peers, false);
         self
     }
 
-    pub fn neighbours_include_clients(&mut self, excluded_peers: Vec<CommsPublicKey>) -> &mut Self {
+    pub fn neighbours_include_clients(&mut self, excluded_peers: Vec<NodeId>) -> &mut Self {
         self.params_mut().broadcast_strategy = BroadcastStrategy::Neighbours(excluded_peers, true);
+        self
+    }
+
+    pub fn propagate(&mut self, excluded_peers: Vec<NodeId>) -> &mut Self {
+        self.params_mut().broadcast_strategy = BroadcastStrategy::Propagate(excluded_peers);
         self
     }
 

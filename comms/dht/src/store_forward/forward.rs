@@ -31,9 +31,8 @@ use futures::{task::Context, Future};
 use log::*;
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
-    peer_manager::{Peer, PeerManager},
+    peer_manager::{NodeId, Peer, PeerManager},
     pipeline::PipelineError,
-    types::CommsPublicKey,
 };
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -165,7 +164,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             source_peer,
             decryption_result,
             dht_header,
-            authenticated_origin,
             ..
         } = message;
 
@@ -189,10 +187,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .err()
             .expect("previous check that decryption failed");
 
-        let mut excluded_peers = vec![source_peer.public_key.clone()];
-        if let Some(pk) = authenticated_origin.as_ref() {
-            excluded_peers.push(pk.clone());
-        }
+        let excluded_peers = vec![source_peer.node_id.clone()];
 
         let mut message_params = self.get_send_params(&dht_header, excluded_peers).await?;
         message_params.with_dht_header(dht_header.clone());
@@ -206,7 +201,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     async fn get_send_params(
         &self,
         header: &DhtMessageHeader,
-        excluded_peers: Vec<CommsPublicKey>,
+        excluded_peers: Vec<NodeId>,
     ) -> Result<SendMessageParams, StoreAndForwardError>
     {
         let mut params = SendMessageParams::new();
@@ -228,12 +223,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     // Send to destination peer directly if the current node knows that peer
                     params.direct_public_key(*dest_public_key);
                 } else {
+                    params.propagate(excluded_peers);
                     // Send to the current nodes nearest neighbours
-                    if is_discovery {
-                        params.neighbours_include_clients(excluded_peers);
-                    } else {
-                        params.neighbours(excluded_peers);
-                    }
+                    // if is_discovery {
+                    //     params.neighbours_include_clients(excluded_peers);
+                    // } else {
+                    //     params.neighbours(excluded_peers);
+                    // }
                 }
             },
             NodeDestination::NodeId(dest_node_id) => {
@@ -243,12 +239,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                         params.direct_public_key(dest_peer.public_key);
                     },
                     Err(_) => {
+                        params.propagate(excluded_peers);
                         // Send to peers that are closest to the destination network region
-                        if is_discovery {
-                            params.neighbours_include_clients(excluded_peers);
-                        } else {
-                            params.neighbours(excluded_peers);
-                        }
+                        // if is_discovery {
+                        //     params.neighbours_include_clients(excluded_peers);
+                        // } else {
+                        //     params.neighbours(excluded_peers);
+                        // }
                     },
                 }
             },

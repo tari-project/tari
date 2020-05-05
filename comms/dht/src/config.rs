@@ -31,6 +31,8 @@ pub const SAF_LOW_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(6 * 6
 pub const SAF_HIGH_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(3 * 24 * 60 * 60); // 3 days
 /// The default number of peer nodes that a message has to be closer to, to be considered a neighbour
 pub const DEFAULT_NUM_NEIGHBOURING_NODES: usize = 10;
+/// The default number of randomly-selected peer nodes to be included in propagation messages
+pub const DEFAULT_NUM_RANDOM_PROPAGATION_NODES: usize = 2;
 
 #[derive(Debug, Clone)]
 pub struct DhtConfig {
@@ -42,6 +44,10 @@ pub struct DhtConfig {
     /// The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour
     /// Default: 10
     pub num_neighbouring_nodes: usize,
+    /// The maximum number of randomly-selected peer nodes that will be included in propagation
+    /// messages. Only applies to `BroadcastStrategy::Propagate`.
+    /// Default: 2
+    pub num_random_propagation_nodes: usize,
     /// A request to retrieve stored messages will be ignored if the requesting node is
     /// not within one of this nodes _n_ closest nodes.
     /// Default 8
@@ -109,6 +115,7 @@ impl Default for DhtConfig {
     fn default() -> Self {
         Self {
             num_neighbouring_nodes: DEFAULT_NUM_NEIGHBOURING_NODES,
+            num_random_propagation_nodes: DEFAULT_NUM_RANDOM_PROPAGATION_NODES,
             saf_num_closest_nodes: 10,
             saf_max_returned_messages: 50,
             outbound_buffer_size: 20,

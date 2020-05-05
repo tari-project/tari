@@ -30,7 +30,7 @@ use crate::{
 };
 use futures::channel::mpsc::UnboundedSender;
 use log::*;
-use tari_comms::types::CommsPublicKey;
+use tari_comms::peer_manager::NodeId;
 use tari_service_framework::reply_channel::SenderService;
 use tower_service::Service;
 pub const LOG_TARGET: &str = "c::mp::service::outbound_interface";
@@ -40,14 +40,14 @@ pub const LOG_TARGET: &str = "c::mp::service::outbound_interface";
 #[derive(Clone)]
 pub struct OutboundMempoolServiceInterface {
     request_sender: SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
-    tx_sender: UnboundedSender<(Transaction, Vec<CommsPublicKey>)>,
+    tx_sender: UnboundedSender<(Transaction, Vec<NodeId>)>,
 }
 
 impl OutboundMempoolServiceInterface {
     /// Construct a new OutboundMempoolServiceInterface with the specified SenderService.
     pub fn new(
         request_sender: SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
-        tx_sender: UnboundedSender<(Transaction, Vec<CommsPublicKey>)>,
+        tx_sender: UnboundedSender<(Transaction, Vec<NodeId>)>,
     ) -> Self
     {
         Self {
@@ -70,7 +70,7 @@ impl OutboundMempoolServiceInterface {
     pub async fn propagate_tx(
         &mut self,
         transaction: Transaction,
-        exclude_peers: Vec<CommsPublicKey>,
+        exclude_peers: Vec<NodeId>,
     ) -> Result<(), MempoolServiceError>
     {
         self.tx_sender

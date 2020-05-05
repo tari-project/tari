@@ -47,19 +47,16 @@ use futures::{
 };
 use log::*;
 use std::{fmt, fmt::Display, sync::Arc};
-use tari_comms::{
-    peer_manager::{
-        node_id::NodeDistance,
-        NodeId,
-        NodeIdentity,
-        Peer,
-        PeerFeatures,
-        PeerManager,
-        PeerManagerError,
-        PeerQuery,
-        PeerQuerySortBy,
-    },
-    types::CommsPublicKey,
+use tari_comms::peer_manager::{
+    node_id::NodeDistance,
+    NodeId,
+    NodeIdentity,
+    Peer,
+    PeerFeatures,
+    PeerManager,
+    PeerManagerError,
+    PeerQuery,
+    PeerQuerySortBy,
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::message_format::{MessageFormat, MessageFormatError};
@@ -406,7 +403,7 @@ impl<'a> DhtActor<'a> {
             },
             Random(n, excluded) => {
                 // Send to a random set of peers of size n that are Communication Nodes
-                peer_manager.random_peers(n, excluded).await.map_err(Into::into)
+                peer_manager.random_peers(n, &excluded).await.map_err(Into::into)
             },
             // TODO: This is a common and expensive search - values here should be cached
             Neighbours(exclude, include_all_communication_clients) => {
@@ -441,6 +438,24 @@ impl<'a> DhtActor<'a> {
 
                 Ok(candidates)
             },
+            Propagate(mut exclude) => {
+                let mut candidates = Self::select_closest_peers_for_propagation(
+                    &config,
+                    &peer_manager,
+                    node_identity.node_id(),
+                    config.num_neighbouring_nodes,
+                    &exclude,
+                    PeerFeatures::MESSAGE_PROPAGATION,
+                )
+                .await?;
+
+                exclude.extend(candidates.iter().map(|p| p.node_id.clone()));
+                let mut random_peers = peer_manager
+                    .random_peers(config.num_random_propagation_nodes, &exclude)
+                    .await?;
+                candidates.extend(random_peers.drain(..));
+                Ok(candidates)
+            },
         }
     }
 
@@ -448,7 +463,7 @@ impl<'a> DhtActor<'a> {
         peer_manager: &PeerManager,
         ref_node_id: &NodeId,
         threshold_dist: NodeDistance,
-        excluded_peers: &[CommsPublicKey],
+        excluded_peers: &[NodeId],
         list: &mut Vec<Peer>,
     ) -> Result<(), DhtActorError>
     {
@@ -462,7 +477,7 @@ impl<'a> DhtActor<'a> {
                     return false;
                 }
 
-                if excluded_peers.contains(&peer.public_key) {
+                if excluded_peers.contains(&peer.node_id) {
                     return false;
                 }
 
@@ -493,7 +508,7 @@ impl<'a> DhtActor<'a> {
         peer_manager: &PeerManager,
         node_id: &NodeId,
         n: usize,
-        excluded_peers: &[CommsPublicKey],
+        excluded_peers: &[NodeId],
         features: PeerFeatures,
     ) -> Result<Vec<Peer>, DhtActorError>
     {
@@ -548,7 +563,7 @@ impl<'a> DhtActor<'a> {
                     return false;
                 }
 
-                let is_excluded = excluded_peers.contains(&peer.public_key);
+                let is_excluded = excluded_peers.contains(&peer.node_id);
                 if is_excluded {
                     trace!(target: LOG_TARGET, "[{}] is explicitly excluded", peer.node_id);
                     excluded_count += 1;

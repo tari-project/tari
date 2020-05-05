@@ -33,7 +33,7 @@ use crate::{
 };
 use log::*;
 use std::sync::Arc;
-use tari_comms::types::CommsPublicKey;
+use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::hex::Hex;
 
 pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
@@ -83,7 +83,7 @@ where T: BlockchainBackend + 'static
     pub async fn handle_transaction(
         &mut self,
         tx: &Transaction,
-        source_peer: Option<CommsPublicKey>,
+        source_peer: Option<NodeId>,
     ) -> Result<(), MempoolServiceError>
     {
         debug!(
@@ -103,7 +103,7 @@ where T: BlockchainBackend + 'static
     async fn submit_transaction(
         &mut self,
         tx: &Transaction,
-        exclude_peers: Vec<CommsPublicKey>,
+        exclude_peers: Vec<NodeId>,
     ) -> Result<TxStorageResponse, MempoolServiceError>
     {
         trace!(target: LOG_TARGET, "Transaction: {}.", tx);

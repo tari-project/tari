@@ -49,13 +49,13 @@ use log::*;
 use rand::rngs::OsRng;
 use std::{convert::TryInto, sync::Arc, time::Duration};
 use tari_broadcast_channel::Subscriber;
-use tari_comms::types::CommsPublicKey;
+use tari_comms::peer_manager::NodeId;
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
     outbound::{OutboundEncryption, OutboundMessageRequester},
 };
-use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
+use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::RequestContext;
 use tokio::task;
@@ -65,7 +65,7 @@ const LOG_TARGET: &str = "c::mempool::service::service";
 /// A convenience struct to hold all the Mempool service streams
 pub struct MempoolStreams<SOutReq, SInReq, SInRes, STxIn, SLocalReq> {
     outbound_request_stream: SOutReq,
-    outbound_tx_stream: UnboundedReceiver<(Transaction, Vec<CommsPublicKey>)>,
+    outbound_tx_stream: UnboundedReceiver<(Transaction, Vec<NodeId>)>,
     inbound_request_stream: SInReq,
     inbound_response_stream: SInRes,
     inbound_transaction_stream: STxIn,
@@ -83,7 +83,7 @@ where
 {
     pub fn new(
         outbound_request_stream: SOutReq,
-        outbound_tx_stream: UnboundedReceiver<(Transaction, Vec<CommsPublicKey>)>,
+        outbound_tx_stream: UnboundedReceiver<(Transaction, Vec<NodeId>)>,
         inbound_request_stream: SInReq,
         inbound_response_stream: SInRes,
         inbound_transaction_stream: STxIn,
@@ -173,8 +173,8 @@ where B: BlockchainBackend + 'static
                 },
 
                 // Outbound tx messages from the OutboundMempoolServiceInterface
-                outbound_tx_context = outbound_tx_stream.select_next_some() => {
-                    self.spawn_handle_outbound_tx(outbound_tx_context);
+                (txn, excluded_peers) = outbound_tx_stream.select_next_some() => {
+                    self.spawn_handle_outbound_tx(txn, excluded_peers);
                 },
 
                 // Incoming request messages from the Comms layer
@@ -246,10 +246,9 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_outbound_tx(&self, tx_context: (Transaction, Vec<RistrettoPublicKey>)) {
+    fn spawn_handle_outbound_tx(&self, tx: Transaction, excluded_peers: Vec<NodeId>) {
         let outbound_message_service = self.outbound_message_service.clone();
         task::spawn(async move {
-            let (tx, excluded_peers) = tx_context;
             let _ = handle_outbound_tx(outbound_message_service, tx, excluded_peers)
                 .await
                 .or_else(|err| {
@@ -482,7 +481,7 @@ async fn handle_incoming_tx<B: BlockchainBackend + 'static>(
         source_peer.public_key
     );
     inbound_handlers
-        .handle_transaction(&inner, Some(source_peer.public_key))
+        .handle_transaction(&inner, Some(source_peer.node_id))
         .await?;
 
     Ok(())
@@ -510,7 +509,7 @@ async fn handle_request_timeout(
 async fn handle_outbound_tx(
     mut outbound_message_service: OutboundMessageRequester,
     tx: Transaction,
-    exclude_peers: Vec<CommsPublicKey>,
+    exclude_peers: Vec<NodeId>,
 ) -> Result<(), MempoolServiceError>
 {
     outbound_message_service

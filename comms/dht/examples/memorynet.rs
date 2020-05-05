@@ -36,7 +36,7 @@
 //! `RUST_BACKTRACE=1 RUST_LOG=trace cargo run --example memorynet 2> /tmp/debug.log`
 
 // Size of network
-const NUM_NODES: usize = 39;
+const NUM_NODES: usize = 45;
 // Must be at least 2
 const NUM_WALLETS: usize = 8;
 const QUIET_MODE: bool = true;

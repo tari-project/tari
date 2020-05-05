@@ -31,7 +31,7 @@ pub struct BroadcastClosestRequest {
     pub n: usize,
     pub node_id: NodeId,
     pub peer_features: PeerFeatures,
-    pub excluded_peers: Vec<CommsPublicKey>,
+    pub excluded_peers: Vec<NodeId>,
 }
 
 #[derive(Debug, Clone)]
@@ -49,7 +49,9 @@ pub enum BroadcastStrategy {
     /// A convenient strategy which behaves the same as the `Closest` strategy with the `NodeId` set
     /// to this node. Element 0 in the tuple is a public key exclusion list. If element 1 is set to true, all
     /// neighbouring client peers are also included in addition to node peers.
-    Neighbours(Vec<CommsPublicKey>, bool),
+    Neighbours(Vec<NodeId>, bool),
+    /// Propagate to a set of closest neighbours and random peers
+    Propagate(Vec<NodeId>),
 }
 
 impl fmt::Display for BroadcastStrategy {
@@ -67,6 +69,7 @@ impl fmt::Display for BroadcastStrategy {
                 excluded.len(),
                 if *include_clients { ", Include all clients" } else { "" }
             ),
+            Propagate(excluded) => write!(f, "Propagate({} excluded)", excluded.len()),
         }
     }
 }
@@ -75,7 +78,7 @@ impl BroadcastStrategy {
     pub fn is_broadcast(&self) -> bool {
         use BroadcastStrategy::*;
         match self {
-            Closest(_) | Flood | Neighbours(_, _) | Random(_, _) => true,
+            Closest(_) | Flood | Neighbours(_, _) | Random(_, _) | Propagate(_) => true,
             _ => false,
         }
     }
