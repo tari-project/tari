@@ -145,8 +145,10 @@ impl UnconfirmedPool {
                 .ok_or_else(|| UnconfirmedPoolError::StorageOutofSync)?;
 
             if curr_weight + ptx.weight <= total_weight {
-                curr_weight += ptx.weight;
-                selected_txs.push(ptx.transaction.clone());
+                if !UnconfirmedPool::find_duplicate_input(&selected_txs, &ptx.transaction) {
+                    curr_weight += ptx.weight;
+                    selected_txs.push(ptx.transaction.clone());
+                }
             } else {
                 // Check if some the next few txs with slightly lower priority wont fit in the remaining space.
                 curr_skip_count += 1;
@@ -156,6 +158,18 @@ impl UnconfirmedPool {
             }
         }
         Ok(selected_txs)
+    }
+
+    // This will search a Vec<Arc<Transaction>> for duplicate inputs of a tx
+    fn find_duplicate_input(array_of_tx: &[Arc<Transaction>], tx: &Arc<Transaction>) -> bool {
+        for transaction in array_of_tx {
+            for input in transaction.body.inputs() {
+                if tx.body.inputs().contains(input) {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Remove all published transactions from the UnconfirmedPool and discard all double spend transactions.

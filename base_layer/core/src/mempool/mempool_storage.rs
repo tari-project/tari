@@ -209,6 +209,7 @@ where T: BlockchainBackend
     }
 
     /// Returns a list of transaction ranked by transaction priority up to a given weight.
+    /// Will only return transactions that will fit into a block
     pub fn retrieve(&self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, MempoolError> {
         Ok(self.unconfirmed_pool.highest_priority_txs(total_weight)?)
     }
