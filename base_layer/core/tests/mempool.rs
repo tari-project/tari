@@ -817,7 +817,7 @@ fn block_event_and_reorg_event_handling() {
 
     runtime.block_on(async {
         // Add Block1 - tx1 will be moved to the ReorgPool.
-        assert!(bob.local_nci.submit_block(block1.clone()).await.is_ok());
+        assert!(bob.local_nci.submit_block(block1.clone(), true).await.is_ok());
         async_assert_eventually!(
             alice.mempool.has_tx_with_excess_sig(tx1_excess_sig.clone()).unwrap(),
             expect = TxStorageResponse::ReorgPool,
@@ -826,7 +826,7 @@ fn block_event_and_reorg_event_handling() {
         );
 
         // Add Block2a - tx4 and tx5 will be discarded as double spends.
-        assert!(bob.local_nci.submit_block(block2a.clone()).await.is_ok());
+        assert!(bob.local_nci.submit_block(block2a.clone(), true).await.is_ok());
         async_assert_eventually!(
             alice.mempool.has_tx_with_excess_sig(tx2_excess_sig.clone()).unwrap(),
             expect = TxStorageResponse::ReorgPool,
@@ -847,7 +847,7 @@ fn block_event_and_reorg_event_handling() {
         );
 
         // Reorg chain by adding Block2b - tx2 and tx3 will be discarded as double spends.
-        assert!(bob.local_nci.submit_block(block2b.clone()).await.is_ok());
+        assert!(bob.local_nci.submit_block(block2b.clone(), true).await.is_ok());
         async_assert_eventually!(
             alice.mempool.has_tx_with_excess_sig(tx2_excess_sig.clone()).unwrap(),
             expect = TxStorageResponse::NotStored,

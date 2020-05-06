@@ -359,7 +359,7 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
         let (blocks, sync_peer) = request_blocks(shared, sync_peers, block_nums.clone()).await?;
         for block in blocks {
             let block_hash = block.hash();
-            match shared.db.add_block(block.clone()) {
+            match shared.local_node_interface.submit_block(block.clone(), false).await {
                 Ok(_) => {
                     info!(
                         target: LOG_TARGET,
@@ -370,7 +370,7 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
                     trace!(target: LOG_TARGET, "Block added to database: {}", block,);
                     block_nums.remove(0);
                 },
-                Err(ChainStorageError::InvalidBlock) => {
+                Err(CommsInterfaceError::ChainStorageError(ChainStorageError::InvalidBlock)) => {
                     warn!(
                         target: LOG_TARGET,
                         "Invalid block {} received from peer. Retrying",
@@ -383,7 +383,7 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
                     ban_sync_peer(shared, sync_peers, sync_peer.clone()).await?;
                     break;
                 },
-                Err(ChainStorageError::ValidationError { source }) => {
+                Err(CommsInterfaceError::ChainStorageError(ChainStorageError::ValidationError { source })) => {
                     warn!(
                         target: LOG_TARGET,
                         "Validation on block {} from peer failed due to: {:?}. Retrying",
@@ -397,7 +397,7 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
                     ban_sync_peer(shared, sync_peers, sync_peer.clone()).await?;
                     break;
                 },
-                Err(e) => return Err(BlockSyncError::ChainStorageError(e)),
+                Err(e) => return Err(BlockSyncError::CommsInterfaceError(e)),
             }
         }
         if block_nums.is_empty() {

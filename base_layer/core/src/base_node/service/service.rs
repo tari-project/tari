@@ -102,7 +102,7 @@ where
     SInRes: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
     SBlockIn: Stream<Item = DomainMessage<Block>>,
     SLocalReq: Stream<Item = RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>>,
-    SLocalBlock: Stream<Item = RequestContext<Block, Result<(), CommsInterfaceError>>>,
+    SLocalBlock: Stream<Item = RequestContext<(Block, bool), Result<(), CommsInterfaceError>>>,
 {
     pub fn new(
         outbound_request_stream: SOutReq,
@@ -169,7 +169,7 @@ where B: BlockchainBackend + 'static
         SInRes: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
         SBlockIn: Stream<Item = DomainMessage<Block>>,
         SLocalReq: Stream<Item = RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>>,
-        SLocalBlock: Stream<Item = RequestContext<Block, Result<(), CommsInterfaceError>>>,
+        SLocalBlock: Stream<Item = RequestContext<(Block, bool), Result<(), CommsInterfaceError>>>,
     {
         let outbound_request_stream = streams.outbound_request_stream.fuse();
         pin_mut!(outbound_request_stream);
@@ -362,7 +362,7 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_local_block(&self, block_context: RequestContext<Block, Result<(), CommsInterfaceError>>) {
+    fn spawn_handle_local_block(&self, block_context: RequestContext<(Block, bool), Result<(), CommsInterfaceError>>) {
         let mut inbound_nch = self.inbound_nch.clone();
         task::spawn(async move {
             let (block, reply_tx) = block_context.split();
@@ -568,7 +568,9 @@ async fn handle_incoming_block<B: BlockchainBackend + 'static>(
         inner,
         source_peer.public_key
     );
-    inbound_nch.handle_block(&inner, Some(source_peer.public_key)).await?;
+    inbound_nch
+        .handle_block(&(inner, true), Some(source_peer.public_key))
+        .await?;
 
     // TODO - retain peer info for stats and potential banning for sending invalid blocks
 

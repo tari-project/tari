@@ -54,8 +54,8 @@ const MAX_HEADERS_PER_RESPONSE: u32 = 100;
 /// Events that can be published on the Validated Block Event Stream
 #[derive(Debug, Clone, Display)]
 pub enum BlockEvent {
-    Verified((Box<Block>, BlockAddResult)),
-    Invalid((Box<Block>, ChainStorageError)),
+    Verified((Box<Block>, BlockAddResult, bool)),
+    Invalid((Box<Block>, ChainStorageError, bool)),
 }
 
 /// The InboundNodeCommsInterface is used to handle all received inbound requests from remote nodes.
@@ -246,10 +246,11 @@ where T: BlockchainBackend + 'static
     /// Handle inbound blocks from remote nodes and local services.
     pub async fn handle_block(
         &mut self,
-        block: &Block,
+        block_context: &(Block, bool),
         source_peer: Option<CommsPublicKey>,
     ) -> Result<(), CommsInterfaceError>
     {
+        let (block, propagate_out) = block_context;
         debug!(
             target: LOG_TARGET,
             "Block #{} ({}) received from {}",
@@ -263,14 +264,16 @@ where T: BlockchainBackend + 'static
         trace!(target: LOG_TARGET, "Block: {}", block);
         let add_block_result = async_db::add_block(self.blockchain_db.clone(), block.clone()).await;
         // Create block event on block event stream
+        let mut result = Ok(());
         let block_event = match add_block_result.clone() {
             Ok(block_add_result) => {
                 debug!(target: LOG_TARGET, "Block event created: {}", block_add_result);
-                BlockEvent::Verified((Box::new(block.clone()), block_add_result))
+                BlockEvent::Verified((Box::new(block.clone()), block_add_result, *propagate_out))
             },
             Err(e) => {
                 error!(target: LOG_TARGET, "Block validation failed: {:?}", e);
-                BlockEvent::Invalid((Box::new(block.clone()), e))
+                result = Err(CommsInterfaceError::ChainStorageError(e.clone()));
+                BlockEvent::Invalid((Box::new(block.clone()), e, *propagate_out))
             },
         };
         self.event_publisher
@@ -287,7 +290,7 @@ where T: BlockchainBackend + 'static
                 BlockAddResult::OrphanBlock => false,
                 BlockAddResult::ChainReorg(_) => true,
             };
-            if propagate {
+            if propagate && *propagate_out {
                 debug!(
                     target: LOG_TARGET,
                     "Propagate block ({}) to network.",
@@ -297,7 +300,7 @@ where T: BlockchainBackend + 'static
                 self.outbound_nci.propagate_block(block.clone(), exclude_peers).await?;
             }
         }
-        Ok(())
+        result
     }
 
     async fn get_target_difficulty(&self, pow_algo: PowAlgorithm) -> Result<Difficulty, CommsInterfaceError> {

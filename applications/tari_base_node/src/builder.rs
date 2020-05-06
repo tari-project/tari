@@ -563,9 +563,12 @@ where
         .block_sync_strategy
         .parse()
         .expect("Problem reading block sync strategy from config");
-
+    let node_local_interface = base_node_handles
+        .get_handle::<LocalNodeCommsInterface>()
+        .expect("Problem getting node local interface handle.");
     let node = BaseNodeStateMachine::new(
         &db,
+        &node_local_interface,
         &outbound_interface,
         base_node_comms.peer_manager(),
         base_node_comms.connection_manager(),

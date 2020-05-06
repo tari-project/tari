@@ -105,6 +105,7 @@ fn test_listening_lagging() {
     let shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
+        &alice_node.local_nci,
         &alice_node.outbound_nci,
         alice_node.comms.peer_manager(),
         alice_node.comms.connection_manager(),
@@ -136,7 +137,7 @@ fn test_listening_lagging() {
                 &consensus_manager.consensus_constants(),
             ))
             .unwrap();
-        bob_local_nci.submit_block(prev_block).await.unwrap();
+        bob_local_nci.submit_block(prev_block, true).await.unwrap();
         assert_eq!(bob_db.get_height(), Ok(Some(2)));
 
         let next_event = time::timeout(Duration::from_secs(10), await_event_task)
@@ -166,6 +167,7 @@ fn test_event_channel() {
     let mut mock = MockChainMetadata::new();
     let state_machine = BaseNodeStateMachine::new(
         &db,
+        &node.local_nci,
         &node.outbound_nci,
         node.comms.peer_manager(),
         node.comms.connection_manager(),
@@ -241,6 +243,7 @@ fn test_block_sync() {
     let shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
+        &alice_node.local_nci,
         &alice_node.outbound_nci,
         alice_node.comms.peer_manager(),
         alice_node.comms.connection_manager(),
@@ -319,6 +322,7 @@ fn test_lagging_block_sync() {
     let shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
+        &alice_node.local_nci,
         &alice_node.outbound_nci,
         alice_node.comms.peer_manager(),
         alice_node.comms.connection_manager(),
@@ -414,6 +418,7 @@ fn test_block_sync_recovery() {
     let shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
+        &alice_node.local_nci,
         &alice_node.outbound_nci,
         alice_node.comms.peer_manager(),
         alice_node.comms.connection_manager(),
@@ -509,6 +514,7 @@ fn test_forked_block_sync() {
     let shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
+        &alice_node.local_nci,
         &alice_node.outbound_nci,
         alice_node.comms.peer_manager(),
         alice_node.comms.connection_manager(),
@@ -662,6 +668,7 @@ fn test_sync_peer_banning() {
     let shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
+        &alice_node.local_nci,
         &alice_node.outbound_nci,
         alice_node.comms.peer_manager(),
         alice_node.comms.connection_manager(),

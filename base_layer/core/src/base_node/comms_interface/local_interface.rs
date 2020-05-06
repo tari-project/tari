@@ -36,7 +36,7 @@ use tower_service::Service;
 #[derive(Clone)]
 pub struct LocalNodeCommsInterface {
     request_sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
-    block_sender: SenderService<Block, Result<(), CommsInterfaceError>>,
+    block_sender: SenderService<(Block, bool), Result<(), CommsInterfaceError>>,
     block_event_stream: Subscriber<BlockEvent>,
 }
 
@@ -44,7 +44,7 @@ impl LocalNodeCommsInterface {
     /// Construct a new LocalNodeCommsInterface with the specified SenderService.
     pub fn new(
         request_sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
-        block_sender: SenderService<Block, Result<(), CommsInterfaceError>>,
+        block_sender: SenderService<(Block, bool), Result<(), CommsInterfaceError>>,
         block_event_stream: Subscriber<BlockEvent>,
     ) -> Self
     {
@@ -139,8 +139,8 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    /// Submit a block to the base node service.
-    pub async fn submit_block(&mut self, block: Block) -> Result<(), CommsInterfaceError> {
-        self.block_sender.call(block).await?
+    /// Submit a block to the base node service. Internal_only flag will prevent propagation.
+    pub async fn submit_block(&mut self, block: Block, propagate: bool) -> Result<(), CommsInterfaceError> {
+        self.block_sender.call((block, propagate)).await?
     }
 }
