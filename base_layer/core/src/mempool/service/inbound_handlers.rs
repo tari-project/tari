@@ -27,14 +27,18 @@ use crate::{
         async_mempool,
         service::{MempoolRequest, MempoolResponse, MempoolServiceError, OutboundMempoolServiceInterface},
         Mempool,
+        MempoolStateEvent,
         TxStorageResponse,
     },
     transactions::transaction::Transaction,
 };
+use futures::SinkExt;
 use log::*;
 use std::sync::Arc;
+use tari_broadcast_channel::Publisher;
 use tari_comms::types::CommsPublicKey;
 use tari_crypto::tari_utilities::hex::Hex;
+use tokio::sync::RwLock;
 
 pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
 
@@ -43,6 +47,7 @@ pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
 pub struct MempoolInboundHandlers<T>
 where T: BlockchainBackend + 'static
 {
+    event_publisher: Arc<RwLock<Publisher<MempoolStateEvent>>>,
     mempool: Mempool<T>,
     outbound_nmi: OutboundMempoolServiceInterface,
 }
@@ -51,8 +56,17 @@ impl<T> MempoolInboundHandlers<T>
 where T: BlockchainBackend + 'static
 {
     /// Construct the MempoolInboundHandlers.
-    pub fn new(mempool: Mempool<T>, outbound_nmi: OutboundMempoolServiceInterface) -> Self {
-        Self { mempool, outbound_nmi }
+    pub fn new(
+        event_publisher: Publisher<MempoolStateEvent>,
+        mempool: Mempool<T>,
+        outbound_nmi: OutboundMempoolServiceInterface,
+    ) -> Self
+    {
+        Self {
+            event_publisher: Arc::new(RwLock::new(event_publisher)),
+            mempool,
+            outbound_nmi,
+        }
     }
 
     /// Handle inbound Mempool service requests from remote nodes and local services.
@@ -153,10 +167,22 @@ where T: BlockchainBackend + 'static
         match block_event {
             BlockEvent::Verified((block, BlockAddResult::Ok)) => {
                 async_mempool::process_published_block(self.mempool.clone(), *block.clone()).await?;
+                self.event_publisher
+                    .write()
+                    .await
+                    .send(MempoolStateEvent::Updated)
+                    .await
+                    .map_err(|_| MempoolServiceError::EventStreamError)?;
             },
             BlockEvent::Verified((_, BlockAddResult::ChainReorg((removed_blocks, added_blocks)))) => {
                 async_mempool::process_reorg(self.mempool.clone(), removed_blocks.to_vec(), added_blocks.to_vec())
                     .await?;
+                self.event_publisher
+                    .write()
+                    .await
+                    .send(MempoolStateEvent::Updated)
+                    .await
+                    .map_err(|_| MempoolServiceError::EventStreamError)?;
             },
             BlockEvent::Verified(_) | BlockEvent::Invalid(_) => {},
         }
@@ -171,6 +197,7 @@ where T: BlockchainBackend + 'static
     fn clone(&self) -> Self {
         // All members use Arc's internally so calling clone should be cheap.
         Self {
+            event_publisher: self.event_publisher.clone(),
             mempool: self.mempool.clone(),
             outbound_nmi: self.outbound_nmi.clone(),
         }

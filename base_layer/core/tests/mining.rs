@@ -103,7 +103,8 @@ fn mining() {
     let mut miner = Miner::new(shutdown.to_signal(), consensus_manager, &alice_node.local_nci, 1);
     miner.enable_mining_flag().store(true, Ordering::Relaxed);
     let (mut state_event_sender, state_event_receiver): (Publisher<_>, Subscriber<_>) = bounded(1);
-    miner.subscribe_to_state_change(state_event_receiver);
+    miner.subscribe_to_node_state_events(state_event_receiver);
+    miner.subscribe_to_mempool_state_events(alice_node.local_mp_interface.get_mempool_state_event_stream());
     let miner_utxo_stream = miner.get_utxo_receiver_channel().fuse();
     runtime.spawn(miner.mine());
 

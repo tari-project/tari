@@ -25,6 +25,7 @@ use tari_broadcast_channel::Subscriber;
 use tari_core::{
     base_node::{states::StateEvent, LocalNodeCommsInterface},
     consensus::ConsensusManager,
+    mempool::MempoolStateEvent,
     mining::Miner,
 };
 use tari_service_framework::handles::ServiceHandles;
@@ -40,7 +41,8 @@ use tari_shutdown::ShutdownSignal;
 pub fn build_miner<H: AsRef<ServiceHandles>>(
     handles: H,
     kill_signal: ShutdownSignal,
-    event_stream: Subscriber<StateEvent>,
+    node_event_stream: Subscriber<StateEvent>,
+    mempool_event_stream: Subscriber<MempoolStateEvent>,
     consensus_manager: ConsensusManager,
     num_threads: usize,
 ) -> Miner
@@ -48,6 +50,7 @@ pub fn build_miner<H: AsRef<ServiceHandles>>(
     let handles = handles.as_ref();
     let node_local_interface = handles.get_handle::<LocalNodeCommsInterface>().unwrap();
     let mut miner = Miner::new(kill_signal, consensus_manager, &node_local_interface, num_threads);
-    miner.subscribe_to_state_change(event_stream);
+    miner.subscribe_to_node_state_events(node_event_stream);
+    miner.subscribe_to_mempool_state_events(mempool_event_stream);
     miner
 }

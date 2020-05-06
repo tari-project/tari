@@ -576,11 +576,16 @@ where
 
     //---------------------------------- Mining --------------------------------------------//
 
-    let event_stream = node.get_state_change_event_stream();
+    let local_mp_interface = base_node_handles
+        .get_handle::<LocalMempoolService>()
+        .expect("Problem getting mempool interface handle.");
+    let node_event_stream = node.get_state_change_event_stream();
+    let mempool_event_stream = local_mp_interface.get_mempool_state_event_stream();
     let miner = miner::build_miner(
         &base_node_handles,
         node.get_interrupt_signal(),
-        event_stream,
+        node_event_stream,
+        mempool_event_stream,
         rules,
         config.num_mining_threads,
     );
