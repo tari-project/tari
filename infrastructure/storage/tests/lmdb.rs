@@ -276,3 +276,57 @@ fn exists_and_delete() {
     }
     clean_up("delete"); // In Windows file handles must be released before files can be deleted
 }
+
+#[test]
+fn lmbd_resize_on_create() {
+    let db_env_name = "resize";
+    {
+        let path = get_path(&db_env_name);
+        std::fs::create_dir(&path).unwrap_or_default();
+        let mut size_used_round_1: usize;
+        const PRESET_SIZE: usize = 1;
+        let db_name = "test";
+        {
+            // Create db with large preset environment size
+            let env = LMDBBuilder::new()
+                .set_path(&path)
+                .set_environment_size(PRESET_SIZE * 100)
+                .set_max_number_of_databases(1)
+                .add_database(&db_name, db::CREATE)
+                .build()
+                .unwrap();
+            // Add some data that is `>= 2 * (PRESET_SIZE * 1024 * 1024)`
+            let db = env.get_handle(&db_name).unwrap();
+            let users = load_users();
+            for i in 0..100 {
+                db.insert(&i, &users).unwrap();
+            }
+            // Ensure enough data is loaded
+            let env_info = env.env().info().unwrap();
+            let env_stat = env.env().stat().unwrap();
+            size_used_round_1 = env_stat.psize as usize * env_info.last_pgno;
+            assert!(size_used_round_1 >= 2 * (PRESET_SIZE * 1024 * 1024));
+            env.flush().unwrap();
+        }
+
+        {
+            // Load existing db environment
+            let env = LMDBBuilder::new()
+                .set_path(&path)
+                .set_environment_size(PRESET_SIZE)
+                .set_max_number_of_databases(1)
+                .add_database(&db_name, db::CREATE)
+                .build()
+                .unwrap();
+            // Ensure `mapsize` is automatically adjusted
+            let env_info = env.env().info().unwrap();
+            let env_stat = env.env().stat().unwrap();
+            let size_used_round_2 = env_stat.psize as usize * env_info.last_pgno;
+            let space_remaining = env_info.mapsize - &size_used_round_2;
+            assert_eq!(size_used_round_1, size_used_round_2);
+            assert_eq!(space_remaining, PRESET_SIZE * 1024 * 1024);
+            assert!(env_info.mapsize >= 2 * (PRESET_SIZE * 1024 * 1024));
+        }
+    }
+    clean_up(&db_env_name); // In Windows file handles must be released before files can be deleted
+}
