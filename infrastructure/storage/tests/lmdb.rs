@@ -283,7 +283,7 @@ fn lmbd_resize_on_create() {
     {
         let path = get_path(&db_env_name);
         std::fs::create_dir(&path).unwrap_or_default();
-        let mut size_used_round_1: usize;
+        let size_used_round_1: usize;
         const PRESET_SIZE: usize = 1;
         let db_name = "test";
         {

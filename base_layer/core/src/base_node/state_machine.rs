@@ -19,11 +19,10 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::{
     base_node::{
         chain_metadata_service::ChainMetadataEvent,
-        comms_interface::OutboundNodeCommsInterface,
+        comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface},
         states,
         states::{BaseNodeState, BlockSyncConfig, StateEvent},
     },
@@ -61,6 +60,7 @@ impl Default for BaseNodeStateMachineConfig {
 /// database and hooks to the p2p network
 pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) db: BlockchainDatabase<B>,
+    pub(super) local_node_interface: LocalNodeCommsInterface,
     pub(super) comms: OutboundNodeCommsInterface,
     pub(super) peer_manager: Arc<PeerManager>,
     pub(super) connection_manager: ConnectionManagerRequester,
@@ -75,6 +75,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     /// Instantiate a new Base Node.
     pub fn new(
         db: &BlockchainDatabase<B>,
+        local_node_interface: &LocalNodeCommsInterface,
         comms: &OutboundNodeCommsInterface,
         peer_manager: Arc<PeerManager>,
         connection_manager: ConnectionManagerRequester,
@@ -86,6 +87,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         let (event_sender, event_receiver): (Publisher<_>, Subscriber<_>) = bounded(10);
         Self {
             db: db.clone(),
+            local_node_interface: local_node_interface.clone(),
             comms: comms.clone(),
             peer_manager,
             connection_manager,

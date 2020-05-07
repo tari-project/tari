@@ -21,7 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::comms_interface::{error::CommsInterfaceError, BlockEvent, NodeCommsRequest, NodeCommsResponse},
+    base_node::comms_interface::{
+        error::CommsInterfaceError,
+        BlockEvent,
+        Broadcast,
+        NodeCommsRequest,
+        NodeCommsResponse,
+    },
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{ChainMetadata, HistoricalBlock},
     proof_of_work::{Difficulty, PowAlgorithm},
@@ -36,7 +42,7 @@ use tower_service::Service;
 #[derive(Clone)]
 pub struct LocalNodeCommsInterface {
     request_sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
-    block_sender: SenderService<Block, Result<(), CommsInterfaceError>>,
+    block_sender: SenderService<(Block, Broadcast), Result<(), CommsInterfaceError>>,
     block_event_stream: Subscriber<BlockEvent>,
 }
 
@@ -44,7 +50,7 @@ impl LocalNodeCommsInterface {
     /// Construct a new LocalNodeCommsInterface with the specified SenderService.
     pub fn new(
         request_sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
-        block_sender: SenderService<Block, Result<(), CommsInterfaceError>>,
+        block_sender: SenderService<(Block, Broadcast), Result<(), CommsInterfaceError>>,
         block_event_stream: Subscriber<BlockEvent>,
     ) -> Self
     {
@@ -139,8 +145,8 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    /// Submit a block to the base node service.
-    pub async fn submit_block(&mut self, block: Block) -> Result<(), CommsInterfaceError> {
-        self.block_sender.call(block).await?
+    /// Submit a block to the base node service. Internal_only flag will prevent propagation.
+    pub async fn submit_block(&mut self, block: Block, propagate: Broadcast) -> Result<(), CommsInterfaceError> {
+        self.block_sender.call((block, propagate)).await?
     }
 }

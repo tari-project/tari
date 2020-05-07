@@ -22,6 +22,7 @@
 
 #[allow(dead_code)]
 mod helpers;
+use tari_core::base_node::comms_interface::Broadcast;
 
 use futures::join;
 use helpers::{
@@ -458,17 +459,17 @@ fn propagate_and_forward_valid_block() {
         let (bob_block_event, carol_block_event, dan_block_event) =
             join!(bob_block_event_fut, carol_block_event_fut, dan_block_event_fut);
 
-        if let BlockEvent::Verified((received_block, _)) = &*bob_block_event.unwrap() {
+        if let BlockEvent::Verified((received_block, _, _)) = &*bob_block_event.unwrap() {
             assert_eq!(received_block.hash(), block1_hash);
         } else {
             panic!("Bob's node did not receive and validate the expected block");
         }
-        if let BlockEvent::Verified((received_block, _block_add_result)) = &*carol_block_event.unwrap() {
+        if let BlockEvent::Verified((received_block, _block_add_result, _)) = &*carol_block_event.unwrap() {
             assert_eq!(received_block.hash(), block1_hash);
         } else {
             panic!("Carol's node did not receive and validate the expected block");
         }
-        if let BlockEvent::Verified((received_block, _block_add_result)) = &*dan_block_event.unwrap() {
+        if let BlockEvent::Verified((received_block, _block_add_result, _)) = &*dan_block_event.unwrap() {
             assert_eq!(received_block.hash(), block1_hash);
         } else {
             panic!("Dan's node did not receive and validate the expected block");
@@ -568,12 +569,12 @@ fn propagate_and_forward_invalid_block() {
         let (bob_block_event, carol_block_event, dan_block_event) =
             join!(bob_block_event_fut, carol_block_event_fut, dan_block_event_fut);
 
-        if let BlockEvent::Invalid((received_block, _err)) = &*bob_block_event.unwrap() {
+        if let BlockEvent::Invalid((received_block, _err, _)) = &*bob_block_event.unwrap() {
             assert_eq!(received_block.hash(), block1_hash);
         } else {
             panic!("Bob's node should have detected an invalid block");
         }
-        if let BlockEvent::Invalid((received_block, _err)) = &*carol_block_event.unwrap() {
+        if let BlockEvent::Invalid((received_block, _err, _)) = &*carol_block_event.unwrap() {
             assert_eq!(received_block.hash(), block1_hash);
         } else {
             panic!("Carol's node should have detected an invalid block");
@@ -744,12 +745,16 @@ fn local_submit_block() {
         .calculate_mmr_roots(chain_block(&block0, vec![], &consensus_manager.consensus_constants()))
         .unwrap();
     runtime.block_on(async {
-        assert!(node.local_nci.submit_block(block1.clone()).await.is_ok());
+        assert!(node
+            .local_nci
+            .submit_block(block1.clone(), Broadcast::from(true))
+            .await
+            .is_ok());
 
         let event_stream = node.local_nci.get_block_event_stream_fused();
         let event = event_stream_next(event_stream, Duration::from_millis(20000)).await;
 
-        if let BlockEvent::Verified((received_block, result)) = &*event.unwrap() {
+        if let BlockEvent::Verified((received_block, result, _)) = &*event.unwrap() {
             assert_eq!(received_block.hash(), block1.hash());
             assert_eq!(*result, BlockAddResult::Ok);
         } else {

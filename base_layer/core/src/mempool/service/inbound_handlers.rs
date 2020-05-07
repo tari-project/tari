@@ -165,24 +165,28 @@ where T: BlockchainBackend + 'static
     /// Handle inbound block events from the local base node service.
     pub async fn handle_block_event(&mut self, block_event: &BlockEvent) -> Result<(), MempoolServiceError> {
         match block_event {
-            BlockEvent::Verified((block, BlockAddResult::Ok)) => {
+            BlockEvent::Verified((block, BlockAddResult::Ok, broadcast)) => {
                 async_mempool::process_published_block(self.mempool.clone(), *block.clone()).await?;
-                self.event_publisher
-                    .write()
-                    .await
-                    .send(MempoolStateEvent::Updated)
-                    .await
-                    .map_err(|_| MempoolServiceError::EventStreamError)?;
+                if bool::from(*broadcast) {
+                    self.event_publisher
+                        .write()
+                        .await
+                        .send(MempoolStateEvent::Updated)
+                        .await
+                        .map_err(|_| MempoolServiceError::EventStreamError)?;
+                }
             },
-            BlockEvent::Verified((_, BlockAddResult::ChainReorg((removed_blocks, added_blocks)))) => {
+            BlockEvent::Verified((_, BlockAddResult::ChainReorg((removed_blocks, added_blocks)), broadcast)) => {
                 async_mempool::process_reorg(self.mempool.clone(), removed_blocks.to_vec(), added_blocks.to_vec())
                     .await?;
-                self.event_publisher
-                    .write()
-                    .await
-                    .send(MempoolStateEvent::Updated)
-                    .await
-                    .map_err(|_| MempoolServiceError::EventStreamError)?;
+                if bool::from(*broadcast) {
+                    self.event_publisher
+                        .write()
+                        .await
+                        .send(MempoolStateEvent::Updated)
+                        .await
+                        .map_err(|_| MempoolServiceError::EventStreamError)?;
+                }
             },
             BlockEvent::Verified(_) | BlockEvent::Invalid(_) => {},
         }

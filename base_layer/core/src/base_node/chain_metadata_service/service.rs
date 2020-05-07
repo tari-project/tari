@@ -24,7 +24,7 @@ use super::{error::ChainMetadataSyncError, LOG_TARGET};
 use crate::{
     base_node::{
         chain_metadata_service::handle::{ChainMetadataEvent, PeerChainMetadata},
-        comms_interface::{BlockEvent, LocalNodeCommsInterface},
+        comms_interface::{BlockEvent, Broadcast, LocalNodeCommsInterface},
         proto,
     },
     chain_storage::BlockAddResult,
@@ -109,8 +109,9 @@ impl ChainMetadataService {
 
     /// Handle BlockEvents
     async fn handle_block_event(&mut self, event: &BlockEvent) -> Result<(), ChainMetadataSyncError> {
+        let _broadcast = Broadcast::from(true);
         match event {
-            BlockEvent::Verified((_, BlockAddResult::Ok)) => {
+            BlockEvent::Verified((_, BlockAddResult::Ok, _broadcast)) => {
                 self.update_liveness_chain_metadata().await?;
             },
             BlockEvent::Verified(_) | BlockEvent::Invalid(_) => {},
