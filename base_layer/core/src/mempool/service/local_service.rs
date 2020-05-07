@@ -22,9 +22,12 @@
 
 use crate::mempool::{
     service::{MempoolRequest, MempoolResponse, MempoolServiceError},
+    MempoolStateEvent,
     StateResponse,
     StatsResponse,
 };
+use futures::{stream::Fuse, StreamExt};
+use tari_broadcast_channel::Subscriber;
 use tari_service_framework::reply_channel::{Receiver, SenderService};
 use tower_service::Service;
 
@@ -41,6 +44,7 @@ pub type LocalMempoolRequestStream = Receiver<MempoolRequest, Result<MempoolResp
 #[derive(Clone)]
 pub struct LocalMempoolService {
     request_sender: LocalMempoolRequester,
+    mempool_state_event_stream: Subscriber<MempoolStateEvent>,
 }
 
 impl LocalMempoolService {
@@ -50,8 +54,23 @@ impl LocalMempoolService {
     ///
     /// To make things a little more ergonomic, the channel handling is done for you in the other member functions,
     /// such that the request behaves like a standard future.
-    pub fn new(request_sender: LocalMempoolRequester) -> Self {
-        LocalMempoolService { request_sender }
+    pub fn new(
+        request_sender: LocalMempoolRequester,
+        mempool_state_event_stream: Subscriber<MempoolStateEvent>,
+    ) -> Self
+    {
+        LocalMempoolService {
+            request_sender,
+            mempool_state_event_stream,
+        }
+    }
+
+    pub fn get_mempool_state_event_stream(&self) -> Subscriber<MempoolStateEvent> {
+        self.mempool_state_event_stream.clone()
+    }
+
+    pub fn get_mempool_state_stream_fused(&self) -> Fuse<Subscriber<MempoolStateEvent>> {
+        self.get_mempool_state_event_stream().fuse()
     }
 
     /// Returns a future that resolves to the current mempool statistics
@@ -82,6 +101,7 @@ mod test {
         StatsResponse,
     };
     use futures::StreamExt;
+    use tari_broadcast_channel::bounded;
     use tari_service_framework::reply_channel::unbounded;
     use tokio::task;
 
@@ -109,8 +129,9 @@ mod test {
 
     #[tokio_macros::test]
     async fn mempool_stats() {
+        let (_, event_subscriber) = bounded(100);
         let (tx, rx) = unbounded();
-        let mut service = LocalMempoolService::new(tx);
+        let mut service = LocalMempoolService::new(tx, event_subscriber);
         task::spawn(mock_handler(rx));
         let stats = service.get_mempool_stats().await;
         let stats = stats.expect("get_mempool_stats should have succeeded");
@@ -119,8 +140,9 @@ mod test {
 
     #[tokio_macros::test]
     async fn mempool_stats_from_multiple() {
+        let (_, event_subscriber) = bounded(100);
         let (tx, rx) = unbounded();
-        let mut service = LocalMempoolService::new(tx);
+        let mut service = LocalMempoolService::new(tx, event_subscriber);
         let mut service2 = service.clone();
         task::spawn(mock_handler(rx));
         let stats = service.get_mempool_stats().await;

@@ -27,7 +27,6 @@ use tari_core::{
     base_node::LocalNodeCommsInterface,
     blocks::{Block, BlockHeader},
     chain_storage::HistoricalBlock,
-    mempool::service::LocalMempoolService,
     proof_of_work::PowAlgorithm,
 };
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray, Hashable};

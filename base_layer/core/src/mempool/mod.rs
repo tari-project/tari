@@ -144,3 +144,9 @@ impl Display for TxStorageResponse {
         fmt.write_str(&storage.to_string())
     }
 }
+
+/// Events that can be published on state changes of the Mempool
+#[derive(Debug, Clone)]
+pub enum MempoolStateEvent {
+    Updated,
+}

@@ -42,4 +42,5 @@ pub enum MempoolServiceError {
     /// Failed to send broadcast message
     BroadcastFailed,
     WaitingRequestError(WaitingRequestError),
+    EventStreamError,
 }

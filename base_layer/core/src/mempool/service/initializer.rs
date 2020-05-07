@@ -39,6 +39,7 @@ use crate::{
 use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, future, Future, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
+use tari_broadcast_channel::bounded;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_p2p::{
     comms_connector::PeerMessage,
@@ -159,12 +160,14 @@ where T: BlockchainBackend + 'static
         let (outbound_tx_sender_service, outbound_tx_stream) = futures_mpsc_channel_unbounded();
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
         let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
+        let (mempool_state_event_publisher, mempool_state_event_subscriber) = bounded(100);
         let outbound_mp_interface =
             OutboundMempoolServiceInterface::new(outbound_request_sender_service, outbound_tx_sender_service);
-        let local_mp_interface = LocalMempoolService::new(local_request_sender_service);
+        let local_mp_interface = LocalMempoolService::new(local_request_sender_service, mempool_state_event_subscriber);
         let config = self.config;
         let mempool = self.mempool.clone();
-        let inbound_handlers = MempoolInboundHandlers::new(mempool, outbound_mp_interface.clone());
+        let inbound_handlers =
+            MempoolInboundHandlers::new(mempool_state_event_publisher, mempool, outbound_mp_interface.clone());
 
         // Register handle to OutboundMempoolServiceInterface before waiting for handles to be ready
         handles_fut.register(outbound_mp_interface);
