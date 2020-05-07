@@ -699,12 +699,14 @@ fn local_get_target_difficulty() {
     assert_eq!(node.blockchain_db.get_height(), Ok(Some(0)));
 
     runtime.block_on(async {
+        #[cfg(feature = "monero_merge_mining")]
         let monero_target_difficulty1 = node
             .local_nci
             .get_target_difficulty(PowAlgorithm::Monero)
             .await
             .unwrap();
         let blake_target_difficulty1 = node.local_nci.get_target_difficulty(PowAlgorithm::Blake).await.unwrap();
+        #[cfg(feature = "monero_merge_mining")]
         assert_ne!(monero_target_difficulty1, Difficulty::from(0));
         assert_ne!(blake_target_difficulty1, Difficulty::from(0));
 
@@ -717,13 +719,14 @@ fn local_get_target_difficulty() {
         block1.header.pow.pow_algo = PowAlgorithm::Blake;
         node.blockchain_db.add_block(block1).unwrap();
         assert_eq!(node.blockchain_db.get_height(), Ok(Some(1)));
-
+        #[cfg(feature = "monero_merge_mining")]
         let monero_target_difficulty2 = node
             .local_nci
             .get_target_difficulty(PowAlgorithm::Monero)
             .await
             .unwrap();
         let blake_target_difficulty2 = node.local_nci.get_target_difficulty(PowAlgorithm::Blake).await.unwrap();
+        #[cfg(feature = "monero_merge_mining")]
         assert!(monero_target_difficulty1 <= monero_target_difficulty2);
         assert!(blake_target_difficulty1 <= blake_target_difficulty2);
 

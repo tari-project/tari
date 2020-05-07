@@ -25,6 +25,7 @@ mod difficulty;
 mod error;
 mod median_timestamp;
 #[allow(clippy::enum_variant_names)]
+#[cfg(feature = "monero_merge_mining")]
 mod monero_rx;
 #[allow(clippy::module_inception)]
 mod proof_of_work;
@@ -39,6 +40,7 @@ pub use blake_pow::{blake_difficulty, blake_difficulty_with_hash};
 pub use difficulty::{Difficulty, DifficultyAdjustment};
 pub use error::{DifficultyAdjustmentError, PowError};
 pub use median_timestamp::get_median_timestamp;
+#[cfg(feature = "monero_merge_mining")]
 pub use monero_rx::monero_difficulty;
 pub use proof_of_work::{PowAlgorithm, ProofOfWork};
 pub use target_difficulty::get_target_difficulty;

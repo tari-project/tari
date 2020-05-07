@@ -31,7 +31,53 @@ use tari_core::{
 };
 
 #[test]
+#[cfg(not(feature = "monero_merge_mining"))]
 fn test_target_difficulty_at_tip() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let constants = consensus_manager.consensus_constants();
+    let block_window = constants.get_difficulty_block_window() as usize;
+    let target_time = constants.get_diff_target_block_interval();
+    let max_block_time = constants.get_difficulty_max_block_interval();
+    let store = create_mem_db(&consensus_manager);
+
+    let pow_algos = vec![
+        PowAlgorithm::Blake, //  GB default
+        PowAlgorithm::Blake,
+        PowAlgorithm::Blake,
+        PowAlgorithm::Blake,
+        PowAlgorithm::Blake,
+        PowAlgorithm::Blake,
+        PowAlgorithm::Blake,
+        PowAlgorithm::Blake,
+        PowAlgorithm::Blake,
+        PowAlgorithm::Blake,
+    ];
+    create_test_pow_blockchain(&store, pow_algos.clone(), &consensus_manager);
+    let height = store.get_metadata().unwrap().height_of_longest_chain.unwrap();
+
+    let pow_algo = PowAlgorithm::Blake;
+    let target_difficulties = store.fetch_target_difficulties(pow_algo, height, block_window).unwrap();
+    assert_eq!(
+        get_target_difficulty(
+            target_difficulties,
+            block_window,
+            target_time,
+            constants.min_pow_difficulty(pow_algo),
+            max_block_time
+        ),
+        Ok(calculate_accumulated_difficulty(
+            &store,
+            pow_algo,
+            vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            &constants
+        ))
+    );
+}
+
+#[test]
+#[cfg(feature = "monero_merge_mining")]
+fn test_target_difficulty_at_tip_merge_mine() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let constants = consensus_manager.consensus_constants();
@@ -53,8 +99,8 @@ fn test_target_difficulty_at_tip() {
         PowAlgorithm::Blake,
     ];
     create_test_pow_blockchain(&store, pow_algos.clone(), &consensus_manager);
-
     let height = store.get_metadata().unwrap().height_of_longest_chain.unwrap();
+
     let pow_algo = PowAlgorithm::Monero;
     let target_difficulties = store.fetch_target_difficulties(pow_algo, height, block_window).unwrap();
     assert_eq!(
@@ -93,7 +139,81 @@ fn test_target_difficulty_at_tip() {
 }
 
 #[test]
+#[cfg(not(feature = "monero_merge_mining"))]
 fn test_target_difficulty_with_height() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let constants = consensus_manager.consensus_constants();
+    let block_window = constants.get_difficulty_block_window() as usize;
+    let target_time = constants.get_diff_target_block_interval();
+    let max_block_time = constants.get_difficulty_max_block_interval();
+    let store = create_mem_db(&consensus_manager);
+
+    let pow_algos = vec![
+        PowAlgorithm::Blake, // GB default
+        PowAlgorithm::Blake,
+        PowAlgorithm::Blake,
+        PowAlgorithm::Blake,
+        PowAlgorithm::Blake,
+        PowAlgorithm::Blake,
+    ];
+    create_test_pow_blockchain(&store, pow_algos, &consensus_manager);
+
+    let pow_algo = PowAlgorithm::Blake;
+    assert_eq!(
+        get_target_difficulty(
+            store.fetch_target_difficulties(pow_algo, 5, block_window).unwrap(),
+            block_window,
+            target_time,
+            constants.min_pow_difficulty(pow_algo),
+            max_block_time
+        ),
+        Ok(calculate_accumulated_difficulty(
+            &store,
+            pow_algo,
+            vec![0, 1, 2, 3, 4, 5],
+            &constants
+        ))
+    );
+
+    let pow_algo = PowAlgorithm::Blake;
+    assert_eq!(
+        get_target_difficulty(
+            store.fetch_target_difficulties(pow_algo, 2, block_window).unwrap(),
+            block_window,
+            target_time,
+            constants.min_pow_difficulty(pow_algo),
+            max_block_time
+        ),
+        Ok(calculate_accumulated_difficulty(
+            &store,
+            pow_algo,
+            vec![0, 1, 2],
+            &constants
+        ))
+    );
+
+    let pow_algo = PowAlgorithm::Blake;
+    assert_eq!(
+        get_target_difficulty(
+            store.fetch_target_difficulties(pow_algo, 3, block_window).unwrap(),
+            block_window,
+            target_time,
+            constants.min_pow_difficulty(pow_algo),
+            max_block_time
+        ),
+        Ok(calculate_accumulated_difficulty(
+            &store,
+            pow_algo,
+            vec![0, 1, 2, 3],
+            &constants
+        ))
+    );
+}
+
+#[test]
+#[cfg(feature = "monero_merge_mining")]
+fn test_target_difficulty_with_height_merge_mine() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let constants = consensus_manager.consensus_constants();
@@ -174,7 +294,6 @@ fn test_target_difficulty_with_height() {
             &constants
         ))
     );
-
     let pow_algo = PowAlgorithm::Monero;
     assert_eq!(
         get_target_difficulty(
