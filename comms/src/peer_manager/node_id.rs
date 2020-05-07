@@ -71,6 +71,23 @@ impl NodeDistance {
     pub const fn max_distance() -> NodeDistance {
         NodeDistance([255; NODE_ID_ARRAY_SIZE])
     }
+
+    /// Calculate the hamming distance (the number of set (1) bits of the XOR metric)
+    pub fn hamming_distance(&self) -> u8 {
+        let xor_bytes = &self.0;
+        let mut set_bit_count = 0u8;
+        for b in xor_bytes {
+            let mut mask = 0b1u8;
+            for _ in 0..8 {
+                if b & mask > 0 {
+                    set_bit_count += 1;
+                }
+                mask <<= 1;
+            }
+        }
+
+        set_bit_count
+    }
 }
 
 impl PartialEq for NodeDistance {
@@ -430,5 +447,24 @@ mod test {
         let nid2 = NodeId::try_from(bytes.clone()).unwrap();
 
         assert_eq!(nid1, nid2);
+    }
+
+    #[test]
+    fn hamming_distance() {
+        let mut node_id1 = NodeId::default().into_inner().to_vec();
+        let mut node_id2 = NodeId::default().into_inner().to_vec();
+        // Same bits
+        node_id1[0] = 0b00010100;
+        node_id2[0] = 0b00010100;
+        // Different bits
+        node_id1[1] = 0b11010100;
+        node_id1[12] = 0b01000011;
+        node_id2[10] = 0b01000011;
+        node_id2[9] = 0b11111111;
+        let node_id1 = NodeId::from_bytes(node_id1.as_slice()).unwrap();
+        let node_id2 = NodeId::from_bytes(node_id2.as_slice()).unwrap();
+
+        let hamming_dist = NodeDistance::from_node_ids(&node_id1, &node_id2).hamming_distance();
+        assert_eq!(hamming_dist, 18);
     }
 }
