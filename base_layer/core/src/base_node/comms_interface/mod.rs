@@ -31,6 +31,6 @@ mod outbound_interface;
 pub use comms_request::{MmrStateRequest, NodeCommsRequest};
 pub use comms_response::NodeCommsResponse;
 pub use error::CommsInterfaceError;
-pub use inbound_handlers::{BlockEvent, InboundNodeCommsHandlers};
+pub use inbound_handlers::{BlockEvent, Broadcast, InboundNodeCommsHandlers};
 pub use local_interface::LocalNodeCommsInterface;
 pub use outbound_interface::OutboundNodeCommsInterface;

@@ -22,7 +22,7 @@
 
 use crate::{
     base_node::{
-        comms_interface::LocalNodeCommsInterface,
+        comms_interface::{Broadcast, CommsInterfaceError, LocalNodeCommsInterface},
         states::{StateEvent, SyncStatus},
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
@@ -358,14 +358,20 @@ impl Miner {
     ///  function to send a block
     async fn send_block(&mut self, block: Block) -> Result<(), MinerError> {
         info!(target: LOG_TARGET, "Mined a block: {}", block);
-        self.node_interface
-            .submit_block(block)
-            .await
-            .or_else(|e| {
+        match self.node_interface.submit_block(block, Broadcast::from(true)).await {
+            Ok(_) => {
+                trace!("Miner successfully submitted block");
+                Ok(())
+            },
+            Err(CommsInterfaceError::ChainStorageError(e)) => {
+                error!(target: LOG_TARGET, "Miner submitted invalid block. {:?}.", e);
+                // Miner does not care about an invalid block and wants the next block so we return an ok
+                Ok(())
+            },
+            Err(e) => {
                 error!(target: LOG_TARGET, "Could not send block to base node. {:?}.", e);
-                Err(e)
-            })
-            .map_err(|e| MinerError::CommunicationError(e.to_string()))?;
-        Ok(())
+                Err(MinerError::CommunicationError(e.to_string()))
+            },
+        }
     }
 }
