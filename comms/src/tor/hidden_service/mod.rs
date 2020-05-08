@@ -24,6 +24,7 @@ mod builder;
 pub use builder::{HiddenServiceBuilder, HiddenServiceBuilderError, HsFlags};
 
 mod controller;
+pub use controller::HiddenServiceControllerError;
 
 use crate::{
     multiaddr::Multiaddr,

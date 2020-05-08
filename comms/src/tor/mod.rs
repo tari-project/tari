@@ -42,4 +42,11 @@ pub use control_client::{
 };
 
 mod hidden_service;
-pub use hidden_service::{HiddenService, HiddenServiceBuilder, HiddenServiceBuilderError, HsFlags, TorIdentity};
+pub use hidden_service::{
+    HiddenService,
+    HiddenServiceBuilder,
+    HiddenServiceBuilderError,
+    HiddenServiceControllerError,
+    HsFlags,
+    TorIdentity,
+};
