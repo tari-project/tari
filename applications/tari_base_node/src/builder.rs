@@ -982,7 +982,7 @@ async fn setup_base_node_comms(
     };
     let (comms, dht) = initialize_comms(comms_config, publisher)
         .await
-        .map_err(|e| format!("Could not create comms layer: {:?}", e))?;
+        .map_err(|e| e.to_friendly_string())?;
 
     // Save final node identity after comms has initialized. This is required because the public_address can be changed
     // by comms during initialization when using tor.

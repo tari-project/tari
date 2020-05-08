@@ -54,6 +54,8 @@ pub enum HiddenServiceControllerError {
     /// Failed to parse SOCKS address returned by control port
     FailedToParseSocksAddress,
     TorClientError(TorClientError),
+    /// Unable to connect to the Tor control port
+    TorControlPortOffline,
     /// The given tor service id is not a valid detached service id
     InvalidDetachedServiceId,
     /// The shutdown signal interrupted the HiddenServiceController
@@ -172,7 +174,12 @@ impl HiddenServiceController {
 
     async fn connect(&mut self) -> Result<(), HiddenServiceControllerError> {
         let (event_tx, _) = broadcast::channel(20);
-        let client = TorControlPortClient::connect(self.control_server_addr.clone(), event_tx).await?;
+        let client = TorControlPortClient::connect(self.control_server_addr.clone(), event_tx)
+            .await
+            .map_err(|err| {
+                error!(target: LOG_TARGET, "Tor client error: {:?}", err);
+                HiddenServiceControllerError::TorControlPortOffline
+            })?;
         self.client = Some(client);
         Ok(())
     }
