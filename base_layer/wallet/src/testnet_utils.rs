@@ -703,17 +703,17 @@ pub fn complete_sent_transaction<
         .block_on(wallet.transaction_service.get_pending_outbound_transactions())?;
     match pending_outbound_tx.get(&tx_id) {
         Some(p) => {
-            let completed_tx: CompletedTransaction = CompletedTransaction {
-                tx_id: p.tx_id,
-                source_public_key: wallet.comms.node_identity().public_key().clone(),
-                destination_public_key: p.destination_public_key.clone(),
-                amount: p.amount,
-                fee: p.fee,
-                transaction: Transaction::new(Vec::new(), Vec::new(), Vec::new(), BlindingFactor::default()),
-                message: p.message.clone(),
-                status: TransactionStatus::Completed,
-                timestamp: Utc::now().naive_utc(),
-            };
+            let completed_tx: CompletedTransaction = CompletedTransaction::new(
+                p.tx_id,
+                wallet.comms.node_identity().public_key().clone(),
+                p.destination_public_key.clone(),
+                p.amount,
+                p.fee,
+                Transaction::new(Vec::new(), Vec::new(), Vec::new(), BlindingFactor::default()),
+                TransactionStatus::Completed,
+                p.message.clone(),
+                Utc::now().naive_utc(),
+            );
             wallet.runtime.block_on(
                 wallet
                     .transaction_service

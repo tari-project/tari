@@ -41,6 +41,9 @@ pub enum TransactionServiceRequest {
     GetPendingInboundTransactions,
     GetPendingOutboundTransactions,
     GetCompletedTransactions,
+    GetCancelledPendingInboundTransactions,
+    GetCancelledPendingOutboundTransactions,
+    GetCancelledCompletedTransactions,
     GetCompletedTransaction(TxId),
     SetBaseNodePublicKey(CommsPublicKey),
     SendTransaction((CommsPublicKey, MicroTari, MicroTari, String)),
@@ -68,6 +71,9 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetPendingInboundTransactions => f.write_str("GetPendingInboundTransactions"),
             Self::GetPendingOutboundTransactions => f.write_str("GetPendingOutboundTransactions"),
             Self::GetCompletedTransactions => f.write_str("GetCompletedTransactions"),
+            Self::GetCancelledPendingInboundTransactions => f.write_str("GetCancelledPendingInboundTransactions"),
+            Self::GetCancelledPendingOutboundTransactions => f.write_str("GetCancelledPendingOutboundTransactions"),
+            Self::GetCancelledCompletedTransactions => f.write_str("GetCancelledCompletedTransactions"),
             Self::GetCompletedTransaction(t) => f.write_str(&format!("GetCompletedTransaction({})", t)),
             Self::SetBaseNodePublicKey(k) => f.write_str(&format!("SetBaseNodePublicKey ({})", k)),
             Self::SendTransaction((k, v, _, msg)) => {
@@ -217,6 +223,19 @@ impl TransactionServiceHandle {
         }
     }
 
+    pub async fn get_cancelled_pending_inbound_transactions(
+        &mut self,
+    ) -> Result<HashMap<u64, InboundTransaction>, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetCancelledPendingInboundTransactions)
+            .await??
+        {
+            TransactionServiceResponse::PendingInboundTransactions(p) => Ok(p),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
     pub async fn get_pending_outbound_transactions(
         &mut self,
     ) -> Result<HashMap<u64, OutboundTransaction>, TransactionServiceError> {
@@ -230,12 +249,38 @@ impl TransactionServiceHandle {
         }
     }
 
+    pub async fn get_cancelled_pending_outbound_transactions(
+        &mut self,
+    ) -> Result<HashMap<u64, OutboundTransaction>, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetCancelledPendingOutboundTransactions)
+            .await??
+        {
+            TransactionServiceResponse::PendingOutboundTransactions(p) => Ok(p),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
     pub async fn get_completed_transactions(
         &mut self,
     ) -> Result<HashMap<u64, CompletedTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetCompletedTransactions)
+            .await??
+        {
+            TransactionServiceResponse::CompletedTransactions(c) => Ok(c),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_cancelled_completed_transactions(
+        &mut self,
+    ) -> Result<HashMap<u64, CompletedTransaction>, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetCancelledCompletedTransactions)
             .await??
         {
             TransactionServiceResponse::CompletedTransactions(c) => Ok(c),

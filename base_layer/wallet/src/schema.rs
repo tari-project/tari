@@ -18,6 +18,7 @@ table! {
         status -> Integer,
         message -> Text,
         timestamp -> Timestamp,
+        cancelled -> Integer,
     }
 }
 
@@ -36,6 +37,7 @@ table! {
         receiver_protocol -> Text,
         message -> Text,
         timestamp -> Timestamp,
+        cancelled -> Integer,
     }
 }
 
@@ -58,6 +60,7 @@ table! {
         sender_protocol -> Text,
         message -> Text,
         timestamp -> Timestamp,
+        cancelled -> Integer,
     }
 }
 

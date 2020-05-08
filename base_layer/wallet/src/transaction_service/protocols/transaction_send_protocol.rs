@@ -137,16 +137,16 @@ where TBackend: TransactionBackend + Clone + 'static
                 .sender_protocol
                 .get_fee_amount()
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-            let outbound_tx = OutboundTransaction {
+            let outbound_tx = OutboundTransaction::new(
                 tx_id,
-                destination_public_key: self.dest_pubkey.clone(),
-                amount: self.amount,
+                self.dest_pubkey.clone(),
+                self.amount,
                 fee,
-                sender_protocol: self.sender_protocol.clone(),
-                status: TransactionStatus::Pending,
-                message: self.message.clone(),
-                timestamp: Utc::now().naive_utc(),
-            };
+                self.sender_protocol.clone(),
+                TransactionStatus::Pending,
+                self.message.clone(),
+                Utc::now().naive_utc(),
+            );
 
             self.resources
                 .db
@@ -238,10 +238,9 @@ where TBackend: TransactionBackend + Clone + 'static
             }
         }
 
-        let recipient_reply = reply.ok_or(TransactionServiceProtocolError::new(
-            self.id,
-            TransactionServiceError::TransactionCancelled,
-        ))?;
+        let recipient_reply = reply.ok_or_else(|| {
+            TransactionServiceProtocolError::new(self.id, TransactionServiceError::TransactionCancelled)
+        })?;
 
         outbound_tx
             .sender_protocol
@@ -267,17 +266,17 @@ where TBackend: TransactionBackend + Clone + 'static
             .get_transaction()
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
-        let completed_transaction = CompletedTransaction {
+        let completed_transaction = CompletedTransaction::new(
             tx_id,
-            source_public_key: self.resources.node_identity.public_key().clone(),
-            destination_public_key: outbound_tx.destination_public_key.clone(),
-            amount: outbound_tx.amount,
-            fee: outbound_tx.fee,
-            transaction: tx.clone(),
-            status: TransactionStatus::Completed,
-            message: outbound_tx.message.clone(),
-            timestamp: Utc::now().naive_utc(),
-        };
+            self.resources.node_identity.public_key().clone(),
+            outbound_tx.destination_public_key.clone(),
+            outbound_tx.amount,
+            outbound_tx.fee,
+            tx.clone(),
+            TransactionStatus::Completed,
+            outbound_tx.message.clone(),
+            Utc::now().naive_utc(),
+        );
 
         self.resources
             .db

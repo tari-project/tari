@@ -34,7 +34,6 @@ use crate::{
         storage::database::{
             CompletedTransaction,
             InboundTransaction,
-            OutboundTransaction,
             PendingCoinbaseTransaction,
             TransactionBackend,
             TransactionDatabase,
@@ -397,17 +396,34 @@ where
                 .cancel_transaction(tx_id)
                 .await
                 .map(|_| TransactionServiceResponse::TransactionCancelled),
-            TransactionServiceRequest::GetPendingInboundTransactions => Ok(
-                TransactionServiceResponse::PendingInboundTransactions(self.get_pending_inbound_transactions().await?),
-            ),
+            TransactionServiceRequest::GetPendingInboundTransactions => {
+                Ok(TransactionServiceResponse::PendingInboundTransactions(
+                    self.db.get_pending_inbound_transactions().await?,
+                ))
+            },
             TransactionServiceRequest::GetPendingOutboundTransactions => {
                 Ok(TransactionServiceResponse::PendingOutboundTransactions(
-                    self.get_pending_outbound_transactions().await?,
+                    self.db.get_pending_outbound_transactions().await?,
                 ))
             },
             TransactionServiceRequest::GetCompletedTransactions => Ok(
-                TransactionServiceResponse::CompletedTransactions(self.get_completed_transactions().await?),
+                TransactionServiceResponse::CompletedTransactions(self.db.get_completed_transactions().await?),
             ),
+            TransactionServiceRequest::GetCancelledPendingInboundTransactions => {
+                Ok(TransactionServiceResponse::PendingInboundTransactions(
+                    self.db.get_cancelled_pending_inbound_transactions().await?,
+                ))
+            },
+            TransactionServiceRequest::GetCancelledPendingOutboundTransactions => {
+                Ok(TransactionServiceResponse::PendingOutboundTransactions(
+                    self.db.get_cancelled_pending_outbound_transactions().await?,
+                ))
+            },
+            TransactionServiceRequest::GetCancelledCompletedTransactions => {
+                Ok(TransactionServiceResponse::CompletedTransactions(
+                    self.db.get_cancelled_completed_transactions().await?,
+                ))
+            },
             TransactionServiceRequest::GetCompletedTransaction(tx_id) => Ok(
                 TransactionServiceResponse::CompletedTransaction(self.db.get_completed_transaction(tx_id).await?),
             ),
@@ -759,15 +775,15 @@ where
                 .await?;
 
             // Otherwise add it to our pending transaction list and return reply
-            let inbound_transaction = InboundTransaction {
+            let inbound_transaction = InboundTransaction::new(
                 tx_id,
-                source_public_key: source_pubkey.clone(),
+                source_pubkey.clone(),
                 amount,
-                receiver_protocol: rtp.clone(),
-                status: TransactionStatus::Pending,
-                message: data.message.clone(),
-                timestamp: Utc::now().naive_utc(),
-            };
+                rtp.clone(),
+                TransactionStatus::Pending,
+                data.message.clone(),
+                Utc::now().naive_utc(),
+            );
             self.db
                 .add_pending_inbound_transaction(tx_id, inbound_transaction.clone())
                 .await?;
@@ -866,17 +882,17 @@ where
             return Err(TransactionServiceError::ReceiverOutputNotFound);
         }
 
-        let completed_transaction = CompletedTransaction {
+        let completed_transaction = CompletedTransaction::new(
             tx_id,
-            source_public_key: source_pubkey.clone(),
-            destination_public_key: self.node_identity.public_key().clone(),
-            amount: inbound_tx.amount,
-            fee: transaction.body.get_total_fee(),
-            transaction: transaction.clone(),
-            status: TransactionStatus::Completed,
-            message: inbound_tx.message.clone(),
-            timestamp: inbound_tx.timestamp,
-        };
+            source_pubkey.clone(),
+            self.node_identity.public_key().clone(),
+            inbound_tx.amount,
+            transaction.body.get_total_fee(),
+            transaction.clone(),
+            TransactionStatus::Completed,
+            inbound_tx.message.clone(),
+            inbound_tx.timestamp,
+        );
 
         self.db
             .complete_inbound_transaction(tx_id, completed_transaction.clone())
@@ -982,17 +998,20 @@ where
         }
 
         self.db
-            .complete_coinbase_transaction(tx_id, CompletedTransaction {
+            .complete_coinbase_transaction(
                 tx_id,
-                source_public_key: self.node_identity.public_key().clone(),
-                destination_public_key: self.node_identity.public_key().clone(),
-                amount: coinbase_tx.amount,
-                fee: MicroTari::from(0),
-                transaction: completed_transaction,
-                status: TransactionStatus::Completed,
-                message: "Coinbase Transaction".to_string(),
-                timestamp: Utc::now().naive_utc(),
-            })
+                CompletedTransaction::new(
+                    tx_id,
+                    self.node_identity.public_key().clone(),
+                    self.node_identity.public_key().clone(),
+                    coinbase_tx.amount,
+                    MicroTari::from(0),
+                    completed_transaction,
+                    TransactionStatus::Completed,
+                    "Coinbase Transaction".to_string(),
+                    Utc::now().naive_utc(),
+                ),
+            )
             .await?;
 
         Ok(())
@@ -1013,24 +1032,6 @@ where
         self.db.cancel_coinbase_transaction(tx_id).await?;
 
         Ok(())
-    }
-
-    pub async fn get_pending_inbound_transactions(
-        &self,
-    ) -> Result<HashMap<u64, InboundTransaction>, TransactionServiceError> {
-        Ok(self.db.get_pending_inbound_transactions().await?)
-    }
-
-    pub async fn get_pending_outbound_transactions(
-        &self,
-    ) -> Result<HashMap<u64, OutboundTransaction>, TransactionServiceError> {
-        Ok(self.db.get_pending_outbound_transactions().await?)
-    }
-
-    pub async fn get_completed_transactions(
-        &self,
-    ) -> Result<HashMap<u64, CompletedTransaction>, TransactionServiceError> {
-        Ok(self.db.get_completed_transactions().await?)
     }
 
     /// Add a base node public key to the list that will be used to broadcast transactions and monitor the base chain
@@ -1380,17 +1381,20 @@ where
     {
         trace!(target: LOG_TARGET, "Submit transaction ({}) to db.", tx_id);
         self.db
-            .insert_completed_transaction(tx_id, CompletedTransaction {
+            .insert_completed_transaction(
                 tx_id,
-                source_public_key: self.node_identity.public_key().clone(),
-                destination_public_key: self.node_identity.public_key().clone(),
-                amount,
-                fee,
-                transaction: tx,
-                status: TransactionStatus::Completed,
-                message,
-                timestamp: Utc::now().naive_utc(),
-            })
+                CompletedTransaction::new(
+                    tx_id,
+                    self.node_identity.public_key().clone(),
+                    self.node_identity.public_key().clone(),
+                    amount,
+                    fee,
+                    tx,
+                    TransactionStatus::Completed,
+                    message,
+                    Utc::now().naive_utc(),
+                ),
+            )
             .await?;
         trace!(
             target: LOG_TARGET,
@@ -1564,15 +1568,15 @@ where
             &self.factories,
         );
 
-        let inbound_transaction = InboundTransaction {
+        let inbound_transaction = InboundTransaction::new(
             tx_id,
             source_public_key,
             amount,
-            receiver_protocol: rtp,
-            status: TransactionStatus::Pending,
-            message: "".to_string(),
-            timestamp: Utc::now().naive_utc(),
-        };
+            rtp,
+            TransactionStatus::Pending,
+            "".to_string(),
+            Utc::now().naive_utc(),
+        );
 
         self.db
             .add_pending_inbound_transaction(tx_id, inbound_transaction.clone())
@@ -1603,17 +1607,17 @@ where
             TransactionServiceError::TestHarnessError("Could not find Pending Inbound TX to finalize.".to_string())
         })?;
 
-        let completed_transaction = CompletedTransaction {
+        let completed_transaction = CompletedTransaction::new(
             tx_id,
-            source_public_key: found_tx.source_public_key.clone(),
-            destination_public_key: self.node_identity.public_key().clone(),
-            amount: found_tx.amount,
-            fee: MicroTari::from(2000), // a placeholder fee for this test function
-            transaction: Transaction::new(Vec::new(), Vec::new(), Vec::new(), BlindingFactor::default()),
-            status: TransactionStatus::Completed,
-            message: found_tx.message.clone(),
-            timestamp: found_tx.timestamp,
-        };
+            found_tx.source_public_key.clone(),
+            self.node_identity.public_key().clone(),
+            found_tx.amount,
+            MicroTari::from(2000), // a placeholder fee for this test function
+            Transaction::new(Vec::new(), Vec::new(), Vec::new(), BlindingFactor::default()),
+            TransactionStatus::Completed,
+            found_tx.message.clone(),
+            found_tx.timestamp,
+        );
 
         self.db
             .complete_inbound_transaction(tx_id, completed_transaction.clone())

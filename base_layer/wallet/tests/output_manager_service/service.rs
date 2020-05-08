@@ -197,14 +197,20 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
         .block_on(oms.confirm_transaction(sender_tx_id, tx.body.inputs().clone(), tx.body.outputs().clone()))
         .unwrap();
 
-    assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 0);
+    assert_eq!(
+        runtime.block_on(oms.get_pending_transactions()).unwrap().len(),
+        0,
+        "Should have no pending tx"
+    );
     assert_eq!(
         runtime.block_on(oms.get_spent_outputs()).unwrap().len(),
-        tx.body.inputs().len()
+        tx.body.inputs().len(),
+        "# Outputs should equal number of sent inputs"
     );
     assert_eq!(
         runtime.block_on(oms.get_unspent_outputs()).unwrap().len(),
-        num_outputs + 1 - runtime.block_on(oms.get_spent_outputs()).unwrap().len() + tx.body.outputs().len() - 1
+        num_outputs + 1 - runtime.block_on(oms.get_spent_outputs()).unwrap().len() + tx.body.outputs().len() - 1,
+        "Unspent outputs"
     );
 
     if let DbValue::KeyManagerState(km) = backend.fetch(&DbKey::KeyManagerState).unwrap().unwrap() {
