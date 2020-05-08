@@ -664,23 +664,13 @@ fn receive_and_propagate_transaction() {
             interval = Duration::from_millis(1000)
         );
         async_assert_eventually!(
-            bob_node
-                .mempool
-                .has_tx_with_excess_sig(orphan_excess_sig.clone())
-                .unwrap(),
-            expect = TxStorageResponse::OrphanPool,
-            max_attempts = 10,
-            interval = Duration::from_millis(1000)
-        );
-        async_assert_eventually!(
             carol_node
                 .mempool
                 .has_tx_with_excess_sig(tx_excess_sig.clone())
                 .unwrap(),
-            expect = TxStorageResponse::PendingPool,
-            max_attempts = 10,
-            interval = Duration::from_millis(1000)
+            expect = TxStorageResponse::PendingPool
         );
+        // Carol got sent the orphan tx directly, so it will be in her mempool
         async_assert_eventually!(
             carol_node
                 .mempool
@@ -689,6 +679,15 @@ fn receive_and_propagate_transaction() {
             expect = TxStorageResponse::OrphanPool,
             max_attempts = 10,
             interval = Duration::from_millis(1000)
+        );
+        // It's difficult to test a negative here, but let's at least make sure that the orphan TX was not propagated
+        // by the time we check it
+        async_assert_eventually!(
+            bob_node
+                .mempool
+                .has_tx_with_excess_sig(orphan_excess_sig.clone())
+                .unwrap(),
+            expect = TxStorageResponse::NotStored,
         );
 
         alice_node.comms.shutdown().await;

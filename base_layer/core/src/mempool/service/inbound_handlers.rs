@@ -135,7 +135,7 @@ where T: BlockchainBackend + 'static
                     );
                     let propagate = match tx_storage {
                         TxStorageResponse::UnconfirmedPool => true,
-                        TxStorageResponse::OrphanPool => true,
+                        TxStorageResponse::OrphanPool => false,
                         TxStorageResponse::PendingPool => true,
                         TxStorageResponse::ReorgPool => false,
                         TxStorageResponse::NotStored => false,
