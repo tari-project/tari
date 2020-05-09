@@ -24,7 +24,7 @@ use crate::support::utils::random_string;
 use chrono::Utc;
 use rand::rngs::OsRng;
 use tari_core::transactions::{
-    tari_amount::MicroTari,
+    tari_amount::{uT, MicroTari},
     transaction::{OutputFeatures, Transaction, UnblindedOutput},
     transaction_protocol::sender::TransactionSenderMessage,
     types::{CommitmentFactory, CryptoFactories, HashDigest, PrivateKey, PublicKey},
@@ -91,6 +91,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             status: TransactionStatus::Pending,
             message: messages[i].clone(),
             timestamp: Utc::now().naive_utc(),
+            cancelled: false,
         });
         assert!(
             !runtime.block_on(db.transaction_exists((i + 10) as u64)).unwrap(),
@@ -139,6 +140,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             status: TransactionStatus::Pending,
             message: messages[i].clone(),
             timestamp: Utc::now().naive_utc(),
+            cancelled: false,
         });
         assert!(
             !runtime.block_on(db.transaction_exists(i as u64)).unwrap(),
@@ -229,6 +231,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             },
             message: messages[i].clone(),
             timestamp: Utc::now().naive_utc(),
+            cancelled: false,
         });
         runtime
             .block_on(db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone()))
@@ -309,20 +312,119 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     let completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
     let num_completed_txs = completed_txs.len();
-
+    assert_eq!(
+        runtime
+            .block_on(db.get_cancelled_completed_transactions())
+            .unwrap()
+            .len(),
+        0
+    );
     let cancelled_tx_id = completed_txs[&1].tx_id;
-    assert!(runtime.block_on(db.get_completed_transaction(cancelled_tx_id)).is_ok());
     runtime
         .block_on(db.cancel_completed_transaction(cancelled_tx_id))
         .unwrap();
     let completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
     assert_eq!(completed_txs.len(), num_completed_txs - 1);
+    let mut cancelled_txs = runtime.block_on(db.get_cancelled_completed_transactions()).unwrap();
+    assert_eq!(cancelled_txs.len(), 1);
+    assert!(cancelled_txs.remove(&cancelled_tx_id).is_some());
 
-    assert!(runtime.block_on(db.get_completed_transaction(cancelled_tx_id)).is_err());
+    runtime
+        .block_on(db.add_pending_inbound_transaction(
+            999,
+            InboundTransaction::new(
+                999u64,
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                22 * uT,
+                rtp.clone(),
+                TransactionStatus::Pending,
+                "To be cancelled".to_string(),
+                Utc::now().naive_utc(),
+            ),
+        ))
+        .unwrap();
 
-    assert!(runtime
-        .block_on(db.get_completed_transaction(completed_txs[&0].tx_id))
-        .is_ok());
+    assert_eq!(
+        runtime
+            .block_on(db.get_cancelled_pending_inbound_transactions())
+            .unwrap()
+            .len(),
+        0
+    );
+
+    assert_eq!(
+        runtime.block_on(db.get_pending_inbound_transactions()).unwrap().len(),
+        1
+    );
+    runtime.block_on(db.cancel_pending_transaction(999)).unwrap();
+
+    assert_eq!(
+        runtime
+            .block_on(db.get_cancelled_pending_inbound_transactions())
+            .unwrap()
+            .len(),
+        1
+    );
+
+    assert_eq!(
+        runtime.block_on(db.get_pending_inbound_transactions()).unwrap().len(),
+        0
+    );
+
+    let mut cancelled_txs = runtime
+        .block_on(db.get_cancelled_pending_inbound_transactions())
+        .unwrap();
+    assert_eq!(cancelled_txs.len(), 1);
+    assert!(cancelled_txs.remove(&999).is_some());
+
+    runtime
+        .block_on(db.add_pending_outbound_transaction(
+            998,
+            OutboundTransaction::new(
+                998u64,
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                22 * uT,
+                stp.clone().get_fee_amount().unwrap(),
+                stp.clone(),
+                TransactionStatus::Pending,
+                "To be cancelled".to_string(),
+                Utc::now().naive_utc(),
+            ),
+        ))
+        .unwrap();
+
+    assert_eq!(
+        runtime
+            .block_on(db.get_cancelled_pending_outbound_transactions())
+            .unwrap()
+            .len(),
+        0
+    );
+
+    assert_eq!(
+        runtime.block_on(db.get_pending_outbound_transactions()).unwrap().len(),
+        1
+    );
+    runtime.block_on(db.cancel_pending_transaction(998)).unwrap();
+
+    assert_eq!(
+        runtime
+            .block_on(db.get_cancelled_pending_outbound_transactions())
+            .unwrap()
+            .len(),
+        1
+    );
+
+    assert_eq!(
+        runtime.block_on(db.get_pending_outbound_transactions()).unwrap().len(),
+        0
+    );
+
+    let mut cancelled_txs = runtime
+        .block_on(db.get_cancelled_pending_outbound_transactions())
+        .unwrap();
+    assert_eq!(cancelled_txs.len(), 1);
+    assert!(cancelled_txs.remove(&998).is_some());
 }
 
 #[test]

@@ -85,7 +85,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
             DbKey::PendingOutboundTransaction(t) => {
                 let mut result = None;
                 if let Some(v) = db.pending_outbound_transactions.get(t) {
-                    if v.status != TransactionStatus::Cancelled {
+                    if !v.cancelled {
                         result = Some(DbValue::PendingOutboundTransaction(Box::new(v.clone())));
                     }
                 }
@@ -94,7 +94,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
             DbKey::PendingInboundTransaction(t) => {
                 let mut result = None;
                 if let Some(v) = db.pending_inbound_transactions.get(t) {
-                    if v.status != TransactionStatus::Cancelled {
+                    if !v.cancelled {
                         result = Some(DbValue::PendingInboundTransaction(Box::new(v.clone())));
                     }
                 }
@@ -103,7 +103,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
             DbKey::CompletedTransaction(t) => {
                 let mut result = None;
                 if let Some(v) = db.completed_transactions.get(t) {
-                    if v.status != TransactionStatus::Cancelled {
+                    if !v.cancelled {
                         result = Some(DbValue::CompletedTransaction(Box::new(v.clone())));
                     }
                 }
@@ -117,7 +117,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
                 // Filter out cancelled transactions
                 let mut result = HashMap::new();
                 for (k, v) in db.pending_outbound_transactions.iter() {
-                    if v.status != TransactionStatus::Cancelled {
+                    if !v.cancelled {
                         result.insert(k.clone(), v.clone());
                     }
                 }
@@ -127,7 +127,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
                 // Filter out cancelled transactions
                 let mut result = HashMap::new();
                 for (k, v) in db.pending_inbound_transactions.iter() {
-                    if v.status != TransactionStatus::Cancelled {
+                    if !v.cancelled {
                         result.insert(k.clone(), v.clone());
                     }
                 }
@@ -140,7 +140,36 @@ impl TransactionBackend for TransactionMemoryDatabase {
                 // Filter out cancelled transactions
                 let mut result = HashMap::new();
                 for (k, v) in db.completed_transactions.iter() {
-                    if v.status != TransactionStatus::Cancelled {
+                    if !v.cancelled {
+                        result.insert(k.clone(), v.clone());
+                    }
+                }
+                Some(DbValue::CompletedTransactions(result))
+            },
+            DbKey::CancelledPendingOutboundTransactions => {
+                // Filter out cancelled transactions
+                let mut result = HashMap::new();
+                for (k, v) in db.pending_outbound_transactions.iter() {
+                    if v.cancelled {
+                        result.insert(k.clone(), v.clone());
+                    }
+                }
+                Some(DbValue::PendingOutboundTransactions(result))
+            },
+            DbKey::CancelledPendingInboundTransactions => {
+                // Filter out cancelled transactions
+                let mut result = HashMap::new();
+                for (k, v) in db.pending_inbound_transactions.iter() {
+                    if v.cancelled {
+                        result.insert(k.clone(), v.clone());
+                    }
+                }
+                Some(DbValue::PendingInboundTransactions(result))
+            },
+            DbKey::CancelledCompletedTransactions => {
+                let mut result = HashMap::new();
+                for (k, v) in db.completed_transactions.iter() {
+                    if v.cancelled {
                         result.insert(k.clone(), v.clone());
                     }
                 }
@@ -162,6 +191,9 @@ impl TransactionBackend for TransactionMemoryDatabase {
             DbKey::PendingInboundTransactions => false,
             DbKey::CompletedTransactions => false,
             DbKey::PendingCoinbaseTransactions => false,
+            DbKey::CancelledPendingOutboundTransactions => false,
+            DbKey::CancelledPendingInboundTransactions => false,
+            DbKey::CancelledCompletedTransactions => false,
         };
 
         Ok(result)
@@ -236,6 +268,13 @@ impl TransactionBackend for TransactionMemoryDatabase {
                 DbKey::PendingOutboundTransactions => return Err(TransactionStorageError::OperationNotSupported),
                 DbKey::CompletedTransactions => return Err(TransactionStorageError::OperationNotSupported),
                 DbKey::PendingCoinbaseTransactions => return Err(TransactionStorageError::OperationNotSupported),
+                DbKey::CancelledPendingOutboundTransactions => {
+                    return Err(TransactionStorageError::OperationNotSupported)
+                },
+                DbKey::CancelledPendingInboundTransactions => {
+                    return Err(TransactionStorageError::OperationNotSupported)
+                },
+                DbKey::CancelledCompletedTransactions => return Err(TransactionStorageError::OperationNotSupported),
             },
         }
 
@@ -353,7 +392,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
             .get_mut(&tx_id)
             .ok_or_else(|| TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(tx_id)))?;
 
-        if completed_tx.status == TransactionStatus::Cancelled {
+        if completed_tx.cancelled {
             return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
                 tx_id,
             )));
@@ -372,7 +411,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
             .get_mut(&tx_id)
             .ok_or_else(|| TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(tx_id)))?;
 
-        completed_tx.status = TransactionStatus::Cancelled;
+        completed_tx.cancelled = true;
 
         Ok(())
     }
@@ -382,11 +421,11 @@ impl TransactionBackend for TransactionMemoryDatabase {
 
         if db.pending_inbound_transactions.contains_key(&tx_id) {
             if let Some(inbound) = db.pending_inbound_transactions.get_mut(&tx_id) {
-                inbound.status = TransactionStatus::Cancelled;
+                inbound.cancelled = true;
             }
         } else if db.pending_outbound_transactions.contains_key(&tx_id) {
             if let Some(outbound) = db.pending_outbound_transactions.get_mut(&tx_id) {
-                outbound.status = TransactionStatus::Cancelled;
+                outbound.cancelled = true;
             }
         } else {
             return Err(TransactionStorageError::ValuesNotFound);

@@ -391,6 +391,9 @@ struct TariPublicKey *wallet_get_public_key(struct TariWallet *wallet,int* error
 // Get the TariPendingInboundTransactions from a TariWallet
 struct TariPendingInboundTransactions *wallet_get_pending_inbound_transactions(struct TariWallet *wallet,int* error_out);
 
+// Get all cancelled transactions from a TariWallet
+struct TariCompletedTransactions *wallet_get_cancelled_transactions(struct TariWallet *wallet,int* error_out);
+
 // Get the TariCompletedTransaction from a TariWallet by its TransactionId
 struct TariCompletedTransaction *wallet_get_completed_transaction_by_id(struct TariWallet *wallet, unsigned long long transaction_id,int* error_out);
 

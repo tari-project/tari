@@ -165,7 +165,13 @@ use tari_wallet::{
         receive_test_transaction,
     },
     transaction_service::storage::{
-        database::{InboundTransaction, OutboundTransaction, TransactionDatabase, TransactionStatus},
+        database::{
+            CompletedTransaction,
+            InboundTransaction,
+            OutboundTransaction,
+            TransactionDatabase,
+            TransactionStatus,
+        },
         sqlite_db::TransactionServiceSqliteDatabase,
     },
     util::emoji::EmojiId,
@@ -3384,6 +3390,86 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
     }
 }
 
+/// Get the all Cancelled Transactions from a TariWallet. This function will also get cancelled pending inbound and
+/// outbound transaction and include them in this list by converting them to CompletedTransactions
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariCompletedTransactions` - returns the transactions, note that it returns ptr::null_mut() if
+/// wallet is null or an error is encountered
+///
+/// # Safety
+/// The ```completed_transactions_destroy``` method must be called when finished with a TariCompletedTransactions to
+/// prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_cancelled_transactions(
+    wallet: *mut TariWallet,
+    error_out: *mut c_int,
+) -> *mut TariCompletedTransactions
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let completed_transactions = match (*wallet)
+        .runtime
+        .block_on((*wallet).transaction_service.get_cancelled_completed_transactions())
+    {
+        Ok(txs) => txs,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+    let inbound_transactions = match (*wallet).runtime.block_on(
+        (*wallet)
+            .transaction_service
+            .get_cancelled_pending_inbound_transactions(),
+    ) {
+        Ok(txs) => txs,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+    let outbound_transactions = match (*wallet).runtime.block_on(
+        (*wallet)
+            .transaction_service
+            .get_cancelled_pending_outbound_transactions(),
+    ) {
+        Ok(txs) => txs,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
+    let mut completed = Vec::new();
+    for tx in completed_transactions.values() {
+        completed.push(tx.clone());
+    }
+    for tx in inbound_transactions.values() {
+        completed.push(CompletedTransaction::from(tx.clone()));
+    }
+    for tx in outbound_transactions.values() {
+        completed.push(CompletedTransaction::from(tx.clone()));
+    }
+
+    Box::into_raw(Box::new(TariCompletedTransactions(completed)))
+}
+
 /// Get the TariCompletedTransaction from a TariWallet by its' TransactionId
 ///
 /// ## Arguments
@@ -3679,7 +3765,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
     }
 }
 
-/// Cancel a Pending Outbound Transaction
+/// Cancel a Pending Transaction
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
@@ -3795,7 +3881,7 @@ mod test {
 
     use crate::*;
     use libc::{c_char, c_uchar, c_uint};
-    use std::{ffi::CString, sync::Mutex};
+    use std::{ffi::CString, sync::Mutex, thread};
     use tari_core::transactions::tari_amount::uT;
     use tari_wallet::{testnet_utils::random_string, transaction_service::storage::database::TransactionStatus};
     use tempdir::TempDir;
@@ -4555,6 +4641,48 @@ mod test {
                 )
                 .unwrap();
             assert!(wallet_sync_with_base_node(alice_wallet, error_ptr) > 0);
+
+            // Test pending tx cancellation
+            let ffi_cancelled_txs = wallet_get_cancelled_transactions(&mut (*alice_wallet), error_ptr);
+            assert_eq!(
+                completed_transactions_get_length(ffi_cancelled_txs, error_ptr),
+                0,
+                "Should have no cancelled txs"
+            );
+
+            wallet_test_receive_transaction(&mut (*alice_wallet), error_ptr);
+
+            let inbound_txs = (*alice_wallet)
+                .runtime
+                .block_on((*alice_wallet).transaction_service.get_pending_inbound_transactions())
+                .unwrap();
+
+            let mut inbound_tx_id = 0;
+            for (k, _) in inbound_txs {
+                inbound_tx_id = k;
+                (*alice_wallet)
+                    .runtime
+                    .block_on(async { (*alice_wallet).transaction_service.cancel_transaction(k).await })
+                    .unwrap();
+                break;
+            }
+
+            let mut found_cancelled_tx = false;
+            let mut ffi_cancelled_txs = ptr::null_mut();
+            for _ in 0..12 {
+                ffi_cancelled_txs = wallet_get_cancelled_transactions(&mut (*alice_wallet), error_ptr);
+                if completed_transactions_get_length(ffi_cancelled_txs, error_ptr) >= 1 {
+                    found_cancelled_tx = true;
+                    break;
+                }
+                thread::sleep(Duration::from_secs(5));
+            }
+            assert!(found_cancelled_tx, "Should have found a cancelled tx");
+
+            let cancelled_tx = completed_transactions_get_at(ffi_cancelled_txs, 0, error_ptr);
+            let tx_id = completed_transaction_get_transaction_id(cancelled_tx, error_ptr);
+            assert_eq!(tx_id, inbound_tx_id);
+            completed_transaction_destroy(cancelled_tx);
 
             let lock = CALLBACK_STATE_FFI.lock().unwrap();
             assert!(lock.received_tx_callback_called);

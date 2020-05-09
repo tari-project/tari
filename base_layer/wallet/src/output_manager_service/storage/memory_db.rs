@@ -347,9 +347,9 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             Some(pos) => {
                 let output = db.unspent_outputs.remove(pos);
                 db.invalid_outputs.push(output.clone());
-                return Ok(output.tx_id);
+                Ok(output.tx_id)
             },
-            None => return Err(OutputManagerStorageError::ValuesNotFound),
+            None => Err(OutputManagerStorageError::ValuesNotFound),
         }
     }
 }

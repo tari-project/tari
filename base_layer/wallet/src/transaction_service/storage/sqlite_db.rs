@@ -147,6 +147,9 @@ impl TransactionServiceSqliteDatabase {
             DbKey::PendingInboundTransactions => Err(TransactionStorageError::OperationNotSupported),
             DbKey::CompletedTransactions => Err(TransactionStorageError::OperationNotSupported),
             DbKey::PendingCoinbaseTransactions => Err(TransactionStorageError::OperationNotSupported),
+            DbKey::CancelledPendingOutboundTransactions => Err(TransactionStorageError::OperationNotSupported),
+            DbKey::CancelledPendingInboundTransactions => Err(TransactionStorageError::OperationNotSupported),
+            DbKey::CancelledCompletedTransactions => Err(TransactionStorageError::OperationNotSupported),
         }
     }
 }
@@ -186,7 +189,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 Err(e) => return Err(e),
             },
             DbKey::PendingOutboundTransactions => Some(DbValue::PendingOutboundTransactions(
-                OutboundTransactionSql::index(&(*conn))?
+                OutboundTransactionSql::index(&(*conn), false)?
                     .iter()
                     .fold(HashMap::new(), |mut acc, x| {
                         if let Ok(v) = OutboundTransaction::try_from((*x).clone()) {
@@ -196,7 +199,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     }),
             )),
             DbKey::PendingInboundTransactions => Some(DbValue::PendingInboundTransactions(
-                InboundTransactionSql::index(&(*conn))?
+                InboundTransactionSql::index(&(*conn), false)?
                     .iter()
                     .fold(HashMap::new(), |mut acc, x| {
                         if let Ok(v) = InboundTransaction::try_from((*x).clone()) {
@@ -216,7 +219,37 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     }),
             )),
             DbKey::CompletedTransactions => Some(DbValue::CompletedTransactions(
-                CompletedTransactionSql::index(&(*conn))?
+                CompletedTransactionSql::index(&(*conn), false)?
+                    .iter()
+                    .fold(HashMap::new(), |mut acc, x| {
+                        if let Ok(v) = CompletedTransaction::try_from((*x).clone()) {
+                            acc.insert(x.tx_id as u64, v);
+                        }
+                        acc
+                    }),
+            )),
+            DbKey::CancelledPendingOutboundTransactions => Some(DbValue::PendingOutboundTransactions(
+                OutboundTransactionSql::index(&(*conn), true)?
+                    .iter()
+                    .fold(HashMap::new(), |mut acc, x| {
+                        if let Ok(v) = OutboundTransaction::try_from((*x).clone()) {
+                            acc.insert(x.tx_id as u64, v);
+                        }
+                        acc
+                    }),
+            )),
+            DbKey::CancelledPendingInboundTransactions => Some(DbValue::PendingInboundTransactions(
+                InboundTransactionSql::index(&(*conn), true)?
+                    .iter()
+                    .fold(HashMap::new(), |mut acc, x| {
+                        if let Ok(v) = InboundTransaction::try_from((*x).clone()) {
+                            acc.insert(x.tx_id as u64, v);
+                        }
+                        acc
+                    }),
+            )),
+            DbKey::CancelledCompletedTransactions => Some(DbValue::CompletedTransactions(
+                CompletedTransactionSql::index(&(*conn), true)?
                     .iter()
                     .fold(HashMap::new(), |mut acc, x| {
                         if let Ok(v) = CompletedTransaction::try_from((*x).clone()) {
@@ -242,6 +275,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             DbKey::PendingInboundTransactions => false,
             DbKey::CompletedTransactions => false,
             DbKey::PendingCoinbaseTransactions => false,
+            DbKey::CancelledPendingOutboundTransactions => false,
+            DbKey::CancelledPendingInboundTransactions => false,
+            DbKey::CancelledCompletedTransactions => false,
         };
 
         Ok(result)
@@ -378,6 +414,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                         UpdateCompletedTransaction {
                             status: Some(TransactionStatus::Broadcast),
                             timestamp: None,
+                            cancelled: None,
                         },
                         &(*conn),
                     )?;
@@ -402,6 +439,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     UpdateCompletedTransaction {
                         status: Some(TransactionStatus::Mined),
                         timestamp: None,
+                        cancelled: None,
                     },
                     &(*conn),
                 )?;
@@ -436,12 +474,12 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let conn = acquire_lock!(self.database_connection);
         match InboundTransactionSql::find(tx_id, &(*conn)) {
             Ok(v) => {
-                let _ = v.cancel(&(*conn))?;
+                v.cancel(&(*conn))?;
             },
             Err(_) => {
                 match OutboundTransactionSql::find(tx_id, &(*conn)) {
                     Ok(v) => {
-                        let _ = v.cancel(&(*conn))?;
+                        v.cancel(&(*conn))?;
                     },
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                         return Err(TransactionStorageError::ValuesNotFound);
@@ -467,6 +505,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 UpdateCompletedTransaction {
                     status: None,
                     timestamp: Some(timestamp),
+                    cancelled: None,
                 },
                 &(*conn),
             );
@@ -485,6 +524,7 @@ struct InboundTransactionSql {
     receiver_protocol: String,
     message: String,
     timestamp: NaiveDateTime,
+    cancelled: i32,
 }
 
 impl InboundTransactionSql {
@@ -495,8 +535,14 @@ impl InboundTransactionSql {
         Ok(())
     }
 
-    pub fn index(conn: &SqliteConnection) -> Result<Vec<InboundTransactionSql>, TransactionStorageError> {
-        Ok(inbound_transactions::table.load::<InboundTransactionSql>(conn)?)
+    pub fn index(
+        conn: &SqliteConnection,
+        cancelled: bool,
+    ) -> Result<Vec<InboundTransactionSql>, TransactionStorageError>
+    {
+        Ok(inbound_transactions::table
+            .filter(inbound_transactions::cancelled.eq(cancelled as i32))
+            .load::<InboundTransactionSql>(conn)?)
     }
 
     pub fn find(tx_id: TxId, conn: &SqliteConnection) -> Result<InboundTransactionSql, TransactionStorageError> {
@@ -518,8 +564,18 @@ impl InboundTransactionSql {
     }
 
     pub fn cancel(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
-        // TODO Once sqlite migrations are implemented have cancellation be done with a Status flag
-        self.delete(conn)
+        let num_updated =
+            diesel::update(inbound_transactions::table.filter(inbound_transactions::tx_id.eq(&self.tx_id)))
+                .set(UpdateInboundTransactionSql { cancelled: Some(1i32) })
+                .execute(conn)?;
+
+        if num_updated == 0 {
+            return Err(TransactionStorageError::UnexpectedResult(
+                "Database update error".to_string(),
+            ));
+        }
+
+        Ok(())
     }
 }
 
@@ -534,6 +590,7 @@ impl TryFrom<InboundTransaction> for InboundTransactionSql {
             receiver_protocol: serde_json::to_string(&i.receiver_protocol)?,
             message: i.message,
             timestamp: i.timestamp,
+            cancelled: i.cancelled as i32,
         })
     }
 }
@@ -551,8 +608,15 @@ impl TryFrom<InboundTransactionSql> for InboundTransaction {
             status: TransactionStatus::Pending,
             message: i.message,
             timestamp: i.timestamp,
+            cancelled: i.cancelled != 0,
         })
     }
+}
+
+#[derive(AsChangeset)]
+#[table_name = "inbound_transactions"]
+pub struct UpdateInboundTransactionSql {
+    cancelled: Option<i32>,
 }
 
 /// A structure to represent a Sql compatible version of the OutboundTransaction struct
@@ -566,6 +630,7 @@ struct OutboundTransactionSql {
     sender_protocol: String,
     message: String,
     timestamp: NaiveDateTime,
+    cancelled: i32,
 }
 
 impl OutboundTransactionSql {
@@ -576,8 +641,14 @@ impl OutboundTransactionSql {
         Ok(())
     }
 
-    pub fn index(conn: &SqliteConnection) -> Result<Vec<OutboundTransactionSql>, TransactionStorageError> {
-        Ok(outbound_transactions::table.load::<OutboundTransactionSql>(conn)?)
+    pub fn index(
+        conn: &SqliteConnection,
+        cancelled: bool,
+    ) -> Result<Vec<OutboundTransactionSql>, TransactionStorageError>
+    {
+        Ok(outbound_transactions::table
+            .filter(outbound_transactions::cancelled.eq(cancelled as i32))
+            .load::<OutboundTransactionSql>(conn)?)
     }
 
     pub fn find(tx_id: TxId, conn: &SqliteConnection) -> Result<OutboundTransactionSql, TransactionStorageError> {
@@ -599,23 +670,34 @@ impl OutboundTransactionSql {
     }
 
     pub fn cancel(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
-        // TODO Once sqlite migrations are implemented have cancellation be done with a Status flag
-        self.delete(conn)
+        let num_updated =
+            diesel::update(outbound_transactions::table.filter(outbound_transactions::tx_id.eq(&self.tx_id)))
+                .set(UpdateOutboundTransactionSql { cancelled: Some(1i32) })
+                .execute(conn)?;
+
+        if num_updated == 0 {
+            return Err(TransactionStorageError::UnexpectedResult(
+                "Database update error".to_string(),
+            ));
+        }
+
+        Ok(())
     }
 }
 
 impl TryFrom<OutboundTransaction> for OutboundTransactionSql {
     type Error = TransactionStorageError;
 
-    fn try_from(i: OutboundTransaction) -> Result<Self, Self::Error> {
+    fn try_from(o: OutboundTransaction) -> Result<Self, Self::Error> {
         Ok(Self {
-            tx_id: i.tx_id as i64,
-            destination_public_key: i.destination_public_key.to_vec(),
-            amount: u64::from(i.amount) as i64,
-            fee: u64::from(i.fee) as i64,
-            sender_protocol: serde_json::to_string(&i.sender_protocol)?,
-            message: i.message,
-            timestamp: i.timestamp,
+            tx_id: o.tx_id as i64,
+            destination_public_key: o.destination_public_key.to_vec(),
+            amount: u64::from(o.amount) as i64,
+            fee: u64::from(o.fee) as i64,
+            sender_protocol: serde_json::to_string(&o.sender_protocol)?,
+            message: o.message,
+            timestamp: o.timestamp,
+            cancelled: o.cancelled as i32,
         })
     }
 }
@@ -623,19 +705,26 @@ impl TryFrom<OutboundTransaction> for OutboundTransactionSql {
 impl TryFrom<OutboundTransactionSql> for OutboundTransaction {
     type Error = TransactionStorageError;
 
-    fn try_from(i: OutboundTransactionSql) -> Result<Self, Self::Error> {
+    fn try_from(o: OutboundTransactionSql) -> Result<Self, Self::Error> {
         Ok(Self {
-            tx_id: i.tx_id as u64,
-            destination_public_key: PublicKey::from_vec(&i.destination_public_key)
+            tx_id: o.tx_id as u64,
+            destination_public_key: PublicKey::from_vec(&o.destination_public_key)
                 .map_err(|_| TransactionStorageError::ConversionError)?,
-            amount: MicroTari::from(i.amount as u64),
-            fee: MicroTari::from(i.fee as u64),
-            sender_protocol: serde_json::from_str(&i.sender_protocol)?,
+            amount: MicroTari::from(o.amount as u64),
+            fee: MicroTari::from(o.fee as u64),
+            sender_protocol: serde_json::from_str(&o.sender_protocol)?,
             status: TransactionStatus::Pending,
-            message: i.message,
-            timestamp: i.timestamp,
+            message: o.message,
+            timestamp: o.timestamp,
+            cancelled: o.cancelled != 0,
         })
     }
+}
+
+#[derive(AsChangeset)]
+#[table_name = "outbound_transactions"]
+pub struct UpdateOutboundTransactionSql {
+    cancelled: Option<i32>,
 }
 
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
@@ -719,6 +808,7 @@ struct CompletedTransactionSql {
     status: i32,
     message: String,
     timestamp: NaiveDateTime,
+    cancelled: i32,
 }
 
 impl CompletedTransactionSql {
@@ -729,16 +819,19 @@ impl CompletedTransactionSql {
         Ok(())
     }
 
-    pub fn index(conn: &SqliteConnection) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError> {
+    pub fn index(
+        conn: &SqliteConnection,
+        cancelled: bool,
+    ) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError>
+    {
         Ok(completed_transactions::table
-            .filter(completed_transactions::status.ne(TransactionStatus::Cancelled as i32))
+            .filter(completed_transactions::cancelled.eq(cancelled as i32))
             .load::<CompletedTransactionSql>(conn)?)
     }
 
     pub fn find(tx_id: TxId, conn: &SqliteConnection) -> Result<CompletedTransactionSql, TransactionStorageError> {
         Ok(completed_transactions::table
             .filter(completed_transactions::tx_id.eq(tx_id as i64))
-            .filter(completed_transactions::status.ne(TransactionStatus::Cancelled as i32))
             .first::<CompletedTransactionSql>(conn)?)
     }
 
@@ -778,8 +871,9 @@ impl CompletedTransactionSql {
         let num_updated =
             diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(&self.tx_id)))
                 .set(UpdateCompletedTransactionSql {
-                    status: Some(TransactionStatus::Cancelled as i32),
+                    status: None,
                     timestamp: None,
+                    cancelled: Some(1i32),
                 })
                 .execute(conn)?;
 
@@ -807,6 +901,7 @@ impl TryFrom<CompletedTransaction> for CompletedTransactionSql {
             status: c.status as i32,
             message: c.message,
             timestamp: c.timestamp,
+            cancelled: c.cancelled as i32,
         })
     }
 }
@@ -827,6 +922,7 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
             status: TransactionStatus::try_from(c.status)?,
             message: c.message,
             timestamp: c.timestamp,
+            cancelled: c.cancelled != 0,
         })
     }
 }
@@ -835,6 +931,7 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
 pub struct UpdateCompletedTransaction {
     status: Option<TransactionStatus>,
     timestamp: Option<NaiveDateTime>,
+    cancelled: Option<bool>,
 }
 
 #[derive(AsChangeset)]
@@ -842,6 +939,7 @@ pub struct UpdateCompletedTransaction {
 pub struct UpdateCompletedTransactionSql {
     status: Option<i32>,
     timestamp: Option<NaiveDateTime>,
+    cancelled: Option<i32>,
 }
 
 /// Map a Rust friendly UpdateCompletedTransaction to the Sql data type form
@@ -850,6 +948,7 @@ impl From<UpdateCompletedTransaction> for UpdateCompletedTransactionSql {
         Self {
             status: u.status.map(|s| s as i32),
             timestamp: u.timestamp,
+            cancelled: u.cancelled.map(|c| c as i32),
         }
     }
 }
@@ -934,6 +1033,7 @@ mod test {
             status: TransactionStatus::Pending,
             message: "Yo!".to_string(),
             timestamp: Utc::now().naive_utc(),
+            cancelled: false,
         };
 
         let outbound_tx2 = OutboundTransactionSql::try_from(OutboundTransaction {
@@ -946,6 +1046,7 @@ mod test {
 
             message: "Hey!".to_string(),
             timestamp: Utc::now().naive_utc(),
+            cancelled: false,
         })
         .unwrap();
 
@@ -956,7 +1057,7 @@ mod test {
             .commit(&conn)
             .unwrap();
 
-        let outbound_txs = OutboundTransactionSql::index(&conn).unwrap();
+        let outbound_txs = OutboundTransactionSql::index(&conn, false).unwrap();
         assert_eq!(outbound_txs.len(), 2);
 
         let returned_outbound_tx =
@@ -982,6 +1083,7 @@ mod test {
             status: TransactionStatus::Pending,
             message: "Yo!".to_string(),
             timestamp: Utc::now().naive_utc(),
+            cancelled: false,
         };
         let inbound_tx2 = InboundTransaction {
             tx_id: 3,
@@ -991,6 +1093,7 @@ mod test {
             status: TransactionStatus::Pending,
             message: "Hey!".to_string(),
             timestamp: Utc::now().naive_utc(),
+            cancelled: false,
         };
 
         InboundTransactionSql::try_from(inbound_tx1.clone())
@@ -1002,7 +1105,7 @@ mod test {
             .commit(&conn)
             .unwrap();
 
-        let inbound_txs = InboundTransactionSql::index(&conn).unwrap();
+        let inbound_txs = InboundTransactionSql::index(&conn, false).unwrap();
         assert_eq!(inbound_txs.len(), 2);
 
         let returned_inbound_tx =
@@ -1024,6 +1127,7 @@ mod test {
             status: TransactionStatus::Mined,
             message: "Yo!".to_string(),
             timestamp: Utc::now().naive_utc(),
+            cancelled: false,
         };
         let completed_tx2 = CompletedTransaction {
             tx_id: 3,
@@ -1035,6 +1139,7 @@ mod test {
             status: TransactionStatus::Broadcast,
             message: "Hey!".to_string(),
             timestamp: Utc::now().naive_utc(),
+            cancelled: false,
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone())
@@ -1051,7 +1156,7 @@ mod test {
             .commit(&conn)
             .unwrap();
 
-        let completed_txs = CompletedTransactionSql::index(&conn).unwrap();
+        let completed_txs = CompletedTransactionSql::index(&conn, false).unwrap();
         assert_eq!(completed_txs.len(), 2);
 
         let returned_completed_tx =
@@ -1122,6 +1227,7 @@ mod test {
                 UpdateCompletedTransaction {
                     status: Some(TransactionStatus::Mined),
                     timestamp: None,
+                    cancelled: None,
                 },
                 &conn,
             )

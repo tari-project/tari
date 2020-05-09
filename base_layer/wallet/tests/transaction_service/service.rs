@@ -1823,6 +1823,7 @@ fn broadcast_all_completed_transactions_on_startup() {
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
+        cancelled: false,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -2333,6 +2334,7 @@ fn query_all_completed_transactions_on_startup() {
         status: TransactionStatus::Broadcast,
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
+        cancelled: false,
     };
 
     let completed_tx2 = CompletedTransaction {
