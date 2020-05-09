@@ -168,20 +168,6 @@ fn main_inner() -> Result<(), ExitCodes> {
         PeerFeatures::COMMUNICATION_NODE,
     )?;
 
-    // Build, node, build!
-    let shutdown = Shutdown::new();
-    let ctx = rt
-        .block_on(builder::configure_and_initialize_node(
-            &node_config,
-            node_identity,
-            wallet_identity,
-            shutdown.to_signal(),
-        ))
-        .map_err(|err| {
-            error!(target: LOG_TARGET, "{}", err);
-            ExitCodes::UnknownError
-        })?;
-
     // Exit if create_id or init arguments were run
     if bootstrap.create_id {
         info!(
@@ -196,6 +182,20 @@ fn main_inner() -> Result<(), ExitCodes> {
         info!(target: LOG_TARGET, "Default configuration created. Done.");
         return Ok(());
     }
+
+    // Build, node, build!
+    let shutdown = Shutdown::new();
+    let ctx = rt
+        .block_on(builder::configure_and_initialize_node(
+            &node_config,
+            node_identity,
+            wallet_identity,
+            shutdown.to_signal(),
+        ))
+        .map_err(|err| {
+            error!(target: LOG_TARGET, "{}", err);
+            ExitCodes::UnknownError
+        })?;
 
     // Run, node, run!
     let parser = Parser::new(rt.handle().clone(), &ctx, &node_config);
