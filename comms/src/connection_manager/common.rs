@@ -34,6 +34,7 @@ use crate::{
 };
 use futures::StreamExt;
 use log::*;
+use std::sync::Arc;
 use tari_crypto::tari_utilities::ByteArray;
 
 const LOG_TARGET: &str = "comms::connection_manager::common";
@@ -85,7 +86,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
     authenticated_public_key: CommsPublicKey,
     peer_identity: PeerIdentityMsg,
     allow_test_addrs: bool,
-) -> Result<NodeId, ConnectionManagerError>
+) -> Result<Arc<Peer>, ConnectionManagerError>
 {
     // let peer_manager = peer_manager.inner();
     // Validate the given node id for base nodes
@@ -166,7 +167,9 @@ pub async fn validate_and_add_peer_from_peer_identity(
         },
     }
 
-    Ok(peer_node_id)
+    let peer = Arc::new(peer_manager.find_by_node_id(&peer_node_id).await?);
+
+    Ok(peer)
 }
 
 pub fn validate_peer_addresses<A: AsRef<[Multiaddr]>>(

@@ -440,7 +440,7 @@ impl DhtDiscoveryService {
             .outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .neighbours_include_clients(Vec::new())
+                    .broadcast(Vec::new())
                     .with_destination(destination)
                     .with_encryption(OutboundEncryption::EncryptFor(dest_public_key))
                     .with_dht_message_type(DhtMessageType::Discovery)
@@ -502,7 +502,7 @@ mod test {
         let oms_mock_state = outbound_mock.get_state();
         task::spawn(outbound_mock.run());
 
-        let (connection_manager, _) = create_connection_manager_mock(1);
+        let (connection_manager, _) = create_connection_manager_mock();
         let (sender, receiver) = mpsc::channel(10);
         // Requester which timeout instantly
         let mut requester = DhtDiscoveryRequester::new(sender, Duration::from_millis(1));

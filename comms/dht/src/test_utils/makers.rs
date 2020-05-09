@@ -33,6 +33,7 @@ use tari_comms::{
     multiaddr::Multiaddr,
     net_address::MultiaddressesWithStats,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
+    transports::MemoryTransport,
     types::{CommsDatabase, CommsPublicKey, CommsSecretKey},
     utils::signature,
     Bytes,
@@ -44,38 +45,23 @@ use tari_crypto::{
 use tari_storage::lmdb_store::LMDBBuilder;
 use tari_test_utils::{paths::create_temporary_data_path, random};
 
-pub fn make_node_identity() -> Arc<NodeIdentity> {
-    Arc::new(
-        NodeIdentity::random(
-            &mut OsRng,
-            "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
-            PeerFeatures::COMMUNICATION_NODE,
-        )
-        .unwrap(),
-    )
+pub fn make_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
+    let public_addr = format!("/memory/{}", MemoryTransport::acquire_next_memsocket_port())
+        .parse()
+        .unwrap();
+    Arc::new(NodeIdentity::random(&mut OsRng, public_addr, features).unwrap())
 }
 
-pub fn make_peer() -> Peer {
-    let node_identity = make_node_identity();
-    Peer::new(
-        node_identity.public_key().clone(),
-        node_identity.node_id().clone(),
-        vec![node_identity.public_address()].into(),
-        PeerFlags::empty(),
-        PeerFeatures::COMMUNICATION_NODE,
-        &[],
-    )
+pub fn make_node_identity() -> Arc<NodeIdentity> {
+    make_identity(PeerFeatures::COMMUNICATION_NODE)
 }
 
 pub fn make_client_identity() -> Arc<NodeIdentity> {
-    Arc::new(
-        NodeIdentity::random(
-            &mut OsRng,
-            "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
-            PeerFeatures::COMMUNICATION_CLIENT,
-        )
-        .unwrap(),
-    )
+    make_identity(PeerFeatures::COMMUNICATION_CLIENT)
+}
+
+pub fn make_peer() -> Peer {
+    make_identity(PeerFeatures::COMMUNICATION_NODE).to_peer()
 }
 
 pub fn make_comms_inbound_message(node_identity: &NodeIdentity, message: Bytes) -> InboundMessage {
@@ -203,14 +189,14 @@ pub fn make_peer_manager() -> Arc<PeerManager> {
 pub fn create_outbound_message(body: &[u8]) -> DhtOutboundMessage {
     DhtOutboundMessage {
         tag: MessageTag::new(),
-        destination_peer: Peer::new(
+        destination_peer: Arc::new(Peer::new(
             CommsPublicKey::default(),
             NodeId::default(),
             MultiaddressesWithStats::new(vec![]),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
             &[],
-        ),
+        )),
         destination: Default::default(),
         dht_message_type: Default::default(),
         network: Network::LocalTest,

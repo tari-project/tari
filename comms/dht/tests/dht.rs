@@ -231,6 +231,21 @@ async fn dht_discover_propagation() {
     let node_B = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_C.to_peer())).await;
     // Node A knows about Node B
     let node_A = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_B.to_peer())).await;
+    log::info!(
+        "NodeA = {}, NodeB = {}, Node C = {}, Node D = {}",
+        node_A.node_identity().node_id().short_str(),
+        node_B.node_identity().node_id().short_str(),
+        node_C.node_identity().node_id().short_str(),
+        node_D.node_identity().node_id().short_str(),
+    );
+    // To receive messages, clients have to connect
+    node_D.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
+    node_D
+        .comms
+        .connection_manager()
+        .dial_peer(node_C.comms.node_identity().node_id().clone())
+        .await
+        .unwrap();
 
     // Send a discover request from Node A, through B and C, to D. Once Node D
     // receives the discover request from Node A, it should send a  discovery response
@@ -240,7 +255,7 @@ async fn dht_discover_propagation() {
         .discovery_service_requester()
         .discover_peer(
             Box::new(node_D.node_identity().public_key().clone()),
-            NodeDestination::Unknown,
+            node_D.node_identity().node_id().clone().into(),
         )
         .await
         .unwrap();
@@ -280,7 +295,7 @@ async fn dht_store_forward() {
 
     let dest_public_key = Box::new(node_C_node_identity.public_key().clone());
     let params = SendMessageParams::new()
-        .neighbours(vec![])
+        .broadcast(vec![])
         .with_encryption(OutboundEncryption::EncryptFor(dest_public_key))
         .with_destination(NodeDestination::NodeId(Box::new(
             node_C_node_identity.node_id().clone(),
@@ -355,7 +370,6 @@ async fn dht_store_forward() {
 #[tokio_macros::test]
 #[allow(non_snake_case)]
 async fn dht_propagate_dedup() {
-    env_logger::init();
     // Node D knows no one
     let mut node_D = make_node(PeerFeatures::COMMUNICATION_NODE, None).await;
     // Node C knows about Node D

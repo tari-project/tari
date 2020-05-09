@@ -287,7 +287,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         Ok(Some(peer)) => {
                             // Set the reply_tx so that it can be used later
                             reply_tx = Some(discovery_reply_tx);
-                            peers = vec![peer];
+                            peers = vec![Arc::new(peer)];
                         },
                         Ok(None) => {
                             // Message sent to 0 peers
@@ -337,7 +337,11 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         }
     }
 
-    async fn select_peers(&mut self, broadcast_strategy: BroadcastStrategy) -> Result<Vec<Peer>, DhtOutboundError> {
+    async fn select_peers(
+        &mut self,
+        broadcast_strategy: BroadcastStrategy,
+    ) -> Result<Vec<Arc<Peer>>, DhtOutboundError>
+    {
         self.dht_requester
             .select_peers(broadcast_strategy)
             .await
@@ -392,7 +396,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     #[allow(clippy::too_many_arguments)]
     async fn generate_send_messages(
         &mut self,
-        selected_peers: Vec<Peer>,
+        selected_peers: Vec<Arc<Peer>>,
         destination: NodeDestination,
         dht_message_type: DhtMessageType,
         encryption: OutboundEncryption,

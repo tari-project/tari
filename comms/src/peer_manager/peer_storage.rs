@@ -350,7 +350,7 @@ where DS: KeyValueStore<PeerId, Peer>
     }
 
     /// Compile a random list of communication node peers of size _n_ that are not banned or offline
-    pub fn random_peers(&self, n: usize, exclude_peers: Vec<NodeId>) -> Result<Vec<Peer>, PeerManagerError> {
+    pub fn random_peers(&self, n: usize, exclude_peers: &[NodeId]) -> Result<Vec<Peer>, PeerManagerError> {
         let mut peer_keys = self
             .peer_db
             .filter(|(_, peer)| {

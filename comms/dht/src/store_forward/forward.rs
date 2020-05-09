@@ -21,35 +21,28 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    envelope::{DhtMessageHeader, NodeDestination},
+    envelope::NodeDestination,
     inbound::DecryptedDhtMessage,
     outbound::{OutboundMessageRequester, SendMessageParams},
-    proto::envelope::DhtMessageType,
     store_forward::error::StoreAndForwardError,
 };
 use futures::{task::Context, Future};
 use log::*;
-use std::{sync::Arc, task::Poll};
-use tari_comms::{
-    peer_manager::{Peer, PeerManager},
-    pipeline::PipelineError,
-    types::CommsPublicKey,
-};
+use std::task::Poll;
+use tari_comms::{peer_manager::Peer, pipeline::PipelineError};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::storeforward::forward";
 
 /// This layer is responsible for forwarding messages which have failed to decrypt
 pub struct ForwardLayer {
-    peer_manager: Arc<PeerManager>,
     outbound_service: OutboundMessageRequester,
     is_enabled: bool,
 }
 
 impl ForwardLayer {
-    pub fn new(peer_manager: Arc<PeerManager>, outbound_service: OutboundMessageRequester, is_enabled: bool) -> Self {
+    pub fn new(outbound_service: OutboundMessageRequester, is_enabled: bool) -> Self {
         Self {
-            peer_manager,
             outbound_service,
             is_enabled,
         }
@@ -63,7 +56,6 @@ impl<S> Layer<S> for ForwardLayer {
         ForwardMiddleware::new(
             service,
             // Pass in just the config item needed by the middleware for almost free copies
-            Arc::clone(&self.peer_manager),
             self.outbound_service.clone(),
             self.is_enabled,
         )
@@ -76,22 +68,14 @@ impl<S> Layer<S> for ForwardLayer {
 #[derive(Clone)]
 pub struct ForwardMiddleware<S> {
     next_service: S,
-    peer_manager: Arc<PeerManager>,
     outbound_service: OutboundMessageRequester,
     is_enabled: bool,
 }
 
 impl<S> ForwardMiddleware<S> {
-    pub fn new(
-        service: S,
-        peer_manager: Arc<PeerManager>,
-        outbound_service: OutboundMessageRequester,
-        is_enabled: bool,
-    ) -> Self
-    {
+    pub fn new(service: S, outbound_service: OutboundMessageRequester, is_enabled: bool) -> Self {
         Self {
             next_service: service,
-            peer_manager,
             outbound_service,
             is_enabled,
         }
@@ -112,7 +96,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Cl
 
     fn call(&mut self, message: DecryptedDhtMessage) -> Self::Future {
         let next_service = self.next_service.clone();
-        let peer_manager = Arc::clone(&self.peer_manager);
         let outbound_service = self.outbound_service.clone();
         let is_enabled = self.is_enabled;
         async move {
@@ -121,7 +104,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Cl
                 return next_service.oneshot(message).await;
             }
 
-            let forwarder = Forwarder::new(next_service, peer_manager, outbound_service);
+            let forwarder = Forwarder::new(next_service, outbound_service);
             forwarder.handle(message).await
         }
     }
@@ -130,15 +113,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Cl
 /// Responsible for processing a single DecryptedDhtMessage, forwarding if necessary or passing the message
 /// to the next service.
 struct Forwarder<S> {
-    peer_manager: Arc<PeerManager>,
     next_service: S,
     outbound_service: OutboundMessageRequester,
 }
 
 impl<S> Forwarder<S> {
-    pub fn new(service: S, peer_manager: Arc<PeerManager>, outbound_service: OutboundMessageRequester) -> Self {
+    pub fn new(service: S, outbound_service: OutboundMessageRequester) -> Self {
         Self {
-            peer_manager,
             next_service: service,
             outbound_service,
         }
@@ -165,7 +146,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             source_peer,
             decryption_result,
             dht_header,
-            authenticated_origin,
             ..
         } = message;
 
@@ -189,72 +169,19 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .err()
             .expect("previous check that decryption failed");
 
-        let mut excluded_peers = vec![source_peer.public_key.clone()];
-        if let Some(pk) = authenticated_origin.as_ref() {
-            excluded_peers.push(pk.clone());
-        }
+        let excluded_peers = vec![source_peer.node_id.clone()];
 
-        let mut message_params = self.get_send_params(&dht_header, excluded_peers).await?;
-        message_params.with_dht_header(dht_header.clone());
-
-        self.outbound_service.send_raw(message_params.finish(), body).await?;
+        self.outbound_service
+            .send_raw(
+                SendMessageParams::new()
+                    .propagate(dht_header.destination.clone(), excluded_peers)
+                    .with_dht_header(dht_header.clone())
+                    .finish(),
+                body,
+            )
+            .await?;
 
         Ok(())
-    }
-
-    /// Selects the most appropriate broadcast strategy based on the received messages destination
-    async fn get_send_params(
-        &self,
-        header: &DhtMessageHeader,
-        excluded_peers: Vec<CommsPublicKey>,
-    ) -> Result<SendMessageParams, StoreAndForwardError>
-    {
-        let mut params = SendMessageParams::new();
-        // If this is a DHT Discovery message, forward this message to our closest communication node and _all_ known
-        // communication clients
-        let is_discovery = header.message_type == DhtMessageType::Discovery;
-
-        match header.destination.clone() {
-            NodeDestination::Unknown => {
-                // Send to the current nodes nearest neighbours
-                if is_discovery {
-                    params.neighbours_include_clients(excluded_peers);
-                } else {
-                    params.neighbours(excluded_peers);
-                }
-            },
-            NodeDestination::PublicKey(dest_public_key) => {
-                if self.peer_manager.exists(&dest_public_key).await {
-                    // Send to destination peer directly if the current node knows that peer
-                    params.direct_public_key(*dest_public_key);
-                } else {
-                    // Send to the current nodes nearest neighbours
-                    if is_discovery {
-                        params.neighbours_include_clients(excluded_peers);
-                    } else {
-                        params.neighbours(excluded_peers);
-                    }
-                }
-            },
-            NodeDestination::NodeId(dest_node_id) => {
-                match self.peer_manager.find_by_node_id(&dest_node_id).await {
-                    Ok(dest_peer) => {
-                        // Send to destination peer directly if the current node knows that peer
-                        params.direct_public_key(dest_peer.public_key);
-                    },
-                    Err(_) => {
-                        // Send to peers that are closest to the destination network region
-                        if is_discovery {
-                            params.neighbours_include_clients(excluded_peers);
-                        } else {
-                            params.neighbours(excluded_peers);
-                        }
-                    },
-                }
-            },
-        }
-
-        Ok(params)
     }
 
     fn destination_matches_source(&self, destination: &NodeDestination, source: &Peer) -> bool {
@@ -276,7 +203,7 @@ mod test {
     use crate::{
         envelope::DhtMessageFlags,
         outbound::mock::create_outbound_service_mock,
-        test_utils::{make_dht_inbound_message, make_node_identity, make_peer_manager, service_spy},
+        test_utils::{make_dht_inbound_message, make_node_identity, service_spy},
     };
     use futures::{channel::mpsc, executor::block_on};
     use tari_comms::wrap_in_envelope_body;
@@ -285,10 +212,9 @@ mod test {
     #[test]
     fn decryption_succeeded() {
         let spy = service_spy();
-        let peer_manager = make_peer_manager();
         let (oms_tx, mut oms_rx) = mpsc::channel(1);
         let oms = OutboundMessageRequester::new(oms_tx);
-        let mut service = ForwardLayer::new(peer_manager, oms, true).layer(spy.to_service::<PipelineError>());
+        let mut service = ForwardLayer::new(oms, true).layer(spy.to_service::<PipelineError>());
 
         let node_identity = make_node_identity();
         let inbound_msg = make_dht_inbound_message(&node_identity, b"".to_vec(), DhtMessageFlags::empty(), false);
@@ -306,12 +232,11 @@ mod test {
     fn decryption_failed() {
         let mut rt = Runtime::new().unwrap();
         let spy = service_spy();
-        let peer_manager = make_peer_manager();
         let (oms_requester, oms_mock) = create_outbound_service_mock(1);
         let oms_mock_state = oms_mock.get_state();
         rt.spawn(oms_mock.run());
 
-        let mut service = ForwardLayer::new(peer_manager, oms_requester, true).layer(spy.to_service::<PipelineError>());
+        let mut service = ForwardLayer::new(oms_requester, true).layer(spy.to_service::<PipelineError>());
 
         let sample_body = b"Lorem ipsum";
         let inbound_msg = make_dht_inbound_message(

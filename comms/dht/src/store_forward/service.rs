@@ -336,7 +336,7 @@ impl StoreAndForwardService {
         self.outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .neighbours(vec![])
+                    .broadcast(vec![])
                     .with_dht_message_type(DhtMessageType::SafRequestMessages)
                     .finish(),
                 request,

@@ -168,7 +168,7 @@ impl Drop for WrappedReplyTx {
 #[derive(Debug)]
 pub struct DhtOutboundMessage {
     pub tag: MessageTag,
-    pub destination_peer: Peer,
+    pub destination_peer: Arc<Peer>,
     pub custom_header: Option<DhtMessageHeader>,
     pub body: Bytes,
     pub ephemeral_public_key: Option<Arc<CommsPublicKey>>,

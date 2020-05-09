@@ -69,7 +69,13 @@ use tari_comms::{
     ConnectionManagerEvent,
     PeerConnection,
 };
-use tari_comms_dht::{envelope::NodeDestination, inbound::DecryptedDhtMessage, Dht, DhtBuilder};
+use tari_comms_dht::{
+    domain_message::OutboundDomainMessage,
+    inbound::DecryptedDhtMessage,
+    outbound::OutboundEncryption,
+    Dht,
+    DhtBuilder,
+};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tari_test_utils::{paths::create_temporary_data_path, random};
 use tokio::{runtime, time};
@@ -218,7 +224,6 @@ async fn main() {
         let all_known_peers = seed_node.comms.peer_manager().all().await.unwrap();
         println!("Seed node knows {} peers", all_known_peers.len());
     }
-    // peer_list_summary(&wallets).await;
 
     total_messages += discovery(&wallets, &mut messaging_events_rx).await;
 
@@ -226,10 +231,22 @@ async fn main() {
     total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
 
     let random_wallet = wallets.remove(OsRng.gen_range(0, wallets.len() - 1));
-    total_messages +=
-        do_store_and_forward_discovery(random_wallet, &wallets, messaging_events_tx, &mut messaging_events_rx).await;
+    let (num_msgs, random_wallet) = do_store_and_forward_message_propagation(
+        random_wallet,
+        &wallets,
+        messaging_events_tx,
+        &mut messaging_events_rx,
+    )
+    .await;
+    total_messages += num_msgs;
+    // Put the wallet back
+    wallets.push(random_wallet);
 
     println!("{} messages sent in total across the network", total_messages);
+
+    network_peer_list_stats(&nodes, &wallets).await;
+    network_connectivity_stats(&nodes, &wallets).await;
+
     banner!("That's it folks! Network is shutting down...");
 
     shutdown_all(nodes).await;
@@ -402,15 +419,18 @@ async fn network_connectivity_stats(nodes: &[TestNode], wallets: &[TestNode]) {
     );
 }
 
-async fn do_store_and_forward_discovery(
+async fn do_store_and_forward_message_propagation(
     wallet: TestNode,
     wallets: &[TestNode],
     messaging_tx: MessagingEventTx,
     messaging_rx: &mut MessagingEventRx,
-) -> usize
+) -> (usize, TestNode)
 {
-    println!("{} chosen at random to be discovered using store and forward", wallet);
-    let all_peers = wallet.comms.peer_manager().all().await.unwrap();
+    println!(
+        "{} chosen at random to be receive a message from {} using store and forward",
+        wallet, wallets[0]
+    );
+    let wallets_peers = wallet.comms.peer_manager().all().await.unwrap();
     let node_identity = wallet.comms.node_identity().clone();
 
     banner!("😴 {} is going offline", wallet);
@@ -423,38 +443,59 @@ async fn do_store_and_forward_discovery(
         get_name(node_identity.node_id()),
         node_identity.public_key(),
     );
-    let mut first_wallet_discovery_req = wallets[0].dht.discovery_service_requester();
+    let secret_message = format!("My name is wiki wiki {}", wallets[0]);
 
     let start = Instant::now();
-    let discovery_task = runtime::Handle::current().spawn({
-        let node_identity = node_identity.clone();
-        let dest_public_key = Box::new(node_identity.public_key().clone());
-        async move {
-            first_wallet_discovery_req
-                .discover_peer(dest_public_key.clone(), NodeDestination::PublicKey(dest_public_key))
-                .await
-        }
-    });
+    wallets[0]
+        .dht
+        .outbound_requester()
+        .broadcast(
+            node_identity.node_id().clone().into(),
+            OutboundEncryption::EncryptFor(Box::new(node_identity.public_key().clone())),
+            vec![],
+            OutboundDomainMessage::new(123i32, secret_message.clone()),
+        )
+        .await
+        .unwrap();
 
-    println!("Waiting a few seconds for discovery to propagate around the network...");
+    println!("Waiting a few seconds for message to propagate around the network...");
     time::delay_for(Duration::from_secs(5)).await;
 
     let mut total_messages = drain_messaging_events(messaging_rx, false).await;
 
     banner!("🤓 {} is coming back online", get_name(node_identity.node_id()));
     let (tx, ims_rx) = mpsc::channel(1);
-    let (comms, dht) = setup_comms_dht(node_identity, create_peer_storage(all_peers), tx).await;
-    let wallet = TestNode::new(comms, dht, None, ims_rx, messaging_tx);
+    let (comms, dht) = setup_comms_dht(node_identity, create_peer_storage(wallets_peers), tx).await;
+    let mut wallet = TestNode::new(comms, dht, None, ims_rx, messaging_tx);
     wallet.dht.dht_requester().send_join().await.unwrap();
+    wallet
+        .dht
+        .store_and_forward_requester()
+        .request_saf_messages_from_neighbours()
+        .await
+        .unwrap();
 
-    total_messages += match discovery_task.await.unwrap() {
-        Ok(peer) => {
-            banner!("🎉 Discovered peer {} in {}ms", peer, start.elapsed().as_millis());
+    let result = time::timeout(Duration::from_secs(20), wallet.ims_rx.next()).await;
+    total_messages += match result {
+        Ok(msg) => {
+            let msg = msg.unwrap();
+            let secret_msg = msg
+                .decryption_result
+                .unwrap()
+                .decode_part::<String>(1)
+                .unwrap()
+                .unwrap();
+            banner!(
+                "🎉 Wallet {} received propagated message '{}' from store and forward in {}ms",
+                wallet,
+                secret_msg,
+                start.elapsed().as_millis()
+            );
             drain_messaging_events(messaging_rx, false).await
         },
         Err(err) => {
             banner!(
-                "💩 Failed to discovery peer after {}ms using store and forward '{:?}'",
+                "💩 Failed to receive message after {}ms using store and forward '{:?}'",
                 start.elapsed().as_millis(),
                 err
             );
@@ -462,7 +503,7 @@ async fn do_store_and_forward_discovery(
         },
     };
 
-    total_messages
+    (total_messages, wallet)
 }
 
 async fn drain_messaging_events(messaging_rx: &mut MessagingEventRx, show_logs: bool) -> usize {
@@ -568,7 +609,7 @@ struct TestNode {
     seed_peer: Option<Peer>,
     dht: Dht,
     conn_man_events_rx: mpsc::Receiver<Arc<ConnectionManagerEvent>>,
-    _ims_rx: mpsc::Receiver<DecryptedDhtMessage>,
+    ims_rx: mpsc::Receiver<DecryptedDhtMessage>,
 }
 
 impl TestNode {
@@ -591,7 +632,7 @@ impl TestNode {
             seed_peer,
             comms,
             dht,
-            _ims_rx: ims_rx,
+            ims_rx,
             conn_man_events_rx: events_rx,
         }
     }

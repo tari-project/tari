@@ -27,7 +27,7 @@ use super::{
 };
 use crate::{
     multiplexing::{IncomingSubstreams, Yamux},
-    peer_manager::NodeId,
+    peer_manager::{NodeId, Peer, PeerFeatures},
     protocol::{ProtocolId, ProtocolNegotiation},
     runtime,
     types::CommsSubstream,
@@ -59,7 +59,7 @@ static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 pub fn create(
     connection: Yamux,
     peer_addr: Multiaddr,
-    peer_node_id: NodeId,
+    peer: Arc<Peer>,
     direction: ConnectionDirection,
     event_notifier: mpsc::Sender<ConnectionManagerEvent>,
     our_supported_protocols: Vec<ProtocolId>,
@@ -68,14 +68,14 @@ pub fn create(
     trace!(
         target: LOG_TARGET,
         "(Peer={}) Socket successfully upgraded to multiplexed socket",
-        peer_node_id.short_str()
+        peer.node_id.short_str()
     );
     let (peer_tx, peer_rx) = mpsc::channel(PEER_REQUEST_BUFFER_SIZE);
     let id = ID_COUNTER.fetch_add(1, Ordering::Relaxed); // Monotonic
-    let peer_conn = PeerConnection::new(id, peer_tx, peer_node_id.clone(), peer_addr, direction);
+    let peer_conn = PeerConnection::new(id, peer_tx, peer.clone(), peer_addr, direction);
     let peer_actor = PeerConnectionActor::new(
         id,
-        peer_node_id,
+        peer.node_id.clone(),
         direction,
         connection,
         peer_rx,
@@ -104,7 +104,7 @@ pub type ConnId = usize;
 #[derive(Clone, Debug)]
 pub struct PeerConnection {
     id: ConnId,
-    peer_node_id: Arc<NodeId>,
+    peer: Arc<Peer>,
     request_tx: mpsc::Sender<PeerConnectionRequest>,
     address: Multiaddr,
     direction: ConnectionDirection,
@@ -115,7 +115,7 @@ impl PeerConnection {
     pub(crate) fn new(
         id: ConnId,
         request_tx: mpsc::Sender<PeerConnectionRequest>,
-        peer_node_id: NodeId,
+        peer: Arc<Peer>,
         address: Multiaddr,
         direction: ConnectionDirection,
     ) -> Self
@@ -123,15 +123,25 @@ impl PeerConnection {
         Self {
             id,
             request_tx,
-            peer_node_id: Arc::new(peer_node_id),
+            peer,
             address,
             direction,
             started_at: Instant::now(),
         }
     }
 
+    /// Returns the peer associated with this peer connection.
+    /// WARNING: This is not kept in-sync with the peer database
+    pub fn peer(&self) -> Arc<Peer> {
+        self.peer.clone()
+    }
+
     pub fn peer_node_id(&self) -> &NodeId {
-        &self.peer_node_id
+        &self.peer.node_id
+    }
+
+    pub fn peer_features(&self) -> PeerFeatures {
+        self.peer.features
     }
 
     pub fn direction(&self) -> ConnectionDirection {
@@ -152,10 +162,6 @@ impl PeerConnection {
 
     pub fn connected_since(&self) -> Duration {
         self.started_at.elapsed()
-    }
-
-    pub fn reference_count(&self) -> usize {
-        Arc::strong_count(&self.peer_node_id)
     }
 
     pub async fn open_substream(
@@ -199,7 +205,7 @@ impl fmt::Display for PeerConnection {
             f,
             "Id = {}, Node ID = {}, Direction = {}, Peer Address = {}",
             self.id,
-            self.peer_node_id.short_str(),
+            self.peer.node_id.short_str(),
             self.direction.to_string(),
             self.address.to_string()
         )
@@ -413,36 +419,5 @@ impl<TSubstream> fmt::Debug for NegotiatedSubstream<TSubstream> {
             .field("protocol", &format!("{:?}", self.protocol))
             .field("stream", &"...".to_string())
             .finish()
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn reference_count() {
-        let conn = PeerConnection::new(
-            1,
-            mpsc::channel(0).0,
-            Default::default(),
-            Multiaddr::empty(),
-            ConnectionDirection::Outbound,
-        );
-
-        assert_eq!(conn.reference_count(), 1);
-        let clone = conn.clone();
-
-        assert_eq!(conn.reference_count(), 2);
-        assert_eq!(clone.reference_count(), 2);
-
-        let clone2 = conn.clone();
-        assert_eq!(conn.reference_count(), 3);
-        assert_eq!(clone.reference_count(), 3);
-        assert_eq!(clone2.reference_count(), 3);
-
-        drop(clone2);
-        drop(clone);
-        assert_eq!(conn.reference_count(), 1);
     }
 }

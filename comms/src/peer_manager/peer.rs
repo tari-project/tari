@@ -56,7 +56,7 @@ pub struct PeerIdentity {
 /// A Peer represents a communication peer that is identified by a Public Key and NodeId. The Peer struct maintains a
 /// collection of the NetAddressesWithStats that this Peer can be reached by. The struct also maintains a set of flags
 /// describing the status of the Peer.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Peer {
     /// The local id of the peer. If this is None, the peer has never been persisted
     id: Option<PeerId>,
@@ -277,6 +277,12 @@ impl Display for Peer {
             },
             self.connection_stats,
         ))
+    }
+}
+
+impl PartialEq for Peer {
+    fn eq(&self, other: &Self) -> bool {
+        self.public_key == other.public_key
     }
 }
 

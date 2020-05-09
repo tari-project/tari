@@ -30,7 +30,7 @@ use crate::{
     },
     multiplexing,
     multiplexing::{IncomingSubstreams, Yamux},
-    peer_manager::NodeId,
+    peer_manager::Peer,
     test_utils::transport,
 };
 use futures::{channel::mpsc, lock::Mutex, stream::Fuse, StreamExt};
@@ -42,8 +42,8 @@ use tokio::runtime::Handle;
 
 pub async fn create_peer_connection_mock_pair(
     buf_size: usize,
-    node_id_in: NodeId,
-    node_id_out: NodeId,
+    peer_in: Peer,
+    peer_out: Peer,
 ) -> (
     PeerConnection,
     PeerConnectionMockState,
@@ -65,9 +65,15 @@ pub async fn create_peer_connection_mock_pair(
     rt_handle.spawn(mock.run());
 
     (
-        PeerConnection::new(1, tx1, node_id_in, listen_addr.clone(), ConnectionDirection::Inbound),
+        PeerConnection::new(
+            1,
+            tx1,
+            Arc::new(peer_in),
+            listen_addr.clone(),
+            ConnectionDirection::Inbound,
+        ),
         mock_state_in,
-        PeerConnection::new(2, tx2, node_id_out, listen_addr, ConnectionDirection::Outbound),
+        PeerConnection::new(2, tx2, Arc::new(peer_out), listen_addr, ConnectionDirection::Outbound),
         mock_state_out,
     )
 }

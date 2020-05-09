@@ -750,7 +750,7 @@ where
                 .await?;
 
             self.outbound_message_service
-                .propagate(
+                .broadcast(
                     NodeDestination::NodeId(Box::new(NodeId::from_key(&source_pubkey)?)),
                     OutboundEncryption::EncryptFor(Box::new(source_pubkey.clone())),
                     vec![],

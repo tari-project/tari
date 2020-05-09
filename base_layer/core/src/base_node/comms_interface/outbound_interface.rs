@@ -31,7 +31,7 @@ use crate::{
 };
 use futures::channel::mpsc::UnboundedSender;
 use log::*;
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use tari_comms::peer_manager::NodeId;
 use tari_service_framework::reply_channel::SenderService;
 use tower_service::Service;
 
@@ -41,7 +41,7 @@ pub const LOG_TARGET: &str = "c::bn::comms_interface::outbound_interface";
 #[derive(Clone)]
 pub struct OutboundNodeCommsInterface {
     request_sender: SenderService<(NodeCommsRequest, Option<NodeId>), Result<NodeCommsResponse, CommsInterfaceError>>,
-    block_sender: UnboundedSender<(Block, Vec<CommsPublicKey>)>,
+    block_sender: UnboundedSender<(Block, Vec<NodeId>)>,
 }
 
 impl OutboundNodeCommsInterface {
@@ -51,7 +51,7 @@ impl OutboundNodeCommsInterface {
             (NodeCommsRequest, Option<NodeId>),
             Result<NodeCommsResponse, CommsInterfaceError>,
         >,
-        block_sender: UnboundedSender<(Block, Vec<CommsPublicKey>)>,
+        block_sender: UnboundedSender<(Block, Vec<NodeId>)>,
     ) -> Self
     {
         Self {
@@ -270,7 +270,7 @@ impl OutboundNodeCommsInterface {
     pub async fn propagate_block(
         &mut self,
         block: Block,
-        exclude_peers: Vec<CommsPublicKey>,
+        exclude_peers: Vec<NodeId>,
     ) -> Result<(), CommsInterfaceError>
     {
         self.block_sender
