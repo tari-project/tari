@@ -15,11 +15,6 @@ You can check that the binaries match the hash by running
 
     sha256sum path/to/tari_base_node
 
-### Running a node in Docker
-
-If you have docker on your machine, you can run a prebuilt node using one of the docker images on
-[quay.io](https://quay.io/user/tarilabs).
-
 ### Building from source (Ubuntu 18.04)
 
 To build the Tari codebase from source, there are a few dependencies you need to have installed.
@@ -67,10 +62,14 @@ A successful build should output something as follows
     Finished release [optimized] target(s) in 12m 24s
 ```
 
+Compiled executable can be found by following path:
+
+    ./target/release/tari_base_node
+
 Alternatively, cargo can build and install the executable into `~/.cargo/bin`, so it will be executable from anywhere 
 on your system.
 
-    cargo install tari_base_node
+    cargo install --path=applications/tari_base_node --force
 
 ### Building from source (Windows 10)
 
@@ -163,10 +162,14 @@ A successful build should output something as follows
     Finished release [optimized] target(s) in 12m 24s
 ```
 
-Alternatively, cargo can build and install the executable into `%USERPROFILE%\.cargo\bin`, so it will be executable from 
+Compiled executable can be found by following path:
+
+    ./target/release/tari_base_node.exe
+
+Alternatively, cargo can build and install the executable into `%USERPROFILE%\.cargo\bin`, so it will be executable from
 anywhere on your system.
 
-    cargo install tari_base_node
+    cargo install --path=applications/tari_base_node --force
 
 ### Running the base node
 
