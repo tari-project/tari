@@ -97,7 +97,7 @@ impl OutboundMessageRequester {
     pub async fn send_direct_neighbours<T>(
         &mut self,
         encryption: OutboundEncryption,
-        exclude_peers: Vec<CommsPublicKey>,
+        exclude_peers: Vec<NodeId>,
         message: OutboundDomainMessage<T>,
     ) -> Result<SendMessageResponse, DhtOutboundError>
     where
@@ -115,7 +115,7 @@ impl OutboundMessageRequester {
         &mut self,
         destination: NodeDestination,
         encryption: OutboundEncryption,
-        exclude_peers: Vec<CommsPublicKey>,
+        exclude_peers: Vec<NodeId>,
         message: OutboundDomainMessage<T>,
     ) -> Result<SendMessageResponse, DhtOutboundError>
     where
@@ -123,7 +123,32 @@ impl OutboundMessageRequester {
     {
         self.send_message(
             SendMessageParams::new()
-                .neighbours(exclude_peers)
+                .propagate(destination.clone(), exclude_peers)
+                .with_encryption(encryption)
+                .with_destination(destination)
+                .finish(),
+            message,
+        )
+        .await
+    }
+
+    /// Send to a pre-configured number of closest peers, for further message propagation.
+    ///
+    /// Optionally, the NodeDestination can be set to propagate to a particular peer, or network region
+    /// in addition to each peer directly (Same as send_direct_neighbours).
+    pub async fn broadcast<T>(
+        &mut self,
+        destination: NodeDestination,
+        encryption: OutboundEncryption,
+        exclude_peers: Vec<NodeId>,
+        message: OutboundDomainMessage<T>,
+    ) -> Result<SendMessageResponse, DhtOutboundError>
+    where
+        T: prost::Message,
+    {
+        self.send_message(
+            SendMessageParams::new()
+                .broadcast(exclude_peers)
                 .with_encryption(encryption)
                 .with_destination(destination)
                 .finish(),

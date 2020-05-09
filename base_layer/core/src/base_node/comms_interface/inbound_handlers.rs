@@ -47,7 +47,7 @@ use std::{
 };
 use strum_macros::Display;
 use tari_broadcast_channel::Publisher;
-use tari_comms::types::CommsPublicKey;
+use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 use tokio::sync::RwLock;
 
@@ -274,7 +274,7 @@ where T: BlockchainBackend + 'static
     pub async fn handle_block(
         &mut self,
         block_context: &(Block, Broadcast),
-        source_peer: Option<CommsPublicKey>,
+        source_peer: Option<NodeId>,
     ) -> Result<(), CommsInterfaceError>
     {
         let (block, broadcast) = block_context;

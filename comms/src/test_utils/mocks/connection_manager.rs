@@ -38,11 +38,11 @@ use std::{
         Arc,
     },
 };
-use tokio::sync::broadcast;
+use tokio::{sync::broadcast, task};
 
-pub fn create_connection_manager_mock(buf_size: usize) -> (ConnectionManagerRequester, ConnectionManagerMock) {
-    let (tx, rx) = mpsc::channel(buf_size);
-    let (event_tx, _) = broadcast::channel(buf_size);
+pub fn create_connection_manager_mock() -> (ConnectionManagerRequester, ConnectionManagerMock) {
+    let (tx, rx) = mpsc::channel(10);
+    let (event_tx, _) = broadcast::channel(10);
     (
         ConnectionManagerRequester::new(tx, event_tx.clone()),
         ConnectionManagerMock::new(rx.fuse(), event_tx),
@@ -114,6 +114,10 @@ impl ConnectionManagerMock {
 
     pub fn get_shared_state(&self) -> ConnectionManagerMockState {
         self.state.clone()
+    }
+
+    pub fn spawn(self) {
+        task::spawn(Self::run(self));
     }
 
     pub async fn run(mut self) {

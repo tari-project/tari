@@ -139,6 +139,7 @@ impl Dht {
             conn,
             Arc::clone(&self.node_identity),
             Arc::clone(&self.peer_manager),
+            self.connection_manager.clone(),
             self.outbound_requester(),
             request_receiver,
             shutdown_signal,
@@ -234,7 +235,6 @@ impl Dht {
             )))
             .layer(inbound::DecryptionLayer::new(Arc::clone(&self.node_identity)))
             .layer(store_forward::ForwardLayer::new(
-                Arc::clone(&self.peer_manager),
                 self.outbound_requester(),
                 self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD),
             ))
@@ -358,7 +358,7 @@ mod test {
     async fn stack_unencrypted() {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
-        let (connection_manager, _) = create_connection_manager_mock(1);
+        let (connection_manager, _) = create_connection_manager_mock();
 
         // Dummy out channel, we are not testing outbound here.
         let (out_tx, _) = mpsc::channel(10);
@@ -400,7 +400,7 @@ mod test {
     async fn stack_encrypted() {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
-        let (connection_manager, _) = create_connection_manager_mock(1);
+        let (connection_manager, _) = create_connection_manager_mock();
 
         // Dummy out channel, we are not testing outbound here.
         let (out_tx, _out_rx) = mpsc::channel(10);
@@ -445,7 +445,7 @@ mod test {
 
         let shutdown = Shutdown::new();
 
-        let (connection_manager, _) = create_connection_manager_mock(1);
+        let (connection_manager, _) = create_connection_manager_mock();
         let (next_service_tx, mut next_service_rx) = mpsc::channel(10);
         let (oms_requester, oms_mock) = create_outbound_service_mock(1);
 
@@ -493,7 +493,7 @@ mod test {
     async fn stack_filter_saf_message() {
         let node_identity = make_client_identity();
         let peer_manager = make_peer_manager();
-        let (connection_manager, _) = create_connection_manager_mock(1);
+        let (connection_manager, _) = create_connection_manager_mock();
 
         // Dummy out channel, we are not testing outbound here.
         let (out_tx, _) = mpsc::channel(10);

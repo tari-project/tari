@@ -188,6 +188,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(());
         }
 
+        let origin_node_id = origin_peer.node_id;
+
         // Send a join request back to the origin peer of the join request if:
         // - this join request was not sent directly from the origin peer but was forwarded (from the source peer), and
         // - that peer is from the same region of network.
@@ -197,7 +199,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         if source_peer.public_key != origin_peer.public_key &&
             self.peer_manager
                 .in_network_region(
-                    &origin_peer.node_id,
+                    &origin_node_id,
                     self.node_identity.node_id(),
                     self.config.num_neighbouring_nodes,
                 )
@@ -236,9 +238,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .send_raw(
                     SendMessageParams::new()
                         .closest(
-                            origin_peer.node_id,
+                            origin_node_id.clone(),
                             self.config.num_neighbouring_nodes,
-                            vec![authenticated_pk, source_peer.public_key.clone()],
+                            vec![origin_node_id, source_peer.node_id.clone()],
                             PeerFeatures::MESSAGE_PROPAGATION,
                         )
                         .with_dht_header(dht_header)

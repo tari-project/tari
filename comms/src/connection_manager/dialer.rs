@@ -379,7 +379,7 @@ where
         );
         trace!(target: LOG_TARGET, "{:?}", peer_identity);
 
-        let peer_node_id = common::validate_and_add_peer_from_peer_identity(
+        let peer = common::validate_and_add_peer_from_peer_identity(
             &peer_manager,
             authenticated_public_key,
             peer_identity,
@@ -391,13 +391,13 @@ where
             target: LOG_TARGET,
             "[ThisNode={}] Peer '{}' added to peer list.",
             node_identity.node_id().short_str(),
-            peer_node_id.short_str()
+            peer.node_id.short_str()
         );
 
         peer_connection::create(
             muxer,
             dialed_addr,
-            peer_node_id,
+            peer,
             CONNECTION_DIRECTION,
             conn_man_notifier,
             our_supported_protocols,

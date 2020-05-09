@@ -97,7 +97,7 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone 
             next_service
                 .oneshot(OutboundMessage {
                     tag,
-                    peer_node_id: destination_peer.node_id,
+                    peer_node_id: destination_peer.node_id.clone(),
                     reply_tx: reply_tx.into_inner(),
                     body,
                 })

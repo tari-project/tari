@@ -71,7 +71,7 @@ async fn spawn_messaging_protocol() -> (
     let shutdown = Shutdown::new();
     let rt_handle = Handle::current();
 
-    let (requester, mock) = create_connection_manager_mock(10);
+    let (requester, mock) = create_connection_manager_mock();
     let mock_state = mock.get_shared_state();
     rt_handle.spawn(mock.run());
 
@@ -166,16 +166,18 @@ async fn new_inbound_substream_handling() {
 async fn send_message_request() {
     let (_, node_identity, conn_man_mock, _, mut request_tx, _, _, _shutdown) = spawn_messaging_protocol().await;
 
-    let peer_node_id = node_id::random();
+    let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     let (conn1, peer_conn_mock1, _, peer_conn_mock2) =
-        create_peer_connection_mock_pair(1, node_identity.node_id().clone(), peer_node_id.clone()).await;
+        create_peer_connection_mock_pair(1, node_identity.to_peer(), peer_node_identity.to_peer()).await;
 
     // Add mock peer connection to connection manager mock for node 2
-    conn_man_mock.add_active_connection(peer_node_id.clone(), conn1).await;
+    conn_man_mock
+        .add_active_connection(peer_node_identity.node_id().clone(), conn1)
+        .await;
 
     // Send a message to node
-    let out_msg = OutboundMessage::new(peer_node_id, TEST_MSG1);
+    let out_msg = OutboundMessage::new(peer_node_identity.node_id().clone(), TEST_MSG1);
     request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
 
     // Check that node got the message
@@ -214,11 +216,12 @@ async fn send_message_substream_bulk_failure() {
     let (_, node_identity, conn_manager_mock, _, mut request_tx, _, mut event_tx, _shutdown) =
         spawn_messaging_protocol().await;
 
-    let peer_node_id = node_id::random();
+    let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     let (conn1, _, _, peer_conn_mock2) =
-        create_peer_connection_mock_pair(1, node_identity.node_id().clone(), peer_node_id.clone()).await;
+        create_peer_connection_mock_pair(1, node_identity.to_peer(), peer_node_identity.to_peer()).await;
 
+    let peer_node_id = peer_node_identity.node_id();
     // Add mock peer connection to connection manager mock for node 2
     conn_manager_mock
         .add_active_connection(peer_node_id.clone(), conn1)
@@ -260,12 +263,13 @@ async fn many_concurrent_send_message_requests() {
     const NUM_MSGS: usize = 100;
     let (_, _, conn_man_mock, _, mut request_tx, _, events_rx, _shutdown) = spawn_messaging_protocol().await;
 
-    let node_id1 = node_id::random();
-    let node_id2 = node_id::random();
+    let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     let (conn1, peer_conn_mock1, _, peer_conn_mock2) =
-        create_peer_connection_mock_pair(1, node_id1, node_id2.clone()).await;
+        create_peer_connection_mock_pair(1, node_identity1.to_peer(), node_identity2.to_peer()).await;
 
+    let node_id2 = node_identity2.node_id();
     // Add mock peer connection to connection manager mock for node 2
     conn_man_mock.add_active_connection(node_id2.clone(), conn1).await;
 

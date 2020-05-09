@@ -324,7 +324,7 @@ where TBackend: TransactionBackend + Clone + 'static
         match self
             .resources
             .outbound_message_service
-            .propagate(
+            .broadcast(
                 NodeDestination::NodeId(Box::new(NodeId::from_key(&self.dest_pubkey).map_err(|e| {
                     TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
                 })?)),
@@ -460,7 +460,7 @@ where TBackend: TransactionBackend + Clone + 'static
         match self
             .resources
             .outbound_message_service
-            .propagate(
+            .broadcast(
                 NodeDestination::NodeId(Box::new(NodeId::from_key(&self.dest_pubkey).map_err(|e| {
                     TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
                 })?)),

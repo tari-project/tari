@@ -362,7 +362,7 @@ where
                 .pop()
             {
                 self.random_peers.remove(node_id);
-                self.random_peers.push(peer.node_id)
+                self.random_peers.push(peer.node_id.clone())
             }
         }
 
@@ -435,7 +435,7 @@ where
         if random_peers.is_empty() {
             warn!(target: LOG_TARGET, "No random peers selected for this round of pings");
         }
-        let new_node_ids = random_peers.into_iter().map(|p| p.node_id).collect::<Vec<_>>();
+        let new_node_ids = random_peers.into_iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
         let removed = new_node_ids
             .iter()
             .filter(|n| self.random_peers.contains(*n))
@@ -455,7 +455,7 @@ where
     async fn refresh_neighbour_pool(&mut self) -> Result<(), LivenessError> {
         let neighbours = self
             .dht_requester
-            .select_peers(BroadcastStrategy::Neighbours(Vec::new(), false))
+            .select_peers(BroadcastStrategy::Neighbours(Vec::new()))
             .await?;
 
         debug!(
@@ -464,7 +464,7 @@ where
             neighbours.len()
         );
         self.neighbours
-            .set_node_ids(neighbours.into_iter().map(|p| p.node_id).collect());
+            .set_node_ids(neighbours.into_iter().map(|p| p.node_id.clone()).collect());
 
         Ok(())
     }
@@ -749,7 +749,7 @@ mod test {
             while let Some(req) = dht_rx.next().await {
                 match req {
                     SelectPeers(_, reply_tx) => {
-                        reply_tx.send(vec![peer.clone()]).unwrap();
+                        reply_tx.send(vec![Arc::new(peer.clone())]).unwrap();
                     },
                     _ => panic!("unexpected request {:?}", req),
                 }
