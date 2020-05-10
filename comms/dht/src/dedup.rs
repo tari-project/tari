@@ -130,7 +130,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError> + Clo
                     .await
                     .map_err(PipelineError::from_debug)?
                 {
-                    info!(
+                    debug!(
                         target: LOG_TARGET,
                         "Outgoing message is already in the cache ({}, next peer = {})",
                         message.tag,
