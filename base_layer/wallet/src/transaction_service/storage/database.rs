@@ -34,7 +34,7 @@ use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
     transaction::Transaction,
-    types::{BlindingFactor, Commitment, PrivateKey},
+    types::{BlindingFactor, PrivateKey},
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
@@ -64,13 +64,6 @@ pub trait TransactionBackend: Send + Sync {
     /// Complete inbound transaction, this operation must delete the `InboundTransaction` with the provided
     /// `TxId` and insert the provided `CompletedTransaction` into `CompletedTransactions`.
     fn complete_inbound_transaction(
-        &self,
-        tx_id: TxId,
-        completed_transaction: CompletedTransaction,
-    ) -> Result<(), TransactionStorageError>;
-    /// Complete pending coinbase transaction, this operation must delete the `PendingCoinbaseTransaction` with the
-    /// provided `TxId` and insert the provided `CompletedTransaction` into `CompletedTransactions`.
-    fn complete_coinbase_transaction(
         &self,
         tx_id: TxId,
         completed_transaction: CompletedTransaction,
@@ -217,14 +210,6 @@ impl OutboundTransaction {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct PendingCoinbaseTransaction {
-    pub tx_id: TxId,
-    pub amount: MicroTari,
-    pub commitment: Commitment,
-    pub timestamp: NaiveDateTime,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CompletedTransaction {
     pub tx_id: TxId,
     pub source_public_key: CommsPublicKey,
@@ -272,10 +257,8 @@ pub enum DbKey {
     PendingOutboundTransaction(TxId),
     PendingInboundTransaction(TxId),
     CompletedTransaction(TxId),
-    PendingCoinbaseTransaction(TxId),
     PendingOutboundTransactions,
     PendingInboundTransactions,
-    PendingCoinbaseTransactions,
     CompletedTransactions,
     CancelledPendingOutboundTransactions,
     CancelledPendingInboundTransactions,
@@ -286,18 +269,15 @@ pub enum DbKey {
 pub enum DbValue {
     PendingOutboundTransaction(Box<OutboundTransaction>),
     PendingInboundTransaction(Box<InboundTransaction>),
-    PendingCoinbaseTransaction(Box<PendingCoinbaseTransaction>),
     CompletedTransaction(Box<CompletedTransaction>),
     PendingOutboundTransactions(HashMap<TxId, OutboundTransaction>),
     PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
-    PendingCoinbaseTransactions(HashMap<TxId, PendingCoinbaseTransaction>),
     CompletedTransactions(HashMap<TxId, CompletedTransaction>),
 }
 
 pub enum DbKeyValuePair {
     PendingOutboundTransaction(TxId, Box<OutboundTransaction>),
     PendingInboundTransaction(TxId, Box<InboundTransaction>),
-    PendingCoinbaseTransaction(TxId, Box<PendingCoinbaseTransaction>),
     CompletedTransaction(TxId, Box<CompletedTransaction>),
 }
 
@@ -447,24 +427,6 @@ where T: TransactionBackend + 'static
         Ok(())
     }
 
-    pub async fn add_pending_coinbase_transaction(
-        &self,
-        tx_id: TxId,
-        coinbase_tx: PendingCoinbaseTransaction,
-    ) -> Result<(), TransactionStorageError>
-    {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || {
-            db_clone.write(WriteOperation::Insert(DbKeyValuePair::PendingCoinbaseTransaction(
-                tx_id,
-                Box::new(coinbase_tx),
-            )))
-        })
-        .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
-        Ok(())
-    }
-
     /// Check if a transaction with the specified TxId exists in any of the collections
     pub async fn transaction_exists(&self, tx_id: TxId) -> Result<bool, TransactionStorageError> {
         let db_clone = self.db.clone();
@@ -514,20 +476,6 @@ where T: TransactionBackend + 'static
         let db_clone = self.db.clone();
 
         let result = tokio::task::spawn_blocking(move || fetch!(db_clone, tx_id, PendingInboundTransaction))
-            .await
-            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
-
-        Ok(result)
-    }
-
-    pub async fn get_pending_coinbase_transaction(
-        &self,
-        tx_id: TxId,
-    ) -> Result<PendingCoinbaseTransaction, TransactionStorageError>
-    {
-        let db_clone = self.db.clone();
-
-        let result = tokio::task::spawn_blocking(move || fetch!(db_clone, tx_id, PendingCoinbaseTransaction))
             .await
             .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
 
@@ -640,27 +588,6 @@ where T: TransactionBackend + 'static
         Ok(pub_key)
     }
 
-    pub async fn get_pending_coinbase_transactions(
-        &self,
-    ) -> Result<HashMap<TxId, PendingCoinbaseTransaction>, TransactionStorageError> {
-        let db_clone = self.db.clone();
-
-        let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::PendingCoinbaseTransactions) {
-            Ok(None) => log_error(
-                DbKey::PendingCoinbaseTransactions,
-                TransactionStorageError::UnexpectedResult(
-                    "Could not retrieve pending coinbase transactions".to_string(),
-                ),
-            ),
-            Ok(Some(DbValue::PendingCoinbaseTransactions(pt))) => Ok(pt),
-            Ok(Some(other)) => unexpected_result(DbKey::PendingCoinbaseTransactions, other),
-            Err(e) => log_error(DbKey::PendingCoinbaseTransactions, e),
-        })
-        .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
-        Ok(t)
-    }
-
     pub async fn get_completed_transactions(
         &self,
     ) -> Result<HashMap<TxId, CompletedTransaction>, TransactionStorageError> {
@@ -727,32 +654,6 @@ where T: TransactionBackend + 'static
             .await
             .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
             .and_then(|inner_result| inner_result)
-    }
-
-    /// This method moves a `PendingCoinbaseTransaction` to the `CompleteTransaction` collection.
-    pub async fn complete_coinbase_transaction(
-        &self,
-        tx_id: TxId,
-        transaction: CompletedTransaction,
-    ) -> Result<(), TransactionStorageError>
-    {
-        let db_clone = self.db.clone();
-
-        tokio::task::spawn_blocking(move || db_clone.complete_coinbase_transaction(tx_id, transaction))
-            .await
-            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
-            .and_then(|inner_result| inner_result)
-    }
-
-    pub async fn cancel_coinbase_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
-        let db_clone = self.db.clone();
-
-        tokio::task::spawn_blocking(move || {
-            db_clone.write(WriteOperation::Remove(DbKey::PendingCoinbaseTransaction(tx_id)))
-        })
-        .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
-        Ok(())
     }
 
     pub async fn cancel_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
@@ -831,12 +732,11 @@ impl Display for DbKey {
         match self {
             DbKey::PendingOutboundTransaction(_) => f.write_str(&"Pending Outbound Transaction".to_string()),
             DbKey::PendingInboundTransaction(_) => f.write_str(&"Pending Inbound Transaction".to_string()),
-            DbKey::PendingCoinbaseTransaction(_) => f.write_str(&"Pending Pending Coinbase Transaction".to_string()),
+
             DbKey::CompletedTransaction(_) => f.write_str(&"Completed Transaction".to_string()),
             DbKey::PendingOutboundTransactions => f.write_str(&"All Pending Outbound Transactions".to_string()),
             DbKey::PendingInboundTransactions => f.write_str(&"All Pending Inbound Transactions".to_string()),
             DbKey::CompletedTransactions => f.write_str(&"All Complete Transactions".to_string()),
-            DbKey::PendingCoinbaseTransactions => f.write_str(&"All Pending Coinbase Transactions".to_string()),
             DbKey::CancelledPendingOutboundTransactions => {
                 f.write_str(&"All Cancelled Pending Inbound Transactions".to_string())
             },
@@ -853,12 +753,10 @@ impl Display for DbValue {
         match self {
             DbValue::PendingOutboundTransaction(_) => f.write_str(&"Pending Outbound Transaction".to_string()),
             DbValue::PendingInboundTransaction(_) => f.write_str(&"Pending Inbound Transaction".to_string()),
-            DbValue::PendingCoinbaseTransaction(_) => f.write_str(&"Pending Coinbase Transaction".to_string()),
             DbValue::CompletedTransaction(_) => f.write_str(&"Completed Transaction".to_string()),
             DbValue::PendingOutboundTransactions(_) => f.write_str(&"All Pending Outbound Transactions".to_string()),
             DbValue::PendingInboundTransactions(_) => f.write_str(&"All Pending Inbound Transactions".to_string()),
             DbValue::CompletedTransactions(_) => f.write_str(&"All Complete Transactions".to_string()),
-            DbValue::PendingCoinbaseTransactions(_) => f.write_str(&"All Pending Coinbase Transactions".to_string()),
         }
     }
 }

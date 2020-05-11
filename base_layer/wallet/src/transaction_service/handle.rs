@@ -24,7 +24,6 @@ use crate::{
     output_manager_service::TxId,
     transaction_service::{
         error::TransactionServiceError,
-        service::PendingCoinbaseSpendingKey,
         storage::database::{CompletedTransaction, InboundTransaction, OutboundTransaction},
     },
 };
@@ -48,9 +47,6 @@ pub enum TransactionServiceRequest {
     SetBaseNodePublicKey(CommsPublicKey),
     SendTransaction((CommsPublicKey, MicroTari, MicroTari, String)),
     CancelTransaction(TxId),
-    RequestCoinbaseSpendingKey((MicroTari, u64)),
-    CompleteCoinbaseTransaction((TxId, Transaction)),
-    CancelPendingCoinbaseTransaction(TxId),
     ImportUtxo(MicroTari, CommsPublicKey, String),
     SubmitTransaction((TxId, Transaction, MicroTari, MicroTari, String)),
     #[cfg(feature = "test_harness")]
@@ -80,13 +76,6 @@ impl fmt::Display for TransactionServiceRequest {
                 f.write_str(&format!("SendTransaction (to {}, {}, {})", k, v, msg))
             },
             Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
-            Self::RequestCoinbaseSpendingKey((v, h)) => {
-                f.write_str(&format!("RequestCoinbaseSpendingKey ({}, maturity={})", v, h))
-            },
-            Self::CompleteCoinbaseTransaction((id, _)) => f.write_str(&format!("CompleteCoinbaseTransaction ({})", id)),
-            Self::CancelPendingCoinbaseTransaction(id) => {
-                f.write_str(&format!("CancelPendingCoinbaseTransaction ({}) ", id))
-            },
             Self::ImportUtxo(v, k, msg) => f.write_str(&format!("ImportUtxo (from {}, {}, {})", k, v, msg)),
             Self::SubmitTransaction((id, _, _, _, _)) => f.write_str(&format!("SubmitTransaction ({})", id)),
             #[cfg(feature = "test_harness")]
@@ -116,9 +105,6 @@ pub enum TransactionServiceResponse {
     PendingOutboundTransactions(HashMap<u64, OutboundTransaction>),
     CompletedTransactions(HashMap<u64, CompletedTransaction>),
     CompletedTransaction(CompletedTransaction),
-    CoinbaseKey(PendingCoinbaseSpendingKey),
-    CompletedCoinbaseTransactionReceived,
-    CoinbaseTransactionCancelled,
     BaseNodePublicKeySet,
     UtxoImported(TxId),
     TransactionSubmitted,
@@ -299,55 +285,6 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::CompletedTransaction(t) => Ok(t),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn request_coinbase_key(
-        &mut self,
-        amount: MicroTari,
-        maturity_height: u64,
-    ) -> Result<PendingCoinbaseSpendingKey, TransactionServiceError>
-    {
-        match self
-            .handle
-            .call(TransactionServiceRequest::RequestCoinbaseSpendingKey((
-                amount,
-                maturity_height,
-            )))
-            .await??
-        {
-            TransactionServiceResponse::CoinbaseKey(c) => Ok(c),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn complete_coinbase_transaction(
-        &mut self,
-        tx_id: TxId,
-        completed_transaction: Transaction,
-    ) -> Result<(), TransactionServiceError>
-    {
-        match self
-            .handle
-            .call(TransactionServiceRequest::CompleteCoinbaseTransaction((
-                tx_id,
-                completed_transaction,
-            )))
-            .await??
-        {
-            TransactionServiceResponse::CompletedCoinbaseTransactionReceived => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn cancel_coinbase_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::CancelPendingCoinbaseTransaction(tx_id))
-            .await??
-        {
-            TransactionServiceResponse::CoinbaseTransactionCancelled => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
