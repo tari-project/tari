@@ -21,9 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::bounded_executor::BoundedExecutor;
-use futures::{stream::FusedStream, Stream, StreamExt};
+use futures::{future::FusedFuture, stream::FusedStream, Stream, StreamExt};
 use log::*;
 use std::fmt::Debug;
+use tari_shutdown::ShutdownSignal;
 use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::pipeline::inbound";
@@ -36,6 +37,7 @@ pub struct Inbound<TSvc, TStream> {
     executor: BoundedExecutor,
     service: TSvc,
     stream: TStream,
+    shutdown_signal: ShutdownSignal,
 }
 
 impl<TSvc, TStream> Inbound<TSvc, TStream>
@@ -46,16 +48,27 @@ where
     TSvc::Error: Debug + Send,
     TSvc::Future: Send,
 {
-    pub fn new(executor: BoundedExecutor, stream: TStream, service: TSvc) -> Self {
+    pub fn new(executor: BoundedExecutor, stream: TStream, service: TSvc, shutdown_signal: ShutdownSignal) -> Self {
         Self {
             executor,
             stream,
             service,
+            shutdown_signal,
         }
     }
 
     pub async fn run(mut self) {
         while let Some(item) = self.stream.next().await {
+            // Check if the shutdown signal has been triggered.
+            // If there are messages in the stream, drop them. Otherwise the stream is empty,
+            // it will return None and the while loop will end.
+            if self.shutdown_signal.is_terminated() {
+                info!(
+                    target: LOG_TARGET,
+                    "Inbound pipeline is terminating because the shutdown signal is triggered"
+                );
+                return;
+            }
             let service = self.service.clone();
             // Call the service in it's own spawned task
             self.executor
@@ -74,6 +87,7 @@ mod test {
     use super::*;
     use futures::{channel::mpsc, future, stream};
     use std::time::Duration;
+    use tari_shutdown::Shutdown;
     use tari_test_utils::collect_stream;
     use tokio::{runtime::Handle, time};
     use tower::service_fn;
@@ -86,6 +100,7 @@ mod test {
         let (mut out_tx, out_rx) = mpsc::channel(items.len());
 
         let executor = Handle::current();
+        let shutdown = Shutdown::new();
         let pipeline = Inbound::new(
             BoundedExecutor::new(executor.clone(), 1),
             stream,
@@ -93,6 +108,7 @@ mod test {
                 out_tx.try_send(req).unwrap();
                 future::ready(Result::<_, ()>::Ok(()))
             }),
+            shutdown.to_signal(),
         );
         let spawned_task = executor.spawn(pipeline.run());
 
