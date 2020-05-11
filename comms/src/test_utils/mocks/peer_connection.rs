@@ -29,7 +29,7 @@ use crate::{
         PeerConnectionRequest,
     },
     multiplexing,
-    multiplexing::{IncomingSubstreams, Yamux},
+    multiplexing::{IncomingSubstreams, Substream, Yamux},
     peer_manager::Peer,
     test_utils::transport,
 };
@@ -102,11 +102,11 @@ impl PeerConnectionMockState {
         self.call_count.load(Ordering::SeqCst)
     }
 
-    pub async fn open_substream(&self) -> Result<yamux::Stream, PeerConnectionError> {
+    pub async fn open_substream(&self) -> Result<Substream, PeerConnectionError> {
         self.mux_control.lock().await.open_stream().await.map_err(Into::into)
     }
 
-    pub async fn next_incoming_substream(&self) -> Option<yamux::Stream> {
+    pub async fn next_incoming_substream(&self) -> Option<Substream> {
         self.mux_incoming.lock().await.next().await
     }
 

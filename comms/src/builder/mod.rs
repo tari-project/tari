@@ -52,12 +52,13 @@ use crate::{
     },
     message::InboundMessage,
     multiaddr::Multiaddr,
+    multiplexing::Substream,
     noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerManager},
     protocol::{messaging, messaging::MessagingProtocol, ProtocolNotification, Protocols},
     tor,
     transports::{SocksTransport, TcpWithTorTransport, Transport},
-    types::{CommsDatabase, CommsSubstream},
+    types::CommsDatabase,
 };
 use futures::{channel::mpsc, AsyncRead, AsyncWrite};
 use log::*;
@@ -73,7 +74,7 @@ pub struct CommsBuilder<TTransport> {
     node_identity: Option<Arc<NodeIdentity>>,
     transport: Option<TTransport>,
     executor: Option<runtime::Handle>,
-    protocols: Option<Protocols<CommsSubstream>>,
+    protocols: Option<Protocols<Substream>>,
     dial_backoff: Option<BoxedBackoff>,
     hidden_service: Option<tor::HiddenService>,
     connection_manager_config: ConnectionManagerConfig,
@@ -220,7 +221,7 @@ where
         }
     }
 
-    pub fn with_protocols(mut self, protocols: Protocols<yamux::Stream>) -> Self {
+    pub fn with_protocols(mut self, protocols: Protocols<Substream>) -> Self {
         self.protocols = Some(protocols);
         self
     }
@@ -238,7 +239,7 @@ where
         node_identity: Arc<NodeIdentity>,
     ) -> (
         messaging::MessagingProtocol,
-        mpsc::Sender<ProtocolNotification<CommsSubstream>>,
+        mpsc::Sender<ProtocolNotification<Substream>>,
         mpsc::Sender<messaging::MessagingRequest>,
         mpsc::Receiver<InboundMessage>,
         messaging::MessagingEventSender,
@@ -277,7 +278,7 @@ where
         &mut self,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
-        protocols: Protocols<CommsSubstream>,
+        protocols: Protocols<Substream>,
         request_rx: mpsc::Receiver<ConnectionManagerRequest>,
         connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
     ) -> ConnectionManager<TTransport, BoxedBackoff>

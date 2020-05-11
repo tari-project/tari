@@ -29,6 +29,7 @@ use super::protocol::{
 };
 use crate::{
     message::{InboundMessage, MessageTag, OutboundMessage},
+    multiplexing::Substream,
     net_address::MultiaddressesWithStats,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     protocol::{messaging::SendFailReason, ProtocolEvent, ProtocolNotification},
@@ -38,7 +39,7 @@ use crate::{
         node_identity::build_node_identity,
         transport,
     },
-    types::{CommsDatabase, CommsPublicKey, CommsSubstream},
+    types::{CommsDatabase, CommsPublicKey},
 };
 use bytes::Bytes;
 use futures::{
@@ -62,7 +63,7 @@ async fn spawn_messaging_protocol() -> (
     Arc<PeerManager>,
     Arc<NodeIdentity>,
     ConnectionManagerMockState,
-    mpsc::Sender<ProtocolNotification<CommsSubstream>>,
+    mpsc::Sender<ProtocolNotification<Substream>>,
     mpsc::Sender<MessagingRequest>,
     mpsc::Receiver<InboundMessage>,
     MessagingEventReceiver,
