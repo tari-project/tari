@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{actor::DhtRequester, inbound::DhtInboundMessage, outbound::message::DhtOutboundMessage};
+use crate::{actor::DhtRequester, inbound::DhtInboundMessage};
 use digest::Input;
 use futures::{task::Context, Future};
 use log::*;
@@ -33,10 +33,6 @@ const LOG_TARGET: &str = "comms::dht::dedup";
 
 fn hash_inbound_message(message: &DhtInboundMessage) -> Vec<u8> {
     Challenge::new().chain(&message.body).result().to_vec()
-}
-
-fn hash_outbound_message(message: &DhtOutboundMessage) -> Vec<u8> {
-    Challenge::new().chain(&message.body.to_vec()).result().to_vec()
 }
 
 /// # DHT Deduplication middleware
@@ -101,50 +97,6 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
     }
 }
 
-impl<S> Service<DhtOutboundMessage> for DedupMiddleware<S>
-where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError> + Clone
-{
-    type Error = PipelineError;
-    type Response = ();
-
-    type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
-
-    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, message: DhtOutboundMessage) -> Self::Future {
-        let next_service = self.next_service.clone();
-        let mut dht_requester = self.dht_requester.clone();
-        async move {
-            if message.is_broadcast {
-                let hash = hash_outbound_message(&message);
-                debug!(
-                    target: LOG_TARGET,
-                    "Dedup added message hash {} to cache for message {}",
-                    hash.to_hex(),
-                    message.tag
-                );
-                if dht_requester
-                    .insert_message_hash(hash)
-                    .await
-                    .map_err(PipelineError::from_debug)?
-                {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Outgoing message is already in the cache ({}, next peer = {})",
-                        message.tag,
-                        message.destination_peer.node_id.short_str()
-                    );
-                }
-            }
-
-            trace!(target: LOG_TARGET, "Passing message onto next service");
-            next_service.oneshot(message).await
-        }
-    }
-}
-
 pub struct DedupLayer {
     dht_requester: DhtRequester,
 }
@@ -168,14 +120,7 @@ mod test {
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
-        test_utils::{
-            create_dht_actor_mock,
-            create_outbound_message,
-            make_dht_inbound_message,
-            make_node_identity,
-            service_spy,
-            DhtMockState,
-        },
+        test_utils::{create_dht_actor_mock, make_dht_inbound_message, make_node_identity, service_spy, DhtMockState},
     };
     use tari_test_utils::panic_context;
     use tokio::runtime::Runtime;
@@ -216,17 +161,13 @@ mod test {
         let node_identity = make_node_identity();
         let msg = make_dht_inbound_message(&node_identity, TEST_MSG.to_vec(), DhtMessageFlags::empty(), false);
         let hash1 = hash_inbound_message(&msg);
-        let msg = create_outbound_message(&TEST_MSG);
-        let hash_out1 = hash_outbound_message(&msg);
 
         let node_identity = make_node_identity();
         let msg = make_dht_inbound_message(&node_identity, TEST_MSG.to_vec(), DhtMessageFlags::empty(), false);
         let hash2 = hash_inbound_message(&msg);
-        let msg = create_outbound_message(&TEST_MSG);
-        let hash_out2 = hash_outbound_message(&msg);
 
         assert_eq!(hash1, hash2);
-        let subjects = &[hash1, hash_out1, hash2, hash_out2];
+        let subjects = &[hash1, hash2];
         assert!(subjects.into_iter().all(|h| h.to_hex() == EXPECTED_HASH));
     }
 }

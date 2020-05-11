@@ -47,4 +47,6 @@ pub enum DhtOutboundError {
     SendToOurselves,
     /// Discovery process failed
     DiscoveryFailed,
+    /// Failed to insert message hash
+    FailedToInsertMessageHash,
 }
