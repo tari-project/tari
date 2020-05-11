@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # build tar ball for tagged releases
 #
@@ -88,6 +88,8 @@ elif [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
     osname=$(uname -s)
     osversion=$(uname -r)
   fi
+
+  osname=$(echo $osname | tr '[:upper:]' '[:lower:]' )
 
   case $(uname -m) in
     x86_64)
