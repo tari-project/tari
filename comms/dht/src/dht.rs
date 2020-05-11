@@ -287,7 +287,6 @@ impl Dht {
                 self.discovery_service_requester(),
                 self.config.network,
             ))
-            .layer(DedupLayer::new(self.dht_requester()))
             .layer(MessageLoggingLayer::new(format!(
                 "Outbound [{}]",
                 self.node_identity.node_id().short_str()

@@ -36,6 +36,7 @@ use crate::{
     proto::envelope::{DhtMessageType, Network, OriginMac},
 };
 use bytes::Bytes;
+use digest::Digest;
 use futures::{
     channel::oneshot,
     future,
@@ -50,13 +51,14 @@ use tari_comms::{
     message::{MessageExt, MessageTag},
     peer_manager::{NodeIdentity, Peer},
     pipeline::PipelineError,
-    types::CommsPublicKey,
+    types::{Challenge, CommsPublicKey},
     utils::signature,
 };
 use tari_crypto::{
     keys::PublicKey,
     tari_utilities::{message_format::MessageFormat, ByteArray},
 };
+use tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::outbound::broadcast_middleware";
@@ -411,6 +413,10 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
         let (ephemeral_public_key, origin_mac, body) = self.process_encryption(&encryption, force_origin, body)?;
 
+        if is_broadcast {
+            self.add_to_dedup_cache(&body).await?;
+        }
+
         // Construct a DhtOutboundMessage for each recipient
         let messages = selected_peers
             .into_iter()
@@ -439,6 +445,20 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             .collect::<Vec<_>>();
 
         Ok(messages.into_iter().unzip())
+    }
+
+    async fn add_to_dedup_cache(&mut self, body: &[u8]) -> Result<bool, DhtOutboundError> {
+        let hash = Challenge::new().chain(&body).result().to_vec();
+        info!(
+            target: LOG_TARGET,
+            "Dedup added message hash {} to cache for message",
+            hash.to_hex(),
+        );
+
+        self.dht_requester
+            .insert_message_hash(hash)
+            .await
+            .map_err(|_| DhtOutboundError::FailedToInsertMessageHash)
     }
 
     fn process_encryption(
