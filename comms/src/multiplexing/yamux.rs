@@ -26,6 +26,7 @@ use futures::{
     future,
     future::Either,
     io::{AsyncRead, AsyncWrite},
+    stream::FusedStream,
     task::Context,
     SinkExt,
     Stream,
@@ -105,6 +106,10 @@ impl Yamux {
     pub fn incoming(self) -> IncomingSubstreams {
         self.incoming
     }
+
+    pub fn is_terminated(&self) -> bool {
+        self.incoming.is_terminated()
+    }
 }
 
 pub struct IncomingSubstreams {
@@ -115,6 +120,12 @@ pub struct IncomingSubstreams {
 impl IncomingSubstreams {
     pub fn new(inner: IncomingRx, shutdown: Shutdown) -> Self {
         Self { inner, shutdown }
+    }
+}
+
+impl FusedStream for IncomingSubstreams {
+    fn is_terminated(&self) -> bool {
+        self.inner.is_terminated()
     }
 }
 

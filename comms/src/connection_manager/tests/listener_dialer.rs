@@ -27,9 +27,10 @@ use crate::{
         listener::PeerListener,
         manager::ConnectionManagerEvent,
         ConnectionManagerConfig,
+        ConnectionManagerError,
     },
     noise::NoiseConfig,
-    peer_manager::{Peer, PeerFeatures, PeerFlags},
+    peer_manager::PeerFeatures,
     protocol::ProtocolId,
     test_utils::{node_identity::build_node_identity, test_node::build_peer_manager},
     transports::MemoryTransport,
@@ -136,14 +137,8 @@ async fn smoke() {
     let listen_event = event_rx.next().await.unwrap();
     unpack_enum!(ConnectionManagerEvent::Listening(address) = listen_event);
 
-    let mut peer = Peer::new(
-        node_identity1.public_key().clone(),
-        node_identity1.node_id().clone(),
-        vec![address].into(),
-        PeerFlags::empty(),
-        PeerFeatures::COMMUNICATION_NODE,
-        &[],
-    );
+    let mut peer = node_identity1.to_peer();
+    peer.addresses = vec![address].into();
     peer.set_id_for_test(1);
 
     let (reply_tx, reply_rx) = oneshot::channel();
@@ -189,6 +184,85 @@ async fn smoke() {
 
     assert_eq!(&peer1.public_key, node_identity1.public_key());
     assert_eq!(&peer2.public_key, node_identity2.public_key());
+
+    timeout(Duration::from_secs(5), listener_fut).await.unwrap().unwrap();
+    timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
+}
+
+#[tokio_macros::test_basic]
+async fn banned() {
+    let rt_handle = Handle::current();
+    let (event_tx, mut event_rx) = mpsc::channel(10);
+    let mut shutdown = Shutdown::new();
+
+    let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let noise_config1 = NoiseConfig::new(node_identity1.clone());
+    let expected_proto = ProtocolId::from_static(b"/tari/test-proto");
+    let supported_protocols = vec![expected_proto.clone()];
+    let peer_manager1 = build_peer_manager();
+    let listener = PeerListener::new(
+        ConnectionManagerConfig {
+            listener_address: "/memory/0".parse().unwrap(),
+            ..Default::default()
+        },
+        MemoryTransport,
+        noise_config1,
+        event_tx.clone(),
+        peer_manager1.clone().into(),
+        node_identity1.clone(),
+        supported_protocols.clone(),
+        shutdown.to_signal(),
+    );
+
+    let listener_fut = rt_handle.spawn(listener.run());
+
+    let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    // The listener has banned the dialer peer
+    let mut peer = node_identity2.to_peer();
+    peer.ban_for(Duration::from_secs(60 * 60));
+    peer_manager1.add_peer(peer).await.unwrap();
+
+    let noise_config2 = NoiseConfig::new(node_identity2.clone());
+    let (mut request_tx, request_rx) = mpsc::channel(1);
+    let peer_manager2 = build_peer_manager();
+    let dialer = Dialer::new(
+        ConnectionManagerConfig::default(),
+        node_identity2.clone(),
+        peer_manager2.clone().into(),
+        MemoryTransport,
+        noise_config2,
+        ConstantBackoff::new(Duration::from_millis(100)),
+        request_rx,
+        event_tx,
+        supported_protocols,
+        shutdown.to_signal(),
+    );
+
+    let dialer_fut = rt_handle.spawn(dialer.run());
+
+    // Get the listening address of the peer
+    let listen_event = event_rx.next().await.unwrap();
+    unpack_enum!(ConnectionManagerEvent::Listening(address) = listen_event);
+
+    let mut peer = node_identity1.to_peer();
+    peer.addresses = vec![address].into();
+    peer.set_id_for_test(1);
+
+    let (reply_tx, reply_rx) = oneshot::channel();
+    request_tx
+        .send(DialerRequest::Dial(Box::new(peer), reply_tx))
+        .await
+        .unwrap();
+
+    // Check that the dial failed. We're checking that the listener unexpectedly
+    // closes the connection before the identity protocol has completed.
+    let err = reply_rx.await.unwrap().unwrap_err();
+    unpack_enum!(ConnectionManagerError::IdentityProtocolError(_err) = err);
+
+    unpack_enum!(ConnectionManagerEvent::PeerInboundConnectFailed(err) = event_rx.next().await.unwrap());
+    unpack_enum!(ConnectionManagerError::PeerBanned = err);
+
+    shutdown.trigger().unwrap();
 
     timeout(Duration::from_secs(5), listener_fut).await.unwrap().unwrap();
     timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
