@@ -241,7 +241,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                 "Checking if current chain lagging on best network chain."
             );
             let local_tip_height = local_metadata.height_of_longest_chain.unwrap_or(0);
-            let mut network_tip_height = network_metadata.height_of_longest_chain.unwrap_or(0);
+            let network_tip_height = network_metadata.height_of_longest_chain.unwrap_or(0);
             let mut sync_height = local_tip_height + 1;
             if check_chain_split(
                 shared,
@@ -274,10 +274,6 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                 let block_nums: Vec<u64> = (sync_height..=max_height).collect();
                 request_and_add_blocks(shared, sync_peers, block_nums.clone()).await?;
                 sync_height += block_nums.len() as u64;
-                if sync_height == network_tip_height {
-                    info!(target: LOG_TARGET, "Check if sync peer chain has been extended.");
-                    network_tip_height = request_network_tip_height(shared, sync_peers).await?;
-                }
             }
             return Ok(());
         }
@@ -630,59 +626,6 @@ async fn request_headers<B: BlockchainBackend + 'static>(
             Err(e) => return Err(BlockSyncError::CommsInterfaceError(e)),
         }
         debug!(target: LOG_TARGET, "Retrying header download. Attempt {}", attempt);
-    }
-    Err(BlockSyncError::MaxRequestAttemptsReached)
-}
-
-// Request the updated tip height from a remote sync peer.
-async fn request_network_tip_height<B: BlockchainBackend + 'static>(
-    shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut Vec<NodeId>,
-) -> Result<u64, BlockSyncError>
-{
-    let config = shared.config.block_sync_config;
-    for attempt in 1..=config.max_metadata_request_retry_attempts {
-        let sync_peer = select_sync_peer(&config, sync_peers)?;
-        trace!(target: LOG_TARGET, "Requesting updated metadata from {}.", sync_peer);
-        match shared.comms.request_metadata_from_peer(Some(sync_peer.clone())).await {
-            Ok(metadata) => {
-                debug!(target: LOG_TARGET, "Received updated metadata from peer");
-                match metadata.height_of_longest_chain {
-                    Some(network_tip_height) => return Ok(network_tip_height),
-                    None => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Updated metadata had an undefined chain height: {:?}.",
-                            CommsInterfaceError::RequestTimedOut,
-                        );
-                        ban_sync_peer(
-                            shared,
-                            sync_peers,
-                            sync_peer.clone(),
-                            shared.config.block_sync_config.peer_ban_duration,
-                        )
-                        .await?;
-                    },
-                }
-            },
-            Err(e) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Failed to fetch updated metadata from peer: {:?}. ", e,
-                );
-                ban_sync_peer(
-                    shared,
-                    sync_peers,
-                    sync_peer.clone(),
-                    shared.config.block_sync_config.short_term_peer_ban_duration,
-                )
-                .await?;
-            },
-        }
-        debug!(
-            target: LOG_TARGET,
-            "Retrying chain metadata download. Attempt {}", attempt
-        );
     }
     Err(BlockSyncError::MaxRequestAttemptsReached)
 }
