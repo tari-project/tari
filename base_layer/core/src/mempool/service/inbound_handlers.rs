@@ -135,7 +135,20 @@ where T: BlockchainBackend + 'static
                     );
                     let propagate = match tx_storage {
                         TxStorageResponse::UnconfirmedPool => true,
-                        TxStorageResponse::OrphanPool => false,
+                        TxStorageResponse::OrphanPool => {
+                            trace!(
+                                target: LOG_TARGET,
+                                "Transaction `{}` received from nodeID `{}` is bad: double spend or non-existent \
+                                 input.",
+                                tx.body.kernels()[0].excess_sig.get_signature().to_hex(),
+                                exclude_peers
+                                    .first()
+                                    .as_ref()
+                                    .map(|p| format!("{}", p))
+                                    .unwrap_or_else(|| "local services".to_string())
+                            );
+                            false
+                        },
                         TxStorageResponse::PendingPool => true,
                         TxStorageResponse::ReorgPool => false,
                         TxStorageResponse::NotStored => false,

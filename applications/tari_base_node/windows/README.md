@@ -14,7 +14,7 @@ installed automatically if selected:
 Notes: 
 - Minimum Windows 7 64bit with Windows Powershell 3.0 required, 
   Windows 10 64bit recommended.
-- Minimum 60GB free disk space required at the initial runtime. 
+- Minimum 1.2 GB free disk space required at the initial runtime. 
 
 ## Runtime
 
