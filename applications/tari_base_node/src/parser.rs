@@ -1237,12 +1237,12 @@ impl Parser {
 
     /// Function to process the send transaction command
     fn process_send_tari<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
-        let amount = args.next().and_then(|v| v.parse::<u64>().ok());
+        let amount = args.next().and_then(|v| MicroTari::from_str(v).ok());
         if amount.is_none() {
             println!("Please enter a valid amount of tari");
             return;
         }
-        let amount: MicroTari = amount.unwrap().into();
+        let amount: MicroTari = amount.unwrap();
 
         let key = match args.next() {
             Some(k) => k.to_string(),

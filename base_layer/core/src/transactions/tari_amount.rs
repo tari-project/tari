@@ -30,6 +30,7 @@ use std::{
     ops::{Add, Mul},
 };
 use tari_crypto::ristretto::RistrettoSecretKey;
+use thiserror::Error as ThisError;
 
 /// All calculations using Tari amounts should use these newtypes to prevent bugs related to rounding errors, unit
 /// conversion errors etc.
@@ -44,6 +45,11 @@ use tari_crypto::ristretto::RistrettoSecretKey;
 #[derive(Copy, Default, Clone, Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct MicroTari(pub u64);
 
+#[derive(Debug, Clone, ThisError, PartialEq)]
+pub enum MicroTariError {
+    #[error("Failed to parse value:{0}")]
+    ParseError(String),
+}
 /// A convenience constant that makes it easier to define Tari amounts.
 /// ```edition2018
 ///   use tari_core::transactions::tari_amount::{MicroTari, uT, T};
@@ -98,6 +104,48 @@ impl Display for MicroTari {
 impl From<MicroTari> for u64 {
     fn from(v: MicroTari) -> Self {
         v.0
+    }
+}
+
+impl std::str::FromStr for MicroTari {
+    type Err = MicroTariError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Is this Tari or MicroTari
+        let processed = s.replace(",", "").replace(" ", "").to_ascii_lowercase();
+        let is_micro_tari = if processed.ends_with("ut") || processed.ends_with("µt") {
+            true
+        } else if processed.ends_with("t") {
+            false
+        } else {
+            true
+        };
+
+        // Avoid using f64 if we an
+        let processed = processed.replace("ut", "").replace("µt", "").replace("t", "");
+        if is_micro_tari {
+            processed
+                .parse::<u64>()
+                .map(|v| MicroTari::from(v.max(0)))
+                .map_err(|e| MicroTariError::ParseError(e.to_string()))
+        } else {
+            processed
+                .parse::<f64>()
+                .map_err(|e| MicroTariError::ParseError(e.to_string()))
+                .map(|v| {
+                    if v < 0.0 {
+                        Err(MicroTariError::ParseError("value cannot be negative".to_string()))
+                    } else {
+                        Ok(MicroTari::from(Tari::from(v.max(0.0))))
+                    }
+                })?
+        }
+    }
+}
+
+impl From<Tari> for MicroTari {
+    fn from(v: Tari) -> Self {
+        MicroTari((v.0 * 1e6) as u64)
     }
 }
 
@@ -201,8 +249,8 @@ impl From<MicroTari> for Tari {
 
 #[cfg(test)]
 mod test {
-    use crate::transactions::tari_amount::{MicroTari, Tari};
-
+    use super::{MicroTari, Tari};
+    use std::str::FromStr;
     #[test]
     fn micro_tari_arithmetic() {
         let mut a = MicroTari::from(500);
@@ -232,6 +280,24 @@ mod test {
         assert_eq!(s, "99,100,000 µT");
         let s = format!("{}", MicroTari::from(1_000_000_000).formatted());
         assert_eq!(s, "1,000,000,000 µT");
+    }
+
+    #[test]
+    fn micro_tari_from_string() {
+        let micro_tari = MicroTari::from(99_100_000);
+        let s = format!("{}", micro_tari.formatted());
+        assert_eq!(micro_tari, MicroTari::from_str(s.as_str()).unwrap());
+        let tari = Tari::from(1.12);
+        let s = format!("{}", tari.formatted());
+        assert_eq!(MicroTari::from(tari), MicroTari::from_str(s.as_str()).unwrap());
+        assert_eq!(MicroTari::from(5_000_000), MicroTari::from_str("5000000").unwrap());
+        assert_eq!(MicroTari::from(5_000_000), MicroTari::from_str("5,000,000").unwrap());
+        assert_eq!(MicroTari::from(5_000_000), MicroTari::from_str("5,000,000 uT").unwrap());
+        assert_eq!(MicroTari::from(5_000_000), MicroTari::from_str("5000000 uT").unwrap());
+        assert_eq!(MicroTari::from(5_000_000), MicroTari::from_str("5 T").unwrap());
+        assert!(MicroTari::from_str("-5 T").is_err());
+        assert!(MicroTari::from_str("-5 uT").is_err());
+        assert!(MicroTari::from_str("5garbage T").is_err());
     }
 
     #[test]
