@@ -27,14 +27,11 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
     transaction::{OutputFeatures, Transaction, UnblindedOutput},
     transaction_protocol::sender::TransactionSenderMessage,
-    types::{CommitmentFactory, CryptoFactories, HashDigest, PrivateKey, PublicKey},
+    types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-};
+use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
 use tari_wallet::{
     storage::connection_manager::run_migration_and_create_sqlite_connection,
     transaction_service::storage::{
@@ -42,7 +39,6 @@ use tari_wallet::{
             CompletedTransaction,
             InboundTransaction,
             OutboundTransaction,
-            PendingCoinbaseTransaction,
             TransactionBackend,
             TransactionDatabase,
             TransactionStatus,
@@ -178,41 +174,6 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .unwrap();
     assert_eq!(outbound_pub_key, outbound_txs[0].destination_public_key);
 
-    let mut coinbases = Vec::new();
-    for i in 0..messages.len() {
-        coinbases.push(PendingCoinbaseTransaction {
-            tx_id: (i + 100) as u64,
-            amount: amounts[i].clone(),
-            commitment: CommitmentFactory::default().zero(),
-            timestamp: Utc::now().naive_utc(),
-        });
-
-        assert!(!runtime.block_on(db.transaction_exists((i + 100) as u64)).unwrap());
-        runtime
-            .block_on(db.add_pending_coinbase_transaction((i + 100) as u64, coinbases[i].clone()))
-            .unwrap();
-        assert!(runtime.block_on(db.transaction_exists((i + 100) as u64)).unwrap());
-    }
-
-    runtime
-        .block_on(
-            db.add_pending_coinbase_transaction(9999u64, PendingCoinbaseTransaction {
-                tx_id: 9999u64,
-                amount: MicroTari::from(10000),
-                commitment: CommitmentFactory::default().zero(),
-                timestamp: Utc::now().naive_utc(),
-            }),
-        )
-        .unwrap();
-
-    runtime.block_on(db.cancel_coinbase_transaction(9999u64)).unwrap();
-
-    let read_coinbases = runtime.block_on(db.get_pending_coinbase_transactions()).unwrap();
-    assert_eq!(read_coinbases.len(), messages.len());
-    for i in 0..messages.len() {
-        assert_eq!(read_coinbases.get(&coinbases[i].tx_id).unwrap(), &coinbases[i]);
-    }
-
     let mut completed_txs = Vec::new();
     let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng));
 
@@ -244,18 +205,10 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
                 }),
             )
             .unwrap();
-        runtime
-            .block_on(
-                db.complete_coinbase_transaction(coinbases[i].tx_id, CompletedTransaction {
-                    tx_id: coinbases[i].tx_id,
-                    ..completed_txs[i].clone()
-                }),
-            )
-            .unwrap();
     }
 
     let retrieved_completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
-    assert_eq!(retrieved_completed_txs.len(), 3 * messages.len());
+    assert_eq!(retrieved_completed_txs.len(), 2 * messages.len());
 
     for i in 0..messages.len() {
         assert_eq!(
@@ -268,13 +221,6 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         assert_eq!(
             retrieved_completed_txs.get(&outbound_txs[i].tx_id).unwrap(),
             &completed_txs[i]
-        );
-        assert_eq!(
-            retrieved_completed_txs.get(&coinbases[i].tx_id).unwrap(),
-            &CompletedTransaction {
-                tx_id: coinbases[i].tx_id,
-                ..completed_txs[i].clone()
-            }
         );
     }
 

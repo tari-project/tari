@@ -34,7 +34,6 @@ use crate::{
         storage::database::{
             CompletedTransaction,
             InboundTransaction,
-            PendingCoinbaseTransaction,
             TransactionBackend,
             TransactionDatabase,
             TransactionStatus,
@@ -73,7 +72,7 @@ use tari_core::{
     mempool::{proto::mempool as MempoolProto, service::MempoolServiceResponse},
     transactions::{
         tari_amount::MicroTari,
-        transaction::{KernelFeatures, OutputFeatures, OutputFlags, Transaction},
+        transaction::{OutputFeatures, Transaction},
         transaction_protocol::{
             proto,
             recipient::{RecipientSignedMessage, RecipientState},
@@ -83,7 +82,7 @@ use tari_core::{
         ReceiverTransactionProtocol,
     },
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
+use tari_crypto::keys::SecretKey;
 use tari_p2p::{domain_message::DomainMessage, services::liveness::LivenessHandle, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 #[cfg(feature = "test_harness")]
@@ -427,18 +426,6 @@ where
             TransactionServiceRequest::GetCompletedTransaction(tx_id) => Ok(
                 TransactionServiceResponse::CompletedTransaction(self.db.get_completed_transaction(tx_id).await?),
             ),
-            TransactionServiceRequest::RequestCoinbaseSpendingKey((amount, maturity_height)) => Ok(
-                TransactionServiceResponse::CoinbaseKey(self.request_coinbase_key(amount, maturity_height).await?),
-            ),
-            TransactionServiceRequest::CompleteCoinbaseTransaction((tx_id, completed_transaction)) => {
-                self.submit_completed_coinbase_transaction(tx_id, completed_transaction)
-                    .await?;
-                Ok(TransactionServiceResponse::CompletedCoinbaseTransactionReceived)
-            },
-            TransactionServiceRequest::CancelPendingCoinbaseTransaction(tx_id) => {
-                self.cancel_pending_coinbase_transaction(tx_id).await?;
-                Ok(TransactionServiceResponse::CoinbaseTransactionCancelled)
-            },
             TransactionServiceRequest::SetBaseNodePublicKey(public_key) => self
                 .set_base_node_public_key(
                     public_key,
@@ -928,108 +915,6 @@ where
                 );
                 e
             });
-
-        Ok(())
-    }
-
-    /// Request a tx_id and spending_key for a coinbase output to be mined
-    pub async fn request_coinbase_key(
-        &mut self,
-        amount: MicroTari,
-        maturity_height: u64,
-    ) -> Result<PendingCoinbaseSpendingKey, TransactionServiceError>
-    {
-        let tx_id: TxId = OsRng.next_u64();
-
-        let spending_key = self
-            .output_manager_service
-            .get_coinbase_spending_key(tx_id, amount.clone(), maturity_height)
-            .await?;
-
-        self.db
-            .add_pending_coinbase_transaction(tx_id, PendingCoinbaseTransaction {
-                tx_id,
-                amount,
-                commitment: self.factories.commitment.commit_value(&spending_key, u64::from(amount)),
-                timestamp: Utc::now().naive_utc(),
-            })
-            .await?;
-
-        Ok(PendingCoinbaseSpendingKey { tx_id, spending_key })
-    }
-
-    /// Once the miner has constructed the completed Coinbase transaction they will submit it to the Transaction Service
-    /// which will monitor the chain to see when it has been mined.
-    pub async fn submit_completed_coinbase_transaction(
-        &mut self,
-        tx_id: TxId,
-        completed_transaction: Transaction,
-    ) -> Result<(), TransactionServiceError>
-    {
-        let coinbase_tx = self.db.get_pending_coinbase_transaction(tx_id).await.map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "Finalized coinbase transaction TxId does not exist in Pending Inbound Transactions"
-            );
-            e
-        })?;
-
-        if !completed_transaction.body.inputs().is_empty() ||
-            completed_transaction.body.outputs().len() != 1 ||
-            completed_transaction.body.kernels().len() != 1
-        {
-            error!(
-                target: LOG_TARGET,
-                "Provided Completed Transaction for Coinbase Transaction does not contain just a single output"
-            );
-            return Err(TransactionServiceError::InvalidCompletedTransaction);
-        }
-
-        if coinbase_tx.commitment != completed_transaction.body.outputs()[0].commitment ||
-            completed_transaction.body.outputs()[0].features.flags != OutputFlags::COINBASE_OUTPUT ||
-            completed_transaction.body.kernels()[0].features != KernelFeatures::COINBASE_KERNEL
-        {
-            error!(
-                target: LOG_TARGET,
-                "Provided Completed Transaction commitment for Coinbase Transaction does not match the stored \
-                 commitment for this TxId"
-            );
-            return Err(TransactionServiceError::InvalidCompletedTransaction);
-        }
-
-        self.db
-            .complete_coinbase_transaction(
-                tx_id,
-                CompletedTransaction::new(
-                    tx_id,
-                    self.node_identity.public_key().clone(),
-                    self.node_identity.public_key().clone(),
-                    coinbase_tx.amount,
-                    MicroTari::from(0),
-                    completed_transaction,
-                    TransactionStatus::Completed,
-                    "Coinbase Transaction".to_string(),
-                    Utc::now().naive_utc(),
-                ),
-            )
-            .await?;
-
-        Ok(())
-    }
-
-    /// If a specific coinbase transaction will not be mined then the Miner can cancel it
-    pub async fn cancel_pending_coinbase_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
-        let _ = self.db.get_pending_coinbase_transaction(tx_id).await.map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "Finalized coinbase transaction TxId does not exist in Pending Inbound Transactions"
-            );
-            e
-        })?;
-
-        self.output_manager_service.cancel_transaction(tx_id).await?;
-
-        self.db.cancel_coinbase_transaction(tx_id).await?;
 
         Ok(())
     }
