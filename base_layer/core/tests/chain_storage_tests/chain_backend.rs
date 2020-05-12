@@ -1377,72 +1377,7 @@ fn lmdb_fetch_last_header() {
     }
 }
 
-#[cfg(not(feature = "monero_merge_mining"))]
 fn fetch_target_difficulties<T: BlockchainBackend>(mut db: T) {
-    let mut header0 = BlockHeader::new(0);
-    header0.pow.pow_algo = PowAlgorithm::Blake;
-    header0.pow.target_difficulty = Difficulty::from(100);
-    let mut header1 = BlockHeader::from_previous(&header0);
-    header1.pow.pow_algo = PowAlgorithm::Blake;
-    header1.pow.target_difficulty = Difficulty::from(1000);
-    let mut header2 = BlockHeader::from_previous(&header1);
-    header2.pow.pow_algo = PowAlgorithm::Blake;
-    header2.pow.target_difficulty = Difficulty::from(2000);
-    let mut header3 = BlockHeader::from_previous(&header2);
-    header3.pow.pow_algo = PowAlgorithm::Blake;
-    header3.pow.target_difficulty = Difficulty::from(3000);
-    let mut header4 = BlockHeader::from_previous(&header3);
-    header4.pow.pow_algo = PowAlgorithm::Blake;
-    header4.pow.target_difficulty = Difficulty::from(4000);
-    let mut header5 = BlockHeader::from_previous(&header4);
-    header5.pow.pow_algo = PowAlgorithm::Blake;
-    header5.pow.target_difficulty = Difficulty::from(5000);
-    assert!(db.fetch_target_difficulties(PowAlgorithm::Blake, 5, 100).is_err());
-
-    let mut txn = DbTransaction::new();
-    txn.insert_header(header0.clone());
-    txn.insert_header(header1.clone());
-    txn.insert_header(header2.clone());
-    txn.insert_header(header3.clone());
-    txn.insert_header(header4.clone());
-    txn.insert_header(header5.clone());
-    txn.insert(DbKeyValuePair::Metadata(
-        MetadataKey::ChainHeight,
-        MetadataValue::ChainHeight(Some(header5.height)),
-    ));
-    assert!(db.write(txn).is_ok());
-
-    // Check block window constraint
-    let desired_targets: Vec<(EpochTime, Difficulty)> = vec![
-        (header2.timestamp, header2.pow.target_difficulty),
-        (header3.timestamp, header3.pow.target_difficulty),
-        (header4.timestamp, header4.pow.target_difficulty),
-    ];
-    assert_eq!(
-        db.fetch_target_difficulties(PowAlgorithm::Blake, header4.height, 3),
-        Ok(desired_targets)
-    );
-    let desired_targets: Vec<(EpochTime, Difficulty)> = vec![
-        (header1.timestamp, header1.pow.target_difficulty),
-        (header4.timestamp, header4.pow.target_difficulty),
-    ];
-    // Check search from tip to genesis block
-    let desired_targets: Vec<(EpochTime, Difficulty)> = vec![
-        (header0.timestamp, header0.pow.target_difficulty),
-        (header1.timestamp, header1.pow.target_difficulty),
-        (header2.timestamp, header2.pow.target_difficulty),
-        (header3.timestamp, header3.pow.target_difficulty),
-        (header4.timestamp, header4.pow.target_difficulty),
-        (header5.timestamp, header5.pow.target_difficulty),
-    ];
-    assert_eq!(
-        db.fetch_target_difficulties(PowAlgorithm::Blake, header5.height, 100),
-        Ok(desired_targets)
-    );
-}
-
-#[cfg(feature = "monero_merge_mining")]
-fn fetch_target_difficulties_merge_mine<T: BlockchainBackend>(mut db: T) {
     let mut header0 = BlockHeader::new(0);
     header0.pow.pow_algo = PowAlgorithm::Blake;
     header0.pow.target_difficulty = Difficulty::from(100);
@@ -1518,9 +1453,6 @@ fn fetch_target_difficulties_merge_mine<T: BlockchainBackend>(mut db: T) {
 #[test]
 fn memory_fetch_target_difficulties() {
     let db = MemoryDatabase::<HashDigest>::default();
-    #[cfg(feature = "monero_merge_mining")]
-    fetch_target_difficulties_merge_mine(db);
-    #[cfg(not(feature = "monero_merge_mining"))]
     fetch_target_difficulties(db);
 }
 
@@ -1532,9 +1464,6 @@ fn lmdb_fetch_target_difficulties() {
     // Perform test
     {
         let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
-        #[cfg(feature = "monero_merge_mining")]
-        fetch_target_difficulties_merge_mine(db);
-        #[cfg(not(feature = "monero_merge_mining"))]
         fetch_target_difficulties(db);
     }
 

@@ -134,7 +134,6 @@ impl ConsensusConstants {
     // This is the min initial difficulty that can be requested for the pow
     pub fn min_pow_difficulty(&self, pow_algo: PowAlgorithm) -> Difficulty {
         match pow_algo {
-            #[cfg(feature = "monero_merge_mining")]
             PowAlgorithm::Monero => self.min_pow_difficulty.0,
             PowAlgorithm::Blake => self.min_pow_difficulty.1,
         }

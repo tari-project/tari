@@ -51,26 +51,13 @@ fn test_median_timestamp_with_height() {
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_mem_db(&consensus_manager);
     let pow_algos: Vec<PowAlgorithm>;
-    #[cfg(feature = "monero_merge_mining")]
-    {
-        pow_algos = vec![
-            PowAlgorithm::Blake, // GB default
-            PowAlgorithm::Monero,
-            PowAlgorithm::Blake,
-            PowAlgorithm::Monero,
-            PowAlgorithm::Blake,
-        ];
-    }
-    #[cfg(not(feature = "monero_merge_mining"))]
-    {
-        pow_algos = vec![
-            PowAlgorithm::Blake, // GB default
-            PowAlgorithm::Blake,
-            PowAlgorithm::Blake,
-            PowAlgorithm::Blake,
-            PowAlgorithm::Blake,
-        ];
-    }
+    pow_algos = vec![
+        PowAlgorithm::Blake, // GB default
+        PowAlgorithm::Monero,
+        PowAlgorithm::Blake,
+        PowAlgorithm::Monero,
+        PowAlgorithm::Blake,
+    ];
     create_test_pow_blockchain(&store, pow_algos, &consensus_manager);
     let timestamp_count = 10;
 
