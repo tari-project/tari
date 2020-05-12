@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[cfg(feature = "monero_merge_mining")]
+use crate::proof_of_work::monero_rx::monero_difficulty;
 use crate::{
     blocks::BlockHeader,
-    proof_of_work::{blake_pow::blake_difficulty, monero_rx::monero_difficulty, Difficulty},
+    proof_of_work::{blake_pow::blake_difficulty, Difficulty},
 };
 use bytes::{self, BufMut};
 use serde::{Deserialize, Serialize};
@@ -37,6 +39,7 @@ pub trait AchievedDifficulty {}
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum PowAlgorithm {
+    #[cfg(feature = "monero_merge_mining")]
     Monero = 0,
     Blake = 1,
 }
@@ -55,6 +58,7 @@ impl TryFrom<u64> for PowAlgorithm {
 
     fn try_from(v: u64) -> Result<Self, Self::Error> {
         match v {
+            #[cfg(feature = "monero_merge_mining")]
             0 => Ok(PowAlgorithm::Monero),
             1 => Ok(PowAlgorithm::Blake),
             _ => Err("Invalid PoWAlgorithm".into()),
@@ -118,6 +122,7 @@ impl ProofOfWork {
     /// difficulty of one.
     pub fn achieved_difficulty(header: &BlockHeader) -> Difficulty {
         match header.pow.pow_algo {
+            #[cfg(feature = "monero_merge_mining")]
             PowAlgorithm::Monero => monero_difficulty(header),
             PowAlgorithm::Blake => blake_difficulty(header),
         }
@@ -149,6 +154,7 @@ impl ProofOfWork {
     /// total cumulative difficulty and the provided `added_difficulty`.
     pub fn new_from_difficulty(pow: &ProofOfWork, added_difficulty: Difficulty) -> ProofOfWork {
         let (m, b) = match pow.pow_algo {
+            #[cfg(feature = "monero_merge_mining")]
             PowAlgorithm::Monero => (
                 pow.accumulated_monero_difficulty + added_difficulty,
                 pow.accumulated_blake_difficulty,
@@ -201,6 +207,7 @@ impl ProofOfWork {
 impl Display for PowAlgorithm {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
         let algo = match self {
+            #[cfg(feature = "monero_merge_mining")]
             PowAlgorithm::Monero => "Monero",
             PowAlgorithm::Blake => "Blake",
         };
@@ -270,7 +277,20 @@ mod test {
     }
 
     #[test]
+    #[cfg(not(feature = "monero_merge_mining"))]
     fn add_difficulty() {
+        let mut pow = ProofOfWork::new(PowAlgorithm::Blake);
+        pow.accumulated_blake_difficulty = Difficulty::from(42);
+        pow.accumulated_monero_difficulty = Difficulty::from(420);
+        let mut pow2 = ProofOfWork::default();
+        pow2.add_difficulty(&pow, Difficulty::from(80));
+        assert_eq!(pow2.accumulated_blake_difficulty, Difficulty::from(122));
+        assert_eq!(pow2.accumulated_monero_difficulty, Difficulty::from(420));
+    }
+
+    #[test]
+    #[cfg(feature = "monero_merge_mining")]
+    fn add_difficulty_merge_mining() {
         let mut pow = ProofOfWork::new(PowAlgorithm::Monero);
         pow.accumulated_blake_difficulty = Difficulty::from(42);
         pow.accumulated_monero_difficulty = Difficulty::from(420);
