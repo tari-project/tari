@@ -204,6 +204,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 continue;
             }
 
+            let message_ids = messages.iter().map(|msg| msg.id).collect::<Vec<_>>();
             let stored_messages = StoredMessagesResponse {
                 messages: try_convert_all(messages)?,
                 request_id: retrieve_msgs.request_id,
@@ -216,7 +217,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 stored_messages.messages().len(),
                 resp_type
             );
-            self.outbound_service
+            match self
+                .outbound_service
                 .send_message_no_header(
                     SendMessageParams::new()
                         .direct_public_key(message.source_peer.public_key.clone())
@@ -224,7 +226,28 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                         .finish(),
                     stored_messages,
                 )
-                .await?;
+                .await?
+                .resolve_ok()
+                .await
+            {
+                Some(_) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Removing {:?} stored messages for peer '{}'",
+                        message_ids.len(),
+                        message.source_peer.node_id.short_str()
+                    );
+                    trace!(target: LOG_TARGET, "Removing stored messages: {:?}", message_ids,);
+                    self.saf_requester.remove_messages(message_ids).await?;
+                },
+                None => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to send stored messages to peer '{}'",
+                        message.source_peer.node_id.short_str()
+                    );
+                },
+            }
         }
 
         Ok(())

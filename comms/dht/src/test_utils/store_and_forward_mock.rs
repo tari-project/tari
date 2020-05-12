@@ -129,6 +129,11 @@ impl StoreAndForwardMock {
                 priority: msg.priority,
                 stored_at: Utc::now().naive_utc(),
             }),
+            RemoveMessages(message_ids) => {
+                for id in message_ids {
+                    self.state.stored_messages.write().await.retain(|msg| msg.id != id);
+                }
+            },
             SendStoreForwardRequestToPeer(_) => {},
             SendStoreForwardRequestNeighbours => {},
         }

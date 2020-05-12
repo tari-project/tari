@@ -57,6 +57,17 @@ impl StoreAndForwardDatabase {
             .await
     }
 
+    pub async fn remove_message(&self, message_ids: Vec<i32>) -> Result<usize, StorageError> {
+        self.connection
+            .with_connection_async(move |conn| {
+                diesel::delete(stored_messages::table)
+                    .filter(stored_messages::id.eq_any(message_ids))
+                    .execute(conn)
+                    .map_err(Into::into)
+            })
+            .await
+    }
+
     pub async fn find_messages_for_peer(
         &self,
         public_key: &CommsPublicKey,
@@ -274,5 +285,32 @@ mod test {
         db.insert_message(Default::default()).await.unwrap();
         let messages = db.get_all_messages().await.unwrap();
         assert_eq!(messages.len(), 1);
+    }
+
+    #[tokio_macros::test_basic]
+    async fn remove_messages() {
+        let conn = DbConnection::connect_memory(random::string(8)).await.unwrap();
+        conn.migrate().await.unwrap();
+        let db = StoreAndForwardDatabase::new(conn);
+        // Create 3 unique messages
+        let mut msg1 = NewStoredMessage::default();
+        msg1.body.push(1u8);
+        let mut msg2 = NewStoredMessage::default();
+        msg2.body.push(2u8);
+        let mut msg3 = NewStoredMessage::default();
+        msg3.body.push(3u8);
+        db.insert_message(msg1.clone()).await.unwrap();
+        db.insert_message(msg2.clone()).await.unwrap();
+        db.insert_message(msg3.clone()).await.unwrap();
+        let messages = db.get_all_messages().await.unwrap();
+        assert_eq!(messages.len(), 3);
+        let msg1_id = messages[0].id;
+        let msg2_id = messages[1].id;
+        let msg3_id = messages[2].id;
+
+        db.remove_message(vec![msg1_id, msg3_id]).await.unwrap();
+        let messages = db.get_all_messages().await.unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].id, msg2_id);
     }
 }
