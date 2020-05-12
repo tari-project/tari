@@ -39,7 +39,6 @@ pub trait AchievedDifficulty {}
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum PowAlgorithm {
-    #[cfg(feature = "monero_merge_mining")]
     Monero = 0,
     Blake = 1,
 }
@@ -58,7 +57,6 @@ impl TryFrom<u64> for PowAlgorithm {
 
     fn try_from(v: u64) -> Result<Self, Self::Error> {
         match v {
-            #[cfg(feature = "monero_merge_mining")]
             0 => Ok(PowAlgorithm::Monero),
             1 => Ok(PowAlgorithm::Blake),
             _ => Err("Invalid PoWAlgorithm".into()),
@@ -124,6 +122,8 @@ impl ProofOfWork {
         match header.pow.pow_algo {
             #[cfg(feature = "monero_merge_mining")]
             PowAlgorithm::Monero => monero_difficulty(header),
+            #[cfg(not(feature = "monero_merge_mining"))]
+            PowAlgorithm::Monero => Difficulty(1),
             PowAlgorithm::Blake => blake_difficulty(header),
         }
     }
@@ -154,7 +154,6 @@ impl ProofOfWork {
     /// total cumulative difficulty and the provided `added_difficulty`.
     pub fn new_from_difficulty(pow: &ProofOfWork, added_difficulty: Difficulty) -> ProofOfWork {
         let (m, b) = match pow.pow_algo {
-            #[cfg(feature = "monero_merge_mining")]
             PowAlgorithm::Monero => (
                 pow.accumulated_monero_difficulty + added_difficulty,
                 pow.accumulated_blake_difficulty,
@@ -207,7 +206,6 @@ impl ProofOfWork {
 impl Display for PowAlgorithm {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
         let algo = match self {
-            #[cfg(feature = "monero_merge_mining")]
             PowAlgorithm::Monero => "Monero",
             PowAlgorithm::Blake => "Blake",
         };

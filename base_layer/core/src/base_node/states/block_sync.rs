@@ -219,7 +219,7 @@ impl BestChainMetadataBlockSyncInfo {
                 StateEvent::BlockSyncFailure
             },
             Err(BlockSyncError::CommsInterfaceError(e)) => {
-                warn!(target: LOG_TARGET, "Unable to perform network queries: {}", e);
+                warn!(target: LOG_TARGET, "Unable to perform network queries: {:?}", e);
                 StateEvent::BlockSyncFailure
             },
             Err(e) => StateEvent::FatalError(format!("Synchronizing blocks failed. {:?}", e)),
