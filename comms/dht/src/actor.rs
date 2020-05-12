@@ -46,6 +46,7 @@ use futures::{
     StreamExt,
 };
 use log::*;
+use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{fmt, fmt::Display, sync::Arc};
 use tari_comms::{
     connection_manager::{ConnectionManagerError, ConnectionManagerRequester},
@@ -433,54 +434,121 @@ impl<'a> DhtActor<'a> {
                     .collect())
             },
             Neighbours(exclude) => {
-                let candidates = Self::get_propagate_candidates(
+                let active_connections = connection_manager.get_active_connections().await?;
+                let (connected_nodes, connected_clients) = active_connections
+                    .into_iter()
+                    .map(|conn| conn.peer())
+                    .partition::<Vec<_>, _>(|peer| peer.features.contains(PeerFeatures::COMMUNICATION_NODE));
+                let mut candidates = Self::get_propagate_candidates(
                     &config,
                     &peer_manager,
-                    &mut connection_manager,
+                    &connected_clients,
+                    &connected_nodes,
                     &node_identity,
                     node_identity.node_id().clone(),
                     &exclude,
                 )
                 .await?;
 
+                candidates.truncate(config.num_neighbouring_nodes);
+
+                info!(
+                    target: LOG_TARGET,
+                    "{} candidate(s) selected for broadcast",
+                    candidates.len()
+                );
+
                 Ok(candidates)
             },
             Propagate(destination, exclude) => {
-                let dest_node_id = destination
-                    .node_id()
-                    .map(Clone::clone)
-                    .or_else(|| destination.public_key().and_then(|pk| NodeId::from_key(pk).ok()));
+                let active_connections = connection_manager.get_active_connections().await?;
+                let (connected_nodes, connected_clients) = active_connections
+                    .into_iter()
+                    .map(|conn| conn.peer())
+                    .partition::<Vec<_>, _>(|peer| peer.features.contains(PeerFeatures::COMMUNICATION_NODE));
 
-                let mut candidates = Self::get_propagate_candidates(
-                    &config,
-                    &peer_manager,
-                    &mut connection_manager,
-                    &node_identity,
-                    dest_node_id.clone().unwrap_or_else(|| node_identity.node_id().clone()),
-                    &exclude,
-                )
-                .await?;
+                debug!(
+                    target: LOG_TARGET,
+                    "{} connected node(s), {} connected client(s)",
+                    connected_nodes.len(),
+                    connected_clients.len()
+                );
 
-                // Exclude candidates that are further away from the destination than this node
-                // unless this node has not selected a big enough sample i.e. this node is not well connected
-                if candidates.len() >= config.num_neighbouring_nodes {
-                    if let Some(node_id) = dest_node_id {
-                        let dist_from_dest = node_identity.node_id().distance(&node_id);
-                        let before_len = candidates.len();
-                        candidates = candidates
-                            .into_iter()
-                            .filter(|p| p.node_id.distance(&node_id) < dist_from_dest)
+                if destination.is_unknown() {
+                    // If the message has an unknown destination, propagate to random peers
+                    if connected_nodes.len() >= config.num_neighbouring_nodes {
+                        let candidates = connected_nodes
+                            .choose_multiple(&mut OsRng, config.num_propagation_nodes())
+                            .cloned()
                             .collect();
-
                         debug!(
                             target: LOG_TARGET,
-                            "Filtered out {} node(s) that are further away than this node.",
-                            before_len - candidates.len()
+                            "Selected {} candidates for propagation to undefined destination from a pool of {} active \
+                             connections",
+                            config.num_neighbouring_nodes,
+                            connected_nodes.len()
                         );
+                        Ok(candidates)
+                    } else {
+                        let random_peers = peer_manager
+                            .random_peers(config.num_propagation_nodes(), &exclude)
+                            .await?
+                            .into_iter()
+                            .map(Arc::new)
+                            .collect::<Vec<_>>();
+                        debug!(
+                            target: LOG_TARGET,
+                            "Selected {} random candidates for propagation to undefined destination",
+                            random_peers.len(),
+                        );
+                        Ok(random_peers)
                     }
-                }
+                } else {
+                    let dest_node_id = destination
+                        .node_id()
+                        .map(Clone::clone)
+                        .or_else(|| destination.public_key().and_then(|pk| NodeId::from_key(pk).ok()));
 
-                Ok(candidates)
+                    let mut candidates = Self::get_propagate_candidates(
+                        &config,
+                        &peer_manager,
+                        &connected_clients,
+                        &connected_nodes,
+                        &node_identity,
+                        dest_node_id.clone().unwrap_or_else(|| node_identity.node_id().clone()),
+                        &exclude,
+                    )
+                    .await?;
+
+                    // Exclude candidates that are further away from the destination than this node
+                    // unless this node has not selected a big enough sample i.e. this node is not well connected
+                    if candidates.len() >= config.num_neighbouring_nodes {
+                        if let Some(node_id) = dest_node_id {
+                            let dist_from_dest = node_identity.node_id().distance(&node_id);
+                            let before_len = candidates.len();
+                            candidates = candidates
+                                .into_iter()
+                                .filter(|p| p.node_id.distance(&node_id) < dist_from_dest)
+                                .collect();
+
+                            debug!(
+                                target: LOG_TARGET,
+                                "Filtered out {} node(s) that are further away than this node.",
+                                before_len - candidates.len()
+                            );
+                        }
+                    }
+
+                    candidates.truncate(config.num_propagation_nodes());
+                    info!(
+                        target: LOG_TARGET,
+                        "{} candidate(s) selected for propagation to {}",
+                        candidates.len(),
+                        destination
+                    );
+
+                    Ok(candidates)
+                }
             },
         }
     }
@@ -488,33 +556,25 @@ impl<'a> DhtActor<'a> {
     async fn get_propagate_candidates(
         config: &DhtConfig,
         peer_manager: &PeerManager,
-        connection_manager: &mut ConnectionManagerRequester,
+        connected_clients: &[Arc<Peer>],
+        connected_nodes: &[Arc<Peer>],
         node_identity: &NodeIdentity,
         dest_node_id: NodeId,
         exclude: &[NodeId],
     ) -> Result<Vec<Arc<Peer>>, DhtActorError>
     {
-        let active_connections = connection_manager.get_active_connections().await?;
-        let (connected_nodes, connected_clients) = active_connections
-            .into_iter()
-            .map(|conn| conn.peer())
-            .partition::<Vec<_>, _>(|peer| peer.features.contains(PeerFeatures::COMMUNICATION_NODE));
-
-        debug!(
-            target: LOG_TARGET,
-            "{} nodes and {} clients are connected",
-            connected_nodes.len(),
-            connected_clients.len()
-        );
-
         // If a connected wallet matches the destination, just send it to them
         if let Some(client) = connected_clients.iter().find(|peer| peer.node_id == dest_node_id) {
-            debug!(
-                target: LOG_TARGET,
-                "Message destination is for the connected client '{}'. Sending to connected client only.",
-                client.node_id
-            );
-            return Ok(vec![client.clone()]);
+            // If we're excluding the client for this propagation (as is the case for join messages)
+            // do a normal propagation
+            if !exclude.contains(&client.node_id) {
+                debug!(
+                    target: LOG_TARGET,
+                    "Message destination is for the connected client '{}'. Sending to connected client only.",
+                    client.node_id
+                );
+                return Ok(vec![client.clone()]);
+            }
         }
 
         let mut candidates = Self::select_closest_peers_for_propagation(
@@ -530,8 +590,9 @@ impl<'a> DhtActor<'a> {
 
         // Add any other communication nodes that are connected.
         let connected_nodes = connected_nodes
-            .into_iter()
+            .iter()
             .filter(|peer| !candidates.contains(&peer))
+            .cloned()
             .collect::<Vec<_>>();
         candidates.extend(connected_nodes);
 
@@ -547,13 +608,6 @@ impl<'a> DhtActor<'a> {
             let node_b_dist = b.node_id.distance(&dest_node_id);
             node_a_dist.cmp(&node_b_dist)
         });
-        candidates.truncate(config.num_neighbouring_nodes);
-
-        info!(
-            target: LOG_TARGET,
-            "{} candidate(s) selected for propagation",
-            candidates.len()
-        );
 
         Ok(candidates)
     }
@@ -834,7 +888,7 @@ mod test {
         actor.spawn().await.unwrap();
 
         assert!(requester
-            .get_metadata::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp,)
+            .get_metadata::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp)
             .await
             .unwrap()
             .is_none());
