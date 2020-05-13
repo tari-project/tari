@@ -42,6 +42,8 @@ use tari_crypto::tari_utilities::{
 const NODE_ID_ARRAY_SIZE: usize = 13; // 104-bit as per RFC-0151
 type NodeIdArray = [u8; NODE_ID_ARRAY_SIZE];
 
+pub type NodeDistance = XorDistance; // or HammingDistance
+
 #[derive(Debug, Error, Clone)]
 pub enum NodeIdError {
     IncorrectByteCount,
@@ -49,66 +51,122 @@ pub enum NodeIdError {
     DigestError,
 }
 
-/// Hold the XOR distance calculated between two NodeId's. This is used for DHT-style routing.
+//------------------------------------- XOR Metric -----------------------------------------------//
+const NODE_XOR_DISTANCE_ARRAY_SIZE: usize = NODE_ID_ARRAY_SIZE;
+type NodeXorDistanceArray = [u8; NODE_XOR_DISTANCE_ARRAY_SIZE];
+
 #[derive(Clone, Debug, Eq, PartialOrd, Ord, Default)]
-pub struct NodeDistance(NodeIdArray);
+pub struct XorDistance(NodeXorDistanceArray);
 
-impl NodeDistance {
+impl XorDistance {
     /// Construct a new zero distance
-    pub fn new() -> NodeDistance {
-        NodeDistance([0; NODE_ID_ARRAY_SIZE])
+    pub fn new() -> Self {
+        Self([0; NODE_XOR_DISTANCE_ARRAY_SIZE])
     }
 
-    /// Calculate the distance between two node ids using the XOR metric
-    pub fn from_node_ids(x: &NodeId, y: &NodeId) -> NodeDistance {
-        let mut nd = NodeDistance::new();
-        for i in 0..nd.0.len() {
-            nd.0[i] = x.0[i] ^ y.0[i];
-        }
-        nd
+    /// Calculate the distance between two node ids using the Hamming distance.
+    pub fn from_node_ids(x: &NodeId, y: &NodeId) -> Self {
+        Self(xor(&x.0, &y.0))
     }
 
-    pub const fn max_distance() -> NodeDistance {
-        NodeDistance([255; NODE_ID_ARRAY_SIZE])
-    }
-
-    /// Calculate the hamming distance (the number of set (1) bits of the XOR metric)
-    pub fn hamming_distance(&self) -> u8 {
-        let xor_bytes = &self.0;
-        let mut set_bit_count = 0u8;
-        for b in xor_bytes {
-            let mut mask = 0b1u8;
-            for _ in 0..8 {
-                if b & mask > 0 {
-                    set_bit_count += 1;
-                }
-                mask <<= 1;
-            }
-        }
-
-        set_bit_count
+    /// Returns the maximum distance.
+    pub const fn max_distance() -> Self {
+        Self([255; NODE_XOR_DISTANCE_ARRAY_SIZE])
     }
 }
 
-impl PartialEq for NodeDistance {
-    fn eq(&self, nd: &NodeDistance) -> bool {
+impl PartialEq for XorDistance {
+    fn eq(&self, nd: &XorDistance) -> bool {
         self.0 == nd.0
     }
 }
 
-impl TryFrom<&[u8]> for NodeDistance {
+impl TryFrom<&[u8]> for XorDistance {
     type Error = NodeIdError;
 
-    /// Construct a node distance from 32 bytes
+    /// Construct a node distance from a set of bytes
     fn try_from(elements: &[u8]) -> Result<Self, Self::Error> {
-        if elements.len() >= NODE_ID_ARRAY_SIZE {
-            let mut bytes = [0; NODE_ID_ARRAY_SIZE];
-            bytes.copy_from_slice(&elements[0..NODE_ID_ARRAY_SIZE]);
-            Ok(NodeDistance(bytes))
+        if elements.len() >= NODE_XOR_DISTANCE_ARRAY_SIZE {
+            let mut bytes = [0; NODE_XOR_DISTANCE_ARRAY_SIZE];
+            bytes.copy_from_slice(&elements[0..NODE_XOR_DISTANCE_ARRAY_SIZE]);
+            Ok(XorDistance(bytes))
         } else {
             Err(NodeIdError::IncorrectByteCount)
         }
     }
+}
+
+//---------------------------------- Hamming Distance --------------------------------------------//
+const NODE_HAMMING_DISTANCE_ARRAY_SIZE: usize = 1;
+type NodeHammingDistanceArray = [u8; NODE_HAMMING_DISTANCE_ARRAY_SIZE];
+
+/// Hold the distance calculated between two NodeId's. This is used for DHT-style routing.
+#[derive(Clone, Debug, Eq, PartialOrd, Ord, Default)]
+pub struct HammingDistance(NodeHammingDistanceArray);
+
+impl HammingDistance {
+    /// Construct a new zero distance
+    pub fn new() -> Self {
+        Self([0; NODE_HAMMING_DISTANCE_ARRAY_SIZE])
+    }
+
+    /// Calculate the distance between two node ids using the Hamming distance.
+    pub fn from_node_ids(x: &NodeId, y: &NodeId) -> Self {
+        let xor_bytes = xor(&x.0, &y.0);
+        Self([hamming_distance(xor_bytes)])
+    }
+
+    /// Returns the maximum distance.
+    pub const fn max_distance() -> Self {
+        Self([255; NODE_HAMMING_DISTANCE_ARRAY_SIZE])
+    }
+}
+
+impl TryFrom<&[u8]> for HammingDistance {
+    type Error = NodeIdError;
+
+    /// Construct a node distance from a set of bytes
+    fn try_from(elements: &[u8]) -> Result<Self, Self::Error> {
+        if elements.len() >= NODE_HAMMING_DISTANCE_ARRAY_SIZE {
+            let mut bytes = [0; NODE_HAMMING_DISTANCE_ARRAY_SIZE];
+            bytes.copy_from_slice(&elements[0..NODE_HAMMING_DISTANCE_ARRAY_SIZE]);
+            Ok(HammingDistance(bytes))
+        } else {
+            Err(NodeIdError::IncorrectByteCount)
+        }
+    }
+}
+
+impl PartialEq for HammingDistance {
+    fn eq(&self, nd: &HammingDistance) -> bool {
+        self.0 == nd.0
+    }
+}
+
+/// Calculate the Exclusive OR between the node_id x and y.
+fn xor(x: &NodeIdArray, y: &NodeIdArray) -> NodeIdArray {
+    let mut nd = [0u8; NODE_ID_ARRAY_SIZE];
+    for i in 0..nd.len() {
+        nd[i] = x[i] ^ y[i];
+    }
+    nd
+}
+
+/// Calculate the hamming distance (the number of set (1) bits of the XOR metric)
+fn hamming_distance(nd: NodeIdArray) -> u8 {
+    let xor_bytes = &nd;
+    let mut set_bit_count = 0u8;
+    for b in xor_bytes {
+        let mut mask = 0b1u8;
+        for _ in 0..8 {
+            if b & mask > 0 {
+                set_bit_count += 1;
+            }
+            mask <<= 1;
+        }
+    }
+
+    set_bit_count
 }
 
 impl ByteArray for NodeDistance {
@@ -131,6 +189,8 @@ impl fmt::Display for NodeDistance {
         write!(f, "{}", to_hex(&self.0))
     }
 }
+
+//--------------------------------------- NodeId -------------------------------------------------//
 
 /// A Node Identity is used as a unique identifier for a node in the Tari communications network.
 #[derive(Clone, Eq, Deserialize, Serialize, Default)]
@@ -372,6 +432,7 @@ mod test {
         .unwrap();
         assert!(node_id1.0 < node_id2.0);
         assert!(node_id1.0 > node_id3.0);
+        // XOR metric
         let desired_n1_to_n2_dist = NodeDistance::try_from(
             [
                 42, 55, 84, 126, 224, 19, 209, 195, 152, 163, 29, 237, 204, 128, 24, 118, 219, 83, 231, 183, 238, 237,
@@ -388,9 +449,21 @@ mod test {
             .as_bytes(),
         )
         .unwrap();
+        // Hamming distance
+        // let desired_n1_to_n2_dist_bytes: &[u8] = &vec![52u8];
+        // let desired_n1_to_n2_dist = NodeDistance::try_from(desired_n1_to_n2_dist_bytes).unwrap();
+        // let desired_n1_to_n3_dist = NodeDistance::try_from(
+        // [
+        // 46, 60, 156, 87, 176, 12, 14, 44, 23, 63, 41, 51, 128, 253, 119, 4, 27, 174, 245, 134, 13, 225, 214,
+        // 165, 57, 7, 65, 59, 146, 21, 133, 81,
+        // ]
+        // .as_bytes(),
+        // )
+        // .unwrap(); // Unused bytes will be discarded
         let n1_to_n2_dist = node_id1.distance(&node_id2);
         let n1_to_n3_dist = node_id1.distance(&node_id3);
-        assert!(n1_to_n2_dist < n1_to_n3_dist);
+        assert!(n1_to_n2_dist < n1_to_n3_dist); // XOR metric
+                                                // assert!(n1_to_n2_dist > n1_to_n3_dist); // Hamming Distance
         assert_eq!(n1_to_n2_dist, desired_n1_to_n2_dist);
         assert_eq!(n1_to_n3_dist, desired_n1_to_n3_dist);
 
@@ -421,6 +494,7 @@ mod test {
             Ok(knn_node_ids) => {
                 println!(" KNN = {:?}", knn_node_ids);
                 assert_eq!(knn_node_ids.len(), k);
+                // XOR metric nearest neighbours
                 assert_eq!(knn_node_ids[0].0, [
                     173, 218, 34, 188, 211, 173, 235, 82, 18, 159, 55, 47, 242
                 ]);
@@ -430,6 +504,16 @@ mod test {
                 assert_eq!(knn_node_ids[2].0, [
                     143, 189, 32, 210, 30, 231, 82, 5, 86, 85, 28, 82, 154
                 ]);
+                // Hamming distance nearest neighbours
+                // assert_eq!(knn_node_ids[0].0, [
+                // 75, 146, 162, 130, 22, 63, 247, 182, 156, 103, 174, 32, 134
+                // ]);
+                // assert_eq!(knn_node_ids[1].0, [
+                // 134, 116, 78, 53, 246, 206, 200, 147, 126, 96, 54, 113, 67
+                // ]);
+                // assert_eq!(knn_node_ids[2].0, [
+                // 144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159
+                // ]);
             },
             Err(_e) => assert!(false),
         };
@@ -464,7 +548,7 @@ mod test {
         let node_id1 = NodeId::from_bytes(node_id1.as_slice()).unwrap();
         let node_id2 = NodeId::from_bytes(node_id2.as_slice()).unwrap();
 
-        let hamming_dist = NodeDistance::from_node_ids(&node_id1, &node_id2).hamming_distance();
-        assert_eq!(hamming_dist, 18);
+        let hamming_dist = HammingDistance::from_node_ids(&node_id1, &node_id2);
+        assert_eq!(hamming_dist, HammingDistance([18]));
     }
 }
