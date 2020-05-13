@@ -23,6 +23,7 @@
 use crate::{
     backoff::ConstantBackoff,
     connection_manager::{ConnectionManager, ConnectionManagerConfig, ConnectionManagerRequester},
+    multiplexing::Substream,
     noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
     protocol::Protocols,
@@ -70,7 +71,7 @@ impl Default for TestNodeConfig {
 pub fn build_connection_manager(
     config: TestNodeConfig,
     peer_manager: Arc<PeerManager>,
-    protocols: Protocols<yamux::Stream>,
+    protocols: Protocols<Substream>,
     shutdown: ShutdownSignal,
 ) -> ConnectionManagerRequester
 {

@@ -26,11 +26,10 @@ use super::{
     types::ConnectionDirection,
 };
 use crate::{
-    multiplexing::{IncomingSubstreams, Yamux},
+    multiplexing::{Control, IncomingSubstreams, Substream, Yamux},
     peer_manager::{NodeId, Peer, PeerFeatures},
     protocol::{ProtocolId, ProtocolNegotiation},
     runtime,
-    types::CommsSubstream,
 };
 use futures::{
     channel::{mpsc, oneshot},
@@ -92,7 +91,7 @@ pub enum PeerConnectionRequest {
     /// Open a new substream and negotiate the given protocol
     OpenSubstream(
         ProtocolId,
-        oneshot::Sender<Result<NegotiatedSubstream<CommsSubstream>, PeerConnectionError>>,
+        oneshot::Sender<Result<NegotiatedSubstream<Substream>, PeerConnectionError>>,
     ),
     /// Disconnect all substreams and close the transport connection
     Disconnect(bool, oneshot::Sender<()>),
@@ -167,7 +166,7 @@ impl PeerConnection {
     pub async fn open_substream(
         &mut self,
         protocol_id: &ProtocolId,
-    ) -> Result<NegotiatedSubstream<CommsSubstream>, PeerConnectionError>
+    ) -> Result<NegotiatedSubstream<Substream>, PeerConnectionError>
     {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.request_tx
@@ -220,7 +219,7 @@ pub struct PeerConnectionActor {
     direction: ConnectionDirection,
     incoming_substreams: Fuse<IncomingSubstreams>,
     substream_shutdown: Option<Shutdown>,
-    control: yamux::Control,
+    control: Control,
     event_notifier: mpsc::Sender<ConnectionManagerEvent>,
     supported_protocols: Vec<ProtocolId>,
     shutdown: bool,
@@ -309,7 +308,7 @@ impl PeerConnectionActor {
         }
     }
 
-    async fn handle_incoming_substream(&mut self, mut stream: yamux::Stream) -> Result<(), PeerConnectionError> {
+    async fn handle_incoming_substream(&mut self, mut stream: Substream) -> Result<(), PeerConnectionError> {
         let selected_protocol = ProtocolNegotiation::new(&mut stream)
             .negotiate_protocol_inbound(&self.supported_protocols)
             .await?;
@@ -327,7 +326,7 @@ impl PeerConnectionActor {
     async fn open_negotiated_protocol_stream(
         &mut self,
         protocol: ProtocolId,
-    ) -> Result<NegotiatedSubstream<CommsSubstream>, PeerConnectionError>
+    ) -> Result<NegotiatedSubstream<Substream>, PeerConnectionError>
     {
         debug!(
             target: LOG_TARGET,

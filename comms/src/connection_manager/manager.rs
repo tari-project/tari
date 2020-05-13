@@ -30,6 +30,7 @@ use super::{
 };
 use crate::{
     backoff::Backoff,
+    multiplexing::Substream,
     noise::NoiseConfig,
     peer_manager::{NodeId, NodeIdentity},
     protocol::{ProtocolEvent, ProtocolId, Protocols},
@@ -72,7 +73,7 @@ pub enum ConnectionManagerEvent {
     ListenFailed(ConnectionManagerError),
 
     // Substreams
-    NewInboundSubstream(Box<NodeId>, ProtocolId, yamux::Stream),
+    NewInboundSubstream(Box<NodeId>, ProtocolId, Substream),
 }
 
 impl fmt::Display for ConnectionManagerEvent {
@@ -157,7 +158,7 @@ pub struct ConnectionManager<TTransport, TBackoff> {
     node_identity: Arc<NodeIdentity>,
     active_connections: HashMap<NodeId, PeerConnection>,
     shutdown_signal: Option<ShutdownSignal>,
-    protocols: Protocols<yamux::Stream>,
+    protocols: Protocols<Substream>,
     listener_address: Option<Multiaddr>,
     listening_notifiers: Vec<oneshot::Sender<Multiaddr>>,
     connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
@@ -179,7 +180,7 @@ where
         request_rx: mpsc::Receiver<ConnectionManagerRequest>,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
-        protocols: Protocols<yamux::Stream>,
+        protocols: Protocols<Substream>,
         connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
         shutdown_signal: ShutdownSignal,
     ) -> Self

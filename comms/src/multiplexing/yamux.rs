@@ -33,20 +33,22 @@ use futures::{
     StreamExt,
 };
 use log::*;
-use std::{io, pin::Pin, task::Poll};
+use std::{future::Future, io, pin::Pin, sync::Arc, task::Poll};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use yamux::Mode;
 
 type IncomingRx = mpsc::Receiver<yamux::Stream>;
 type IncomingTx = mpsc::Sender<yamux::Stream>;
 
-pub type Control = yamux::Control;
+// Reexport
+pub use yamux::ConnectionError;
 
 const LOG_TARGET: &str = "comms::multiplexing::yamux";
 
 pub struct Yamux {
     control: Control,
     incoming: IncomingSubstreams,
+    substream_counter: SubstreamCounter,
 }
 
 const MAX_BUFFER_SIZE: u32 = 8 * 1024 * 1024; // 8MB
@@ -72,28 +74,37 @@ impl Yamux {
         config.set_max_buffer_size(MAX_BUFFER_SIZE as usize);
         config.set_receive_window(RECEIVE_WINDOW);
 
+        let substream_counter = SubstreamCounter::new();
         let connection = yamux::Connection::new(socket, config, mode);
-        let control = connection.control();
+        let control = Control::new(connection.control(), substream_counter.clone());
+        let incoming = Self::spawn_incoming_stream_worker(connection, substream_counter.clone());
 
-        let incoming = Self::spawn_incoming_stream_worker(connection);
-
-        Ok(Self { control, incoming })
+        Ok(Self {
+            control,
+            incoming,
+            substream_counter,
+        })
     }
 
     // yamux@0.4 requires the incoming substream stream be polled in order to make progress on requests from it's
     // Control api. Here we spawn off a worker which will do this job
-    fn spawn_incoming_stream_worker<TSocket>(connection: yamux::Connection<TSocket>) -> IncomingSubstreams
-    where TSocket: AsyncRead + AsyncWrite + Unpin + Send + 'static {
+    fn spawn_incoming_stream_worker<TSocket>(
+        connection: yamux::Connection<TSocket>,
+        counter: SubstreamCounter,
+    ) -> IncomingSubstreams
+    where
+        TSocket: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    {
         let shutdown = Shutdown::new();
         let (incoming_tx, incoming_rx) = mpsc::channel(10);
         let stream = yamux::into_stream(connection).boxed();
         let incoming = IncomingWorker::new(stream, incoming_tx, shutdown.to_signal());
         runtime::current_executor().spawn(incoming.run());
-        IncomingSubstreams::new(incoming_rx, shutdown)
+        IncomingSubstreams::new(incoming_rx, counter, shutdown)
     }
 
     /// Get the yamux control struct
-    pub fn get_yamux_control(&self) -> yamux::Control {
+    pub fn get_yamux_control(&self) -> Control {
         self.control.clone()
     }
 
@@ -107,19 +118,66 @@ impl Yamux {
         self.incoming
     }
 
+    /// Return the number of active substreams
+    pub fn substream_count(&self) -> usize {
+        self.substream_counter.count()
+    }
+
     pub fn is_terminated(&self) -> bool {
         self.incoming.is_terminated()
     }
 }
 
+#[derive(Clone)]
+pub struct Control {
+    inner: yamux::Control,
+    substream_counter: SubstreamCounter,
+}
+
+impl Control {
+    pub fn new(inner: yamux::Control, substream_counter: SubstreamCounter) -> Self {
+        Self {
+            inner,
+            substream_counter,
+        }
+    }
+
+    /// Open a new stream to the remote.
+    pub async fn open_stream(&mut self) -> Result<Substream, ConnectionError> {
+        let stream = self.inner.open_stream().await?;
+        Ok(Substream {
+            stream,
+            counter_guard: self.substream_counter.new_guard(),
+        })
+    }
+
+    /// Close the connection.
+    pub fn close(&mut self) -> impl Future<Output = Result<(), ConnectionError>> + '_ {
+        self.inner.close()
+    }
+
+    pub fn substream_count(&self) -> usize {
+        self.substream_counter.count()
+    }
+}
+
 pub struct IncomingSubstreams {
     inner: IncomingRx,
+    substream_counter: SubstreamCounter,
     shutdown: Shutdown,
 }
 
 impl IncomingSubstreams {
-    pub fn new(inner: IncomingRx, shutdown: Shutdown) -> Self {
-        Self { inner, shutdown }
+    pub fn new(inner: IncomingRx, substream_counter: SubstreamCounter, shutdown: Shutdown) -> Self {
+        Self {
+            inner,
+            substream_counter,
+            shutdown,
+        }
+    }
+
+    pub fn substream_count(&self) -> usize {
+        self.substream_counter.count()
     }
 }
 
@@ -130,16 +188,48 @@ impl FusedStream for IncomingSubstreams {
 }
 
 impl Stream for IncomingSubstreams {
-    type Item = yamux::Stream;
+    type Item = Substream;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        Pin::new(&mut self.inner).poll_next(cx)
+        match futures::ready!(Pin::new(&mut self.inner).poll_next(cx)) {
+            Some(stream) => Poll::Ready(Some(Substream {
+                stream,
+                counter_guard: self.substream_counter.new_guard(),
+            })),
+            None => Poll::Ready(None),
+        }
     }
 }
 
 impl Drop for IncomingSubstreams {
     fn drop(&mut self) {
         let _ = self.shutdown.trigger();
+    }
+}
+
+#[derive(Debug)]
+pub struct Substream {
+    stream: yamux::Stream,
+    counter_guard: CounterGuard,
+}
+
+impl AsyncRead for Substream {
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<io::Result<usize>> {
+        Pin::new(&mut self.stream).poll_read(cx, buf)
+    }
+}
+
+impl AsyncWrite for Substream {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+        Pin::new(&mut self.stream).poll_write(cx, buf)
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.stream).poll_flush(cx)
+    }
+
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.stream).poll_close(cx)
     }
 }
 
@@ -209,6 +299,28 @@ where S: Stream<Item = Result<yamux::Stream, yamux::ConnectionError>> + Unpin
     }
 }
 
+pub type CounterGuard = Arc<()>;
+#[derive(Debug, Clone, Default)]
+pub struct SubstreamCounter(Arc<CounterGuard>);
+
+impl SubstreamCounter {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    /// Create a new CounterGuard. Each of these counts 1 in the substream count
+    /// until it is dropped.
+    pub fn new_guard(&self) -> CounterGuard {
+        Arc::clone(&*self.0)
+    }
+
+    /// Get the substream count
+    pub fn count(&self) -> usize {
+        // Substract one to account for the initial CounterGuard reference
+        Arc::strong_count(&*self.0) - 1
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::{connection_manager::ConnectionDirection, memsocket::MemorySocket, multiplexing::yamux::Yamux};
@@ -217,21 +329,21 @@ mod test {
         io::{AsyncReadExt, AsyncWriteExt},
         StreamExt,
     };
-    use std::io;
-    use tokio::runtime::Handle;
+    use std::{io, time::Duration};
+    use tari_test_utils::collect_stream;
+    use tokio::task;
 
     #[tokio_macros::test_basic]
     async fn open_substream() -> io::Result<()> {
         let (dialer, listener) = MemorySocket::new_pair();
         let msg = b"The Way of Kings";
-        let rt_handle = Handle::current();
 
         let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound)
             .await
             .unwrap();
         let mut dialer_control = dialer.get_yamux_control();
 
-        rt_handle.spawn(async move {
+        task::spawn(async move {
             let mut substream = dialer_control.open_stream().await.unwrap();
 
             substream.write_all(msg).await.unwrap();
@@ -255,15 +367,48 @@ mod test {
     }
 
     #[tokio_macros::test_basic]
+    async fn substream_count() {
+        const NUM_SUBSTREAMS: usize = 10;
+        let (dialer, listener) = MemorySocket::new_pair();
+
+        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound)
+            .await
+            .unwrap();
+        let mut dialer_control = dialer.get_yamux_control();
+
+        let substreams_out = task::spawn(async move {
+            let mut substreams = Vec::with_capacity(NUM_SUBSTREAMS);
+            for _ in 0..NUM_SUBSTREAMS {
+                substreams.push(dialer_control.open_stream().await.unwrap());
+            }
+            substreams
+        });
+
+        let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)
+            .await
+            .unwrap()
+            .incoming();
+        let substreams_in = collect_stream!(&mut listener, take = NUM_SUBSTREAMS, timeout = Duration::from_secs(10));
+
+        assert_eq!(dialer.substream_count(), NUM_SUBSTREAMS);
+        assert_eq!(listener.substream_count(), NUM_SUBSTREAMS);
+
+        drop(substreams_in);
+        drop(substreams_out);
+
+        assert_eq!(dialer.substream_count(), 0);
+        assert_eq!(listener.substream_count(), 0);
+    }
+
+    #[tokio_macros::test_basic]
     async fn close() -> io::Result<()> {
         let (dialer, listener) = MemorySocket::new_pair();
         let msg = b"Words of Radiance";
-        let rt_handle = Handle::current();
 
         let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound).await?;
         let mut dialer_control = dialer.get_yamux_control();
 
-        rt_handle.spawn(async move {
+        task::spawn(async move {
             let mut substream = dialer_control.open_stream().await.unwrap();
 
             substream.write_all(msg).await.unwrap();
@@ -278,9 +423,6 @@ mod test {
             .await?
             .incoming();
         let mut substream = incoming.next().await.unwrap();
-        rt_handle.spawn(async move {
-            incoming.next().await;
-        });
 
         let mut buf = vec![0; msg.len()];
         substream.read_exact(&mut buf).await?;
@@ -300,7 +442,6 @@ mod test {
 
     #[tokio_macros::test_basic]
     async fn send_big_message() -> io::Result<()> {
-        let rt_handle = Handle::current();
         #[allow(non_upper_case_globals)]
         static MiB: usize = 1 << 20;
         static MSG_LEN: usize = 16 * MiB;
@@ -309,13 +450,11 @@ mod test {
 
         let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound).await?;
         let mut dialer_control = dialer.get_yamux_control();
-        // The incoming stream must be polled for the control to work
-        rt_handle.spawn(async move {
-            dialer.incoming().next().await;
-        });
 
-        rt_handle.spawn(async move {
+        task::spawn(async move {
+            assert_eq!(dialer_control.substream_count(), 0);
             let mut substream = dialer_control.open_stream().await.unwrap();
+            assert_eq!(dialer_control.substream_count(), 1);
 
             let msg = vec![0x55u8; MSG_LEN];
             substream.write_all(msg.as_slice()).await.unwrap();
@@ -331,10 +470,9 @@ mod test {
         let mut incoming = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)
             .await?
             .incoming();
+        assert_eq!(incoming.substream_count(), 0);
         let mut substream = incoming.next().await.unwrap();
-        rt_handle.spawn(async move {
-            incoming.next().await;
-        });
+        assert_eq!(incoming.substream_count(), 1);
 
         let mut buf = vec![0u8; MSG_LEN];
         substream.read_exact(&mut buf).await?;
@@ -343,6 +481,9 @@ mod test {
         let msg = vec![0xAAu8; MSG_LEN];
         substream.write_all(msg.as_slice()).await?;
         substream.close().await?;
+        drop(substream);
+
+        assert_eq!(incoming.substream_count(), 0);
 
         Ok(())
     }

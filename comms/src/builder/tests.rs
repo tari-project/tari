@@ -27,6 +27,7 @@ use crate::{
     memsocket,
     message::{InboundMessage, OutboundMessage},
     multiaddr::{Multiaddr, Protocol},
+    multiplexing::Substream,
     peer_manager::{Peer, PeerFeatures},
     pipeline,
     pipeline::SinkService,
@@ -34,7 +35,6 @@ use crate::{
     runtime,
     test_utils::node_identity::build_node_identity,
     transports::MemoryTransport,
-    types::CommsSubstream,
     CommsNode,
 };
 use bytes::Bytes;
@@ -44,7 +44,7 @@ use tari_storage::HashmapDatabase;
 use tari_test_utils::{collect_stream, unpack_enum};
 
 async fn spawn_node(
-    protocols: Protocols<CommsSubstream>,
+    protocols: Protocols<Substream>,
 ) -> (CommsNode, mpsc::Receiver<InboundMessage>, mpsc::Sender<OutboundMessage>) {
     let addr = format!("/memory/{}", memsocket::acquire_next_memsocket_port())
         .parse::<Multiaddr>()

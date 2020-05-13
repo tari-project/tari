@@ -24,8 +24,8 @@ use super::{error::MessagingProtocolError, MessagingEvent, MessagingProtocol, Se
 use crate::{
     connection_manager::{ConnectionManagerError, ConnectionManagerRequester, NegotiatedSubstream, PeerConnection},
     message::OutboundMessage,
+    multiplexing::Substream,
     peer_manager::{NodeId, NodeIdentity},
-    types::CommsSubstream,
 };
 use futures::{channel::mpsc, SinkExt, StreamExt};
 use log::*;
@@ -104,7 +104,7 @@ impl OutboundMessaging {
     async fn try_open_substream(
         &mut self,
         mut conn: PeerConnection,
-    ) -> Result<NegotiatedSubstream<CommsSubstream>, MessagingProtocolError>
+    ) -> Result<NegotiatedSubstream<Substream>, MessagingProtocolError>
     {
         match conn.open_substream(&MESSAGING_PROTOCOL).await {
             Ok(substream) => Ok(substream),
@@ -122,7 +122,7 @@ impl OutboundMessaging {
         }
     }
 
-    async fn start_forwarding_messages(mut self, substream: CommsSubstream) -> Result<(), MessagingProtocolError> {
+    async fn start_forwarding_messages(mut self, substream: Substream) -> Result<(), MessagingProtocolError> {
         let mut framed = MessagingProtocol::framed(substream);
         while let Some(mut out_msg) = self.request_rx.next().await {
             trace!(

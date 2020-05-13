@@ -49,5 +49,3 @@ pub type CommsDataStore = LMDBStore;
 pub type CommsDatabase = LMDBWrapper<PeerId, Peer>;
 #[cfg(test)]
 pub type CommsDatabase = HashmapDatabase<PeerId, Peer>;
-
-pub type CommsSubstream = yamux::Stream;
