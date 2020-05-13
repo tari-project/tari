@@ -283,7 +283,7 @@ mod test {
         let bootstrap = ConfigBootstrap::from_iter_safe(vec![""]).expect("failed to process arguments");
         assert_eq!(bootstrap.log_config.to_str(), Some("~/fake-example"));
         assert_ne!(bootstrap.config.to_str(), Some("~/fake-example"));
-        std::env::set_var("TARI_LOG_CONFIGURATION", "");
+        std::env::remove_var("TARI_LOG_CONFIGURATION");
     }
 
     #[test]
