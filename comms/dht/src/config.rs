@@ -30,9 +30,7 @@ pub const SAF_LOW_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(6 * 6
 /// The default time-to-live duration used for storage of high priority messages by the Store-and-forward middleware
 pub const SAF_HIGH_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(3 * 24 * 60 * 60); // 3 days
 /// The default number of peer nodes that a message has to be closer to, to be considered a neighbour
-pub const DEFAULT_NUM_NEIGHBOURING_NODES: usize = 10;
-/// The default number of randomly-selected peer nodes to be included in propagation messages
-pub const DEFAULT_NUM_RANDOM_PROPAGATION_NODES: usize = 2;
+pub const DEFAULT_NUM_NEIGHBOURING_NODES: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct DhtConfig {
@@ -42,12 +40,12 @@ pub struct DhtConfig {
     /// Default: 20
     pub outbound_buffer_size: usize,
     /// The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour
-    /// Default: 10
+    /// Default: 8
     pub num_neighbouring_nodes: usize,
-    /// The maximum number of randomly-selected peer nodes that will be included in propagation
-    /// messages. Only applies to `BroadcastStrategy::Propagate`.
-    /// Default: 2
-    pub num_random_propagation_nodes: usize,
+    /// A number from 0 to 1 that determines the number of peers to propagate to as a factor of
+    /// `num_neighbouring_nodes`.
+    /// Default: 0.5
+    pub propagation_factor: f32,
     /// A request to retrieve stored messages will be ignored if the requesting node is
     /// not within one of this nodes _n_ closest nodes.
     /// Default 8
@@ -109,13 +107,19 @@ impl DhtConfig {
             ..Default::default()
         }
     }
+
+    #[inline]
+    pub fn num_propagation_nodes(&self) -> usize {
+        let n = self.num_neighbouring_nodes as f32 * self.propagation_factor;
+        n.round() as usize
+    }
 }
 
 impl Default for DhtConfig {
     fn default() -> Self {
         Self {
             num_neighbouring_nodes: DEFAULT_NUM_NEIGHBOURING_NODES,
-            num_random_propagation_nodes: DEFAULT_NUM_RANDOM_PROPAGATION_NODES,
+            propagation_factor: 0.5,
             saf_num_closest_nodes: 10,
             saf_max_returned_messages: 50,
             outbound_buffer_size: 20,

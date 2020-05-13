@@ -237,12 +237,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             self.outbound_service
                 .send_raw(
                     SendMessageParams::new()
-                        .closest(
-                            origin_node_id.clone(),
-                            self.config.num_neighbouring_nodes,
-                            vec![origin_node_id, source_peer.node_id.clone()],
-                            PeerFeatures::MESSAGE_PROPAGATION,
-                        )
+                        .propagate(origin_node_id.clone().into(), vec![
+                            origin_node_id,
+                            source_peer.node_id.clone(),
+                        ])
                         .with_dht_header(dht_header)
                         .finish(),
                     body.to_encoded_bytes(),
