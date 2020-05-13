@@ -306,6 +306,9 @@ where
             .get_remote_public_key()
             .ok_or_else(|| ConnectionManagerError::InvalidStaticPublicKey)?;
 
+        // Check if we know the peer and if it is banned
+        let known_peer = common::find_unbanned_peer(&peer_manager, &authenticated_public_key).await?;
+
         let mut muxer = Yamux::upgrade_connection(noise_socket, CONNECTION_DIRECTION)
             .await
             .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
@@ -315,6 +318,7 @@ where
             "Starting peer identity exchange for peer with public key '{}'",
             authenticated_public_key
         );
+
         let peer_identity = common::perform_identity_exchange(
             &mut muxer,
             &node_identity,
@@ -332,6 +336,7 @@ where
 
         let peer = common::validate_and_add_peer_from_peer_identity(
             &peer_manager,
+            known_peer,
             authenticated_public_key,
             peer_identity,
             allow_test_addresses,
