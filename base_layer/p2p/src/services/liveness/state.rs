@@ -65,7 +65,7 @@ impl From<Metadata> for HashMap<i32, Vec<u8>, RandomState> {
 }
 
 /// State for the LivenessService.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct LivenessState {
     inflight_pings: HashMap<u64, (NodeId, NaiveDateTime)>,
     peer_latency: HashMap<NodeId, AverageLatency>,
@@ -238,13 +238,13 @@ impl LivenessState {
         for (k, v) in self.nodes_to_monitor.iter() {
             if best_node.is_none() || best_recent_pong.is_none() {
                 best_node = Some(k.clone());
-                best_recent_pong = v.last_pong_received.clone();
+                best_recent_pong = v.last_pong_received;
             } else {
-                if let Some(last_pong) = v.last_pong_received.clone() {
-                    let current_best_pong = best_recent_pong.unwrap_or(NaiveDateTime::from_timestamp(0, 0));
+                if let Some(last_pong) = v.last_pong_received {
+                    let current_best_pong = best_recent_pong.unwrap_or_else(|| NaiveDateTime::from_timestamp(0, 0));
                     let last_pong_duration = Utc::now().naive_utc().signed_duration_since(last_pong);
                     let current_best_pong_duration = Utc::now().naive_utc().signed_duration_since(current_best_pong);
-                    if last_pong_duration < current_best_pong_duration {
+                    if last_pong_duration <= current_best_pong_duration {
                         best_node = Some(k.clone());
                         best_recent_pong = v.last_pong_received.clone();
                     }
@@ -317,6 +317,7 @@ impl NodeStats {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::{thread, time};
     use tari_comms::types::CommsPublicKey;
     use tari_crypto::keys::PublicKey;
 
@@ -403,25 +404,34 @@ mod test {
         assert_eq!(state.get_best_node_id().unwrap().unwrap(), node_id);
 
         state.add_inflight_ping(123, &node_id);
-
+        // Add some wait time before recording pong to enable time difference measurement, otherwise test
+        // usually fails in Windows.
+        thread::sleep(time::Duration::from_millis(1));
         let latency = state.record_pong(123).unwrap();
-        assert!(latency < 50);
 
+        assert!(latency < 50);
         assert_eq!(state.get_num_monitored_nodes(), 1);
         assert_eq!(state.get_monitored_node_ids().len(), 1);
         assert!(state.is_monitored_node_id(&node_id));
-        let stats = state.get_node_id_stats(&node_id).unwrap();
 
+        let stats = state.get_node_id_stats(&node_id).unwrap();
         assert_eq!(stats.average_latency.calc_average(), latency);
 
         state.add_node_id(&node_id2);
         assert_eq!(state.get_num_monitored_nodes(), 2);
+
         state.add_inflight_ping(1, &node_id2);
+        // Add some wait time before recording pong to enable time difference measurement, otherwise test
+        // usually fails in Windows.
+        thread::sleep(time::Duration::from_millis(1));
         let _ = state.record_pong(1).unwrap();
 
         assert_eq!(state.get_best_node_id().unwrap().unwrap(), node_id2);
 
         state.add_inflight_ping(2, &node_id);
+        // Add some wait time before recording pong to enable time difference measurement, otherwise test
+        // usually fails in Windows.
+        thread::sleep(time::Duration::from_millis(1));
         let _ = state.record_pong(2).unwrap();
 
         assert_eq!(state.get_best_node_id().unwrap().unwrap(), node_id);
