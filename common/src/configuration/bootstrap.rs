@@ -173,30 +173,11 @@ impl ConfigBootstrap {
     /// Set up application-level logging using the Log4rs configuration file
     /// based on supplied CLI arguments
     pub fn initialize_logging(&self) -> Result<(), ConfigError> {
-        let current_dir = std::env::current_dir().unwrap_or_default();
-        if current_dir != self.base_path && std::env::set_current_dir(&self.base_path).is_err() {
-            println!(
-                "Logging initialized in {}, could not initialize in {}.",
-                &current_dir.display(),
-                &self.base_path.display()
-            );
-        };
-        let result = if initialize_logging(&self.log_config) {
+        if initialize_logging(&self.log_config) {
             Ok(())
         } else {
             Err(ConfigError::new("failed to initalize logging", None))
-        };
-        if current_dir != std::env::current_dir().unwrap_or_default() &&
-            std::env::set_current_dir(&current_dir).is_err()
-        {
-            println!(
-                "Working directory could not be changed back to {} after logging has been initialized. New working \
-                 directory is {}",
-                &current_dir.display(),
-                &std::env::current_dir().unwrap_or_default().display()
-            );
-        };
-        result
+        }
     }
 
     /// Load configuration from files located based on supplied CLI arguments
@@ -304,6 +285,16 @@ mod test {
         // Load and apply configuration file
         let cfg = load_configuration(&bootstrap);
 
+        // Change current dir to test dir so logging can be initialized there and test data can be cleaned up
+        let current_dir = std::env::current_dir().unwrap_or_default();
+        if std::env::set_current_dir(&dir).is_err() {
+            println!(
+                "Logging initialized in {}, could not initialize in {}.",
+                &current_dir.display(),
+                &dir.display()
+            );
+        };
+
         // Initialize logging
         let logging_initialized = match bootstrap.initialize_logging() {
             Ok(Result) => true,
@@ -318,6 +309,16 @@ mod test {
         let log_other_file_exists = std::path::Path::new(&bootstrap.base_path)
             .join("log/other.log")
             .exists();
+
+        // Change back to current dir
+        if std::env::set_current_dir(&current_dir).is_err() {
+            println!(
+                "Working directory could not be changed back to {} after logging has been initialized. New working \
+                 directory is {}",
+                &current_dir.display(),
+                &std::env::current_dir().unwrap_or_default().display()
+            );
+        };
 
         // Cleanup test data
         if std::path::Path::new(&data_path.as_str()).exists() {
