@@ -216,12 +216,17 @@ mod test {
         DEFAULT_LOG_CONFIG,
     };
     use std::path::PathBuf;
-    use structopt::{clap::clap_app, StructOpt};
+    use structopt::StructOpt;
     use tari_test_utils::random::string;
     use tempdir::TempDir;
 
+    lazy_static::lazy_static! {
+    static ref LOCK_ENV: std::sync::Mutex<u8> = std::sync::Mutex::new(0);
+    }
+
     #[test]
     fn test_bootstrap_args_from_iter_safe() {
+        let _guard = LOCK_ENV.lock().unwrap();
         // Test command line arguments
         let bootstrap = ConfigBootstrap::from_iter_safe(vec![
             "",
@@ -269,6 +274,7 @@ mod test {
 
     #[test]
     fn test_bootstrap_and_load_configuration() {
+        let _guard = LOCK_ENV.lock().unwrap();
         let temp_dir = TempDir::new(string(8).as_str()).unwrap();
         let dir = &PathBuf::from(temp_dir.path().to_path_buf().display().to_string().to_owned() + "/01/02/");
         let data_path = default_subdir("", Some(dir));
@@ -296,10 +302,7 @@ mod test {
         };
 
         // Initialize logging
-        let logging_initialized = match bootstrap.initialize_logging() {
-            Ok(Result) => true,
-            _ => false,
-        };
+        let logging_initialized = bootstrap.initialize_logging().is_ok();
         let log_network_file_exists = std::path::Path::new(&bootstrap.base_path)
             .join("log/network.log")
             .exists();
@@ -350,6 +353,7 @@ mod test {
 
     #[test]
     fn check_homedir_is_used_by_default() {
+        let _guard = LOCK_ENV.lock().unwrap();
         assert_eq!(
             dirs::home_dir().unwrap().join(".tari"),
             dir_utils::default_path("", None)
