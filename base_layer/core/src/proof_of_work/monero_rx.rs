@@ -20,10 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{blocks::BlockHeader, proof_of_work::Difficulty};
+use crate::{
+    blocks::BlockHeader,
+    proof_of_work::{monero_rx::MergeMineError::HashingError, Difficulty},
+};
 use bigint::uint::U256;
 use derive_error::Error;
 use monero::blockdata::{block::BlockHeader as MoneroBlockHeader, Transaction as MoneroTransaction};
+#[cfg(feature = "monero_merge_mining")]
 use randomx_rs::{RandomXCache, RandomXDataset, RandomXError, RandomXFlag, RandomXVM};
 use serde::{Deserialize, Serialize};
 use tari_mmr::MerkleProof;
@@ -37,6 +41,7 @@ enum MergeMineError {
     // Hashing of Monero data failed
     HashingError,
     // RandomX Failure
+    #[cfg(feature = "monero_merge_mining")]
     RandomXError(RandomXError),
 }
 
@@ -78,17 +83,24 @@ pub fn monero_difficulty(header: &BlockHeader) -> Difficulty {
 fn monero_difficulty_calculation(header: &BlockHeader) -> Result<Difficulty, MergeMineError> {
     let monero = MoneroData::new(header)?;
     verify_header(&header, &monero)?;
-    let flags = RandomXFlag::get_recommended_flags();
-    let key = monero.key.clone();
-    let input = create_input_blob(&monero)?;
-    let cache = RandomXCache::new(flags, &key)?;
-    let dataset = RandomXDataset::new(flags, &cache, 0)?;
-    let vm = RandomXVM::new(flags, Some(&cache), Some(&dataset))?;
-    let hash = vm.calculate_hash(&input)?;
-    let scalar = U256::from_big_endian(&hash); // Big endian so the hash has leading zeroes
-    let result = MAX_TARGET / scalar;
-    let difficulty = u64::from(result).into();
-    Ok(difficulty)
+    #[cfg(feature = "monero_merge_mining")]
+    {
+        let flags = RandomXFlag::get_recommended_flags();
+        let key = monero.key.clone();
+        let input = create_input_blob(&monero)?;
+        let cache = RandomXCache::new(flags, &key)?;
+        let dataset = RandomXDataset::new(flags, &cache, 0)?;
+        let vm = RandomXVM::new(flags, Some(&cache), Some(&dataset))?;
+        let hash = vm.calculate_hash(&input)?;
+        let scalar = U256::from_big_endian(&hash); // Big endian so the hash has leading zeroes
+        let result = MAX_TARGET / scalar;
+        let difficulty = u64::from(result).into();
+        Ok(difficulty)
+    }
+    #[cfg(not(feature = "monero_merge_mining"))]
+    {
+        Err(MergeMineError::HashingError)
+    }
 }
 
 fn create_input_blob(_data: &MoneroData) -> Result<String, MergeMineError> {
