@@ -100,6 +100,7 @@ impl FetchStoredMessageQuery {
 pub enum StoreAndForwardRequest {
     FetchMessages(FetchStoredMessageQuery, oneshot::Sender<SafResult<Vec<StoredMessage>>>),
     InsertMessage(NewStoredMessage),
+    RemoveMessages(Vec<i32>),
     SendStoreForwardRequestToPeer(Box<NodeId>),
     SendStoreForwardRequestNeighbours,
 }
@@ -126,6 +127,14 @@ impl StoreAndForwardRequester {
     pub async fn insert_message(&mut self, message: NewStoredMessage) -> SafResult<()> {
         self.sender
             .send(StoreAndForwardRequest::InsertMessage(message))
+            .await
+            .map_err(|_| StoreAndForwardError::RequesterChannelClosed)?;
+        Ok(())
+    }
+
+    pub async fn remove_messages(&mut self, message_ids: Vec<i32>) -> SafResult<()> {
+        self.sender
+            .send(StoreAndForwardRequest::RemoveMessages(message_ids))
             .await
             .map_err(|_| StoreAndForwardError::RequesterChannelClosed)?;
         Ok(())
@@ -260,6 +269,10 @@ impl StoreAndForwardService {
                         error!(target: LOG_TARGET, "InsertMessage failed because '{:?}'", err);
                     },
                 }
+            },
+            RemoveMessages(message_ids) => match self.database.remove_message(message_ids.clone()).await {
+                Ok(_) => trace!(target: LOG_TARGET, "Removed messages: {:?}", message_ids),
+                Err(err) => error!(target: LOG_TARGET, "RemoveMessage failed because '{:?}'", err),
             },
             SendStoreForwardRequestToPeer(node_id) => {
                 if let Err(err) = self.request_stored_messages_from_peer(&node_id).await {
