@@ -10,6 +10,9 @@ pub struct PingPongMessage {
     /// Metadata attached to the message. The int32 key SHOULD always be one of the keys in `MetadataKey`.
     #[prost(map = "int32, bytes", tag = "3")]
     pub metadata: ::std::collections::HashMap<i32, std::vec::Vec<u8>>,
+    /// Indicates the application version from which the message was sent
+    #[prost(string, tag = "4")]
+    pub useragent: std::string::String,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

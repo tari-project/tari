@@ -142,6 +142,7 @@ where
                 LivenessConfig {
                     auto_ping_interval: Some(Duration::from_secs(30)),
                     enable_auto_join: true,
+                    useragent: format!("tari\\wallet\\{}", env!("CARGO_PKG_VERSION")),
                     ..Default::default()
                 },
                 Arc::clone(&subscription_factory),

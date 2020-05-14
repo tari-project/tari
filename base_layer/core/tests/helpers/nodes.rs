@@ -305,7 +305,7 @@ pub fn create_network_with_2_base_nodes_with_config(
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
-        .with_liveness_service_config(liveness_service_config)
+        .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
@@ -316,7 +316,7 @@ pub fn create_network_with_2_base_nodes_with_config(
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
-        .with_liveness_service_config(liveness_service_config)
+        .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
 
@@ -384,7 +384,7 @@ pub fn create_network_with_3_base_nodes_with_config(
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
-        .with_liveness_service_config(liveness_service_config)
+        .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
@@ -393,7 +393,7 @@ pub fn create_network_with_3_base_nodes_with_config(
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
-        .with_liveness_service_config(liveness_service_config)
+        .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
     let (carol_node, consensus_manager) = BaseNodeBuilder::new(network)
@@ -401,7 +401,7 @@ pub fn create_network_with_3_base_nodes_with_config(
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
-        .with_liveness_service_config(liveness_service_config)
+        .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
 

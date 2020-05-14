@@ -182,7 +182,12 @@ where
         match ping_pong_msg.kind().ok_or_else(|| LivenessError::InvalidPingPongType)? {
             PingPong::Ping => {
                 self.state.inc_pings_received();
-                trace!(target: LOG_TARGET, "Received ping from peer '{}'", node_id.short_str());
+                trace!(
+                    target: LOG_TARGET,
+                    "Received ping from peer '{}' with useragent {}",
+                    node_id.short_str(),
+                    ping_pong_msg.useragent
+                );
                 self.send_pong(ping_pong_msg.nonce, public_key).await.unwrap();
                 self.state.inc_pongs_sent();
 
@@ -213,8 +218,9 @@ where
                 if !self.state.is_inflight(ping_pong_msg.nonce) {
                     warn!(
                         target: LOG_TARGET,
-                        "Received Pong that was not requested from '{}'. Ignoring it.",
-                        node_id.short_str()
+                        "Received Pong that was not requested from '{}' with useragent {}. Ignoring it.",
+                        node_id.short_str(),
+                        ping_pong_msg.useragent,
                     );
                     return Ok(());
                 }
@@ -223,7 +229,12 @@ where
                 self.refresh_peer_pools_if_stale().await?;
                 let maybe_latency = self.state.record_pong(ping_pong_msg.nonce);
                 let is_monitored = self.state.is_monitored_node_id(&node_id);
-
+                trace!(
+                    target: LOG_TARGET,
+                    "Received pong from peer '{}' with useragent {}",
+                    node_id.short_str(),
+                    ping_pong_msg.useragent
+                );
                 trace!(
                     target: LOG_TARGET,
                     "Received pong from peer '{}'. {} {} {}",
@@ -259,9 +270,14 @@ where
     }
 
     async fn send_ping(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
-        let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
+        let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone(), self.config.useragent.clone());
         self.state.add_inflight_ping(msg.nonce, &node_id);
-        trace!(target: LOG_TARGET, "Sending ping to peer '{}'", node_id.short_str());
+        trace!(
+            target: LOG_TARGET,
+            "Sending ping to peer '{}' with useragent {}",
+            node_id.short_str(),
+            msg.useragent
+        );
         if self.neighbours.contains(&node_id) {
             trace!(
                 target: LOG_TARGET,
@@ -282,7 +298,8 @@ where
     }
 
     async fn send_pong(&mut self, nonce: u64, dest: CommsPublicKey) -> Result<(), LivenessError> {
-        let msg = PingPongMessage::pong_with_metadata(nonce, self.state.metadata().clone());
+        let msg =
+            PingPongMessage::pong_with_metadata(nonce, self.state.metadata().clone(), self.config.useragent.clone());
         self.oms_handle
             .send_direct(
                 dest,
@@ -476,7 +493,7 @@ where
         trace!(target: LOG_TARGET, "Sending liveness ping to {} peer(s)", len_peers);
 
         for node_id in node_ids {
-            let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
+            let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone(), self.config.useragent.clone());
             self.state.add_inflight_ping(msg.nonce, &node_id);
             self.oms_handle
                 .send_direct_node_id(
@@ -501,7 +518,8 @@ where
                 num_nodes,
             );
             for node_id in self.state.get_monitored_node_ids() {
-                let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
+                let msg =
+                    PingPongMessage::ping_with_metadata(self.state.metadata().clone(), self.config.useragent.clone());
                 self.state.add_inflight_ping(msg.nonce, &node_id);
                 self.oms_handle
                     .send_direct_node_id(
@@ -686,13 +704,14 @@ mod test {
     #[tokio_macros::test]
     async fn handle_message_ping() {
         let state = LivenessState::new();
+        let config = LivenessConfig::default();
 
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
         let (outbound_tx, mut outbound_rx) = mpsc::channel(10);
         let oms_handle = OutboundMessageRequester::new(outbound_tx);
 
         let metadata = Metadata::new();
-        let msg = create_dummy_message(PingPongMessage::ping_with_metadata(metadata));
+        let msg = create_dummy_message(PingPongMessage::ping_with_metadata(metadata, config.useragent.clone()));
         // A stream which emits one message and then closes
         let pingpong_stream = stream::iter(std::iter::once(msg));
 
@@ -726,18 +745,27 @@ mod test {
     #[tokio_macros::test_basic]
     async fn handle_message_pong() {
         let mut state = LivenessState::new();
+        let config = LivenessConfig::default();
 
         let (outbound_tx, _) = mpsc::channel(10);
         let oms_handle = OutboundMessageRequester::new(outbound_tx);
 
         let mut metadata = Metadata::new();
         metadata.insert(MetadataKey::ChainMetadata, b"dummy-data".to_vec());
-        let msg = create_dummy_message(PingPongMessage::pong_with_metadata(123, metadata.clone()));
+        let msg = create_dummy_message(PingPongMessage::pong_with_metadata(
+            123,
+            metadata.clone(),
+            config.useragent.clone(),
+        ));
         let peer = msg.source_peer.clone();
 
         state.add_inflight_ping(msg.inner.nonce, &msg.source_peer.node_id);
         // A stream which emits an inflight pong message and an unexpected one
-        let malicious_msg = create_dummy_message(PingPongMessage::pong_with_metadata(321, metadata));
+        let malicious_msg = create_dummy_message(PingPongMessage::pong_with_metadata(
+            321,
+            metadata,
+            config.useragent.clone(),
+        ));
         let pingpong_stream = stream::iter(vec![msg, malicious_msg]);
 
         let (dht_tx, mut dht_rx) = mpsc::channel(10);
