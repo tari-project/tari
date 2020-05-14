@@ -173,30 +173,11 @@ impl ConfigBootstrap {
     /// Set up application-level logging using the Log4rs configuration file
     /// based on supplied CLI arguments
     pub fn initialize_logging(&self) -> Result<(), ConfigError> {
-        let current_dir = std::env::current_dir().unwrap_or_default();
-        if current_dir != self.base_path && std::env::set_current_dir(&self.base_path).is_err() {
-            println!(
-                "Logging initialized in {}, could not initialize in {}.",
-                &current_dir.display(),
-                &self.base_path.display()
-            );
-        };
-        let result = if initialize_logging(&self.log_config) {
+        if initialize_logging(&self.log_config) {
             Ok(())
         } else {
             Err(ConfigError::new("failed to initalize logging", None))
-        };
-        if current_dir != std::env::current_dir().unwrap_or_default() &&
-            std::env::set_current_dir(&current_dir).is_err()
-        {
-            println!(
-                "Working directory could not be changed back to {} after logging has been initialized. New working \
-                 directory is {}",
-                &current_dir.display(),
-                &std::env::current_dir().unwrap_or_default().display()
-            );
-        };
-        result
+        }
     }
 
     /// Load configuration from files located based on supplied CLI arguments
@@ -235,12 +216,12 @@ mod test {
         DEFAULT_LOG_CONFIG,
     };
     use std::path::PathBuf;
-    use structopt::{clap::clap_app, StructOpt};
+    use structopt::StructOpt;
     use tari_test_utils::random::string;
     use tempdir::TempDir;
 
     #[test]
-    fn test_bootstrap_args_from_iter_safe() {
+    fn test_bootstrap_and_load_configuration() {
         // Test command line arguments
         let bootstrap = ConfigBootstrap::from_iter_safe(vec![
             "",
@@ -278,21 +259,24 @@ mod test {
             .expect("failed to process arguments");
         assert_eq!(bootstrap.base_path.to_str(), Some("no-temp-path-created"));
 
-        // Test from environment variable
+        // Check if log configuration file environment variable is recognized in the bootstrap
+        // Note: This cannot be tested in parallel with any other `ConfigBootstrap::from_iter_safe` command
         std::env::set_var("TARI_LOG_CONFIGURATION", "~/fake-example");
         let bootstrap = ConfigBootstrap::from_iter_safe(vec![""]).expect("failed to process arguments");
+        std::env::remove_var("TARI_LOG_CONFIGURATION");
         assert_eq!(bootstrap.log_config.to_str(), Some("~/fake-example"));
         assert_ne!(bootstrap.config.to_str(), Some("~/fake-example"));
-        std::env::remove_var("TARI_LOG_CONFIGURATION");
-    }
 
-    #[test]
-    fn test_bootstrap_and_load_configuration() {
+        // Check if home_dir is used by default
+        assert_eq!(
+            dirs::home_dir().unwrap().join(".tari"),
+            dir_utils::default_path("", None)
+        );
+
+        // Command line test data for config init test
         let temp_dir = TempDir::new(string(8).as_str()).unwrap();
         let dir = &PathBuf::from(temp_dir.path().to_path_buf().display().to_string().to_owned() + "/01/02/");
         let data_path = default_subdir("", Some(dir));
-
-        // Create command line test data
         let mut bootstrap =
             ConfigBootstrap::from_iter_safe(vec!["", "--base_dir", &data_path.as_str(), "--init", "--create_id"])
                 .expect("failed to process arguments");
@@ -304,11 +288,18 @@ mod test {
         // Load and apply configuration file
         let cfg = load_configuration(&bootstrap);
 
-        // Initialize logging
-        let logging_initialized = match bootstrap.initialize_logging() {
-            Ok(Result) => true,
-            _ => false,
+        // Change current dir to test dir so logging can be initialized there and test data can be cleaned up
+        let current_dir = std::env::current_dir().unwrap_or_default();
+        if std::env::set_current_dir(&dir).is_err() {
+            println!(
+                "Logging initialized in {}, could not initialize in {}.",
+                &current_dir.display(),
+                &dir.display()
+            );
         };
+
+        // Initialize logging
+        let logging_initialized = bootstrap.initialize_logging().is_ok();
         let log_network_file_exists = std::path::Path::new(&bootstrap.base_path)
             .join("log/network.log")
             .exists();
@@ -318,6 +309,16 @@ mod test {
         let log_other_file_exists = std::path::Path::new(&bootstrap.base_path)
             .join("log/other.log")
             .exists();
+
+        // Change back to current dir
+        if std::env::set_current_dir(&current_dir).is_err() {
+            println!(
+                "Working directory could not be changed back to {} after logging has been initialized. New working \
+                 directory is {}",
+                &current_dir.display(),
+                &std::env::current_dir().unwrap_or_default().display()
+            );
+        };
 
         // Cleanup test data
         if std::path::Path::new(&data_path.as_str()).exists() {
@@ -345,13 +346,5 @@ mod test {
         assert!(log_network_file_exists);
         assert!(log_base_layer_file_exists);
         assert!(log_other_file_exists);
-    }
-
-    #[test]
-    fn check_homedir_is_used_by_default() {
-        assert_eq!(
-            dirs::home_dir().unwrap().join(".tari"),
-            dir_utils::default_path("", None)
-        );
     }
 }
