@@ -448,7 +448,7 @@ mod test {
             let selected_dist = unmanaged_peer.node_id.distance(&peer_identity.node_id);
             for unused_peer in &unused_peers {
                 let unused_dist = unmanaged_peer.node_id.distance(&unused_peer.node_id);
-                assert!(unused_dist > selected_dist);
+                assert!(unused_dist >= selected_dist);
             }
         }
 
@@ -475,7 +475,7 @@ mod test {
             let selected_dist = unmanaged_peer.node_id.distance(&peer_identity.node_id);
             for unused_peer in &unused_peers {
                 let unused_dist = unmanaged_peer.node_id.distance(&unused_peer.node_id);
-                assert!(unused_dist > selected_dist);
+                assert!(unused_dist >= selected_dist);
             }
             assert!(!excluded_peers.contains(&peer_identity.public_key));
         }
@@ -527,7 +527,7 @@ mod test {
             .filter(|p| p.features == PeerFeatures::COMMUNICATION_NODE)
             .skip(n)
         {
-            assert!(peer.node_id.distance(&network_region_node_id) > node_region_threshold);
+            assert!(peer.node_id.distance(&network_region_node_id) >= node_region_threshold);
         }
 
         let node_region_threshold = peer_manager
@@ -550,7 +550,7 @@ mod test {
             .filter(|p| p.features == PeerFeatures::COMMUNICATION_CLIENT)
             .skip(5)
         {
-            assert!(peer.node_id.distance(&network_region_node_id) > node_region_threshold);
+            assert!(peer.node_id.distance(&network_region_node_id) >= node_region_threshold);
         }
     }
 
