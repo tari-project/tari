@@ -195,6 +195,8 @@ where T: BlockchainBackend + 'static
                     debug!(target: LOG_TARGET, "A peer has requested block {}", block_num);
                     match async_db::fetch_block(self.blockchain_db.clone(), *block_num).await {
                         Ok(block) => blocks.push(block),
+                        // We need to suppress the error as another node might ask for a block we dont have, so we
+                        // return ok([])
                         Err(e) => info!(
                             target: LOG_TARGET,
                             "Could not provide requested block {} to peer because: {}",
