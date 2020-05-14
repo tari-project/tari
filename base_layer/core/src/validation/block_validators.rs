@@ -58,15 +58,22 @@ impl StatelessBlockValidator {
 
 impl StatelessValidation<Block> for StatelessBlockValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
-    /// 1. Is there precisely one Coinbase output and is it correctly defined?
-    /// 1. Is the accounting correct?
-    /// 1. Are all inputs allowed to be spent (Are the feature flags satisfied)
+    /// 1. Is the block weight of the block under the prescribed limit?
+    /// 1. Does it contain only unique inputs and outputs?
+    /// 1. Where all the rules for the spent outputs followed?
+    /// 1. Was cut through applied in the block?
     fn validate(&self, block: &Block) -> Result<(), ValidationError> {
         let block_id = format!("block #{} ({})", block.header.height, block.hash().to_hex());
         check_coinbase_output(block, &self.consensus_constants)?;
         trace!(target: LOG_TARGET, "SV - Coinbase output is ok for {} ", &block_id);
         check_block_weight(block, &self.consensus_constants)?;
         trace!(target: LOG_TARGET, "SV - Block weight is ok for {} ", &block_id);
+        check_duplicate_transactions_inputs(block)?;
+        trace!(
+            target: LOG_TARGET,
+            "SV - No duplicate inputs or outputs for {} ",
+            &block_id
+        );
         // Check that the inputs are are allowed to be spent
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
         trace!(target: LOG_TARGET, "SV - Output constraints are ok for {} ", &block_id);
@@ -108,12 +115,18 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator {
         trace!(target: LOG_TARGET, "FCV - Coinbase output ok for {}", &block_id);
         check_block_weight(block, &self.rules.consensus_constants())?;
         trace!(target: LOG_TARGET, "FCV - Block weight ok for {}", &block_id);
+        check_duplicate_transactions_inputs(block)?;
+        trace!(
+            target: LOG_TARGET,
+            "FCV - No duplicate inputs or outputs for {} ",
+            &block_id
+        );
         check_cut_through(block)?;
         trace!(target: LOG_TARGET, "FCV - Cut-though correct for {}", &block_id);
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
-        trace!(target: LOG_TARGET, "FCV - Cut-though correct for {}", &block_id);
+        trace!(target: LOG_TARGET, "FCV - STxO rules correct for {}", &block_id);
         check_accounting_balance(block, self.rules.clone(), &self.factories)?;
-        trace!(target: LOG_TARGET, "FCV - Cut-though correct for {}", &block_id);
+        trace!(target: LOG_TARGET, "FCV - accounting balance correct for {}", &block_id);
         check_inputs_are_utxos(block, db)?;
         trace!(target: LOG_TARGET, "FCV - All inputs are valid for {}", &block_id);
         check_mmr_roots(block, db)?;
@@ -177,6 +190,26 @@ fn check_coinbase_output(block: &Block, consensus_constants: &ConsensusConstants
     block
         .check_coinbase_output(consensus_constants)
         .map_err(ValidationError::from)
+}
+
+// This function checks for duplicate inputs and outputs. There should be no duplicate inputs or outputs in a block
+fn check_duplicate_transactions_inputs(block: &Block) -> Result<(), ValidationError> {
+    trace!(
+        target: LOG_TARGET,
+        "Checking duplicate inputs and outputs on block with hash {}",
+        block.hash().to_hex()
+    );
+    for i in 1..block.body.inputs().len() {
+        if block.body.inputs()[i..].contains(&block.body.inputs()[i - 1]) {
+            return Err(ValidationError::CustomError("Duplicate Input".to_string()));
+        }
+    }
+    for i in 1..block.body.outputs().len() {
+        if block.body.outputs()[i..].contains(&block.body.outputs()[i - 1]) {
+            return Err(ValidationError::CustomError("Duplicate Output".to_string()));
+        }
+    }
+    Ok(())
 }
 
 /// This function checks that all inputs in the blocks are valid UTXO's to be spend
