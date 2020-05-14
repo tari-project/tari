@@ -182,6 +182,7 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
                 refresh_neighbours_interval: Default::default(),
                 refresh_random_pool_interval: Default::default(),
                 random_peer_selection_ratio: 0.0,
+                useragent: "".to_string(),
             },
             Arc::clone(&subscription_factory),
             dht.dht_requester(),

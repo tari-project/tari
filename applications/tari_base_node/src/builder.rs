@@ -1124,6 +1124,7 @@ where
                 enable_auto_join: true,
                 refresh_neighbours_interval: Duration::from_secs(3 * 60),
                 random_peer_selection_ratio: 0.4,
+                useragent: format!("tari\\basenode\\{}", env!("CARGO_PKG_VERSION")),
                 ..Default::default()
             },
             subscription_factory,
@@ -1160,6 +1161,7 @@ async fn register_wallet_services(
             LivenessConfig{
                 auto_ping_interval: None,
                 enable_auto_join: true,
+                useragent: format!("tari\\wallet\\{}", env!("CARGO_PKG_VERSION")),
                 ..Default::default()
             },
             subscription_factory.clone(),

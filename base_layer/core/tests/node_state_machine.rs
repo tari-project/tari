@@ -622,7 +622,7 @@ fn test_sync_peer_banning() {
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
-        .with_liveness_service_config(liveness_service_config)
+        .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
         .with_validators(
             mock_validator,
@@ -635,7 +635,7 @@ fn test_sync_peer_banning() {
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
-        .with_liveness_service_config(liveness_service_config)
+        .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
         .start(&mut runtime, data_path);
     // Wait for peers to connect
