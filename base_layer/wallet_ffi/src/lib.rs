@@ -2332,10 +2332,7 @@ pub unsafe extern "C" fn wallet_create(
 
         match log4rs::init_config(lconfig) {
             Ok(_) => debug!(target: LOG_TARGET, "Logging started"),
-            Err(_) => error!(
-                target: LOG_TARGET,
-                "Could not start logging, logging was probably already started"
-            ),
+            Err(_) => warn!(target: LOG_TARGET, "Logging has already been initialized"),
         }
     }
 
