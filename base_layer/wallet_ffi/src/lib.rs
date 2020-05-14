@@ -2330,8 +2330,13 @@ pub unsafe extern "C" fn wallet_create(
             .build(Root::builder().appender("logfile").build(LevelFilter::Debug))
             .unwrap();
 
-        log4rs::init_config(lconfig).expect("Should be able to start logging");
-        debug!(target: LOG_TARGET, "Logging started");
+        match log4rs::init_config(lconfig) {
+            Ok(_) => debug!(target: LOG_TARGET, "Logging started"),
+            Err(_) => error!(
+                target: LOG_TARGET,
+                "Could not start logging, logging was probably already started"
+            ),
+        }
     }
 
     let runtime = Runtime::new();
