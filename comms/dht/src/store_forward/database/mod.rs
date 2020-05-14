@@ -30,7 +30,7 @@ use crate::{
     store_forward::message::StoredMessagePriority,
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
-use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::{dsl, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl};
 use tari_comms::{
     peer_manager::{node_id::NodeDistance, NodeId},
     types::CommsPublicKey,
@@ -269,6 +269,29 @@ impl StoreAndForwardDatabase {
             })
             .await
     }
+
+    pub(crate) async fn truncate_messages(&self, max_size: usize) -> Result<usize, StorageError> {
+        self.connection
+            .with_connection_async(move |conn| {
+                let mut num_removed = 0;
+                let msg_count = stored_messages::table
+                    .select(dsl::count(stored_messages::id))
+                    .first::<i64>(conn)? as usize;
+                if msg_count > max_size {
+                    let remove_count = msg_count - max_size;
+                    let message_ids: Vec<i32> = stored_messages::table
+                        .select(stored_messages::id)
+                        .order_by(stored_messages::stored_at.asc())
+                        .limit(remove_count as i64)
+                        .get_results(conn)?;
+                    num_removed = diesel::delete(stored_messages::table)
+                        .filter(stored_messages::id.eq_any(message_ids))
+                        .execute(conn)?;
+                }
+                Ok(num_removed)
+            })
+            .await
+    }
 }
 
 #[cfg(test)]
@@ -279,7 +302,6 @@ mod test {
     #[tokio_macros::test_basic]
     async fn insert_messages() {
         let conn = DbConnection::connect_memory(random::string(8)).await.unwrap();
-        // let conn = DbConnection::connect_path("/tmp/tmp.db").await.unwrap();
         conn.migrate().await.unwrap();
         let db = StoreAndForwardDatabase::new(conn);
         db.insert_message(Default::default()).await.unwrap();
@@ -312,5 +334,30 @@ mod test {
         let messages = db.get_all_messages().await.unwrap();
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].id, msg2_id);
+    }
+
+    #[tokio_macros::test_basic]
+    async fn truncate_messages() {
+        let conn = DbConnection::connect_memory(random::string(8)).await.unwrap();
+        conn.migrate().await.unwrap();
+        let db = StoreAndForwardDatabase::new(conn);
+        let mut msg1 = NewStoredMessage::default();
+        msg1.body.push(1u8);
+        let mut msg2 = NewStoredMessage::default();
+        msg2.body.push(2u8);
+        let mut msg3 = NewStoredMessage::default();
+        msg3.body.push(3u8);
+        let mut msg4 = NewStoredMessage::default();
+        msg4.body.push(4u8);
+        db.insert_message(msg1.clone()).await.unwrap();
+        db.insert_message(msg2.clone()).await.unwrap();
+        db.insert_message(msg3.clone()).await.unwrap();
+        db.insert_message(msg4.clone()).await.unwrap();
+        let num_removed = db.truncate_messages(2).await.unwrap();
+        assert_eq!(num_removed, 2);
+        let messages = db.get_all_messages().await.unwrap();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].body, msg3.body);
+        assert_eq!(messages[1].body, msg4.body);
     }
 }

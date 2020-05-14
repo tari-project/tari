@@ -24,7 +24,7 @@ use crate::{envelope::Network, storage::DbConnectionUrl};
 use std::time::Duration;
 
 /// The default maximum number of messages that can be stored using the Store-and-forward middleware
-pub const SAF_MSG_CACHE_STORAGE_CAPACITY: usize = 10_000;
+pub const SAF_MSG_STORAGE_CAPACITY: usize = 10_000;
 /// The default time-to-live duration used for storage of low priority messages by the Store-and-forward middleware
 pub const SAF_LOW_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(6 * 60 * 60); // 6 hours
 /// The default time-to-live duration used for storage of high priority messages by the Store-and-forward middleware
@@ -46,6 +46,8 @@ pub struct DhtConfig {
     /// `num_neighbouring_nodes`.
     /// Default: 0.5
     pub propagation_factor: f32,
+    /// The maximum number of messages that can be stored using the Store-and-forward middleware. Default: 10_000
+    pub saf_msg_storage_capacity: usize,
     /// A request to retrieve stored messages will be ignored if the requesting node is
     /// not within one of this nodes _n_ closest nodes.
     /// Default 8
@@ -53,8 +55,6 @@ pub struct DhtConfig {
     /// The maximum number of messages to return from a store and forward retrieval request.
     /// Default: 100
     pub saf_max_returned_messages: usize,
-    /// The maximum number of messages that can be stored using the Store-and-forward middleware. Default: 10_000
-    pub saf_msg_cache_storage_capacity: usize,
     /// The time-to-live duration used for storage of low priority messages by the Store-and-forward middleware.
     /// Default: 6 hours
     pub saf_low_priority_msg_storage_ttl: Duration,
@@ -123,7 +123,7 @@ impl Default for DhtConfig {
             saf_num_closest_nodes: 10,
             saf_max_returned_messages: 50,
             outbound_buffer_size: 20,
-            saf_msg_cache_storage_capacity: SAF_MSG_CACHE_STORAGE_CAPACITY,
+            saf_msg_storage_capacity: SAF_MSG_STORAGE_CAPACITY,
             saf_low_priority_msg_storage_ttl: SAF_LOW_PRIORITY_MSG_STORAGE_TTL,
             saf_high_priority_msg_storage_ttl: SAF_HIGH_PRIORITY_MSG_STORAGE_TTL,
             saf_auto_request: true,

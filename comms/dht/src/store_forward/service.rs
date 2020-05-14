@@ -429,6 +429,18 @@ impl StoreAndForwardService {
             )
             .await?;
         info!(target: LOG_TARGET, "Cleaned {} old high priority messages", num_removed);
+
+        let num_removed = self
+            .database
+            .truncate_messages(self.config.saf_msg_storage_capacity)
+            .await?;
+        if num_removed > 0 {
+            info!(
+                target: LOG_TARGET,
+                "Storage limits exceeded, removing {} oldest messages", num_removed
+            );
+        }
+
         Ok(())
     }
 }
