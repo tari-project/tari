@@ -81,6 +81,8 @@ pub trait TransactionBackend: Send + Sync {
         &self,
         tx_id: TxId,
     ) -> Result<CommsPublicKey, TransactionStorageError>;
+    /// Mark a pending transaction direct send attempt as a success
+    fn mark_direct_send_success(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Update a completed transactions timestamp for use in test data generation
     #[cfg(feature = "test_harness")]
     fn update_completed_transaction_timestamp(
@@ -143,6 +145,7 @@ pub struct InboundTransaction {
     pub message: String,
     pub timestamp: NaiveDateTime,
     pub cancelled: bool,
+    pub direct_send_success: bool,
 }
 
 impl InboundTransaction {
@@ -165,6 +168,7 @@ impl InboundTransaction {
             message,
             timestamp,
             cancelled: false,
+            direct_send_success: false,
         }
     }
 }
@@ -180,6 +184,7 @@ pub struct OutboundTransaction {
     pub message: String,
     pub timestamp: NaiveDateTime,
     pub cancelled: bool,
+    pub direct_send_success: bool,
 }
 
 impl OutboundTransaction {
@@ -193,6 +198,7 @@ impl OutboundTransaction {
         status: TransactionStatus,
         message: String,
         timestamp: NaiveDateTime,
+        direct_send_success: bool,
     ) -> Self
     {
         Self {
@@ -205,6 +211,7 @@ impl OutboundTransaction {
             message,
             timestamp,
             cancelled: false,
+            direct_send_success,
         }
     }
 }
@@ -297,6 +304,7 @@ impl From<CompletedTransaction> for InboundTransaction {
             message: ct.message,
             timestamp: ct.timestamp,
             cancelled: ct.cancelled,
+            direct_send_success: false,
         }
     }
 }
@@ -313,6 +321,7 @@ impl From<CompletedTransaction> for OutboundTransaction {
             message: ct.message,
             timestamp: ct.timestamp,
             cancelled: ct.cancelled,
+            direct_send_success: false,
         }
     }
 }
@@ -667,6 +676,14 @@ where T: TransactionBackend + 'static
     pub async fn cancel_pending_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.cancel_pending_transaction(tx_id))
+            .await
+            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        Ok(())
+    }
+
+    pub async fn mark_direct_send_success(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.mark_direct_send_success(tx_id))
             .await
             .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
         Ok(())

@@ -29,6 +29,7 @@ table! {
         message -> Text,
         timestamp -> Timestamp,
         cancelled -> Integer,
+        direct_send_success -> Integer,
     }
 }
 
@@ -52,6 +53,7 @@ table! {
         message -> Text,
         timestamp -> Timestamp,
         cancelled -> Integer,
+        direct_send_success -> Integer,
     }
 }
 

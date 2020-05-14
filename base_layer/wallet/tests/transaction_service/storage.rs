@@ -88,6 +88,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             message: messages[i].clone(),
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
+            direct_send_success: false,
         });
         assert!(
             !runtime.block_on(db.transaction_exists((i + 10) as u64)).unwrap(),
@@ -137,6 +138,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             message: messages[i].clone(),
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
+            direct_send_success: false,
         });
         assert!(
             !runtime.block_on(db.transaction_exists(i as u64)).unwrap(),
@@ -302,6 +304,20 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         runtime.block_on(db.get_pending_inbound_transactions()).unwrap().len(),
         1
     );
+    assert!(
+        !runtime
+            .block_on(db.get_pending_inbound_transaction(999))
+            .unwrap()
+            .direct_send_success
+    );
+    runtime.block_on(db.mark_direct_send_success(999)).unwrap();
+    assert!(
+        runtime
+            .block_on(db.get_pending_inbound_transaction(999))
+            .unwrap()
+            .direct_send_success
+    );
+
     runtime.block_on(db.cancel_pending_transaction(999)).unwrap();
 
     assert_eq!(
@@ -335,9 +351,24 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
                 TransactionStatus::Pending,
                 "To be cancelled".to_string(),
                 Utc::now().naive_utc(),
+                false,
             ),
         ))
         .unwrap();
+
+    assert!(
+        !runtime
+            .block_on(db.get_pending_outbound_transaction(998))
+            .unwrap()
+            .direct_send_success
+    );
+    runtime.block_on(db.mark_direct_send_success(998)).unwrap();
+    assert!(
+        runtime
+            .block_on(db.get_pending_outbound_transaction(998))
+            .unwrap()
+            .direct_send_success
+    );
 
     assert_eq!(
         runtime

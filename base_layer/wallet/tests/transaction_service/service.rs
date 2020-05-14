@@ -45,7 +45,12 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     CommsNode,
 };
-use tari_comms_dht::outbound::mock::{create_outbound_service_mock, OutboundServiceMockState};
+use tari_comms_dht::outbound::mock::{
+    create_outbound_service_mock,
+    MockBehaviour,
+    OutboundServiceMockState,
+    ResponseType,
+};
 use tari_core::{
     base_node::proto::{
         base_node as BaseNodeProto,
@@ -178,7 +183,7 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
         .add_initializer(LivenessInitializer::new(
             LivenessConfig {
                 auto_ping_interval: Some(Duration::from_secs(10)),
-                enable_auto_join: true,
+                enable_auto_join: false,
                 refresh_neighbours_interval: Default::default(),
                 refresh_random_pool_interval: Default::default(),
                 random_peer_selection_ratio: 0.0,
@@ -785,10 +790,9 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
         ))
         .unwrap();
     alice_outbound_service
-        .wait_call_count(2, Duration::from_secs(60))
+        .wait_call_count(1, Duration::from_secs(60))
         .unwrap();
     let (_, body) = alice_outbound_service.pop_call().unwrap();
-    let _ = alice_outbound_service.pop_call().unwrap(); // burn SAF message
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let sender_message = envelope_body
@@ -1129,7 +1133,7 @@ fn discovery_async_return_test() {
         factories.clone(),
         alice_backend,
         db_folder.clone(),
-        Duration::from_secs(5),
+        Duration::from_secs(20),
     );
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
@@ -1152,22 +1156,12 @@ fn discovery_async_return_test() {
         db_folder,
         Duration::from_secs(1),
     );
-
-    // Establish some connections beforehand, to reduce the amount of work done concurrently in tests
-    // Connect Bob and Alice
-    let _ = runtime.block_on(
-        bob_comms
-            .connection_manager()
-            .dial_peer(alice_node_identity.node_id().clone()),
-    );
-
-    // Connect Dave to Bob
-    let _ = runtime.block_on(
-        dave_comms
-            .connection_manager()
-            .dial_peer(bob_node_identity.node_id().clone()),
-    );
-    log::error!("Finished Dials");
+    // // Connect Dave to Bob
+    // let _ = runtime.block_on(
+    //     dave_comms
+    //         .connection_manager()
+    //         .dial_peer(bob_node_identity.node_id().clone()),
+    // );
 
     let (_utxo, uo1a) = make_input(&mut OsRng, MicroTari(5500), &factories.commitment);
     runtime.block_on(alice_oms.add_output(uo1a)).unwrap();
@@ -1331,10 +1325,9 @@ fn transaction_mempool_broadcast() {
         ))
         .unwrap();
     alice_outbound_service
-        .wait_call_count(2, Duration::from_secs(60))
+        .wait_call_count(1, Duration::from_secs(60))
         .expect("Alice call wait 1");
     let (_, body) = alice_outbound_service.pop_call().unwrap();
-    let _ = alice_outbound_service.pop_call().unwrap(); // Burn the SAF version of the message
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_sender_msg: TransactionSenderMessage = envelope_body
@@ -1380,11 +1373,10 @@ fn transaction_mempool_broadcast() {
         ))
         .unwrap();
     alice_outbound_service
-        .wait_call_count(2, Duration::from_secs(60))
+        .wait_call_count(1, Duration::from_secs(60))
         .expect("Alice call wait 2");
 
     let call = alice_outbound_service.pop_call().unwrap();
-    let _ = alice_outbound_service.pop_call().unwrap(); // Burn the SAF version of the message
     let tx_sender_msg = try_decode_sender_message(call.1.to_vec().clone()).unwrap();
 
     match tx_sender_msg.clone() {
@@ -1828,11 +1820,10 @@ fn transaction_base_node_monitoring() {
         .unwrap();
 
     alice_outbound_service
-        .wait_call_count(2, Duration::from_secs(60))
+        .wait_call_count(1, Duration::from_secs(60))
         .unwrap();
 
     let (_, body) = alice_outbound_service.pop_call().unwrap();
-    let _ = alice_outbound_service.pop_call().unwrap(); // burn SAF message
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_sender_msg: TransactionSenderMessage = envelope_body
@@ -1883,10 +1874,9 @@ fn transaction_base_node_monitoring() {
         .unwrap();
 
     alice_outbound_service
-        .wait_call_count(2, Duration::from_secs(60))
+        .wait_call_count(1, Duration::from_secs(60))
         .unwrap();
     let (_, body) = alice_outbound_service.pop_call().unwrap();
-    let _ = alice_outbound_service.pop_call().unwrap(); // burn SAF message
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_sender_msg: TransactionSenderMessage = envelope_body
@@ -2447,10 +2437,9 @@ fn transaction_cancellation_when_not_in_mempool() {
         ))
         .unwrap();
     alice_outbound_service
-        .wait_call_count(2, Duration::from_secs(60))
+        .wait_call_count(1, Duration::from_secs(60))
         .unwrap();
     let (_, body) = alice_outbound_service.pop_call().unwrap();
-    let _ = alice_outbound_service.pop_call().unwrap(); // burn SAF message
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_sender_msg: TransactionSenderMessage = envelope_body
@@ -2837,6 +2826,11 @@ fn test_resend_of_tx_on_pong_event<T: TransactionBackend + Clone + 'static>(back
 
     let amount_sent = 10000 * uT;
 
+    alice_outbound_service.set_behaviour(MockBehaviour {
+        direct: ResponseType::Failed,
+        broadcast: ResponseType::Queued,
+    });
+
     let tx_id = runtime
         .block_on(alice_ts.send_transaction(
             bob_node_identity.public_key().clone(),
@@ -2846,10 +2840,14 @@ fn test_resend_of_tx_on_pong_event<T: TransactionBackend + Clone + 'static>(back
         ))
         .unwrap();
     alice_outbound_service
-        .wait_call_count(2, Duration::from_secs(60))
+        .wait_call_count(1, Duration::from_secs(60))
         .unwrap();
-    let _ = alice_outbound_service.pop_call().unwrap(); // burn tx send message
-    let _ = alice_outbound_service.pop_call().unwrap(); // burn SAF message
+    let _ = alice_outbound_service.pop_call().unwrap(); // burn  send message
+
+    alice_outbound_service.set_behaviour(MockBehaviour {
+        direct: ResponseType::Queued,
+        broadcast: ResponseType::Queued,
+    });
 
     // Send the event but if the send protocol hasn't subscribed yet the send will error so wait a bit and try again.
     for _ in 0..12 {
@@ -2870,9 +2868,9 @@ fn test_resend_of_tx_on_pong_event<T: TransactionBackend + Clone + 'static>(back
     }
 
     alice_outbound_service
-        .wait_call_count(2, Duration::from_secs(60))
+        .wait_call_count(1, Duration::from_secs(60))
         .unwrap();
-    let _ = alice_outbound_service.pop_call().unwrap(); // burn tx send message
+
     let (_, body) = alice_outbound_service.pop_call().unwrap();
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
@@ -2891,6 +2889,23 @@ fn test_resend_of_tx_on_pong_event<T: TransactionBackend + Clone + 'static>(back
     };
     assert_eq!(tx_id, msg_tx_id);
 
+    // Test that a second Pong doesn't evoke another message
+    liveness_event_sender
+        .send(Arc::new(LivenessEvent::ReceivedPong(Box::new(PingPongEvent::new(
+            bob_node_identity.node_id().clone(),
+            None,
+            Metadata::new(),
+            true,
+            true,
+        )))))
+        .unwrap();
+
+    for _ in 0..5 {
+        assert_eq!(alice_outbound_service.call_count(), 0, "Should be no more calls");
+        runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+    }
+
+    // Send the reply
     runtime
         .block_on(bob_tx_sender.send(create_dummy_message(
             tx_sender_msg.into(),
