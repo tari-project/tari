@@ -1140,14 +1140,25 @@ impl Parser {
             let mut missing_blocks = Vec::new();
             let mut missing_headers = Vec::new();
             print!("Searching for height: ");
+            // We need to check every header, but not every block.
+            let horizon_height = meta.horizon_block(height);
             while height > 0 {
                 print!("{}", height);
                 io::stdout().flush().unwrap();
-                let block = node.get_blocks(vec![height]).await;
-                if block.is_err() {
-                    // for some apparent reason this block is missing, means we have to ask for it again
-                    missing_blocks.push(height);
-                };
+                // we can only check till the pruning horizon, 0 is archive node so it needs to check every block.
+                if height > horizon_height {
+                    match node.get_blocks(vec![height]).await {
+                        Err(_err) => {
+                            missing_blocks.push(height);
+                        },
+                        Ok(mut data) => match data.pop() {
+                            // We need to check the data it self, as FetchBlocks will suppress any error, only logging
+                            // it.
+                            Some(_historical_block) => {},
+                            None => missing_blocks.push(height),
+                        },
+                    };
+                }
                 height -= 1;
                 let next_header = node.get_headers(vec![height]).await;
                 if next_header.is_err() {
