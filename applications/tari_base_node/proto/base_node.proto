@@ -32,8 +32,28 @@ service BaseNode {
     rpc ListHeaders(ListHeadersRequest) returns (stream BlockHeader);
     // Returns blocks in the current best chain. Currently only supports querying by height
     rpc GetBlocks(GetBlocksRequest) returns (stream HistoricalBlock);
+    // Returns the calc timing for the chain heights
+    rpc GetCalcTiming(GetCalcTimingRequest) returns (CalcTimingResponse);
 }
 
+
+// The request used for querying the calc timing from the base node.
+// If start_height and end_height are set and > 0, they take precedence, otherwise from_tip is used
+message GetCalcTimingRequest {
+    // The height from the chain tip (optional)
+    uint64 from_tip = 1;
+    // The starting height (optional)
+    uint64 start_height = 2;
+    // The ending height (optional)
+    uint64 end_height = 3;
+}
+
+// The return type of the rpc GetCalcTiming
+message CalcTimingResponse {
+    uint64 max = 1;
+    uint64 min = 2;
+    double avg = 3;
+}
 // The request used for querying headers from the base node. The parameters `from_height` and `num_headers` can be used
 // to page through the current best chain.
 message ListHeadersRequest {

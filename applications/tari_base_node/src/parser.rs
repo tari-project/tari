@@ -41,9 +41,10 @@ use rustyline::{
 };
 use rustyline_derive::{Helper, Highlighter, Validator};
 use std::{
+    error::Error,
     io::{self, Write},
     str::FromStr,
-    string::ToString,
+    string::{ParseError, ToString},
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
@@ -1040,7 +1041,7 @@ impl Parser {
         if (command_arg.is_empty()) || (command_arg.len() > 2) {
             println!("Command entered incorrectly, please use the following formats: ");
             println!("list-headers [first header height] [last header height]");
-            println!("list-headers [amount of headers from top]");
+            println!("list-headers [amount of headers from chain tip]");
             return;
         }
         let handler = self.node_service.clone();
@@ -1053,53 +1054,36 @@ impl Parser {
         });
     }
 
-    /// Function to process the get-headers command
-    async fn get_headers(mut handler: LocalNodeCommsInterface, command_arg: Vec<String>) -> Vec<BlockHeader> {
-        let height = if command_arg.len() == 2 {
-            let height = command_arg[1].parse::<u64>();
-            if height.is_err() {
+    /// Helper function to convert an array from command_arg to a Vec<u64> of header heights
+    async fn cmd_arg_to_header_heights(mut handler: LocalNodeCommsInterface, command_arg: Vec<String>) -> Vec<u64> {
+        let height_ranges: Result<Vec<u64>, _> = command_arg.iter().map(|v| u64::from_str(v)).collect();
+        match height_ranges {
+            Ok(height_ranges) => {
+                if height_ranges.len() == 2 {
+                    let start = height_ranges[0];
+                    let end = height_ranges[1];
+                    BlockHeader::get_height_range(start, end)
+                } else {
+                    match BlockHeader::get_heights_from_tip(handler, height_ranges[0]).await {
+                        Ok(heights) => heights,
+                        Err(_) => {
+                            println!("Error communicating with comm interface");
+                            return Vec::new();
+                        },
+                    }
+                }
+            },
+            Err(e) => {
                 println!("Invalid number provided");
                 return Vec::new();
-            };
-            Some(height.unwrap())
-        } else {
-            None
-        };
-        let start = command_arg[0].parse::<u64>();
-        if start.is_err() {
-            println!("Invalid number provided");
-            return Vec::new();
-        };
-        let counter = if command_arg.len() == 2 {
-            let start = start.unwrap();
-            let temp_height = height.clone().unwrap();
-            if temp_height <= start {
-                println!("Start height should be bigger than the end height");
-                return Vec::new();
-            }
-            (temp_height - start) as usize
-        } else {
-            start.unwrap() as usize
-        };
-        let mut height = if let Some(v) = height {
-            v
-        } else {
-            match handler.get_metadata().await {
-                Err(err) => {
-                    println!("Failed to retrieve chain height: {:?}", err);
-                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
-                    0
-                },
-                Ok(data) => data.height_of_longest_chain.unwrap_or(0),
-            }
-        };
-        let mut headers = Vec::new();
-        headers.push(height);
-        while (headers.len() <= counter) && (height > 0) {
-            height -= 1;
-            headers.push(height);
+            },
         }
-        match handler.get_headers(headers).await {
+    }
+
+    /// Function to process the get-headers command
+    async fn get_headers(mut handler: LocalNodeCommsInterface, command_arg: Vec<String>) -> Vec<BlockHeader> {
+        let heights = Self::cmd_arg_to_header_heights(handler.clone(), command_arg).await;
+        match handler.get_headers(heights).await {
             Err(err) => {
                 println!("Failed to retrieve headers: {:?}", err);
                 warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
@@ -1118,11 +1102,11 @@ impl Parser {
             println!("calc-timing [number of headers from chain tip]");
             return;
         }
-
         let handler = self.node_service.clone();
+
         self.executor.spawn(async move {
             let headers = Parser::get_headers(handler, command_arg).await;
-            let (max, min, avg) = timing_stats(&headers);
+            let (max, min, avg) = BlockHeader::timing_stats(&headers);
             println!("Max block time: {}", max);
             println!("Min block time: {}", min);
             println!("Avg block time: {}", avg);
@@ -1463,69 +1447,4 @@ fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
     EmojiId::str_to_pubkey(&key.trim().replace('|', ""))
         .or_else(|_| CommsPublicKey::from_hex(key))
         .ok()
-}
-
-/// Given a slice of headers (in reverse order), calculate the maximum, minimum and average periods between them
-fn timing_stats(headers: &[BlockHeader]) -> (u64, u64, f64) {
-    let (max, min) = headers.windows(2).fold((0u64, std::u64::MAX), |(max, min), next| {
-        let delta_t = match next[0].timestamp.checked_sub(next[1].timestamp) {
-            Some(delta) => delta.as_u64(),
-            None => 0u64,
-        };
-        let min = min.min(delta_t);
-        let max = max.max(delta_t);
-        (max, min)
-    });
-    let avg = if headers.len() >= 2 {
-        let dt = headers.first().unwrap().timestamp - headers.last().unwrap().timestamp;
-        let n = headers.len() - 1;
-        dt.as_u64() as f64 / n as f64
-    } else {
-        0.0
-    };
-    (max, min, avg)
-}
-
-#[cfg(test)]
-mod test {
-    use crate::parser::timing_stats;
-    use tari_core::{blocks::BlockHeader, tari_utilities::epoch_time::EpochTime};
-
-    #[test]
-    fn test_timing_stats() {
-        let headers = vec![500, 350, 300, 210, 100u64]
-            .into_iter()
-            .map(|t| BlockHeader {
-                timestamp: EpochTime::from(t),
-                ..BlockHeader::default()
-            })
-            .collect::<Vec<BlockHeader>>();
-        let (max, min, avg) = timing_stats(&headers);
-        assert_eq!(max, 150);
-        assert_eq!(min, 50);
-        assert_eq!(avg, 100f64);
-    }
-
-    #[test]
-    fn timing_negative_blocks() {
-        let headers = vec![150, 90, 100u64]
-            .into_iter()
-            .map(|t| BlockHeader {
-                timestamp: EpochTime::from(t),
-                ..BlockHeader::default()
-            })
-            .collect::<Vec<BlockHeader>>();
-        let (max, min, avg) = timing_stats(&headers);
-        assert_eq!(max, 60);
-        assert_eq!(min, 0);
-        assert_eq!(avg, 25f64);
-    }
-
-    #[test]
-    fn timing_empty_list() {
-        let (max, min, avg) = timing_stats(&[]);
-        assert_eq!(max, 0);
-        assert_eq!(min, std::u64::MAX);
-        assert_eq!(avg, 0f64);
-    }
 }
