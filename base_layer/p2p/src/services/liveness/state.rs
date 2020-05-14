@@ -192,15 +192,30 @@ impl LivenessState {
         self.peer_latency.get(node_id).map(|latency| latency.calc_average())
     }
 
+    /// Add a NodeId to be monitored. If the NodeID already exists then increment the count of how many requests for
+    /// monitoring have occured.
     pub fn add_node_id(&mut self, node_id: &NodeId) {
-        if self.nodes_to_monitor.contains_key(node_id) {
-            return;
+        if let Some(n) = self.nodes_to_monitor.get_mut(node_id) {
+            n.number_of_monitor_requests += 1;
+        } else {
+            let _ = self.nodes_to_monitor.insert(node_id.clone(), NodeStats::new());
         }
-        let _ = self.nodes_to_monitor.insert(node_id.clone(), NodeStats::new());
     }
 
+    /// Reduce the count of how many request has been received to monitor NodeId, if this would reduce the count to zero
+    /// then remove the NodeId
     pub fn remove_node_id(&mut self, node_id: &NodeId) {
-        let _ = self.nodes_to_monitor.remove(node_id);
+        let mut remove_block = false;
+        if let Some(n) = self.nodes_to_monitor.get_mut(node_id) {
+            if n.number_of_monitor_requests > 1 {
+                n.number_of_monitor_requests -= 1;
+            } else {
+                remove_block = true;
+            }
+        }
+        if remove_block {
+            let _ = self.nodes_to_monitor.remove(node_id);
+        }
     }
 
     pub fn get_num_monitored_nodes(&self) -> usize {
@@ -302,6 +317,7 @@ pub struct NodeStats {
     last_ping_sent: Option<NaiveDateTime>,
     last_pong_received: Option<NaiveDateTime>,
     average_latency: AverageLatency,
+    number_of_monitor_requests: u32,
 }
 
 impl NodeStats {
@@ -310,6 +326,7 @@ impl NodeStats {
             last_ping_sent: None,
             last_pong_received: None,
             average_latency: AverageLatency::new(LATENCY_SAMPLE_WINDOW_SIZE),
+            number_of_monitor_requests: 1,
         }
     }
 }
@@ -418,6 +435,16 @@ mod test {
         assert_eq!(stats.average_latency.calc_average(), latency);
 
         state.add_node_id(&node_id2);
+        state.add_node_id(&node_id2);
+        assert_eq!(
+            state
+                .nodes_to_monitor
+                .get(&node_id2)
+                .unwrap()
+                .number_of_monitor_requests,
+            2
+        );
+
         assert_eq!(state.get_num_monitored_nodes(), 2);
 
         state.add_inflight_ping(1, &node_id2);
@@ -438,5 +465,17 @@ mod test {
 
         state.remove_node_id(&node_id);
         assert_eq!(state.get_num_monitored_nodes(), 1);
+        state.remove_node_id(&node_id2);
+        assert_eq!(state.get_num_monitored_nodes(), 1);
+        assert_eq!(
+            state
+                .nodes_to_monitor
+                .get(&node_id2)
+                .unwrap()
+                .number_of_monitor_requests,
+            1
+        );
+        state.remove_node_id(&node_id2);
+        assert_eq!(state.get_num_monitored_nodes(), 0);
     }
 }

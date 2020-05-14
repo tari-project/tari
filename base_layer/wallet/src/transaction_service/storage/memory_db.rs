@@ -383,6 +383,23 @@ impl TransactionBackend for TransactionMemoryDatabase {
         Ok(())
     }
 
+    fn mark_direct_send_success(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
+        let mut db = acquire_write_lock!(self.db);
+
+        if db.pending_inbound_transactions.contains_key(&tx_id) {
+            if let Some(inbound) = db.pending_inbound_transactions.get_mut(&tx_id) {
+                inbound.direct_send_success = true;
+            }
+        } else if db.pending_outbound_transactions.contains_key(&tx_id) {
+            if let Some(outbound) = db.pending_outbound_transactions.get_mut(&tx_id) {
+                outbound.direct_send_success = true;
+            }
+        } else {
+            return Err(TransactionStorageError::ValuesNotFound);
+        }
+        Ok(())
+    }
+
     #[cfg(feature = "test_harness")]
     fn update_completed_transaction_timestamp(
         &self,

@@ -419,6 +419,39 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
+    fn mark_direct_send_success(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
+        let conn = acquire_lock!(self.database_connection);
+        match InboundTransactionSql::find(tx_id, &(*conn)) {
+            Ok(v) => {
+                v.update(
+                    UpdateInboundTransactionSql {
+                        cancelled: None,
+                        direct_send_success: Some(1i32),
+                    },
+                    &(*conn),
+                )?;
+            },
+            Err(_) => {
+                match OutboundTransactionSql::find(tx_id, &(*conn)) {
+                    Ok(v) => {
+                        v.update(
+                            UpdateOutboundTransactionSql {
+                                cancelled: None,
+                                direct_send_success: Some(1i32),
+                            },
+                            &(*conn),
+                        )?;
+                    },
+                    Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
+                        return Err(TransactionStorageError::ValuesNotFound);
+                    },
+                    Err(e) => return Err(e),
+                };
+            },
+        };
+        Ok(())
+    }
+
     #[cfg(feature = "test_harness")]
     fn update_completed_transaction_timestamp(
         &self,
@@ -453,6 +486,7 @@ struct InboundTransactionSql {
     message: String,
     timestamp: NaiveDateTime,
     cancelled: i32,
+    direct_send_success: i32,
 }
 
 impl InboundTransactionSql {
@@ -491,10 +525,15 @@ impl InboundTransactionSql {
         Ok(())
     }
 
-    pub fn cancel(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+    pub fn update(
+        &self,
+        update: UpdateInboundTransactionSql,
+        conn: &SqliteConnection,
+    ) -> Result<(), TransactionStorageError>
+    {
         let num_updated =
             diesel::update(inbound_transactions::table.filter(inbound_transactions::tx_id.eq(&self.tx_id)))
-                .set(UpdateInboundTransactionSql { cancelled: Some(1i32) })
+                .set(update)
                 .execute(conn)?;
 
         if num_updated == 0 {
@@ -504,6 +543,16 @@ impl InboundTransactionSql {
         }
 
         Ok(())
+    }
+
+    pub fn cancel(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+        self.update(
+            UpdateInboundTransactionSql {
+                cancelled: Some(1i32),
+                direct_send_success: None,
+            },
+            conn,
+        )
     }
 }
 
@@ -519,6 +568,7 @@ impl TryFrom<InboundTransaction> for InboundTransactionSql {
             message: i.message,
             timestamp: i.timestamp,
             cancelled: i.cancelled as i32,
+            direct_send_success: i.direct_send_success as i32,
         })
     }
 }
@@ -537,6 +587,7 @@ impl TryFrom<InboundTransactionSql> for InboundTransaction {
             message: i.message,
             timestamp: i.timestamp,
             cancelled: i.cancelled != 0,
+            direct_send_success: i.direct_send_success != 0,
         })
     }
 }
@@ -545,6 +596,7 @@ impl TryFrom<InboundTransactionSql> for InboundTransaction {
 #[table_name = "inbound_transactions"]
 pub struct UpdateInboundTransactionSql {
     cancelled: Option<i32>,
+    direct_send_success: Option<i32>,
 }
 
 /// A structure to represent a Sql compatible version of the OutboundTransaction struct
@@ -559,6 +611,7 @@ struct OutboundTransactionSql {
     message: String,
     timestamp: NaiveDateTime,
     cancelled: i32,
+    direct_send_success: i32,
 }
 
 impl OutboundTransactionSql {
@@ -597,10 +650,15 @@ impl OutboundTransactionSql {
         Ok(())
     }
 
-    pub fn cancel(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+    pub fn update(
+        &self,
+        update: UpdateOutboundTransactionSql,
+        conn: &SqliteConnection,
+    ) -> Result<(), TransactionStorageError>
+    {
         let num_updated =
             diesel::update(outbound_transactions::table.filter(outbound_transactions::tx_id.eq(&self.tx_id)))
-                .set(UpdateOutboundTransactionSql { cancelled: Some(1i32) })
+                .set(update)
                 .execute(conn)?;
 
         if num_updated == 0 {
@@ -610,6 +668,16 @@ impl OutboundTransactionSql {
         }
 
         Ok(())
+    }
+
+    pub fn cancel(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+        self.update(
+            UpdateOutboundTransactionSql {
+                cancelled: Some(1i32),
+                direct_send_success: None,
+            },
+            conn,
+        )
     }
 }
 
@@ -626,6 +694,7 @@ impl TryFrom<OutboundTransaction> for OutboundTransactionSql {
             message: o.message,
             timestamp: o.timestamp,
             cancelled: o.cancelled as i32,
+            direct_send_success: o.direct_send_success as i32,
         })
     }
 }
@@ -645,6 +714,7 @@ impl TryFrom<OutboundTransactionSql> for OutboundTransaction {
             message: o.message,
             timestamp: o.timestamp,
             cancelled: o.cancelled != 0,
+            direct_send_success: o.direct_send_success != 0,
         })
     }
 }
@@ -653,6 +723,7 @@ impl TryFrom<OutboundTransactionSql> for OutboundTransaction {
 #[table_name = "outbound_transactions"]
 pub struct UpdateOutboundTransactionSql {
     cancelled: Option<i32>,
+    direct_send_success: Option<i32>,
 }
 
 /// A structure to represent a Sql compatible version of the CompletedTransaction struct
@@ -880,6 +951,7 @@ mod test {
             message: "Yo!".to_string(),
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
+            direct_send_success: false,
         };
 
         let outbound_tx2 = OutboundTransactionSql::try_from(OutboundTransaction {
@@ -889,10 +961,10 @@ mod test {
             fee: stp.clone().get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
             status: TransactionStatus::Pending,
-
             message: "Hey!".to_string(),
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
+            direct_send_success: false,
         })
         .unwrap();
 
@@ -930,6 +1002,7 @@ mod test {
             message: "Yo!".to_string(),
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
+            direct_send_success: false,
         };
         let inbound_tx2 = InboundTransaction {
             tx_id: 3,
@@ -940,6 +1013,7 @@ mod test {
             message: "Hey!".to_string(),
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
+            direct_send_success: false,
         };
 
         InboundTransactionSql::try_from(inbound_tx1.clone())
