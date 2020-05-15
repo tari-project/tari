@@ -507,7 +507,7 @@ fn propagate_and_forward_invalid_block() {
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let stateless_block_validator = StatelessBlockValidator::new(&rules.consensus_constants());
+    let stateless_block_validator = StatelessBlockValidator::new(rules.clone(), factories.clone());
     let mock_validator = MockValidator::new(true);
     let mock_accum_difficulty_validator = MockAccumDifficultyValidator {};
     let (mut alice_node, rules) = BaseNodeBuilder::new(network)

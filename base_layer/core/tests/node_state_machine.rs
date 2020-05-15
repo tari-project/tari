@@ -65,7 +65,7 @@ use tari_core::{
     transactions::types::CryptoFactories,
     validation::{
         accum_difficulty_validators::MockAccumDifficultyValidator,
-        block_validators::StatelessBlockValidator,
+        block_validators::{MockStatelessBlockValidator, StatelessBlockValidator},
         mocks::MockValidator,
     },
 };
@@ -605,7 +605,7 @@ fn test_sync_peer_banning() {
         .with_consensus_constants(consensus_constants)
         .with_block(prev_block.clone())
         .build();
-    let stateless_block_validator = StatelessBlockValidator::new(consensus_manager.consensus_constants());
+    let stateless_block_validator = MockStatelessBlockValidator::new(consensus_manager.clone(), factories.clone());
     let mock_validator = MockValidator::new(true);
     // Create base nodes
     let alice_node_identity = random_node_identity();
