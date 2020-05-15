@@ -23,8 +23,8 @@
 use crate::{
     blocks::BlockHeader,
     proof_of_work::{monero_rx::MergeMineError::HashingError, Difficulty},
+    U256,
 };
-use bigint::uint::U256;
 use derive_error::Error;
 use monero::blockdata::{block::BlockHeader as MoneroBlockHeader, Transaction as MoneroTransaction};
 #[cfg(feature = "monero_merge_mining")]
