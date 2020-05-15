@@ -64,7 +64,8 @@ impl FullTxValidator {
 impl<B: BlockchainBackend> Validation<Transaction, B> for FullTxValidator {
     fn validate(&self, tx: &Transaction, db: &B) -> Result<(), ValidationError> {
         verify_tx(tx, &self.factories)?;
-        verify_inputs(tx, db)?;
+        verify_not_stxos(tx, db)?;
+        verify_inputs_are_utxos(tx, db)?;
         let tip_height = db
             .fetch_metadata()
             .map_err(|e| ValidationError::CustomError(e.to_string()))?
@@ -81,7 +82,8 @@ pub struct TxInputAndMaturityValidator {}
 
 impl<B: BlockchainBackend> Validation<Transaction, B> for TxInputAndMaturityValidator {
     fn validate(&self, tx: &Transaction, db: &B) -> Result<(), ValidationError> {
-        verify_inputs(tx, db)?;
+        verify_not_stxos(tx, db)?;
+        verify_inputs_are_utxos(tx, db)?;
         let tip_height = db
             .fetch_metadata()
             .map_err(|e| ValidationError::CustomError(e.to_string()))?
@@ -97,7 +99,8 @@ pub struct InputTxValidator {}
 
 impl<B: BlockchainBackend> Validation<Transaction, B> for InputTxValidator {
     fn validate(&self, tx: &Transaction, db: &B) -> Result<(), ValidationError> {
-        verify_inputs(tx, db)?;
+        verify_not_stxos(tx, db)?;
+        verify_inputs_are_utxos(tx, db)?;
         Ok(())
     }
 }
@@ -133,8 +136,8 @@ fn verify_timelocks(tx: &Transaction, current_height: u64) -> Result<(), Validat
     Ok(())
 }
 
-// This function checks that all inputs exist in the provided database backend
-fn verify_inputs<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<(), ValidationError> {
+// This function checks that the inputs and outputs do not exist in the STxO set.
+fn verify_not_stxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<(), ValidationError> {
     for input in tx.body.inputs() {
         if is_stxo(db, input.hash()).map_err(|e| ValidationError::CustomError(e.to_string()))? {
             // we dont want to log this as a node or wallet might retransmit a transaction
@@ -144,6 +147,22 @@ fn verify_inputs<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<(), V
             );
             return Err(ValidationError::ContainsSTxO);
         }
+    }
+    for output in tx.body.outputs() {
+        if is_stxo(db, output.hash()).map_err(|e| ValidationError::CustomError(e.to_string()))? {
+            debug!(
+                target: LOG_TARGET,
+                "Transaction validation failed due to previously spent output: {}", output
+            );
+            return Err(ValidationError::ContainsSTxO);
+        }
+    }
+    Ok(())
+}
+
+// This function checks that all inputs in the transaction are valid UTXO's to be spend.
+fn verify_inputs_are_utxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<(), ValidationError> {
+    for input in tx.body.inputs() {
         if !(is_utxo(db, input.hash())).map_err(|e| ValidationError::CustomError(e.to_string()))? {
             warn!(
                 target: LOG_TARGET,
