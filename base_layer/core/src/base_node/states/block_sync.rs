@@ -19,24 +19,25 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::{
     base_node::{
         comms_interface::{Broadcast, CommsInterfaceError},
         state_machine::BaseNodeStateMachine,
-        states::{ForwardBlockSyncInfo, ListeningInfo, StateEvent},
+        states::{ForwardBlockSyncInfo, ListeningData, StateEvent, StatusInfo},
     },
-    blocks::{
-        blockheader::{BlockHash, BlockHeader},
-        Block,
-    },
+    blocks::{blockheader::BlockHeader, Block},
     chain_storage::{async_db, BlockchainBackend, ChainMetadata, ChainStorageError},
 };
 use core::cmp::min;
 use derive_error::Error;
+use futures::SinkExt;
 use log::*;
 use rand::seq::SliceRandom;
-use std::{str::FromStr, time::Duration};
+use std::{
+    fmt::{Display, Formatter},
+    str::FromStr,
+    time::Duration,
+};
 use tari_comms::{
     connection_manager::ConnectionManagerError,
     peer_manager::{NodeId, PeerManagerError},
@@ -77,6 +78,41 @@ pub struct BlockSyncConfig {
     pub block_request_size: usize,
     pub peer_ban_duration: Duration,
     pub short_term_peer_ban_duration: Duration,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+/// This struct contains info that is use full for external viewing of state info
+pub struct BlockSyncInfo {
+    pub tip_height: Option<u64>,
+    pub local_height: Option<u64>,
+    pub sync_peers: Vec<NodeId>,
+}
+
+impl BlockSyncInfo {
+    /// Creates a new blockSyncInfo
+    pub fn new(tip_height: Option<u64>, local_height: Option<u64>, sync_peers: Option<&Vec<NodeId>>) -> BlockSyncInfo {
+        let peers = match sync_peers {
+            Some(v) => v.clone(),
+            None => Vec::new(),
+        };
+        BlockSyncInfo {
+            tip_height,
+            local_height,
+            sync_peers: peers,
+        }
+    }
+}
+
+impl Display for BlockSyncInfo {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let local_height = self.local_height.unwrap_or(0);
+        let tip_height = self.tip_height.unwrap_or(0);
+        fmt.write_str("Syncing from: \n")?;
+        for peer in &self.sync_peers {
+            fmt.write_str(&format!("{}\n", peer))?;
+        }
+        fmt.write_str(&format!("Syncing {}/{}\n", local_height, tip_height))
+    }
 }
 
 impl Default for BlockSyncConfig {
@@ -124,6 +160,9 @@ impl BlockSyncStrategy {
         sync_peers: &mut Vec<NodeId>,
     ) -> StateEvent
     {
+        shared.info = StatusInfo::BlockSync(BlockSyncInfo::new(None, None, None));
+
+        let _ = shared.status_event_publisher.send(shared.info.clone()).await;
         match self {
             BlockSyncStrategy::ViaBestChainMetadata(sync) => sync.next_event(shared, network_tip, sync_peers).await,
             BlockSyncStrategy::ViaRandomPeer(sync) => sync.next_event(shared).await,
@@ -132,9 +171,9 @@ impl BlockSyncStrategy {
 }
 
 /// State management for BlockSync -> Listening.
-impl From<BlockSyncStrategy> for ListeningInfo {
+impl From<BlockSyncStrategy> for ListeningData {
     fn from(_old_state: BlockSyncStrategy) -> Self {
-        ListeningInfo {}
+        ListeningData {}
     }
 }
 
@@ -179,6 +218,8 @@ impl BestChainMetadataBlockSyncInfo {
         sync_peers: &mut Vec<NodeId>,
     ) -> StateEvent
     {
+        shared.info = StatusInfo::BlockSync(BlockSyncInfo::new(None, None, None));
+        let _ = shared.status_event_publisher.send(shared.info.clone()).await;
         info!(target: LOG_TARGET, "Synchronizing missing blocks.");
         match synchronize_blocks(shared, network_tip, sync_peers).await {
             Ok(()) => {
@@ -233,6 +274,11 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
     sync_peers: &mut Vec<NodeId>,
 ) -> Result<(), BlockSyncError>
 {
+    if let StatusInfo::BlockSync(ref mut info) = shared.info {
+        info.sync_peers.clear();
+        info.sync_peers.append(&mut sync_peers.clone());
+    }
+    let _ = shared.status_event_publisher.send(shared.info.clone()).await;
     let local_metadata = shared.db.get_metadata()?;
     if let Some(local_block_hash) = local_metadata.best_block.clone() {
         if let Some(network_block_hash) = network_metadata.best_block.clone() {
@@ -266,7 +312,15 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             }
 
             info!(target: LOG_TARGET, "Synchronize missing blocks.");
+            if let StatusInfo::BlockSync(ref mut info) = shared.info {
+                info.tip_height = Some(network_tip_height);
+            }
             while sync_height <= network_tip_height {
+                if let StatusInfo::BlockSync(ref mut info) = shared.info {
+                    info.local_height = Some(sync_height);
+                }
+
+                let _ = shared.status_event_publisher.send(shared.info.clone()).await;
                 let max_height = min(
                     sync_height + (shared.config.block_sync_config.block_request_size - 1) as u64,
                     network_tip_height,
@@ -292,18 +346,18 @@ async fn check_chain_split<B: BlockchainBackend + 'static>(
     sync_peers: &mut Vec<NodeId>,
     local_tip_height: u64,
     network_tip_height: u64,
-    local_block_hash: &BlockHash,
-    network_block_hash: &BlockHash,
+    local_block_hash: &[u8],
+    network_block_hash: &[u8],
 ) -> Result<bool, BlockSyncError>
 {
-    Ok(if network_tip_height > local_tip_height {
-        let (header, _) = request_header(shared, sync_peers, local_tip_height).await?;
-        *local_block_hash != header.hash()
-    } else if network_tip_height == local_tip_height {
-        *local_block_hash != *network_block_hash
-    } else {
-        true
-    })
+    match network_tip_height {
+        tip if tip > local_tip_height => {
+            let (header, _) = request_header(shared, sync_peers, local_tip_height).await?;
+            Ok(header.hash() != local_block_hash)
+        },
+        tip if tip == local_tip_height => Ok(local_block_hash != network_block_hash),
+        _ => Ok(true),
+    }
 }
 
 // Find the block height where the chain split occurs. The chain split height is the height of the first block that is
@@ -362,8 +416,20 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
     let config = shared.config.block_sync_config;
     for attempt in 0..config.max_add_block_retry_attempts {
         let (blocks, sync_peer) = request_blocks(shared, sync_peers, block_nums.clone()).await?;
+        if let StatusInfo::BlockSync(ref mut info) = shared.info {
+            info.sync_peers.clear();
+            info.sync_peers.append(&mut sync_peers.clone());
+            // assuming the numbers are ordred
+            info.tip_height = Some(block_nums[block_nums.len() - 1]);
+        }
+        let _ = shared.status_event_publisher.send(shared.info.clone()).await;
         for block in blocks {
             let block_hash = block.hash();
+            if let StatusInfo::BlockSync(ref mut info) = shared.info {
+                info.local_height = Some(block.header.height);
+            }
+
+            let _ = shared.status_event_publisher.send(shared.info.clone()).await;
             match shared
                 .local_node_interface
                 .submit_block(block.clone(), Broadcast::from(false))

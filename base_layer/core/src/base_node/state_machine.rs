@@ -24,7 +24,7 @@ use crate::{
         chain_metadata_service::ChainMetadataEvent,
         comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface},
         states,
-        states::{BaseNodeState, BlockSyncConfig, StateEvent},
+        states::{BaseNodeState, BlockSyncConfig, StateEvent, StatusInfo},
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
 };
@@ -66,6 +66,9 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) connection_manager: ConnectionManagerRequester,
     pub(super) metadata_event_stream: Subscriber<ChainMetadataEvent>,
     pub(super) config: BaseNodeStateMachineConfig,
+    pub(super) info: StatusInfo,
+    pub(super) status_event_publisher: Publisher<StatusInfo>,
+    status_event_subscriber: Subscriber<StatusInfo>,
     event_sender: Publisher<StateEvent>,
     event_receiver: Subscriber<StateEvent>,
     interrupt_signal: ShutdownSignal,
@@ -85,6 +88,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     ) -> Self
     {
         let (event_sender, event_receiver): (Publisher<_>, Subscriber<_>) = bounded(10);
+        let (status_event_publisher, status_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(1); // only latest update is important
         Self {
             db: db.clone(),
             local_node_interface: local_node_interface.clone(),
@@ -94,8 +98,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             metadata_event_stream,
             interrupt_signal: shutdown_signal,
             config,
+            info: StatusInfo::StartUp,
             event_sender,
             event_receiver,
+            status_event_publisher,
+            status_event_subscriber,
         }
     }
 
@@ -128,6 +135,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     /// caller.
     pub fn get_state_change_event_stream(&self) -> Subscriber<StateEvent> {
         self.event_receiver.clone()
+    }
+
+    /// This clones the receiver end of the channel and gives out a copy to the caller
+    /// This allows multiple subscribers to this channel by only keeping one channel and cloning the receiver for every
+    /// caller.
+    pub fn get_status_event_stream(&self) -> Subscriber<StatusInfo> {
+        self.status_event_subscriber.clone()
     }
 
     /// Start the base node runtime.

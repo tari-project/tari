@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node::states::{BlockSyncStrategy, ListeningInfo, StateEvent};
+use crate::base_node::states::{BlockSyncStrategy, ListeningData, StateEvent};
 use log::info;
 use std::time::Duration;
 use tokio::time::delay_for;
@@ -59,8 +59,8 @@ impl From<BlockSyncStrategy> for Waiting {
     }
 }
 
-impl From<Waiting> for ListeningInfo {
+impl From<Waiting> for ListeningData {
     fn from(_: Waiting) -> Self {
-        ListeningInfo
+        ListeningData
     }
 }

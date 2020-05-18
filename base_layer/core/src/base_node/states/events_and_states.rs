@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::states::{BlockSyncStrategy, ListeningInfo, Shutdown, Starting, Waiting},
+    base_node::states::{BlockSyncInfo, BlockSyncStrategy, ListeningData, ListeningInfo, Shutdown, Starting, Waiting},
     chain_storage::ChainMetadata,
     proof_of_work::Difficulty,
 };
@@ -33,7 +33,7 @@ pub enum BaseNodeState {
     Starting(Starting),
     BlockSync(BlockSyncStrategy, ChainMetadata, Vec<NodeId>),
     // The best network chain metadata
-    Listening(ListeningInfo),
+    Listening(ListeningData),
     // We're in a paused state, and will return to Listening after a timeout
     Waiting(Waiting),
     Shutdown(Shutdown),
@@ -106,5 +106,23 @@ impl Display for BaseNodeState {
             Self::Waiting(_) => "Waiting",
         };
         f.write_str(s)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+/// This enum will display all info inside of the state engine
+pub enum StatusInfo {
+    StartUp,
+    BlockSync(BlockSyncInfo),
+    Listening(ListeningInfo),
+}
+
+impl Display for StatusInfo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        match self {
+            Self::StartUp => write!(f, "Node starting up"),
+            Self::BlockSync(info) => write!(f, "Synchronizing blocks: {}", info),
+            Self::Listening(info) => write!(f, "Listening: {}", info),
+        }
     }
 }

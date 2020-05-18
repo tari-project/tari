@@ -64,10 +64,10 @@ mod shutdown_state;
 mod starting_state;
 mod waiting;
 
-pub use block_sync::{BestChainMetadataBlockSyncInfo, BlockSyncConfig, BlockSyncStrategy};
-pub use events_and_states::{BaseNodeState, StateEvent, SyncStatus};
+pub use block_sync::{BestChainMetadataBlockSyncInfo, BlockSyncConfig, BlockSyncInfo, BlockSyncStrategy};
+pub use events_and_states::{BaseNodeState, StateEvent, StatusInfo, SyncStatus};
 pub use forward_block_sync::ForwardBlockSyncInfo;
-pub use listening::ListeningInfo;
+pub use listening::{ListeningData, ListeningInfo};
 pub use shutdown_state::Shutdown;
 pub use starting_state::Starting;
 pub use waiting::Waiting;
