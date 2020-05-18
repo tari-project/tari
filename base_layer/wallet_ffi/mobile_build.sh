@@ -222,7 +222,7 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ "${BUILD_ANDROID}" -eq 
           export CFLAGS="${CFLAGS} -I${NDK_HOME}/sources/cxx-stl/llvm-libc++/include -I${NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include -I${NDK_HOME}/sysroot/usr/include/${PLATFORMABI}"
         fi
       fi
-      export LDFLAGS="-L${NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/${PLATFORMABI_TOOLCHAIN}/${LEVEL} -L${OUTPUT_DIR}/lib -lc++ -lsqilte3"
+      export LDFLAGS="-L${NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/${PLATFORMABI_TOOLCHAIN}/${LEVEL} -L${OUTPUT_DIR}/lib -lc++ -lsqlite3"
       cd ${OUTPUT_DIR}/lib || exit
 
       if [ ${SQLITE_BUILD_FOUND} -eq 1 ]; then
