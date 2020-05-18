@@ -256,7 +256,7 @@ impl StoreAndForwardService {
             InsertMessage(msg) => {
                 let public_key = msg.destination_pubkey.clone();
                 let node_id = msg.destination_node_id.clone();
-                match self.database.insert_message(msg).await {
+                match self.database.insert_message_if_unique(msg).await {
                     Ok(_) => info!(
                         target: LOG_TARGET,
                         "Stored message for {}",

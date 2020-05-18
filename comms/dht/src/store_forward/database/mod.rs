@@ -30,7 +30,7 @@ use crate::{
     store_forward::message::StoredMessagePriority,
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
-use diesel::{dsl, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::{dsl, result::DatabaseErrorKind, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl};
 use tari_comms::{
     peer_manager::{node_id::NodeDistance, NodeId},
     types::CommsPublicKey,
@@ -46,13 +46,20 @@ impl StoreAndForwardDatabase {
         Self { connection }
     }
 
-    pub async fn insert_message(&self, message: NewStoredMessage) -> Result<(), StorageError> {
+    pub async fn insert_message_if_unique(&self, message: NewStoredMessage) -> Result<(), StorageError> {
         self.connection
-            .with_connection_async(|conn| {
-                diesel::insert_into(stored_messages::table)
+            .with_connection_async(move |conn| {
+                match diesel::insert_into(stored_messages::table)
                     .values(message)
-                    .execute(conn)?;
-                Ok(())
+                    .execute(conn)
+                {
+                    Ok(_) => Ok(()),
+                    Err(diesel::result::Error::DatabaseError(kind, e_info)) => match kind {
+                        DatabaseErrorKind::UniqueViolation => Ok(()),
+                        _ => Err(diesel::result::Error::DatabaseError(kind, e_info).into()),
+                    },
+                    Err(e) => Err(e.into()),
+                }
             })
             .await
     }
@@ -304,9 +311,19 @@ mod test {
         let conn = DbConnection::connect_memory(random::string(8)).await.unwrap();
         conn.migrate().await.unwrap();
         let db = StoreAndForwardDatabase::new(conn);
-        db.insert_message(Default::default()).await.unwrap();
+        let mut msg1 = NewStoredMessage::default();
+        msg1.body_hash.push('1');
+        let mut msg2 = NewStoredMessage::default();
+        msg2.body_hash.push('2');
+        let mut msg3 = NewStoredMessage::default();
+        msg3.body_hash.push('2'); // Duplicate message
+        db.insert_message_if_unique(msg1.clone()).await.unwrap();
+        db.insert_message_if_unique(msg2.clone()).await.unwrap();
+        db.insert_message_if_unique(msg3.clone()).await.unwrap();
         let messages = db.get_all_messages().await.unwrap();
-        assert_eq!(messages.len(), 1);
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].body_hash, msg1.body_hash);
+        assert_eq!(messages[1].body_hash, msg2.body_hash);
     }
 
     #[tokio_macros::test_basic]
@@ -316,14 +333,14 @@ mod test {
         let db = StoreAndForwardDatabase::new(conn);
         // Create 3 unique messages
         let mut msg1 = NewStoredMessage::default();
-        msg1.body.push(1u8);
+        msg1.body_hash.push('1');
         let mut msg2 = NewStoredMessage::default();
-        msg2.body.push(2u8);
+        msg2.body_hash.push('2');
         let mut msg3 = NewStoredMessage::default();
-        msg3.body.push(3u8);
-        db.insert_message(msg1.clone()).await.unwrap();
-        db.insert_message(msg2.clone()).await.unwrap();
-        db.insert_message(msg3.clone()).await.unwrap();
+        msg3.body_hash.push('3');
+        db.insert_message_if_unique(msg1.clone()).await.unwrap();
+        db.insert_message_if_unique(msg2.clone()).await.unwrap();
+        db.insert_message_if_unique(msg3.clone()).await.unwrap();
         let messages = db.get_all_messages().await.unwrap();
         assert_eq!(messages.len(), 3);
         let msg1_id = messages[0].id;
@@ -342,22 +359,22 @@ mod test {
         conn.migrate().await.unwrap();
         let db = StoreAndForwardDatabase::new(conn);
         let mut msg1 = NewStoredMessage::default();
-        msg1.body.push(1u8);
+        msg1.body_hash.push('1');
         let mut msg2 = NewStoredMessage::default();
-        msg2.body.push(2u8);
+        msg2.body_hash.push('2');
         let mut msg3 = NewStoredMessage::default();
-        msg3.body.push(3u8);
+        msg3.body_hash.push('3');
         let mut msg4 = NewStoredMessage::default();
-        msg4.body.push(4u8);
-        db.insert_message(msg1.clone()).await.unwrap();
-        db.insert_message(msg2.clone()).await.unwrap();
-        db.insert_message(msg3.clone()).await.unwrap();
-        db.insert_message(msg4.clone()).await.unwrap();
+        msg4.body_hash.push('4');
+        db.insert_message_if_unique(msg1.clone()).await.unwrap();
+        db.insert_message_if_unique(msg2.clone()).await.unwrap();
+        db.insert_message_if_unique(msg3.clone()).await.unwrap();
+        db.insert_message_if_unique(msg4.clone()).await.unwrap();
         let num_removed = db.truncate_messages(2).await.unwrap();
         assert_eq!(num_removed, 2);
         let messages = db.get_all_messages().await.unwrap();
         assert_eq!(messages.len(), 2);
-        assert_eq!(messages[0].body, msg3.body);
-        assert_eq!(messages[1].body, msg4.body);
+        assert_eq!(messages[0].body_hash, msg3.body_hash);
+        assert_eq!(messages[1].body_hash, msg4.body_hash);
     }
 }

@@ -546,6 +546,8 @@ mod test {
     // TODO: unit tests for static functions (check_signature, etc)
 
     fn make_stored_message(node_identity: &NodeIdentity, dht_header: DhtMessageHeader) -> StoredMessage {
+        let body = b"A".to_vec();
+        let body_hash = Challenge::new().chain(body.clone()).result().to_vec().to_hex();
         StoredMessage {
             id: 1,
             version: 0,
@@ -554,10 +556,11 @@ mod test {
             destination_pubkey: None,
             destination_node_id: None,
             header: DhtHeader::from(dht_header).to_encoded_bytes(),
-            body: b"A".to_vec(),
+            body,
             is_encrypted: false,
             priority: StoredMessagePriority::High as i32,
             stored_at: Utc::now().naive_utc(),
+            body_hash,
         }
     }
 

@@ -19,6 +19,7 @@ table! {
         is_encrypted -> Bool,
         priority -> Integer,
         stored_at -> Timestamp,
+        body_hash -> Text,
     }
 }
 

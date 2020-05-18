@@ -27,8 +27,9 @@ use crate::{
     store_forward::message::StoredMessagePriority,
 };
 use chrono::NaiveDateTime;
+use digest::Input;
 use std::convert::TryInto;
-use tari_comms::message::MessageExt;
+use tari_comms::{message::MessageExt, types::Challenge};
 use tari_utilities::hex::Hex;
 
 #[derive(Clone, Debug, Insertable, Default)]
@@ -43,6 +44,7 @@ pub struct NewStoredMessage {
     pub body: Vec<u8>,
     pub is_encrypted: bool,
     pub priority: i32,
+    pub body_hash: String,
 }
 
 impl NewStoredMessage {
@@ -72,6 +74,7 @@ impl NewStoredMessage {
                 let dht_header: DhtHeader = dht_header.into();
                 dht_header.to_encoded_bytes()
             },
+            body_hash: Challenge::new().chain(body.clone()).result().to_vec().to_hex(),
             body,
         })
     }
@@ -90,4 +93,5 @@ pub struct StoredMessage {
     pub is_encrypted: bool,
     pub priority: i32,
     pub stored_at: NaiveDateTime,
+    pub body_hash: String,
 }
