@@ -223,6 +223,52 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         debug!(target: LOG_TARGET, "Sending GetBlocks response stream to client");
         Ok(Response::new(rx))
     }
+
+    async fn get_calc_timing(
+        &self,
+        request: Request<GetCalcTimingRequest>,
+    ) -> Result<Response<CalcTimingResponse>, Status>
+    {
+        let request = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "Incoming GRPC request for GetCalcTiming: from_tip: {:?} start_height: {:?} end_height: {:?}",
+            request.from_tip,
+            request.start_height,
+            request.end_height
+        );
+
+        let mut handler = self.node_service.clone();
+        let heights = if request.start_height > 0 && request.end_height > 0 {
+            BlockHeader::get_height_range(request.start_height, request.end_height)
+        } else if request.from_tip > 0 {
+            match BlockHeader::get_heights_from_tip(handler.clone(), request.from_tip).await {
+                Ok(heights) => heights,
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error getting heights from tip for GRPC client: {}", err
+                    );
+                    Vec::new()
+                },
+            }
+        } else {
+            return Err(Status::invalid_argument("Invalid arguments provided"));
+        };
+
+        let headers = match handler.get_headers(heights).await {
+            Ok(headers) => headers,
+            Err(err) => {
+                warn!(target: LOG_TARGET, "Error getting headers for GRPC client: {}", err);
+                Vec::new()
+            },
+        };
+        let (max, min, avg) = BlockHeader::timing_stats(&headers);
+
+        let response: base_node_grpc::CalcTimingResponse = base_node_grpc::CalcTimingResponse { max, min, avg };
+        debug!(target: LOG_TARGET, "Sending GetCalcTiming response stream to client");
+        Ok(Response::new(response))
+    }
 }
 
 /// Utility function that converts a `chrono::DateTime` to a `prost::Timestamp`

@@ -38,6 +38,7 @@
 //! This hash is called the UTXO merkle root, and is used as the output_mr
 
 use crate::{
+    base_node::{comms_interface::CommsInterfaceError, LocalNodeCommsInterface},
     blocks::{BlockBuilder, NewBlockHeaderTemplate},
     proof_of_work::{Difficulty, PowError, ProofOfWork},
     transactions::types::{BlindingFactor, HashDigest},
@@ -164,6 +165,46 @@ impl BlockHeader {
     pub fn into_builder(self) -> BlockBuilder {
         BlockBuilder::new(self.version).with_header(self)
     }
+
+    pub async fn get_heights_from_tip(
+        mut handler: LocalNodeCommsInterface,
+        height_from_tip: u64,
+    ) -> Result<Vec<u64>, CommsInterfaceError>
+    {
+        let metadata = handler.get_metadata().await?;
+        let tip = metadata.height_of_longest_chain.unwrap_or(0);
+
+        let start = std::cmp::max(tip - height_from_tip, 1);
+        Ok(BlockHeader::get_height_range(start, tip))
+    }
+
+    pub fn get_height_range(start: u64, end_inclusive: u64) -> Vec<u64> {
+        let mut heights: Vec<u64> =
+            (std::cmp::min(start, end_inclusive)..=std::cmp::max(start, end_inclusive)).collect();
+        heights.reverse();
+        heights
+    }
+
+    /// Given a slice of headers (in reverse order), calculate the maximum, minimum and average periods between them
+    pub fn timing_stats(headers: &[BlockHeader]) -> (u64, u64, f64) {
+        let (max, min) = headers.windows(2).fold((0u64, std::u64::MAX), |(max, min), next| {
+            let delta_t = match next[0].timestamp.checked_sub(next[1].timestamp) {
+                Some(delta) => delta.as_u64(),
+                None => 0u64,
+            };
+            let min = min.min(delta_t);
+            let max = max.max(delta_t);
+            (max, min)
+        });
+        let avg = if headers.len() >= 2 {
+            let dt = headers.first().unwrap().timestamp - headers.last().unwrap().timestamp;
+            let n = headers.len() - 1;
+            dt.as_u64() as f64 / n as f64
+        } else {
+            0.0
+        };
+        (max, min, avg)
+    }
 }
 
 impl From<NewBlockHeaderTemplate> for BlockHeader {
@@ -277,9 +318,8 @@ pub(crate) mod hash_serializer {
 
 #[cfg(test)]
 mod test {
-    use crate::blocks::BlockHeader;
+    use crate::{blocks::BlockHeader, tari_utilities::epoch_time::EpochTime};
     use tari_crypto::tari_utilities::Hashable;
-
     #[test]
     fn from_previous() {
         let mut h1 = crate::proof_of_work::blake_test::get_header();
@@ -302,5 +342,43 @@ mod test {
             h1.pow.accumulated_blake_difficulty + diff1,
             "Blake difficulty"
         );
+    }
+
+    #[test]
+    fn test_timing_stats() {
+        let headers = vec![500, 350, 300, 210, 100u64]
+            .into_iter()
+            .map(|t| BlockHeader {
+                timestamp: EpochTime::from(t),
+                ..BlockHeader::default()
+            })
+            .collect::<Vec<BlockHeader>>();
+        let (max, min, avg) = BlockHeader::timing_stats(&headers);
+        assert_eq!(max, 150);
+        assert_eq!(min, 50);
+        assert_eq!(avg, 100f64);
+    }
+
+    #[test]
+    fn timing_negative_blocks() {
+        let headers = vec![150, 90, 100u64]
+            .into_iter()
+            .map(|t| BlockHeader {
+                timestamp: EpochTime::from(t),
+                ..BlockHeader::default()
+            })
+            .collect::<Vec<BlockHeader>>();
+        let (max, min, avg) = BlockHeader::timing_stats(&headers);
+        assert_eq!(max, 60);
+        assert_eq!(min, 0);
+        assert_eq!(avg, 25f64);
+    }
+
+    #[test]
+    fn timing_empty_list() {
+        let (max, min, avg) = BlockHeader::timing_stats(&[]);
+        assert_eq!(max, 0);
+        assert_eq!(min, std::u64::MAX);
+        assert_eq!(avg, 0f64);
     }
 }
