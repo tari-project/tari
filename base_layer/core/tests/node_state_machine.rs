@@ -51,7 +51,7 @@ use tari_core::{
         states::{
             BestChainMetadataBlockSyncInfo,
             BlockSyncConfig,
-            ListeningInfo,
+            ListeningData,
             StateEvent,
             SyncStatus,
             SyncStatus::Lagging,
@@ -115,7 +115,7 @@ fn test_listening_lagging() {
         shutdown.to_signal(),
     );
 
-    let await_event_task = runtime.spawn(async move { ListeningInfo.next_event(&mut alice_state_machine).await });
+    let await_event_task = runtime.spawn(async move { ListeningData.next_event(&mut alice_state_machine).await });
 
     runtime.block_on(async move {
         let bob_db = bob_node.blockchain_db;

@@ -23,7 +23,7 @@
 use crate::{
     base_node::{
         chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
-        states::{StateEvent, StateEvent::FatalError, SyncStatus},
+        states::{StateEvent, StateEvent::FatalError, StatusInfo, SyncStatus},
         BaseNodeStateMachine,
     },
     chain_storage::{BlockchainBackend, ChainMetadata},
@@ -31,19 +31,39 @@ use crate::{
 };
 use futures::stream::StreamExt;
 use log::*;
+use std::fmt::{Display, Formatter};
 use tari_comms::peer_manager::NodeId;
 
 const LOG_TARGET: &str = "c::bn::states::listening";
+
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+/// This struct contains info that is use full for external viewing of state info
+pub struct ListeningInfo {}
+
+impl Display for ListeningInfo {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        fmt.write_str("Node in listening state\n")
+    }
+}
+
+impl ListeningInfo {
+    /// Creates a new ListeningData
+    pub fn new() -> ListeningInfo {
+        // todo fill in with good info
+        ListeningInfo {}
+    }
+}
 
 /// This state listens for chain metadata events received from the liveness and chain metadata service. Based on the
 /// received metadata, if it detects that the current node is lagging behind the network it will switch to block sync
 /// state.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ListeningInfo;
+pub struct ListeningData;
 
-impl ListeningInfo {
+impl ListeningData {
     pub async fn next_event<B: BlockchainBackend>(&mut self, shared: &mut BaseNodeStateMachine<B>) -> StateEvent {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
+        shared.info = StatusInfo::Listening(ListeningInfo::new());
         while let Some(metadata_event) = shared.metadata_event_stream.next().await {
             match &*metadata_event {
                 ChainMetadataEvent::PeerChainMetadataReceived(ref peer_metadata_list) => {
@@ -78,7 +98,7 @@ impl ListeningInfo {
 }
 
 // Finds the set of sync peers that have the best tip on their main chain.
-fn find_sync_peers(best_metadata: &ChainMetadata, peer_metadata_list: &Vec<PeerChainMetadata>) -> Vec<NodeId> {
+fn find_sync_peers(best_metadata: &ChainMetadata, peer_metadata_list: &[PeerChainMetadata]) -> Vec<NodeId> {
     let mut sync_peers = Vec::<NodeId>::new();
     for peer_metadata in peer_metadata_list {
         if peer_metadata.chain_metadata == *best_metadata {

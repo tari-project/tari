@@ -22,7 +22,7 @@
 //
 use crate::{
     base_node::{
-        states::{listening::ListeningInfo, StateEvent},
+        states::{listening::ListeningData, StateEvent},
         BaseNodeStateMachine,
     },
     chain_storage::BlockchainBackend,
@@ -47,8 +47,8 @@ impl Starting {
 }
 
 /// State management for Starting -> Listening. This state change occurs every time a node is restarted.
-impl From<Starting> for ListeningInfo {
+impl From<Starting> for ListeningData {
     fn from(_old_state: Starting) -> Self {
-        ListeningInfo {}
+        ListeningData {}
     }
 }
