@@ -89,6 +89,7 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone 
                 network: network as i32,
                 flags: dht_flags.bits(),
                 destination: Some(destination.into()),
+                message_tag: tag.as_value(),
             });
             let envelope = DhtEnvelope::new(dht_header, body);
 
@@ -106,6 +107,7 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone 
     }
 }
 
+#[derive(Default)]
 pub struct SerializeLayer;
 
 impl SerializeLayer {

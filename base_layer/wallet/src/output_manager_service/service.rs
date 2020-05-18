@@ -189,8 +189,8 @@ where
                 },
                  // Incoming messages from the Comms layer
                 msg = base_node_response_stream.select_next_some() => {
-                    trace!(target: LOG_TARGET, "Handling Base Node Response");
-                    let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
+                    let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
+                    trace!(target: LOG_TARGET, "Handling Base Node Response, Trace: {}", msg.dht_header.message_tag);
                     let result = self.handle_base_node_response(inner_msg).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling base node service response from {}: {:?}", origin_public_key, resp);
                         Err(resp)
@@ -516,7 +516,7 @@ where
         received_output: &TransactionOutput,
     ) -> Result<(), OutputManagerError>
     {
-        let pending_transaction = self.db.fetch_pending_transaction_outputs(tx_id.clone()).await?;
+        let pending_transaction = self.db.fetch_pending_transaction_outputs(tx_id).await?;
 
         // Assumption: We are only allowing a single output per receiver in the current transaction protocols.
         if pending_transaction.outputs_to_be_received.len() != 1 ||
@@ -529,7 +529,7 @@ where
         }
 
         self.db
-            .confirm_pending_transaction_outputs(pending_transaction.tx_id.clone())
+            .confirm_pending_transaction_outputs(pending_transaction.tx_id)
             .await?;
 
         Ok(())
@@ -623,7 +623,7 @@ where
         outputs: &[TransactionOutput],
     ) -> Result<(), OutputManagerError>
     {
-        let pending_transaction = self.db.fetch_pending_transaction_outputs(tx_id.clone()).await?;
+        let pending_transaction = self.db.fetch_pending_transaction_outputs(tx_id).await?;
 
         // Check that outputs to be spent can all be found in the provided transaction inputs
         let mut inputs_confirmed = true;

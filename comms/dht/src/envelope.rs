@@ -34,6 +34,7 @@ use tari_utilities::{ByteArray, ByteArrayError};
 // Re-export applicable protos
 pub use crate::proto::envelope::{dht_header::Destination, DhtEnvelope, DhtHeader, DhtMessageType, Network};
 use bytes::Bytes;
+use tari_comms::message::MessageTag;
 
 #[derive(Debug, Error)]
 pub enum DhtMessageError {
@@ -118,6 +119,7 @@ pub struct DhtMessageHeader {
     pub message_type: DhtMessageType,
     pub network: Network,
     pub flags: DhtMessageFlags,
+    pub message_tag: MessageTag,
 }
 
 impl DhtMessageHeader {
@@ -134,8 +136,8 @@ impl Display for DhtMessageHeader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "DhtMessageHeader (Dest:{}, Type:{:?}, Network:{:?}, Flags:{:?})",
-            self.destination, self.message_type, self.network, self.flags
+            "DhtMessageHeader (Dest:{}, Type:{:?}, Network:{:?}, Flags:{:?}, Trace:{})",
+            self.destination, self.message_type, self.network, self.flags, self.message_tag
         )
     }
 }
@@ -169,6 +171,7 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
                 .ok_or_else(|| DhtMessageError::InvalidMessageType)?,
             network: Network::from_i32(header.network).ok_or_else(|| DhtMessageError::InvalidNetwork)?,
             flags: DhtMessageFlags::from_bits(header.flags).ok_or_else(|| DhtMessageError::InvalidMessageFlags)?,
+            message_tag: MessageTag::from(header.message_tag),
         })
     }
 }
@@ -198,6 +201,7 @@ impl From<DhtMessageHeader> for DhtHeader {
             message_type: header.message_type as i32,
             network: header.network as i32,
             flags: header.flags.bits(),
+            message_tag: header.message_tag.as_value(),
         }
     }
 }

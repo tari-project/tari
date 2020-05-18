@@ -353,19 +353,21 @@ where TBackend: TransactionBackend + Clone + 'static
                 },
                 Some(send_states) => {
                     if send_states.len() == 1 {
+                        let msg_tag = send_states[0].tag;
                         debug!(
                             target: LOG_TARGET,
-                            "Transaction Finalized (TxId: {}) Direct Send to {} queued with Message Tag: {:?}",
+                            "Transaction Finalized (TxId: {}) Direct Send to {} queued with Message Tag: {}",
                             self.id,
                             self.dest_pubkey,
-                            send_states[0].tag,
+                            &msg_tag,
                         );
                         match send_states.wait_single().await {
                             true => {
                                 info!(
                                     target: LOG_TARGET,
-                                    "Direct Send of Transaction Finalized message for TX_ID: {} was successful",
-                                    self.id
+                                    "Direct Send of Transaction Finalized message for TX_ID: {} was successful ({})",
+                                    self.id,
+                                    msg_tag
                                 );
                             },
                             false => {
@@ -507,7 +509,7 @@ where TBackend: TransactionBackend + Clone + 'static
         if send_states.len() == 1 {
             debug!(
                 target: LOG_TARGET,
-                "Transaction (TxId: {}) Direct Send to {} queued with Message Tag: {:?}",
+                "Transaction (TxId: {}) Direct Send to {} queued with Message Tag: {}",
                 self.id,
                 self.dest_pubkey,
                 send_states[0].tag,

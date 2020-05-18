@@ -67,7 +67,7 @@ pub fn make_node_identity() -> Arc<NodeIdentity> {
     )
 }
 
-pub fn make_dht_header() -> DhtMessageHeader {
+pub fn make_dht_header(trace: MessageTag) -> DhtMessageHeader {
     DhtMessageHeader {
         version: 0,
         destination: NodeDestination::Unknown,
@@ -76,13 +76,15 @@ pub fn make_dht_header() -> DhtMessageHeader {
         message_type: DhtMessageType::None,
         network: Network::LocalTest,
         flags: DhtMessageFlags::NONE,
+        message_tag: trace,
     }
 }
 
 pub fn make_dht_inbound_message(node_identity: &NodeIdentity, message: Vec<u8>) -> DhtInboundMessage {
+    let msg_tag = MessageTag::new();
     DhtInboundMessage::new(
-        MessageTag::new(),
-        make_dht_header(),
+        msg_tag,
+        make_dht_header(msg_tag),
         Arc::new(Peer::new(
             node_identity.public_key().clone(),
             node_identity.node_id().clone(),
