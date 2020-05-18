@@ -270,6 +270,9 @@ pub enum DbKey {
     CancelledPendingOutboundTransactions,
     CancelledPendingInboundTransactions,
     CancelledCompletedTransactions,
+    CancelledPendingOutboundTransaction(TxId),
+    CancelledPendingInboundTransaction(TxId),
+    CancelledCompletedTransaction(TxId),
 }
 
 #[derive(Debug)]
@@ -358,19 +361,6 @@ impl From<InboundTransaction> for CompletedTransaction {
             transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default()),
         }
     }
-}
-
-// Private macro that pulls out all the boiler plate of extracting a DB query result from its variants
-macro_rules! fetch {
-    ($db:ident, $key_val:expr, $key_var:ident) => {{
-        let key = DbKey::$key_var($key_val);
-        match $db.fetch(&key) {
-            Ok(None) => Err(TransactionStorageError::ValueNotFound(key)),
-            Ok(Some(DbValue::$key_var(k))) => Ok(*k),
-            Ok(Some(other)) => unexpected_result(key, other),
-            Err(e) => log_error(key, e),
-        }
-    }};
 }
 
 /// This structure holds an inner type that implements the `TransactionBackend` trait and contains the more complex
@@ -470,11 +460,37 @@ where T: TransactionBackend + 'static
         tx_id: TxId,
     ) -> Result<OutboundTransaction, TransactionStorageError>
     {
+        self.get_pending_outbound_transaction_by_cancelled(tx_id, false).await
+    }
+
+    pub async fn get_cancelled_pending_outbound_transaction(
+        &self,
+        tx_id: TxId,
+    ) -> Result<OutboundTransaction, TransactionStorageError>
+    {
+        self.get_pending_outbound_transaction_by_cancelled(tx_id, true).await
+    }
+
+    pub async fn get_pending_outbound_transaction_by_cancelled(
+        &self,
+        tx_id: TxId,
+        cancelled: bool,
+    ) -> Result<OutboundTransaction, TransactionStorageError>
+    {
         let db_clone = self.db.clone();
-        let result = tokio::task::spawn_blocking(move || fetch!(db_clone, tx_id, PendingOutboundTransaction))
-            .await
-            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
-        Ok(result)
+        let key = match cancelled {
+            true => DbKey::CancelledPendingOutboundTransaction(tx_id),
+            false => DbKey::PendingOutboundTransaction(tx_id),
+        };
+        let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&key) {
+            Ok(None) => Err(TransactionStorageError::ValueNotFound(key)),
+            Ok(Some(DbValue::PendingOutboundTransaction(pt))) => Ok(pt),
+            Ok(Some(other)) => unexpected_result(key, other),
+            Err(e) => log_error(key, e),
+        })
+        .await
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        Ok(*t)
     }
 
     pub async fn get_pending_inbound_transaction(
@@ -482,13 +498,37 @@ where T: TransactionBackend + 'static
         tx_id: TxId,
     ) -> Result<InboundTransaction, TransactionStorageError>
     {
+        self.get_pending_inbound_transaction_by_cancelled(tx_id, false).await
+    }
+
+    pub async fn get_cancelled_pending_inbound_transaction(
+        &self,
+        tx_id: TxId,
+    ) -> Result<InboundTransaction, TransactionStorageError>
+    {
+        self.get_pending_inbound_transaction_by_cancelled(tx_id, true).await
+    }
+
+    pub async fn get_pending_inbound_transaction_by_cancelled(
+        &self,
+        tx_id: TxId,
+        cancelled: bool,
+    ) -> Result<InboundTransaction, TransactionStorageError>
+    {
         let db_clone = self.db.clone();
-
-        let result = tokio::task::spawn_blocking(move || fetch!(db_clone, tx_id, PendingInboundTransaction))
-            .await
-            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
-
-        Ok(result)
+        let key = match cancelled {
+            true => DbKey::CancelledPendingInboundTransaction(tx_id),
+            false => DbKey::PendingInboundTransaction(tx_id),
+        };
+        let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&key) {
+            Ok(None) => Err(TransactionStorageError::ValueNotFound(key)),
+            Ok(Some(DbValue::PendingInboundTransaction(pt))) => Ok(pt),
+            Ok(Some(other)) => unexpected_result(key, other),
+            Err(e) => log_error(key, e),
+        })
+        .await
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        Ok(*t)
     }
 
     pub async fn get_completed_transaction(
@@ -496,12 +536,37 @@ where T: TransactionBackend + 'static
         tx_id: TxId,
     ) -> Result<CompletedTransaction, TransactionStorageError>
     {
-        let db_clone = self.db.clone();
+        self.get_completed_transaction_by_cancelled(tx_id, false).await
+    }
 
-        let result = tokio::task::spawn_blocking(move || fetch!(db_clone, tx_id, CompletedTransaction))
-            .await
-            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
-        Ok(result)
+    pub async fn get_cancelled_completed_transaction(
+        &self,
+        tx_id: TxId,
+    ) -> Result<CompletedTransaction, TransactionStorageError>
+    {
+        self.get_completed_transaction_by_cancelled(tx_id, true).await
+    }
+
+    pub async fn get_completed_transaction_by_cancelled(
+        &self,
+        tx_id: TxId,
+        cancelled: bool,
+    ) -> Result<CompletedTransaction, TransactionStorageError>
+    {
+        let db_clone = self.db.clone();
+        let key = match cancelled {
+            true => DbKey::CancelledCompletedTransaction(tx_id),
+            false => DbKey::CompletedTransaction(tx_id),
+        };
+        let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&key) {
+            Ok(None) => Err(TransactionStorageError::ValueNotFound(key)),
+            Ok(Some(DbValue::CompletedTransaction(pt))) => Ok(pt),
+            Ok(Some(other)) => unexpected_result(key, other),
+            Err(e) => log_error(key, e),
+        })
+        .await
+        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        Ok(*t)
     }
 
     pub async fn get_pending_inbound_transactions(
@@ -761,6 +826,13 @@ impl Display for DbKey {
                 f.write_str(&"All Cancelled Pending Outbound Transactions".to_string())
             },
             DbKey::CancelledCompletedTransactions => f.write_str(&"All Cancelled Complete Transactions".to_string()),
+            DbKey::CancelledPendingOutboundTransaction(_) => {
+                f.write_str(&"Cancelled Pending Outbound Transaction".to_string())
+            },
+            DbKey::CancelledPendingInboundTransaction(_) => {
+                f.write_str(&"Cancelled Pending Inbound Transaction".to_string())
+            },
+            DbKey::CancelledCompletedTransaction(_) => f.write_str(&"Cancelled Completed Transaction".to_string()),
         }
     }
 }

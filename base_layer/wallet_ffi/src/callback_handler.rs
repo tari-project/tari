@@ -72,7 +72,7 @@ where TBackend: TransactionBackend + 'static
     callback_transaction_mined: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_direct_send_result: unsafe extern "C" fn(TxId, bool),
     callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
-    callback_transaction_cancellation: unsafe extern "C" fn(TxId),
+    callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_base_node_sync_complete: unsafe extern "C" fn(TxId, bool),
     db: TransactionDatabase<TBackend>,
     transaction_service_event_stream: Fuse<TransactionEventReceiver>,
@@ -96,7 +96,7 @@ where TBackend: TransactionBackend + 'static
         callback_transaction_mined: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_direct_send_result: unsafe extern "C" fn(TxId, bool),
         callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
-        callback_transaction_cancellation: unsafe extern "C" fn(TxId),
+        callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_base_node_sync_complete: unsafe extern "C" fn(u64, bool),
     ) -> Self
     {
@@ -185,7 +185,7 @@ where TBackend: TransactionBackend + 'static
                                     self.receive_store_and_forward_send_result(tx_id, result);
                                 },
                                  TransactionEvent::TransactionCancelled(tx_id) => {
-                                    self.receive_transaction_cancellation(tx_id);
+                                    self.receive_transaction_cancellation(tx_id).await;
                                 },
                                 TransactionEvent::TransactionBroadcast(tx_id) => {
                                     self.receive_transaction_broadcast_event(tx_id).await;
@@ -296,13 +296,35 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    fn receive_transaction_cancellation(&mut self, tx_id: TxId) {
-        debug!(
-            target: LOG_TARGET,
-            "Calling Transaction Cancellation callback function for TxId: {}", tx_id
-        );
-        unsafe {
-            (self.callback_transaction_cancellation)(tx_id);
+    async fn receive_transaction_cancellation(&mut self, tx_id: TxId) {
+        let mut transaction = None;
+        if let Ok(tx) = self.db.get_cancelled_completed_transaction(tx_id).await {
+            transaction = Some(tx);
+        } else {
+            if let Ok(tx) = self.db.get_cancelled_pending_outbound_transaction(tx_id).await {
+                transaction = Some(CompletedTransaction::from(tx));
+            } else {
+                if let Ok(tx) = self.db.get_cancelled_pending_inbound_transaction(tx_id).await {
+                    transaction = Some(CompletedTransaction::from(tx));
+                }
+            }
+        }
+
+        match transaction {
+            None => error!(
+                target: LOG_TARGET,
+                "Error retrieving Cancelled Transaction TxId {}", tx_id
+            ),
+            Some(tx) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Calling Transaction Cancellation callback function for TxId: {}", tx_id
+                );
+                let boxing = Box::into_raw(Box::new(tx));
+                unsafe {
+                    (self.callback_transaction_cancellation)(boxing);
+                }
+            },
         }
     }
 

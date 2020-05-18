@@ -164,15 +164,18 @@ use tari_wallet::{
         mine_transaction,
         receive_test_transaction,
     },
-    transaction_service::storage::{
-        database::{
-            CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
-            TransactionDatabase,
-            TransactionStatus,
+    transaction_service::{
+        error::TransactionServiceError,
+        storage::{
+            database::{
+                CompletedTransaction,
+                InboundTransaction,
+                OutboundTransaction,
+                TransactionDatabase,
+                TransactionStatus,
+            },
+            sqlite_db::TransactionServiceSqliteDatabase,
         },
-        sqlite_db::TransactionServiceSqliteDatabase,
     },
     util::emoji::EmojiId,
     wallet::WalletConfig,
@@ -2302,7 +2305,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_transaction_mined: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_direct_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
-    callback_transaction_cancellation: unsafe extern "C" fn(c_ulonglong),
+    callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_base_node_sync_complete: unsafe extern "C" fn(u64, bool),
     error_out: *mut c_int,
 ) -> *mut TariWallet
@@ -3670,6 +3673,104 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
     ptr::null_mut()
 }
 
+/// Get a Cancelled transaction from a TariWallet by its TransactionId. Pending Inbound or Outbound transaction will be
+/// converted to a CompletedTransaction
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `transaction_id` - The TransactionId
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariCompletedTransaction` - returns the transaction, note that it returns ptr::null_mut() if
+/// wallet is null, an error is encountered or if the transaction is not found
+///
+/// # Safety
+/// The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
+/// prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
+    wallet: *mut TariWallet,
+    transaction_id: c_ulonglong,
+    error_out: *mut c_int,
+) -> *mut TariCompletedTransaction
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let mut transaction = None;
+
+    let mut completed_transactions = match (*wallet)
+        .runtime
+        .block_on((*wallet).transaction_service.get_cancelled_completed_transactions())
+    {
+        Ok(txs) => txs,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
+    if let Some(tx) = completed_transactions.remove(&transaction_id) {
+        transaction = Some(tx);
+    } else {
+        let mut outbound_transactions = match (*wallet).runtime.block_on(
+            (*wallet)
+                .transaction_service
+                .get_cancelled_pending_outbound_transactions(),
+        ) {
+            Ok(txs) => txs,
+            Err(e) => {
+                error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        };
+
+        if let Some(tx) = outbound_transactions.remove(&transaction_id) {
+            transaction = Some(CompletedTransaction::from(tx));
+        } else {
+            let mut inbound_transactions = match (*wallet).runtime.block_on(
+                (*wallet)
+                    .transaction_service
+                    .get_cancelled_pending_inbound_transactions(),
+            ) {
+                Ok(txs) => txs,
+                Err(e) => {
+                    error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                    return ptr::null_mut();
+                },
+            };
+            if let Some(tx) = inbound_transactions.remove(&transaction_id) {
+                transaction = Some(CompletedTransaction::from(tx));
+            }
+        }
+    }
+
+    match transaction {
+        Some(tx) => {
+            return Box::into_raw(Box::new(tx));
+        },
+        None => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(
+                TransactionServiceError::TransactionDoesNotExistError,
+            ))
+            .code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+        },
+    }
+
+    ptr::null_mut()
+}
+
 /// Get the TariPublicKey from a TariWallet
 ///
 /// ## Arguments
@@ -4012,8 +4113,13 @@ mod test {
         assert!(true);
     }
 
-    unsafe extern "C" fn tx_cancellation_callback(_tx_id: c_ulonglong) {
-        assert!(true);
+    unsafe extern "C" fn tx_cancellation_callback(tx: *mut TariCompletedTransaction) {
+        assert_eq!(tx.is_null(), false);
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariCompletedTransaction>()
+        );
+        completed_transaction_destroy(tx);
     }
 
     unsafe extern "C" fn base_node_sync_process_complete_callback(_tx_id: c_ulonglong, _result: bool) {
@@ -4077,8 +4183,13 @@ mod test {
         assert!(true);
     }
 
-    unsafe extern "C" fn tx_cancellation_callback_bob(_tx_id: c_ulonglong) {
-        assert!(true);
+    unsafe extern "C" fn tx_cancellation_callback_bob(tx: *mut TariCompletedTransaction) {
+        assert_eq!(tx.is_null(), false);
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariCompletedTransaction>()
+        );
+        completed_transaction_destroy(tx);
     }
 
     unsafe extern "C" fn base_node_sync_process_complete_callback_bob(_tx_id: c_ulonglong, _result: bool) {
@@ -4662,10 +4773,21 @@ mod test {
             let mut inbound_tx_id = 0;
             for (k, _) in inbound_txs {
                 inbound_tx_id = k;
+
+                let inbound_tx = wallet_get_cancelled_transaction_by_id(&mut (*alice_wallet), inbound_tx_id, error_ptr);
+
+                assert_eq!(inbound_tx, ptr::null_mut());
+
                 (*alice_wallet)
                     .runtime
                     .block_on(async { (*alice_wallet).transaction_service.cancel_transaction(k).await })
                     .unwrap();
+
+                let inbound_tx = wallet_get_cancelled_transaction_by_id(&mut (*alice_wallet), inbound_tx_id, error_ptr);
+
+                assert_ne!(inbound_tx, ptr::null_mut());
+                assert_eq!(completed_transaction_get_transaction_id(inbound_tx, error_ptr), k);
+
                 break;
             }
 

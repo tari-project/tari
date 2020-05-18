@@ -267,12 +267,21 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             .len(),
         0
     );
+
     let cancelled_tx_id = completed_txs[&1].tx_id;
+    assert!(runtime
+        .block_on(db.get_cancelled_completed_transaction(cancelled_tx_id))
+        .is_err());
     runtime
         .block_on(db.cancel_completed_transaction(cancelled_tx_id))
         .unwrap();
     let completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
     assert_eq!(completed_txs.len(), num_completed_txs - 1);
+
+    runtime
+        .block_on(db.get_cancelled_completed_transaction(cancelled_tx_id))
+        .expect("Should find cancelled transaction");
+
     let mut cancelled_txs = runtime.block_on(db.get_cancelled_completed_transactions()).unwrap();
     assert_eq!(cancelled_txs.len(), 1);
     assert!(cancelled_txs.remove(&cancelled_tx_id).is_some());
@@ -317,9 +326,13 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             .unwrap()
             .direct_send_success
     );
-
+    assert!(runtime
+        .block_on(db.get_cancelled_pending_inbound_transaction(999))
+        .is_err());
     runtime.block_on(db.cancel_pending_transaction(999)).unwrap();
-
+    runtime
+        .block_on(db.get_cancelled_pending_inbound_transaction(999))
+        .expect("Should find cancelled inbound tx");
     assert_eq!(
         runtime
             .block_on(db.get_cancelled_pending_inbound_transactions())
@@ -382,8 +395,15 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         runtime.block_on(db.get_pending_outbound_transactions()).unwrap().len(),
         1
     );
-    runtime.block_on(db.cancel_pending_transaction(998)).unwrap();
 
+    assert!(runtime
+        .block_on(db.get_cancelled_pending_outbound_transaction(998))
+        .is_err());
+
+    runtime.block_on(db.cancel_pending_transaction(998)).unwrap();
+    runtime
+        .block_on(db.get_cancelled_pending_outbound_transaction(998))
+        .expect("Should find cancelled outbound tx");
     assert_eq!(
         runtime
             .block_on(db.get_cancelled_pending_outbound_transactions())
