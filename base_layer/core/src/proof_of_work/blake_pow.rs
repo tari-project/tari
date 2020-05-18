@@ -20,8 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{blocks::BlockHeader, proof_of_work::Difficulty};
-use bigint::uint::U256;
+use crate::{blocks::BlockHeader, proof_of_work::Difficulty, U256};
 use blake2::Blake2b;
 use digest::Digest;
 use tari_crypto::{common::Blake256, tari_utilities::Hashable};
@@ -43,7 +42,7 @@ pub fn blake_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>)
     let hash = Blake256::digest(&hash).to_vec();
     let scalar = U256::from_big_endian(&hash); // Big endian so the hash has leading zeroes
     let result = MAX_TARGET / scalar;
-    let difficulty = u64::from(result).into();
+    let difficulty = result.low_u64().into();
     (difficulty, hash)
 }
 

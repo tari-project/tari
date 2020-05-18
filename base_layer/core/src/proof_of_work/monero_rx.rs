@@ -23,8 +23,8 @@
 use crate::{
     blocks::BlockHeader,
     proof_of_work::{monero_rx::MergeMineError::HashingError, Difficulty},
+    U256,
 };
-use bigint::uint::U256;
 use derive_error::Error;
 use monero::blockdata::{block::BlockHeader as MoneroBlockHeader, Transaction as MoneroTransaction};
 #[cfg(feature = "monero_merge_mining")]
@@ -94,7 +94,7 @@ fn monero_difficulty_calculation(header: &BlockHeader) -> Result<Difficulty, Mer
         let hash = vm.calculate_hash(&input)?;
         let scalar = U256::from_big_endian(&hash); // Big endian so the hash has leading zeroes
         let result = MAX_TARGET / scalar;
-        let difficulty = u64::from(result).into();
+        let difficulty = result.low_u64().into();
         Ok(difficulty)
     }
     #[cfg(not(feature = "monero_merge_mining"))]
