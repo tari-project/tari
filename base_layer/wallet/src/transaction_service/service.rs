@@ -744,22 +744,66 @@ where
 
             let tx_id = recipient_reply.tx_id;
             let proto_message: proto::RecipientSignedMessage = recipient_reply.into();
-            self.outbound_message_service
+            match self
+                .outbound_message_service
                 .send_direct(
                     source_pubkey.clone(),
                     OutboundEncryption::None,
                     OutboundDomainMessage::new(TariMessageType::ReceiverPartialTransactionReply, proto_message.clone()),
                 )
-                .await?;
-
-            self.outbound_message_service
-                .broadcast(
-                    NodeDestination::NodeId(Box::new(NodeId::from_key(&source_pubkey)?)),
-                    OutboundEncryption::EncryptFor(Box::new(source_pubkey.clone())),
-                    vec![],
-                    OutboundDomainMessage::new(TariMessageType::ReceiverPartialTransactionReply, proto_message),
-                )
-                .await?;
+                .await?
+                .resolve_ok()
+                .await
+            {
+                None => {
+                    self.send_transaction_reply_store_and_forward(tx_id, source_pubkey.clone(), proto_message.clone())
+                        .await?;
+                },
+                Some(send_states) => {
+                    if send_states.len() == 1 {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Transaction Reply (TxId: {}) Direct Send to {} queued with Message Tag: {:?}",
+                            tx_id,
+                            source_pubkey,
+                            send_states[0].tag,
+                        );
+                        match send_states.wait_single().await {
+                            true => {
+                                info!(
+                                    target: LOG_TARGET,
+                                    "Direct Send of Transaction Reply message for TX_ID: {} was successful", tx_id
+                                );
+                            },
+                            false => {
+                                error!(
+                                    target: LOG_TARGET,
+                                    "Direct Send of Transaction Reply message for TX_ID: {} was unsuccessful and no \
+                                     message was sent",
+                                    tx_id
+                                );
+                                self.send_transaction_reply_store_and_forward(
+                                    tx_id,
+                                    source_pubkey.clone(),
+                                    proto_message.clone(),
+                                )
+                                .await?
+                            },
+                        }
+                    } else {
+                        error!(
+                            target: LOG_TARGET,
+                            "Transaction Reply message Send Direct for TxID: {} failed", tx_id
+                        );
+                        self.send_transaction_reply_store_and_forward(
+                            tx_id,
+                            source_pubkey.clone(),
+                            proto_message.clone(),
+                        )
+                        .await?
+                    }
+                },
+            }
 
             // Otherwise add it to our pending transaction list and return reply
             let inbound_transaction = InboundTransaction::new(
@@ -796,6 +840,59 @@ where
                     e
                 });
         }
+        Ok(())
+    }
+
+    async fn send_transaction_reply_store_and_forward(
+        &mut self,
+        tx_id: TxId,
+        source_pubkey: CommsPublicKey,
+        msg: proto::RecipientSignedMessage,
+    ) -> Result<(), TransactionServiceError>
+    {
+        match self
+            .outbound_message_service
+            .broadcast(
+                NodeDestination::NodeId(Box::new(NodeId::from_key(&source_pubkey)?)),
+                OutboundEncryption::EncryptFor(Box::new(source_pubkey.clone())),
+                vec![],
+                OutboundDomainMessage::new(TariMessageType::ReceiverPartialTransactionReply, msg),
+            )
+            .await
+        {
+            Ok(result) => match result.resolve_ok().await {
+                None => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Sending Transaction Reply (TxId: {}) to neighbours for Store and Forward failed", tx_id
+                    );
+                },
+                Some(tags) if !tags.is_empty() => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Sending Transaction Reply (TxId: {}) to Neighbours for Store and Forward successful with \
+                         Message Tags: {:?}",
+                        tx_id,
+                        tags,
+                    );
+                },
+                Some(_) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Sending Transaction Reply to Neighbours for Store and Forward for TX_ID: {} was unsuccessful \
+                         and no messages were sent",
+                        tx_id
+                    );
+                },
+            },
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Sending Transaction Reply (TxId: {}) to neighbours for Store and Forward failed: {:?}", tx_id, e
+                );
+            },
+        };
+
         Ok(())
     }
 

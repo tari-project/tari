@@ -912,10 +912,9 @@ fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(al
     runtime.block_on(alice_tx_sender.send(tx_message.clone())).unwrap();
 
     alice_outbound_service
-        .wait_call_count(2, Duration::from_secs(10))
+        .wait_call_count(1, Duration::from_secs(10))
         .unwrap();
     let (_, body) = alice_outbound_service.pop_call().unwrap();
-    let _ = alice_outbound_service.pop_call().unwrap(); // burn SAF message
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let recipient_reply: RecipientSignedMessage = envelope_body
@@ -1020,10 +1019,9 @@ fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alic
     runtime.block_on(alice_tx_sender.send(tx_message.clone())).unwrap();
 
     alice_outbound_service
-        .wait_call_count(2, Duration::from_secs(10))
+        .wait_call_count(1, Duration::from_secs(10))
         .unwrap();
     let (_, body) = alice_outbound_service.pop_call().unwrap();
-    let _ = alice_outbound_service.pop_call().unwrap(); // burn SAF message
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let recipient_reply: RecipientSignedMessage = envelope_body
@@ -1351,11 +1349,11 @@ fn transaction_mempool_broadcast() {
         )))
         .unwrap();
     bob_outbound_service
-        .wait_call_count(2, Duration::from_secs(60))
+        .wait_call_count(1, Duration::from_secs(60))
         .expect("bob call wait 1");
 
     let call = bob_outbound_service.pop_call().unwrap();
-    let _ = bob_outbound_service.pop_call().unwrap(); // Burn the SAF version of the message
+
     let envelope_body = EnvelopeBody::decode(&mut call.1.to_vec().as_slice()).unwrap();
     let bob_tx_reply_msg1: RecipientSignedMessage = envelope_body
         .decode_part::<proto::RecipientSignedMessage>(1)
@@ -1394,11 +1392,10 @@ fn transaction_mempool_broadcast() {
         )))
         .unwrap();
     bob_outbound_service
-        .wait_call_count(2, Duration::from_secs(60))
+        .wait_call_count(1, Duration::from_secs(60))
         .expect("Bob call wait 2");
 
     let (_, body) = bob_outbound_service.pop_call().unwrap();
-    let _ = bob_outbound_service.pop_call().unwrap(); // Burn the SAF version of the message
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let bob_tx_reply_msg2: RecipientSignedMessage = envelope_body
@@ -1849,10 +1846,9 @@ fn transaction_base_node_monitoring() {
         .unwrap();
 
     bob_outbound_service
-        .wait_call_count(2, Duration::from_secs(60))
+        .wait_call_count(1, Duration::from_secs(60))
         .unwrap();
     let (_, body) = bob_outbound_service.pop_call().unwrap();
-    let _ = bob_outbound_service.pop_call().unwrap(); // burn SAF message
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let bob_tx_reply_msg1: RecipientSignedMessage = envelope_body
@@ -1894,10 +1890,9 @@ fn transaction_base_node_monitoring() {
         )))
         .unwrap();
     bob_outbound_service
-        .wait_call_count(2, Duration::from_secs(60))
+        .wait_call_count(1, Duration::from_secs(60))
         .unwrap();
     let (_, body) = bob_outbound_service.pop_call().unwrap();
-    let _ = bob_outbound_service.pop_call().unwrap(); // burn SAF message
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let bob_tx_reply_msg2: RecipientSignedMessage = envelope_body
@@ -2464,10 +2459,9 @@ fn transaction_cancellation_when_not_in_mempool() {
         )))
         .unwrap();
     bob_outbound_service
-        .wait_call_count(2, Duration::from_secs(60))
+        .wait_call_count(1, Duration::from_secs(60))
         .unwrap();
     let (_, body) = bob_outbound_service.pop_call().unwrap();
-    let _ = bob_outbound_service.pop_call().unwrap(); // burn SAF message
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_reply_msg: RecipientSignedMessage = envelope_body
@@ -2484,9 +2478,8 @@ fn transaction_cancellation_when_not_in_mempool() {
         )))
         .unwrap();
 
-    let _ = alice_outbound_service.wait_call_count(2, Duration::from_secs(60));
-    let _ = alice_outbound_service.pop_call().unwrap(); // Burn finalize message
-    let _ = alice_outbound_service.pop_call().unwrap(); // burn SAF message
+    let _ = alice_outbound_service.wait_call_count(1, Duration::from_secs(60));
+    let _ = alice_outbound_service.pop_call().unwrap(); // Burn finalize messageSAF message
 
     runtime.block_on(async {
         let mut delay = delay_for(Duration::from_secs(60)).fuse();
@@ -2914,10 +2907,9 @@ fn test_resend_of_tx_on_pong_event<T: TransactionBackend + Clone + 'static>(back
         )))
         .unwrap();
     bob_outbound_service
-        .wait_call_count(2, Duration::from_secs(60))
+        .wait_call_count(1, Duration::from_secs(60))
         .unwrap();
     let (_, body) = bob_outbound_service.pop_call().unwrap();
-    let _ = bob_outbound_service.pop_call().unwrap(); // burn SAF message
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
     let tx_reply_msg: RecipientSignedMessage = envelope_body
@@ -2934,9 +2926,8 @@ fn test_resend_of_tx_on_pong_event<T: TransactionBackend + Clone + 'static>(back
         )))
         .unwrap();
 
-    let _ = alice_outbound_service.wait_call_count(2, Duration::from_secs(60));
+    let _ = alice_outbound_service.wait_call_count(1, Duration::from_secs(60));
     let _ = alice_outbound_service.pop_call().unwrap(); // Burn finalize message
-    let _ = alice_outbound_service.pop_call().unwrap(); // burn SAF message
 
     for i in 1..=20 {
         let call_count = liveness_mock_state.call_count();
@@ -2983,4 +2974,231 @@ fn test_resend_of_tx_on_pong_event_sqlite_db() {
     let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
 
     test_resend_of_tx_on_pong_event(TransactionServiceSqliteDatabase::new(connection));
+}
+
+#[test]
+fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+
+    let alice_node_identity =
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+
+    let bob_node_identity =
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+
+    let (
+        mut alice_ts,
+        mut alice_output_manager,
+        alice_outbound_service,
+        mut _alice_tx_sender,
+        mut alice_tx_ack_sender,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+    ) = setup_transaction_service_no_comms(
+        &mut runtime,
+        factories.clone(),
+        TransactionMemoryDatabase::new(),
+        Some(Duration::from_secs(5)),
+    );
+
+    let alice_total_available = 250000 * uT;
+    let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment);
+    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+
+    let amount_sent = 10000 * uT;
+
+    let tx_id = runtime
+        .block_on(alice_ts.send_transaction(
+            bob_node_identity.public_key().clone(),
+            amount_sent,
+            100 * uT,
+            "Testing Message".to_string(),
+        ))
+        .unwrap();
+
+    alice_outbound_service
+        .wait_call_count(1, Duration::from_secs(60))
+        .unwrap();
+
+    let (_, body) = alice_outbound_service.pop_call().unwrap();
+
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
+    let tx_sender_msg: TransactionSenderMessage = envelope_body
+        .decode_part::<proto::TransactionSenderMessage>(1)
+        .unwrap()
+        .unwrap()
+        .try_into()
+        .unwrap();
+    let msg_tx_id = match tx_sender_msg.clone() {
+        TransactionSenderMessage::Single(s) => s.tx_id,
+        _ => {
+            assert!(false, "Transaction is the not a single rounder sender variant");
+            0
+        },
+    };
+    assert_eq!(tx_id, msg_tx_id);
+
+    // Test sending the Reply to a receiver with Direct and then with SAF and never both
+    let (_bob_ts, _, bob_outbound_service, mut bob_tx_sender, _, _, _, _, _, _, _) = setup_transaction_service_no_comms(
+        &mut runtime,
+        factories.clone(),
+        TransactionMemoryDatabase::new(),
+        Some(Duration::from_secs(20)),
+    );
+
+    bob_outbound_service.set_behaviour(MockBehaviour {
+        direct: ResponseType::Queued,
+        broadcast: ResponseType::Failed,
+    });
+
+    runtime
+        .block_on(bob_tx_sender.send(create_dummy_message(
+            tx_sender_msg.clone().into(),
+            alice_node_identity.public_key(),
+        )))
+        .unwrap();
+    bob_outbound_service
+        .wait_call_count(1, Duration::from_secs(60))
+        .unwrap();
+    let (_, body) = bob_outbound_service.pop_call().unwrap();
+
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
+    let _: RecipientSignedMessage = envelope_body
+        .decode_part::<proto::RecipientSignedMessage>(1)
+        .unwrap()
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+    for _ in 0..3 {
+        assert_eq!(bob_outbound_service.call_count(), 0, "Should be no more calls");
+        runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+    }
+
+    let (_bob2_ts, _, bob2_outbound_service, mut bob2_tx_sender, _, _, _, _, _, _, _) =
+        setup_transaction_service_no_comms(
+            &mut runtime,
+            factories.clone(),
+            TransactionMemoryDatabase::new(),
+            Some(Duration::from_secs(20)),
+        );
+    bob2_outbound_service.set_behaviour(MockBehaviour {
+        direct: ResponseType::Failed,
+        broadcast: ResponseType::Queued,
+    });
+
+    runtime
+        .block_on(bob2_tx_sender.send(create_dummy_message(
+            tx_sender_msg.into(),
+            alice_node_identity.public_key(),
+        )))
+        .unwrap();
+
+    bob2_outbound_service
+        .wait_call_count(1, Duration::from_secs(60))
+        .unwrap();
+    let (_, body) = bob2_outbound_service.pop_call().unwrap();
+
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
+    let tx_reply_msg: RecipientSignedMessage = envelope_body
+        .decode_part::<proto::RecipientSignedMessage>(1)
+        .unwrap()
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+    for _ in 0..3 {
+        assert_eq!(bob2_outbound_service.call_count(), 0, "Should be no more calls");
+        runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+    }
+
+    // Test finalize is sent Direct Only.
+    alice_outbound_service.set_behaviour(MockBehaviour {
+        direct: ResponseType::Queued,
+        broadcast: ResponseType::Queued,
+    });
+
+    runtime
+        .block_on(alice_tx_ack_sender.send(create_dummy_message(
+            tx_reply_msg.into(),
+            bob_node_identity.public_key(),
+        )))
+        .unwrap();
+
+    let _ = alice_outbound_service.wait_call_count(1, Duration::from_secs(60));
+    let _ = alice_outbound_service.pop_call().unwrap();
+    for _ in 0..3 {
+        assert_eq!(alice_outbound_service.call_count(), 0, "Should be no more calls");
+        runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+    }
+
+    // Now to repeat sending so we can test the SAF send of the finalize message
+    let alice_total_available = 250000 * uT;
+    let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment);
+    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+
+    let amount_sent = 20000 * uT;
+
+    let _tx_id2 = runtime
+        .block_on(alice_ts.send_transaction(
+            bob_node_identity.public_key().clone(),
+            amount_sent,
+            100 * uT,
+            "Testing Message".to_string(),
+        ))
+        .unwrap();
+
+    alice_outbound_service
+        .wait_call_count(1, Duration::from_secs(60))
+        .unwrap();
+
+    let (_, body) = alice_outbound_service.pop_call().unwrap();
+
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
+    let tx_sender_msg: TransactionSenderMessage = envelope_body
+        .decode_part::<proto::TransactionSenderMessage>(1)
+        .unwrap()
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+    runtime
+        .block_on(bob_tx_sender.send(create_dummy_message(
+            tx_sender_msg.into(),
+            alice_node_identity.public_key(),
+        )))
+        .unwrap();
+
+    bob_outbound_service
+        .wait_call_count(1, Duration::from_secs(60))
+        .unwrap();
+    let (_, body) = bob_outbound_service.pop_call().unwrap();
+
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
+    let tx_reply_msg: RecipientSignedMessage = envelope_body
+        .decode_part::<proto::RecipientSignedMessage>(1)
+        .unwrap()
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+    alice_outbound_service.set_behaviour(MockBehaviour {
+        direct: ResponseType::Queued,
+        broadcast: ResponseType::Queued,
+    });
+
+    runtime
+        .block_on(alice_tx_ack_sender.send(create_dummy_message(
+            tx_reply_msg.into(),
+            bob_node_identity.public_key(),
+        )))
+        .unwrap();
+
+    // Should be 2 messages sent, Direct and SAF
+    let _ = alice_outbound_service.wait_call_count(2, Duration::from_secs(60));
 }
