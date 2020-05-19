@@ -42,4 +42,4 @@ pub const MESSAGING_EVENTS_BUFFER_SIZE: usize = 100;
 pub const MESSAGING_REQUEST_BUFFER_SIZE: usize = 50;
 /// The default maximum number of times to retry sending a failed message before publishing a SendMessageFailed event.
 /// This can be low because dialing a peer is already attempted a number of times.
-pub const MESSAGING_MAX_SEND_RETRIES: usize = 2;
+pub const MESSAGING_MAX_SEND_RETRIES: usize = 1;
