@@ -50,6 +50,7 @@
 
 use futures::{stream::Fuse, StreamExt};
 use log::*;
+use std::os::raw::c_void;
 use tari_broadcast_channel::Subscriber;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
@@ -74,6 +75,7 @@ where TBackend: TransactionBackend + 'static
     callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_base_node_sync_complete: unsafe extern "C" fn(TxId, bool),
+    callback_comms_shutdown_finished: unsafe extern "C" fn(),
     db: TransactionDatabase<TBackend>,
     transaction_service_event_stream: Fuse<TransactionEventReceiver>,
     output_manager_service_event_stream: Fuse<Subscriber<OutputManagerEvent>>,
@@ -98,6 +100,7 @@ where TBackend: TransactionBackend + 'static
         callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
         callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_base_node_sync_complete: unsafe extern "C" fn(u64, bool),
+        callback_comms_shutdown_finished: unsafe extern "C" fn(),
     ) -> Self
     {
         info!(
@@ -136,6 +139,10 @@ where TBackend: TransactionBackend + 'static
             target: LOG_TARGET,
             "BaseNodeSyncCompleteCallback -> Assigning Fn:  {:?}", callback_base_node_sync_complete
         );
+        info!(
+            target: LOG_TARGET,
+            "CommsShutdownCallback -> Assigning Fn:  {:?}", callback_comms_shutdown_finished
+        );
 
         Self {
             callback_received_transaction,
@@ -147,6 +154,7 @@ where TBackend: TransactionBackend + 'static
             callback_store_and_forward_send_result,
             callback_transaction_cancellation,
             callback_base_node_sync_complete,
+            callback_comms_shutdown_finished,
             db,
             transaction_service_event_stream,
             output_manager_service_event_stream,
@@ -219,6 +227,7 @@ where TBackend: TransactionBackend + 'static
                 },
                  _ = shutdown_signal => {
                     info!(target: LOG_TARGET, "Transaction Callback Handler shutting down because the shutdown signal was received");
+                    self.callback_comms_shutdown_finished();
                     break;
                 },
             }
@@ -367,6 +376,13 @@ where TBackend: TransactionBackend + 'static
         );
         unsafe {
             (self.callback_base_node_sync_complete)(request_key, result);
+        }
+    }
+
+    fn callback_comms_shutdown_finished(&mut self) {
+        debug!(target: LOG_TARGET, "Calling Comms Shutdown Finished function",);
+        unsafe {
+            (self.callback_comms_shutdown_finished)();
         }
     }
 }

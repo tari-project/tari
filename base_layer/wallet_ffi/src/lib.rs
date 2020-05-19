@@ -2307,6 +2307,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_base_node_sync_complete: unsafe extern "C" fn(u64, bool),
+    callback_comms_shutdown_finished: unsafe extern "C" fn(),
     error_out: *mut c_int,
 ) -> *mut TariWallet
 {
@@ -2394,6 +2395,7 @@ pub unsafe extern "C" fn wallet_create(
                         callback_store_and_forward_send_result,
                         callback_transaction_cancellation,
                         callback_base_node_sync_complete,
+                        callback_comms_shutdown_finished,
                     );
 
                     w.runtime.spawn(callback_handler.start());
@@ -4126,6 +4128,10 @@ mod test {
         assert!(true);
     }
 
+    unsafe extern "C" fn comms_shutdown_finished_callback() {
+        assert!(true);
+    }
+
     unsafe extern "C" fn received_tx_callback_bob(tx: *mut TariPendingInboundTransaction) {
         assert_eq!(tx.is_null(), false);
         assert_eq!(
@@ -4470,6 +4476,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 base_node_sync_process_complete_callback,
+                comms_shutdown_finished_callback,
                 error_ptr,
             );
             let secret_key_bob = private_key_generate();
@@ -4504,6 +4511,7 @@ mod test {
                 store_and_forward_send_callback_bob,
                 tx_cancellation_callback_bob,
                 base_node_sync_process_complete_callback_bob,
+                comms_shutdown_finished_callback,
                 error_ptr,
             );
 

@@ -344,6 +344,7 @@ struct TariWallet *wallet_create(struct TariWalletConfig *config,
                                     void (*callback_store_and_forward_send_result)(unsigned long long, bool),
                                     void (*callback_transaction_cancellation)(struct TariCompletedTransaction*),
                                     void (*callback_base_node_sync_complete)(unsigned long long, bool),
+                                    void (*callback_comms_shutdown_finished)(void),
                                     int* error_out);
 
 // Signs a message
