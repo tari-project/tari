@@ -15,14 +15,23 @@ You can check that the binaries match the hash by running
 
     sha256sum path/to/tari_base_node
 
-### Building from source (Ubuntu 18.04)
+## Building from source
+
+### Building from source (*nix)
 
 To build the Tari codebase from source, there are a few dependencies you need to have installed.
 
-
-#### Install development packages
+#### Install development packages 
 
 First you'll need to make sure you have a full development environment set up:
+
+#### (macOS)
+
+```
+brew install cmake
+```
+
+#### (Ubuntu 18.04)
 
 ```
 sudo apt-get -y install openssl libssl-dev pkg-config libsqlite3-dev clang git cmake libc++-dev libc++abi-dev libprotobuf-dev protobuf-compiler
@@ -70,6 +79,8 @@ Alternatively, cargo can build and install the executable into `~/.cargo/bin`, s
 on your system.
 
     cargo install --path=applications/tari_base_node --force
+
+---
 
 ### Building from source (Windows 10)
 
@@ -200,6 +211,8 @@ Using all the default options, the blockchain database, wallet database, log fil
 created in the `~/.tari` (on Linux) or `%USERPROFILE%\.tari` (on Windows) folder. Alternatively, by specifying 
 `--base-path <base-path>` on the command line as well, all of this will be created in that folder.  
 
+---
+
 ### Building a docker image
 
 If you don't want to use the docker images provided by the community, you can roll your own!
@@ -217,6 +230,8 @@ places the binary inside a small container, keeping the executable binary to a m
 Test your image
 
     docker run tari_base_node tari_base_node --help
+
+---
 
 ### Advanced build configurations
 

@@ -29,7 +29,7 @@ osascript -e "tell application \"Terminal\" to do script \"sh ${PWD}/start_tor.s
 # Configure Base Node
 cd "${INSTALL_ROOT}" || exit
 tari_base-node --init
-tari_base_node --create_id
+tari_base_node --create-id
 
 # Run Base Node
 tari_base_node

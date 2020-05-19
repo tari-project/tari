@@ -278,7 +278,7 @@ mod test {
         let dir = &PathBuf::from(temp_dir.path().to_path_buf().display().to_string().to_owned() + "/01/02/");
         let data_path = default_subdir("", Some(dir));
         let mut bootstrap =
-            ConfigBootstrap::from_iter_safe(vec!["", "--base_dir", &data_path.as_str(), "--init", "--create_id"])
+            ConfigBootstrap::from_iter_safe(vec!["", "--base_dir", &data_path.as_str(), "--init", "--create-id"])
                 .expect("failed to process arguments");
 
         // Initialize bootstrap dirs

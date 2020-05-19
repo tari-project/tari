@@ -46,7 +46,7 @@
 /// ```
 ///
 /// For the first run
-/// ```cargo run tari_base_node -- --create_id```
+/// ```cargo run tari_base_node -- --create-id```
 /// 
 /// Subsequent runs
 /// ```cargo run tari_base_node```
@@ -312,7 +312,7 @@ fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
     }
 }
 
-/// Loads the node identity, or creates a new one if the --create_id flag was specified
+/// Loads the node identity, or creates a new one if the --create-id flag was specified
 /// ## Parameters
 /// `identity_file` - Reference to file path
 /// `public_address` - Network address of the base node
@@ -335,7 +335,7 @@ fn setup_node_identity(
                 error!(
                     target: LOG_TARGET,
                     "Node identity information not found. {}. You can update the configuration file to point to a \
-                     valid node identity file, or re-run the node with the --create_id flag to create a new identity.",
+                     valid node identity file, or re-run the node with the --create-id flag to create a new identity.",
                     e
                 );
                 return Err(ExitCodes::ConfigError);

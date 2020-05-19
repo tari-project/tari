@@ -83,7 +83,7 @@ fi
 
 # Configure Base Node
 ./tari_base_node --init
-./tari_base_node --create_id
+./tari_base_node --create-id
 
 banner Running Tari Base Node
 # Run Base Node
