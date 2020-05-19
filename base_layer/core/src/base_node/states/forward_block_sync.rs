@@ -19,9 +19,12 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::{
-    base_node::{states::StateEvent, BaseNodeStateMachine},
+    base_node::{
+        comms_interface::{Broadcast, CommsInterfaceError},
+        states::StateEvent,
+        BaseNodeStateMachine,
+    },
     blocks::BlockHeader,
     chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError},
     transactions::types::HashOutput,
@@ -228,7 +231,11 @@ async fn download_blocks<B: BlockchainBackend + 'static>(
                 let header = &curr_headers[i];
                 let block_hash = hist_block.block().hash();
                 if &block_hash == header {
-                    match shared.db.add_block(hist_block.block().clone()) {
+                    match shared
+                        .local_node_interface
+                        .submit_block(hist_block.block.clone(), Broadcast::from(false))
+                        .await
+                    {
                         Ok(result) => {
                             info!(
                                 target: LOG_TARGET,
@@ -237,7 +244,7 @@ async fn download_blocks<B: BlockchainBackend + 'static>(
                                 result
                             );
                         },
-                        Err(ChainStorageError::InvalidBlock) => {
+                        Err(CommsInterfaceError::ChainStorageError(ChainStorageError::InvalidBlock)) => {
                             warn!(
                                 target: LOG_TARGET,
                                 "Invalid block {} received from peer. Retrying",
@@ -245,7 +252,7 @@ async fn download_blocks<B: BlockchainBackend + 'static>(
                             );
                             return Ok(false);
                         },
-                        Err(ChainStorageError::ValidationError { source }) => {
+                        Err(CommsInterfaceError::ChainStorageError(ChainStorageError::ValidationError { source })) => {
                             warn!(
                                 target: LOG_TARGET,
                                 "Validation on block {} because of {} from peer failed. Retrying",
