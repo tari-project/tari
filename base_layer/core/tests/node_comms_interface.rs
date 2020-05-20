@@ -24,7 +24,6 @@
 mod helpers;
 
 use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, executor::block_on, StreamExt};
-use tari_broadcast_channel::bounded;
 use tari_comms::peer_manager::NodeId;
 use tari_core::{
     base_node::{
@@ -46,6 +45,7 @@ use tari_core::{
 use tari_crypto::tari_utilities::hash::Hashable;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_test_utils::runtime::test_async;
+use tokio::sync::broadcast;
 
 async fn test_request_responder(
     receiver: &mut Receiver<(NodeCommsRequest, Option<NodeId>), Result<NodeCommsResponse, CommsInterfaceError>>,
@@ -91,12 +91,12 @@ fn inbound_get_metadata() {
 
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let (block_event_publisher, _block_event_subscriber) = bounded(100);
+    let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender.clone());
     let inbound_nch = InboundNodeCommsHandlers::new(
-        block_event_publisher,
+        block_event_sender,
         store.clone(),
         mempool,
         consensus_manager,
@@ -144,12 +144,12 @@ fn inbound_fetch_kernels() {
     let (mempool, store) = new_mempool();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let (block_event_publisher, _block_event_subscriber) = bounded(100);
+    let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let inbound_nch = InboundNodeCommsHandlers::new(
-        block_event_publisher,
+        block_event_sender,
         store.clone(),
         mempool,
         consensus_manager,
@@ -205,12 +205,12 @@ fn inbound_fetch_headers() {
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
         .build();
-    let (block_event_publisher, _block_event_subscriber) = bounded(100);
+    let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let inbound_nch = InboundNodeCommsHandlers::new(
-        block_event_publisher,
+        block_event_sender,
         store.clone(),
         mempool,
         consensus_manager,
@@ -258,7 +258,7 @@ fn outbound_fetch_utxos() {
 fn inbound_fetch_utxos() {
     let factories = CryptoFactories::default();
     let (mempool, store) = new_mempool();
-    let (block_event_publisher, _block_event_subscriber) = bounded(100);
+    let (block_event_sender, _) = broadcast::channel(50);
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -268,7 +268,7 @@ fn inbound_fetch_utxos() {
     let (block_sender, _) = futures_mpsc_channel_unbounded();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let inbound_nch = InboundNodeCommsHandlers::new(
-        block_event_publisher,
+        block_event_sender,
         store.clone(),
         mempool,
         consensus_manager,
@@ -320,7 +320,7 @@ fn outbound_fetch_blocks() {
 #[test]
 fn inbound_fetch_blocks() {
     let (mempool, store) = new_mempool();
-    let (block_event_publisher, _block_event_subscriber) = bounded(100);
+    let (block_event_sender, _) = broadcast::channel(50);
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -330,7 +330,7 @@ fn inbound_fetch_blocks() {
     let (block_sender, _) = futures_mpsc_channel_unbounded();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let inbound_nch = InboundNodeCommsHandlers::new(
-        block_event_publisher,
+        block_event_sender,
         store.clone(),
         mempool,
         consensus_manager,

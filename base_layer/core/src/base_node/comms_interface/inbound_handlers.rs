@@ -22,7 +22,12 @@
 
 use crate::{
     base_node::{
-        comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
+        comms_interface::{
+            error::CommsInterfaceError,
+            local_interface::BlockEventSender,
+            NodeCommsRequest,
+            NodeCommsResponse,
+        },
         OutboundNodeCommsInterface,
     },
     blocks::{blockheader::BlockHeader, Block, NewBlockTemplate},
@@ -39,17 +44,14 @@ use crate::{
     proof_of_work::{get_target_difficulty, Difficulty, PowAlgorithm},
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
-use futures::SinkExt;
 use log::*;
 use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
 use strum_macros::Display;
-use tari_broadcast_channel::Publisher;
 use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
-use tokio::sync::RwLock;
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
 const MAX_HEADERS_PER_RESPONSE: u32 = 100;
@@ -89,7 +91,7 @@ impl From<bool> for Broadcast {
 pub struct InboundNodeCommsHandlers<T>
 where T: BlockchainBackend + 'static
 {
-    event_publisher: Arc<RwLock<Publisher<BlockEvent>>>,
+    block_event_sender: BlockEventSender,
     blockchain_db: BlockchainDatabase<T>,
     mempool: Mempool<T>,
     consensus_manager: ConsensusManager,
@@ -101,7 +103,7 @@ where T: BlockchainBackend + 'static
 {
     /// Construct a new InboundNodeCommsInterface.
     pub fn new(
-        event_publisher: Publisher<BlockEvent>,
+        block_event_sender: BlockEventSender,
         blockchain_db: BlockchainDatabase<T>,
         mempool: Mempool<T>,
         consensus_manager: ConsensusManager,
@@ -109,7 +111,7 @@ where T: BlockchainBackend + 'static
     ) -> Self
     {
         Self {
-            event_publisher: Arc::new(RwLock::new(event_publisher)),
+            block_event_sender,
             blockchain_db,
             mempool,
             consensus_manager,
@@ -305,12 +307,10 @@ where T: BlockchainBackend + 'static
                 BlockEvent::Invalid((Box::new(block.clone()), e, *broadcast))
             },
         };
-        self.event_publisher
-            .write()
-            .await
-            .send(block_event)
-            .await
+        self.block_event_sender
+            .send(Arc::new(block_event))
             .map_err(|_| CommsInterfaceError::EventStreamError)?;
+
         // Propagate verified block to remote nodes
         if let Ok(add_block_result) = add_block_result {
             let propagate = match add_block_result {
@@ -365,7 +365,7 @@ where T: BlockchainBackend + 'static
     fn clone(&self) -> Self {
         // All members use Arc's internally so calling clone should be cheap.
         Self {
-            event_publisher: self.event_publisher.clone(),
+            block_event_sender: self.block_event_sender.clone(),
             blockchain_db: self.blockchain_db.clone(),
             mempool: self.mempool.clone(),
             consensus_manager: self.consensus_manager.clone(),

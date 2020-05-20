@@ -21,7 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::{comms_interface::BlockEvent, generate_request_key, RequestKey, WaitingRequests},
+    base_node::{
+        comms_interface::{BlockEvent, BlockEventReceiver},
+        generate_request_key,
+        RequestKey,
+        WaitingRequests,
+    },
     chain_storage::BlockchainBackend,
     mempool::{
         proto,
@@ -48,7 +53,6 @@ use futures::{
 use log::*;
 use rand::rngs::OsRng;
 use std::{convert::TryInto, sync::Arc, time::Duration};
-use tari_broadcast_channel::Subscriber;
 use tari_comms::peer_manager::NodeId;
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
@@ -70,7 +74,7 @@ pub struct MempoolStreams<SOutReq, SInReq, SInRes, STxIn, SLocalReq> {
     inbound_response_stream: SInRes,
     inbound_transaction_stream: STxIn,
     local_request_stream: SLocalReq,
-    block_event_stream: Subscriber<BlockEvent>,
+    block_event_stream: BlockEventReceiver,
 }
 
 impl<SOutReq, SInReq, SInRes, STxIn, SLocalReq> MempoolStreams<SOutReq, SInReq, SInRes, STxIn, SLocalReq>
@@ -88,7 +92,7 @@ where
         inbound_response_stream: SInRes,
         inbound_transaction_stream: STxIn,
         local_request_stream: SLocalReq,
-        block_event_stream: Subscriber<BlockEvent>,
+        block_event_stream: BlockEventReceiver,
     ) -> Self
     {
         Self {
@@ -199,7 +203,9 @@ where B: BlockchainBackend + 'static
 
                 // Block events from local Base Node.
                 block_event = block_event_stream.select_next_some() => {
-                    self.spawn_handle_block_event(block_event);
+                    if let Ok(block_event) = block_event {
+                        self.spawn_handle_block_event(block_event);
+                    }
                 },
 
                 // Timeout events for waiting requests
