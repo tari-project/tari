@@ -342,7 +342,7 @@ struct TariWallet *wallet_create(struct TariWalletConfig *config,
                                     void (*callback_transaction_mined)(struct TariCompletedTransaction*),
                                     void (*callback_direct_send_result)(unsigned long long, bool),
                                     void (*callback_store_and_forward_send_result)(unsigned long long, bool),
-                                    void (*callback_transaction_cancellation)(unsigned long long),
+                                    void (*callback_transaction_cancellation)(struct TariCompletedTransaction*),
                                     void (*callback_base_node_sync_complete)(unsigned long long, bool),
                                     int* error_out);
 
@@ -402,6 +402,9 @@ struct TariPendingOutboundTransaction *wallet_get_pending_outbound_transaction_b
 
 // Get the TariPendingInboundTransaction from a TariWallet by its TransactionId
 struct TariPendingInboundTransaction *wallet_get_pending_inbound_transaction_by_id(struct TariWallet *wallet, unsigned long long transaction_id,int* error_out);
+
+// Get a Cancelled transaction from a TariWallet by its TransactionId. Pending Inbound or Outbound transaction will be converted to a CompletedTransaction
+struct TariCompletedTransaction *wallet_get_cancelled_transaction_by_id(struct TariWallet *wallet, unsigned long long transaction_id, int* error_out);
 
 // Simulates completion of a TariPendingOutboundTransaction
 bool wallet_test_complete_sent_transaction(struct TariWallet *wallet, struct TariPendingOutboundTransaction *tx,int* error_out);
