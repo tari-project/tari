@@ -3739,7 +3739,9 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
         };
 
         if let Some(tx) = outbound_transactions.remove(&transaction_id) {
-            transaction = Some(CompletedTransaction::from(tx));
+            let mut outbound_tx = CompletedTransaction::from(tx);
+            outbound_tx.source_public_key = (*wallet).comms.node_identity().public_key().clone();
+            transaction = Some(outbound_tx);
         } else {
             let mut inbound_transactions = match (*wallet).runtime.block_on(
                 (*wallet)
@@ -3754,7 +3756,9 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
                 },
             };
             if let Some(tx) = inbound_transactions.remove(&transaction_id) {
-                transaction = Some(CompletedTransaction::from(tx));
+                let mut inbound_tx = CompletedTransaction::from(tx);
+                inbound_tx.destination_public_key = (*wallet).comms.node_identity().public_key().clone();
+                transaction = Some(inbound_tx);
             }
         }
     }
