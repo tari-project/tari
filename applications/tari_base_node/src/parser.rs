@@ -80,11 +80,14 @@ use tari_wallet::{
 };
 use tokio::{runtime, time};
 
+const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+
 /// Enum representing commands used by the basenode
 #[derive(Clone, PartialEq, Debug, Display, EnumIter, EnumString)]
 #[strum(serialize_all = "kebab_case")]
 pub enum BaseNodeCommand {
     Help,
+    Version,
     GetBalance,
     ListUtxos,
     ListTransactions,
@@ -236,6 +239,9 @@ impl Parser {
             Help => {
                 self.print_help(args);
             },
+            Version => {
+                self.print_version();
+            },
             GetBalance => {
                 self.process_get_balance();
             },
@@ -328,6 +334,9 @@ impl Parser {
                 println!("Available commands are: ");
                 let joined = self.commands.join(", ");
                 println!("{}", joined);
+            },
+            Version => {
+                println!("Gets the current application version");
             },
             GetBalance => {
                 println!("Gets your balance");
@@ -431,6 +440,11 @@ impl Parser {
                 Ok(data) => println!("Balances:\n{}", data),
             };
         });
+    }
+
+    /// Function process the version command
+    fn print_version(&mut self) {
+        println!("Version: {}", VERSION);
     }
 
     /// Function to process the list utxos command
