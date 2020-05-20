@@ -22,6 +22,7 @@
 
 use crate::store_forward::{StoreAndForwardRequest, StoreAndForwardRequester, StoredMessage};
 use chrono::Utc;
+use digest::Input;
 use futures::{channel::mpsc, stream::Fuse, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
@@ -29,6 +30,8 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
+use tari_comms::types::Challenge;
+use tari_utilities::hex::Hex;
 use tokio::{runtime, sync::RwLock};
 
 const LOG_TARGET: &str = "comms::dht::discovery_mock";
@@ -124,10 +127,11 @@ impl StoreAndForwardMock {
                 destination_pubkey: msg.destination_pubkey,
                 destination_node_id: msg.destination_node_id,
                 header: msg.header,
-                body: msg.body,
+                body: msg.body.clone(),
                 is_encrypted: msg.is_encrypted,
                 priority: msg.priority,
                 stored_at: Utc::now().naive_utc(),
+                body_hash: Challenge::new().chain(msg.body).result().to_vec().to_hex(),
             }),
             RemoveMessages(message_ids) => {
                 for id in message_ids {
