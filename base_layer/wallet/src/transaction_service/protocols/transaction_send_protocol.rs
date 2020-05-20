@@ -333,8 +333,8 @@ where TBackend: TransactionBackend + Clone + 'static
                 e
             });
 
-        // TODO Actually monitor the send status of this message
-        self.resources
+        match self
+            .resources
             .outbound_message_service
             .send_direct(
                 outbound_tx.destination_public_key.clone(),
@@ -345,59 +345,59 @@ where TBackend: TransactionBackend + Clone + 'static
                 ),
             )
             .await
-            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-
-        // TODO Monitor the final send result of this process
-        match self
-            .resources
-            .outbound_message_service
-            .broadcast(
-                NodeDestination::NodeId(Box::new(NodeId::from_key(&self.dest_pubkey).map_err(|e| {
-                    TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
-                })?)),
-                OutboundEncryption::EncryptFor(Box::new(self.dest_pubkey.clone())),
-                vec![],
-                OutboundDomainMessage::new(
-                    TariMessageType::TransactionFinalized,
-                    finalized_transaction_message.clone(),
-                ),
-            )
-            .await
         {
             Ok(result) => match result.resolve_ok().await {
                 None => {
-                    error!(
-                        target: LOG_TARGET,
-                        "Sending Finalized Transaction (TxId: {}) to neighbours for Store and Forward failed", self.id
-                    );
+                    self.send_transaction_finalized_message_store_and_forward(finalized_transaction_message.clone())
+                        .await?
                 },
-                Some(tags) if !tags.is_empty() => {
-                    info!(
-                        target: LOG_TARGET,
-                        "Sending Finalized Transaction (TxId: {}) to Neighbours for Store and Forward successful with \
-                         Message Tags: {:?}",
-                        tx_id,
-                        tags,
-                    );
-                },
-                Some(_) => {
-                    error!(
-                        target: LOG_TARGET,
-                        "Sending Finalized Transaction to Neighbours for Store and Forward for TX_ID: {} was \
-                         unsuccessful and no messages were sent",
-                        tx_id
-                    );
+                Some(send_states) => {
+                    if send_states.len() == 1 {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Transaction Finalized (TxId: {}) Direct Send to {} queued with Message Tag: {:?}",
+                            self.id,
+                            self.dest_pubkey,
+                            send_states[0].tag,
+                        );
+                        match send_states.wait_single().await {
+                            true => {
+                                info!(
+                                    target: LOG_TARGET,
+                                    "Direct Send of Transaction Finalized message for TX_ID: {} was successful",
+                                    self.id
+                                );
+                            },
+                            false => {
+                                error!(
+                                    target: LOG_TARGET,
+                                    "Direct Send of Transaction Finalized message for TX_ID: {} was unsuccessful and \
+                                     no message was sent",
+                                    self.id
+                                );
+                                self.send_transaction_finalized_message_store_and_forward(
+                                    finalized_transaction_message.clone(),
+                                )
+                                .await?
+                            },
+                        }
+                    } else {
+                        error!(
+                            target: LOG_TARGET,
+                            "Transaction Finalized message Send Direct for TxID: {} failed", self.id
+                        );
+                        self.send_transaction_finalized_message_store_and_forward(finalized_transaction_message.clone())
+                            .await?
+                    }
                 },
             },
             Err(e) => {
-                error!(
-                    target: LOG_TARGET,
-                    "Sending Finalized Transaction (TxId: {}) to neighbours for Store and Forward failed: {:?}",
+                return Err(TransactionServiceProtocolError::new(
                     self.id,
-                    e
-                );
+                    TransactionServiceError::from(e),
+                ))
             },
-        };
+        }
 
         Ok(self.id)
     }
@@ -661,6 +661,62 @@ where TBackend: TransactionBackend + Clone + 'static
             },
         }
         Ok(true)
+    }
+
+    async fn send_transaction_finalized_message_store_and_forward(
+        &mut self,
+        msg: proto::TransactionFinalizedMessage,
+    ) -> Result<(), TransactionServiceProtocolError>
+    {
+        match self
+            .resources
+            .outbound_message_service
+            .broadcast(
+                NodeDestination::NodeId(Box::new(NodeId::from_key(&self.dest_pubkey).map_err(|e| {
+                    TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
+                })?)),
+                OutboundEncryption::EncryptFor(Box::new(self.dest_pubkey.clone())),
+                vec![],
+                OutboundDomainMessage::new(TariMessageType::TransactionFinalized, msg.clone()),
+            )
+            .await
+        {
+            Ok(result) => match result.resolve_ok().await {
+                None => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Sending Finalized Transaction (TxId: {}) to neighbours for Store and Forward failed", self.id
+                    );
+                },
+                Some(tags) if !tags.is_empty() => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Sending Finalized Transaction (TxId: {}) to Neighbours for Store and Forward successful with \
+                         Message Tags: {:?}",
+                        self.id,
+                        tags,
+                    );
+                },
+                Some(_) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Sending Finalized Transaction to Neighbours for Store and Forward for TX_ID: {} was \
+                         unsuccessful and no messages were sent",
+                        self.id
+                    );
+                },
+            },
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Sending Finalized Transaction (TxId: {}) to neighbours for Store and Forward failed: {:?}",
+                    self.id,
+                    e
+                );
+            },
+        };
+
+        Ok(())
     }
 }
 
