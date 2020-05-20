@@ -3466,10 +3466,14 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
         completed.push(tx.clone());
     }
     for tx in inbound_transactions.values() {
-        completed.push(CompletedTransaction::from(tx.clone()));
+        let mut inbound_tx = CompletedTransaction::from(tx.clone());
+        inbound_tx.destination_public_key = (*wallet).comms.node_identity().public_key().clone();
+        completed.push(inbound_tx);
     }
     for tx in outbound_transactions.values() {
-        completed.push(CompletedTransaction::from(tx.clone()));
+        let mut outbound_tx = CompletedTransaction::from(tx.clone());
+        outbound_tx.source_public_key = (*wallet).comms.node_identity().public_key().clone();
+        completed.push(outbound_tx);
     }
 
     Box::into_raw(Box::new(TariCompletedTransactions(completed)))
@@ -4805,7 +4809,12 @@ mod test {
 
             let cancelled_tx = completed_transactions_get_at(ffi_cancelled_txs, 0, error_ptr);
             let tx_id = completed_transaction_get_transaction_id(cancelled_tx, error_ptr);
+            let dest_pubkey = completed_transaction_get_destination_public_key(cancelled_tx, error_ptr);
+            let pub_key_ptr = Box::into_raw(Box::new((*alice_wallet).comms.node_identity().public_key().clone()));
             assert_eq!(tx_id, inbound_tx_id);
+            assert_eq!(*dest_pubkey, *pub_key_ptr);
+            public_key_destroy(pub_key_ptr);
+
             completed_transaction_destroy(cancelled_tx);
 
             let lock = CALLBACK_STATE_FFI.lock().unwrap();
