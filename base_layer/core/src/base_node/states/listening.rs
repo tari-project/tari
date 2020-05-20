@@ -29,7 +29,7 @@ use crate::{
     chain_storage::{BlockchainBackend, ChainMetadata},
     proof_of_work::Difficulty,
 };
-use futures::stream::StreamExt;
+use futures::{stream::StreamExt, SinkExt};
 use log::*;
 use std::fmt::{Display, Formatter};
 use tari_comms::peer_manager::NodeId;
@@ -61,9 +61,11 @@ impl ListeningInfo {
 pub struct ListeningData;
 
 impl ListeningData {
-    pub async fn next_event<B: BlockchainBackend>(&mut self, shared: &mut BaseNodeStateMachine<B>) -> StateEvent {
+    pub async fn next_event<B: BlockchainBackend>(&mut self, shared: &mut BaseNodeStateMachine<B>) -> StateEvent
+    where B: 'static {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
         shared.info = StatusInfo::Listening(ListeningInfo::new());
+        shared.publish_event_info().await;
         while let Some(metadata_event) = shared.metadata_event_stream.next().await {
             match &*metadata_event {
                 ChainMetadataEvent::PeerChainMetadataReceived(ref peer_metadata_list) => {
