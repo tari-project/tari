@@ -70,7 +70,7 @@ impl ChainMetadataService {
     /// Run the service
     pub async fn run(mut self) {
         let mut liveness_event_stream = self.liveness.get_event_stream_fused();
-        let mut base_node_event_stream = self.base_node.get_block_event_stream_fused();
+        let mut block_event_stream = self.base_node.get_block_event_stream_fused();
 
         log_if_error!(
             target: LOG_TARGET,
@@ -80,13 +80,15 @@ impl ChainMetadataService {
 
         loop {
             futures::select! {
-                event = base_node_event_stream.select_next_some() => {
-                    log_if_error!(
-                        level: debug,
-                        target: LOG_TARGET,
-                        "Failed to handle base node event because '{}'",
-                        self.handle_block_event(&event).await
-                    );
+                block_event = block_event_stream.select_next_some() => {
+                    if let Ok(block_event) = block_event {
+                        log_if_error!(
+                            level: debug,
+                            target: LOG_TARGET,
+                            "Failed to handle block event because '{}'",
+                            self.handle_block_event(&block_event).await
+                        );
+                    }
                 },
 
                 liveness_event = liveness_event_stream.select_next_some() => {
@@ -265,6 +267,7 @@ mod test {
     use tari_p2p::services::liveness::{mock::create_p2p_liveness_mock, LivenessRequest, PingPongEvent};
     use tari_service_framework::reply_channel;
     use tari_test_utils::{runtime, unpack_enum};
+    use tokio::sync::broadcast;
 
     fn create_base_node_nci() -> (
         LocalNodeCommsInterface,
@@ -272,8 +275,8 @@ mod test {
     ) {
         let (base_node_sender, base_node_receiver) = reply_channel::unbounded();
         let (block_sender, _block_receiver) = reply_channel::unbounded();
-        let (_base_node_publisher, subscriber) = broadcast_channel::bounded(1);
-        let base_node = LocalNodeCommsInterface::new(base_node_sender, block_sender, subscriber);
+        let (block_event_sender, _) = broadcast::channel(50);
+        let base_node = LocalNodeCommsInterface::new(base_node_sender, block_sender, block_event_sender);
 
         (base_node, base_node_receiver)
     }

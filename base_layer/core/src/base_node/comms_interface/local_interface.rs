@@ -33,9 +33,13 @@ use crate::{
     proof_of_work::{Difficulty, PowAlgorithm},
 };
 use futures::{stream::Fuse, StreamExt};
-use tari_broadcast_channel::Subscriber;
+use std::sync::Arc;
 use tari_service_framework::reply_channel::SenderService;
+use tokio::sync::broadcast;
 use tower_service::Service;
+
+pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
+pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;
 
 /// The InboundNodeCommsInterface provides an interface to request information from the current local node by other
 /// internal services.
@@ -43,7 +47,7 @@ use tower_service::Service;
 pub struct LocalNodeCommsInterface {
     request_sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
     block_sender: SenderService<(Block, Broadcast), Result<(), CommsInterfaceError>>,
-    block_event_stream: Subscriber<BlockEvent>,
+    block_event_sender: BlockEventSender,
 }
 
 impl LocalNodeCommsInterface {
@@ -51,21 +55,21 @@ impl LocalNodeCommsInterface {
     pub fn new(
         request_sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
         block_sender: SenderService<(Block, Broadcast), Result<(), CommsInterfaceError>>,
-        block_event_stream: Subscriber<BlockEvent>,
+        block_event_sender: BlockEventSender,
     ) -> Self
     {
         Self {
             request_sender,
             block_sender,
-            block_event_stream,
+            block_event_sender,
         }
     }
 
-    pub fn get_block_event_stream(&self) -> Subscriber<BlockEvent> {
-        self.block_event_stream.clone()
+    pub fn get_block_event_stream(&self) -> BlockEventReceiver {
+        self.block_event_sender.subscribe()
     }
 
-    pub fn get_block_event_stream_fused(&self) -> Fuse<Subscriber<BlockEvent>> {
+    pub fn get_block_event_stream_fused(&self) -> Fuse<BlockEventReceiver> {
         self.get_block_event_stream().fuse()
     }
 

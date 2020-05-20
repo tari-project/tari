@@ -35,7 +35,6 @@ use crate::{
 use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, future, Future, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
-use tari_broadcast_channel::bounded;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_p2p::{
     comms_connector::PeerMessage,
@@ -51,7 +50,7 @@ use tari_service_framework::{
     ServiceInitializer,
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
+use tokio::{runtime, sync::broadcast};
 
 const LOG_TARGET: &str = "c::bn::service::initializer";
 
@@ -166,14 +165,14 @@ where T: BlockchainBackend + 'static
         let (local_block_sender_service, local_block_stream) = reply_channel::unbounded();
         let outbound_nci =
             OutboundNodeCommsInterface::new(outbound_request_sender_service, outbound_block_sender_service);
-        let (block_event_publisher, block_event_subscriber) = bounded(100);
+        let (block_event_sender, _) = broadcast::channel(50);
         let local_nci = LocalNodeCommsInterface::new(
             local_request_sender_service,
             local_block_sender_service,
-            block_event_subscriber,
+            block_event_sender.clone(),
         );
         let inbound_nch = InboundNodeCommsHandlers::new(
-            block_event_publisher,
+            block_event_sender,
             self.blockchain_db.clone(),
             self.mempool.clone(),
             self.consensus_manager.clone(),
