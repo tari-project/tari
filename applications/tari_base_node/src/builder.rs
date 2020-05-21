@@ -33,6 +33,7 @@ use std::{
     },
     time::Duration,
 };
+use tari_broadcast_channel::Subscriber;
 use tari_common::{CommsTransport, DatabaseType, GlobalConfig, Network, SocksAuthentication, TorControlAuthentication};
 use tari_comms::{
     multiaddr::{Multiaddr, Protocol},
@@ -51,6 +52,7 @@ use tari_core::{
     base_node::{
         chain_metadata_service::{ChainMetadataHandle, ChainMetadataServiceInitializer},
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
+        states::StatusInfo,
         BaseNodeStateMachine,
         BaseNodeStateMachineConfig,
         LocalNodeCommsInterface,
@@ -200,6 +202,10 @@ impl NodeContainer {
         using_backend!(self, ctx, ctx.wallet_transaction_service())
     }
 
+    pub fn get_state_machine_info_channel(&self) -> Subscriber<StatusInfo> {
+        using_backend!(self, ctx, ctx.get_status_event_stream())
+    }
+
     async fn run_impl<B: BlockchainBackend + 'static>(mut ctx: BaseNodeContext<B>, rt: runtime::Handle) {
         info!(target: LOG_TARGET, "Tari base node has STARTED");
         let mut wallet_output_handle = ctx.output_manager();
@@ -219,7 +225,7 @@ impl NodeContainer {
                         let mut oms_handle_clone = wallet_output_handle.clone();
                         tokio::spawn(async move {
                             delay_for(Duration::from_secs(240)).await;
-                            oms_handle_clone.sync_with_base_node().await;
+                            let _ = oms_handle_clone.sync_with_base_node().await;
                         });
                     },
                     Err(e) => warn!(target: LOG_TARGET, "Error adding output: {}", e),
@@ -261,7 +267,9 @@ pub struct BaseNodeContext<B: BlockchainBackend> {
     pub miner_hashrate: Arc<AtomicU64>,
 }
 
-impl<B: BlockchainBackend> BaseNodeContext<B> {
+impl<B: BlockchainBackend> BaseNodeContext<B>
+where B: 'static
+{
     /// Returns a handle to the Output Manager
     pub fn output_manager(&self) -> OutputManagerHandle {
         self.wallet_handles
@@ -283,11 +291,16 @@ impl<B: BlockchainBackend> BaseNodeContext<B> {
             .expect("Could not get local mempool interface handle")
     }
 
-    /// Return the handle to the Transaciton Service
+    /// Return the handle to the Transaction Service
     pub fn wallet_transaction_service(&self) -> TransactionServiceHandle {
         self.wallet_handles
             .get_handle::<TransactionServiceHandle>()
             .expect("Could not get wallet transaction service handle")
+    }
+
+    // /// Return the state machine channel to provide info updates
+    pub fn get_status_event_stream(&self) -> Subscriber<StatusInfo> {
+        self.node.get_status_event_stream()
     }
 }
 

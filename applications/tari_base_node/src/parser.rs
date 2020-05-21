@@ -29,6 +29,7 @@ use crate::{
 };
 use chrono::Utc;
 use chrono_english::{parse_date_string, Dialect};
+use futures::StreamExt;
 use log::*;
 use qrcode::{render::unicode, QrCode};
 use regex::Regex;
@@ -41,10 +42,9 @@ use rustyline::{
 };
 use rustyline_derive::{Helper, Highlighter, Validator};
 use std::{
-    error::Error,
     io::{self, Write},
     str::FromStr,
-    string::{ParseError, ToString},
+    string::ToString,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
@@ -53,6 +53,7 @@ use std::{
 };
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
+use tari_broadcast_channel::Subscriber;
 use tari_common::GlobalConfig;
 use tari_comms::{
     connection_manager::ConnectionManagerRequester,
@@ -62,7 +63,7 @@ use tari_comms::{
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
-    base_node::LocalNodeCommsInterface,
+    base_node::{states::StatusInfo, LocalNodeCommsInterface},
     blocks::BlockHeader,
     mempool::service::LocalMempoolService,
     tari_utilities::{hex::Hex, Hashable},
@@ -112,6 +113,7 @@ pub enum BaseNodeCommand {
     GetMiningState,
     MakeItRain,
     CoinSplit,
+    GetStateInfo,
     Quit,
     Exit,
 }
@@ -135,6 +137,7 @@ pub struct Parser {
     enable_miner: Arc<AtomicBool>,
     miner_hashrate: Arc<AtomicU64>,
     miner_thread_count: u64,
+    state_machine_info: Subscriber<StatusInfo>,
 }
 
 const MAKE_IT_RAIN_USAGE: &str = "\nmake-it-rain [Txs/s] [duration (s)] [start amount (uT)] [increment (uT)/Tx] \
@@ -190,6 +193,7 @@ impl Parser {
             enable_miner: ctx.miner_enabled(),
             miner_hashrate: ctx.miner_hashrate(),
             miner_thread_count: config.num_mining_threads as u64,
+            state_machine_info: ctx.get_state_machine_info_channel(),
         }
     }
 
@@ -238,6 +242,9 @@ impl Parser {
         match command {
             Help => {
                 self.print_help(args);
+            },
+            GetStateInfo => {
+                self.process_state_info();
             },
             Version => {
                 self.print_version();
@@ -334,6 +341,9 @@ impl Parser {
                 println!("Available commands are: ");
                 let joined = self.commands.join(", ");
                 println!("{}", joined);
+            },
+            GetStateInfo => {
+                println!("Prints out the status of the base node state machine");
             },
             Version => {
                 println!("Gets the current application version");
@@ -445,6 +455,26 @@ impl Parser {
     /// Function process the version command
     fn print_version(&mut self) {
         println!("Version: {}", VERSION);
+    }
+
+    /// Function to process the get-state-info command
+    fn process_state_info(&mut self) {
+        // the channel only holds events of 1 as the channel is created bounded(1)
+        let mut channel = self.state_machine_info.clone();
+        // We clone the channel so that allows as to always start to read from the beginning. Hence the channel never
+        // empties.
+        self.executor.spawn(async move {
+            match channel.next().await {
+                None => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Error communicating with state machine, channel could have been closed"
+                    );
+                    return;
+                },
+                Some(data) => println!("Current state machine state:\n{}", data),
+            };
+        });
     }
 
     /// Function to process the list utxos command
@@ -1069,7 +1099,7 @@ impl Parser {
     }
 
     /// Helper function to convert an array from command_arg to a Vec<u64> of header heights
-    async fn cmd_arg_to_header_heights(mut handler: LocalNodeCommsInterface, command_arg: Vec<String>) -> Vec<u64> {
+    async fn cmd_arg_to_header_heights(handler: LocalNodeCommsInterface, command_arg: Vec<String>) -> Vec<u64> {
         let height_ranges: Result<Vec<u64>, _> = command_arg.iter().map(|v| u64::from_str(v)).collect();
         match height_ranges {
             Ok(height_ranges) => {
@@ -1082,14 +1112,14 @@ impl Parser {
                         Ok(heights) => heights,
                         Err(_) => {
                             println!("Error communicating with comm interface");
-                            return Vec::new();
+                            Vec::new()
                         },
                     }
                 }
             },
-            Err(e) => {
+            Err(_e) => {
                 println!("Invalid number provided");
-                return Vec::new();
+                Vec::new()
             },
         }
     }

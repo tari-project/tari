@@ -67,7 +67,7 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) metadata_event_stream: Subscriber<ChainMetadataEvent>,
     pub(super) config: BaseNodeStateMachineConfig,
     pub(super) info: StatusInfo,
-    pub(super) status_event_publisher: Publisher<StatusInfo>,
+    status_event_publisher: Publisher<StatusInfo>,
     status_event_subscriber: Subscriber<StatusInfo>,
     event_sender: Publisher<StateEvent>,
     event_receiver: Subscriber<StateEvent>,
@@ -142,6 +142,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     /// caller.
     pub fn get_status_event_stream(&self) -> Subscriber<StatusInfo> {
         self.status_event_subscriber.clone()
+    }
+
+    /// This function will publish the current StatusInfo to the channel
+    pub async fn publish_event_info(&mut self) {
+        let _ = self.status_event_publisher.send(self.info.clone()).await;
     }
 
     /// Start the base node runtime.

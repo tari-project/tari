@@ -107,7 +107,7 @@ impl Display for BlockSyncInfo {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let local_height = self.local_height.unwrap_or(0);
         let tip_height = self.tip_height.unwrap_or(0);
-        fmt.write_str("Syncing from: \n")?;
+        fmt.write_str("Syncing from the following peers: \n")?;
         for peer in &self.sync_peers {
             fmt.write_str(&format!("{}\n", peer))?;
         }
@@ -161,8 +161,7 @@ impl BlockSyncStrategy {
     ) -> StateEvent
     {
         shared.info = StatusInfo::BlockSync(BlockSyncInfo::new(None, None, None));
-
-        let _ = shared.status_event_publisher.send(shared.info.clone()).await;
+        shared.publish_event_info().await;
         match self {
             BlockSyncStrategy::ViaBestChainMetadata(sync) => sync.next_event(shared, network_tip, sync_peers).await,
             BlockSyncStrategy::ViaRandomPeer(sync) => sync.next_event(shared).await,
@@ -217,9 +216,11 @@ impl BestChainMetadataBlockSyncInfo {
         network_tip: &ChainMetadata,
         sync_peers: &mut Vec<NodeId>,
     ) -> StateEvent
+    where
+        B: 'static,
     {
         shared.info = StatusInfo::BlockSync(BlockSyncInfo::new(None, None, None));
-        let _ = shared.status_event_publisher.send(shared.info.clone()).await;
+        shared.publish_event_info().await;
         info!(target: LOG_TARGET, "Synchronizing missing blocks.");
         match synchronize_blocks(shared, network_tip, sync_peers).await {
             Ok(()) => {
@@ -278,7 +279,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
         info.sync_peers.clear();
         info.sync_peers.append(&mut sync_peers.clone());
     }
-    let _ = shared.status_event_publisher.send(shared.info.clone()).await;
+    shared.publish_event_info().await;
     let local_metadata = shared.db.get_metadata()?;
     if let Some(local_block_hash) = local_metadata.best_block.clone() {
         if let Some(network_block_hash) = network_metadata.best_block.clone() {
@@ -320,7 +321,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                     info.local_height = Some(sync_height);
                 }
 
-                let _ = shared.status_event_publisher.send(shared.info.clone()).await;
+                shared.publish_event_info().await;
                 let max_height = min(
                     sync_height + (shared.config.block_sync_config.block_request_size - 1) as u64,
                     network_tip_height,
@@ -422,14 +423,14 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
             // assuming the numbers are ordred
             info.tip_height = Some(block_nums[block_nums.len() - 1]);
         }
-        let _ = shared.status_event_publisher.send(shared.info.clone()).await;
+        shared.publish_event_info().await;
         for block in blocks {
             let block_hash = block.hash();
             if let StatusInfo::BlockSync(ref mut info) = shared.info {
                 info.local_height = Some(block.header.height);
             }
 
-            let _ = shared.status_event_publisher.send(shared.info.clone()).await;
+            shared.publish_event_info().await;
             match shared
                 .local_node_interface
                 .submit_block(block.clone(), Broadcast::from(false))
