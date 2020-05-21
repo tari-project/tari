@@ -36,7 +36,7 @@ use std::{
 
 //-------------------------------------        Main Configuration Struct      --------------------------------------//
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GlobalConfig {
     pub network: Network,
     pub comms_transport: CommsTransport,
@@ -350,7 +350,7 @@ fn config_string(network: &str, key: &str) -> String {
 }
 
 //---------------------------------------------       Network type        ------------------------------------------//
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Copy)]
 pub enum Network {
     MainNet,
     Rincewind,
@@ -382,7 +382,7 @@ impl Display for Network {
 }
 
 //---------------------------------------------      Database type        ------------------------------------------//
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum DatabaseType {
     LMDB(PathBuf),
     Memory,

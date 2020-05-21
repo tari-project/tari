@@ -19,21 +19,34 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use crate::grpc::{
+    blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
+    helpers::{mean, median},
+};
 use base_node_grpc::*;
 use log::*;
 use prost_types::Timestamp;
-use std::cmp;
+use std::{cmp, convert::TryFrom};
+use tari_common::GlobalConfig;
 use tari_core::{
     base_node::LocalNodeCommsInterface,
     blocks::{Block, BlockHeader},
     chain_storage::HistoricalBlock,
+    consensus::{emission::EmissionSchedule, ConsensusConstants, Network},
     proof_of_work::PowAlgorithm,
 };
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray, Hashable};
 use tokio::{runtime, sync::mpsc};
 use tonic::{Request, Response, Status};
 
+const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+
 const LOG_TARGET: &str = "base_node::grpc";
+// The maximum number of difficulty ints that can be requested at a time. These will be streamed to the
+// client, so memory is not really a concern here, but a malicious client could request a large
+// number here to keep the node busy
+const GET_DIFFICULTY_MAX_HEIGHTS: usize = 10_000;
+const GET_DIFFICULTY_PAGE_SIZE: usize = 1_000;
 // The maximum number of headers a client can request at a time. If the client requests more than
 // this, this is the maximum that will be returned.
 const LIST_HEADERS_MAX_NUM_HEADERS: u64 = 10_000;
@@ -43,15 +56,6 @@ const LIST_HEADERS_PAGE_SIZE: usize = 10;
 // The `num_headers` value if none is provided.
 const LIST_HEADERS_DEFAULT_NUM_HEADERS: u64 = 10;
 
-// The maximum number of blocks that can be requested at a time. These will be streamed to the
-// client, so memory is not really a concern here, but a malicious client could request a large
-// number here to keep the node busy
-const GET_BLOCKS_MAX_HEIGHTS: usize = 1000;
-
-// The number of blocks to request from the base node at a time. This is to reduce the number of
-// requests to the base node, but if you'd like to stream directly, this can be set to 1.
-const GET_BLOCKS_PAGE_SIZE: usize = 10;
-
 pub(crate) mod base_node_grpc {
     tonic::include_proto!("tari.base_node");
 }
@@ -59,13 +63,15 @@ pub(crate) mod base_node_grpc {
 pub struct BaseNodeGrpcServer {
     executor: runtime::Handle,
     node_service: LocalNodeCommsInterface,
+    node_config: GlobalConfig,
 }
 
 impl BaseNodeGrpcServer {
-    pub fn new(executor: runtime::Handle, local_node: LocalNodeCommsInterface) -> Self {
+    pub fn new(executor: runtime::Handle, local_node: LocalNodeCommsInterface, node_config: GlobalConfig) -> Self {
         Self {
             executor,
             node_service: local_node,
+            node_config,
         }
     }
 }
@@ -73,7 +79,103 @@ impl BaseNodeGrpcServer {
 #[tonic::async_trait]
 impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type GetBlocksStream = mpsc::Receiver<Result<base_node_grpc::HistoricalBlock, Status>>;
+    type GetNetworkDifficultyStream = mpsc::Receiver<Result<base_node_grpc::NetworkDifficultyResponse, Status>>;
     type ListHeadersStream = mpsc::Receiver<Result<base_node_grpc::BlockHeader, Status>>;
+
+    async fn get_network_difficulty(
+        &self,
+        request: Request<HeightRequest>,
+    ) -> Result<Response<Self::GetNetworkDifficultyStream>, Status>
+    {
+        let request = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "Incoming GRPC request for GetNetworkDifficulty: from_tip: {:?} start_height: {:?} end_height: {:?}",
+            request.from_tip,
+            request.start_height,
+            request.end_height
+        );
+        let mut handler = self.node_service.clone();
+        let mut heights: Vec<u64> = request.get_heights(handler.clone()).await?;
+        heights = heights
+            .drain(..cmp::min(heights.len(), GET_DIFFICULTY_MAX_HEIGHTS))
+            .collect();
+        let (mut tx, rx) = mpsc::channel(GET_DIFFICULTY_MAX_HEIGHTS);
+
+        self.executor.spawn(async move {
+            let mut page: Vec<u64> = heights
+                .drain(..cmp::min(heights.len(), GET_DIFFICULTY_PAGE_SIZE))
+                .collect();
+            while page.len() > 0 {
+                let difficulties = match handler.get_headers(page.clone()).await {
+                    Err(err) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Error communicating with local base node: {:?}", err,
+                        );
+                        return;
+                    },
+                    Ok(data) => {
+                        let mut iter = data.iter().peekable();
+                        let mut result = Vec::new();
+                        while let Some(next) = iter.next() {
+                            let current_difficulty = next.pow.accumulated_blake_difficulty.as_u64();
+                            let current_timestamp = next.timestamp.as_u64();
+                            let current_height = next.height;
+                            let estimated_hash_rate = if let Some(peek) = iter.peek() {
+                                let peeked_timestamp = peek.timestamp.as_u64();
+                                let estimated_hash_rate = current_difficulty / (current_timestamp - peeked_timestamp);
+                                estimated_hash_rate
+                            } else {
+                                0
+                            };
+
+                            result.push((current_height, current_difficulty, estimated_hash_rate))
+                        }
+                        result
+                    },
+                };
+
+                let result_size = difficulties.len();
+                for difficulty in difficulties {
+                    match tx
+                        .send(Ok({
+                            NetworkDifficultyResponse {
+                                height: difficulty.0,
+                                difficulty: difficulty.1,
+                                estimated_hash_rate: difficulty.2,
+                            }
+                        }))
+                        .await
+                    {
+                        Ok(_) => (),
+                        Err(err) => {
+                            warn!(target: LOG_TARGET, "Error sending difficulty via GRPC:  {}", err);
+                            match tx.send(Err(Status::unknown("Error sending data"))).await {
+                                Ok(_) => (),
+                                Err(send_err) => {
+                                    warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+                                },
+                            }
+                            return;
+                        },
+                    }
+                }
+                if result_size < GET_DIFFICULTY_PAGE_SIZE {
+                    break;
+                }
+                page = heights
+                    .drain(..cmp::min(heights.len(), GET_DIFFICULTY_PAGE_SIZE))
+                    .collect();
+            }
+        });
+
+        debug!(
+            target: LOG_TARGET,
+            "Sending GetNetworkDifficulty response stream to client"
+        );
+        Ok(Response::new(rx))
+    }
 
     async fn list_headers(
         &self,
@@ -88,6 +190,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             request.num_headers,
             request.sorting
         );
+
         let mut handler = self.node_service.clone();
         let tip = match handler.get_metadata().await {
             Err(err) => {
@@ -181,6 +284,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         heights = heights
             .drain(..cmp::min(heights.len(), GET_BLOCKS_MAX_HEIGHTS))
             .collect();
+
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
         self.executor.spawn(async move {
@@ -224,11 +328,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
-    async fn get_calc_timing(
-        &self,
-        request: Request<GetCalcTimingRequest>,
-    ) -> Result<Response<CalcTimingResponse>, Status>
-    {
+    async fn get_calc_timing(&self, request: Request<HeightRequest>) -> Result<Response<CalcTimingResponse>, Status> {
         let request = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -239,22 +339,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         );
 
         let mut handler = self.node_service.clone();
-        let heights = if request.start_height > 0 && request.end_height > 0 {
-            BlockHeader::get_height_range(request.start_height, request.end_height)
-        } else if request.from_tip > 0 {
-            match BlockHeader::get_heights_from_tip(handler.clone(), request.from_tip).await {
-                Ok(heights) => heights,
-                Err(err) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Error getting heights from tip for GRPC client: {}", err
-                    );
-                    Vec::new()
-                },
-            }
-        } else {
-            return Err(Status::invalid_argument("Invalid arguments provided"));
-        };
+        let heights: Vec<u64> = request.get_heights(handler.clone()).await?;
 
         let headers = match handler.get_headers(heights).await {
             Ok(headers) => headers,
@@ -266,11 +351,118 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let (max, min, avg) = BlockHeader::timing_stats(&headers);
 
         let response: base_node_grpc::CalcTimingResponse = base_node_grpc::CalcTimingResponse { max, min, avg };
-        debug!(target: LOG_TARGET, "Sending GetCalcTiming response stream to client");
+        debug!(target: LOG_TARGET, "Sending GetCalcTiming response to client");
         Ok(Response::new(response))
+    }
+
+    async fn get_constants(
+        &self,
+        _request: Request<base_node_grpc::Empty>,
+    ) -> Result<Response<base_node_grpc::ConsensusConstants>, Status>
+    {
+        debug!(target: LOG_TARGET, "Incoming GRPC request for GetConstants",);
+        let network: Network = self.node_config.network.into();
+        debug!(target: LOG_TARGET, "Sending GetConstants response to client");
+        Ok(Response::new(network.create_consensus_constants().into()))
+    }
+
+    async fn get_block_size(
+        &self,
+        request: Request<BlockGroupRequest>,
+    ) -> Result<Response<BlockGroupResponse>, Status>
+    {
+        get_block_group(self.node_service.clone(), request, BlockGroupType::BlockSize).await
+    }
+
+    async fn get_block_fees(
+        &self,
+        request: Request<BlockGroupRequest>,
+    ) -> Result<Response<BlockGroupResponse>, Status>
+    {
+        get_block_group(self.node_service.clone(), request, BlockGroupType::BlockFees).await
+    }
+
+    async fn get_version(&self, _request: Request<base_node_grpc::Empty>) -> Result<Response<StringValue>, Status> {
+        Ok(Response::new(VERSION.to_string().into()))
+    }
+
+    async fn get_tokens_in_circulation(
+        &self,
+        request: Request<base_node_grpc::IntegerValue>,
+    ) -> Result<Response<IntegerValue>, Status>
+    {
+        debug!(target: LOG_TARGET, "Incoming GRPC request for GetTokensInCirculation",);
+        let request = request.into_inner();
+        let network: Network = self.node_config.network.into();
+        let constants = network.create_consensus_constants();
+        let (initial, decay, tail) = constants.emission_amounts();
+        let schedule = EmissionSchedule::new(initial, decay, tail);
+        let value: u64 = schedule.supply_at_block(request.value).into();
+        debug!(
+            target: LOG_TARGET,
+            "Sending GetTokensInCirculation response {} to client", value
+        );
+        Ok(Response::new(IntegerValue { value }))
     }
 }
 
+enum BlockGroupType {
+    BlockFees,
+    BlockSize,
+}
+async fn get_block_group(
+    mut handler: LocalNodeCommsInterface,
+    request: Request<BlockGroupRequest>,
+    block_group_type: BlockGroupType,
+) -> Result<Response<BlockGroupResponse>, Status>
+{
+    let request = request.into_inner();
+    let calc_type_response = request.calc_type;
+    let calc_type: CalcType = request.calc_type();
+    let height_request: HeightRequest = request.into();
+
+    debug!(
+        target: LOG_TARGET,
+        "Incoming GRPC request for GetBlockSize: from_tip: {:?} start_height: {:?} end_height: {:?}",
+        height_request.from_tip,
+        height_request.start_height,
+        height_request.end_height
+    );
+
+    let heights = height_request.get_heights(handler.clone()).await?;
+
+    let blocks = match handler.get_blocks(heights).await {
+        Err(err) => {
+            warn!(
+                target: LOG_TARGET,
+                "Error communicating with local base node: {:?}", err,
+            );
+            vec![]
+        },
+        Ok(data) => data,
+    };
+    let extractor = match block_group_type {
+        BlockGroupType::BlockFees => block_fees,
+        BlockGroupType::BlockSize => block_size,
+    };
+    let values = blocks.iter().map(extractor).collect::<Vec<u64>>();
+    let value = match calc_type {
+        CalcType::Median => median(values).map(|v| vec![v]),
+        CalcType::Mean => mean(values).map(|v| vec![v]),
+        CalcType::Quantile => return Err(Status::unimplemented("Quantile has not been implemented")),
+        CalcType::Quartile => return Err(Status::unimplemented("Quartile has not been implemented")),
+        _ => median(values).map(|v| vec![v]),
+    }
+    .unwrap_or(vec![]);
+    debug!(
+        target: LOG_TARGET,
+        "Sending GetBlockSize response to client: {:?}", value
+    );
+    Ok(Response::new(BlockGroupResponse {
+        value,
+        calc_type: calc_type_response,
+    }))
+}
 /// Utility function that converts a `chrono::DateTime` to a `prost::Timestamp`
 fn datetime_to_timestamp(datetime: EpochTime) -> Timestamp {
     Timestamp {
@@ -279,6 +471,54 @@ fn datetime_to_timestamp(datetime: EpochTime) -> Timestamp {
     }
 }
 
+impl From<u64> for base_node_grpc::IntegerValue {
+    fn from(value: u64) -> Self {
+        Self { value }
+    }
+}
+
+impl From<String> for base_node_grpc::StringValue {
+    fn from(value: String) -> Self {
+        Self { value }
+    }
+}
+
+impl base_node_grpc::HeightRequest {
+    pub async fn get_heights(&self, handler: LocalNodeCommsInterface) -> Result<Vec<u64>, Status> {
+        block_heights(handler, self.start_height, self.end_height, self.from_tip).await
+    }
+}
+
+impl From<base_node_grpc::BlockGroupRequest> for base_node_grpc::HeightRequest {
+    fn from(b: BlockGroupRequest) -> Self {
+        Self {
+            from_tip: b.from_tip,
+            start_height: b.start_height,
+            end_height: b.end_height,
+        }
+    }
+}
+
+impl From<ConsensusConstants> for base_node_grpc::ConsensusConstants {
+    fn from(cc: ConsensusConstants) -> Self {
+        let (emission_initial, emission_decay, emission_tail) = cc.emission_amounts();
+        Self {
+            coinbase_lock_height: cc.coinbase_lock_height(),
+            blockchain_version: cc.blockchain_version().into(),
+            future_time_limit: cc.ftl().as_u64(),
+            target_block_interval: cc.get_target_block_interval(),
+            difficulty_block_window: cc.get_difficulty_block_window(),
+            difficulty_max_block_interval: cc.get_difficulty_max_block_interval(),
+            max_block_transaction_weight: cc.get_max_block_transaction_weight(),
+            pow_algo_count: cc.get_pow_algo_count(),
+            median_timestamp_count: u64::try_from(cc.get_median_timestamp_count()).unwrap_or(0),
+            emission_initial: emission_initial.into(),
+            emission_decay: emission_decay.into(),
+            emission_tail: emission_tail.into(),
+            min_blake_pow_difficulty: cc.min_pow_difficulty(PowAlgorithm::Blake).into(),
+        }
+    }
+}
 impl From<HistoricalBlock> for base_node_grpc::HistoricalBlock {
     fn from(hb: HistoricalBlock) -> Self {
         Self {
