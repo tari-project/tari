@@ -261,7 +261,7 @@ where
             .block_on(self.output_manager_service.add_output(unblinded_output.clone()))?;
 
         let tx_id = self.runtime.block_on(self.transaction_service.import_utxo(
-            amount.clone(),
+            amount,
             source_public_key.clone(),
             message,
         ))?;
@@ -312,5 +312,37 @@ where
             .runtime
             .block_on(self.output_manager_service.sync_with_base_node())?;
         Ok(request_key)
+    }
+
+    /// Do a coin split
+    pub fn coin_split(
+        &mut self,
+        amount_per_split: MicroTari,
+        split_count: usize,
+        fee_per_gram: MicroTari,
+        message: String,
+        lock_height: Option<u64>,
+    ) -> Result<TxId, WalletError>
+    {
+        let coin_split_tx = self.runtime.block_on(self.output_manager_service.create_coin_split(
+            amount_per_split,
+            split_count,
+            fee_per_gram,
+            lock_height,
+        ));
+
+        match coin_split_tx {
+            Ok((tx_id, split_tx, amount, fee)) => {
+                let coin_tx = self.runtime.block_on(
+                    self.transaction_service
+                        .submit_transaction(tx_id, split_tx, fee, amount, message),
+                );
+                match coin_tx {
+                    Ok(_) => Ok(tx_id),
+                    Err(e) => Err(WalletError::TransactionServiceError(e)),
+                }
+            },
+            Err(e) => Err(WalletError::OutputManagerError(e)),
+        }
     }
 }
