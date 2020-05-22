@@ -38,7 +38,7 @@ use std::{
     time::Duration,
 };
 use tari_comms::{
-    connection_manager::ConnectionManagerError,
+    connectivity::ConnectivityError,
     peer_manager::{NodeId, PeerManagerError},
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
@@ -205,7 +205,7 @@ pub enum BlockSyncError {
     NoSyncPeers,
     ChainStorageError(ChainStorageError),
     PeerManagerError(PeerManagerError),
-    ConnectionManagerError(ConnectionManagerError),
+    ConnectivityError(ConnectivityError),
     CommsInterfaceError(CommsInterfaceError),
 }
 
@@ -687,7 +687,7 @@ async fn request_headers<B: BlockchainBackend + 'static>(
                     "Failed to fetch header from peer: {:?}. Retrying.",
                     CommsInterfaceError::RequestTimedOut,
                 );
-                ban_sync_peer(
+                ban_sync_peer_if_online(
                     shared,
                     sync_peers,
                     sync_peer.clone(),
@@ -725,6 +725,24 @@ async fn exclude_sync_peer(sync_peers: &mut Vec<NodeId>, sync_peer: NodeId) -> R
 }
 
 // Ban and disconnect the provided sync peer.
+async fn ban_sync_peer_if_online<B: BlockchainBackend + 'static>(
+    shared: &mut BaseNodeStateMachine<B>,
+    sync_peers: &mut Vec<NodeId>,
+    sync_peer: NodeId,
+    ban_duration: Duration,
+) -> Result<(), BlockSyncError>
+{
+    if !shared.connectivity.get_connectivity_status().await?.is_online() {
+        warn!(
+            target: LOG_TARGET,
+            "Unable to ban peer {} because local node is offline.", sync_peer
+        );
+        return Ok(());
+    }
+    ban_sync_peer(shared, sync_peers, sync_peer, ban_duration).await
+}
+
+// Ban and disconnect the provided sync peer.
 async fn ban_sync_peer<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
     sync_peers: &mut Vec<NodeId>,
@@ -734,9 +752,7 @@ async fn ban_sync_peer<B: BlockchainBackend + 'static>(
 {
     warn!(target: LOG_TARGET, "Banning peer {} from local node.", sync_peer);
     sync_peers.retain(|p| *p != sync_peer);
-    let peer = shared.peer_manager.find_by_node_id(&sync_peer).await?;
-    shared.peer_manager.ban_for(&peer.public_key, ban_duration).await?;
-    shared.connection_manager.disconnect_peer(sync_peer.clone()).await??;
+    shared.connectivity.ban_peer(sync_peer.clone(), ban_duration).await?;
     exclude_sync_peer(sync_peers, sync_peer).await
 }
 

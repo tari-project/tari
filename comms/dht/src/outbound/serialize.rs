@@ -68,7 +68,7 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone 
 
             let DhtOutboundMessage {
                 tag,
-                destination_peer,
+                destination_node_id,
                 custom_header,
                 body,
                 ephemeral_public_key,
@@ -98,7 +98,7 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone 
             next_service
                 .oneshot(OutboundMessage {
                     tag,
-                    peer_node_id: destination_peer.node_id.clone(),
+                    peer_node_id: destination_node_id,
                     reply_tx: reply_tx.into_inner(),
                     body,
                 })

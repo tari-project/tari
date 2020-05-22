@@ -81,6 +81,10 @@ where DS: KeyValueStore<PeerId, Peer>
         })
     }
 
+    pub fn count(&self) -> usize {
+        self.node_id_index.len()
+    }
+
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exists, the stored version will be replaced with the newly provided peer.
     pub fn add_peer(&mut self, mut peer: Peer) -> Result<PeerId, PeerManagerError> {
@@ -118,7 +122,6 @@ where DS: KeyValueStore<PeerId, Peer>
     pub fn update_peer(
         &mut self,
         public_key: &CommsPublicKey,
-        node_id: Option<NodeId>,
         net_addresses: Option<Vec<Multiaddr>>,
         flags: Option<PeerFlags>,
         #[allow(clippy::option_option)] banned_until: Option<Option<Duration>>,
@@ -138,17 +141,7 @@ where DS: KeyValueStore<PeerId, Peer>
 
                 trace!(target: LOG_TARGET, "Updating peer '{}'", stored_peer.node_id);
 
-                let must_update_node_id = node_id.as_ref().filter(|n| *n != &stored_peer.node_id).is_some();
-                if must_update_node_id {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Node id update from '{}' to '{}'",
-                        stored_peer.node_id.short_str(),
-                        node_id.as_ref().expect("already checked").short_str()
-                    );
-                }
                 stored_peer.update(
-                    node_id,
                     net_addresses,
                     flags,
                     banned_until,
@@ -158,18 +151,9 @@ where DS: KeyValueStore<PeerId, Peer>
                     supported_protocols,
                 );
 
-                let public_key = stored_peer.public_key.clone();
-                let node_id = stored_peer.node_id.clone();
-
                 self.peer_db
                     .insert(peer_key, stored_peer)
                     .map_err(PeerManagerError::DatabaseError)?;
-
-                if must_update_node_id {
-                    trace!(target: LOG_TARGET, "Must update node id for peer '{}'", node_id);
-                    self.remove_index_links(peer_key);
-                    self.add_index_links(peer_key, public_key, node_id);
-                }
 
                 Ok(())
             },
@@ -224,7 +208,13 @@ where DS: KeyValueStore<PeerId, Peer>
             .peer_db
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
-            .expect("public_key index and peer database are out of sync"))
+            .ok_or_else(|| {
+                warn!(
+                    target: LOG_TARGET,
+                    "node_id_index and peer database are out of sync! (key={}, node_id={})", peer_key, node_id
+                );
+                PeerManagerError::PeerNotFoundError
+            })?)
     }
 
     /// Find the peer with the provided PublicKey
@@ -237,7 +227,15 @@ where DS: KeyValueStore<PeerId, Peer>
             .peer_db
             .get(peer_key)
             .map_err(PeerManagerError::DatabaseError)?
-            .expect("public_key index and peer database are out of sync"))
+            .ok_or_else(|| {
+                warn!(
+                    target: LOG_TARGET,
+                    "public_key_index and peer database are out of sync! (key={}, public_key ={})",
+                    peer_key,
+                    public_key
+                );
+                PeerManagerError::PeerNotFoundError
+            })?)
     }
 
     /// Check if a peer exist using the specified public_key
@@ -354,8 +352,7 @@ where DS: KeyValueStore<PeerId, Peer>
         let mut peer_keys = self
             .peer_db
             .filter(|(_, peer)| {
-                !peer.is_recently_offline() &&
-                    !peer.is_offline() &&
+                !peer.is_offline() &&
                     !peer.is_banned() &&
                     peer.features == PeerFeatures::COMMUNICATION_NODE &&
                     !exclude_peers.contains(&peer.node_id)
@@ -420,7 +417,7 @@ where DS: KeyValueStore<PeerId, Peer>
     }
 
     /// Unban the peer
-    pub fn unban(&mut self, public_key: &CommsPublicKey) -> Result<NodeId, PeerManagerError> {
+    pub fn unban_peer(&mut self, public_key: &CommsPublicKey) -> Result<NodeId, PeerManagerError> {
         let peer_key = *self
             .public_key_index
             .get(&public_key)
@@ -429,7 +426,7 @@ where DS: KeyValueStore<PeerId, Peer>
             .peer_db
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .expect("public_key_index is out of sync with peer db");
         let node_id = peer.node_id.clone();
 
         if peer.banned_until.is_some() {
@@ -442,35 +439,46 @@ where DS: KeyValueStore<PeerId, Peer>
     }
 
     /// Ban the peer for the given duration
-    pub fn ban_for(&mut self, public_key: &CommsPublicKey, duration: Duration) -> Result<NodeId, PeerManagerError> {
-        let peer_key = *self
+    pub fn ban_peer(&mut self, public_key: &CommsPublicKey, duration: Duration) -> Result<NodeId, PeerManagerError> {
+        let id = *self
             .public_key_index
-            .get(&public_key)
+            .get(public_key)
             .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+        self.ban_peer_by_id(id, duration)
+    }
+
+    /// Ban the peer for the given duration
+    pub fn ban_peer_by_node_id(&mut self, node_id: &NodeId, duration: Duration) -> Result<NodeId, PeerManagerError> {
+        let id = *self
+            .node_id_index
+            .get(node_id)
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+        self.ban_peer_by_id(id, duration)
+    }
+
+    fn ban_peer_by_id(&mut self, id: PeerId, duration: Duration) -> Result<NodeId, PeerManagerError> {
         let mut peer: Peer = self
             .peer_db
-            .get(&peer_key)
+            .get(&id)
             .map_err(PeerManagerError::DatabaseError)?
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .expect("index are out of sync with peer db");
         peer.ban_for(duration);
         let node_id = peer.node_id.clone();
-        self.peer_db
-            .insert(peer_key, peer)
-            .map_err(PeerManagerError::DatabaseError)?;
+        self.peer_db.insert(id, peer).map_err(PeerManagerError::DatabaseError)?;
         Ok(node_id)
     }
 
     /// Changes the OFFLINE flag bit of the peer
-    pub fn set_offline(&mut self, public_key: &CommsPublicKey, ban_flag: bool) -> Result<NodeId, PeerManagerError> {
+    pub fn set_offline(&mut self, node_id: &NodeId, ban_flag: bool) -> Result<NodeId, PeerManagerError> {
         let peer_key = *self
-            .public_key_index
-            .get(&public_key)
+            .node_id_index
+            .get(&node_id)
             .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peer_db
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .expect("node_id_index is out of sync with peer db");
         peer.set_offline(ban_flag);
         let node_id = peer.node_id.clone();
         self.peer_db
@@ -489,7 +497,7 @@ where DS: KeyValueStore<PeerId, Peer>
             .peer_db
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
-            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+            .expect("node_id_index is out of sync with peer db");
         peer.addresses.add_net_address(net_address);
         self.peer_db
             .insert(peer_key, peer)

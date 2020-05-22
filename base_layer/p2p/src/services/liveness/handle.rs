@@ -93,26 +93,16 @@ pub struct PingPongEvent {
     pub latency: Option<u32>,
     /// Metadata of the corresponding node
     pub metadata: Metadata,
-    /// True if the ping/pong was from a neighbouring peer, otherwise false
-    pub is_neighbour: bool,
     /// True if the ping/pong was from a monitored node, otherwise false
     pub is_monitored: bool,
 }
 
 impl PingPongEvent {
-    pub fn new(
-        node_id: NodeId,
-        latency: Option<u32>,
-        metadata: Metadata,
-        is_neighbour: bool,
-        is_monitored: bool,
-    ) -> Self
-    {
+    pub fn new(node_id: NodeId, latency: Option<u32>, metadata: Metadata, is_monitored: bool) -> Self {
         Self {
             node_id,
             latency,
             metadata,
-            is_neighbour,
             is_monitored,
         }
     }

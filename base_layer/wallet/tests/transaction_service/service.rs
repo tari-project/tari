@@ -183,7 +183,6 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
         .add_initializer(LivenessInitializer::new(
             LivenessConfig {
                 auto_ping_interval: Some(Duration::from_secs(10)),
-                enable_auto_join: false,
                 refresh_neighbours_interval: Default::default(),
                 refresh_random_pool_interval: Default::default(),
                 random_peer_selection_ratio: 0.0,
@@ -191,7 +190,6 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
             },
             Arc::clone(&subscription_factory),
             dht.dht_requester(),
-            comms.connection_manager(),
         ))
         .finish();
 
@@ -884,7 +882,7 @@ fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(al
         _,
         _,
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend, None);
-    let alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
@@ -991,7 +989,7 @@ fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alic
         _,
         _,
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend, None);
-    let alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
@@ -2850,7 +2848,6 @@ fn test_resend_of_tx_on_pong_event<T: TransactionBackend + Clone + 'static>(back
             None,
             Metadata::new(),
             true,
-            true,
         ))))) {
             Ok(_) => {
                 break;
@@ -2889,7 +2886,6 @@ fn test_resend_of_tx_on_pong_event<T: TransactionBackend + Clone + 'static>(back
             bob_node_identity.node_id().clone(),
             None,
             Metadata::new(),
-            true,
             true,
         )))))
         .unwrap();

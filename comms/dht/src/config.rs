@@ -29,8 +29,10 @@ pub const SAF_MSG_STORAGE_CAPACITY: usize = 10_000;
 pub const SAF_LOW_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(6 * 60 * 60); // 6 hours
 /// The default time-to-live duration used for storage of high priority messages by the Store-and-forward middleware
 pub const SAF_HIGH_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(3 * 24 * 60 * 60); // 3 days
-/// The default number of peer nodes that a message has to be closer to, to be considered a neighbour
+/// The default number of known peer nodes that are closest to this node
 pub const DEFAULT_NUM_NEIGHBOURING_NODES: usize = 8;
+/// The default number of randomly-selected peer nodes
+pub const DEFAULT_NUM_RANDOM_NODES: usize = 4;
 
 #[derive(Debug, Clone)]
 pub struct DhtConfig {
@@ -40,12 +42,14 @@ pub struct DhtConfig {
     /// Default: 20
     pub outbound_buffer_size: usize,
     /// The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour
-    /// Default: 8
+    /// Default: [DEFAULT_NUM_NEIGHBOURING_NODES](self::DEFAULT_NUM_NEIGHBOURING_NODES)
     pub num_neighbouring_nodes: usize,
-    /// A number from 0 to 1 that determines the number of peers to propagate to as a factor of
-    /// `num_neighbouring_nodes`.
-    /// Default: 0.5
-    pub propagation_factor: f32,
+    /// Number of random peers to include
+    /// Default: [DEFAULT_NUM_RANDOM_NODES](self::DEFAULT_NUM_RANDOM_NODES)
+    pub num_random_nodes: usize,
+    /// For each message to propagate, propagate to this many peers
+    /// Default: 4
+    pub propagation_factor: usize,
     /// The maximum number of messages that can be stored using the Store-and-forward middleware. Default: 10_000
     pub saf_msg_storage_capacity: usize,
     /// A request to retrieve stored messages will be ignored if the requesting node is
@@ -71,18 +75,22 @@ pub struct DhtConfig {
     /// The time-to-live for items in the message hash cache
     /// Default: 300s (5 mins)
     pub msg_hash_cache_ttl: Duration,
-    /// Sets the number of failed attempts in-a-row to tolerate before temporarily excluding this peer from broadcast
-    /// messages.
-    /// Default: 3
-    pub broadcast_cooldown_max_attempts: usize,
-    /// Sets the period to wait before including this peer in broadcast messages after
-    /// `broadcast_cooldown_max_attempts` failed attempts. This helps prevent thrashing the comms layer
-    /// with connection attempts to a peer which is offline.
-    /// Default: 30 minutes
-    pub broadcast_cooldown_period: Duration,
     /// The duration to wait for a peer discovery to complete before giving up.
     /// Default: 2 minutes
     pub discovery_request_timeout: Duration,
+    /// Set to true to automatically broadcast a join message when ready, otherwise false. Default: false
+    pub auto_join: bool,
+    /// The minimum time between sending a Join message to the network. Joins are only sent when the node establishes
+    /// enough connections to the network as determined by comms ConnectivityManager. If a join was sent and then state
+    /// change happens again after this period, another join will be sent.
+    /// Default: 10 minutes
+    pub join_cooldown_interval: Duration,
+    /// The interval to update the neighbouring and random pools, if necessary.
+    /// Default: 2 minutes
+    pub connectivity_update_interval: Duration,
+    /// The interval to change the random pool peers.
+    /// Default: 2 hours
+    pub connectivity_random_pool_refresh: Duration,
     /// The active Network. Default: TestNet
     pub network: Network,
 }
@@ -104,14 +112,9 @@ impl DhtConfig {
             network: Network::LocalTest,
             database_url: DbConnectionUrl::Memory,
             saf_auto_request: false,
+            auto_join: false,
             ..Default::default()
         }
-    }
-
-    #[inline]
-    pub fn num_propagation_nodes(&self) -> usize {
-        let n = self.num_neighbouring_nodes as f32 * self.propagation_factor;
-        n.round() as usize
     }
 }
 
@@ -119,7 +122,8 @@ impl Default for DhtConfig {
     fn default() -> Self {
         Self {
             num_neighbouring_nodes: DEFAULT_NUM_NEIGHBOURING_NODES,
-            propagation_factor: 0.5,
+            num_random_nodes: DEFAULT_NUM_RANDOM_NODES,
+            propagation_factor: 4,
             saf_num_closest_nodes: 10,
             saf_max_returned_messages: 50,
             outbound_buffer_size: 20,
@@ -130,10 +134,12 @@ impl Default for DhtConfig {
             saf_max_message_size: 512 * 1024, // 500 KiB
             msg_hash_cache_capacity: 10_000,
             msg_hash_cache_ttl: Duration::from_secs(5 * 60),
-            broadcast_cooldown_max_attempts: 3,
             database_url: DbConnectionUrl::Memory,
-            broadcast_cooldown_period: Duration::from_secs(60 * 30),
             discovery_request_timeout: Duration::from_secs(2 * 60),
+            connectivity_update_interval: Duration::from_secs(2 * 60),
+            connectivity_random_pool_refresh: Duration::from_secs(2 * 60 * 60),
+            auto_join: false,
+            join_cooldown_interval: Duration::from_secs(10 * 60),
             network: Network::TestNet,
         }
     }

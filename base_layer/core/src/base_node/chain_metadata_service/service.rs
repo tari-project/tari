@@ -335,7 +335,6 @@ mod test {
 
         let node_id = NodeId::new();
         let pong_event = PingPongEvent {
-            is_neighbour: true,
             metadata,
             node_id: node_id.clone(),
             latency: None,
@@ -367,7 +366,6 @@ mod test {
         let metadata = Metadata::new();
         let node_id = NodeId::new();
         let pong_event = PingPongEvent {
-            is_neighbour: true,
             metadata,
             node_id,
             latency: None,
@@ -391,7 +389,6 @@ mod test {
         metadata.insert(MetadataKey::ChainMetadata, b"no-good".to_vec());
         let node_id = NodeId::new();
         let pong_event = PingPongEvent {
-            is_neighbour: true,
             metadata,
             node_id,
             latency: None,

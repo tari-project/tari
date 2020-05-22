@@ -125,9 +125,9 @@ impl OutboundMessaging {
     async fn start_forwarding_messages(mut self, substream: Substream) -> Result<(), MessagingProtocolError> {
         let mut framed = MessagingProtocol::framed(substream);
         while let Some(mut out_msg) = self.request_rx.next().await {
-            trace!(
+            debug!(
                 target: LOG_TARGET,
-                "Sending message ({} bytes) ({:?}) on outbound messaging substream",
+                "Sending message ({} bytes) ({}) on outbound messaging substream",
                 out_msg.body.len(),
                 out_msg.tag,
             );

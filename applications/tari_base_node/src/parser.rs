@@ -57,6 +57,7 @@ use tari_broadcast_channel::Subscriber;
 use tari_common::GlobalConfig;
 use tari_comms::{
     connection_manager::ConnectionManagerRequester,
+    connectivity::ConnectivityRequester,
     peer_manager::{PeerFeatures, PeerManager, PeerQuery},
     types::CommsPublicKey,
     NodeIdentity,
@@ -128,6 +129,8 @@ pub struct Parser {
     peer_manager: Arc<PeerManager>,
     wallet_peer_manager: Arc<PeerManager>,
     connection_manager: ConnectionManagerRequester,
+    connectivity: ConnectivityRequester,
+    wallet_connectivity: ConnectivityRequester,
     commands: Vec<String>,
     hinter: HistoryHinter,
     wallet_output_service: OutputManagerHandle,
@@ -184,6 +187,8 @@ impl Parser {
             peer_manager: ctx.base_node_comms().peer_manager(),
             wallet_peer_manager: ctx.wallet_comms().peer_manager(),
             connection_manager: ctx.base_node_comms().connection_manager(),
+            connectivity: ctx.base_node_comms().connectivity(),
+            wallet_connectivity: ctx.wallet_comms().connectivity(),
             commands: BaseNodeCommand::iter().map(|x| x.to_string()).collect(),
             hinter: HistoryHinter {},
             wallet_output_service: ctx.output_manager(),
@@ -821,15 +826,7 @@ impl Parser {
                     let num_peers = peers.len();
                     println!();
                     let mut table = Table::new();
-                    table.set_titles(vec![
-                        "NodeId",
-                        "Public Key",
-                        "Flags",
-                        "Role",
-                        "Status",
-                        "Added at",
-                        "Last connection",
-                    ]);
+                    table.set_titles(vec!["NodeId", "Public Key", "Flags", "Role", "Status", "Added at"]);
 
                     for peer in peers {
                         let status_str = {
@@ -856,7 +853,6 @@ impl Parser {
                             },
                             status_str,
                             peer.added_at.date(),
-                            peer.connection_stats,
                         ]);
                     }
                     table.print_std();
@@ -874,10 +870,6 @@ impl Parser {
 
     /// Function to process the ban-peer command
     fn process_ban_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I, must_ban: bool) {
-        let peer_manager = self.peer_manager.clone();
-        let wallet_peer_manager = self.wallet_peer_manager.clone();
-        let mut connection_manager = self.connection_manager.clone();
-
         let public_key = match args.next().and_then(parse_emoji_id_or_public_key) {
             Some(v) => Box::new(v),
             None => {
@@ -898,6 +890,11 @@ impl Parser {
             return;
         }
 
+        let mut connectivity = self.connectivity.clone();
+        let mut wallet_connectivity = self.wallet_connectivity.clone();
+        let peer_manager = self.peer_manager.clone();
+        let wallet_peer_manager = self.wallet_peer_manager.clone();
+
         let duration = args
             .next()
             .and_then(|s| s.parse::<u64>().ok())
@@ -906,49 +903,36 @@ impl Parser {
 
         self.executor.spawn(async move {
             if must_ban {
-                match peer_manager.ban_for(&public_key, duration).await {
-                    Ok(node_id) => match connection_manager.disconnect_peer(node_id).await {
-                        Ok(_) => {
-                            println!("Peer was banned in base node.");
-                        },
-                        Err(err) => {
-                            println!(
-                                "Peer was banned but an error occurred when disconnecting them: {:?}",
-                                err
-                            );
-                        },
-                    },
+                let peer = match peer_manager.find_by_public_key(&public_key).await {
+                    Ok(peer) => peer,
                     Err(err) if err.is_peer_not_found() => {
                         println!("Peer not found in base node");
+                        return;
                     },
+                    Err(err) => {
+                        println!("Failed to ban peer: {:?}", err);
+                        error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
+                        return;
+                    },
+                };
+
+                match connectivity.ban_peer(peer.node_id.clone(), duration).await {
+                    Ok(_) => println!("Peer was banned in base node."),
                     Err(err) => {
                         println!("Failed to ban peer: {:?}", err);
                         error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
                     },
                 }
 
-                match wallet_peer_manager.ban_for(&public_key, duration).await {
-                    Ok(node_id) => match connection_manager.disconnect_peer(node_id).await {
-                        Ok(_) => {
-                            println!("Peer was banned in wallet.");
-                        },
-                        Err(err) => {
-                            println!(
-                                "Peer was banned but an error occurred when disconnecting them: {:?}",
-                                err
-                            );
-                        },
-                    },
-                    Err(err) if err.is_peer_not_found() => {
-                        println!("Peer not found in wallet");
-                    },
+                match wallet_connectivity.ban_peer(peer.node_id, duration).await {
+                    Ok(_) => println!("Peer was banned in wallet."),
                     Err(err) => {
                         println!("Failed to ban peer: {:?}", err);
                         error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
                     },
                 }
             } else {
-                match peer_manager.unban(&public_key).await {
+                match peer_manager.unban_peer(&public_key).await {
                     Ok(_) => {
                         println!("Peer ban was removed from base node.");
                     },
@@ -961,7 +945,7 @@ impl Parser {
                     },
                 }
 
-                match wallet_peer_manager.unban(&public_key).await {
+                match wallet_peer_manager.unban_peer(&public_key).await {
                     Ok(_) => {
                         println!("Peer ban was removed from wallet.");
                     },
@@ -991,7 +975,7 @@ impl Parser {
                     println!();
                     let num_connections = conns.len();
                     let mut table = Table::new();
-                    table.set_titles(vec!["NodeId", "Public Key", "Address", "Direction", "Uptime", "Role"]);
+                    table.set_titles(vec!["NodeId", "Public Key", "Address", "Direction", "Age", "Role"]);
                     for conn in conns {
                         let peer = peer_manager
                             .find_by_node_id(conn.peer_node_id())
@@ -1003,7 +987,7 @@ impl Parser {
                             peer.public_key,
                             conn.address(),
                             conn.direction(),
-                            format_duration_basic(conn.connected_since()),
+                            format_duration_basic(conn.age()),
                             {
                                 if peer.features == PeerFeatures::COMMUNICATION_CLIENT {
                                     "Wallet"

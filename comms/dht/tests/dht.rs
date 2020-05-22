@@ -137,7 +137,7 @@ async fn setup_comms_dht(
         comms.node_identity(),
         comms.peer_manager(),
         outbound_tx,
-        comms.connection_manager_requester(),
+        comms.connectivity(),
         comms.shutdown_signal(),
     )
     .local_test()
@@ -185,6 +185,18 @@ async fn dht_join_propagation() {
     // Node A knows about Node B
     let node_A = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_B.to_peer())).await;
 
+    node_A
+        .comms
+        .connectivity()
+        .wait_for_connectivity(Duration::from_secs(10))
+        .await
+        .unwrap();
+    node_B
+        .comms
+        .connectivity()
+        .wait_for_connectivity(Duration::from_secs(10))
+        .await
+        .unwrap();
     // Send a join request from Node A, through B to C. As all Nodes are in the same network region, once
     // Node C receives the join request from Node A, it will send a direct join request back
     // to A.
@@ -238,6 +250,7 @@ async fn dht_discover_propagation() {
         node_C.node_identity().node_id().short_str(),
         node_D.node_identity().node_id().short_str(),
     );
+
     // To receive messages, clients have to connect
     node_D.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
     node_D
@@ -293,6 +306,13 @@ async fn dht_store_forward() {
         node_C_node_identity.node_id().short_str(),
     );
 
+    node_A
+        .comms
+        .connectivity()
+        .wait_for_connectivity(Duration::from_secs(10))
+        .await
+        .unwrap();
+
     let dest_public_key = Box::new(node_C_node_identity.public_key().clone());
     let params = SendMessageParams::new()
         .broadcast(vec![])
@@ -305,7 +325,7 @@ async fn dht_store_forward() {
     let secret_msg1 = b"NCZW VUSX PNYM INHZ XMQX SFWX WLKJ AHSH";
     let secret_msg2 = b"NMCO CCAK UQPM KCSM HKSE INJU SBLK";
 
-    let node_B_msg_events = node_B.comms.subscribe_messaging_events();
+    let mut node_B_msg_events = node_B.comms.subscribe_messaging_events();
     node_A
         .dht
         .outbound_requester()
@@ -326,7 +346,7 @@ async fn dht_store_forward() {
     collect_stream!(node_B_msg_events, take = 2, timeout = Duration::from_secs(20));
 
     let mut node_C = make_node_with_node_identity(node_C_node_identity, Some(node_B.to_peer())).await;
-    let node_C_msg_events = node_C.comms.subscribe_messaging_events();
+    let mut node_C_msg_events = node_C.comms.subscribe_messaging_events();
     // Ask node B for messages
     node_C
         .dht

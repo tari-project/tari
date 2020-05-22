@@ -125,6 +125,8 @@ pub use actor::{DhtActorError, DhtRequest, DhtRequester};
 mod builder;
 pub use builder::DhtBuilder;
 
+mod connectivity;
+
 mod config;
 pub use config::DhtConfig;
 

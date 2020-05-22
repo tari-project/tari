@@ -78,6 +78,8 @@ fn create_wallet(
         outbound_buffer_size: 100,
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(1),
+            auto_join: true,
+            saf_auto_request: true,
             ..Default::default()
         },
         allow_test_addresses: true,
@@ -210,6 +212,12 @@ fn test_store_and_forward_send_tx() {
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
     let carol_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+    log::info!(
+        "Alice = {}, Bob = {}, Carol = {}",
+        alice_identity.node_id(),
+        bob_identity.node_id(),
+        carol_identity.node_id()
+    );
 
     let mut alice_wallet = create_wallet(alice_identity.clone(), &db_tempdir.path(), factories.clone());
     let mut bob_wallet = create_wallet(bob_identity.clone(), &db_tempdir.path(), factories.clone());
@@ -217,26 +225,22 @@ fn test_store_and_forward_send_tx() {
 
     alice_wallet
         .runtime
-        .block_on(alice_wallet.comms.peer_manager().add_peer(create_peer(
-            bob_identity.public_key().clone(),
-            bob_identity.public_address(),
-        )))
+        .block_on(alice_wallet.comms.peer_manager().add_peer(bob_identity.to_peer()))
         .unwrap();
 
     bob_wallet
         .runtime
-        .block_on(bob_wallet.comms.peer_manager().add_peer(create_peer(
-            alice_identity.public_key().clone(),
-            alice_identity.public_address(),
-        )))
+        .block_on(bob_wallet.comms.peer_manager().add_peer(carol_identity.to_peer()))
         .unwrap();
 
-    bob_wallet
+    alice_wallet
         .runtime
-        .block_on(bob_wallet.comms.peer_manager().add_peer(create_peer(
-            carol_identity.public_key().clone(),
-            carol_identity.public_address(),
-        )))
+        .block_on(
+            alice_wallet
+                .comms
+                .connectivity()
+                .dial_peer(bob_identity.node_id().clone()),
+        )
         .unwrap();
 
     let value = MicroTari::from(1000);
@@ -270,6 +274,10 @@ fn test_store_and_forward_send_tx() {
             bob_identity.public_key().clone(),
             bob_identity.public_address(),
         )))
+        .unwrap();
+    carol_wallet
+        .runtime
+        .block_on(carol_wallet.dht_service.dht_requester().send_join())
         .unwrap();
 
     alice_wallet.runtime.block_on(async {

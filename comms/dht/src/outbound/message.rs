@@ -29,7 +29,7 @@ use futures::channel::oneshot;
 use std::{fmt, fmt::Display, sync::Arc};
 use tari_comms::{
     message::{MessageTag, MessagingReplyTx},
-    peer_manager::Peer,
+    peer_manager::NodeId,
     types::CommsPublicKey,
 };
 use tari_utilities::hex::Hex;
@@ -168,7 +168,7 @@ impl Drop for WrappedReplyTx {
 #[derive(Debug)]
 pub struct DhtOutboundMessage {
     pub tag: MessageTag,
-    pub destination_peer: Arc<Peer>,
+    pub destination_node_id: NodeId,
     pub custom_header: Option<DhtMessageHeader>,
     pub body: Bytes,
     pub ephemeral_public_key: Option<Arc<CommsPublicKey>>,
@@ -198,7 +198,7 @@ impl fmt::Display for DhtOutboundMessage {
             "\n---- Outgoing message ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\n{}\n----",
             self.body.len(),
             self.dht_message_type,
-            self.destination_peer,
+            self.destination_node_id,
             header_str,
             self.tag,
         )

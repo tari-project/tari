@@ -27,8 +27,6 @@ use std::time::Duration;
 pub struct LivenessConfig {
     /// The interval to send Ping messages, or None to disable periodic pinging (default: None (disabled))
     pub auto_ping_interval: Option<Duration>,
-    /// Set to true to enable automatically joining the network on node startup (default: false)
-    pub enable_auto_join: bool,
     /// The length of time between querying peer manager for closest neighbours. (default: 2 minutes)
     pub refresh_neighbours_interval: Duration,
     /// The length of time between querying peer manager for random neighbours. (default: 2 hours)
@@ -43,7 +41,6 @@ impl Default for LivenessConfig {
     fn default() -> Self {
         Self {
             auto_ping_interval: None,
-            enable_auto_join: false,
             refresh_neighbours_interval: Duration::from_secs(2 * 60),
             refresh_random_pool_interval: Duration::from_secs(2 * 60 * 60),
             random_peer_selection_ratio: 0.0,

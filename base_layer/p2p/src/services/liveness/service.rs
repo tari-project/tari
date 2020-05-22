@@ -31,18 +31,13 @@ use super::{
 };
 use crate::{
     domain_message::DomainMessage,
-    services::liveness::{handle::LivenessEventSender, peer_pool::PeerPool, LivenessEvent, PingPongEvent},
+    services::liveness::{handle::LivenessEventSender, LivenessEvent, PingPongEvent},
     tari_message::TariMessageType,
 };
 use futures::{future::Either, pin_mut, stream::StreamExt, Stream};
 use log::*;
-use std::{cmp, sync::Arc, time::Instant};
-use tari_comms::{
-    connection_manager::ConnectionManagerRequester,
-    peer_manager::NodeId,
-    types::CommsPublicKey,
-    ConnectionManagerEvent,
-};
+use std::{sync::Arc, time::Instant};
+use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
     broadcast_strategy::BroadcastStrategy,
     domain_message::OutboundDomainMessage,
@@ -62,11 +57,7 @@ pub struct LivenessService<THandleStream, TPingStream> {
     dht_requester: DhtRequester,
     oms_handle: OutboundMessageRequester,
     event_publisher: LivenessEventSender,
-    connection_manager: ConnectionManagerRequester,
     shutdown_signal: Option<ShutdownSignal>,
-    neighbours: PeerPool,
-    random_peers: PeerPool,
-    active_pool: PeerPool,
 }
 
 impl<THandleStream, TPingStream> LivenessService<THandleStream, TPingStream>
@@ -81,7 +72,6 @@ where
         ping_stream: TPingStream,
         state: LivenessState,
         dht_requester: DhtRequester,
-        connection_manager: ConnectionManagerRequester,
         oms_handle: OutboundMessageRequester,
         event_publisher: LivenessEventSender,
         shutdown_signal: ShutdownSignal,
@@ -93,12 +83,8 @@ where
             state,
             dht_requester,
             oms_handle,
-            connection_manager,
             event_publisher,
             shutdown_signal: Some(shutdown_signal),
-            neighbours: PeerPool::new(config.refresh_neighbours_interval),
-            random_peers: PeerPool::new(config.refresh_random_pool_interval),
-            active_pool: PeerPool::new(config.refresh_neighbours_interval),
             config,
         }
     }
@@ -118,8 +104,6 @@ where
         }
         .fuse();
 
-        let mut connection_manager_events = self.connection_manager.get_event_subscription().fuse();
-
         let mut shutdown_signal = self
             .shutdown_signal
             .take()
@@ -134,15 +118,6 @@ where
                         error!(target: LOG_TARGET, "Failed to send reply");
                         Err(resp)
                     });
-                },
-
-                event = connection_manager_events.select_next_some() => {
-                    if let Ok(event) = event {
-                        let _ = self.handle_connection_manager_event(&*event).await.or_else(|err| {
-                            error!(target: LOG_TARGET, "Error when handling connection manager event: {:?}", err);
-                            Err(err)
-                        });
-                    }
                 },
 
                 _ = ping_tick.select_next_some() => {
@@ -191,26 +166,18 @@ where
                 self.send_pong(ping_pong_msg.nonce, public_key).await.unwrap();
                 self.state.inc_pongs_sent();
 
-                let is_neighbour = self.neighbours.contains(&node_id);
-                self.refresh_peer_pools_if_stale().await?;
                 let maybe_latency = None;
                 let is_monitored = self.state.is_monitored_node_id(&node_id);
 
                 trace!(
                     target: LOG_TARGET,
-                    "Received ping from peer '{}'. {} {} {}",
+                    "Received ping from peer '{}'. {} {}",
                     node_id.short_str(),
                     maybe_latency.map(|ms| format!("Latency: {}ms", ms)).unwrap_or_default(),
-                    if is_neighbour { "(neighbouring)" } else { "" },
                     if is_monitored { "(monitored)" } else { "" },
                 );
-                let ping_event = PingPongEvent::new(
-                    node_id,
-                    maybe_latency,
-                    ping_pong_msg.metadata.into(),
-                    is_neighbour,
-                    is_monitored,
-                );
+                let ping_event =
+                    PingPongEvent::new(node_id, maybe_latency, ping_pong_msg.metadata.into(), is_monitored);
 
                 self.publish_event(LivenessEvent::ReceivedPing(Box::new(ping_event)));
             },
@@ -225,8 +192,6 @@ where
                     return Ok(());
                 }
 
-                let is_neighbour = self.neighbours.contains(&node_id);
-                self.refresh_peer_pools_if_stale().await?;
                 let maybe_latency = self.state.record_pong(ping_pong_msg.nonce);
                 let is_monitored = self.state.is_monitored_node_id(&node_id);
                 trace!(
@@ -237,35 +202,17 @@ where
                 );
                 trace!(
                     target: LOG_TARGET,
-                    "Received pong from peer '{}'. {} {} {}",
+                    "Received pong from peer '{}'. {} {}",
                     node_id.short_str(),
                     maybe_latency.map(|ms| format!("Latency: {}ms", ms)).unwrap_or_default(),
-                    if is_neighbour { "(neighbouring)" } else { "" },
                     if is_monitored { "(monitored)" } else { "" },
                 );
-                let pong_event = PingPongEvent::new(
-                    node_id,
-                    maybe_latency,
-                    ping_pong_msg.metadata.into(),
-                    is_neighbour,
-                    is_monitored,
-                );
+                let pong_event =
+                    PingPongEvent::new(node_id, maybe_latency, ping_pong_msg.metadata.into(), is_monitored);
 
                 self.publish_event(LivenessEvent::ReceivedPong(Box::new(pong_event)));
             },
         }
-        Ok(())
-    }
-
-    async fn handle_connection_manager_event(&mut self, event: &ConnectionManagerEvent) -> Result<(), LivenessError> {
-        use ConnectionManagerEvent::*;
-        match event {
-            PeerDisconnected(node_id) | PeerConnectFailed(node_id, _) => {
-                self.replace_failed_peer_if_required(node_id).await?;
-            },
-            _ => {},
-        }
-
         Ok(())
     }
 
@@ -278,13 +225,7 @@ where
             node_id.short_str(),
             msg.useragent
         );
-        if self.neighbours.contains(&node_id) {
-            trace!(
-                target: LOG_TARGET,
-                "Peer '{}' is a neighbouring peer",
-                node_id.short_str()
-            );
-        }
+
         self.oms_handle
             .send_direct_node_id(
                 node_id,
@@ -356,148 +297,28 @@ where
         }
     }
 
-    async fn replace_failed_peer_if_required(&mut self, node_id: &NodeId) -> Result<(), LivenessError> {
-        if self.neighbours.contains(node_id) {
-            self.refresh_neighbour_pool().await?;
-            return Ok(());
-        }
-
-        if self.should_include_random_peers() && self.random_peers.contains(node_id) {
-            // Replace the peer in the random peer pool with another random peer
-            let excluded = self
-                .neighbours
-                .node_ids()
-                .iter()
-                .chain(vec![node_id])
-                .cloned()
-                .collect();
-
-            if let Some(peer) = self
-                .dht_requester
-                .select_peers(BroadcastStrategy::Random(1, excluded))
-                .await?
-                .pop()
-            {
-                self.random_peers.remove(node_id);
-                self.random_peers.push(peer.node_id.clone())
-            }
-        }
-
-        Ok(())
-    }
-
-    fn should_include_random_peers(&self) -> bool {
-        self.config.random_peer_selection_ratio > 0.0
-    }
-
-    async fn refresh_peer_pools_if_stale(&mut self) -> Result<(), LivenessError> {
-        let is_stale = self.neighbours.is_stale();
-        if is_stale {
-            self.refresh_neighbour_pool().await?;
-        }
-
-        if self.should_include_random_peers() && self.random_peers.is_stale() {
-            self.refresh_random_peer_pool().await?;
-        }
-
-        if is_stale {
-            self.refresh_active_peer_pool();
-
-            info!(
-                target: LOG_TARGET,
-                "Selected {} active peers liveness neighbourhood out of a pool of {} neighbouring peers and {} random \
-                 peers",
-                self.active_pool.len(),
-                self.neighbours.len(),
-                self.random_peers.len()
-            );
-        }
-
-        Ok(())
-    }
-
-    fn refresh_active_peer_pool(&mut self) {
-        let rand_peer_ratio = 1.0f32.min(0.0f32.max(self.config.random_peer_selection_ratio));
-        let desired_neighbours = (self.neighbours.len() as f32 * (1.0 - rand_peer_ratio)).ceil() as usize;
-        let desired_random = (self.neighbours.len() as f32 * rand_peer_ratio).ceil() as usize;
-
-        let num_random = cmp::min(desired_random, self.random_peers.len());
-        let num_neighbours = self.neighbours.len() - num_random;
-        debug!(
-            target: LOG_TARGET,
-            "Adding {} neighbouring peers (wanted = {}) and {} randomly selected (wanted = {}) peer(s) to active peer \
-             pool",
-            num_neighbours,
-            desired_neighbours,
-            num_random,
-            desired_random
-        );
-
-        let mut active_node_ids = self.neighbours.sample(num_neighbours);
-        active_node_ids.extend(self.random_peers.sample(num_random));
-        self.active_pool
-            .set_node_ids(active_node_ids.into_iter().cloned().collect());
-        self.state.set_num_active_peers(self.active_pool.len());
-    }
-
-    async fn refresh_random_peer_pool(&mut self) -> Result<(), LivenessError> {
-        let excluded = self.neighbours.node_ids().to_vec();
-
-        // Select a pool of random peers the same length as neighbouring peers
-        let random_peers = self
-            .dht_requester
-            .select_peers(BroadcastStrategy::Random(self.neighbours.len(), excluded))
-            .await?;
-
-        if random_peers.is_empty() {
-            warn!(target: LOG_TARGET, "No random peers selected for this round of pings");
-        }
-        let new_node_ids = random_peers.into_iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
-        let removed = new_node_ids
-            .iter()
-            .filter(|n| self.random_peers.contains(*n))
-            .collect::<Vec<_>>();
-        debug!(target: LOG_TARGET, "Removed {} random peer(s)", removed.len());
-        for node_id in removed {
-            if let Err(err) = self.connection_manager.disconnect_peer(node_id.clone()).await {
-                error!(target: LOG_TARGET, "Failed to disconnect peer: {:?}", err);
-            }
-        }
-
-        self.random_peers.set_node_ids(new_node_ids);
-
-        Ok(())
-    }
-
-    async fn refresh_neighbour_pool(&mut self) -> Result<(), LivenessError> {
-        let neighbours = self
-            .dht_requester
-            .select_peers(BroadcastStrategy::Neighbours(Vec::new()))
-            .await?;
-
-        debug!(
-            target: LOG_TARGET,
-            "Setting active peers ({} peer(s))",
-            neighbours.len()
-        );
-        self.neighbours
-            .set_node_ids(neighbours.into_iter().map(|p| p.node_id.clone()).collect());
-
-        Ok(())
-    }
-
     async fn ping_active_pool(&mut self) -> Result<(), LivenessError> {
-        self.refresh_peer_pools_if_stale().await?;
-        let node_ids = self.active_pool.node_ids();
-        let len_peers = node_ids.len();
-        trace!(target: LOG_TARGET, "Sending liveness ping to {} peer(s)", len_peers);
+        let broadcast_nodes = self
+            .dht_requester
+            .select_peers(BroadcastStrategy::Broadcast(Vec::new()))
+            .await?;
 
-        for node_id in node_ids {
+        if broadcast_nodes.is_empty() {
+            warn!(
+                target: LOG_TARGET,
+                "Cannot broadcast pings because there are no broadcast peers available"
+            )
+        }
+
+        let len_peers = broadcast_nodes.len();
+        info!(target: LOG_TARGET, "Sending liveness ping to {} peer(s)", len_peers);
+
+        for node_id in broadcast_nodes {
             let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone(), self.config.useragent.clone());
             self.state.add_inflight_ping(msg.nonce, &node_id);
             self.oms_handle
                 .send_direct_node_id(
-                    node_id.clone(),
+                    node_id,
                     OutboundEncryption::None,
                     OutboundDomainMessage::new(TariMessageType::PingPong, msg),
                 )
@@ -599,10 +420,6 @@ mod test {
         let (dht_tx, _) = mpsc::channel(10);
         let dht_requester = DhtRequester::new(dht_tx);
 
-        let (tx, _) = mpsc::channel(0);
-        let (event_tx, _) = broadcast::channel(1);
-        let connection_manager = ConnectionManagerRequester::new(tx, event_tx);
-
         let shutdown = Shutdown::new();
         let service = LivenessService::new(
             Default::default(),
@@ -610,7 +427,6 @@ mod test {
             stream::empty(),
             state,
             dht_requester,
-            connection_manager,
             oms_handle,
             publisher,
             shutdown.to_signal(),
@@ -642,10 +458,6 @@ mod test {
         let (dht_tx, _) = mpsc::channel(10);
         let dht_requester = DhtRequester::new(dht_tx);
 
-        let (tx, _) = mpsc::channel(0);
-        let (event_tx, _) = broadcast::channel(1);
-        let connection_manager = ConnectionManagerRequester::new(tx, event_tx);
-
         let shutdown = Shutdown::new();
         let service = LivenessService::new(
             Default::default(),
@@ -653,7 +465,6 @@ mod test {
             stream::empty(),
             state,
             dht_requester,
-            connection_manager,
             oms_handle,
             publisher,
             shutdown.to_signal(),
@@ -722,9 +533,6 @@ mod test {
         // Setup liveness service
         let (publisher, _) = broadcast::channel(200);
 
-        let (tx, _) = mpsc::channel(0);
-        let (event_tx, _) = broadcast::channel(1);
-        let connection_manager = ConnectionManagerRequester::new(tx, event_tx);
         let shutdown = Shutdown::new();
         let service = LivenessService::new(
             Default::default(),
@@ -732,7 +540,6 @@ mod test {
             pingpong_stream,
             state,
             dht_requester,
-            connection_manager,
             oms_handle,
             publisher,
             shutdown.to_signal(),
@@ -779,16 +586,12 @@ mod test {
             while let Some(req) = dht_rx.next().await {
                 match req {
                     SelectPeers(_, reply_tx) => {
-                        reply_tx.send(vec![Arc::new(peer.clone())]).unwrap();
+                        reply_tx.send(vec![peer.node_id.clone()]).unwrap();
                     },
                     _ => panic!("unexpected request {:?}", req),
                 }
             }
         });
-
-        let (tx, _) = mpsc::channel(0);
-        let (event_tx, _) = broadcast::channel(1);
-        let connection_manager = ConnectionManagerRequester::new(tx, event_tx);
 
         // Setup liveness service
         let (publisher, _) = broadcast::channel(200);
@@ -799,7 +602,6 @@ mod test {
             pingpong_stream,
             state,
             dht_requester,
-            connection_manager,
             oms_handle,
             publisher.clone(),
             shutdown.to_signal(),

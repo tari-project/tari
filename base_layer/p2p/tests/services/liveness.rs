@@ -21,11 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support::comms_and_services::setup_comms_services;
-use futures::channel::mpsc;
 use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
-    connection_manager::ConnectionManagerRequester,
     peer_manager::{NodeIdentity, PeerFeatures},
     transports::MemoryTransport,
     CommsNode,
@@ -41,7 +39,7 @@ use tari_p2p::{
 use tari_service_framework::StackBuilder;
 use tari_test_utils::{collect_stream, random::string};
 use tempdir::TempDir;
-use tokio::{runtime, sync::broadcast};
+use tokio::runtime;
 
 pub async fn setup_liveness_service(
     node_identity: Arc<NodeIdentity>,
@@ -54,17 +52,12 @@ pub async fn setup_liveness_service(
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht) = setup_comms_services(node_identity.clone(), peers, publisher, data_path).await;
 
-    let (tx, _) = mpsc::channel(0);
-    let (event_tx, _) = broadcast::channel(1);
-    let connection_manager = ConnectionManagerRequester::new(tx, event_tx);
-
     let handles = StackBuilder::new(rt_handle.clone(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(LivenessInitializer::new(
             Default::default(),
             Arc::clone(&subscription_factory),
             dht.dht_requester(),
-            connection_manager,
         ))
         .finish()
         .await
@@ -107,8 +100,8 @@ async fn end_to_end() {
     )
     .await;
 
-    let liveness1_event_stream = liveness1.get_event_stream_fused();
-    let liveness2_event_stream = liveness2.get_event_stream_fused();
+    let mut liveness1_event_stream = liveness1.get_event_stream_fused();
+    let mut liveness2_event_stream = liveness2.get_event_stream_fused();
 
     for _ in 0..5 {
         liveness2.send_ping(node_1_identity.node_id().clone()).await.unwrap();

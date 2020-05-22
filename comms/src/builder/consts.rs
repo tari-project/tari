@@ -23,6 +23,10 @@
 /// Buffer size for inbound messages from _all_ peers. This should be large enough to buffer quite a few incoming
 /// messages before creating backpressure on peers speaking the messaging protocol.
 pub const INBOUND_MESSAGE_BUFFER_SIZE: usize = 100;
+/// Buffer size for actor requests to connectivity manager.
+pub const CONNECTIVITY_MANAGER_REQUEST_BUFFER_SIZE: usize = 10;
+/// Buffer size for connectivity events
+pub const CONNECTIVITY_MANAGER_EVENTS_BUFFER_SIZE: usize = 50;
 /// Buffer size for actor requests to connection manager. A lower value is ok because the connection manager shouldn't
 /// need to handle a ton of requests concurrently.
 pub const CONNECTION_MANAGER_REQUEST_BUFFER_SIZE: usize = 10;

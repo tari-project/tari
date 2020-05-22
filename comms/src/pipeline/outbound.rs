@@ -132,7 +132,7 @@ mod test {
             (0..NUM_ITEMS).map(|i| OutboundMessage::new(Default::default(), Bytes::copy_from_slice(&i.to_be_bytes())));
         let stream = stream::iter(items).fuse();
         let (out_tx, out_rx) = mpsc::channel(NUM_ITEMS);
-        let (msg_tx, msg_rx) = mpsc::channel(NUM_ITEMS);
+        let (msg_tx, mut msg_rx) = mpsc::channel(NUM_ITEMS);
         let executor = Handle::current();
 
         let pipeline = Outbound::new(

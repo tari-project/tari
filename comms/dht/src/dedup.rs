@@ -120,7 +120,7 @@ mod test {
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
-        test_utils::{create_dht_actor_mock, make_dht_inbound_message, make_node_identity, service_spy, DhtMockState},
+        test_utils::{create_dht_actor_mock, make_dht_inbound_message, make_node_identity, service_spy},
     };
     use tari_test_utils::panic_context;
     use tokio::runtime::Runtime;
@@ -130,10 +130,9 @@ mod test {
         let mut rt = Runtime::new().unwrap();
         let spy = service_spy();
 
-        let (dht_requester, mut mock) = create_dht_actor_mock(1);
-        let mock_state = DhtMockState::new();
+        let (dht_requester, mock) = create_dht_actor_mock(1);
+        let mock_state = mock.get_shared_state();
         mock_state.set_signature_cache_insert(false);
-        mock.set_shared_state(mock_state.clone());
         rt.spawn(mock.run());
 
         let mut dedup = DedupLayer::new(dht_requester).layer(spy.to_service::<PipelineError>());
