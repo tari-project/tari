@@ -60,7 +60,7 @@ use tari_core::{
     txn_schema,
     validation::{
         accum_difficulty_validators::MockAccumDifficultyValidator,
-        block_validators::StatelessBlockValidator,
+        block_validators::{MockStatelessBlockValidator, StatelessBlockValidator},
         mocks::MockValidator,
     },
 };
@@ -873,7 +873,7 @@ fn invalid_block() {
             .build();
         let validators = Validators::new(
             MockValidator::new(true),
-            StatelessBlockValidator::new(&consensus_manager.consensus_constants()),
+            MockStatelessBlockValidator::new(consensus_manager.clone(), factories.clone()),
             MockAccumDifficultyValidator {},
         );
         let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();

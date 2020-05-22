@@ -480,7 +480,7 @@ where
     let factories = CryptoFactories::default();
     let validators = Validators::new(
         FullConsensusValidator::new(rules.clone(), factories.clone()),
-        StatelessBlockValidator::new(&rules.consensus_constants()),
+        StatelessBlockValidator::new(rules.clone(), factories.clone()),
         AccumDifficultyValidator {},
     );
     let db_config = BlockchainDatabaseConfig {
