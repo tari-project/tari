@@ -42,6 +42,9 @@ message DhtHeader {
     // The network for which this message is intended (e.g. TestNet, MainNet etc.)
     Network network = 8;
     uint32 flags = 9;
+    // Message trace ID
+    // TODO: Remove for mainnet or when testing message traces is not required
+    uint64 message_tag = 10;
 }
 
 enum Network {

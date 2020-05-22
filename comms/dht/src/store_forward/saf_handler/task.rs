@@ -275,7 +275,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             SafResponseType::from_i32(response.response_type)
                 .as_ref()
                 .map(|t| format!("{:?}", t))
-                .unwrap_or("<Invalid>".to_string()),
+                .unwrap_or_else(|| "<Invalid>".to_string()),
         );
 
         let tasks = response
@@ -577,7 +577,15 @@ mod test {
 
         // Recent message
         let (e_sk, e_pk) = make_keypair();
-        let dht_header = make_dht_header(&node_identity, &e_pk, &e_sk, &[], DhtMessageFlags::empty(), false);
+        let dht_header = make_dht_header(
+            &node_identity,
+            &e_pk,
+            &e_sk,
+            &[],
+            DhtMessageFlags::empty(),
+            false,
+            MessageTag::new(),
+        );
         mock_state
             .add_message(make_stored_message(&node_identity, dht_header))
             .await;

@@ -265,7 +265,9 @@ where
                 request_context = request_stream.select_next_some() => {
                     trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
-                    let _ = reply_tx.send(self.handle_request(request, &mut send_transaction_protocol_handles,  &mut transaction_broadcast_protocol_handles, &mut transaction_chain_monitoring_protocol_handles).await.or_else(|resp| {
+                    let _ = reply_tx.send(self.handle_request(request, &mut send_transaction_protocol_handles,
+                        &mut transaction_broadcast_protocol_handles,
+                        &mut transaction_chain_monitoring_protocol_handles).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling request: {:?}", resp);
                         Err(resp)
                     })).or_else(|resp| {
@@ -275,85 +277,108 @@ where
                 },
                 // Incoming messages from the Comms layer
                 msg = transaction_stream.select_next_some() => {
-                    trace!(target: LOG_TARGET, "Handling Transaction Message");
-                    let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
-                    let result  = self.accept_transaction(origin_public_key, inner_msg).await;
+                    let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
+                    trace!(target: LOG_TARGET, "Handling Transaction Message, Trace: {}", msg.dht_header.message_tag);
+
+                    let result  = self.accept_transaction(origin_public_key, inner_msg,
+                        msg.dht_header.message_tag.as_value()).await;
+
 
                     match result {
                         Err(TransactionServiceError::RepeatedMessageError) => {
-                            trace!(target: LOG_TARGET, "A repeated Transaction message was received");
+                            trace!(target: LOG_TARGET, "A repeated Transaction message was received, Trace: {}",
+                            msg.dht_header.message_tag);
                         }
                         Err(e) => {
-                            error!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {:?} for NodeID: {}", e, self.node_identity.node_id().short_str());
-                            let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error(format!("Error handling Transaction Sender message: {:?}", e).to_string())));
+                            error!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {:?} for NodeID: {}, Trace: {}",
+                                e, self.node_identity.node_id().short_str(), msg.dht_header.message_tag);
+                            let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error(format!("Error handling \
+                                Transaction Sender message: {:?}", e).to_string())));
                         }
                         _ => (),
                     }
                 },
                  // Incoming messages from the Comms layer
                 msg = transaction_reply_stream.select_next_some() => {
-                    trace!(target: LOG_TARGET, "Handling Transaction Reply Message");
-                    let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
+                    let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
+                    trace!(target: LOG_TARGET, "Handling Transaction Reply Message, Trace: {}", msg.dht_header.message_tag);
                     let result = self.accept_recipient_reply(origin_public_key, inner_msg).await;
 
                     match result {
                         Err(TransactionServiceError::TransactionDoesNotExistError) => {
-                            debug!(target: LOG_TARGET, "Unable to handle incoming Transaction Reply message from NodeId: {} due to Transaction not Existing. This usually means the message was a repeated message from Store and Forward", self.node_identity.node_id().short_str());
+                            debug!(target: LOG_TARGET, "Unable to handle incoming Transaction Reply message from NodeId: \
+                            {} due to Transaction not Existing. This usually means the message was a repeated message \
+                            from Store and Forward, Trace: {}", self.node_identity.node_id().short_str(),
+                            msg.dht_header.message_tag);
                         },
                         Err(e) => {
-                            error!(target: LOG_TARGET, "Failed to handle incoming Transaction Reply message: {:?} for NodeId: {}", e, self.node_identity.node_id().short_str());
-                            let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling Transaction Recipient Reply message".to_string())));
+                            error!(target: LOG_TARGET, "Failed to handle incoming Transaction Reply message: {:?} \
+                            for NodeId: {}, Trace: {}", e, self.node_identity.node_id().short_str(),
+                            msg.dht_header.message_tag);
+                            let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling \
+                            Transaction Recipient Reply message".to_string())));
                         },
                         Ok(_) => (),
                     }
                 },
                // Incoming messages from the Comms layer
                 msg = transaction_finalized_stream.select_next_some() => {
-                    trace!(target: LOG_TARGET, "Handling Transaction Finalized Message");
-                    let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
-                    let result = self.accept_finalized_transaction(origin_public_key, inner_msg, &mut transaction_broadcast_protocol_handles).await.or_else(|err| {
-                        error!(target: LOG_TARGET, "Failed to handle incoming Transaction Finalized message: {:?} for NodeID: {}", err , self.node_identity.node_id().short_str());
+                    let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
+                    trace!(target: LOG_TARGET, "Handling Transaction Finalized Message, Trace: {}",
+                    msg.dht_header.message_tag.as_value());
+                    let result = self.accept_finalized_transaction(origin_public_key, inner_msg,
+                    &mut transaction_broadcast_protocol_handles).await.or_else(|err| {
+                        error!(target: LOG_TARGET, "Failed to handle incoming Transaction Finalized message: {:?} \
+                        for NodeID: {}, Trace: {}", err , self.node_identity.node_id().short_str(),
+                        msg.dht_header.message_tag.as_value());
                         Err(err)
                     });
 
                     if result.is_err() {
-                        let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling Transaction Finalized message".to_string(),)));
+                        let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling Transaction \
+                        Finalized message".to_string(),)));
                     }
                 },
                 // Incoming messages from the Comms layer
                 msg = mempool_response_stream.select_next_some() => {
-                    trace!(target: LOG_TARGET, "Handling Mempool Response");
-                    let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
+                    let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
+                    trace!(target: LOG_TARGET, "Handling Mempool Response, Trace: {}", msg.dht_header.message_tag);
                     let _ = self.handle_mempool_response(inner_msg).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling mempool service response: {:?}", resp);
+                        error!(target: LOG_TARGET, "Error handling mempool service response: {:?}, Trace: {}", resp,
+                        msg.dht_header.message_tag.as_value());
                         Err(resp)
                     });
                 }
                 // Incoming messages from the Comms layer
                 msg = base_node_response_stream.select_next_some() => {
-                    trace!(target: LOG_TARGET, "Handling Base Node Response");
-                    let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
+                    let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
+                    trace!(target: LOG_TARGET, "Handling Base Node Response, Trace: {}", msg.dht_header.message_tag);
                     let _ = self.handle_base_node_response(inner_msg).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling base node service response from {}: {:?} for NodeID: {}", origin_public_key, resp, self.node_identity.node_id().short_str());
+                        error!(target: LOG_TARGET, "Error handling base node service response from {}: {:?} for \
+                        NodeID: {}, Trace: {}", origin_public_key, resp, self.node_identity.node_id().short_str(),
+                        msg.dht_header.message_tag.as_value());
                         Err(resp)
                     });
                 }
                 join_result = send_transaction_protocol_handles.select_next_some() => {
                     trace!(target: LOG_TARGET, "Send Protocol for Transaction has ended with result {:?}", join_result);
                     match join_result {
-                        Ok(join_result_inner) => self.complete_send_transaction_protocol(join_result_inner, &mut transaction_broadcast_protocol_handles).await,
+                        Ok(join_result_inner) => self.complete_send_transaction_protocol(join_result_inner,
+                        &mut transaction_broadcast_protocol_handles).await,
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Send Transaction Protocol: {:?}", e),
                     };
                 }
                 join_result = transaction_broadcast_protocol_handles.select_next_some() => {
                     trace!(target: LOG_TARGET, "Transaction Broadcast protocol has ended with result {:?}", join_result);
                     match join_result {
-                        Ok(join_result_inner) => self.complete_transaction_broadcast_protocol(join_result_inner, &mut transaction_chain_monitoring_protocol_handles).await,
+                        Ok(join_result_inner) => self.complete_transaction_broadcast_protocol(join_result_inner,
+                        &mut transaction_chain_monitoring_protocol_handles).await,
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Broadcast Protocol: {:?}", e),
                     };
                 }
                 join_result = transaction_chain_monitoring_protocol_handles.select_next_some() => {
-                    trace!(target: LOG_TARGET, "Transaction chain monitoring protocol has ended with result {:?}", join_result);
+                    trace!(target: LOG_TARGET, "Transaction chain monitoring protocol has ended with result {:?}",
+                    join_result);
                     match join_result {
                         Ok(join_result_inner) => self.complete_transaction_chain_monitoring_protocol(join_result_inner),
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Chain Monitoring protocol: {:?}", e),
@@ -700,6 +725,7 @@ where
         &mut self,
         source_pubkey: CommsPublicKey,
         sender_message: proto::TransactionSenderMessage,
+        traced_message_tag: u64,
     ) -> Result<(), TransactionServiceError>
     {
         let sender_message: TransactionSenderMessage = sender_message
@@ -710,17 +736,19 @@ where
         if let TransactionSenderMessage::Single(data) = sender_message.clone() {
             trace!(
                 target: LOG_TARGET,
-                "Transaction (TxId: {}) received from {}",
+                "Transaction (TxId: {}) received from {}, Trace: {}",
                 data.tx_id,
-                source_pubkey
+                source_pubkey,
+                traced_message_tag
             );
             // Check this is not a repeat message i.e. tx_id doesn't already exist in our pending or completed
             // transactions
             if self.db.transaction_exists(data.tx_id).await? {
                 trace!(
                     target: LOG_TARGET,
-                    "Transaction (TxId: {}) already present in database.",
-                    data.tx_id
+                    "Transaction (TxId: {}) already present in database, Trace: {}.",
+                    data.tx_id,
+                    traced_message_tag
                 );
                 return Err(TransactionServiceError::RepeatedMessageError);
             }
@@ -756,36 +784,54 @@ where
                 .await
             {
                 None => {
-                    self.send_transaction_reply_store_and_forward(tx_id, source_pubkey.clone(), proto_message.clone())
-                        .await?;
+                    debug!(
+                        target: LOG_TARGET,
+                        "Transaction Reply (TxId: {}) Direct Send to {} not possible, attempting Store and Forward, \
+                         Trace: {}",
+                        tx_id,
+                        source_pubkey,
+                        traced_message_tag,
+                    );
+                    self.send_transaction_reply_store_and_forward(
+                        tx_id,
+                        source_pubkey.clone(),
+                        proto_message.clone(),
+                        traced_message_tag,
+                    )
+                    .await?;
                 },
                 Some(send_states) => {
                     if send_states.len() == 1 {
                         debug!(
                             target: LOG_TARGET,
-                            "Transaction Reply (TxId: {}) Direct Send to {} queued with Message Tag: {:?}",
+                            "Transaction Reply (TxId: {}) Direct Send to {} queued with Message Tag: {}, Trace: {}",
                             tx_id,
                             source_pubkey,
                             send_states[0].tag,
+                            traced_message_tag,
                         );
                         match send_states.wait_single().await {
                             true => {
                                 info!(
                                     target: LOG_TARGET,
-                                    "Direct Send of Transaction Reply message for TX_ID: {} was successful", tx_id
+                                    "Direct Send of Transaction Reply message for TX_ID: {} was successful, Trace: {}",
+                                    tx_id,
+                                    traced_message_tag
                                 );
                             },
                             false => {
                                 error!(
                                     target: LOG_TARGET,
                                     "Direct Send of Transaction Reply message for TX_ID: {} was unsuccessful and no \
-                                     message was sent",
-                                    tx_id
+                                     message was sent, attempting Store and Forward, Trace: {}",
+                                    tx_id,
+                                    traced_message_tag
                                 );
                                 self.send_transaction_reply_store_and_forward(
                                     tx_id,
                                     source_pubkey.clone(),
                                     proto_message.clone(),
+                                    traced_message_tag,
                                 )
                                 .await?
                             },
@@ -793,12 +839,16 @@ where
                     } else {
                         error!(
                             target: LOG_TARGET,
-                            "Transaction Reply message Send Direct for TxID: {} failed", tx_id
+                            "Transaction Reply message Direct Send for TxID: {} failed, attempting Store and Forward, \
+                             Trace: {}",
+                            tx_id,
+                            traced_message_tag
                         );
                         self.send_transaction_reply_store_and_forward(
                             tx_id,
                             source_pubkey.clone(),
                             proto_message.clone(),
+                            traced_message_tag,
                         )
                         .await?
                     }
@@ -821,11 +871,18 @@ where
 
             info!(
                 target: LOG_TARGET,
-                "Transaction with TX_ID = {} received from {}. Reply Sent", tx_id, source_pubkey,
+                "Transaction with TX_ID = {} received from {}, Trace: {}. Reply Sent",
+                tx_id,
+                source_pubkey,
+                traced_message_tag
             );
             info!(
                 target: LOG_TARGET,
-                "Transaction (TX_ID: {}) - Amount: {} - Message: {}", tx_id, amount, data.message
+                "Transaction (TX_ID: {}) - Amount: {} - Message: {}, Trace: {}",
+                tx_id,
+                amount,
+                data.message,
+                traced_message_tag
             );
 
             let _ = self
@@ -848,6 +905,7 @@ where
         tx_id: TxId,
         source_pubkey: CommsPublicKey,
         msg: proto::RecipientSignedMessage,
+        traced_message_tag: u64,
     ) -> Result<(), TransactionServiceError>
     {
         match self
@@ -864,31 +922,38 @@ where
                 None => {
                     error!(
                         target: LOG_TARGET,
-                        "Sending Transaction Reply (TxId: {}) to neighbours for Store and Forward failed", tx_id
+                        "Sending Transaction Reply (TxId: {}) to neighbours for Store and Forward failed, Trace: {}",
+                        tx_id,
+                        traced_message_tag
                     );
                 },
                 Some(tags) if !tags.is_empty() => {
                     info!(
                         target: LOG_TARGET,
                         "Sending Transaction Reply (TxId: {}) to Neighbours for Store and Forward successful with \
-                         Message Tags: {:?}",
+                         Message Tags: {:?}, Trace: {}",
                         tx_id,
                         tags,
+                        traced_message_tag,
                     );
                 },
                 Some(_) => {
                     error!(
                         target: LOG_TARGET,
                         "Sending Transaction Reply to Neighbours for Store and Forward for TX_ID: {} was unsuccessful \
-                         and no messages were sent",
-                        tx_id
+                         and no messages were sent, Trace: {}",
+                        tx_id,
+                        traced_message_tag
                     );
                 },
             },
             Err(e) => {
                 error!(
                     target: LOG_TARGET,
-                    "Sending Transaction Reply (TxId: {}) to neighbours for Store and Forward failed: {:?}", tx_id, e
+                    "Sending Transaction Reply (TxId: {}) to neighbours for Store and Forward failed: {:?}, Trace: {}",
+                    tx_id,
+                    e,
+                    traced_message_tag
                 );
             },
         };
@@ -1539,7 +1604,7 @@ where
 
         let spending_key = self
             .output_manager_service
-            .get_recipient_spending_key(tx_id, amount.clone())
+            .get_recipient_spending_key(tx_id, amount)
             .await?;
         let nonce = PrivateKey::random(&mut OsRng);
         let rtp = ReceiverTransactionProtocol::new(

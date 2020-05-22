@@ -189,8 +189,8 @@ impl fmt::Display for DhtOutboundMessage {
             .map(|h| format!("{} (Propagated)", h))
             .unwrap_or_else(|| {
                 format!(
-                    "Network: {:?}, Flags: {:?}, Destination: {}",
-                    self.network, self.dht_flags, self.destination
+                    "Network: {:?}, Flags: {:?}, Destination: {}, Trace: {}",
+                    self.network, self.dht_flags, self.destination, self.tag,
                 )
             });
         write!(

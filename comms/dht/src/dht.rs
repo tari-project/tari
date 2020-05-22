@@ -344,7 +344,7 @@ mod test {
     use futures::{channel::mpsc, StreamExt};
     use std::{sync::Arc, time::Duration};
     use tari_comms::{
-        message::MessageExt,
+        message::{MessageExt, MessageTag},
         pipeline::SinkService,
         test_utils::mocks::create_connection_manager_mock,
         wrap_in_envelope_body,
@@ -380,7 +380,13 @@ mod test {
         let mut service = dht.inbound_middleware_layer().layer(SinkService::new(out_tx));
 
         let msg = wrap_in_envelope_body!(b"secret".to_vec());
-        let dht_envelope = make_dht_envelope(&node_identity, msg.to_encoded_bytes(), DhtMessageFlags::empty(), false);
+        let dht_envelope = make_dht_envelope(
+            &node_identity,
+            msg.to_encoded_bytes(),
+            DhtMessageFlags::empty(),
+            false,
+            MessageTag::new(),
+        );
         let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 
         let msg = {
@@ -422,7 +428,13 @@ mod test {
 
         let msg = wrap_in_envelope_body!(b"secret".to_vec());
         // Encrypt for self
-        let dht_envelope = make_dht_envelope(&node_identity, msg.to_encoded_bytes(), DhtMessageFlags::ENCRYPTED, true);
+        let dht_envelope = make_dht_envelope(
+            &node_identity,
+            msg.to_encoded_bytes(),
+            DhtMessageFlags::ENCRYPTED,
+            true,
+            MessageTag::new(),
+        );
         let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 
         let msg = {
@@ -470,7 +482,13 @@ mod test {
         let node_identity2 = make_node_identity();
         let ecdh_key = crypt::generate_ecdh_secret(node_identity2.secret_key(), node_identity2.public_key());
         let encrypted_bytes = crypt::encrypt(&ecdh_key, &msg.to_encoded_bytes()).unwrap();
-        let dht_envelope = make_dht_envelope(&node_identity, encrypted_bytes, DhtMessageFlags::ENCRYPTED, true);
+        let dht_envelope = make_dht_envelope(
+            &node_identity,
+            encrypted_bytes,
+            DhtMessageFlags::ENCRYPTED,
+            true,
+            MessageTag::new(),
+        );
 
         let origin_mac = dht_envelope.header.as_ref().unwrap().origin_mac.clone();
         assert_eq!(origin_mac.is_empty(), false);
@@ -514,8 +532,13 @@ mod test {
         let mut service = dht.inbound_middleware_layer().layer(SinkService::new(next_service_tx));
 
         let msg = wrap_in_envelope_body!(b"secret".to_vec());
-        let mut dht_envelope =
-            make_dht_envelope(&node_identity, msg.to_encoded_bytes(), DhtMessageFlags::empty(), false);
+        let mut dht_envelope = make_dht_envelope(
+            &node_identity,
+            msg.to_encoded_bytes(),
+            DhtMessageFlags::empty(),
+            false,
+            MessageTag::new(),
+        );
         dht_envelope.header.as_mut().and_then(|header| {
             header.message_type = DhtMessageType::SafStoredMessages as i32;
             Some(header)

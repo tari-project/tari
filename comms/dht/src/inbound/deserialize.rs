@@ -78,16 +78,17 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
 
             match DhtEnvelope::decode(&mut body) {
                 Ok(dht_envelope) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Deserialization succeeded. Passing message {} onto next service", tag
-                    );
-
                     let inbound_msg = DhtInboundMessage::new(
                         tag,
                         dht_envelope.header.try_into().map_err(PipelineError::from_debug)?,
                         source_peer,
                         dht_envelope.body,
+                    );
+                    debug!(
+                        target: LOG_TARGET,
+                        "Deserialization succeeded. Passing message {} onto next service (Trace: {})",
+                        tag,
+                        inbound_msg.dht_header.message_tag
                     );
 
                     next_service.oneshot(inbound_msg).await
@@ -126,7 +127,7 @@ mod test {
         test_utils::{make_comms_inbound_message, make_dht_envelope, make_node_identity, service_spy},
     };
     use futures::executor::block_on;
-    use tari_comms::message::MessageExt;
+    use tari_comms::message::{MessageExt, MessageTag};
     use tari_test_utils::panic_context;
 
     #[test]
@@ -138,7 +139,13 @@ mod test {
 
         assert!(deserialize.poll_ready(&mut cx).is_ready());
         let node_identity = make_node_identity();
-        let dht_envelope = make_dht_envelope(&node_identity, b"A".to_vec(), DhtMessageFlags::empty(), false);
+        let dht_envelope = make_dht_envelope(
+            &node_identity,
+            b"A".to_vec(),
+            DhtMessageFlags::empty(),
+            false,
+            MessageTag::new(),
+        );
         block_on(deserialize.call(make_comms_inbound_message(
             &node_identity,
             dht_envelope.to_encoded_bytes().into(),

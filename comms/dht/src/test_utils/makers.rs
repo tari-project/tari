@@ -85,6 +85,7 @@ pub fn make_dht_header(
     message: &[u8],
     flags: DhtMessageFlags,
     include_origin: bool,
+    trace: MessageTag,
 ) -> DhtMessageHeader
 {
     DhtMessageHeader {
@@ -99,6 +100,7 @@ pub fn make_dht_header(
         message_type: DhtMessageType::None,
         network: Network::LocalTest,
         flags,
+        message_tag: trace,
     }
 }
 
@@ -132,9 +134,10 @@ pub fn make_dht_inbound_message(
     include_origin: bool,
 ) -> DhtInboundMessage
 {
-    let envelope = make_dht_envelope(node_identity, body, flags, include_origin);
+    let msg_tag = MessageTag::new();
+    let envelope = make_dht_envelope(node_identity, body, flags, include_origin, msg_tag);
     DhtInboundMessage::new(
-        MessageTag::new(),
+        msg_tag,
         envelope.header.unwrap().try_into().unwrap(),
         Arc::new(Peer::new(
             node_identity.public_key().clone(),
@@ -157,6 +160,7 @@ pub fn make_dht_envelope(
     mut message: Vec<u8>,
     flags: DhtMessageFlags,
     include_origin: bool,
+    trace: MessageTag,
 ) -> DhtEnvelope
 {
     let (e_sk, e_pk) = make_keypair();
@@ -164,7 +168,7 @@ pub fn make_dht_envelope(
         let shared_secret = crypt::generate_ecdh_secret(&e_sk, node_identity.public_key());
         message = crypt::encrypt(&shared_secret, &message).unwrap();
     }
-    let header = make_dht_header(node_identity, &e_pk, &e_sk, &message, flags, include_origin).into();
+    let header = make_dht_header(node_identity, &e_pk, &e_sk, &message, flags, include_origin, trace).into();
     DhtEnvelope::new(header, message.into())
 }
 
@@ -187,8 +191,9 @@ pub fn make_peer_manager() -> Arc<PeerManager> {
 }
 
 pub fn create_outbound_message(body: &[u8]) -> DhtOutboundMessage {
+    let msg_tag = MessageTag::new();
     DhtOutboundMessage {
-        tag: MessageTag::new(),
+        tag: msg_tag,
         destination_peer: Arc::new(Peer::new(
             CommsPublicKey::default(),
             NodeId::default(),

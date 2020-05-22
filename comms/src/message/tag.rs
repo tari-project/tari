@@ -31,6 +31,16 @@ impl MessageTag {
     pub fn new() -> Self {
         Self(OsRng.next_u64())
     }
+
+    pub fn as_value(self) -> u64 {
+        self.0
+    }
+}
+
+impl From<u64> for MessageTag {
+    fn from(v: u64) -> Self {
+        Self(v)
+    }
 }
 
 impl fmt::Display for MessageTag {

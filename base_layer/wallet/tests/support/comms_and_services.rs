@@ -23,6 +23,7 @@
 use futures::Sink;
 use std::{error::Error, sync::Arc, time::Duration};
 use tari_comms::{
+    message::MessageTag,
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     transports::MemoryTransport,
@@ -84,6 +85,7 @@ pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainM
             flags: Default::default(),
             network: Network::LocalTest,
             destination: Default::default(),
+            message_tag: MessageTag::new(),
         },
         authenticated_origin: None,
         source_peer: peer_source,

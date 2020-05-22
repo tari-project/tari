@@ -59,21 +59,21 @@ impl InboundMessaging {
         while let Some(result) = framed_socket.next().await {
             match result {
                 Ok(raw_msg) => {
+                    let inbound_msg = InboundMessage::new(Arc::clone(&peer), raw_msg.clone().freeze());
                     trace!(
                         target: LOG_TARGET,
-                        "Received message from peer '{}' ({} bytes)",
+                        "Received message {} from peer '{}' ({} bytes)",
+                        inbound_msg.clone().tag,
                         peer.node_id.short_str(),
                         raw_msg.len()
                     );
 
-                    let inbound_msg = InboundMessage::new(Arc::clone(&peer), raw_msg.freeze());
-
                     let event = MessagingEvent::MessageReceived(
                         Box::new(inbound_msg.source_peer.node_id.clone()),
-                        inbound_msg.tag,
+                        inbound_msg.clone().tag,
                     );
 
-                    if let Err(err) = self.inbound_message_tx.send(inbound_msg).await {
+                    if let Err(err) = self.inbound_message_tx.send(inbound_msg.clone()).await {
                         warn!(
                             target: LOG_TARGET,
                             "Failed to send InboundMessage for peer '{}' because '{}'",

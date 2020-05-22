@@ -367,7 +367,7 @@ where
             let excluded = self
                 .neighbours
                 .node_ids()
-                .into_iter()
+                .iter()
                 .chain(vec![node_id])
                 .cloned()
                 .collect();
@@ -441,7 +441,7 @@ where
     }
 
     async fn refresh_random_peer_pool(&mut self) -> Result<(), LivenessError> {
-        let excluded = self.neighbours.node_ids().into_iter().cloned().collect();
+        let excluded = self.neighbours.node_ids().to_vec();
 
         // Select a pool of random peers the same length as neighbouring peers
         let random_peers = self
@@ -565,6 +565,7 @@ mod test {
     use rand::rngs::OsRng;
     use std::time::Duration;
     use tari_comms::{
+        message::MessageTag,
         multiaddr::Multiaddr,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     };
@@ -694,6 +695,7 @@ mod test {
                 message_type: DhtMessageType::None,
                 network: Network::LocalTest,
                 flags: Default::default(),
+                message_tag: MessageTag::new(),
             },
             authenticated_origin: None,
             source_peer,
