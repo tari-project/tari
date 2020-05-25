@@ -77,6 +77,16 @@ impl ChainMetadata {
     pub fn pruned_mode(&mut self) {
         self.pruning_horizon = 2880;
     }
+
+    /// Check if the node is an archival node based on its pruning horizon.
+    pub fn is_archival_node(&self) -> bool {
+        self.pruning_horizon == 0
+    }
+
+    /// Check if the node is a pruned node based on its pruning horizon.
+    pub fn is_pruned_node(&self) -> bool {
+        self.pruning_horizon != 0
+    }
 }
 
 impl Default for ChainMetadata {

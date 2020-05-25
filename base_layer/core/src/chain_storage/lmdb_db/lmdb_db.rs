@@ -529,6 +529,9 @@ impl<D> BlockchainBackend for LMDBDatabase<D>
 where D: Digest + Send + Sync
 {
     fn write(&mut self, tx: DbTransaction) -> Result<(), ChainStorageError> {
+        if tx.operations.is_empty() {
+            return Ok(());
+        }
         match self.apply_mmr_and_storage_txs(&tx) {
             Ok(_) => self.commit_mmrs(tx),
             Err(e) => {
