@@ -1,13 +1,14 @@
 name: Build libwallet
+
 on:
   release:
-   types:
+    if: contains(github.tag_name, 'libwallet')
+    types:
      - created
 jobs:
   build_libs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v1
-      - name: Build libraries
-        run: |
-          ${GITHUB_WORKSPACE}/base_layer/wallet_ffi/mobile_build.sh
+      - uses: tari-project/action-buildlibs@v1.0.0
+
