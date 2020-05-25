@@ -229,7 +229,11 @@ places the binary inside a small container, keeping the executable binary to a m
 
 Test your image
 
-    docker run tari_base_node tari_base_node --help
+    docker run --rm -ti tari_base_node tari_base_node --help
+    
+Run the base node
+
+    docker run -ti -v /path/to/config/dir:/root/.tari tari_base_node
 
 ---
 
