@@ -93,6 +93,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(());
         }
 
+        trace!(
+            target: LOG_TARGET,
+            "Executing {} for {} (Trace: {})",
+            message.dht_header.message_type,
+            message.tag,
+            message.dht_header.message_tag
+        );
         match message.dht_header.message_type {
             DhtMessageType::Join => self.handle_join(message).await.map_err(PipelineError::from_debug)?,
             DhtMessageType::Discovery => self.handle_discover(message).await.map_err(PipelineError::from_debug)?,
@@ -106,7 +113,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .map_err(PipelineError::from_debug)?,
             // Not a DHT message, call downstream middleware
             _ => {
-                trace!(target: LOG_TARGET, "Passing message onto next service");
+                trace!(
+                    target: LOG_TARGET,
+                    "Passing message {} onto next service (Trace: {})",
+                    message.tag,
+                    message.dht_header.message_tag
+                );
                 self.next_service.oneshot(message).await?;
             },
         }

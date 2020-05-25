@@ -177,7 +177,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     /// node id that this node knows about
     async fn handle(mut self, message: DecryptedDhtMessage) -> Result<(), PipelineError> {
         if !self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD) {
-            trace!(target: LOG_TARGET, "Passing message to next service (Not a SAF node)");
+            trace!(
+                target: LOG_TARGET,
+                "Passing message {} to next service (Not a SAF node) (Trace: {})",
+                message.tag,
+                message.dht_header.message_tag
+            );
             self.next_service.oneshot(message).await?;
             return Ok(());
         }
@@ -192,7 +197,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .map_err(PipelineError::from_debug)?;
         }
 
-        debug!(target: LOG_TARGET, "Passing message {} to next service", message.tag);
+        debug!(
+            target: LOG_TARGET,
+            "Passing message {} to next service (Trace: {})", message.tag, message.dht_header.message_tag
+        );
         self.next_service.oneshot(message).await?;
 
         Ok(())
@@ -202,9 +210,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let log_not_eligible = |reason: &str| {
             debug!(
                 target: LOG_TARGET,
-                "Message from peer '{}' not eligible for SAF storage because {}",
+                "Message {} from peer '{}' not eligible for SAF storage because {} (Trace: {})",
+                message.tag,
                 message.source_peer.node_id.short_str(),
-                reason
+                reason,
+                message.dht_header.message_tag
             );
         };
 
@@ -272,9 +282,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     // TODO: #banheuristic - the source peer should not have propagated this message
                     warn!(
                         target: LOG_TARGET,
-                        "Store task received an encrypted message with no origin MAC. This message is invalid and \
-                         should not be stored or propagated. Dropping message. Sent by node '{}'",
-                        message.source_peer.node_id.short_str()
+                        "Store task received an encrypted message with no origin MAC. This message {} is invalid and \
+                         should not be stored or propagated. Dropping message. Sent by node '{}' (Trace: {})",
+                        message.tag,
+                        message.source_peer.node_id.short_str(),
+                        message.dht_header.message_tag
                     );
                     return Ok(None);
                 }
@@ -328,8 +340,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let log_not_eligible = |reason: &str| {
             debug!(
                 target: LOG_TARGET,
-                "Message from peer '{}' not eligible for SAF storage because {}",
+                "Message {} from peer '{}' not eligible for SAF storage because {} (Trace: {})",
+                message.tag,
                 message.source_peer.node_id.short_str(),
+                message.dht_header.message_tag,
                 reason
             );
         };
@@ -399,9 +413,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     async fn store(&mut self, priority: StoredMessagePriority, message: DecryptedDhtMessage) -> SafResult<()> {
         debug!(
             target: LOG_TARGET,
-            "Storing message from peer '{}' ({} bytes)",
+            "Storing message {} from peer '{}' ({} bytes) (Trace: {})",
+            message.tag,
             message.source_peer.node_id.short_str(),
             message.body_len(),
+            message.dht_header.message_tag,
         );
 
         let stored_message = NewStoredMessage::try_construct(message, priority)
