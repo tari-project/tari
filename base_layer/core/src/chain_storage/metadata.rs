@@ -39,11 +39,17 @@ pub struct ChainMetadata {
 }
 
 impl ChainMetadata {
-    pub fn new(height: u64, hash: BlockHash, horizon: u64, accumulated_difficulty: Difficulty) -> ChainMetadata {
+    pub fn new(
+        height: u64,
+        hash: BlockHash,
+        pruning_horizon: u64,
+        accumulated_difficulty: Difficulty,
+    ) -> ChainMetadata
+    {
         ChainMetadata {
             height_of_longest_chain: Some(height),
             best_block: Some(hash),
-            pruning_horizon: horizon,
+            pruning_horizon,
             accumulated_difficulty: Some(accumulated_difficulty),
         }
     }

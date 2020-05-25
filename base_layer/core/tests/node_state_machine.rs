@@ -65,7 +65,7 @@ use tari_core::{
     transactions::types::CryptoFactories,
     validation::{
         accum_difficulty_validators::MockAccumDifficultyValidator,
-        block_validators::{MockStatelessBlockValidator, StatelessBlockValidator},
+        block_validators::MockStatelessBlockValidator,
         mocks::MockValidator,
     },
 };

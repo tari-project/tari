@@ -30,7 +30,6 @@ use crate::{
 };
 use core::cmp::min;
 use derive_error::Error;
-use futures::SinkExt;
 use log::*;
 use rand::seq::SliceRandom;
 use std::{

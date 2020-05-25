@@ -60,7 +60,7 @@ use tari_core::{
     txn_schema,
     validation::{
         accum_difficulty_validators::MockAccumDifficultyValidator,
-        block_validators::{MockStatelessBlockValidator, StatelessBlockValidator},
+        block_validators::MockStatelessBlockValidator,
         mocks::MockValidator,
     },
 };
