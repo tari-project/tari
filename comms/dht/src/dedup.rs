@@ -73,9 +73,10 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
             let hash = hash_inbound_message(&message);
             trace!(
                 target: LOG_TARGET,
-                "Inserting message hash {} for message {}",
+                "Inserting message hash {} for message {} (Trace: {})",
                 hash.to_hex(),
-                message.tag
+                message.tag,
+                message.dht_header.message_tag
             );
             if dht_requester
                 .insert_message_hash(hash)
@@ -84,14 +85,18 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
             {
                 info!(
                     target: LOG_TARGET,
-                    "Received duplicate message {} from peer '{}'. Message discarded.",
+                    "Received duplicate message {} from peer '{}' (Trace: {}). Message discarded.",
                     message.tag,
                     message.source_peer.node_id.short_str(),
+                    message.dht_header.message_tag,
                 );
                 return Ok(());
             }
 
-            debug!(target: LOG_TARGET, "Passing message {} onto next service", message.tag);
+            debug!(
+                target: LOG_TARGET,
+                "Passing message {} onto next service (Trace: {})", message.tag, message.dht_header.message_tag
+            );
             next_service.oneshot(message).await
         }
     }

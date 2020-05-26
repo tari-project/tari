@@ -100,10 +100,21 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Cl
         let is_enabled = self.is_enabled;
         async move {
             if !is_enabled {
-                debug!(target: LOG_TARGET, "Passing message to next service (Not enabled)");
+                debug!(
+                    target: LOG_TARGET,
+                    "Passing message {} to next service (Not enabled) (Trace: {})",
+                    message.tag,
+                    message.dht_header.message_tag
+                );
                 return next_service.oneshot(message).await;
             }
 
+            trace!(
+                target: LOG_TARGET,
+                "Passing message {} to next service (Trace: {})",
+                message.tag,
+                message.dht_header.message_tag
+            );
             let forwarder = Forwarder::new(next_service, outbound_service);
             forwarder.handle(message).await
         }
@@ -131,12 +142,18 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 {
     async fn handle(mut self, message: DecryptedDhtMessage) -> Result<(), PipelineError> {
         if message.decryption_failed() {
-            debug!(target: LOG_TARGET, "Decryption failed. Forwarding message");
+            debug!(
+                target: LOG_TARGET,
+                "Decryption failed. Forwarding message {} (Trace: {})", message.tag, message.dht_header.message_tag
+            );
             self.forward(&message).await.map_err(PipelineError::from_debug)?;
         }
 
         // The message has been forwarded, but other middleware may be interested (i.e. StoreMiddleware)
-        debug!(target: LOG_TARGET, "Passing message to next service");
+        debug!(
+            target: LOG_TARGET,
+            "Passing message {} to next service (Trace: {})", message.tag, message.dht_header.message_tag
+        );
         self.next_service.oneshot(message).await?;
         Ok(())
     }
@@ -158,8 +175,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             //       (bug?)
             warn!(
                 target: LOG_TARGET,
-                "Received message from peer '{}' that is destined for that peer. Discarding message",
-                source_peer.node_id.short_str()
+                "Received message {} from peer '{}' that is destined for that peer. Discarding message (Trace: {})",
+                message.tag,
+                source_peer.node_id.short_str(),
+                message.dht_header.message_tag
             );
             return Ok(());
         }

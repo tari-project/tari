@@ -108,8 +108,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         if message.dht_header.message_type.is_saf_message() && message.decryption_failed() {
             debug!(
                 target: LOG_TARGET,
-                "Received store and forward message which could not decrypt from NodeId={}. Discarding message.",
-                message.source_peer.node_id
+                "Received store and forward message {} which could not decrypt from NodeId={}. Discarding message. \
+                 (Trace: {})",
+                message.tag,
+                message.source_peer.node_id,
+                message.dht_header.message_tag
             );
             return Ok(());
         }
@@ -125,9 +128,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     //       node
                     info!(
                         target: LOG_TARGET,
-                        "Received store and forward request from peer '{}' however, this node is not a store and \
-                         forward node. Request ignored.",
-                        message.source_peer.node_id.short_str()
+                        "Received store and forward request {} from peer '{}' however, this node is not a store and \
+                         forward node. Request ignored. (Trace: {})",
+                        message.tag,
+                        message.source_peer.node_id.short_str(),
+                        message.dht_header.message_tag
                     );
                 }
             },
@@ -138,7 +143,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .map_err(PipelineError::from_debug)?,
             // Not a SAF message, call downstream middleware
             _ => {
-                trace!(target: LOG_TARGET, "Passing message onto next service");
+                trace!(
+                    target: LOG_TARGET,
+                    "Passing message {} onto next service (Trace: {})",
+                    message.tag,
+                    message.dht_header.message_tag
+                );
                 self.next_service.oneshot(message).await?;
             },
         }
@@ -153,8 +163,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     {
         trace!(
             target: LOG_TARGET,
-            "Received request for stored message from {}",
-            message.source_peer.public_key
+            "Received request for stored message {} from {} (Trace: {})",
+            message.tag,
+            message.source_peer.public_key,
+            message.dht_header.message_tag
         );
         let msg = message
             .success()
@@ -256,8 +268,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     async fn handle_stored_messages(self, message: DecryptedDhtMessage) -> Result<(), StoreAndForwardError> {
         trace!(
             target: LOG_TARGET,
-            "Received stored messages from {}",
-            message.source_peer.public_key
+            "Received stored messages from {} (Trace: {})",
+            message.source_peer.public_key,
+            message.dht_header.message_tag
         );
         // TODO: Should check that stored messages were requested before accepting them
         let msg = message
