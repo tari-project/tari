@@ -157,22 +157,17 @@ where
         match ping_pong_msg.kind().ok_or_else(|| LivenessError::InvalidPingPongType)? {
             PingPong::Ping => {
                 self.state.inc_pings_received();
-                trace!(
-                    target: LOG_TARGET,
-                    "Received ping from peer '{}' with useragent {}",
-                    node_id.short_str(),
-                    ping_pong_msg.useragent
-                );
                 self.send_pong(ping_pong_msg.nonce, public_key).await.unwrap();
                 self.state.inc_pongs_sent();
 
                 let maybe_latency = None;
                 let is_monitored = self.state.is_monitored_node_id(&node_id);
 
-                trace!(
+                debug!(
                     target: LOG_TARGET,
-                    "Received ping from peer '{}'. {} {}",
+                    "Received ping from peer '{}' with useragent '{}'. {} {}",
                     node_id.short_str(),
+                    ping_pong_msg.useragent,
                     maybe_latency.map(|ms| format!("Latency: {}ms", ms)).unwrap_or_default(),
                     if is_monitored { "(monitored)" } else { "" },
                 );
@@ -194,16 +189,11 @@ where
 
                 let maybe_latency = self.state.record_pong(ping_pong_msg.nonce);
                 let is_monitored = self.state.is_monitored_node_id(&node_id);
-                trace!(
+                debug!(
                     target: LOG_TARGET,
-                    "Received pong from peer '{}' with useragent {}",
+                    "Received pong from peer '{}' with useragent '{}'. {} {}",
                     node_id.short_str(),
-                    ping_pong_msg.useragent
-                );
-                trace!(
-                    target: LOG_TARGET,
-                    "Received pong from peer '{}'. {} {}",
-                    node_id.short_str(),
+                    ping_pong_msg.useragent,
                     maybe_latency.map(|ms| format!("Latency: {}ms", ms)).unwrap_or_default(),
                     if is_monitored { "(monitored)" } else { "" },
                 );
@@ -219,9 +209,9 @@ where
     async fn send_ping(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
         let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone(), self.config.useragent.clone());
         self.state.add_inflight_ping(msg.nonce, &node_id);
-        trace!(
+        debug!(
             target: LOG_TARGET,
-            "Sending ping to peer '{}' with useragent {}",
+            "Sending ping to peer '{}' with useragent '{}'",
             node_id.short_str(),
             msg.useragent
         );

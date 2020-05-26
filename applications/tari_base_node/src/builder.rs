@@ -1110,7 +1110,7 @@ where
                 auto_ping_interval: Some(Duration::from_secs(30)),
                 refresh_neighbours_interval: Duration::from_secs(3 * 60),
                 random_peer_selection_ratio: 0.4,
-                useragent: format!("tari\\basenode\\{}", env!("CARGO_PKG_VERSION")),
+                useragent: format!("tari/basenode/{}", env!("CARGO_PKG_VERSION")),
                 ..Default::default()
             },
             subscription_factory,
@@ -1145,7 +1145,7 @@ async fn register_wallet_services(
         .add_initializer(LivenessInitializer::new(
             LivenessConfig{
                 auto_ping_interval: None,
-                useragent: format!("tari\\wallet\\{}", env!("CARGO_PKG_VERSION")),
+                useragent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
                 ..Default::default()
             },
             subscription_factory.clone(),

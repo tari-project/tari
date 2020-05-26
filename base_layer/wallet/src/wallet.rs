@@ -143,7 +143,7 @@ where
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
                     auto_ping_interval: Some(Duration::from_secs(30)),
-                    useragent: format!("tari\\wallet\\{}", env!("CARGO_PKG_VERSION")),
+                    useragent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
                     ..Default::default()
                 },
                 Arc::clone(&subscription_factory),
