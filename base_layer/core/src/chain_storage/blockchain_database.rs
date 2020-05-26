@@ -257,11 +257,21 @@ where T: BlockchainBackend
             validators,
             config,
         };
-        if blockchain_db.get_height()?.is_none() {
+        let metadata = blockchain_db.get_metadata()?;
+        if metadata.height_of_longest_chain.is_none() {
             let genesis_block = consensus_manager.get_genesis_block();
             blockchain_db.store_new_block(genesis_block)?;
             blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
+        } else if (metadata.is_archival_node() && (config.pruning_horizon != metadata.pruning_horizon)) ||
+            (metadata.is_pruned_node() && (config.pruning_horizon < metadata.pruning_horizon))
+        {
+            debug!(
+                target: LOG_TARGET,
+                "Updating pruning horizon from {} to {}.", metadata.pruning_horizon, config.pruning_horizon,
+            );
+            blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
         }
+
         Ok(blockchain_db)
     }
 
@@ -512,7 +522,7 @@ where T: BlockchainBackend
     ///
     /// The operation will fail if
     /// * The block height is in the future
-    /// * The block height is before pruning horizon
+    /// * The block height is before the horizon block height determined by the pruning horizon
     pub fn rewind_to_height(&self, height: u64) -> Result<Vec<Block>, ChainStorageError> {
         let mut db = self.db_write_access()?;
         rewind_to_height(&mut db, height)
@@ -642,10 +652,8 @@ fn add_block<T: BlockchainBackend>(
     let block_add_result = handle_possible_reorg(db, block_validator, accum_difficulty_validator, block)?;
     // Cleanup orphan block pool
     match block_add_result {
-        BlockAddResult::Ok => {},
-        BlockAddResult::BlockExists => {},
-        BlockAddResult::OrphanBlock => cleanup_orphans_single(db, orphan_storage_capacity)?,
-        BlockAddResult::ChainReorg(_) => cleanup_orphans_comprehensive(db, orphan_storage_capacity)?,
+        BlockAddResult::Ok | BlockAddResult::BlockExists => {},
+        BlockAddResult::OrphanBlock | BlockAddResult::ChainReorg(_) => cleanup_orphans(db, orphan_storage_capacity)?,
     }
     Ok(block_add_result)
 }
@@ -667,7 +675,7 @@ fn store_new_block<T: BlockchainBackend>(db: &mut RwLockWriteGuard<T>, block: Bl
     ));
     txn.insert(DbKeyValuePair::Metadata(
         MetadataKey::BestBlock,
-        MetadataValue::BestBlock(Some(best_block.clone())),
+        MetadataValue::BestBlock(Some(best_block)),
     ));
     txn.insert(DbKeyValuePair::Metadata(
         MetadataKey::AccumulatedWork,
@@ -730,11 +738,19 @@ fn fetch_block_with_hash<T: BlockchainBackend>(
 }
 
 fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<u64, ChainStorageError> {
-    let db_height = db.fetch_metadata()?.height_of_longest_chain.unwrap_or(0);
+    let metadata = db.fetch_metadata()?;
+    let db_height = metadata.height_of_longest_chain.unwrap_or(0);
     if height > db_height {
         return Err(ChainStorageError::InvalidQuery(format!(
             "Cannot get block at height {}. Chain tip is at {}",
             height, db_height
+        )));
+    }
+    let horizon_height = metadata.horizon_block(db_height);
+    if height < horizon_height {
+        return Err(ChainStorageError::InvalidQuery(format!(
+            "Cannot get block at height {}. Horizon height is at {}",
+            height, horizon_height
         )));
     }
     Ok(db_height)
@@ -1248,67 +1264,39 @@ fn find_strongest_orphan_tip<T: BlockchainBackend>(
     Ok((best_accum_difficulty, best_tip_hash))
 }
 
-// Discards the orphan block with the minimum height from the block orphan pool to maintain the configured orphan pool
-// storage limit.
-fn cleanup_orphans_single<T: BlockchainBackend>(
-    db: &mut RwLockWriteGuard<T>,
-    orphan_storage_capacity: usize,
-) -> Result<(), ChainStorageError>
-{
-    if db.get_orphan_count()? > orphan_storage_capacity {
-        trace!(
-            target: LOG_TARGET,
-            "Orphan block storage limit reached, performing simple cleanup.",
-        );
-        let mut min_height: u64 = u64::max_value();
-        let mut remove_hash: Option<BlockHash> = None;
-        db.for_each_orphan(|pair| {
-            let (_, block) = pair.unwrap();
-            if block.header.height < min_height {
-                min_height = block.header.height;
-                remove_hash = Some(block.hash());
-            }
-        })
-        .expect("Unexpected result for database query");
-        if let Some(hash) = remove_hash {
-            trace!(target: LOG_TARGET, "Discarding orphan block ({}).", hash.to_hex());
-            remove_orphan(db, hash)?;
-        }
-    }
-    Ok(())
-}
-
 // Perform a comprehensive search to remove all the minimum height orphans to maintain the configured orphan pool
-// storage limit.
-fn cleanup_orphans_comprehensive<T: BlockchainBackend>(
+// storage limit. If the node is configured to run in pruned mode then orphan blocks with heights lower than the horizon
+// block height will also be discarded.
+fn cleanup_orphans<T: BlockchainBackend>(
     db: &mut RwLockWriteGuard<T>,
     orphan_storage_capacity: usize,
 ) -> Result<(), ChainStorageError>
 {
     let orphan_count = db.get_orphan_count()?;
-    if orphan_count > orphan_storage_capacity {
+    let num_over_limit = orphan_count.saturating_sub(orphan_storage_capacity);
+    if num_over_limit > 0 {
         trace!(
             target: LOG_TARGET,
-            "Orphan block storage limit reached, performing comprehensive cleanup.",
+            "Orphan block storage limit reached, performing cleanup.",
         );
-        let remove_count = orphan_count - orphan_storage_capacity;
 
         let mut orphans = Vec::<(u64, BlockHash)>::with_capacity(orphan_count);
         db.for_each_orphan(|pair| {
-            let (_, block) = pair.unwrap();
-            orphans.push((block.header.height, block.hash()));
+            let (block_hash, block) = pair.unwrap();
+            orphans.push((block.header.height, block_hash));
         })
         .expect("Unexpected result for database query");
         orphans.sort_by(|a, b| a.0.cmp(&b.0));
 
+        let metadata = db.fetch_metadata()?;
+        let horizon_height = metadata.horizon_block(metadata.height_of_longest_chain.unwrap_or(0));
         let mut txn = DbTransaction::new();
-        for i in 0..remove_count {
-            trace!(
-                target: LOG_TARGET,
-                "Discarding orphan block ({}).",
-                orphans[i].1.to_hex()
-            );
-            txn.delete(DbKey::OrphanBlock(orphans[i].1.clone()));
+        for (removed_count, (height, block_hash)) in orphans.into_iter().enumerate() {
+            if height > horizon_height && removed_count >= num_over_limit {
+                break;
+            }
+            trace!(target: LOG_TARGET, "Discarding orphan block ({}).", block_hash.to_hex());
+            txn.delete(DbKey::OrphanBlock(block_hash.clone()));
         }
         commit(db, txn)?;
     }
@@ -1332,7 +1320,7 @@ where T: BlockchainBackend
         BlockchainDatabase {
             db: self.db.clone(),
             validators: self.validators.clone(),
-            config: self.config.clone(),
+            config: self.config,
         }
     }
 }

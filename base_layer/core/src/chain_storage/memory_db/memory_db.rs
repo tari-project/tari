@@ -202,6 +202,10 @@ impl<D> BlockchainBackend for MemoryDatabase<D>
 where D: Digest + Send + Sync
 {
     fn write(&mut self, tx: DbTransaction) -> Result<(), ChainStorageError> {
+        if tx.operations.is_empty() {
+            return Ok(());
+        }
+
         let mut db = self
             .db
             .write()
