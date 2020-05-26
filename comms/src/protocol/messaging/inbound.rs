@@ -21,13 +21,14 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    common::rate_limit::RateLimit,
     message::InboundMessage,
     peer_manager::Peer,
     protocol::messaging::{MessagingEvent, MessagingProtocol},
 };
 use futures::{channel::mpsc, AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
@@ -36,6 +37,8 @@ pub struct InboundMessaging {
     peer: Arc<Peer>,
     inbound_message_tx: mpsc::Sender<InboundMessage>,
     messaging_events_tx: broadcast::Sender<Arc<MessagingEvent>>,
+    rate_limit_capacity: usize,
+    rate_limit_restock_interval: Duration,
 }
 
 impl InboundMessaging {
@@ -43,18 +46,23 @@ impl InboundMessaging {
         peer: Arc<Peer>,
         inbound_message_tx: mpsc::Sender<InboundMessage>,
         messaging_events_tx: broadcast::Sender<Arc<MessagingEvent>>,
+        rate_limit_capacity: usize,
+        rate_limit_restock_interval: Duration,
     ) -> Self
     {
         Self {
             peer,
             inbound_message_tx,
             messaging_events_tx,
+            rate_limit_capacity,
+            rate_limit_restock_interval,
         }
     }
 
     pub async fn run<S>(mut self, socket: S)
     where S: AsyncRead + AsyncWrite + Unpin {
-        let mut framed_socket = MessagingProtocol::framed(socket);
+        let mut framed_socket =
+            MessagingProtocol::framed(socket).rate_limit(self.rate_limit_capacity, self.rate_limit_restock_interval);
         let peer = &self.peer;
         while let Some(result) = framed_socket.next().await {
             match result {
@@ -87,15 +95,7 @@ impl InboundMessaging {
                     }
 
                     debug!(target: LOG_TARGET, "Inbound handler sending event '{}'", event);
-                    if let Err(err) = self.messaging_events_tx.send(Arc::new(event)) {
-                        trace!(
-                            target: LOG_TARGET,
-                            "Messaging event '{}' not sent for peer '{}' because there are no subscribers. \
-                             MessagingEvent dropped",
-                            err.0,
-                            peer.node_id.short_str(),
-                        );
-                    }
+                    let _ = self.messaging_events_tx.send(Arc::new(event));
                 },
                 Err(err) => {
                     error!(
