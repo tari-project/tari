@@ -144,7 +144,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         ExitCodes::ConfigError
     })?;
 
-    trace!(target: LOG_TARGET, "Using configuration: {:?}", node_config);
+    debug!(target: LOG_TARGET, "Using configuration: {:?}", node_config);
 
     // Set up the Tokio runtime
     let mut rt = setup_runtime(&node_config).map_err(|err| {
@@ -248,7 +248,7 @@ fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
     let num_blocking_threads = config.blocking_threads;
     let num_mining_threads = config.num_mining_threads;
 
-    debug!(
+    info!(
         target: LOG_TARGET,
         "Configuring the node to run on {} core threads, {} blocking worker threads and {} mining threads.",
         num_core_threads,

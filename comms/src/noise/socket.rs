@@ -303,7 +303,7 @@ where TSocket: AsyncRead + Unpin
                                     };
                                 },
                                 Err(e) => {
-                                    error!(target: LOG_TARGET, "Decryption Error: {}", e);
+                                    warn!(target: LOG_TARGET, "Decryption Error: {}", e);
                                     self.read_state = ReadState::DecryptionError(e);
                                 },
                             }
@@ -411,7 +411,7 @@ where TSocket: AsyncWrite + Unpin
                                 };
                             },
                             Err(e) => {
-                                error!(target: LOG_TARGET, "Encryption Error: {}", e);
+                                warn!(target: LOG_TARGET, "Encryption Error: {}", e);
                                 let err = io::Error::new(io::ErrorKind::InvalidData, format!("EncryptionError: {}", e));
                                 self.write_state = WriteState::EncryptionError(e);
                                 return Poll::Ready(Err(err));

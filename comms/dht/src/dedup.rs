@@ -83,7 +83,7 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
                 .await
                 .map_err(PipelineError::from_debug)?
             {
-                info!(
+                trace!(
                     target: LOG_TARGET,
                     "Received duplicate message {} from peer '{}' (Trace: {}). Message discarded.",
                     message.tag,
@@ -93,9 +93,11 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
                 return Ok(());
             }
 
-            debug!(
+            trace!(
                 target: LOG_TARGET,
-                "Passing message {} onto next service (Trace: {})", message.tag, message.dht_header.message_tag
+                "Passing message {} onto next service (Trace: {})",
+                message.tag,
+                message.dht_header.message_tag
             );
             next_service.oneshot(message).await
         }

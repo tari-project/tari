@@ -48,7 +48,7 @@ where S: Stream<Item = Result<Arc<TransactionEvent>, RecvError>> + Unpin {
                     }
                 },
                 Err(e) => {
-                    log::error!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
+                    log::warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
                     break false;
                 },
             },

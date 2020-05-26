@@ -374,7 +374,7 @@ impl PeerConnectionActor {
     ///
     /// # Arguments
     ///
-    /// silent - true to supress the PeerDisconnected event, false to publish the event
+    /// silent - true to suppress the PeerDisconnected event, false to publish the event
     async fn disconnect(&mut self, silent: bool) {
         if let Err(err) = self.control.close().await {
             warn!(
@@ -385,7 +385,7 @@ impl PeerConnectionActor {
                 err
             );
         }
-        trace!(target: LOG_TARGET, "Connection closed");
+        debug!(target: LOG_TARGET, "Connection closed");
 
         self.shutdown = true;
         // Shut down the incoming substream task

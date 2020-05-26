@@ -70,7 +70,7 @@ impl ListeningData {
             match &*metadata_event {
                 ChainMetadataEvent::PeerChainMetadataReceived(ref peer_metadata_list) => {
                     if !peer_metadata_list.is_empty() {
-                        info!(target: LOG_TARGET, "Loading local blockchain metadata.");
+                        debug!(target: LOG_TARGET, "Loading local blockchain metadata.");
                         let local = match shared.db.get_metadata() {
                             Ok(m) => m,
                             Err(e) => {

@@ -233,10 +233,9 @@ where
     }
 
     fn push_hash(&mut self, hash: Hash) -> Result<usize, MerkleMountainRangeError> {
-        self.hashes.push(hash).map_err(|e| {
-            error!(target: LOG_TARGET, "{:?}", e);
-            MerkleMountainRangeError::BackendError(e.to_string())
-        })
+        self.hashes
+            .push(hash)
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))
     }
 
     pub fn clear(&mut self) -> Result<(), MerkleMountainRangeError> {

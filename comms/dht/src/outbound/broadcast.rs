@@ -194,7 +194,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             .generate_outbound_messages(request)
             .await
             .map_err(PipelineError::from_debug)?;
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Passing {} message(s) to next_service",
             messages.len()
@@ -205,7 +205,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             .unordered()
             .filter_map(|result| future::ready(result.err()))
             .for_each(|err| {
-                error!(target: LOG_TARGET, "Error when sending broadcast messages: {}", err);
+                warn!(target: LOG_TARGET, "Error when sending broadcast messages: {}", err);
                 future::ready(())
             })
             .await;
@@ -445,7 +445,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
     async fn add_to_dedup_cache(&mut self, body: &[u8]) -> Result<bool, DhtOutboundError> {
         let hash = Challenge::new().chain(&body).result().to_vec();
-        info!(
+        trace!(
             target: LOG_TARGET,
             "Dedup added message hash {} to cache for message",
             hash.to_hex(),
@@ -466,7 +466,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     {
         match encryption {
             OutboundEncryption::EncryptFor(public_key) => {
-                debug!(target: LOG_TARGET, "Encrypting message for {}", public_key);
+                trace!(target: LOG_TARGET, "Encrypting message for {}", public_key);
                 // Generate ephemeral public/private key pair and ECDH shared secret
                 let (e_sk, e_pk) = CommsPublicKey::random_keypair(&mut OsRng);
                 let shared_ephemeral_secret = crypt::generate_ecdh_secret(&e_sk, &**public_key);
@@ -484,7 +484,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 ))
             },
             OutboundEncryption::None => {
-                debug!(target: LOG_TARGET, "Encryption not requested for message");
+                trace!(target: LOG_TARGET, "Encryption not requested for message");
 
                 if include_origin {
                     let origin_mac = create_origin_mac(&self.node_identity, &body)?;

@@ -84,7 +84,7 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
                         source_peer,
                         dht_envelope.body,
                     );
-                    debug!(
+                    trace!(
                         target: LOG_TARGET,
                         "Deserialization succeeded. Passing message {} onto next service (Trace: {})",
                         tag,

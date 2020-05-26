@@ -370,10 +370,10 @@ async fn add_peers_to_comms(
 {
     for peer in peers {
         let peer_desc = peer.to_string();
-        info!(target: LOG_TARGET, "Adding seed peer [{}]", peer);
+        debug!(target: LOG_TARGET, "Adding seed peer [{}]", peer);
 
         if &peer.public_key == node_identity.public_key() {
-            info!(
+            debug!(
                 target: LOG_TARGET,
                 "Attempting to add yourself [{}] as a seed peer to comms layer, ignoring request", peer_desc
             );

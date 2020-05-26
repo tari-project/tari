@@ -86,7 +86,7 @@ impl InboundMessaging {
                         }
                     }
 
-                    trace!(target: LOG_TARGET, "Inbound handler sending event '{}'", event);
+                    debug!(target: LOG_TARGET, "Inbound handler sending event '{}'", event);
                     if let Err(err) = self.messaging_events_tx.send(Arc::new(event)) {
                         trace!(
                             target: LOG_TARGET,

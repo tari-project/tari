@@ -131,14 +131,14 @@ impl DhtConnectivity {
                 event = connectivity_events.select_next_some() => {
                     if let Ok(event) = event {
                         if let Err(err) = self.handle_connectivity_event(&event).await {
-                            error!(target: LOG_TARGET, "Error handling connectivity event: {:?}", err);
+                            debug!(target: LOG_TARGET, "Error handling connectivity event: {:?}", err);
                         }
                     }
                },
 
                _ = ticker.next() => {
                     if let Err(err) = self.refresh_random_pool_if_required().await {
-                        error!(target: LOG_TARGET, "Error refreshing random peer pool: {:?}", err);
+                        debug!(target: LOG_TARGET, "Error refreshing random peer pool: {:?}", err);
                     }
                },
 
@@ -208,7 +208,7 @@ impl DhtConnectivity {
                     .partition::<Vec<_>, _>(|n| random_peers.contains(n));
                 // Remove the peers that we want to keep from the `random_peers` to be added
                 random_peers.retain(|n| !keep.contains(&n));
-                info!(
+                debug!(
                     target: LOG_TARGET,
                     "Adding new peers to random peer pool (#new = {}, #keeping = {}, #removing = {})",
                     random_peers.len(),
@@ -256,7 +256,7 @@ impl DhtConnectivity {
         let current_dist = conn.peer_node_id().distance(self.node_identity.node_id());
         let neighbour_distance = self.get_neighbour_max_distance();
         if current_dist < neighbour_distance {
-            info!(
+            debug!(
                 target: LOG_TARGET,
                 "Peer '{}' connected that is closer than any current neighbour. Adding to neighbours.",
                 conn.peer_node_id().short_str()
@@ -266,13 +266,13 @@ impl DhtConnectivity {
                 // If we kicked a neighbour out of our neighbour pool but the random pool is not full.
                 // Add the neighbour to the random pool, otherwise remove it
                 if self.random_pool.len() < self.config.num_random_nodes {
-                    info!(
+                    debug!(
                         target: LOG_TARGET,
                         "Moving peer '{}' from neighbouring pool to random pool", node_id
                     );
                     self.random_pool.push(node_id);
                 } else {
-                    info!(target: LOG_TARGET, "Removing peer '{}' from neighbouring pool", node_id);
+                    debug!(target: LOG_TARGET, "Removing peer '{}' from neighbouring pool", node_id);
                     self.connectivity.remove_peer(node_id).await?;
                 }
             }
@@ -292,7 +292,7 @@ impl DhtConnectivity {
         }
 
         if self.random_pool.contains(current_peer) {
-            info!(
+            debug!(
                 target: LOG_TARGET,
                 "Peer '{}' in random pool is offline. Adding a new random peer if possible", current_peer
             );
@@ -319,7 +319,7 @@ impl DhtConnectivity {
         }
 
         if self.neighbours.contains(current_peer) {
-            info!(
+            debug!(
                 target: LOG_TARGET,
                 "Peer '{}' in neighbour pool is offline. Adding a new peer if possible", current_peer
             );

@@ -65,13 +65,15 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
         let target_network = self.target_network;
         async move {
             if message.dht_header.network == target_network && message.dht_header.is_valid() {
-                debug!(
+                trace!(
                     target: LOG_TARGET,
-                    "Passing message {} to next service (Trace: {})", message.tag, message.dht_header.message_tag
+                    "Passing message {} to next service (Trace: {})",
+                    message.tag,
+                    message.dht_header.message_tag
                 );
                 next_service.oneshot(message).await?;
             } else {
-                warn!(
+                debug!(
                     target: LOG_TARGET,
                     "Message is for another network (want = {:?} got = {:?}) or message header is invalid. Discarding \
                      the message (Trace: {}).",

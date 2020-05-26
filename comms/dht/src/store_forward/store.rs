@@ -197,9 +197,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .map_err(PipelineError::from_debug)?;
         }
 
-        debug!(
+        trace!(
             target: LOG_TARGET,
-            "Passing message {} to next service (Trace: {})", message.tag, message.dht_header.message_tag
+            "Passing message {} to next service (Trace: {})",
+            message.tag,
+            message.dht_header.message_tag
         );
         self.next_service.oneshot(message).await?;
 
@@ -280,7 +282,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             None => {
                 if !message.has_origin_mac() {
                     // TODO: #banheuristic - the source peer should not have propagated this message
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "Store task received an encrypted message with no origin MAC. This message {} is invalid and \
                          should not be stored or propagated. Dropping message. Sent by node '{}' (Trace: {})",

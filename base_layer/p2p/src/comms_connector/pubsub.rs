@@ -52,7 +52,7 @@ pub fn pubsub_connector(executor: Handle, buf_size: usize) -> (PubsubDomainConne
         // Log error and return unit
         .map(|result| {
             if let Err(err) = result {
-                error!(
+                warn!(
                     target: LOG_TARGET,
                     "Error forwarding pubsub messages to publisher: {}", err
                 );

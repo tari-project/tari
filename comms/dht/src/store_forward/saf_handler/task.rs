@@ -126,7 +126,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 } else {
                     // TODO: #banheuristics - requester should not have requested store and forward messages from this
                     //       node
-                    info!(
+                    debug!(
                         target: LOG_TARGET,
                         "Received store and forward request {} from peer '{}' however, this node is not a store and \
                          forward node. Request ignored. (Trace: {})",
@@ -207,7 +207,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             let messages = self.saf_requester.fetch_messages(query.clone()).await?;
 
             if messages.is_empty() {
-                info!(
+                debug!(
                     target: LOG_TARGET,
                     "No {:?} stored messages for peer '{}'",
                     resp_type,
@@ -223,7 +223,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 response_type: resp_type as i32,
             };
 
-            info!(
+            debug!(
                 target: LOG_TARGET,
                 "Responding to received message retrieval request with {} {:?} message(s)",
                 stored_messages.messages().len(),
@@ -281,7 +281,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .ok_or_else(|| StoreAndForwardError::InvalidEnvelopeBody)?;
         let source_peer = Arc::new(message.source_peer);
 
-        info!(
+        debug!(
             target: LOG_TARGET,
             "Received {} stored messages of type {} from peer",
             response.messages().len(),
@@ -396,7 +396,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
             if message_type.is_dht_message() {
                 if !message_type.is_dht_discovery() {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "Discarding {} message from peer '{}'",
                         message_type,
@@ -405,7 +405,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     return Err(StoreAndForwardError::InvalidDhtMessageType);
                 }
                 if dht_header.destination.is_unknown() {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "Discarding anonymous discovery message from peer '{}'",
                         source_peer.node_id.short_str()
