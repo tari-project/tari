@@ -97,7 +97,7 @@ mod test {
         let items = vec![1, 2, 3, 4, 5, 6];
         let stream = stream::iter(items.clone()).fuse();
 
-        let (mut out_tx, out_rx) = mpsc::channel(items.len());
+        let (mut out_tx, mut out_rx) = mpsc::channel(items.len());
 
         let executor = Handle::current();
         let shutdown = Shutdown::new();

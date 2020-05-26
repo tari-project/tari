@@ -34,7 +34,7 @@ use crate::{
     multiaddr::Multiaddr,
     multiplexing::Yamux,
     noise::NoiseConfig,
-    peer_manager::NodeIdentity,
+    peer_manager::{NodeIdentity, PeerFeatures},
     protocol::ProtocolId,
     runtime,
     transports::Transport,
@@ -327,14 +327,16 @@ where
         )
         .await?;
 
+        let features = PeerFeatures::from_bits_truncate(peer_identity.features);
         debug!(
             target: LOG_TARGET,
-            "Peer identity exchange succeeded on Inbound connection for peer '{}'",
-            peer_identity.node_id.to_hex()
+            "Peer identity exchange succeeded on Inbound connection for peer '{}' (Features = {:?})",
+            peer_identity.node_id.to_hex(),
+            features
         );
         trace!(target: LOG_TARGET, "{:?}", peer_identity);
 
-        let peer = common::validate_and_add_peer_from_peer_identity(
+        let peer_node_id = common::validate_and_add_peer_from_peer_identity(
             &peer_manager,
             known_peer,
             authenticated_public_key,
@@ -347,13 +349,14 @@ where
             target: LOG_TARGET,
             "[ThisNode={}] Peer '{}' added to peer list.",
             node_identity.node_id().short_str(),
-            peer.node_id.short_str()
+            peer_node_id.short_str()
         );
 
         peer_connection::create(
             muxer,
             peer_addr,
-            peer,
+            peer_node_id,
+            features,
             CONNECTION_DIRECTION,
             conn_man_notifier,
             our_supported_protocols,

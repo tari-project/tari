@@ -168,7 +168,7 @@ impl OutboundServiceMock {
                         BroadcastStrategy::DirectPublicKey(_) => {
                             queued = behaviour.direct == ResponseType::Queued;
                         },
-                        BroadcastStrategy::Neighbours(_) => {
+                        BroadcastStrategy::Broadcast(_) => {
                             queued = behaviour.broadcast == ResponseType::Queued;
                         },
                         _ => (),

@@ -56,13 +56,16 @@ where
     TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
-    let (comms, dht) = initialize_local_test_comms(node_identity, publisher, &database_path, discovery_request_timeout)
-        .await
-        .unwrap();
-
-    for p in peers {
-        comms.peer_manager().add_peer(p.to_peer()).await.unwrap();
-    }
+    let peers = peers.into_iter().map(|ni| ni.to_peer()).collect();
+    let (comms, dht) = initialize_local_test_comms(
+        node_identity,
+        publisher,
+        &database_path,
+        discovery_request_timeout,
+        peers,
+    )
+    .await
+    .unwrap();
 
     (comms, dht)
 }

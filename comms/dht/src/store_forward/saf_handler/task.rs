@@ -533,7 +533,6 @@ mod test {
             make_node_identity,
             make_peer_manager,
             service_spy,
-            DhtMockState,
         },
     };
     use chrono::Utc;
@@ -685,9 +684,7 @@ mod test {
         );
         message.dht_header.message_type = DhtMessageType::SafStoredMessages;
 
-        let (dht_requester, mut mock) = create_dht_actor_mock(1);
-        let mock_state = DhtMockState::new();
-        mock.set_shared_state(mock_state.clone());
+        let (dht_requester, mock) = create_dht_actor_mock(1);
         rt_handle.spawn(mock.run());
 
         let task = MessageHandlerTask::new(

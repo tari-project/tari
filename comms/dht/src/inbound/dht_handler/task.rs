@@ -222,17 +222,17 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(());
         }
 
-        debug!(
-            target: LOG_TARGET,
-            "Propagating join message to at most {} peer(s)", self.config.num_neighbouring_nodes
-        );
-
         // Only propagate a join that was not directly sent to this node (presumably in response to a join this node
         // sent)
         // TODO: Join should have a response message type
         if dht_header.destination != self.node_identity.public_key() &&
             dht_header.destination != self.node_identity.node_id()
         {
+            info!(
+                target: LOG_TARGET,
+                "Propagating Join message from peer '{}'",
+                origin_node_id.short_str()
+            );
             // Propagate message to closer peers
             self.outbound_service
                 .send_raw(

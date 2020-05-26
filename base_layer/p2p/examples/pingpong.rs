@@ -107,15 +107,6 @@ mod pingpong {
                     .required(true),
             )
             .arg(
-                Arg::with_name("log-config")
-                    .value_name("FILE")
-                    .long("log-config")
-                    .short("l")
-                    .help("The relative path of the log config file of the other node")
-                    .takes_value(true)
-                    .default_value("base_layer/p2p/examples/example-log-config.yml"),
-            )
-            .arg(
                 Arg::with_name("enable-tor")
                     .long("enable-tor")
                     .help("Set to enable tor"),
@@ -138,8 +129,6 @@ mod pingpong {
             .get_matches();
 
         let mut rt = Runtime::new().expect("Failed to initialize tokio runtime");
-
-        log4rs::init_file(matches.value_of("log-config").unwrap(), Default::default()).unwrap();
 
         let node_identity = Arc::new(load_file::<NodeIdentity>(matches.value_of("node-identity").unwrap()));
         let peer_identity = load_file::<NodeIdentity>(matches.value_of("peer-identity").unwrap());
@@ -187,7 +176,7 @@ mod pingpong {
             listener_liveness_max_sessions: 0,
         };
 
-        let (comms, dht) = rt.block_on(initialize_comms(comms_config, publisher)).unwrap();
+        let (comms, dht) = rt.block_on(initialize_comms(comms_config, publisher, vec![])).unwrap();
 
         println!("Comms listening on {}", comms.listening_address());
 
@@ -202,12 +191,10 @@ mod pingpong {
                     .add_initializer(LivenessInitializer::new(
                         LivenessConfig {
                             auto_ping_interval: None, // Some(Duration::from_secs(5)),
-                            enable_auto_join: true,
                             ..Default::default()
                         },
                         Arc::clone(&subscription_factory),
                         dht.dht_requester(),
-                        comms.connection_manager(),
                     ))
                     .finish(),
             )

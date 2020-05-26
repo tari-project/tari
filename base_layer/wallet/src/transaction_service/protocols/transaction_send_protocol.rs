@@ -434,7 +434,7 @@ where TBackend: TransactionBackend + Clone + 'static
         {
             Ok(result) => match result {
                 SendMessageResponse::Queued(send_states) => {
-                    if self.wait_on_dail(send_states).await {
+                    if self.wait_on_dial(send_states).await {
                         direct_send_result = true;
                     } else {
                         store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
@@ -450,7 +450,7 @@ where TBackend: TransactionBackend + Clone + 'static
                         Ok(send_msg_response) => match send_msg_response {
                             SendMessageResponse::Queued(send_states) => {
                                 debug!("Discovery of {} completed for TxID: {}", self.dest_pubkey, self.id);
-                                direct_send_result = self.wait_on_dail(send_states).await;
+                                direct_send_result = self.wait_on_dial(send_states).await;
                             },
                             _ => (),
                         },
@@ -505,7 +505,7 @@ where TBackend: TransactionBackend + Clone + 'static
     }
 
     /// This function contains the logic to wait on a dial and send of a queued message
-    async fn wait_on_dail(&self, send_states: MessageSendStates) -> bool {
+    async fn wait_on_dial(&self, send_states: MessageSendStates) -> bool {
         if send_states.len() == 1 {
             debug!(
                 target: LOG_TARGET,
@@ -640,7 +640,7 @@ where TBackend: TransactionBackend + Clone + 'static
         {
             Ok(result) => match result.resolve_ok().await {
                 Some(send_states) if send_states.len() == 1 => {
-                    if self.wait_on_dail(send_states).await {
+                    if self.wait_on_dial(send_states).await {
                         if let Err(e) = self.resources.db.mark_direct_send_success(self.id).await {
                             error!(target: LOG_TARGET, "Error updating database: {:?}", e);
                         }

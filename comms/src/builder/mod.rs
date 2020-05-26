@@ -50,6 +50,13 @@ use crate::{
         ConnectionManagerRequest,
         ConnectionManagerRequester,
     },
+    connectivity::{
+        ConnectivityConfig,
+        ConnectivityEvent,
+        ConnectivityManager,
+        ConnectivityRequest,
+        ConnectivityRequester,
+    },
     message::InboundMessage,
     multiaddr::Multiaddr,
     multiplexing::Substream,
@@ -78,6 +85,7 @@ pub struct CommsBuilder<TTransport> {
     dial_backoff: Option<BoxedBackoff>,
     hidden_service: Option<tor::HiddenService>,
     connection_manager_config: ConnectionManagerConfig,
+    connectivity_config: ConnectivityConfig,
     shutdown: Shutdown,
 }
 
@@ -105,6 +113,7 @@ impl Default for CommsBuilder<TcpWithTorTransport> {
             protocols: None,
             hidden_service: None,
             connection_manager_config: ConnectionManagerConfig::default(),
+            connectivity_config: ConnectivityConfig::default(),
             shutdown: Shutdown::new(),
         }
     }
@@ -169,6 +178,12 @@ where
         self
     }
 
+    /// Sets the minimum required connectivity as a percentage of peers added to the connectivity manager peer set.
+    pub fn with_min_connectivity(mut self, min_connectivity: f32) -> Self {
+        self.connectivity_config.min_connectivity = min_connectivity;
+        self
+    }
+
     /// Set the peer storage database to use.
     pub fn with_peer_storage(mut self, peer_storage: CommsDatabase) -> Self {
         self.peer_storage = Some(peer_storage);
@@ -191,6 +206,7 @@ where
             protocols: self.protocols,
             dial_backoff: self.dial_backoff,
             connection_manager_config: self.connection_manager_config,
+            connectivity_config: self.connectivity_config,
             shutdown: self.shutdown,
         }
     }
@@ -217,6 +233,7 @@ where
             protocols: self.protocols,
             dial_backoff: self.dial_backoff,
             connection_manager_config: self.connection_manager_config,
+            connectivity_config: self.connectivity_config,
             shutdown: self.shutdown,
         }
     }
@@ -301,6 +318,24 @@ where
         )
     }
 
+    fn make_connectivity_manager(
+        &mut self,
+        connection_manager_requester: ConnectionManagerRequester,
+        peer_manager: Arc<PeerManager>,
+        request_rx: mpsc::Receiver<ConnectivityRequest>,
+        event_tx: broadcast::Sender<Arc<ConnectivityEvent>>,
+    ) -> ConnectivityManager
+    {
+        ConnectivityManager {
+            config: self.connectivity_config.clone(),
+            request_rx,
+            event_tx,
+            connection_manager: connection_manager_requester,
+            peer_manager,
+            shutdown_signal: self.shutdown.to_signal(),
+        }
+    }
+
     /// Build the required comms services. Services will not be started.
     pub fn build(mut self) -> Result<BuiltCommsNode<TTransport>, CommsBuilderError> {
         debug!(target: LOG_TARGET, "Building comms");
@@ -330,6 +365,18 @@ where
             .map(move |protocols| protocols.add(&[messaging::MESSAGING_PROTOCOL.clone()], messaging_proto_tx))
             .expect("cannot fail");
 
+        //---------------------------------- ConnectivityManager --------------------------------------------//
+
+        let (connectivity_tx, connectivity_rx) = mpsc::channel(consts::CONNECTIVITY_MANAGER_REQUEST_BUFFER_SIZE);
+        let (event_tx, _) = broadcast::channel(consts::CONNECTIVITY_MANAGER_EVENTS_BUFFER_SIZE);
+        let connectivity_requester = ConnectivityRequester::new(connectivity_tx, event_tx.clone());
+        let connectivity_manager = self.make_connectivity_manager(
+            connection_manager_requester.clone(),
+            peer_manager.clone(),
+            connectivity_rx,
+            event_tx,
+        );
+
         //---------------------------------- ConnectionManager --------------------------------------------//
         let connection_manager = self.make_connection_manager(
             node_identity.clone(),
@@ -343,6 +390,8 @@ where
             connection_manager,
             connection_manager_requester,
             connection_manager_event_tx,
+            connectivity_manager,
+            connectivity_requester,
             messaging_request_tx,
             messaging_pipeline: None,
             messaging,

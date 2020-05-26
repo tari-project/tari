@@ -23,5 +23,13 @@
 mod connection_manager;
 pub use connection_manager::{create_connection_manager_mock, ConnectionManagerMock, ConnectionManagerMockState};
 
+mod connectivity_manager;
+pub use connectivity_manager::{create_connectivity_mock, ConnectivityManagerMock, ConnectivityManagerMockState};
+
 mod peer_connection;
-pub use peer_connection::{create_peer_connection_mock_pair, PeerConnectionMock, PeerConnectionMockState};
+pub use peer_connection::{
+    create_dummy_peer_connection,
+    create_peer_connection_mock_pair,
+    PeerConnectionMock,
+    PeerConnectionMockState,
+};

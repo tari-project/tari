@@ -46,20 +46,11 @@ use futures::{
     StreamExt,
 };
 use log::*;
-use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{fmt, fmt::Display, sync::Arc};
 use tari_comms::{
-    connection_manager::{ConnectionManagerError, ConnectionManagerRequester},
-    peer_manager::{
-        NodeId,
-        NodeIdentity,
-        Peer,
-        PeerFeatures,
-        PeerManager,
-        PeerManagerError,
-        PeerQuery,
-        PeerQuerySortBy,
-    },
+    connection_manager::ConnectionManagerError,
+    connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
+    peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, PeerQuery, PeerQuerySortBy},
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::message_format::{MessageFormat, MessageFormatError};
@@ -87,6 +78,9 @@ pub enum DhtActorError {
     #[error(no_from)]
     FailedToSerializeValue(MessageFormatError),
     ConnectionManagerError(ConnectionManagerError),
+    ConnectivityError(ConnectivityError),
+    /// Connectivity event stream closed
+    ConnectivityEventStreamClosed,
 }
 
 impl From<SendError> for DhtActorError {
@@ -109,7 +103,7 @@ pub enum DhtRequest {
     /// which is true if the signature already exists in the cache, otherwise false
     MsgHashCacheInsert(Vec<u8>, oneshot::Sender<bool>),
     /// Fetch selected peers according to the broadcast strategy
-    SelectPeers(BroadcastStrategy, oneshot::Sender<Vec<Arc<Peer>>>),
+    SelectPeers(BroadcastStrategy, oneshot::Sender<Vec<NodeId>>),
     GetMetadata(DhtMetadataKey, oneshot::Sender<Result<Option<Vec<u8>>, DhtActorError>>),
     SetMetadata(DhtMetadataKey, Vec<u8>),
 }
@@ -141,11 +135,7 @@ impl DhtRequester {
         self.sender.send(DhtRequest::SendJoin).await.map_err(Into::into)
     }
 
-    pub async fn select_peers(
-        &mut self,
-        broadcast_strategy: BroadcastStrategy,
-    ) -> Result<Vec<Arc<Peer>>, DhtActorError>
-    {
+    pub async fn select_peers(&mut self, broadcast_strategy: BroadcastStrategy) -> Result<Vec<NodeId>, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
             .send(DhtRequest::SelectPeers(broadcast_strategy, reply_tx))
@@ -180,33 +170,25 @@ impl DhtRequester {
     }
 }
 
-pub struct DhtActor<'a> {
+pub struct DhtActor {
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
     database: DhtDatabase,
     outbound_requester: OutboundMessageRequester,
-    connection_manager: ConnectionManagerRequester,
+    connectivity: ConnectivityRequester,
     config: DhtConfig,
     shutdown_signal: Option<ShutdownSignal>,
     request_rx: Fuse<mpsc::Receiver<DhtRequest>>,
     msg_hash_cache: TtlCache<Vec<u8>, ()>,
-    pending_jobs: FuturesUnordered<BoxFuture<'a, Result<(), DhtActorError>>>,
 }
 
-impl DhtActor<'static> {
-    pub async fn spawn(self) -> Result<(), DhtActorError> {
-        task::spawn(Self::run(self));
-        Ok(())
-    }
-}
-
-impl<'a> DhtActor<'a> {
+impl DhtActor {
     pub fn new(
         config: DhtConfig,
         conn: DbConnection,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
-        connection_manager: ConnectionManagerRequester,
+        connectivity: ConnectivityRequester,
         outbound_requester: OutboundMessageRequester,
         request_rx: mpsc::Receiver<DhtRequest>,
         shutdown_signal: ShutdownSignal,
@@ -218,15 +200,22 @@ impl<'a> DhtActor<'a> {
             database: DhtDatabase::new(conn),
             outbound_requester,
             peer_manager,
-            connection_manager,
+            connectivity,
             node_identity,
             shutdown_signal: Some(shutdown_signal),
             request_rx: request_rx.fuse(),
-            pending_jobs: FuturesUnordered::new(),
         }
     }
 
-    async fn run(mut self) {
+    pub fn spawn(self) {
+        task::spawn(async move {
+            if let Err(err) = self.run().await {
+                error!(target: LOG_TARGET, "DhtActor failed to start with error: {:?}", err);
+            }
+        });
+    }
+
+    async fn run(mut self) -> Result<(), DhtActorError> {
         let offline_ts = self
             .database
             .get_metadata_value::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp)
@@ -241,6 +230,8 @@ impl<'a> DhtActor<'a> {
                 .unwrap_or_else(String::new)
         );
 
+        let mut pending_jobs = FuturesUnordered::new();
+
         let mut shutdown_signal = self
             .shutdown_signal
             .take()
@@ -250,33 +241,27 @@ impl<'a> DhtActor<'a> {
             futures::select! {
                 request = self.request_rx.select_next_some() => {
                     debug!(target: LOG_TARGET, "DhtActor received message: {}", request);
-                    let handler = self.request_handler(request);
-                    self.pending_jobs.push(handler);
+                    pending_jobs.push(self.request_handler(request));
                 },
 
-                result = self.pending_jobs.select_next_some() => {
-                    match result {
-                        Ok(_) => {
-                            trace!(target: LOG_TARGET, "DHT Actor request succeeded");
-                        },
-                        Err(err) => {
-                            error!(target: LOG_TARGET, "Error when handling DHT request message. {}", err);
-                        },
+                result = pending_jobs.select_next_some() => {
+                    if let Err(err) = result {
+                        error!(target: LOG_TARGET, "Error when handling DHT request message. {}", err);
                     }
                 },
 
                 _ = shutdown_signal => {
                     info!(target: LOG_TARGET, "DhtActor is shutting down because it received a shutdown signal.");
-                    // Called with reference to database otherwise DhtActor is not Send
-                    Self::mark_shutdown_time(&self.database).await;
-                    break;
+                    self.mark_shutdown_time().await;
+                    break Ok(());
                 },
             }
         }
     }
 
-    async fn mark_shutdown_time(db: &DhtDatabase) {
-        if let Err(err) = db
+    async fn mark_shutdown_time(&self) {
+        if let Err(err) = self
+            .database
             .set_metadata_value(DhtMetadataKey::OfflineTimestamp, Utc::now())
             .await
         {
@@ -284,17 +269,14 @@ impl<'a> DhtActor<'a> {
         }
     }
 
-    fn request_handler(&mut self, request: DhtRequest) -> BoxFuture<'a, Result<(), DhtActorError>> {
+    fn request_handler(&mut self, request: DhtRequest) -> BoxFuture<'static, Result<(), DhtActorError>> {
         use DhtRequest::*;
         match request {
             SendJoin => {
                 let node_identity = Arc::clone(&self.node_identity);
                 let outbound_requester = self.outbound_requester.clone();
-                Box::pin(Self::send_join(
-                    node_identity,
-                    outbound_requester,
-                    self.config.num_neighbouring_nodes,
-                ))
+                let config = self.config.clone();
+                Box::pin(Self::broadcast_join(config, node_identity, outbound_requester))
             },
             MsgHashCacheInsert(hash, reply_tx) => {
                 // No locks needed here. Downside is this isn't really async, however this should be
@@ -309,17 +291,11 @@ impl<'a> DhtActor<'a> {
             SelectPeers(broadcast_strategy, reply_tx) => {
                 let peer_manager = Arc::clone(&self.peer_manager);
                 let node_identity = Arc::clone(&self.node_identity);
-                let connection_manager = self.connection_manager.clone();
+                let connectivity = self.connectivity.clone();
                 let config = self.config.clone();
                 Box::pin(async move {
-                    match Self::select_peers(
-                        config,
-                        node_identity,
-                        peer_manager,
-                        connection_manager,
-                        broadcast_strategy,
-                    )
-                    .await
+                    match Self::select_peers(config, node_identity, peer_manager, connectivity, broadcast_strategy)
+                        .await
                     {
                         Ok(peers) => reply_tx.send(peers).map_err(|_| DhtActorError::ReplyCanceled),
                         Err(err) => {
@@ -353,23 +329,25 @@ impl<'a> DhtActor<'a> {
         }
     }
 
-    async fn send_join(
+    async fn broadcast_join(
+        config: DhtConfig,
         node_identity: Arc<NodeIdentity>,
         mut outbound_requester: OutboundMessageRequester,
-        num_neighbouring_nodes: usize,
     ) -> Result<(), DhtActorError>
     {
         let message = JoinMessage::from(&node_identity);
 
-        debug!(
-            target: LOG_TARGET,
-            "Sending Join message to (at most) {} closest peers", num_neighbouring_nodes
-        );
+        debug!(target: LOG_TARGET, "Sending Join message to closest peers");
 
         outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .broadcast(Vec::new())
+                    .closest(
+                        node_identity.node_id().clone(),
+                        config.num_neighbouring_nodes,
+                        vec![],
+                        PeerFeatures::MESSAGE_PROPAGATION,
+                    )
                     .with_dht_message_type(DhtMessageType::Join)
                     .force_origin()
                     .finish(),
@@ -385,9 +363,9 @@ impl<'a> DhtActor<'a> {
         config: DhtConfig,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
-        mut connection_manager: ConnectionManagerRequester,
+        mut connectivity: ConnectivityRequester,
         broadcast_strategy: BroadcastStrategy,
-    ) -> Result<Vec<Arc<Peer>>, DhtActorError>
+    ) -> Result<Vec<NodeId>, DhtActorError>
     {
         use BroadcastStrategy::*;
         match broadcast_strategy {
@@ -396,7 +374,7 @@ impl<'a> DhtActor<'a> {
                 peer_manager
                     .direct_identity_node_id(&node_id)
                     .await
-                    .map(|peer| peer.map(|p| vec![Arc::new(p)]).unwrap_or_default())
+                    .map(|peer| peer.map(|p| vec![p.node_id]).unwrap_or_default())
                     .map_err(Into::into)
             },
             DirectPublicKey(public_key) => {
@@ -404,18 +382,17 @@ impl<'a> DhtActor<'a> {
                 peer_manager
                     .direct_identity_public_key(&public_key)
                     .await
-                    .map(|peer| peer.map(|p| vec![Arc::new(p)]).unwrap_or_default())
+                    .map(|peer| peer.map(|p| vec![p.node_id]).unwrap_or_default())
                     .map_err(Into::into)
             },
             Flood => {
                 // Send to all known peers
                 // TODO: This should never be needed, remove
                 let peers = peer_manager.flood_peers().await?;
-                Ok(peers.into_iter().map(Arc::new).collect())
+                Ok(peers.into_iter().map(|p| p.node_id).collect())
             },
             Closest(closest_request) => {
                 Self::select_closest_peers_for_propagation(
-                    &config,
                     &peer_manager,
                     &closest_request.node_id,
                     closest_request.n,
@@ -430,28 +407,29 @@ impl<'a> DhtActor<'a> {
                     .random_peers(n, &excluded)
                     .await?
                     .into_iter()
-                    .map(Arc::new)
+                    .map(|p| p.node_id)
                     .collect())
             },
-            Neighbours(exclude) => {
-                let active_connections = connection_manager.get_active_connections().await?;
-                let (connected_nodes, connected_clients) = active_connections
-                    .into_iter()
-                    .map(|conn| conn.peer())
-                    .partition::<Vec<_>, _>(|peer| peer.features.contains(PeerFeatures::COMMUNICATION_NODE));
-                let mut candidates = Self::get_propagate_candidates(
-                    &config,
-                    &peer_manager,
-                    &connected_clients,
-                    &connected_nodes,
-                    &node_identity,
-                    node_identity.node_id().clone(),
-                    &exclude,
-                )
-                .await?;
+            Broadcast(exclude) => {
+                let connections = connectivity
+                    .select_connections(ConnectivitySelection::random_nodes(
+                        config.num_neighbouring_nodes,
+                        exclude.clone(),
+                    ))
+                    .await?;
 
-                candidates.truncate(config.num_neighbouring_nodes);
+                let candidates = connections
+                    .iter()
+                    .map(|c| c.peer_node_id())
+                    .cloned()
+                    .collect::<Vec<_>>();
 
+                if candidates.is_empty() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Broadcast requested but there are no node peer connections available"
+                    );
+                }
                 info!(
                     target: LOG_TARGET,
                     "{} candidate(s) selected for broadcast",
@@ -461,155 +439,88 @@ impl<'a> DhtActor<'a> {
                 Ok(candidates)
             },
             Propagate(destination, exclude) => {
-                let active_connections = connection_manager.get_active_connections().await?;
-                let (connected_nodes, connected_clients) = active_connections
-                    .into_iter()
-                    .map(|conn| conn.peer())
-                    .partition::<Vec<_>, _>(|peer| peer.features.contains(PeerFeatures::COMMUNICATION_NODE));
+                let dest_node_id = destination
+                    .node_id()
+                    .map(Clone::clone)
+                    .or_else(|| destination.public_key().and_then(|pk| NodeId::from_key(pk).ok()));
 
-                debug!(
+                let connections = match dest_node_id {
+                    Some(node_id) => {
+                        let dest_connection = connectivity.get_connection(node_id.clone()).await?;
+                        // If the peer was added to the exclude list, we don't want to send directly to the peer.
+                        // This handles an edge case for the the join message which has a destination to the peer that
+                        // sent it.
+                        let dest_connection = dest_connection.filter(|c| !exclude.contains(c.peer_node_id()));
+                        match dest_connection {
+                            Some(conn) => {
+                                // We're connected to the destination, so send the message directly
+                                vec![conn]
+                            },
+                            None => {
+                                // Select connections closer to the destination
+                                let mut connections = connectivity
+                                    .select_connections(ConnectivitySelection::closest_to(
+                                        node_identity.node_id().clone(),
+                                        config.num_neighbouring_nodes,
+                                        exclude.clone(),
+                                    ))
+                                    .await?;
+                                // Exclude candidates that are further away from the destination than this node
+                                // unless this node has not selected a big enough sample i.e. this node is not well
+                                // connected
+                                if connections.len() >= config.propagation_factor {
+                                    let dist_from_dest = node_identity.node_id().distance(&node_id);
+                                    let before_len = connections.len();
+                                    connections = connections
+                                        .into_iter()
+                                        .filter(|conn| conn.peer_node_id().distance(&node_id) < dist_from_dest)
+                                        .collect();
+
+                                    debug!(
+                                        target: LOG_TARGET,
+                                        "Filtered out {} node(s) that are further away than this node.",
+                                        before_len - connections.len()
+                                    );
+                                }
+
+                                connections
+                            },
+                        }
+                    },
+                    None => {
+                        connectivity
+                            .select_connections(ConnectivitySelection::random_nodes(
+                                config.num_neighbouring_nodes,
+                                exclude.clone(),
+                            ))
+                            .await?
+                    },
+                };
+
+                if connections.is_empty() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Propagation requested but there are no node peer connections available"
+                    );
+                }
+
+                let candidates = connections
+                    .iter()
+                    .take(config.propagation_factor)
+                    .map(|c| c.peer_node_id())
+                    .cloned()
+                    .collect::<Vec<_>>();
+
+                info!(
                     target: LOG_TARGET,
-                    "{} connected node(s), {} connected client(s)",
-                    connected_nodes.len(),
-                    connected_clients.len()
+                    "{} candidate(s) selected for propagation to {}",
+                    candidates.len(),
+                    destination
                 );
 
-                if destination.is_unknown() {
-                    // If the message has an unknown destination, propagate to random peers
-                    if connected_nodes.len() >= config.num_neighbouring_nodes {
-                        let candidates = connected_nodes
-                            .choose_multiple(&mut OsRng, config.num_propagation_nodes())
-                            .cloned()
-                            .collect();
-                        debug!(
-                            target: LOG_TARGET,
-                            "Selected {} candidates for propagation to undefined destination from a pool of {} active \
-                             connections",
-                            config.num_neighbouring_nodes,
-                            connected_nodes.len()
-                        );
-                        Ok(candidates)
-                    } else {
-                        let random_peers = peer_manager
-                            .random_peers(config.num_propagation_nodes(), &exclude)
-                            .await?
-                            .into_iter()
-                            .map(Arc::new)
-                            .collect::<Vec<_>>();
-                        debug!(
-                            target: LOG_TARGET,
-                            "Selected {} random candidates for propagation to undefined destination",
-                            random_peers.len(),
-                        );
-                        Ok(random_peers)
-                    }
-                } else {
-                    let dest_node_id = destination
-                        .node_id()
-                        .map(Clone::clone)
-                        .or_else(|| destination.public_key().and_then(|pk| NodeId::from_key(pk).ok()));
-
-                    let mut candidates = Self::get_propagate_candidates(
-                        &config,
-                        &peer_manager,
-                        &connected_clients,
-                        &connected_nodes,
-                        &node_identity,
-                        dest_node_id.clone().unwrap_or_else(|| node_identity.node_id().clone()),
-                        &exclude,
-                    )
-                    .await?;
-
-                    // Exclude candidates that are further away from the destination than this node
-                    // unless this node has not selected a big enough sample i.e. this node is not well connected
-                    if candidates.len() >= config.num_neighbouring_nodes {
-                        if let Some(node_id) = dest_node_id {
-                            let dist_from_dest = node_identity.node_id().distance(&node_id);
-                            let before_len = candidates.len();
-                            candidates = candidates
-                                .into_iter()
-                                .filter(|p| p.node_id.distance(&node_id) < dist_from_dest)
-                                .collect();
-
-                            debug!(
-                                target: LOG_TARGET,
-                                "Filtered out {} node(s) that are further away than this node.",
-                                before_len - candidates.len()
-                            );
-                        }
-                    }
-
-                    candidates.truncate(config.num_propagation_nodes());
-                    info!(
-                        target: LOG_TARGET,
-                        "{} candidate(s) selected for propagation to {}",
-                        candidates.len(),
-                        destination
-                    );
-
-                    Ok(candidates)
-                }
+                Ok(candidates)
             },
         }
-    }
-
-    async fn get_propagate_candidates(
-        config: &DhtConfig,
-        peer_manager: &PeerManager,
-        connected_clients: &[Arc<Peer>],
-        connected_nodes: &[Arc<Peer>],
-        node_identity: &NodeIdentity,
-        dest_node_id: NodeId,
-        exclude: &[NodeId],
-    ) -> Result<Vec<Arc<Peer>>, DhtActorError>
-    {
-        // If a connected wallet matches the destination, just send it to them
-        if let Some(client) = connected_clients.iter().find(|peer| peer.node_id == dest_node_id) {
-            // If we're excluding the client for this propagation (as is the case for join messages)
-            // do a normal propagation
-            if !exclude.contains(&client.node_id) {
-                debug!(
-                    target: LOG_TARGET,
-                    "Message destination is for the connected client '{}'. Sending to connected client only.",
-                    client.node_id
-                );
-                return Ok(vec![client.clone()]);
-            }
-        }
-
-        let mut candidates = Self::select_closest_peers_for_propagation(
-            config,
-            peer_manager,
-            // To prevent new connections being established, select neighbours
-            node_identity.node_id(),
-            config.num_neighbouring_nodes,
-            exclude,
-            PeerFeatures::MESSAGE_PROPAGATION,
-        )
-        .await?;
-
-        // Add any other communication nodes that are connected.
-        let connected_nodes = connected_nodes
-            .iter()
-            .filter(|peer| !candidates.contains(&peer))
-            .cloned()
-            .collect::<Vec<_>>();
-        candidates.extend(connected_nodes);
-
-        // Filter out excluded candidates that might have been included from active connections
-        let mut candidates = candidates
-            .into_iter()
-            .filter(|peer| !exclude.contains(&peer.node_id))
-            .collect::<Vec<_>>();
-
-        // Sort by closeness to destination
-        candidates.sort_by(|a, b| {
-            let node_a_dist = a.node_id.distance(&dest_node_id);
-            let node_b_dist = b.node_id.distance(&dest_node_id);
-            node_a_dist.cmp(&node_b_dist)
-        });
-
-        Ok(candidates)
     }
 
     /// Selects at least `n` MESSAGE_PROPAGATION peers (assuming that many are known) that are closest to `node_id` as
@@ -620,15 +531,13 @@ impl<'a> DhtActor<'a> {
     /// This ensures that peers are selected which are able to propagate the message further while still allowing
     /// clients to propagate to non-propagation nodes if required (e.g. Discovery messages)
     async fn select_closest_peers_for_propagation(
-        config: &DhtConfig,
         peer_manager: &PeerManager,
         node_id: &NodeId,
         n: usize,
         excluded_peers: &[NodeId],
         features: PeerFeatures,
-    ) -> Result<Vec<Arc<Peer>>, DhtActorError>
+    ) -> Result<Vec<NodeId>, DhtActorError>
     {
-        // TODO: This query is expensive. We can probably cache a list of neighbouring peers which are online
         // Fetch to all n nearest neighbour Communication Nodes
         // which are eligible for connection.
         // Currently that means:
@@ -659,17 +568,7 @@ impl<'a> DhtActor<'a> {
                     return false;
                 }
 
-                let is_connect_eligible = {
-                    !peer.is_offline() &&
-                        // Check this peer was recently connectable
-                        (peer.connection_stats.failed_attempts() <= config.broadcast_cooldown_max_attempts ||
-                        peer.connection_stats
-                            .time_since_last_failure()
-                            .map(|failed_since| failed_since >= config.broadcast_cooldown_period)
-                            .unwrap_or(true))
-                };
-
-                if !is_connect_eligible {
+                if peer.is_offline() {
                     trace!(
                         target: LOG_TARGET,
                         "[{}] suffered too many connection attempt failures or is offline",
@@ -709,7 +608,7 @@ impl<'a> DhtActor<'a> {
             );
         }
 
-        Ok(peers.into_iter().map(Arc::new).collect())
+        Ok(peers.into_iter().map(|p| p.node_id).collect())
     }
 }
 
@@ -723,7 +622,7 @@ mod test {
     use chrono::{DateTime, Utc};
     use tari_comms::{
         peer_manager::PeerFeatures,
-        test_utils::mocks::{create_connection_manager_mock, create_peer_connection_mock_pair},
+        test_utils::mocks::{create_connectivity_mock, create_peer_connection_mock_pair},
     };
     use tari_shutdown::Shutdown;
     use tari_test_utils::random;
@@ -739,7 +638,7 @@ mod test {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
         let (out_tx, mut out_rx) = mpsc::channel(1);
-        let (connection_manager, mock) = create_connection_manager_mock();
+        let (connectivity_manager, mock) = create_connectivity_mock();
         mock.spawn();
         let (actor_tx, actor_rx) = mpsc::channel(1);
         let mut requester = DhtRequester::new(actor_tx);
@@ -750,13 +649,13 @@ mod test {
             db_connection().await,
             node_identity,
             peer_manager,
-            connection_manager,
+            connectivity_manager,
             outbound_requester,
             actor_rx,
             shutdown.to_signal(),
         );
 
-        actor.spawn().await.unwrap();
+        actor.spawn();
 
         requester.send_join().await.unwrap();
         let (params, _) = unwrap_oms_send_msg!(out_rx.next().await.unwrap());
@@ -767,7 +666,7 @@ mod test {
     async fn insert_message_signature() {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
-        let (connection_manager, mock) = create_connection_manager_mock();
+        let (connectivity_manager, mock) = create_connectivity_mock();
         mock.spawn();
         let (out_tx, _) = mpsc::channel(1);
         let (actor_tx, actor_rx) = mpsc::channel(1);
@@ -779,13 +678,13 @@ mod test {
             db_connection().await,
             node_identity,
             peer_manager,
-            connection_manager,
+            connectivity_manager,
             outbound_requester,
             actor_rx,
             shutdown.to_signal(),
         );
 
-        actor.spawn().await.unwrap();
+        actor.spawn();
 
         let signature = vec![1u8, 2, 3];
         let is_dup = requester.insert_message_hash(signature.clone()).await.unwrap();
@@ -804,13 +703,13 @@ mod test {
         let client_node_identity = make_client_identity();
         peer_manager.add_peer(client_node_identity.to_peer()).await.unwrap();
 
-        let (connection_manager, mock) = create_connection_manager_mock();
-        let connection_manager_mock_state = mock.get_shared_state();
+        let (connectivity_manager, mock) = create_connectivity_mock();
+        let connectivity_manager_mock_state = mock.get_shared_state();
         mock.spawn();
 
-        let (conn_in, _, _conn_out, _) =
+        let (conn_in, _, conn_out, _) =
             create_peer_connection_mock_pair(1, client_node_identity.to_peer(), node_identity.to_peer()).await;
-        connection_manager_mock_state
+        connectivity_manager_mock_state
             .add_active_connection(node_identity.node_id().clone(), conn_in)
             .await;
 
@@ -826,19 +725,28 @@ mod test {
             db_connection().await,
             Arc::clone(&node_identity),
             peer_manager,
-            connection_manager,
+            connectivity_manager,
             outbound_requester,
             actor_rx,
             shutdown.to_signal(),
         );
 
-        actor.spawn().await.unwrap();
+        actor.spawn();
 
         let peers = requester
-            .select_peers(BroadcastStrategy::Neighbours(Vec::new()))
+            .select_peers(BroadcastStrategy::Broadcast(Vec::new()))
             .await
             .unwrap();
 
+        assert_eq!(peers.len(), 0);
+
+        connectivity_manager_mock_state
+            .set_selected_connections(vec![conn_out.clone()])
+            .await;
+        let peers = requester
+            .select_peers(BroadcastStrategy::Broadcast(Vec::new()))
+            .await
+            .unwrap();
         assert_eq!(peers.len(), 1);
 
         let send_request = Box::new(BroadcastClosestRequest {
@@ -869,7 +777,7 @@ mod test {
         let peer_manager = make_peer_manager();
         let (out_tx, _out_rx) = mpsc::channel(1);
         let (actor_tx, actor_rx) = mpsc::channel(1);
-        let (connection_manager, mock) = create_connection_manager_mock();
+        let (connectivity_manager, mock) = create_connectivity_mock();
         mock.spawn();
         let mut requester = DhtRequester::new(actor_tx);
         let outbound_requester = OutboundMessageRequester::new(out_tx);
@@ -879,13 +787,13 @@ mod test {
             db_connection().await,
             node_identity,
             peer_manager,
-            connection_manager,
+            connectivity_manager,
             outbound_requester,
             actor_rx,
             shutdown.to_signal(),
         );
 
-        actor.spawn().await.unwrap();
+        actor.spawn();
 
         assert!(requester
             .get_metadata::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp)

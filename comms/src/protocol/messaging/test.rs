@@ -262,7 +262,7 @@ async fn send_message_substream_bulk_failure() {
 #[runtime::test_basic]
 async fn many_concurrent_send_message_requests() {
     const NUM_MSGS: usize = 100;
-    let (_, _, conn_man_mock, _, mut request_tx, _, events_rx, _shutdown) = spawn_messaging_protocol().await;
+    let (_, _, conn_man_mock, _, mut request_tx, _, mut events_rx, _shutdown) = spawn_messaging_protocol().await;
 
     let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -292,7 +292,7 @@ async fn many_concurrent_send_message_requests() {
 
     // Check that the node got the messages
     let stream = peer_conn_mock2.next_incoming_substream().await.unwrap();
-    let framed = MessagingProtocol::framed(stream);
+    let mut framed = MessagingProtocol::framed(stream);
     let messages = collect_stream!(framed, take = NUM_MSGS, timeout = Duration::from_secs(10));
     assert_eq!(messages.len(), NUM_MSGS);
 
@@ -319,7 +319,7 @@ async fn many_concurrent_send_message_requests() {
 #[runtime::test_basic]
 async fn many_concurrent_send_message_requests_that_fail() {
     const NUM_MSGS: usize = 100;
-    let (_, _, _, _, mut request_tx, _, events_rx, _shutdown) = spawn_messaging_protocol().await;
+    let (_, _, _, _, mut request_tx, _, mut events_rx, _shutdown) = spawn_messaging_protocol().await;
 
     let node_id2 = node_id::random();
 

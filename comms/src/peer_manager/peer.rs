@@ -160,7 +160,6 @@ impl Peer {
 
     pub fn update(
         &mut self,
-        node_id: Option<NodeId>,
         net_addresses: Option<Vec<Multiaddr>>,
         flags: Option<PeerFlags>,
         #[allow(clippy::option_option)] banned_until: Option<Option<Duration>>,
@@ -170,9 +169,6 @@ impl Peer {
         supported_protocols: Option<Vec<ProtocolId>>,
     )
     {
-        if let Some(new_node_id) = node_id {
-            self.node_id = new_node_id
-        }
         if let Some(new_net_addresses) = net_addresses {
             self.addresses.update_net_addresses(new_net_addresses)
         }
@@ -319,20 +315,17 @@ mod test {
         let net_address1 = "/ip4/124.0.0.124/tcp/7000".parse::<Multiaddr>().unwrap();
         let mut peer: Peer = Peer::new(
             public_key1.clone(),
-            node_id,
+            node_id.clone(),
             MultiaddressesWithStats::from(net_address1.clone()),
             PeerFlags::default(),
             PeerFeatures::empty(),
             &[],
         );
 
-        let (_sk, public_key2) = RistrettoPublicKey::random_keypair(&mut rng);
-        let node_id2 = NodeId::from_key(&public_key2).unwrap();
         let net_address2 = "/ip4/125.0.0.125/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/126.0.0.126/tcp/9000".parse::<Multiaddr>().unwrap();
 
         peer.update(
-            Some(node_id2.clone()),
             Some(vec![net_address2.clone(), net_address3.clone()]),
             None,
             Some(Some(Duration::from_secs(1000))),
@@ -343,7 +336,7 @@ mod test {
         );
 
         assert_eq!(peer.public_key, public_key1);
-        assert_eq!(peer.node_id, node_id2);
+        assert_eq!(peer.node_id, node_id);
         assert!(!peer
             .addresses
             .addresses

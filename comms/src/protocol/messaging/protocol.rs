@@ -375,8 +375,8 @@ impl MessagingProtocol {
                 );
                 match self.peer_manager.find_by_node_id(&node_id).await {
                     Ok(peer) => {
-                        // For an inbound substream, read messages from the peer and forward on the incoming_messages
-                        // channel
+                        // For an inbound substream, read messages from the peer and forward on the
+                        // incoming_messages channel
                         self.spawn_inbound_handler(Arc::new(peer), substream).await;
                     },
                     Err(PeerManagerError::PeerNotFoundError) => {

@@ -35,6 +35,7 @@ use std::{
     },
 };
 use tari_comms::peer_manager::Peer;
+use tokio::task;
 
 pub fn create_dht_actor_mock(buf_size: usize) -> (DhtRequester, DhtActorMock) {
     let (tx, rx) = mpsc::channel(buf_size);
@@ -91,8 +92,12 @@ impl DhtActorMock {
         }
     }
 
-    pub fn set_shared_state(&mut self, state: DhtMockState) {
-        self.state = state;
+    pub fn get_shared_state(&self) -> DhtMockState {
+        self.state.clone()
+    }
+
+    pub fn spawn(self) {
+        task::spawn(Self::run(self));
     }
 
     pub async fn run(mut self) {
@@ -112,7 +117,9 @@ impl DhtActorMock {
             },
             SelectPeers(_, reply_tx) => {
                 let lock = self.state.select_peers.read().unwrap();
-                reply_tx.send(lock.iter().cloned().map(Arc::new).collect()).unwrap();
+                reply_tx
+                    .send(lock.iter().cloned().map(|p| p.node_id).collect())
+                    .unwrap();
             },
             GetMetadata(key, reply_tx) => {
                 let _ = reply_tx.send(Ok(self

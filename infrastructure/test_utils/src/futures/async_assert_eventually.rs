@@ -69,3 +69,20 @@ macro_rules! async_assert_eventually {
         );
     }};
 }
+
+#[macro_export]
+macro_rules! async_assert {
+    ($check_expr:expr, max_attempts = $max_attempts:expr, interval = $interval:expr $(,)?) => {{
+        let mut attempts = 0;
+        while !($check_expr) {
+            attempts += 1;
+            if attempts > $max_attempts {
+                panic!(
+                    "Assertion failed. Expression was not true after {} attempts.",
+                    $max_attempts
+                );
+            }
+            tokio::time::delay_for($interval).await;
+        }
+    }};
+}

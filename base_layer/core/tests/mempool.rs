@@ -668,7 +668,9 @@ fn receive_and_propagate_transaction() {
                 .mempool
                 .has_tx_with_excess_sig(tx_excess_sig.clone())
                 .unwrap(),
-            expect = TxStorageResponse::PendingPool
+            expect = TxStorageResponse::PendingPool,
+            max_attempts = 10,
+            interval = Duration::from_millis(1000)
         );
         // Carol got sent the orphan tx directly, so it will be in her mempool
         async_assert_eventually!(
