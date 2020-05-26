@@ -25,7 +25,10 @@ use crate::{
         config::OutputManagerServiceConfig,
         error::OutputManagerError,
         handle::{OutputManagerEvent, OutputManagerRequest, OutputManagerResponse},
-        storage::database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
+        storage::{
+            database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
+            models::DbUnblindedOutput,
+        },
         TxId,
     },
     transaction_service::handle::TransactionServiceHandle,
@@ -263,14 +266,24 @@ where
                 .fetch_pending_transaction_outputs()
                 .await
                 .map(OutputManagerResponse::PendingTransactions),
-            OutputManagerRequest::GetSpentOutputs => self
-                .fetch_spent_outputs()
-                .await
-                .map(OutputManagerResponse::SpentOutputs),
-            OutputManagerRequest::GetUnspentOutputs => self
-                .fetch_unspent_outputs()
-                .await
-                .map(OutputManagerResponse::UnspentOutputs),
+            OutputManagerRequest::GetSpentOutputs => {
+                let outputs = self
+                    .fetch_spent_outputs()
+                    .await?
+                    .into_iter()
+                    .map(|v| v.into())
+                    .collect();
+                Ok(OutputManagerResponse::SpentOutputs(outputs))
+            },
+            OutputManagerRequest::GetUnspentOutputs => {
+                let outputs = self
+                    .fetch_unspent_outputs()
+                    .await?
+                    .into_iter()
+                    .map(|v| v.into())
+                    .collect();
+                Ok(OutputManagerResponse::UnspentOutputs(outputs))
+            },
             OutputManagerRequest::GetSeedWords => self.get_seed_words().map(OutputManagerResponse::SeedWords),
             OutputManagerRequest::SetBaseNodePublicKey(pk) => self
                 .set_base_node_public_key(pk, utxo_query_timeout_futures)
@@ -280,10 +293,15 @@ where
                 .query_unspent_outputs_status(utxo_query_timeout_futures)
                 .await
                 .map(OutputManagerResponse::StartedBaseNodeSync),
-            OutputManagerRequest::GetInvalidOutputs => self
-                .fetch_invalid_outputs()
-                .await
-                .map(OutputManagerResponse::InvalidOutputs),
+            OutputManagerRequest::GetInvalidOutputs => {
+                let outputs = self
+                    .fetch_invalid_outputs()
+                    .await?
+                    .into_iter()
+                    .map(|v| v.into())
+                    .collect();
+                Ok(OutputManagerResponse::InvalidOutputs(outputs))
+            },
             OutputManagerRequest::CreateCoinSplit((amount_per_split, split_count, fee_per_gram, lock_height)) => self
                 .create_coin_split(amount_per_split, split_count, fee_per_gram, lock_height)
                 .await
@@ -325,11 +343,11 @@ where
         );
 
         // Construct a HashMap of all the unspent outputs
-        let unspent_outputs: Vec<UnblindedOutput> = self.db.get_unspent_outputs().await?;
+        let unspent_outputs: Vec<DbUnblindedOutput> = self.db.get_unspent_outputs().await?;
 
         let mut output_hashes = HashMap::new();
         for uo in unspent_outputs.iter() {
-            let hash = uo.as_transaction_output(&self.factories)?.hash();
+            let hash = uo.hash.clone();
             if queried_hashes.iter().any(|h| &hash == h) {
                 output_hashes.insert(hash.clone(), uo.clone());
             }
@@ -351,7 +369,8 @@ where
 
             warn!(
                 target: LOG_TARGET,
-                "Output with value {} not returned from Base Node query and is thus being invalidated", v.value
+                "Output with value {} not returned from Base Node query and is thus being invalidated",
+                v.unblinded_output.value
             );
             // If the output that is being invalidated has an associated TxId then get the kernel signature of the
             // transaction and display for easier debugging
@@ -436,18 +455,18 @@ where
         match self.base_node_public_key.as_ref() {
             None => Err(OutputManagerError::NoBaseNodeKeysProvided),
             Some(pk) => {
-                let unspent_outputs: Vec<UnblindedOutput> = self.db.get_unspent_outputs().await?;
+                let unspent_outputs: Vec<DbUnblindedOutput> = self.db.get_unspent_outputs().await?;
                 let mut output_hashes = Vec::new();
                 for uo in unspent_outputs.iter() {
-                    let hash = uo.as_transaction_output(&self.factories)?.hash();
+                    let hash = uo.hash.clone();
                     output_hashes.push(hash.clone());
                 }
-
                 let request_key = OsRng.next_u64();
 
                 let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs {
                     outputs: output_hashes.clone(),
                 });
+
                 let service_request = BaseNodeProto::BaseNodeServiceRequest {
                     request_key,
                     request: Some(request),
@@ -477,6 +496,7 @@ where
 
     /// Add an unblinded output to the unspent outputs list
     pub async fn add_output(&mut self, output: UnblindedOutput) -> Result<(), OutputManagerError> {
+        let output = DbUnblindedOutput::from_unblinded_output(output, &self.factories)?;
         Ok(self.db.add_unspent_output(output).await?)
     }
 
@@ -501,7 +521,7 @@ where
 
         self.db.increment_key_index().await?;
         self.db
-            .accept_incoming_pending_transaction(tx_id, amount, key.clone(), OutputFeatures::default())
+            .accept_incoming_pending_transaction(tx_id, amount, key.clone(), OutputFeatures::default(), &self.factories)
             .await?;
 
         self.confirm_encumberance(tx_id).await?;
@@ -521,6 +541,7 @@ where
         // Assumption: We are only allowing a single output per receiver in the current transaction protocols.
         if pending_transaction.outputs_to_be_received.len() != 1 ||
             pending_transaction.outputs_to_be_received[0]
+                .unblinded_output
                 .as_transaction_input(&self.factories.commitment, OutputFeatures::default())
                 .commitment !=
                 received_output.commitment
@@ -546,7 +567,9 @@ where
     ) -> Result<SenderTransactionProtocol, OutputManagerError>
     {
         let (outputs, _) = self.select_utxos(amount, fee_per_gram, 1, None).await?;
-        let total = outputs.iter().fold(MicroTari::from(0), |acc, x| acc + x.value);
+        let total = outputs
+            .iter()
+            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
 
         let offset = PrivateKey::random(&mut OsRng);
         let nonce = PrivateKey::random(&mut OsRng);
@@ -562,8 +585,9 @@ where
 
         for uo in outputs.iter() {
             builder.with_input(
-                uo.as_transaction_input(&self.factories.commitment, uo.clone().features),
-                uo.clone(),
+                uo.unblinded_output
+                    .as_transaction_input(&self.factories.commitment, uo.unblinded_output.clone().features),
+                uo.unblinded_output.clone(),
             );
         }
 
@@ -587,13 +611,16 @@ where
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         // If a change output was created add it to the pending_outputs list.
-        let mut change_output = Vec::<UnblindedOutput>::new();
+        let mut change_output = Vec::<DbUnblindedOutput>::new();
         if let Some(key) = change_key {
-            change_output.push(UnblindedOutput {
-                value: stp.get_amount_to_self()?,
-                spending_key: key,
-                features: OutputFeatures::default(),
-            });
+            change_output.push(DbUnblindedOutput::from_unblinded_output(
+                UnblindedOutput {
+                    value: stp.get_amount_to_self()?,
+                    spending_key: key,
+                    features: OutputFeatures::default(),
+                },
+                &self.factories,
+            )?);
         }
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
@@ -629,6 +656,7 @@ where
         let mut inputs_confirmed = true;
         for output_to_spend in pending_transaction.outputs_to_be_spent.iter() {
             let input_to_check = output_to_spend
+                .unblinded_output
                 .clone()
                 .as_transaction_input(&self.factories.commitment, OutputFeatures::default());
             inputs_confirmed =
@@ -639,6 +667,7 @@ where
         let mut outputs_confirmed = true;
         for output_to_receive in pending_transaction.outputs_to_be_received.iter() {
             let output_to_check = output_to_receive
+                .unblinded_output
                 .clone()
                 .as_transaction_input(&self.factories.commitment, OutputFeatures::default());
             outputs_confirmed = outputs_confirmed &&
@@ -681,7 +710,7 @@ where
         fee_per_gram: MicroTari,
         output_count: usize,
         strategy: Option<UTXOSelectionStrategy>,
-    ) -> Result<(Vec<UnblindedOutput>, bool), OutputManagerError>
+    ) -> Result<(Vec<DbUnblindedOutput>, bool), OutputManagerError>
     {
         let mut utxos = Vec::new();
         let mut total = MicroTari::from(0);
@@ -697,7 +726,7 @@ where
             (None, true) => UTXOSelectionStrategy::Smallest,
             (None, false) => {
                 let largest_utxo = &uo[uo.len() - 1];
-                if amount > largest_utxo.value {
+                if amount > largest_utxo.unblinded_output.value {
                     UTXOSelectionStrategy::Largest
                 } else {
                     UTXOSelectionStrategy::MaturityThenSmallest
@@ -711,10 +740,17 @@ where
             // all funds less than the current height as maturity 0
             UTXOSelectionStrategy::MaturityThenSmallest => {
                 let mut new_uo = uo;
-                new_uo.sort_by(|a, b| match a.features.maturity.cmp(&b.features.maturity) {
-                    Ordering::Equal => a.value.cmp(&b.value),
-                    Ordering::Less => Ordering::Less,
-                    Ordering::Greater => Ordering::Greater,
+                new_uo.sort_by(|a, b| {
+                    match a
+                        .unblinded_output
+                        .features
+                        .maturity
+                        .cmp(&b.unblinded_output.features.maturity)
+                    {
+                        Ordering::Equal => a.unblinded_output.value.cmp(&b.unblinded_output.value),
+                        Ordering::Less => Ordering::Less,
+                        Ordering::Greater => Ordering::Greater,
+                    }
                 });
                 new_uo
             },
@@ -724,7 +760,7 @@ where
         let mut require_change_output = false;
         for o in uo.iter() {
             utxos.push(o.clone());
-            total += o.value;
+            total += o.unblinded_output.value;
             // I am assuming that the only output will be the payment output and change if required
             fee_without_change = Fee::calculate(fee_per_gram, 1, utxos.len(), output_count);
             if total == amount + fee_without_change {
@@ -768,15 +804,15 @@ where
         Ok(self.db.fetch_all_pending_transaction_outputs().await?)
     }
 
-    pub async fn fetch_spent_outputs(&self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+    pub async fn fetch_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
         Ok(self.db.fetch_spent_outputs().await?)
     }
 
-    pub async fn fetch_unspent_outputs(&self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+    pub async fn fetch_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
         Ok(self.db.fetch_sorted_unspent_outputs().await?)
     }
 
-    pub async fn fetch_invalid_outputs(&self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+    pub async fn fetch_invalid_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
         Ok(self.db.get_invalid_outputs().await?)
     }
 
@@ -802,7 +838,9 @@ where
                 Some(UTXOSelectionStrategy::Largest),
             )
             .await?;
-        let utxo_total = inputs.iter().fold(MicroTari::from(0), |acc, x| acc + x.value);
+        let utxo_total = inputs
+            .iter()
+            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
         let input_count = inputs.len();
         if require_change_output {
             output_count = split_count + 1
@@ -821,12 +859,13 @@ where
         trace!(target: LOG_TARGET, "Add inputs to coin split transaction.");
         for uo in inputs.iter() {
             builder.with_input(
-                uo.as_transaction_input(&self.factories.commitment, uo.clone().features),
-                uo.clone(),
+                uo.unblinded_output
+                    .as_transaction_input(&self.factories.commitment, uo.unblinded_output.clone().features),
+                uo.unblinded_output.clone(),
             );
         }
         trace!(target: LOG_TARGET, "Add outputs to coin split transaction.");
-        let mut outputs = Vec::with_capacity(output_count);
+        let mut outputs: Vec<DbUnblindedOutput> = Vec::with_capacity(output_count);
         let change_output = utxo_total
             .checked_sub(fee)
             .ok_or(OutputManagerError::NotEnoughFunds)?
@@ -845,9 +884,12 @@ where
                 spend_key = km.next_key()?.k;
             }
             self.db.increment_key_index().await?;
-            let utxo = UnblindedOutput::new(output_amount, spend_key, None);
+            let utxo = DbUnblindedOutput::from_unblinded_output(
+                UnblindedOutput::new(output_amount, spend_key, None),
+                &self.factories,
+            )?;
             outputs.push(utxo.clone());
-            builder.with_output(utxo);
+            builder.with_output(utxo.unblinded_output);
         }
         trace!(target: LOG_TARGET, "Build coin split transaction.");
         let factories = CryptoFactories::default();

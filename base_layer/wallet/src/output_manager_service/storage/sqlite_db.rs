@@ -23,14 +23,17 @@
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
-        storage::database::{
-            DbKey,
-            DbKeyValuePair,
-            DbValue,
-            KeyManagerState,
-            OutputManagerBackend,
-            PendingTransactionOutputs,
-            WriteOperation,
+        storage::{
+            database::{
+                DbKey,
+                DbKeyValuePair,
+                DbValue,
+                KeyManagerState,
+                OutputManagerBackend,
+                PendingTransactionOutputs,
+                WriteOperation,
+            },
+            models::DbUnblindedOutput,
         },
         TxId,
     },
@@ -46,10 +49,13 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
-    types::PrivateKey,
+use tari_core::{
+    tari_utilities::hash::Hashable,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
+        types::{CryptoFactories, PrivateKey},
+    },
 };
 use tari_crypto::tari_utilities::ByteArray;
 
@@ -60,6 +66,11 @@ pub struct OutputManagerSqliteDatabase {
 }
 impl OutputManagerSqliteDatabase {
     pub fn new(database_connection: Arc<Mutex<SqliteConnection>>) -> Self {
+        {
+            // let check if we have to do migration
+            let conn = acquire_lock!(database_connection);
+            let _ = OutputSql::migrate(&(*conn));
+        }
         Self { database_connection }
     }
 }
@@ -69,7 +80,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         let result = match key {
             DbKey::SpentOutput(k) => match OutputSql::find_status(&k.to_vec(), OutputStatus::Spent, &(*conn)) {
-                Ok(o) => Some(DbValue::SpentOutput(Box::new(UnblindedOutput::try_from(o)?))),
+                Ok(o) => Some(DbValue::SpentOutput(Box::new(DbUnblindedOutput::try_from(o)?))),
                 Err(e) => {
                     match e {
                         OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -79,7 +90,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 },
             },
             DbKey::UnspentOutput(k) => match OutputSql::find_status(&k.to_vec(), OutputStatus::Unspent, &(*conn)) {
-                Ok(o) => Some(DbValue::UnspentOutput(Box::new(UnblindedOutput::try_from(o)?))),
+                Ok(o) => Some(DbValue::UnspentOutput(Box::new(DbUnblindedOutput::try_from(o)?))),
                 Err(e) => {
                     match e {
                         OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -106,13 +117,13 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             DbKey::UnspentOutputs => Some(DbValue::UnspentOutputs(
                 OutputSql::index_status(OutputStatus::Unspent, &(*conn))?
                     .iter()
-                    .map(|o| UnblindedOutput::try_from(o.clone()))
+                    .map(|o| DbUnblindedOutput::try_from(o.clone()))
                     .collect::<Result<Vec<_>, _>>()?,
             )),
             DbKey::SpentOutputs => Some(DbValue::SpentOutputs(
                 OutputSql::index_status(OutputStatus::Spent, &(*conn))?
                     .iter()
-                    .map(|o| UnblindedOutput::try_from(o.clone()))
+                    .map(|o| DbUnblindedOutput::try_from(o.clone()))
                     .collect::<Result<Vec<_>, _>>()?,
             )),
             DbKey::AllPendingTransactionOutputs => {
@@ -134,7 +145,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             DbKey::InvalidOutputs => Some(DbValue::InvalidOutputs(
                 OutputSql::index_status(OutputStatus::Invalid, &(*conn))?
                     .iter()
-                    .map(|o| UnblindedOutput::try_from(o.clone()))
+                    .map(|o| DbUnblindedOutput::try_from(o.clone()))
                     .collect::<Result<Vec<_>, _>>()?,
             )),
         };
@@ -178,7 +189,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 DbKey::SpentOutput(s) => match OutputSql::find_status(&s.to_vec(), OutputStatus::Spent, &(*conn)) {
                     Ok(o) => {
                         o.delete(&(*conn))?;
-                        return Ok(Some(DbValue::SpentOutput(Box::new(UnblindedOutput::try_from(o)?))));
+                        return Ok(Some(DbValue::SpentOutput(Box::new(DbUnblindedOutput::try_from(o)?))));
                     },
                     Err(e) => {
                         match e {
@@ -190,7 +201,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 DbKey::UnspentOutput(k) => match OutputSql::find_status(&k.to_vec(), OutputStatus::Unspent, &(*conn)) {
                     Ok(o) => {
                         o.delete(&(*conn))?;
-                        return Ok(Some(DbValue::UnspentOutput(Box::new(UnblindedOutput::try_from(o)?))));
+                        return Ok(Some(DbValue::UnspentOutput(Box::new(DbUnblindedOutput::try_from(o)?))));
                     },
                     Err(e) => {
                         match e {
@@ -268,15 +279,15 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     fn short_term_encumber_outputs(
         &self,
         tx_id: u64,
-        outputs_to_send: &[UnblindedOutput],
-        outputs_to_receive: &[UnblindedOutput],
+        outputs_to_send: &[DbUnblindedOutput],
+        outputs_to_receive: &[DbUnblindedOutput],
     ) -> Result<(), OutputManagerStorageError>
     {
         let conn = acquire_lock!(self.database_connection);
 
         let mut outputs_to_be_spent = Vec::new();
         for i in outputs_to_send {
-            let output = OutputSql::find(&i.spending_key.to_vec(), &(*conn))?;
+            let output = OutputSql::find(&i.unblinded_output.spending_key.to_vec(), &(*conn))?;
             if output.status == (OutputStatus::Spent as i32) {
                 return Err(OutputManagerStorageError::OutputAlreadySpent);
             }
@@ -404,9 +415,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn invalidate_unspent_output(&self, output: &UnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError> {
+    fn invalidate_unspent_output(&self, output: &DbUnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError> {
         let conn = acquire_lock!(self.database_connection);
-        let output = OutputSql::find(&output.spending_key.to_vec(), &conn)?;
+        let output = OutputSql::find(&output.unblinded_output.spending_key.to_vec(), &conn)?;
         let tx_id = output.tx_id.clone().map(|id| id as u64);
         let _ = output.update(
             UpdateOutput {
@@ -431,9 +442,9 @@ fn pending_transaction_outputs_from_sql_outputs(
     let mut outputs_to_be_received = Vec::new();
     for o in outputs {
         if o.status == (OutputStatus::EncumberedToBeReceived as i32) {
-            outputs_to_be_received.push(UnblindedOutput::try_from(o.clone())?);
+            outputs_to_be_received.push(DbUnblindedOutput::try_from(o.clone())?);
         } else if o.status == (OutputStatus::EncumberedToBeSpent as i32) {
-            outputs_to_be_spent.push(UnblindedOutput::try_from(o.clone())?);
+            outputs_to_be_spent.push(DbUnblindedOutput::try_from(o.clone())?);
         }
     }
 
@@ -483,17 +494,34 @@ struct OutputSql {
     maturity: i64,
     status: i32,
     tx_id: Option<i64>,
+    hash: Option<Vec<u8>>,
 }
 
 impl OutputSql {
-    pub fn new(output: UnblindedOutput, status: OutputStatus, tx_id: Option<TxId>) -> Self {
+    // This function is to update the values of hte hash field if its missing, It will check if the hash is missing, add
+    // this and update the field. ToDo remove this post testnet 1
+    fn migrate(conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
+        let ou_array: Vec<OutputSql> = outputs::table.filter(outputs::hash.is_null()).load(conn)?;
+        for output in ou_array {
+            // This should only happen on database migration as the hash will then be empty
+            // ToDo remove this as this is temp migration code
+            let ou = DbUnblindedOutput::try_from(output.clone())?;
+            diesel::update(outputs::table.filter(outputs::spending_key.eq(&output.spending_key)))
+                .set(outputs::hash.eq(Some(ou.hash.clone())))
+                .execute(conn)?;
+        }
+        Ok(())
+    }
+
+    pub fn new(output: DbUnblindedOutput, status: OutputStatus, tx_id: Option<TxId>) -> Self {
         Self {
-            spending_key: output.spending_key.to_vec(),
-            value: (u64::from(output.value)) as i64,
-            flags: output.features.flags.bits() as i32,
-            maturity: output.features.maturity as i64,
+            spending_key: output.unblinded_output.spending_key.to_vec(),
+            value: (u64::from(output.unblinded_output.value)) as i64,
+            flags: output.unblinded_output.features.flags.bits() as i32,
+            maturity: output.unblinded_output.features.maturity as i64,
             status: status as i32,
             tx_id: tx_id.map(|i| i as i64),
+            hash: Some(output.hash),
         }
     }
 
@@ -608,12 +636,12 @@ impl OutputSql {
     }
 }
 
-/// Conversion from an UnblindedOutput to the Sql datatype form
-impl TryFrom<OutputSql> for UnblindedOutput {
+/// Conversion from an DbUnblindedOutput to the Sql datatype form
+impl TryFrom<OutputSql> for DbUnblindedOutput {
     type Error = OutputManagerStorageError;
 
     fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
-        Ok(Self {
+        let unblinded_output = UnblindedOutput {
             value: MicroTari::from(o.value as u64),
             spending_key: PrivateKey::from_vec(&o.spending_key)
                 .map_err(|_| OutputManagerStorageError::ConversionError)?,
@@ -622,7 +650,17 @@ impl TryFrom<OutputSql> for UnblindedOutput {
                     .ok_or_else(|| OutputManagerStorageError::ConversionError)?,
                 maturity: o.maturity as u64,
             },
-        })
+        };
+        let hash = match o.hash {
+            None => {
+                // This should only happen on database migration as the hash will then be empty
+                // ToDo remove this as this is temp migration code
+                let factories = CryptoFactories::default();
+                unblinded_output.as_transaction_output(&factories)?.hash()
+            },
+            Some(v) => v,
+        };
+        Ok(Self { unblinded_output, hash })
     }
 }
 
@@ -888,6 +926,7 @@ impl From<KeyManagerStateUpdate> for KeyManagerStateUpdateSql {
 mod test {
     use crate::output_manager_service::storage::{
         database::KeyManagerState,
+        models::DbUnblindedOutput,
         sqlite_db::{KeyManagerStateSql, OutputSql, OutputStatus, PendingTransactionOutputSql, UpdateOutput},
     };
     use chrono::{Duration as ChronoDuration, Utc};
@@ -897,7 +936,7 @@ mod test {
     use tari_core::transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-        types::{CommitmentFactory, PrivateKey},
+        types::{CommitmentFactory, CryptoFactories, PrivateKey},
     };
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
     use tempdir::TempDir;
@@ -911,6 +950,7 @@ mod test {
         let factory = CommitmentFactory::default();
         let commitment = factory.commit_value(&key, val.into());
         let input = TransactionInput::new(OutputFeatures::default(), commitment);
+
         (input, UnblindedOutput::new(val, key, None))
     }
 
@@ -932,8 +972,11 @@ mod test {
         let mut outputs_spent = Vec::new();
         let mut outputs_unspent = Vec::new();
 
+        let factories = CryptoFactories::default();
+
         for _i in 0..2 {
             let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
             let o = OutputSql::new(uo, OutputStatus::Unspent, None);
             outputs.push(o.clone());
             outputs_unspent.push(o.clone());
@@ -942,6 +985,7 @@ mod test {
 
         for _i in 0..3 {
             let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
             let o = OutputSql::new(uo, OutputStatus::Spent, None);
             outputs.push(o.clone());
             outputs_spent.push(o.clone());

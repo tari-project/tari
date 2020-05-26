@@ -65,6 +65,7 @@ table! {
         maturity -> BigInt,
         status -> Integer,
         tx_id -> Nullable<BigInt>,
+        hash -> Nullable<Binary>,
     }
 }
 
