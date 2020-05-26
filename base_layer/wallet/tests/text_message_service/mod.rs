@@ -46,7 +46,7 @@ pub fn setup_text_message_service(
     database_path: String,
 ) -> (TextMessageHandle, CommsNode, Dht)
 {
-    let (publisher, subscription_factory) = pubsub_connector(runtime.executor(), 100);
+    let (publisher, subscription_factory) = pubsub_connector(runtime.executor(), 100, 102);
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht) = setup_comms_services(runtime.executor(), Arc::new(node_identity.clone()), peers, publisher);
 

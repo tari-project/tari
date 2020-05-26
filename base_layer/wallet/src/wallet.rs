@@ -131,6 +131,7 @@ where
         let (publisher, subscription_factory) = pubsub_connector(
             runtime.handle().clone(),
             config.comms_config.max_concurrent_inbound_tasks,
+            4,
         );
         let subscription_factory = Arc::new(subscription_factory);
 

@@ -104,7 +104,7 @@ impl ServiceInitializer for TextMessageServiceInitializer {
             .expect("text message service initializer already called");
 
         let (sender, receiver) = reply_channel::unbounded();
-        let (publisher, subscriber) = bounded(100);
+        let (publisher, subscriber) = bounded(100, 117);
 
         let text_message_stream = self.text_message_stream();
         let text_message_ack_stream = self.text_message_ack_stream();

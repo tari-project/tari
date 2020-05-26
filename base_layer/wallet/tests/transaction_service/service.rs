@@ -151,7 +151,7 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
     discovery_request_timeout: Duration,
 ) -> (TransactionServiceHandle, OutputManagerHandle, CommsNode)
 {
-    let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100);
+    let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100, 103);
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht) = runtime.block_on(setup_comms_services(
         node_identity,
@@ -224,7 +224,7 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
 {
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
 
-    let (oms_event_publisher, oms_event_subscriber) = bounded(100);
+    let (oms_event_publisher, oms_event_subscriber) = bounded(100, 116);
     let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock(100);
 
     let (liveness_handle, liveness_mock, liveness_event_sender) = create_p2p_liveness_mock(50);
