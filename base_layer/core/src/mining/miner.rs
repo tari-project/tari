@@ -137,7 +137,7 @@ impl Miner {
     ///     * or the loop is interrupted because a new block was found in the interim, or the miner is stopped
     async fn mining(mut self) -> Result<Miner, MinerError> {
         // Lets make sure its set to mine
-        debug!(target: LOG_TARGET, "Miner asking for new candidate block to mine.");
+        info!(target: LOG_TARGET, "Miner asking for new candidate block to mine.");
         let block_template = self.get_block_template().await;
         if block_template.is_err() {
             error!(

@@ -64,7 +64,7 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone 
     fn call(&mut self, message: DhtOutboundMessage) -> Self::Future {
         let next_service = self.inner.clone();
         async move {
-            debug!(target: LOG_TARGET, "Serializing outbound message {:?}", message.tag);
+            trace!(target: LOG_TARGET, "Serializing outbound message {:?}", message.tag);
 
             let DhtOutboundMessage {
                 tag,

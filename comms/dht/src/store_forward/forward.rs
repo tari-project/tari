@@ -100,7 +100,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Cl
         let is_enabled = self.is_enabled;
         async move {
             if !is_enabled {
-                debug!(
+                trace!(
                     target: LOG_TARGET,
                     "Passing message {} to next service (Not enabled) (Trace: {})",
                     message.tag,
@@ -142,17 +142,21 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 {
     async fn handle(mut self, message: DecryptedDhtMessage) -> Result<(), PipelineError> {
         if message.decryption_failed() {
-            debug!(
+            trace!(
                 target: LOG_TARGET,
-                "Decryption failed. Forwarding message {} (Trace: {})", message.tag, message.dht_header.message_tag
+                "Decryption failed. Forwarding message {} (Trace: {})",
+                message.tag,
+                message.dht_header.message_tag
             );
             self.forward(&message).await.map_err(PipelineError::from_debug)?;
         }
 
         // The message has been forwarded, but other middleware may be interested (i.e. StoreMiddleware)
-        debug!(
+        trace!(
             target: LOG_TARGET,
-            "Passing message {} to next service (Trace: {})", message.tag, message.dht_header.message_tag
+            "Passing message {} to next service (Trace: {})",
+            message.tag,
+            message.dht_header.message_tag
         );
         self.next_service.oneshot(message).await?;
         Ok(())
@@ -173,7 +177,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             //       1. The source sent a message that the destination could not decrypt
             //       The authenticated source should be banned (malicious), and origin should be temporarily banned
             //       (bug?)
-            warn!(
+            debug!(
                 target: LOG_TARGET,
                 "Received message {} from peer '{}' that is destined for that peer. Discarding message (Trace: {})",
                 message.tag,

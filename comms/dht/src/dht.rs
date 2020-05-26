@@ -122,7 +122,7 @@ impl Dht {
         dht.actor(conn, dht_receiver, shutdown_signal.clone()).spawn();
         dht.discovery_service(discovery_receiver, shutdown_signal).spawn();
 
-        info!(target: LOG_TARGET, "Dht initialization complete.");
+        debug!(target: LOG_TARGET, "Dht initialization complete.");
 
         Ok(dht)
     }
@@ -321,7 +321,7 @@ impl Dht {
             match msg.dht_header.message_type {
                 DhtMessageType::SafRequestMessages => {
                     // TODO: #banheuristic This is an indication of node misbehaviour
-                    warn!(
+                    debug!(
                         "Received store and forward message from PublicKey={}. Store and forward feature is not \
                          supported by this node. Discarding message.",
                         msg.source_peer.public_key

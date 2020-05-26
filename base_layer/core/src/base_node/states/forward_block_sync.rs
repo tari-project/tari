@@ -113,7 +113,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                             // than the headers we sent.
                             let oldest_header_sent = from_headers.last().unwrap();
                             if block.height == 0 && oldest_header_sent.height != 1 {
-                                info!(
+                                debug!(
                                     target: LOG_TARGET,
                                     "No headers from peer {} matched with the headers we sent. Retrying with older \
                                      headers",
@@ -122,7 +122,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                                 from_headers = fetch_headers_to_send::<B>(oldest_header_sent, &shared.db);
                                 continue;
                             } else {
-                                info!(
+                                debug!(
                                     target: LOG_TARGET,
                                     "Chain split at height:{} according to sync peer:{}",
                                     block.height,
@@ -130,7 +130,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                                 );
                             }
                         } else {
-                            info!(
+                            debug!(
                                 target: LOG_TARGET,
                                 "Still on the best chain according to sync peer:{}", sync_node_string
                             );
@@ -237,7 +237,7 @@ async fn download_blocks<B: BlockchainBackend + 'static>(
                         .await
                     {
                         Ok(result) => {
-                            info!(
+                            debug!(
                                 target: LOG_TARGET,
                                 "Added block {} during sync. Result:{:?}",
                                 header.to_hex(),

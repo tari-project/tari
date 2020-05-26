@@ -553,7 +553,7 @@ where
                 match conn.disconnect_silent().await {
                     Ok(_) => {},
                     Err(err) => {
-                        error!(target: LOG_TARGET, "Failed to disconnect because '{:?}'", err);
+                        warn!(target: LOG_TARGET, "Failed to disconnect because '{:?}'", err);
                     },
                 }
             }
@@ -582,7 +582,7 @@ where
                     .await;
             },
             Err(err) => {
-                error!(target: LOG_TARGET, "Failed to fetch peer to dial because '{}'", err);
+                warn!(target: LOG_TARGET, "Failed to fetch peer to dial because '{}'", err);
                 let _ = reply_tx.send(Err(ConnectionManagerError::PeerManagerError(err)));
             },
         }

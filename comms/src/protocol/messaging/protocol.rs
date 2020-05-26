@@ -210,7 +210,7 @@ impl MessagingProtocol {
             SendMessageFailed(out_msg, reason) => match self.attempts.entry(out_msg.tag) {
                 Entry::Occupied(mut entry) => match *entry.get() {
                     n if n >= self.max_attempts => {
-                        warn!(
+                        debug!(
                             target: LOG_TARGET,
                             "Failed to send message '{}' to peer '{}' because '{}'.",
                             out_msg.tag,
@@ -381,7 +381,7 @@ impl MessagingProtocol {
                     },
                     Err(PeerManagerError::PeerNotFoundError) => {
                         // This should never happen if everything is working correctly
-                        error!(
+                        warn!(
                             target: LOG_TARGET,
                             "[ThisNode={}] *** Could not find verified node_id '{}' in peer list. This should not \
                              happen ***",
@@ -391,7 +391,7 @@ impl MessagingProtocol {
                     },
                     Err(err) => {
                         // This should never happen if everything is working correctly
-                        error!(
+                        warn!(
                             target: LOG_TARGET,
                             "Peer manager error when handling protocol notification: '{:?}'", err
                         );

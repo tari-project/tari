@@ -150,7 +150,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 public_key
             },
             Err(err) => {
-                debug!(
+                trace!(
                     target: LOG_TARGET,
                     "Unable to decrypt message origin: {}, {} (Trace: {})",
                     err,
@@ -161,7 +161,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             },
         };
 
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Attempting to decrypt message body from origin public key '{}', {} (Trace: {})",
             authenticated_origin,
@@ -270,7 +270,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         match EnvelopeBody::decode(message.body.as_slice()) {
             Ok(deserialized) => {
-                debug!(
+                trace!(
                     target: LOG_TARGET,
                     "Message {} is not encrypted. Passing onto next service (Trace: {})",
                     message.tag,

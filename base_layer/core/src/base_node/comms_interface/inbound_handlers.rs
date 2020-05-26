@@ -199,7 +199,7 @@ where T: BlockchainBackend + 'static
                         Ok(block) => blocks.push(block),
                         // We need to suppress the error as another node might ask for a block we dont have, so we
                         // return ok([])
-                        Err(e) => info!(
+                        Err(e) => debug!(
                             target: LOG_TARGET,
                             "Could not provide requested block {} to peer because: {}",
                             block_num,
@@ -219,12 +219,12 @@ where T: BlockchainBackend + 'static
                     );
                     match async_db::fetch_block_with_hash(self.blockchain_db.clone(), block_hash.clone()).await {
                         Ok(Some(block)) => blocks.push(block),
-                        Ok(None) => info!(
+                        Ok(None) => warn!(
                             target: LOG_TARGET,
                             "Could not provide requested block {} to peer because not stored",
                             block_hash.to_hex(),
                         ),
-                        Err(e) => info!(
+                        Err(e) => warn!(
                             target: LOG_TARGET,
                             "Could not provide requested block {} to peer because: {}",
                             block_hash.to_hex(),
@@ -261,7 +261,10 @@ where T: BlockchainBackend + 'static
 
                 let block_template =
                     NewBlockTemplate::from(header.into_builder().with_transactions(transactions).build());
-                trace!(target: LOG_TARGET, "New block template requested {}", block_template);
+                debug!(
+                    target: LOG_TARGET,
+                    "New block template requested at height {}", block_template.header.height
+                );
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {
@@ -298,11 +301,11 @@ where T: BlockchainBackend + 'static
         let mut result = Ok(());
         let block_event = match add_block_result.clone() {
             Ok(block_add_result) => {
-                debug!(target: LOG_TARGET, "Block event created: {}", block_add_result);
+                trace!(target: LOG_TARGET, "Block event created: {}", block_add_result);
                 BlockEvent::Verified((Box::new(block.clone()), block_add_result, *broadcast))
             },
             Err(e) => {
-                error!(target: LOG_TARGET, "Block validation failed: {:?}", e);
+                warn!(target: LOG_TARGET, "Block validation failed: {:?}", e);
                 result = Err(CommsInterfaceError::ChainStorageError(e.clone()));
                 BlockEvent::Invalid((Box::new(block.clone()), e, *broadcast))
             },
@@ -320,7 +323,7 @@ where T: BlockchainBackend + 'static
                 BlockAddResult::ChainReorg(_) => true,
             };
             if propagate && bool::from(*broadcast) {
-                debug!(
+                info!(
                     target: LOG_TARGET,
                     "Propagate block ({}) to network.",
                     block.hash().to_hex()
@@ -337,9 +340,11 @@ where T: BlockchainBackend + 'static
             .await?
             .height_of_longest_chain
             .ok_or_else(|| CommsInterfaceError::UnexpectedApiResponse)?;
-        debug!(
+        trace!(
             target: LOG_TARGET,
-            "Calculating target difficulty at height:{} for PoW:{}", height_of_longest_chain, pow_algo
+            "Calculating target difficulty at height:{} for PoW:{}",
+            height_of_longest_chain,
+            pow_algo
         );
         let constants = self.consensus_manager.consensus_constants();
         let target_difficulties = self.blockchain_db.fetch_target_difficulties(

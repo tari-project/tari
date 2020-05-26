@@ -110,13 +110,13 @@ macro_rules! log_if_error {
         }
     }};
     (target:$target:expr, $expr:expr, $msg:expr, $($args:tt),* $(,)*) => {{
-        log_if_error!(level:error, target:$target, $expr, $msg, $($args),*)
+        log_if_error!(level:warn, target:$target, $expr, $msg, $($args),*)
     }};
     (level:$level:ident, $expr:expr, $msg:expr, $($args:tt),* $(,)*) => {{
         log_if_error!(level:$level, target:"$crate", $expr, $msg, $($args),*)
     }};
     ($expr:expr, $msg:expr, $($args:tt)* $(,)*) => {{
-        log_if_error!(level:error, target:"$crate", $expr, $msg, $($args),*)
+        log_if_error!(level:warn, target:"$crate", $expr, $msg, $($args),*)
     }};
 }
 

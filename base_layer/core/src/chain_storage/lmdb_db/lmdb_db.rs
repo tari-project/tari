@@ -294,7 +294,7 @@ where D: Digest + Send + Sync
 
     // Reset any mmr txns that have been applied.
     fn reset_mmrs(&mut self) -> Result<(), ChainStorageError> {
-        debug!(target: LOG_TARGET, "Reset mmrs called");
+        trace!(target: LOG_TARGET, "Reset mmrs called");
         self.kernel_mmr.reset()?;
         self.utxo_mmr.reset()?;
         self.range_proof_mmr.reset()?;

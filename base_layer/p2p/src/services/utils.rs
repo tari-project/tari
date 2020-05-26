@@ -32,7 +32,7 @@ where E: Debug {
     match res {
         Ok(t) => Some(t),
         Err(err) => {
-            error!(target: LOG_TARGET, "{:?}", err);
+            warn!(target: LOG_TARGET, "{:?}", err);
             None
         },
     }

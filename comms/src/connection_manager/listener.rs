@@ -134,7 +134,7 @@ where
                 }
             },
             Err(err) => {
-                error!(target: LOG_TARGET, "PeerListener was unable to start because '{}'", err);
+                warn!(target: LOG_TARGET, "PeerListener was unable to start because '{}'", err);
                 self.send_event(ConnectionManagerEvent::ListenFailed(err)).await;
             },
         }
@@ -181,7 +181,7 @@ where
     {
         permit.fetch_sub(1, Ordering::SeqCst);
         let liveness = LivenessSession::new(socket);
-        info!(target: LOG_TARGET, "Started liveness session");
+        debug!(target: LOG_TARGET, "Started liveness session");
         runtime::current_executor().spawn(async move {
             future::select(liveness.run(), shutdown_signal).await;
             permit.fetch_add(1, Ordering::SeqCst);
@@ -246,13 +246,13 @@ where
                     if liveness_session_count.load(Ordering::SeqCst) > 0 &&
                         Self::is_address_in_liveness_cidr_range(&peer_addr, &config.liveness_cidr_whitelist)
                     {
-                        info!(
+                        debug!(
                             target: LOG_TARGET,
                             "Connection at address '{}' requested liveness session", peer_addr
                         );
                         Self::spawn_liveness_session(socket, liveness_session_count, shutdown_signal).await;
                     } else {
-                        warn!(
+                        debug!(
                             target: LOG_TARGET,
                             "No liveness sessions available or permitted for peer address '{}'", peer_addr
                         );

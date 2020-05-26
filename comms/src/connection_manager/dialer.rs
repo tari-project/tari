@@ -312,7 +312,7 @@ where
                         Either::Left((result, _)) => (dial_state, result),
                         //     Dial cancel was triggered
                         Either::Right(_) => {
-                            info!(target: LOG_TARGET, "Dial was cancelled");
+                            debug!(target: LOG_TARGET, "Dial was cancelled");
                             (dial_state, Err(ConnectionManagerError::DialCancelled))
                         },
                     }
@@ -358,10 +358,9 @@ where
             .await
             .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
 
-        trace!(
+        debug!(
             target: LOG_TARGET,
-            "Starting peer identity exchange for peer with public key '{}'",
-            authenticated_public_key
+            "Starting peer identity exchange for peer with public key '{}'", authenticated_public_key
         );
 
         let peer_identity = common::perform_identity_exchange(
@@ -373,7 +372,7 @@ where
         .await?;
 
         let features = PeerFeatures::from_bits_truncate(peer_identity.features);
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Peer identity exchange succeeded on Outbound connection for peer '{}' (Features = {:?})",
             peer_identity.node_id.to_hex(),

@@ -74,7 +74,7 @@ where
             self.executor
                 .spawn(async move {
                     if let Err(err) = service.oneshot(item).await {
-                        error!(target: LOG_TARGET, "Inbound pipeline returned an error: '{:?}'", err);
+                        warn!(target: LOG_TARGET, "Inbound pipeline returned an error: '{:?}'", err);
                     }
                 })
                 .await;

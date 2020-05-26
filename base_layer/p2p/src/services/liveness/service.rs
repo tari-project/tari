@@ -115,14 +115,14 @@ where
                 request_context = request_stream.select_next_some() => {
                     let (request, reply_tx) = request_context.split();
                     let _ = reply_tx.send(self.handle_request(request).await).or_else(|resp| {
-                        error!(target: LOG_TARGET, "Failed to send reply");
+                        warn!(target: LOG_TARGET, "Failed to send reply");
                         Err(resp)
                     });
                 },
 
                 _ = ping_tick.select_next_some() => {
                     let _ = self.ping_active_pool().await.or_else(|err| {
-                        error!(target: LOG_TARGET, "Error when pinging peers: {:?}", err);
+                        warn!(target: LOG_TARGET, "Error when pinging peers: {:?}", err);
                         Err(err)
                     });
                     let _ = self.ping_monitored_node_ids().await.or_else(|err| {
@@ -133,7 +133,7 @@ where
                 // Incoming messages from the Comms layer
                 msg = ping_stream.select_next_some() => {
                     let _ = self.handle_incoming_message(msg).await.or_else(|err| {
-                        error!(target: LOG_TARGET, "Failed to handle incoming PingPong message: {:?}", err);
+                        warn!(target: LOG_TARGET, "Failed to handle incoming PingPong message: {:?}", err);
                         Err(err)
                     });
                 },
@@ -311,7 +311,7 @@ where
         }
 
         let len_peers = broadcast_nodes.len();
-        info!(target: LOG_TARGET, "Sending liveness ping to {} peer(s)", len_peers);
+        debug!(target: LOG_TARGET, "Sending liveness ping to {} peer(s)", len_peers);
 
         for node_id in broadcast_nodes {
             let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone(), self.config.useragent.clone());

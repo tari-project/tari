@@ -213,7 +213,7 @@ impl NodeContainer {
         let mut miner = ctx.miner.take().expect("Miner was not constructed");
         let mut rx = miner.get_utxo_receiver_channel();
         rt.spawn(async move {
-            debug!(target: LOG_TARGET, "Mining wallet ready to receive coins.");
+            info!(target: LOG_TARGET, " ⚒️ Mining wallet ready to receive coins.");
             while let Some(utxo) = rx.next().await {
                 match wallet_output_handle.add_output(utxo).await {
                     Ok(_) => {
@@ -233,14 +233,11 @@ impl NodeContainer {
             }
         });
         rt.spawn(async move {
-            debug!(target: LOG_TARGET, "Starting miner");
+            info!(target: LOG_TARGET, "⚒️ Starting miner");
             miner.mine().await;
-            debug!(target: LOG_TARGET, "Miner has shutdown");
+            info!(target: LOG_TARGET, "⚒️ Miner has shutdown");
         });
-        info!(
-            target: LOG_TARGET,
-            "Starting node - It will run until a fatal error occurs or until the stop flag is activated."
-        );
+        info!(target: LOG_TARGET, "Starting main base node event loop");
         ctx.node.run().await;
         info!(target: LOG_TARGET, "Initiating communications stack shutdown");
         future::join(ctx.base_node_comms.shutdown(), ctx.wallet_comms.shutdown()).await;
@@ -606,10 +603,10 @@ where
         config.num_mining_threads,
     );
     if config.enable_mining {
-        debug!(target: LOG_TARGET, "Enabling solo miner");
+        info!(target: LOG_TARGET, "Enabling solo miner");
         miner.enable_mining_flag().store(true, Ordering::Relaxed);
     } else {
-        debug!(
+        info!(
             target: LOG_TARGET,
             "Mining is disabled in the config file. This node will not mine for Tari unless enabled in the UI"
         );
@@ -652,11 +649,11 @@ async fn sync_peers(
                     Ok(mut peer) => {
                         peer.unset_id();
                         if let Err(err) = wallet_peer_manager.add_peer(peer).await {
-                            error!(target: LOG_TARGET, "Failed to add peer to wallet: {:?}", err);
+                            warn!(target: LOG_TARGET, "Failed to add peer to wallet: {:?}", err);
                         }
                     },
                     Err(err) => {
-                        error!(target: LOG_TARGET, "Failed to find peer in base node: {:?}", err);
+                        warn!(target: LOG_TARGET, "Failed to find peer in base node: {:?}", err);
                     },
                 }
             }

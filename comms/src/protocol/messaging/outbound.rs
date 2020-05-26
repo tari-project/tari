@@ -78,7 +78,7 @@ impl OutboundMessaging {
             match self.conn_man_requester.dial_peer(self.peer_node_id.clone()).await {
                 Ok(conn) => break Ok(conn),
                 Err(ConnectionManagerError::DialCancelled) => {
-                    error!(
+                    debug!(
                         target: LOG_TARGET,
                         "Dial was cancelled for peer '{}'. This is probably because of connection tie-breaking. \
                          Retrying...",
@@ -87,7 +87,7 @@ impl OutboundMessaging {
                     continue;
                 },
                 Err(err) => {
-                    error!(
+                    warn!(
                         target: LOG_TARGET,
                         "MessagingProtocol failed to dial peer '{}' because '{:?}'",
                         self.peer_node_id.short_str(),

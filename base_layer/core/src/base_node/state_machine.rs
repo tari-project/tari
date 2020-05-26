@@ -157,7 +157,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             if let Shutdown(reason) = &state {
                 debug!(
                     target: LOG_TARGET,
-                    "=== Base Node state machine is shutting down because {}", reason
+                    "Base Node state machine is shutting down because {}", reason
                 );
                 break;
             }
@@ -169,9 +169,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             let next_event = select_next_state_event(interrupt_signal, next_state_future).await;
             // Publish the event on the event bus
             let _ = self.event_sender.send(next_event.clone()).await;
-            debug!(
+            trace!(
                 target: LOG_TARGET,
-                "=== Base Node event in State [{}]:  {}", state, next_event
+                "Base Node event in State [{}]:  {}",
+                state,
+                next_event
             );
             state = self.transition(state, next_event);
         }

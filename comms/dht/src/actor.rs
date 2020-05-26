@@ -240,13 +240,13 @@ impl DhtActor {
         loop {
             futures::select! {
                 request = self.request_rx.select_next_some() => {
-                    debug!(target: LOG_TARGET, "DhtActor received message: {}", request);
+                    trace!(target: LOG_TARGET, "DhtActor received message: {}", request);
                     pending_jobs.push(self.request_handler(request));
                 },
 
                 result = pending_jobs.select_next_some() => {
                     if let Err(err) = result {
-                        error!(target: LOG_TARGET, "Error when handling DHT request message. {}", err);
+                        debug!(target: LOG_TARGET, "Error when handling DHT request message. {}", err);
                     }
                 },
 
@@ -265,7 +265,7 @@ impl DhtActor {
             .set_metadata_value(DhtMetadataKey::OfflineTimestamp, Utc::now())
             .await
         {
-            error!(target: LOG_TARGET, "Failed to mark offline time: {:?}", err);
+            warn!(target: LOG_TARGET, "Failed to mark offline time: {:?}", err);
         }
     }
 
@@ -299,7 +299,7 @@ impl DhtActor {
                     {
                         Ok(peers) => reply_tx.send(peers).map_err(|_| DhtActorError::ReplyCanceled),
                         Err(err) => {
-                            error!(target: LOG_TARGET, "Peer selection failed: {:?}", err);
+                            warn!(target: LOG_TARGET, "Peer selection failed: {:?}", err);
                             reply_tx.send(Vec::new()).map_err(|_| DhtActorError::ReplyCanceled)
                         },
                     }
@@ -317,10 +317,10 @@ impl DhtActor {
                 Box::pin(async move {
                     match db.set_metadata_value_bytes(key, value).await {
                         Ok(_) => {
-                            info!(target: LOG_TARGET, "Dht setting '{}' set", key);
+                            debug!(target: LOG_TARGET, "Dht setting '{}' set", key);
                         },
                         Err(err) => {
-                            error!(target: LOG_TARGET, "set_setting failed because {:?}", err);
+                            warn!(target: LOG_TARGET, "set_setting failed because {:?}", err);
                         },
                     }
                     Ok(())
@@ -430,7 +430,7 @@ impl DhtActor {
                         "Broadcast requested but there are no node peer connections available"
                     );
                 }
-                info!(
+                debug!(
                     target: LOG_TARGET,
                     "{} candidate(s) selected for broadcast",
                     candidates.len()
@@ -511,7 +511,7 @@ impl DhtActor {
                     .cloned()
                     .collect::<Vec<_>>();
 
-                info!(
+                debug!(
                     target: LOG_TARGET,
                     "{} candidate(s) selected for propagation to {}",
                     candidates.len(),
@@ -595,10 +595,9 @@ impl DhtActor {
         if total_excluded > 0 {
             debug!(
                 target: LOG_TARGET,
-                "\n====================================\n Closest Peer Selection\n\n {num_peers} peer(s) selected\n \
-                 {total} peer(s) were not selected \n\n {banned} banned\n {filtered_out} not communication node\n \
-                 {not_connectable} are not connectable\n {excluded} explicitly excluded \
-                 \n====================================\n",
+                "👨‍👧‍👦 Closest Peer Selection: {num_peers} peer(s) selected, {total} peer(s) not selected, {banned} \
+                 banned, {filtered_out} not communication node, {not_connectable} are not connectable, {excluded} \
+                 explicitly excluded",
                 num_peers = peers.len(),
                 total = total_excluded,
                 banned = banned_count,

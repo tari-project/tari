@@ -192,7 +192,7 @@ impl DhtDiscoveryService {
                 // Resolve any other pending discover requests if the peer was found
                 match &result {
                     Ok(peer) => {
-                        info!(
+                        debug!(
                             target: LOG_TARGET,
                             "Received discovery response from peer {}. Discovery completed in {}s",
                             peer.node_id,
@@ -212,7 +212,7 @@ impl DhtDiscoveryService {
                         );
                     },
                     Err(err) => {
-                        info!(
+                        debug!(
                             target: LOG_TARGET,
                             "Failed to validate and add peer from discovery response from peer. {:?} Discovery \
                              completed in {}s",
@@ -225,7 +225,7 @@ impl DhtDiscoveryService {
                 let _ = reply_tx.send(result);
             },
             None => {
-                info!(
+                debug!(
                     target: LOG_TARGET,
                     "Received a discovery response from peer '{}' that this node did not expect. It may have been \
                      cancelled earlier.",
@@ -335,7 +335,7 @@ impl DhtDiscoveryService {
             peer_features: self.node_identity.features().bits(),
             nonce,
         };
-        info!(
+        debug!(
             target: LOG_TARGET,
             "Sending Discovery message for peer public key '{}' with destination {}", dest_public_key, destination
         );
@@ -358,7 +358,7 @@ impl DhtDiscoveryService {
 
         // Spawn a task to log how the sending of discovery went
         task::spawn(async move {
-            info!(
+            debug!(
                 target: LOG_TARGET,
                 "Discovery sent to {} peer(s). Waiting to see how many got through.",
                 send_states.len()
@@ -369,7 +369,7 @@ impl DhtDiscoveryService {
                     let num_succeeded = succeeded.len();
                     let num_failed = failed.len();
 
-                    info!(
+                    debug!(
                         target: LOG_TARGET,
                         "Discovery sent to a majority of neighbouring peers ({} succeeded, {} failed)",
                         num_succeeded,
