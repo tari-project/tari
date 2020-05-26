@@ -274,7 +274,6 @@ where
             messaging_request_rx,
             event_tx.clone(),
             inbound_message_tx,
-            consts::MESSAGING_MAX_SEND_RETRIES,
             self.shutdown.to_signal(),
         );
 

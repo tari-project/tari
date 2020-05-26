@@ -28,11 +28,18 @@ use super::protocol::{
     MESSAGING_PROTOCOL,
 };
 use crate::{
+    memsocket::MemorySocket,
     message::{InboundMessage, MessageTag, OutboundMessage},
     multiplexing::Substream,
     net_address::MultiaddressesWithStats,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
-    protocol::{messaging::SendFailReason, ProtocolEvent, ProtocolNotification},
+    protocol::{
+        messaging::{inbound::InboundMessaging, SendFailReason},
+        ProtocolEvent,
+        ProtocolNotification,
+    },
+    runtime,
+    runtime::task,
     test_utils::{
         mocks::{create_connection_manager_mock, create_peer_connection_mock_pair, ConnectionManagerMockState},
         node_id,
@@ -49,15 +56,13 @@ use futures::{
     StreamExt,
 };
 use rand::rngs::OsRng;
-use std::{sync::Arc, time::Duration};
+use std::{io, sync::Arc, time::Duration};
 use tari_crypto::keys::PublicKey;
 use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_stream, unpack_enum};
-use tokio::{runtime::Handle, sync::broadcast, time};
-use tokio_macros as runtime;
+use tokio::{sync::broadcast, time};
 
 const TEST_MSG1: Bytes = Bytes::from_static(b"TEST_MSG1");
-const MAX_ATTEMPTS: usize = 2;
 
 async fn spawn_messaging_protocol() -> (
     Arc<PeerManager>,
@@ -70,11 +75,10 @@ async fn spawn_messaging_protocol() -> (
     Shutdown,
 ) {
     let shutdown = Shutdown::new();
-    let rt_handle = Handle::current();
 
     let (requester, mock) = create_connection_manager_mock();
     let mock_state = mock.get_shared_state();
-    rt_handle.spawn(mock.run());
+    mock.spawn();
 
     let peer_manager = PeerManager::new(CommsDatabase::new()).map(Arc::new).unwrap();
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_CLIENT);
@@ -91,10 +95,9 @@ async fn spawn_messaging_protocol() -> (
         request_rx,
         events_tx,
         inbound_msg_tx,
-        MAX_ATTEMPTS,
         shutdown.to_signal(),
     );
-    rt_handle.spawn(msg_proto.run());
+    task::spawn(msg_proto.run());
 
     (
         peer_manager,
@@ -207,7 +210,7 @@ async fn send_message_dial_failed() {
     assert_eq!(out_msg.tag, expected_out_msg_tag);
 
     let calls = conn_manager_mock.take_calls().await;
-    assert_eq!(calls.len(), MAX_ATTEMPTS);
+    assert_eq!(calls.len(), 2);
     assert!(calls.iter().all(|evt| evt.starts_with("DialPeer")));
 }
 
@@ -357,4 +360,39 @@ async fn many_concurrent_send_message_requests_that_fail() {
     assert_eq!(results.into_iter().map(|r| r.unwrap()).all(|r| r.is_err()), true);
 
     assert_eq!(msg_tags.len(), 0);
+}
+
+#[runtime::test_basic]
+async fn inactivity_timeout() {
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_CLIENT);
+    let (inbound_msg_tx, mut inbound_msg_rx) = mpsc::channel(5);
+    let (events_tx, _) = broadcast::channel(1);
+
+    let (socket_in, socket_out) = MemorySocket::new_pair();
+
+    task::spawn(
+        InboundMessaging::new(
+            Arc::new(node_identity.to_peer()),
+            inbound_msg_tx,
+            events_tx,
+            10,
+            Duration::from_millis(100),
+            Duration::from_millis(5),
+        )
+        .run(socket_in),
+    );
+
+    // Write messages for 5 milliseconds
+    let mut framed = MessagingProtocol::framed(socket_out);
+    for _ in 0..5u8 {
+        framed.send(Bytes::from_static(b"some message")).await.unwrap();
+        time::delay_for(Duration::from_millis(1)).await;
+    }
+
+    time::delay_for(Duration::from_millis(10)).await;
+
+    let err = framed.send(Bytes::from_static(b"another message")).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+
+    let _ = collect_stream!(inbound_msg_rx, take = 5, timeout = Duration::from_secs(10));
 }

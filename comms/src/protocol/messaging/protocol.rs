@@ -32,7 +32,7 @@ use crate::{
         ProtocolEvent,
         ProtocolNotification,
     },
-    runtime::current_executor,
+    runtime::task,
     PeerManager,
 };
 use bytes::Bytes;
@@ -46,12 +46,18 @@ use std::{
     time::Duration,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{runtime, sync::broadcast};
+use tokio::sync::broadcast;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 const LOG_TARGET: &str = "comms::protocol::messaging";
 pub static MESSAGING_PROTOCOL: Bytes = Bytes::from_static(b"/tari/messaging/0.1.0");
 const INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE: usize = 50;
+/// The length of time that inactivity is allowed before closing the inbound/outbound substreams.
+/// Inbound/outbound substreams are closed independently, and they may be reopened in the future once closed.
+const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+/// The number of times to retry sending a failed message before publishing a SendMessageFailed event.
+/// This can be low because dialing a peer is already attempted a number of times.
+const MAX_SEND_RETRIES: usize = 1;
 /// The maximum amount of inbound messages to accept within the `RATE_LIMIT_RESTOCK_INTERVAL` window
 const RATE_LIMIT_CAPACITY: usize = 10;
 const RATE_LIMIT_RESTOCK_INTERVAL: Duration = Duration::from_millis(100);
@@ -98,7 +104,6 @@ impl fmt::Display for MessagingEvent {
 }
 
 pub struct MessagingProtocol {
-    executor: runtime::Handle,
     connection_manager_requester: ConnectionManagerRequester,
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
@@ -112,7 +117,6 @@ pub struct MessagingProtocol {
     retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
     retry_queue_rx: Fuse<mpsc::UnboundedReceiver<OutboundMessage>>,
     attempts: HashMap<MessageTag, usize>,
-    max_attempts: usize,
     shutdown_signal: Option<ShutdownSignal>,
     complete_trigger: Shutdown,
 }
@@ -127,7 +131,6 @@ impl MessagingProtocol {
         request_rx: mpsc::Receiver<MessagingRequest>,
         messaging_events_tx: MessagingEventSender,
         inbound_message_tx: mpsc::Sender<InboundMessage>,
-        max_attempts: usize,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
@@ -135,7 +138,6 @@ impl MessagingProtocol {
             mpsc::channel(INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE);
         let (retry_queue_tx, retry_queue_rx) = mpsc::unbounded();
         Self {
-            executor: current_executor(),
             connection_manager_requester,
             peer_manager,
             node_identity,
@@ -149,7 +151,6 @@ impl MessagingProtocol {
             retry_queue_rx: retry_queue_rx.fuse(),
             retry_queue_tx,
             shutdown_signal: Some(shutdown_signal),
-            max_attempts,
             attempts: Default::default(),
             complete_trigger: Shutdown::new(),
         }
@@ -213,7 +214,7 @@ impl MessagingProtocol {
         match event {
             SendMessageFailed(out_msg, reason) => match self.attempts.entry(out_msg.tag) {
                 Entry::Occupied(mut entry) => match *entry.get() {
-                    n if n >= self.max_attempts => {
+                    n if n >= MAX_SEND_RETRIES => {
                         debug!(
                             target: LOG_TARGET,
                             "Failed to send message '{}' to peer '{}' because '{}'.",
@@ -234,7 +235,7 @@ impl MessagingProtocol {
                     },
                 },
                 Entry::Vacant(entry) => {
-                    if self.max_attempts == 0 {
+                    if MAX_SEND_RETRIES == 0 {
                         let _ = self
                             .messaging_events_tx
                             .send(Arc::new(SendMessageFailed(out_msg, reason)));
@@ -317,8 +318,6 @@ impl MessagingProtocol {
                 },
                 Entry::Vacant(entry) => {
                     let sender = Self::spawn_outbound_handler(
-                        self.executor.clone(),
-                        self.node_identity.clone(),
                         self.connection_manager_requester.clone(),
                         self.internal_messaging_event_tx.clone(),
                         peer_node_id.clone(),
@@ -346,8 +345,6 @@ impl MessagingProtocol {
     }
 
     async fn spawn_outbound_handler(
-        executor: runtime::Handle,
-        our_node_identity: Arc<NodeIdentity>,
         conn_man_requester: ConnectionManagerRequester,
         events_tx: mpsc::Sender<MessagingEvent>,
         peer_node_id: NodeId,
@@ -355,8 +352,8 @@ impl MessagingProtocol {
     {
         let (msg_tx, msg_rx) = mpsc::unbounded();
         let outbound_messaging =
-            OutboundMessaging::new(conn_man_requester, our_node_identity, events_tx, msg_rx, peer_node_id);
-        executor.spawn(outbound_messaging.run());
+            OutboundMessaging::new(conn_man_requester, events_tx, msg_rx, peer_node_id, INACTIVITY_TIMEOUT);
+        task::spawn(outbound_messaging.run());
         Ok(msg_tx)
     }
 
@@ -369,8 +366,9 @@ impl MessagingProtocol {
             messaging_events_tx,
             RATE_LIMIT_CAPACITY,
             RATE_LIMIT_RESTOCK_INTERVAL,
+            INACTIVITY_TIMEOUT,
         );
-        self.executor.spawn(inbound_messaging.run(substream));
+        task::spawn(inbound_messaging.run(substream));
     }
 
     async fn handle_notification(&mut self, notification: ProtocolNotification<Substream>) {

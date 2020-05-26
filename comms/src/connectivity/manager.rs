@@ -307,6 +307,11 @@ impl ConnectivityManagerActor {
             .pool
             .get_inactive_connections_mut(self.config.reaper_min_inactive_age);
         for conn in connections {
+            // ConnectivityManager MUST NOT disconnect managed peers
+            if self.managed_peers.contains(conn.peer_node_id()) {
+                continue;
+            }
+
             if !conn.is_connected() {
                 continue;
             }
@@ -478,7 +483,7 @@ impl ConnectivityManagerActor {
     ) -> Result<(), ConnectivityError>
     {
         use ConnectionManagerEvent::*;
-        let (node_id, new_status, connection) = match event {
+        let (node_id, mut new_status, connection) = match event {
             PeerDisconnected(node_id) => {
                 self.connection_stats.remove(&node_id);
                 (&**node_id, ConnectionStatus::Disconnected, None)
@@ -505,7 +510,7 @@ impl ConnectivityManagerActor {
 
         let old_status = self.pool.set_status(node_id, new_status);
         if let Some(conn) = connection {
-            self.pool.insert_connection(conn);
+            new_status = self.pool.insert_connection(conn);
         }
         if old_status != new_status {
             debug!(
