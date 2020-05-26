@@ -446,6 +446,7 @@ where T: BlockchainBackend
     ///
     /// If an error does occur while writing the new block parts, all changes are reverted before returning.
     pub fn add_block(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
+        let mut db = self.db_write_access()?;
         // Perform orphan block validation.
         if let Err(e) = self.validators.orphan.validate(&block) {
             warn!(
@@ -458,7 +459,6 @@ where T: BlockchainBackend
             return Err(e.into());
         }
 
-        let mut db = self.db_write_access()?;
         add_block(
             &mut db,
             &self.validators.block,
