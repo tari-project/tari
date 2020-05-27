@@ -24,21 +24,19 @@ use std::time::Duration;
 
 #[derive(Clone)]
 pub struct TransactionServiceConfig {
-    // This is the timeout of the first broadcast which should be short
-    pub initial_mempool_broadcast_timeout: Duration,
-    // Subsequent timeouts should be longer
     pub mempool_broadcast_timeout: Duration,
-    pub initial_base_node_mined_timeout: Duration,
     pub base_node_mined_timeout: Duration,
+    pub direct_send_timeout: Duration,
+    pub broadcast_send_timeout: Duration,
 }
 
 impl Default for TransactionServiceConfig {
     fn default() -> Self {
         Self {
-            initial_mempool_broadcast_timeout: Duration::from_secs(5),
             mempool_broadcast_timeout: Duration::from_secs(30),
-            initial_base_node_mined_timeout: Duration::from_secs(5),
             base_node_mined_timeout: Duration::from_secs(30),
+            direct_send_timeout: Duration::from_secs(20),
+            broadcast_send_timeout: Duration::from_secs(30),
         }
     }
 }
