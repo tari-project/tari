@@ -21,14 +21,21 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::postgres_db::{error::PostgresError, schema::*},
-    transactions::{transaction, types::HashOutput},
+    chain_storage::{
+        postgres_db::{error::PostgresError, schema::*},
+        DbValue,
+    },
+    transactions::{
+        transaction,
+        transaction::{KernelBuilder, TransactionKernel},
+        types::{Commitment, HashOutput, PrivateKey, PublicKey, Signature},
+    },
 };
 use chrono::{NaiveDateTime, Utc};
 use diesel::{self, prelude::*};
-use tari_crypto::tari_utilities::{byte_array::ByteArray, hex::Hex, Hashable};
+use std::convert::{TryFrom, TryInto};
 
-const LOG_TARGET: &str = "b::c::storage::postgres:kernels";
+use tari_crypto::tari_utilities::{byte_array::ByteArray, hex::Hex, Hashable};
 
 #[derive(Queryable, Identifiable, Insertable)]
 #[table_name = "kernels"]
@@ -103,5 +110,44 @@ impl Kernels {
             block_hash: block,
             created_at: Utc::now().naive_utc(),
         })
+    }
+
+    pub fn try_into_db_tx_kernel(self) -> Result<DbValue, PostgresError> {
+        let kernel: TransactionKernel = self.try_into()?;
+        Ok(DbValue::TransactionKernel(Box::new(kernel)))
+    }
+}
+
+impl TryFrom<Kernels> for TransactionKernel {
+    type Error = PostgresError;
+
+    fn try_from(value: Kernels) -> Result<Self, Self::Error> {
+        let public_nonce = PublicKey::from_bytes(&value.excess_sig_nonce)?;
+        let signature = PrivateKey::from_bytes(&value.excess_sig_sig)?;
+        let sig = Signature::new(public_nonce, signature);
+        let linked_kernel = match value.linked_kernel {
+            Some(v) => Some(HashOutput::from_hex(&v)?),
+            None => None,
+        };
+        let meta = match value.meta_info {
+            Some(v) => Some(HashOutput::from_hex(&v)?),
+            None => None,
+        };
+        let mut k = KernelBuilder::new()
+            .with_signature(&sig)
+            .with_fee((value.fee as u64).into())
+            .with_excess(&Commitment::from_hex(&value.excess)?)
+            .with_lock_height(value.lock_height as u64)
+            .build()
+            .map_err(|e| PostgresError::Other(e.to_string()))?;
+        k.linked_kernel = linked_kernel;
+        k.meta_info = meta;
+        if k.hash() != HashOutput::from_hex(&value.hash)? {
+            return Err(PostgresError::Other(
+                "Retrieved kernel hash does not match saved hash".to_string(),
+            ));
+        }
+
+        Ok(k)
     }
 }
