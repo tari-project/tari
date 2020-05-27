@@ -22,4 +22,5 @@
 
 pub mod database;
 pub mod memory_db;
+pub mod models;
 pub mod sqlite_db;
