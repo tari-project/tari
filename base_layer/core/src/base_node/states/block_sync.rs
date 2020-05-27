@@ -222,7 +222,6 @@ impl BestChainMetadataBlockSyncInfo {
     where
         B: 'static,
     {
-        shared.info = StatusInfo::BlockSync(BlockSyncInfo::new(None, None, None));
         if let StatusInfo::BlockSync(ref mut info) = shared.info {
             info.sync_peers.clear();
             info.sync_peers.append(&mut sync_peers.clone());
