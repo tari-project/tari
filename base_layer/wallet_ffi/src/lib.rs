@@ -165,6 +165,7 @@ use tari_wallet::{
         receive_test_transaction,
     },
     transaction_service::{
+        config::TransactionServiceConfig,
         error::TransactionServiceError,
         storage::{
             database::{
@@ -2368,7 +2369,10 @@ pub unsafe extern "C" fn wallet_create(
                 WalletConfig {
                     comms_config: (*config).clone(),
                     factories,
-                    transaction_service_config: None,
+                    transaction_service_config: Some(TransactionServiceConfig {
+                        direct_send_timeout: (*config).dht.discovery_request_timeout.clone(),
+                        ..Default::default()
+                    }),
                 },
                 runtime,
                 wallet_backend,

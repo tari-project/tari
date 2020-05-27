@@ -182,6 +182,7 @@ where
             event_publisher: event_publisher.clone(),
             node_identity: node_identity.clone(),
             factories: factories.clone(),
+            config: config.clone(),
         };
         TransactionService {
             config,
@@ -1696,4 +1697,5 @@ where TBackend: TransactionBackend + Clone + 'static
     pub event_publisher: TransactionEventSender,
     pub node_identity: Arc<NodeIdentity>,
     pub factories: CryptoFactories,
+    pub config: TransactionServiceConfig,
 }

@@ -41,6 +41,7 @@ use std::{
     time::Duration,
 };
 use tari_comms::message::MessageTag;
+use tokio::time::delay_for;
 
 /// Creates a mock outbound request "handler" for testing purposes.
 ///
@@ -162,41 +163,74 @@ impl OutboundServiceMock {
         while let Some(req) = self.receiver.next().await {
             match req {
                 DhtOutboundRequest::SendMessage(params, body, reply_tx) => {
-                    let mut queued = true;
                     let behaviour = self.mock_state.get_behaviour();
+
                     match (*params).clone().broadcast_strategy {
                         BroadcastStrategy::DirectPublicKey(_) => {
-                            queued = behaviour.direct == ResponseType::Queued;
+                            match behaviour.direct {
+                                ResponseType::Queued => {
+                                    let (response, inner_reply_tx) = self.add_call((*params).clone(), body);
+                                    reply_tx.send(response).expect("Reply channel cancelled");
+                                    let _ = inner_reply_tx.send(Ok(()));
+                                },
+                                ResponseType::QueuedFail => {
+                                    let (response, inner_reply_tx) = self.add_call((*params).clone(), body);
+                                    reply_tx.send(response).expect("Reply channel cancelled");
+                                    let _ = inner_reply_tx.send(Err(()));
+                                },
+                                ResponseType::QueuedSuccessDelay(delay) => {
+                                    let (response, inner_reply_tx) = self.add_call((*params).clone(), body);
+                                    reply_tx.send(response).expect("Reply channel cancelled");
+                                    delay_for(delay).await;
+                                    let _ = inner_reply_tx.send(Ok(()));
+                                },
+                                _ => {
+                                    reply_tx
+                                        .send(SendMessageResponse::Failed)
+                                        .expect("Reply channel cancelled");
+                                },
+                            };
                         },
                         BroadcastStrategy::Broadcast(_) => {
-                            queued = behaviour.broadcast == ResponseType::Queued;
+                            if behaviour.broadcast == ResponseType::Queued {
+                                let (response, inner_reply_tx) = self.add_call((*params).clone(), body);
+                                reply_tx.send(response).expect("Reply channel cancelled");
+                                let _ = inner_reply_tx.send(Ok(()));
+                            } else {
+                                reply_tx
+                                    .send(SendMessageResponse::Failed)
+                                    .expect("Reply channel cancelled");
+                            }
                         },
-                        _ => (),
-                    }
-
-                    if queued {
-                        self.mock_state.add_call((*params, body));
-                        let (inner_reply_tx, inner_reply_rx) = oneshot::channel();
-                        let response = self
-                            .mock_state
-                            .take_next_response()
-                            .or_else(|| {
-                                Some(SendMessageResponse::Queued(
-                                    vec![MessageSendState::new(MessageTag::new(), inner_reply_rx)].into(),
-                                ))
-                            })
-                            .expect("never none");
-
-                        reply_tx.send(response).expect("Reply channel cancelled");
-                        let _ = inner_reply_tx.send(Ok(()));
-                    } else {
-                        reply_tx
-                            .send(SendMessageResponse::Failed)
-                            .expect("Reply channel cancelled");
+                        _ => {
+                            let (response, inner_reply_tx) = self.add_call((*params).clone(), body);
+                            reply_tx.send(response).expect("Reply channel cancelled");
+                            let _ = inner_reply_tx.send(Ok(()));
+                        },
                     }
                 },
             }
         }
+    }
+
+    fn add_call(
+        &mut self,
+        params: FinalSendMessageParams,
+        body: Bytes,
+    ) -> (SendMessageResponse, oneshot::Sender<Result<(), ()>>)
+    {
+        self.mock_state.add_call((params, body));
+        let (inner_reply_tx, inner_reply_rx) = oneshot::channel();
+        let response = self
+            .mock_state
+            .take_next_response()
+            .or_else(|| {
+                Some(SendMessageResponse::Queued(
+                    vec![MessageSendState::new(MessageTag::new(), inner_reply_rx)].into(),
+                ))
+            })
+            .expect("never none");
+        (response, inner_reply_tx)
     }
 }
 
@@ -240,6 +274,8 @@ mod condvar_shim {
 #[derive(Clone, PartialEq)]
 pub enum ResponseType {
     Queued,
+    QueuedFail,
+    QueuedSuccessDelay(Duration),
     Failed,
     PendingDiscovery,
 }

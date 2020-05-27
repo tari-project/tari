@@ -356,7 +356,7 @@ where TBackend: TransactionBackend + Clone + 'static
                         let msg_tag = send_states[0].tag;
                         debug!(
                             target: LOG_TARGET,
-                            "Transaction Finalized (TxId: {}) Direct Send to {} queued with Message Tag: {}",
+                            "Transaction Finalized (TxId: {}) Direct Send to {} queued with {}",
                             self.id,
                             self.dest_pubkey,
                             &msg_tag,
@@ -441,6 +441,10 @@ where TBackend: TransactionBackend + Clone + 'static
                     }
                 },
                 SendMessageResponse::Failed => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Transaction Send Direct for TxID: {} failed", self.id
+                    );
                     store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
                 },
                 SendMessageResponse::PendingDiscovery(rx) => {
@@ -509,26 +513,35 @@ where TBackend: TransactionBackend + Clone + 'static
         if send_states.len() == 1 {
             debug!(
                 target: LOG_TARGET,
-                "Transaction (TxId: {}) Direct Send to {} queued with Message Tag: {}",
+                "Transaction (TxId: {}) Direct Send to {} queued with Message {}",
                 self.id,
                 self.dest_pubkey,
                 send_states[0].tag,
             );
-            match send_states.wait_single().await {
-                true => {
-                    info!(
-                        target: LOG_TARGET,
-                        "Direct Send process for TX_ID: {} was successful", self.id
-                    );
-                    true
-                },
-                false => {
+            let (sent, failed) = send_states
+                .wait_n_timeout(self.resources.config.direct_send_timeout.clone(), 1)
+                .await;
+            if !sent.is_empty() {
+                info!(
+                    target: LOG_TARGET,
+                    "Direct Send process for TX_ID: {} was successful with Message: {}", self.id, sent[0]
+                );
+                true
+            } else {
+                if failed.is_empty() {
                     error!(
                         target: LOG_TARGET,
-                        "Direct Send process for TX_ID: {} was unsuccessful and no message was sent", self.id
+                        "Direct Send process for TX_ID: {} timed out", self.id
                     );
-                    false
-                },
+                } else {
+                    error!(
+                        target: LOG_TARGET,
+                        "Direct Send process for TX_ID: {} and Message {} was unsuccessful and no message was sent",
+                        self.id,
+                        failed[0]
+                    );
+                }
+                false
             }
         } else {
             error!(
@@ -571,21 +584,31 @@ where TBackend: TransactionBackend + Clone + 'static
                     Ok(false)
                 },
                 Some(send_states) if !send_states.is_empty() => {
-                    let (successful_sends, _) = send_states.wait_all().await;
+                    let (successful_sends, failed_sends) = send_states
+                        .wait_n_timeout(self.resources.config.broadcast_send_timeout.clone(), 1)
+                        .await;
                     if !successful_sends.is_empty() {
                         info!(
                             target: LOG_TARGET,
                             "Transaction (TxId: {}) Send to Neighbours for Store and Forward successful with Message \
                              Tags: {:?}",
                             self.id,
-                            successful_sends,
+                            successful_sends[0],
                         );
                         Ok(true)
-                    } else {
+                    } else if !failed_sends.is_empty() {
                         error!(
                             target: LOG_TARGET,
                             "Transaction Send to Neighbours for Store and Forward for TX_ID: {} was unsuccessful and \
                              no messages were sent",
+                            self.id
+                        );
+                        Ok(false)
+                    } else {
+                        error!(
+                            target: LOG_TARGET,
+                            "Transaction Send to Neighbours for Store and Forward for TX_ID: {} timed out and was \
+                             unsuccessful. Some message might still be sent.",
                             self.id
                         );
                         Ok(false)
