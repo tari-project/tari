@@ -29,6 +29,7 @@ lmdb-zero = "0.4.4"
 log = { version = "0.4.0", features = ["std"] }
 multiaddr = {version = "=0.7.3", package = "parity-multiaddr"}
 nom = {version = "5.1.0", features=["std"], default-features=false}
+pin-project = "0.4.17"
 prost = "=0.6.1"
 rand = "0.7.2"
 serde = "1.0.90"

@@ -43,6 +43,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     fmt,
     sync::Arc,
+    time::Duration,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{runtime, sync::broadcast};
@@ -51,6 +52,9 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 const LOG_TARGET: &str = "comms::protocol::messaging";
 pub static MESSAGING_PROTOCOL: Bytes = Bytes::from_static(b"/tari/messaging/0.1.0");
 const INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE: usize = 50;
+/// The maximum amount of inbound messages to accept within the `RATE_LIMIT_RESTOCK_INTERVAL` window
+const RATE_LIMIT_CAPACITY: usize = 10;
+const RATE_LIMIT_RESTOCK_INTERVAL: Duration = Duration::from_millis(100);
 
 pub type MessagingEventSender = broadcast::Sender<Arc<MessagingEvent>>;
 pub type MessagingEventReceiver = broadcast::Receiver<Arc<MessagingEvent>>;
@@ -359,7 +363,13 @@ impl MessagingProtocol {
     async fn spawn_inbound_handler(&mut self, peer: Arc<Peer>, substream: Substream) {
         let messaging_events_tx = self.messaging_events_tx.clone();
         let inbound_message_tx = self.inbound_message_tx.clone();
-        let inbound_messaging = InboundMessaging::new(peer, inbound_message_tx, messaging_events_tx);
+        let inbound_messaging = InboundMessaging::new(
+            peer,
+            inbound_message_tx,
+            messaging_events_tx,
+            RATE_LIMIT_CAPACITY,
+            RATE_LIMIT_RESTOCK_INTERVAL,
+        );
         self.executor.spawn(inbound_messaging.run(substream));
     }
 
