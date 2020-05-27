@@ -1,0 +1,2 @@
+src/proto/generated/*.rs
+!src/proto/generated/mod.rs
