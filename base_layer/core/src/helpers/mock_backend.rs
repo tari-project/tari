@@ -75,7 +75,21 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
+    fn fetch_mmr_node_count(&self, _tree: MmrTree, _height: u64) -> Result<u32, ChainStorageError> {
+        unimplemented!()
+    }
+
     fn fetch_mmr_node(&self, _tree: MmrTree, _pos: u32) -> Result<(Hash, bool), ChainStorageError> {
+        unimplemented!()
+    }
+
+    fn fetch_mmr_nodes(
+        &self,
+        _tree: MmrTree,
+        _pos: u32,
+        _count: u32,
+    ) -> Result<Vec<(Vec<u8>, bool)>, ChainStorageError>
+    {
         unimplemented!()
     }
 

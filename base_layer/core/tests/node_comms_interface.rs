@@ -24,6 +24,7 @@
 mod helpers;
 
 use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, executor::block_on, StreamExt};
+use helpers::block_builders::append_block;
 use tari_comms::peer_manager::NodeId;
 use tari_core::{
     base_node::{
@@ -31,7 +32,15 @@ use tari_core::{
         OutboundNodeCommsInterface,
     },
     blocks::{BlockBuilder, BlockHeader},
-    chain_storage::{BlockchainDatabase, ChainMetadata, DbTransaction, HistoricalBlock, MemoryDatabase},
+    chain_storage::{
+        BlockchainDatabase,
+        BlockchainDatabaseConfig,
+        ChainMetadata,
+        DbTransaction,
+        HistoricalBlock,
+        MemoryDatabase,
+        Validators,
+    },
     consensus::{ConsensusManagerBuilder, Network},
     helpers::create_mem_db,
     mempool::{Mempool, MempoolConfig, MempoolValidators},
@@ -40,7 +49,11 @@ use tari_core::{
         tari_amount::MicroTari,
         types::{CryptoFactories, HashDigest},
     },
-    validation::transaction_validators::TxInputAndMaturityValidator,
+    validation::{
+        accum_difficulty_validators::MockAccumDifficultyValidator,
+        mocks::MockValidator,
+        transaction_validators::TxInputAndMaturityValidator,
+    },
 };
 use tari_crypto::tari_utilities::hash::Hashable;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
@@ -346,6 +359,66 @@ fn inbound_fetch_blocks() {
             {
                 assert_eq!(received_blocks.len(), 1);
                 assert_eq!(*received_blocks[0].block(), block);
+            } else {
+                assert!(false);
+            }
+        });
+    });
+}
+
+#[test]
+fn inbound_fetch_blocks_before_horizon_height() {
+    let network = Network::LocalNet;
+    let consensus_constants = network.create_consensus_constants();
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants.clone())
+        .build();
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockAccumDifficultyValidator {},
+    );
+    let db = MemoryDatabase::<HashDigest>::default();
+    let mut config = BlockchainDatabaseConfig::default();
+    config.pruning_horizon = 2;
+    let store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
+    let mempool_validator = MempoolValidators::new(TxInputAndMaturityValidator {}, TxInputAndMaturityValidator {});
+    let mempool = Mempool::new(store.clone(), MempoolConfig::default(), mempool_validator);
+    let (block_event_sender, _) = broadcast::channel(50);
+    let (request_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = futures_mpsc_channel_unbounded();
+    let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
+    let inbound_nch = InboundNodeCommsHandlers::new(
+        block_event_sender,
+        store.clone(),
+        mempool,
+        consensus_manager,
+        outbound_nci,
+    );
+
+    let block0 = store.fetch_block(0).unwrap().block().clone();
+    let block1 = append_block(&store, &block0, vec![], &consensus_constants, 1.into()).unwrap();
+    let block2 = append_block(&store, &block1, vec![], &consensus_constants, 1.into()).unwrap();
+    let block3 = append_block(&store, &block2, vec![], &consensus_constants, 1.into()).unwrap();
+    let _block4 = append_block(&store, &block3, vec![], &consensus_constants, 1.into()).unwrap();
+
+    test_async(move |rt| {
+        rt.spawn(async move {
+            if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
+                .handle_request(&NodeCommsRequest::FetchBlocks(vec![1]))
+                .await
+            {
+                assert_eq!(received_blocks.len(), 0);
+            } else {
+                assert!(false);
+            }
+
+            if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
+                .handle_request(&NodeCommsRequest::FetchBlocks(vec![2]))
+                .await
+            {
+                assert_eq!(received_blocks.len(), 1);
+                assert_eq!(*received_blocks[0].block(), block2);
             } else {
                 assert!(false);
             }
