@@ -20,12 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Required for `super::types` used in generated files
-use crate::transactions::proto::types;
-
-pub mod core {
-    include!(concat!(env!("OUT_DIR"), "/", "tari.core.rs"));
-}
+pub(crate) mod generated;
+pub use generated::core;
 
 #[cfg(feature = "base_node")]
 mod block;
