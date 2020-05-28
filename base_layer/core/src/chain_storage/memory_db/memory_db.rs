@@ -49,6 +49,7 @@ use crate::{
 use croaring::Bitmap;
 use digest::Digest;
 use std::{
+    cmp::min,
     collections::{HashMap, VecDeque},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
@@ -454,6 +455,15 @@ where D: Digest + Send + Sync
         .ok_or_else(|| ChainStorageError::OutOfRange)
     }
 
+    fn fetch_mmr_node_count(&self, tree: MmrTree, height: u64) -> Result<u32, ChainStorageError> {
+        let db = self.db_access()?;
+        match tree {
+            MmrTree::Kernel => count_mmr_nodes_added(&db.kernel_checkpoints, height),
+            MmrTree::Utxo => count_mmr_nodes_added(&db.utxo_checkpoints, height),
+            MmrTree::RangeProof => count_mmr_nodes_added(&db.range_proof_checkpoints, height),
+        }
+    }
+
     fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Vec<u8>, bool), ChainStorageError> {
         let db = self.db_access()?;
         let (hash, deleted) = match tree {
@@ -465,6 +475,14 @@ where D: Digest + Send + Sync
             ChainStorageError::UnexpectedResult(format!("A leaf node hash in the {} MMR tree was not found", tree))
         })?;
         Ok((hash, deleted))
+    }
+
+    fn fetch_mmr_nodes(&self, tree: MmrTree, pos: u32, count: u32) -> Result<Vec<(Vec<u8>, bool)>, ChainStorageError> {
+        let mut lead_nodes = Vec::<(Vec<u8>, bool)>::with_capacity(count as usize);
+        for pos in pos..pos + count {
+            lead_nodes.push(self.fetch_mmr_node(tree.clone(), pos)?);
+        }
+        Ok(lead_nodes)
     }
 
     /// Iterate over all the stored orphan blocks and execute the function `f` for each block.
@@ -712,4 +730,19 @@ fn rewind_checkpoint_index(cp_count: usize, steps_back: usize) -> usize {
     } else {
         1
     }
+}
+
+// Calculate the total leaf node count upto a specified height.
+fn count_mmr_nodes_added(checkpoints: &MemDbVec<MerkleCheckPoint>, height: u64) -> Result<u32, ChainStorageError> {
+    let mut node_count: u32 = 0;
+    let last_index = min(checkpoints.len()?, (height + 1) as usize);
+    for cp_index in 0..last_index {
+        if let Some(cp) = checkpoints
+            .get(cp_index)
+            .map_err(|e| ChainStorageError::AccessError(format!("Checkpoint error: {}", e.to_string())))?
+        {
+            node_count += cp.nodes_added().len() as u32;
+        }
+    }
+    Ok(node_count)
 }

@@ -53,7 +53,16 @@ pub use blockchain_database::{
     MutableMmrState,
     Validators,
 };
-pub use db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree};
+pub use db_transaction::{
+    DbKey,
+    DbKeyValuePair,
+    DbTransaction,
+    DbValue,
+    MetadataKey,
+    MetadataValue,
+    MmrTree,
+    WriteOperation,
+};
 pub use error::ChainStorageError;
 pub use historical_block::HistoricalBlock;
 pub use lmdb_db::{

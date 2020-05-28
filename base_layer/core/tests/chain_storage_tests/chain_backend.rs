@@ -34,6 +34,7 @@ use tari_core::{
         MetadataKey,
         MetadataValue,
         MmrTree,
+        WriteOperation,
     },
     consensus::{ConsensusConstants, Network},
     helpers::create_orphan_block,
@@ -775,8 +776,6 @@ fn lmdb_commit_block_and_create_fetch_checkpoint_and_rewind_mmr() {
     }
 }
 
-// TODO: Test Needed: fetch_mmr_node
-
 fn for_each_orphan<T: BlockchainBackend>(mut db: T, consensus_constants: &ConsensusConstants) {
     let orphan1 = create_orphan_block(
         5,
@@ -1465,6 +1464,192 @@ fn lmdb_fetch_target_difficulties() {
     {
         let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
         fetch_target_difficulties(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
+}
+
+fn fetch_utxo_rp_mmr_nodes_and_count<T: BlockchainBackend>(mut db: T) {
+    let factories = CryptoFactories::default();
+
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (utxo2, _) = create_utxo(MicroTari(20_000), &factories, None);
+    let (utxo3, _) = create_utxo(MicroTari(30_000), &factories, None);
+    let (utxo4, _) = create_utxo(MicroTari(40_000), &factories, None);
+    let (utxo5, _) = create_utxo(MicroTari(50_000), &factories, None);
+    let (utxo6, _) = create_utxo(MicroTari(60_000), &factories, None);
+    let utxo_hash1 = utxo1.hash();
+    let utxo_hash2 = utxo2.hash();
+    let utxo_hash3 = utxo3.hash();
+    let utxo_hash4 = utxo4.hash();
+    let utxo_hash5 = utxo5.hash();
+    let utxo_hash6 = utxo6.hash();
+    let utxo_leaf_nodes = vec![
+        (utxo_hash1.clone(), true),
+        (utxo_hash2.clone(), false),
+        (utxo_hash3.clone(), true),
+        (utxo_hash4.clone(), true),
+        (utxo_hash5.clone(), false),
+        (utxo_hash6.clone(), false),
+    ];
+    let rp_leaf_nodes = vec![
+        (utxo1.proof.hash(), false),
+        (utxo2.proof.hash(), false),
+        (utxo3.proof.hash(), false),
+        (utxo4.proof.hash(), false),
+        (utxo5.proof.hash(), false),
+        (utxo6.proof.hash(), false),
+    ];
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo1, true);
+    txn.operations.push(WriteOperation::CreateMmrCheckpoint(MmrTree::Utxo));
+    txn.operations
+        .push(WriteOperation::CreateMmrCheckpoint(MmrTree::RangeProof));
+    assert!(db.write(txn).is_ok());
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo2, true);
+    txn.insert_utxo(utxo3, true);
+    txn.spend_utxo(utxo_hash1.clone());
+    txn.operations.push(WriteOperation::CreateMmrCheckpoint(MmrTree::Utxo));
+    txn.operations
+        .push(WriteOperation::CreateMmrCheckpoint(MmrTree::RangeProof));
+    assert!(db.write(txn).is_ok());
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo4, true);
+    txn.insert_utxo(utxo5, true);
+    txn.spend_utxo(utxo_hash3.clone());
+    txn.operations.push(WriteOperation::CreateMmrCheckpoint(MmrTree::Utxo));
+    txn.operations
+        .push(WriteOperation::CreateMmrCheckpoint(MmrTree::RangeProof));
+    assert!(db.write(txn).is_ok());
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo6, true);
+    txn.spend_utxo(utxo_hash4.clone());
+    txn.operations.push(WriteOperation::CreateMmrCheckpoint(MmrTree::Utxo));
+    txn.operations
+        .push(WriteOperation::CreateMmrCheckpoint(MmrTree::RangeProof));
+    assert!(db.write(txn).is_ok());
+
+    for i in 0..=3 {
+        let mmr_node = db.fetch_mmr_node(MmrTree::Utxo, i).unwrap();
+        assert_eq!(mmr_node, utxo_leaf_nodes[i as usize]);
+        let mmr_node = db.fetch_mmr_node(MmrTree::RangeProof, i).unwrap();
+        assert_eq!(mmr_node, rp_leaf_nodes[i as usize]);
+
+        let mmr_node = db.fetch_mmr_nodes(MmrTree::Utxo, i, 3).unwrap();
+        assert_eq!(mmr_node.len(), 3);
+        assert_eq!(mmr_node[0], utxo_leaf_nodes[i as usize]);
+        assert_eq!(mmr_node[1], utxo_leaf_nodes[(i + 1) as usize]);
+        assert_eq!(mmr_node[2], utxo_leaf_nodes[(i + 2) as usize]);
+        let mmr_node = db.fetch_mmr_nodes(MmrTree::RangeProof, i, 3).unwrap();
+        assert_eq!(mmr_node.len(), 3);
+        assert_eq!(mmr_node[0], rp_leaf_nodes[i as usize]);
+        assert_eq!(mmr_node[1], rp_leaf_nodes[(i + 1) as usize]);
+        assert_eq!(mmr_node[2], rp_leaf_nodes[(i + 2) as usize]);
+    }
+
+    assert!(db.fetch_mmr_node(MmrTree::Utxo, 7).is_err());
+    assert!(db.fetch_mmr_nodes(MmrTree::Utxo, 5, 4).is_err());
+    assert!(db.fetch_mmr_node(MmrTree::RangeProof, 7).is_err());
+    assert!(db.fetch_mmr_nodes(MmrTree::RangeProof, 5, 4).is_err());
+}
+
+#[test]
+fn memory_fetch_utxo_rp_mmr_nodes_and_count() {
+    let db = MemoryDatabase::<HashDigest>::default();
+    fetch_utxo_rp_mmr_nodes_and_count(db);
+}
+
+#[test]
+fn lmdb_fetch_utxo_rp_nodes_and_count() {
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        fetch_utxo_rp_mmr_nodes_and_count(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
+}
+
+fn fetch_kernel_mmr_nodes_and_count<T: BlockchainBackend>(mut db: T) {
+    let kernel1 = create_test_kernel(100.into(), 0);
+    let kernel2 = create_test_kernel(200.into(), 1);
+    let kernel3 = create_test_kernel(300.into(), 1);
+    let kernel4 = create_test_kernel(400.into(), 2);
+    let kernel5 = create_test_kernel(500.into(), 2);
+    let kernel6 = create_test_kernel(600.into(), 3);
+    let leaf_nodes = vec![
+        (kernel1.hash(), false),
+        (kernel2.hash(), false),
+        (kernel3.hash(), false),
+        (kernel4.hash(), false),
+        (kernel5.hash(), false),
+        (kernel6.hash(), false),
+    ];
+
+    let mut txn = DbTransaction::new();
+    txn.insert_kernel(kernel1, true);
+    txn.operations
+        .push(WriteOperation::CreateMmrCheckpoint(MmrTree::Kernel));
+    assert!(db.write(txn).is_ok());
+    let mut txn = DbTransaction::new();
+    txn.insert_kernel(kernel2, true);
+    txn.insert_kernel(kernel3, true);
+    txn.operations
+        .push(WriteOperation::CreateMmrCheckpoint(MmrTree::Kernel));
+    assert!(db.write(txn).is_ok());
+    let mut txn = DbTransaction::new();
+    txn.insert_kernel(kernel4, true);
+    txn.insert_kernel(kernel5, true);
+    txn.operations
+        .push(WriteOperation::CreateMmrCheckpoint(MmrTree::Kernel));
+    assert!(db.write(txn).is_ok());
+    let mut txn = DbTransaction::new();
+    txn.insert_kernel(kernel6, true);
+    txn.operations
+        .push(WriteOperation::CreateMmrCheckpoint(MmrTree::Kernel));
+    assert!(db.write(txn).is_ok());
+
+    for i in 0..=3 {
+        let mmr_node = db.fetch_mmr_node(MmrTree::Kernel, i).unwrap();
+        assert_eq!(mmr_node, leaf_nodes[i as usize]);
+
+        let mmr_node = db.fetch_mmr_nodes(MmrTree::Kernel, i, 3).unwrap();
+        assert_eq!(mmr_node.len(), 3);
+        assert_eq!(mmr_node[0], leaf_nodes[i as usize]);
+        assert_eq!(mmr_node[1], leaf_nodes[(i + 1) as usize]);
+        assert_eq!(mmr_node[2], leaf_nodes[(i + 2) as usize]);
+    }
+
+    assert!(db.fetch_mmr_node(MmrTree::Kernel, 7).is_err());
+    assert!(db.fetch_mmr_nodes(MmrTree::Kernel, 5, 4).is_err());
+}
+
+#[test]
+fn memory_fetch_kernel_mmr_nodes_and_count() {
+    let db = MemoryDatabase::<HashDigest>::default();
+    fetch_kernel_mmr_nodes_and_count(db);
+}
+
+#[test]
+fn lmdb_fetch_kernel_nodes_and_count() {
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        fetch_kernel_mmr_nodes_and_count(db);
     }
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files

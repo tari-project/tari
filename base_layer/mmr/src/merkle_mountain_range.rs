@@ -27,7 +27,6 @@ use crate::{
     Hash,
 };
 use digest::Digest;
-use log::*;
 use std::{
     cmp::{max, min},
     marker::PhantomData,

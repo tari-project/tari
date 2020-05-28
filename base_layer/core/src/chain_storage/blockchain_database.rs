@@ -155,8 +155,13 @@ pub trait BlockchainBackend: Send + Sync {
     /// Fetches the checkpoint corresponding to the provided height, the checkpoint consist of the list of nodes
     /// added & deleted for the given Merkle tree.
     fn fetch_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError>;
+    /// Fetches the total merkle mountain range node count upto the specified height.
+    fn fetch_mmr_node_count(&self, tree: MmrTree, height: u64) -> Result<u32, ChainStorageError>;
     /// Fetches the leaf node hash and its deletion status for the nth leaf node in the given MMR tree.
     fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Hash, bool), ChainStorageError>;
+    /// Fetches the set of leaf node hashes and their deletion status' for the nth to nth+count leaf node index in the
+    /// given MMR tree.
+    fn fetch_mmr_nodes(&self, tree: MmrTree, pos: u32, count: u32) -> Result<Vec<(Hash, bool)>, ChainStorageError>;
     /// Performs the function F for each orphan block in the orphan pool.
     fn for_each_orphan<F>(&self, f: F) -> Result<(), ChainStorageError>
     where
@@ -271,7 +276,6 @@ where T: BlockchainBackend
             );
             blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
         }
-
         Ok(blockchain_db)
     }
 
