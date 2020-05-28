@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,48 +20,41 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Needed to make futures::select! work
-#![recursion_limit = "1024"]
-// Used to eliminate the need for boxing futures in many cases.
-// Tracking issue: https://github.com/rust-lang/rust/issues/63063
-#![feature(type_alias_impl_trait)]
-// Enable usage of Vec::shrink_to
-#![feature(shrink_to)]
+use crate::proof_of_work::{
+    monero_merkle_hash_util::{create_leaf_hash, create_node_hash},
+    monero_merkle_tree::MoneroMerkleProofNode,
+};
+use serde::{Deserialize, Serialize};
 
-#[macro_use]
-extern crate bitflags;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MoneroMerkleProof {
+    root_hash: Vec<u8>,
+    value: Vec<u8>,
+    path: Vec<MoneroMerkleProofNode>,
+}
 
-#[cfg(feature = "base_node")]
-pub mod blocks;
-#[cfg(feature = "base_node")]
-pub mod chain_storage;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-pub mod consensus;
-#[cfg(feature = "base_node")]
-pub mod helpers;
-#[cfg(feature = "base_node")]
-pub mod mining;
-#[cfg(feature = "base_node")]
-pub mod proof_of_work;
-#[cfg(feature = "base_node")]
-pub mod validation;
+impl MoneroMerkleProof {
+    pub fn new(root_hash: Vec<u8>, value: Vec<u8>, path: Vec<MoneroMerkleProofNode>) -> Self {
+        MoneroMerkleProof { root_hash, value, path }
+    }
 
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
-pub mod base_node;
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
-pub mod proto;
+    pub fn validate(&self, root_hash: &Vec<u8>) -> bool {
+        let mut hash = create_leaf_hash(&self.value);
 
-#[cfg(any(feature = "base_node", feature = "mempool_proto"))]
-pub mod mempool;
+        for node in &self.path {
+            hash = match node {
+                &MoneroMerkleProofNode::Left(ref proof_hash) => create_node_hash(proof_hash, &hash),
+                &MoneroMerkleProofNode::Right(ref proof_hash) => create_node_hash(&hash, proof_hash),
+            };
+        }
 
-#[cfg(feature = "transactions")]
-pub mod transactions;
+        &hash == root_hash
+    }
 
-// Re-export the crypto crate to make exposing traits etc easier for clients of this crate
-pub use crate::crypto::tari_utilities;
-pub use tari_crypto as crypto;
-
-uint::construct_uint! {
-    /// 256-bit unsigned integer.
-    pub(crate) struct U256(4);
+    pub fn validate_value(&self, tx_hash: &Vec<u8>) -> bool {
+        if &self.value == tx_hash {
+            return true;
+        }
+        false
+    }
 }

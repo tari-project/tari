@@ -233,10 +233,17 @@ mod test {
 
     #[test]
     fn display() {
-        let pow = ProofOfWork::default();
+        let mut pow = ProofOfWork::default();
+        pow.pow_algo = PowAlgorithm::Blake;
         assert_eq!(
             &format!("{}", pow),
             "Mining algorithm: Blake, Target difficulty: 1\nTotal accumulated difficulty:\nMonero=1, Blake=1\nPow \
+             data: \n"
+        );
+        pow.pow_algo = PowAlgorithm::Monero;
+        assert_eq!(
+            &format!("{}", pow),
+            "Mining algorithm: Monero, Target difficulty: 1\nTotal accumulated difficulty:\nMonero=1, Blake=1\nPow \
              data: \n"
         );
     }
@@ -271,7 +278,15 @@ mod test {
 
     #[test]
     fn add_difficulty() {
-        let mut pow = ProofOfWork::new(PowAlgorithm::Monero);
+        let mut pow: ProofOfWork;
+        #[cfg(not(feature = "monero_merge_mining"))]
+        {
+            pow = ProofOfWork::new(PowAlgorithm::Blake);
+        }
+        #[cfg(feature = "monero_merge_mining")]
+        {
+            pow = ProofOfWork::new(PowAlgorithm::Monero);
+        }
         pow.accumulated_blake_difficulty = Difficulty::from(42);
         pow.accumulated_monero_difficulty = Difficulty::from(420);
         let mut pow2 = ProofOfWork::default();
