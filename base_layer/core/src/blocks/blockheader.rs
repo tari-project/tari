@@ -173,11 +173,13 @@ impl BlockHeader {
     {
         let metadata = handler.get_metadata().await?;
         let tip = metadata.height_of_longest_chain.unwrap_or(0);
-
-        let start = std::cmp::max(tip - height_from_tip, 1);
+        // Avoid overflow
+        let height_from_tip = std::cmp::min(tip, height_from_tip);
+        let start = std::cmp::max(tip - height_from_tip, 0);
         Ok(BlockHeader::get_height_range(start, tip))
     }
 
+    /// Returns a height range in descending order
     pub fn get_height_range(start: u64, end_inclusive: u64) -> Vec<u64> {
         let mut heights: Vec<u64> =
             (std::cmp::min(start, end_inclusive)..=std::cmp::max(start, end_inclusive)).collect();

@@ -202,7 +202,8 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     cli::print_banner(parser.get_commands(), 3);
     if node_config.grpc_enabled {
-        let grpc = crate::grpc::BaseNodeGrpcServer::new(rt.handle().clone(), ctx.local_node());
+        let grpc =
+            crate::grpc::server::BaseNodeGrpcServer::new(rt.handle().clone(), ctx.local_node(), node_config.clone());
 
         rt.spawn(run_grpc(grpc, node_config.grpc_address));
     }
@@ -225,11 +226,11 @@ fn main_inner() -> Result<(), ExitCodes> {
 }
 
 /// Runs the gRPC server
-async fn run_grpc(grpc: crate::grpc::BaseNodeGrpcServer, grpc_address: SocketAddr) -> Result<(), String> {
+async fn run_grpc(grpc: crate::grpc::server::BaseNodeGrpcServer, grpc_address: SocketAddr) -> Result<(), String> {
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
 
     Server::builder()
-        .add_service(crate::grpc::base_node_grpc::base_node_server::BaseNodeServer::new(grpc))
+        .add_service(crate::grpc::server::base_node_grpc::base_node_server::BaseNodeServer::new(grpc))
         .serve(grpc_address)
         .await
         .map_err(|e| format!("GRPC server returned error:{}", e))?;

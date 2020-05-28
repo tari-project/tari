@@ -26,6 +26,7 @@ package tari.base_node;
 import "google/protobuf/wrappers.proto";
 import "google/protobuf/timestamp.proto";
 
+
 // The gRPC interface for interacting with the base node.
 service BaseNode {
     // Lists headers in the current best chain
@@ -33,19 +34,115 @@ service BaseNode {
     // Returns blocks in the current best chain. Currently only supports querying by height
     rpc GetBlocks(GetBlocksRequest) returns (stream HistoricalBlock);
     // Returns the calc timing for the chain heights
-    rpc GetCalcTiming(GetCalcTimingRequest) returns (CalcTimingResponse);
+    rpc GetCalcTiming(HeightRequest) returns (CalcTimingResponse);
+    // Returns the network Constants
+    rpc GetConstants(Empty) returns (ConsensusConstants);
+    // Returns Block Sizes
+    rpc GetBlockSize (BlockGroupRequest) returns (BlockGroupResponse);
+    // Returns Block Fees
+    rpc GetBlockFees (BlockGroupRequest) returns (BlockGroupResponse);
+    // Get Version
+    rpc GetVersion(Empty) returns (StringValue);
+    // Get coins in circulation
+    rpc GetTokensInCirculation(IntegerValue) returns (IntegerValue);
+    // Get network difficulties
+    rpc GetNetworkDifficulty(HeightRequest) returns (stream NetworkDifficultyResponse);
 }
 
+/// An Empty placeholder for endpoints without request parameters
+message Empty {}
 
-// The request used for querying the calc timing from the base node.
-// If start_height and end_height are set and > 0, they take precedence, otherwise from_tip is used
-message GetCalcTimingRequest {
+// Network difficulty response
+message NetworkDifficultyResponse {
+    uint64 difficulty = 1;
+    uint64 estimated_hash_rate = 2;
+    uint64 height = 3;
+}
+
+// A generic single value response for a specific height
+message ValueAtHeightResponse {
+    uint64 value= 1;
+    uint64 height = 2;
+}
+
+// A generic uint value
+message IntegerValue {
+    uint64 value = 1;
+}
+
+// A generic String value
+message StringValue {
+    string value = 1;
+}
+
+/// GetBlockSize / GetBlockFees Request
+/// Either the starting and ending heights OR the from_tip param must be specified
+message BlockGroupRequest {
     // The height from the chain tip (optional)
     uint64 from_tip = 1;
     // The starting height (optional)
     uint64 start_height = 2;
     // The ending height (optional)
     uint64 end_height = 3;
+    /// The type of calculation required (optional)
+    /// Defaults to median
+    /// median, mean, quartile, quantile
+    CalcType calc_type = 4;
+}
+
+/// GetBlockSize / GetBlockFees  Response
+message BlockGroupResponse {
+    repeated double value = 1;
+    CalcType calc_type = 2;
+}
+
+enum CalcType {
+    MEAN = 0;
+    MEDIAN = 1;
+    QUANTILE = 2;
+    QUARTILE = 3;
+}
+
+// The request used for querying a function that requires a height, either between 2 points or from the chain tip
+// If start_height and end_height are set and > 0, they take precedence, otherwise from_tip is used
+message HeightRequest {
+    // The height from the chain tip (optional)
+    uint64 from_tip = 1;
+    // The starting height (optional)
+    uint64 start_height = 2;
+    // The ending height (optional)
+    uint64 end_height = 3;
+}
+
+/// Consensus Constants response
+message ConsensusConstants {
+    /// The min height maturity a coinbase utxo must have
+    uint64 coinbase_lock_height = 1;
+    /// Current version of the blockchain
+    uint32 blockchain_version = 2;
+    /// The Future Time Limit (FTL) of the blockchain in seconds. This is the max allowable timestamp that is excepted.
+    /// We use TxN/20 where T = target time = 60 seconds, and N = block_window = 150
+    uint64 future_time_limit = 3;
+    /// This is the our target time in seconds between blocks
+    uint64 target_block_interval = 4;
+    /// When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at
+    uint64 difficulty_block_window = 5;
+    /// When doing difficulty adjustments, this is the maximum block time allowed
+    uint64 difficulty_max_block_interval = 6;
+    /// Maximum transaction weight used for the construction of new blocks.
+    uint64 max_block_transaction_weight = 7;
+    /// The amount of PoW algorithms used by the Tari chain.
+    uint64 pow_algo_count = 8;
+    /// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward
+    uint64 median_timestamp_count = 9;
+    /// This is the initial emission curve amount
+    uint64 emission_initial = 10;
+    /// This is the emission curve delay
+    double emission_decay = 11;
+    /// This is the emission curve tail amount
+    uint64 emission_tail = 12;
+    /// This is the initial min difficulty for the difficulty adjustment
+    uint64 min_blake_pow_difficulty = 13;
 }
 
 // The return type of the rpc GetCalcTiming
