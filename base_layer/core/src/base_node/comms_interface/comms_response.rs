@@ -24,7 +24,10 @@ use crate::{
     blocks::{blockheader::BlockHeader, Block, NewBlockTemplate},
     chain_storage::{ChainMetadata, HistoricalBlock},
     proof_of_work::Difficulty,
-    transactions::transaction::{TransactionKernel, TransactionOutput},
+    transactions::{
+        transaction::{TransactionKernel, TransactionOutput},
+        types::HashOutput,
+    },
 };
 use serde::{Deserialize, Serialize};
 
@@ -40,4 +43,6 @@ pub enum NodeCommsResponse {
     NewBlock(Block),
     TargetDifficulty(Difficulty),
     FetchHeadersAfterResponse(Vec<BlockHeader>),
+    MmrNodeCount(u32),
+    MmrNodes(Vec<HashOutput>, Vec<u8>),
 }

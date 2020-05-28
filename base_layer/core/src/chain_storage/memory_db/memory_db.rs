@@ -478,11 +478,11 @@ where D: Digest + Send + Sync
     }
 
     fn fetch_mmr_nodes(&self, tree: MmrTree, pos: u32, count: u32) -> Result<Vec<(Vec<u8>, bool)>, ChainStorageError> {
-        let mut lead_nodes = Vec::<(Vec<u8>, bool)>::with_capacity(count as usize);
+        let mut leaf_nodes = Vec::<(Vec<u8>, bool)>::with_capacity(count as usize);
         for pos in pos..pos + count {
-            lead_nodes.push(self.fetch_mmr_node(tree.clone(), pos)?);
+            leaf_nodes.push(self.fetch_mmr_node(tree.clone(), pos)?);
         }
-        Ok(lead_nodes)
+        Ok(leaf_nodes)
     }
 
     /// Iterate over all the stored orphan blocks and execute the function `f` for each block.

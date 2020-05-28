@@ -102,6 +102,8 @@ make_async!(is_stxo(hash: HashOutput) -> bool, "is_stxo");
 make_async!(fetch_mmr_root(tree: MmrTree) -> HashOutput, "fetch_mmr_root");
 make_async!(fetch_mmr_only_root(tree: MmrTree) -> HashOutput, "fetch_mmr_only_root");
 make_async!(calculate_mmr_root(tree: MmrTree,additions: Vec<HashOutput>,deletions: Vec<HashOutput>) -> HashOutput, "calculate_mmr_root");
+make_async!(fetch_mmr_node_count(tree: MmrTree, height: u64) -> u32, "fetch_mmr_node_count");
+make_async!(fetch_mmr_nodes(tree: MmrTree, pos: u32, count: u32) -> Vec<(Vec<u8>, bool)>, "fetch_mmr_nodes");
 make_async!(add_block(block: Block) -> BlockAddResult, "add_block");
 make_async!(calculate_mmr_roots(template: NewBlockTemplate) -> Block, "calculate_mmr_roots");
 

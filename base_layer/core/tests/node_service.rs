@@ -22,6 +22,7 @@
 
 #[allow(dead_code)]
 mod helpers;
+use croaring::Bitmap;
 use futures::join;
 use helpers::{
     block_builders::{
@@ -50,7 +51,7 @@ use tari_core::{
         service::BaseNodeServiceConfig,
     },
     blocks::BlockHeader,
-    chain_storage::{BlockAddResult, DbTransaction},
+    chain_storage::{BlockAddResult, DbTransaction, MmrTree},
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     mempool::MempoolServiceConfig,
     proof_of_work::{Difficulty, PowAlgorithm},
@@ -764,5 +765,161 @@ fn local_submit_block() {
         }
 
         node.comms.shutdown().await;
+    });
+}
+
+#[test]
+fn request_and_response_fetch_mmr_node_and_count() {
+    let mut runtime = Runtime::new().unwrap();
+    let factories = CryptoFactories::default();
+    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let network = Network::LocalNet;
+    let consensus_constants = network.create_consensus_constants();
+    let (block0, _) = create_genesis_block(&factories, &consensus_constants);
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants)
+        .with_block(block0.clone())
+        .build();
+    let (mut alice_node, mut bob_node, _) = create_network_with_2_base_nodes_with_config(
+        &mut runtime,
+        BaseNodeServiceConfig::default(),
+        MmrCacheConfig::default(),
+        MempoolServiceConfig::default(),
+        LivenessConfig::default(),
+        consensus_manager.clone(),
+        temp_dir.path().to_str().unwrap(),
+    );
+
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
+    let (utxo3, _) = create_utxo(MicroTari(20_000), &factories, None);
+    let (utxo4, _) = create_utxo(MicroTari(25_000), &factories, None);
+    let kernel1 = create_test_kernel(5.into(), 0);
+    let kernel2 = create_test_kernel(15.into(), 1);
+    let kernel3 = create_test_kernel(20.into(), 2);
+    let utxo_hash1 = utxo1.hash();
+    let utxo_hash2 = utxo2.hash();
+    let utxo_hash3 = utxo3.hash();
+    let utxo_hash4 = utxo4.hash();
+    let rp_hash2 = utxo2.proof.hash();
+    let rp_hash3 = utxo3.proof.hash();
+    let kernel_hash2 = kernel2.hash();
+    let kernel_hash3 = kernel3.hash();
+
+    let mut blocks = vec![block0];
+    let db = &mut bob_node.blockchain_db;
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo1.clone(), true);
+    txn.insert_utxo(utxo2.clone(), true);
+    txn.insert_kernel(kernel1.clone(), true);
+    assert!(db.commit(txn).is_ok());
+    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo3.clone(), true);
+    txn.spend_utxo(utxo_hash1.clone());
+    txn.insert_kernel(kernel2.clone(), true);
+    assert!(db.commit(txn).is_ok());
+    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo4.clone(), true);
+    txn.spend_utxo(utxo_hash3.clone());
+    txn.insert_kernel(kernel3.clone(), true);
+    assert!(db.commit(txn).is_ok());
+    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+
+    runtime.block_on(async {
+        let node_count = alice_node
+            .outbound_nci
+            .fetch_mmr_node_count(MmrTree::Utxo, 2, None)
+            .await
+            .unwrap();
+        assert_eq!(node_count, 4);
+        let node_count = alice_node
+            .outbound_nci
+            .fetch_mmr_node_count(MmrTree::Kernel, 2, None)
+            .await
+            .unwrap();
+        assert_eq!(node_count, 3);
+        let node_count = alice_node
+            .outbound_nci
+            .fetch_mmr_node_count(MmrTree::RangeProof, 2, None)
+            .await
+            .unwrap();
+        assert_eq!(node_count, 4);
+
+        let (added, deleted) = alice_node
+            .outbound_nci
+            .fetch_mmr_nodes(MmrTree::Utxo, 1, 4, None)
+            .await
+            .unwrap();
+        let deleted = Bitmap::deserialize(&deleted).to_vec();
+        assert_eq!(added, vec![utxo_hash1, utxo_hash2, utxo_hash3, utxo_hash4.clone()]);
+        assert_eq!(deleted, vec![1, 3]);
+        let (added, deleted) = alice_node
+            .outbound_nci
+            .fetch_mmr_nodes(MmrTree::Kernel, 2, 2, None)
+            .await
+            .unwrap();
+        let deleted = Bitmap::deserialize(&deleted).to_vec();
+        assert_eq!(added, vec![kernel_hash2, kernel_hash3]);
+        assert_eq!(deleted.len(), 0);
+        let (added, deleted) = alice_node
+            .outbound_nci
+            .fetch_mmr_nodes(MmrTree::RangeProof, 2, 2, None)
+            .await
+            .unwrap();
+        let deleted = Bitmap::deserialize(&deleted).to_vec();
+        assert_eq!(added, vec![rp_hash2, rp_hash3]);
+        assert_eq!(deleted.len(), 0);
+
+        // Out of bounds queries
+        let node_count = alice_node
+            .outbound_nci
+            .fetch_mmr_node_count(MmrTree::Utxo, 5, None)
+            .await
+            .unwrap();
+        assert_eq!(node_count, 5);
+        let node_count = alice_node
+            .outbound_nci
+            .fetch_mmr_node_count(MmrTree::Kernel, 6, None)
+            .await
+            .unwrap();
+        assert_eq!(node_count, 4);
+        let node_count = alice_node
+            .outbound_nci
+            .fetch_mmr_node_count(MmrTree::RangeProof, 7, None)
+            .await
+            .unwrap();
+        assert_eq!(node_count, 5);
+
+        let (added, deleted) = alice_node
+            .outbound_nci
+            .fetch_mmr_nodes(MmrTree::Utxo, 4, 5, None)
+            .await
+            .unwrap();
+        let deleted = Bitmap::deserialize(&deleted).to_vec();
+        assert_eq!(added.len(), 0);
+        assert_eq!(deleted.len(), 0);
+        let (added, deleted) = alice_node
+            .outbound_nci
+            .fetch_mmr_nodes(MmrTree::Kernel, 4, 5, None)
+            .await
+            .unwrap();
+        let deleted = Bitmap::deserialize(&deleted).to_vec();
+        assert_eq!(added.len(), 0);
+        assert_eq!(deleted.len(), 0);
+        let (added, deleted) = alice_node
+            .outbound_nci
+            .fetch_mmr_nodes(MmrTree::RangeProof, 4, 5, None)
+            .await
+            .unwrap();
+        let deleted = Bitmap::deserialize(&deleted).to_vec();
+        assert_eq!(added.len(), 0);
+        assert_eq!(deleted.len(), 0);
+
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
     });
 }

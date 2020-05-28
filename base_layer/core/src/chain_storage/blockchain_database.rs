@@ -434,6 +434,24 @@ where T: BlockchainBackend
         fetch_mmr_proof(&*db, tree, pos)
     }
 
+    /// Fetches the total merkle mountain range node count upto the specified height.
+    pub fn fetch_mmr_node_count(&self, tree: MmrTree, height: u64) -> Result<u32, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_mmr_node_count(tree, height)
+    }
+
+    /// Fetches the set of leaf node hashes and their deletion status' for the given MMR tree.
+    pub fn fetch_mmr_nodes(
+        &self,
+        tree: MmrTree,
+        pos: u32,
+        count: u32,
+    ) -> Result<Vec<(Vec<u8>, bool)>, ChainStorageError>
+    {
+        let db = self.db_read_access()?;
+        db.fetch_mmr_nodes(tree, pos, count)
+    }
+
     /// Tries to add a block to the longest chain.
     ///
     /// The block is added to the longest chain if and only if
@@ -460,7 +478,6 @@ where T: BlockchainBackend
     ///
     /// If an error does occur while writing the new block parts, all changes are reverted before returning.
     pub fn add_block(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
-        let mut db = self.db_write_access()?;
         // Perform orphan block validation.
         if let Err(e) = self.validators.orphan.validate(&block) {
             warn!(
@@ -473,6 +490,7 @@ where T: BlockchainBackend
             return Err(e.into());
         }
 
+        let mut db = self.db_write_access()?;
         add_block(
             &mut db,
             &self.validators.block,

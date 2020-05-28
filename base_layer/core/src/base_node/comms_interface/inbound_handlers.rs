@@ -44,6 +44,7 @@ use crate::{
     proof_of_work::{get_target_difficulty, Difficulty, PowAlgorithm},
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
+use croaring::Bitmap;
 use log::*;
 use std::{
     fmt::{Display, Error, Formatter},
@@ -274,6 +275,36 @@ where T: BlockchainBackend + 'static
             NodeCommsRequest::GetTargetDifficulty(pow_algo) => Ok(NodeCommsResponse::TargetDifficulty(
                 self.get_target_difficulty(*pow_algo).await?,
             )),
+            NodeCommsRequest::FetchMmrNodeCount(tree, height) => {
+                let node_count =
+                    async_db::fetch_mmr_node_count(self.blockchain_db.clone(), tree.clone(), *height).await?;
+                Ok(NodeCommsResponse::MmrNodeCount(node_count))
+            },
+            NodeCommsRequest::FetchMmrNodes(tree, pos, count) => {
+                let mut added = Vec::<Vec<u8>>::with_capacity(*count as usize);
+                let mut deleted = Bitmap::create();
+                match async_db::fetch_mmr_nodes(self.blockchain_db.clone(), tree.clone(), *pos, *count).await {
+                    Ok(mmr_nodes) => {
+                        for (index, (leaf_hash, deletion_status)) in mmr_nodes.into_iter().enumerate() {
+                            added.push(leaf_hash);
+                            if deletion_status {
+                                deleted.add(*pos + index as u32);
+                            }
+                        }
+                        deleted.run_optimize();
+                    },
+                    // We need to suppress the error as another node might ask for mmr nodes we dont have, so we
+                    // return ok([])
+                    Err(e) => debug!(
+                        target: LOG_TARGET,
+                        "Could not provide requested mmr nodes (pos:{},count:{}) to peer because: {}",
+                        pos,
+                        count,
+                        e.to_string()
+                    ),
+                }
+                Ok(NodeCommsResponse::MmrNodes(added, deleted.serialize()))
+            },
         }
     }
 
