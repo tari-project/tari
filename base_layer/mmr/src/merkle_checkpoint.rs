@@ -33,13 +33,20 @@ use std::fmt;
 pub struct MerkleCheckPoint {
     nodes_added: Vec<Hash>,
     nodes_deleted: Bitmap,
+    prev_accumulated_nodes_added_count: u32,
 }
 
 impl MerkleCheckPoint {
-    pub fn new(nodes_added: Vec<Hash>, nodes_deleted: Bitmap) -> MerkleCheckPoint {
+    pub fn new(
+        nodes_added: Vec<Hash>,
+        nodes_deleted: Bitmap,
+        prev_accumulated_nodes_added_count: u32,
+    ) -> MerkleCheckPoint
+    {
         MerkleCheckPoint {
             nodes_added,
             nodes_deleted,
+            prev_accumulated_nodes_added_count,
         }
     }
 
@@ -57,8 +64,18 @@ impl MerkleCheckPoint {
         Ok(())
     }
 
-    /// Resets the current MerkleCheckpoint.
-    pub fn clear(&mut self) {
+    /// Resets the current MerkleCheckpoint. The accumulated_nodes_added_count is set to the current `MerkleCheckpoint`s
+    /// count.
+    pub fn reset(&mut self) {
+        self.prev_accumulated_nodes_added_count = self.accumulated_nodes_added_count();
+        self.nodes_added.clear();
+        self.nodes_deleted = Bitmap::create();
+    }
+
+    /// Resets the current MerkleCheckpoint. The accumulated_nodes_added_count is set to the given `MerkleCheckpoint`s
+    /// count.
+    pub fn reset_to(&mut self, checkpoint: &Self) {
+        self.prev_accumulated_nodes_added_count = checkpoint.accumulated_nodes_added_count();
         self.nodes_added.clear();
         self.nodes_deleted = Bitmap::create();
     }
@@ -83,6 +100,11 @@ impl MerkleCheckPoint {
         &self.nodes_deleted
     }
 
+    /// Return the the total accumulated added node count including this checkpoint
+    pub fn accumulated_nodes_added_count(&self) -> u32 {
+        self.prev_accumulated_nodes_added_count + self.nodes_added.len() as u32
+    }
+
     /// Break a checkpoint up into its constituent parts
     pub fn into_parts(self) -> (Vec<Hash>, Bitmap) {
         (self.nodes_added, self.nodes_deleted)
@@ -92,9 +114,13 @@ impl MerkleCheckPoint {
 impl Serialize for MerkleCheckPoint {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
-        let mut state = serializer.serialize_struct("MerkleCheckPoint", 2)?;
+        let mut state = serializer.serialize_struct("MerkleCheckPoint", 3)?;
         state.serialize_field("nodes_added", &self.nodes_added)?;
         state.serialize_field("nodes_deleted", &self.nodes_deleted.serialize())?;
+        state.serialize_field(
+            "prev_accumulated_nodes_added_count",
+            &self.prev_accumulated_nodes_added_count,
+        )?;
         state.end()
     }
 }
@@ -105,6 +131,7 @@ impl<'de> Deserialize<'de> for MerkleCheckPoint {
         enum Field {
             NodesAdded,
             NodesDeleted,
+            PrevAccumulatedNodesAddedCount,
         };
 
         impl<'de> Deserialize<'de> for Field {
@@ -116,7 +143,7 @@ impl<'de> Deserialize<'de> for MerkleCheckPoint {
                     type Value = Field;
 
                     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                        formatter.write_str("`nodes_added` or `nodes_deleted`")
+                        formatter.write_str("`nodes_added`, `nodes_deleted` or `prev_accumulated_nodes_added_count`")
                     }
 
                     fn visit_str<E>(self, value: &str) -> Result<Field, E>
@@ -124,6 +151,7 @@ impl<'de> Deserialize<'de> for MerkleCheckPoint {
                         match value {
                             "nodes_added" => Ok(Field::NodesAdded),
                             "nodes_deleted" => Ok(Field::NodesDeleted),
+                            "prev_accumulated_nodes_added_count" => Ok(Field::PrevAccumulatedNodesAddedCount),
                             _ => Err(de::Error::unknown_field(value, FIELDS)),
                         }
                     }
@@ -147,14 +175,21 @@ impl<'de> Deserialize<'de> for MerkleCheckPoint {
                 let nodes_added = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
                 let nodes_deleted_buf: Vec<u8> =
                     seq.next_element()?.ok_or_else(|| de::Error::invalid_length(1, &self))?;
-                let nodes_deleted: Bitmap = Bitmap::deserialize(&nodes_deleted_buf);
-                Ok(MerkleCheckPoint::new(nodes_added, nodes_deleted))
+                let nodes_deleted = Bitmap::deserialize(&nodes_deleted_buf);
+                let prev_accumulated_nodes_added_count =
+                    seq.next_element()?.ok_or_else(|| de::Error::invalid_length(2, &self))?;
+                Ok(MerkleCheckPoint::new(
+                    nodes_added,
+                    nodes_deleted,
+                    prev_accumulated_nodes_added_count,
+                ))
             }
 
             fn visit_map<V>(self, mut map: V) -> Result<MerkleCheckPoint, V::Error>
             where V: MapAccess<'de> {
                 let mut nodes_added = None;
                 let mut nodes_deleted = None;
+                let mut prev_accumulated_nodes_added_count = None;
                 while let Some(key) = map.next_key()? {
                     match key {
                         Field::NodesAdded => {
@@ -170,15 +205,29 @@ impl<'de> Deserialize<'de> for MerkleCheckPoint {
                             let nodes_deleted_buf: Vec<u8> = map.next_value()?;
                             nodes_deleted = Some(Bitmap::deserialize(&nodes_deleted_buf));
                         },
+                        Field::PrevAccumulatedNodesAddedCount => {
+                            if prev_accumulated_nodes_added_count.is_some() {
+                                return Err(de::Error::duplicate_field("nodes_deleted"));
+                            }
+
+                            prev_accumulated_nodes_added_count = Some(map.next_value()?);
+                        },
                     }
                 }
+
                 let nodes_added = nodes_added.ok_or_else(|| de::Error::missing_field("nodes_added"))?;
                 let nodes_deleted = nodes_deleted.ok_or_else(|| de::Error::missing_field("nodes_deleted"))?;
-                Ok(MerkleCheckPoint::new(nodes_added, nodes_deleted))
+                let prev_accumulated_nodes_added_count = prev_accumulated_nodes_added_count
+                    .ok_or_else(|| de::Error::missing_field("accumulated_nodes_added_count"))?;
+                Ok(MerkleCheckPoint::new(
+                    nodes_added,
+                    nodes_deleted,
+                    prev_accumulated_nodes_added_count,
+                ))
             }
         }
 
-        const FIELDS: &[&str] = &["nodes_added", "nodes_deleted"];
+        const FIELDS: &[&str] = &["nodes_added", "nodes_deleted", "prev_accumulated_nodes_added_count"];
         deserializer.deserialize_struct("MerkleCheckPoint", FIELDS, MerkleCheckPointVisitor)
     }
 }

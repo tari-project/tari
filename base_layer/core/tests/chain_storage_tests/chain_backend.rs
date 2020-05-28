@@ -705,10 +705,13 @@ fn commit_block_and_create_fetch_checkpoint_and_rewind_mmr<T: BlockchainBackend>
     let utxo_cp1 = db.fetch_checkpoint(MmrTree::Utxo, 1).unwrap();
     let kernel_cp1 = db.fetch_checkpoint(MmrTree::Kernel, 1).unwrap();
     let range_proof_cp1 = db.fetch_checkpoint(MmrTree::RangeProof, 1).unwrap();
+    assert_eq!(utxo_cp0.nodes_added().len(), 1);
+    assert_eq!(utxo_cp0.accumulated_nodes_added_count(), 1);
     assert_eq!(utxo_cp0.nodes_added()[0], utxo_hash1);
     assert_eq!(utxo_cp0.nodes_deleted().to_vec().len(), 0);
     assert_eq!(kernel_cp0.nodes_added()[0], kernel_hash1);
     assert_eq!(range_proof_cp0.nodes_added()[0], rp_hash1);
+    assert_eq!(utxo_cp1.accumulated_nodes_added_count(), 2);
     assert_eq!(utxo_cp1.nodes_added()[0], utxo_hash2);
     assert_eq!(utxo_cp1.nodes_deleted().to_vec()[0], 0);
     assert_eq!(kernel_cp1.nodes_added()[0], kernel_hash2);
@@ -735,6 +738,7 @@ fn commit_block_and_create_fetch_checkpoint_and_rewind_mmr<T: BlockchainBackend>
     let utxo_cp0 = db.fetch_checkpoint(MmrTree::Utxo, 0).unwrap();
     let kernel_cp0 = db.fetch_checkpoint(MmrTree::Kernel, 0).unwrap();
     let range_proof_cp0 = db.fetch_checkpoint(MmrTree::RangeProof, 0).unwrap();
+    assert_eq!(utxo_cp0.accumulated_nodes_added_count(), 1);
     assert_eq!(utxo_cp0.nodes_added()[0], utxo_hash1);
     assert_eq!(utxo_cp0.nodes_deleted().to_vec().len(), 0);
     assert_eq!(kernel_cp0.nodes_added()[0], kernel_hash1);
@@ -1056,10 +1060,10 @@ fn lmdb_backend_restore() {
             txn.insert_kernel(kernel, true);
             txn.insert_header(header.clone());
             txn.commit_block();
-            assert!(db.write(txn).is_ok());
+            db.write(txn).unwrap();
             let mut txn = DbTransaction::new();
             txn.spend_utxo(stxo_hash.clone());
-            assert!(db.write(txn).is_ok());
+            db.write(txn).unwrap();
 
             assert_eq!(db.contains(&DbKey::BlockHeader(header.height)), Ok(true));
             assert_eq!(db.contains(&DbKey::BlockHash(header_hash.clone())), Ok(true));
@@ -1232,31 +1236,51 @@ fn fetch_checkpoint<T: BlockchainBackend>(mut db: T) {
     let kernel_hash3 = kernel3.hash();
     let rp_hash3 = utxo3.proof.hash();
 
+    let (utxo4, _) = create_utxo(MicroTari(20_000), &factories, None);
+    let kernel4 = create_test_kernel(300.into(), 0);
+    let utxo_hash4 = utxo4.hash();
+    let kernel_hash4 = kernel4.hash();
+    let rp_hash4 = utxo4.proof.hash();
+
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo3, true);
+    txn.insert_utxo(utxo4, true);
     txn.insert_kernel(kernel3, true);
+    txn.insert_kernel(kernel4, true);
     txn.insert_header(header3);
     txn.commit_block();
     assert!(db.write(txn).is_ok());
 
-    let utxo_cp0 = db.fetch_checkpoint(MmrTree::Utxo, 0);
-    let utxo_cp1 = db.fetch_checkpoint(MmrTree::Utxo, 1);
-    let utxo_cp2 = db.fetch_checkpoint(MmrTree::Utxo, 2);
-    let kernel_cp0 = db.fetch_checkpoint(MmrTree::Kernel, 0);
-    let kernel_cp1 = db.fetch_checkpoint(MmrTree::Kernel, 1);
-    let kernel_cp2 = db.fetch_checkpoint(MmrTree::Kernel, 2);
-    let rp_cp0 = db.fetch_checkpoint(MmrTree::RangeProof, 0);
-    let rp_cp1 = db.fetch_checkpoint(MmrTree::RangeProof, 1);
-    let rp_cp2 = db.fetch_checkpoint(MmrTree::RangeProof, 2);
-    assert!(utxo_cp0.unwrap().nodes_added().contains(&utxo_hash1));
-    assert!(utxo_cp1.unwrap().nodes_added().contains(&utxo_hash2));
-    assert!(utxo_cp2.unwrap().nodes_added().contains(&utxo_hash3));
-    assert!(kernel_cp0.unwrap().nodes_added().contains(&kernel_hash1));
-    assert!(kernel_cp1.unwrap().nodes_added().contains(&kernel_hash2));
-    assert!(kernel_cp2.unwrap().nodes_added().contains(&kernel_hash3));
-    assert!(rp_cp0.unwrap().nodes_added().contains(&rp_hash1));
-    assert!(rp_cp1.unwrap().nodes_added().contains(&rp_hash2));
-    assert!(rp_cp2.unwrap().nodes_added().contains(&rp_hash3));
+    let utxo_cp0 = db.fetch_checkpoint(MmrTree::Utxo, 0).unwrap();
+    let utxo_cp1 = db.fetch_checkpoint(MmrTree::Utxo, 1).unwrap();
+    let utxo_cp2 = db.fetch_checkpoint(MmrTree::Utxo, 2).unwrap();
+    let kernel_cp0 = db.fetch_checkpoint(MmrTree::Kernel, 0).unwrap();
+    let kernel_cp1 = db.fetch_checkpoint(MmrTree::Kernel, 1).unwrap();
+    let kernel_cp2 = db.fetch_checkpoint(MmrTree::Kernel, 2).unwrap();
+    let rp_cp0 = db.fetch_checkpoint(MmrTree::RangeProof, 0).unwrap();
+    let rp_cp1 = db.fetch_checkpoint(MmrTree::RangeProof, 1).unwrap();
+    let rp_cp2 = db.fetch_checkpoint(MmrTree::RangeProof, 2).unwrap();
+    assert!(utxo_cp0.nodes_added().contains(&utxo_hash1));
+    assert_eq!(utxo_cp0.accumulated_nodes_added_count(), 1);
+    assert!(utxo_cp1.nodes_added().contains(&utxo_hash2));
+    assert_eq!(utxo_cp1.accumulated_nodes_added_count(), 2);
+    assert!(utxo_cp2.nodes_added().contains(&utxo_hash3));
+    assert!(utxo_cp2.nodes_added().contains(&utxo_hash4));
+    assert_eq!(utxo_cp2.accumulated_nodes_added_count(), 4);
+    assert!(kernel_cp0.nodes_added().contains(&kernel_hash1));
+    assert_eq!(kernel_cp0.accumulated_nodes_added_count(), 1);
+    assert!(kernel_cp1.nodes_added().contains(&kernel_hash2));
+    assert_eq!(kernel_cp1.accumulated_nodes_added_count(), 2);
+    assert!(kernel_cp2.nodes_added().contains(&kernel_hash3));
+    assert!(kernel_cp2.nodes_added().contains(&kernel_hash4));
+    assert_eq!(kernel_cp2.accumulated_nodes_added_count(), 4);
+    assert!(rp_cp0.nodes_added().contains(&rp_hash1));
+    assert_eq!(rp_cp0.accumulated_nodes_added_count(), 1);
+    assert!(rp_cp1.nodes_added().contains(&rp_hash2));
+    assert_eq!(rp_cp1.accumulated_nodes_added_count(), 2);
+    assert!(rp_cp2.nodes_added().contains(&rp_hash3));
+    assert!(rp_cp2.nodes_added().contains(&rp_hash4));
+    assert_eq!(rp_cp2.accumulated_nodes_added_count(), 4);
 }
 
 #[test]
