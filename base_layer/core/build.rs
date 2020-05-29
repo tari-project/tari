@@ -29,6 +29,7 @@ fn main() {
             "src/base_node/proto",
             "src/transactions/transaction_protocol/proto",
         ])
+        .emit_rerun_if_changed_directives()
         .compile()
         .unwrap();
 }

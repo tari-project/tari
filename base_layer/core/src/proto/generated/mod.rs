@@ -22,7 +22,7 @@
 
 //! Imports of rust files generated from protos
 
-#[cfg(feature = "base_node")]
+#[cfg(feature = "base_node_proto")]
 #[path = "tari.base_node.rs"]
 pub mod base_node;
 #[path = "tari.core.rs"]
