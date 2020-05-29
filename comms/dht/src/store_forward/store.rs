@@ -175,7 +175,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     /// priority) 1. Encrypted messages addressed to the neighbourhood - some node in the neighbourhood may be
     /// interested in this message (High priority) 1. Encrypted messages addressed to a particular public key or
     /// node id that this node knows about
-    async fn handle(mut self, message: DecryptedDhtMessage) -> Result<(), PipelineError> {
+    async fn handle(mut self, mut message: DecryptedDhtMessage) -> Result<(), PipelineError> {
         if !self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD) {
             trace!(
                 target: LOG_TARGET,
@@ -187,11 +187,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(());
         }
 
+        message.set_saf_stored(false);
         if let Some(priority) = self
             .get_storage_priority(&message)
             .await
             .map_err(PipelineError::from_debug)?
         {
+            message.set_saf_stored(true);
             self.store(priority, message.clone())
                 .await
                 .map_err(PipelineError::from_debug)?;
@@ -236,6 +238,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         if message.dht_header.message_type.is_dht_join() {
             log_not_eligible("it is a join message");
+            return Ok(None);
+        }
+
+        if message.dht_header.message_type.is_dht_discovery() {
+            log_not_eligible("it is a discovery message");
             return Ok(None);
         }
 
@@ -390,20 +397,18 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 }
             },
             NodeId(dest_node_id) => {
-                if peer_manager.exists_node_id(&dest_node_id).await ||
-                    peer_manager
-                        .in_network_region(
-                            &dest_node_id,
-                            node_identity.node_id(),
-                            self.config.num_neighbouring_nodes,
-                        )
-                        .await?
+                if peer_manager
+                    .in_network_region(
+                        &dest_node_id,
+                        node_identity.node_id(),
+                        self.config.num_neighbouring_nodes,
+                    )
+                    .await?
                 {
                     Ok(Some(StoredMessagePriority::High))
                 } else {
                     log_not_eligible(&format!(
-                        "this node does not know the destination node id '{}' or does not consider it a neighbouring \
-                         node id",
+                        "this node does not consider node '{}' as a neighbour",
                         dest_node_id
                     ));
                     Ok(None)

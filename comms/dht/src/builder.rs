@@ -100,8 +100,13 @@ impl DhtBuilder {
         self
     }
 
-    pub fn with_num_neighbouring_nodes(mut self, num_neighbours: usize) -> Self {
-        self.config.num_neighbouring_nodes = num_neighbours;
+    pub fn with_num_random_nodes(mut self, n: usize) -> Self {
+        self.config.num_random_nodes = n;
+        self
+    }
+
+    pub fn with_num_neighbouring_nodes(mut self, n: usize) -> Self {
+        self.config.num_neighbouring_nodes = n;
         self
     }
 

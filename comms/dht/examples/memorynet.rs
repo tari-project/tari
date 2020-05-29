@@ -234,17 +234,19 @@ async fn main() {
     take_a_break().await;
     total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
 
-    let random_wallet = wallets.remove(OsRng.gen_range(0, wallets.len() - 1));
-    let (num_msgs, random_wallet) = do_store_and_forward_message_propagation(
-        random_wallet,
-        &wallets,
-        messaging_events_tx,
-        &mut messaging_events_rx,
-    )
-    .await;
-    total_messages += num_msgs;
-    // Put the wallet back
-    wallets.push(random_wallet);
+    for _ in 0..5 {
+        let random_wallet = wallets.remove(OsRng.gen_range(0, wallets.len() - 1));
+        let (num_msgs, random_wallet) = do_store_and_forward_message_propagation(
+            random_wallet,
+            &wallets,
+            messaging_events_tx.clone(),
+            &mut messaging_events_rx,
+        )
+        .await;
+        total_messages += num_msgs;
+        // Put the wallet back
+        wallets.push(random_wallet);
+    }
 
     do_network_wide_propagation(&mut nodes).await;
 
@@ -896,7 +898,8 @@ async fn setup_comms_dht(
     .local_test()
     .enable_auto_join()
     .with_discovery_timeout(Duration::from_secs(15))
-    .with_num_neighbouring_nodes(8)
+    .with_num_neighbouring_nodes(10)
+    .with_num_random_nodes(5)
     .with_propagation_factor(4)
     .finish()
     .await
