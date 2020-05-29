@@ -38,15 +38,14 @@ use crate::{
     validation::{StatelessValidation, StatelessValidator, Validation, ValidationError, Validator},
 };
 use croaring::Bitmap;
+use futures::executor::block_on;
 use log::*;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::VecDeque,
-    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
-};
+use std::{collections::VecDeque, sync::Arc};
 use strum_macros::Display;
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, Hashable};
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof, MutableMmrLeafNodes};
+use tokio::sync::{RwLock, RwLockWriteGuard};
 
 const LOG_TARGET: &str = "c::cs::database";
 
@@ -281,24 +280,12 @@ where T: BlockchainBackend
 
     // Be careful about making this method public. Rather use `db_and_metadata_read_access`
     // so that metadata and db are read in the correct order so that deadlocks don't occur
-    pub fn db_read_access(&self) -> Result<RwLockReadGuard<T>, ChainStorageError> {
-        self.db.read().map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "An attempt to get a read lock on the blockchain backend failed. {:?}", e
-            );
-            ChainStorageError::AccessError("Read lock on blockchain backend failed".into())
-        })
+    pub fn db_read_access(&self) -> Result<tokio::sync::RwLockReadGuard<T>, ChainStorageError> {
+        Ok(block_on(async { self.db.read().await }))
     }
 
-    pub fn db_write_access(&self) -> Result<RwLockWriteGuard<T>, ChainStorageError> {
-        self.db.write().map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "An attempt to get a write lock on the blockchain backend failed. {:?}", e
-            );
-            ChainStorageError::AccessError("Write lock on blockchain backend failed".into())
-        })
+    pub fn db_write_access(&self) -> Result<tokio::sync::RwLockWriteGuard<T>, ChainStorageError> {
+        Ok(block_on(async { self.db.write().await }))
     }
 
     /// Returns the height of the current longest chain. This method will only fail if there's a fairly serious
