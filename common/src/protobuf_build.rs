@@ -57,6 +57,7 @@ pub struct ProtoCompiler {
     field_attributes: HashMap<&'static str, &'static str>,
     proto_paths: Vec<PathBuf>,
     include_paths: Vec<PathBuf>,
+    emit_rerun_if_changed_directives: bool,
 }
 
 impl ProtoCompiler {
@@ -67,6 +68,7 @@ impl ProtoCompiler {
             field_attributes: HashMap::new(),
             proto_paths: Vec::new(),
             include_paths: Vec::new(),
+            emit_rerun_if_changed_directives: false,
         }
     }
 
@@ -89,6 +91,11 @@ impl ProtoCompiler {
     pub fn proto_paths<P: AsRef<Path>>(&mut self, proto_paths: &[P]) -> &mut Self {
         self.proto_paths
             .extend(proto_paths.iter().map(|p| p.as_ref().to_path_buf()));
+        self
+    }
+
+    pub fn emit_rerun_if_changed_directives(&mut self) -> &mut Self {
+        self.emit_rerun_if_changed_directives = true;
         self
     }
 
@@ -165,6 +172,12 @@ impl ProtoCompiler {
         self.compare_and_move(&tmp_out_dir, &out_dir);
 
         fs::remove_dir_all(&tmp_out_dir).map_err(|err| format!("Failed to remove temporary dir: {}", err))?;
+
+        if self.emit_rerun_if_changed_directives {
+            for p in &protos {
+                println!("cargo:rerun-if-changed={}", p.to_string_lossy());
+            }
+        }
 
         Ok(())
     }
