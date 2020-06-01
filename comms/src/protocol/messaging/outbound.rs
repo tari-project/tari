@@ -145,7 +145,8 @@ impl OutboundMessaging {
                         Err(err) => {
                             debug!(
                                 target: LOG_TARGET,
-                                "OutboundMessaging failed to send message to peer '{}' because '{}'",
+                                "OutboundMessaging failed to send message ({}) to peer '{}' because '{}'",
+                                out_msg.tag,
                                 self.peer_node_id.short_str(),
                                 err
                             );

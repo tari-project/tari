@@ -407,13 +407,61 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
         response: Some(response.into()),
     };
 
-    outbound_message_service
+    trace!(
+        target: LOG_TARGET,
+        "Attempting outbound message in response to inbound request ({})",
+        inner_msg.request_key
+    );
+    let send_message_response = outbound_message_service
         .send_direct(
             origin_public_key,
             OutboundEncryption::None,
             OutboundDomainMessage::new(TariMessageType::BaseNodeResponse, message),
         )
         .await?;
+    let owned_request_key = inner_msg.request_key;
+    tokio::spawn(async move {
+        match send_message_response.resolve_ok().await {
+            None => {
+                error!(
+                    target: LOG_TARGET,
+                    "Incoming request ({}) response failed to send", owned_request_key,
+                );
+            },
+            Some(send_states) => {
+                if send_states.len() == 1 {
+                    let msg_tag = send_states[0].tag;
+                    trace!(
+                        target: LOG_TARGET,
+                        "Incoming request ({}) response queued with {}",
+                        owned_request_key,
+                        &msg_tag,
+                    );
+                    if send_states.wait_single().await {
+                        trace!(
+                            target: LOG_TARGET,
+                            "Incoming request ({}) response Direct Send was successful {}",
+                            owned_request_key,
+                            msg_tag
+                        );
+                    } else {
+                        error!(
+                            target: LOG_TARGET,
+                            "Incoming request ({}) response Direct Send was unsuccessful and no message was sent {}",
+                            owned_request_key,
+                            msg_tag
+                        );
+                    }
+                } else {
+                    error!(
+                        target: LOG_TARGET,
+                        "Incoming request ({}) response Transaction Finalized message for Send Direct failed",
+                        owned_request_key
+                    );
+                }
+            },
+        };
+    });
 
     Ok(())
 }
@@ -463,6 +511,7 @@ async fn handle_outbound_request(
         None => send_msg_params.random(1),
     };
 
+    trace!(target: LOG_TARGET, "Attempting outbound request ({})", request_key);
     let send_result = outbound_message_service
         .send_message(
             send_msg_params.finish(),
@@ -483,13 +532,33 @@ async fn handle_outbound_request(
                     Err(resp)
                 });
         },
-        Some(_tags) => {
+        Some(send_states) => {
             // Wait for matching responses to arrive
             waiting_requests
                 .insert(request_key, Some(reply_tx))
                 .map_err(|_| CommsInterfaceError::UnexpectedApiResponse)?;
             // Spawn timeout for waiting_request
             spawn_request_timeout(timeout_sender, request_key, config.request_timeout);
+            // Log messages
+            let msg_tag = send_states[0].tag;
+            debug!(
+                target: LOG_TARGET,
+                "Outbound request ({}) response queued with {}", request_key, &msg_tag,
+            );
+            tokio::spawn(async move {
+                if send_states.wait_single().await {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Outbound request ({}) response Direct Send was successful {}", request_key, msg_tag
+                    );
+                } else {
+                    error!(
+                        target: LOG_TARGET,
+                        "Outbound request ({}) response Direct Send was unsuccessful and no message was sent",
+                        request_key
+                    );
+                };
+            });
         },
         None => {
             let _ = reply_tx
@@ -497,7 +566,7 @@ async fn handle_outbound_request(
                 .or_else(|resp| {
                     error!(
                         target: LOG_TARGET,
-                        "Failed to send outbound request because DHT outbound broadcast failed"
+                        "Failed to send outbound request ({}) because DHT outbound broadcast failed", request_key
                     );
                     Err(resp)
                 });
