@@ -28,6 +28,10 @@ message BaseNodeServiceResponse {
         uint64 target_difficulty = 9;
         // Block headers in range response
         BlockHeaders fetch_headers_after_response = 10;
+        // Indicates a MmrNodeCount response
+        uint32 MmrNodeCount = 11;
+        // Indicates a MmrNodes response
+        MmrNodes MmrNodes = 12;
     }
 }
 
@@ -45,5 +49,10 @@ message TransactionOutputs {
 
 message HistoricalBlocks {
     repeated tari.core.HistoricalBlock blocks = 1;
+}
+
+message MmrNodes {
+    repeated bytes added = 1;
+    bytes deleted = 2;
 }
 
