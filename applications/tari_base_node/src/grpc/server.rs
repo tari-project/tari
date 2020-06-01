@@ -42,6 +42,8 @@ use tonic::{Request, Response, Status};
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 const LOG_TARGET: &str = "base_node::grpc";
+const GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS: usize = 1_000_000;
+const GET_TOKENS_IN_CIRCULATION_PAGE_SIZE: usize = 1_000;
 // The maximum number of difficulty ints that can be requested at a time. These will be streamed to the
 // client, so memory is not really a concern here, but a malicious client could request a large
 // number here to keep the node busy
@@ -80,6 +82,7 @@ impl BaseNodeGrpcServer {
 impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type GetBlocksStream = mpsc::Receiver<Result<base_node_grpc::HistoricalBlock, Status>>;
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<base_node_grpc::NetworkDifficultyResponse, Status>>;
+    type GetTokensInCirculationStream = mpsc::Receiver<Result<base_node_grpc::ValueAtHeightResponse, Status>>;
     type ListHeadersStream = mpsc::Receiver<Result<base_node_grpc::BlockHeader, Status>>;
 
     async fn get_network_difficulty(
@@ -107,7 +110,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .drain(..cmp::min(heights.len(), GET_DIFFICULTY_PAGE_SIZE))
                 .collect();
             while page.len() > 0 {
-                let difficulties = match handler.get_headers(page.clone()).await {
+                let mut difficulties = match handler.get_headers(page.clone()).await {
                     Err(err) => {
                         warn!(
                             target: LOG_TARGET,
@@ -115,7 +118,8 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         );
                         return;
                     },
-                    Ok(data) => {
+                    Ok(mut data) => {
+                        data.sort_by(|a, b| a.height.cmp(&b.height));
                         let mut iter = data.iter().peekable();
                         let mut result = Vec::new();
                         while let Some(next) = iter.next() {
@@ -124,18 +128,28 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             let current_height = next.height;
                             let estimated_hash_rate = if let Some(peek) = iter.peek() {
                                 let peeked_timestamp = peek.timestamp.as_u64();
-                                let estimated_hash_rate = current_difficulty / (current_timestamp - peeked_timestamp);
-                                estimated_hash_rate
+                                // Sometimes blocks can have the same timestamp, lucky miner and some clock drift.
+                                if peeked_timestamp > current_timestamp {
+                                    current_difficulty / (peeked_timestamp - current_timestamp)
+                                } else {
+                                    0
+                                }
                             } else {
                                 0
                             };
 
-                            result.push((current_height, current_difficulty, estimated_hash_rate))
+                            result.push((
+                                current_height,
+                                current_difficulty,
+                                estimated_hash_rate,
+                                current_timestamp,
+                            ))
                         }
+
                         result
                     },
                 };
-
+                difficulties.sort_by(|a, b| b.0.cmp(&a.0));
                 let result_size = difficulties.len();
                 for difficulty in difficulties {
                     match tx
@@ -144,6 +158,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                 height: difficulty.0,
                                 difficulty: difficulty.1,
                                 estimated_hash_rate: difficulty.2,
+                                timestamp: difficulty.3,
                             }
                         }))
                         .await
@@ -388,21 +403,60 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
     async fn get_tokens_in_circulation(
         &self,
-        request: Request<base_node_grpc::IntegerValue>,
-    ) -> Result<Response<IntegerValue>, Status>
+        request: Request<base_node_grpc::GetBlocksRequest>,
+    ) -> Result<Response<Self::GetTokensInCirculationStream>, Status>
     {
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetTokensInCirculation",);
         let request = request.into_inner();
+        let mut heights = request.heights;
+        heights = heights
+            .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS))
+            .collect();
         let network: Network = self.node_config.network.into();
         let constants = network.create_consensus_constants();
-        let (initial, decay, tail) = constants.emission_amounts();
-        let schedule = EmissionSchedule::new(initial, decay, tail);
-        let value: u64 = schedule.supply_at_block(request.value).into();
-        debug!(
-            target: LOG_TARGET,
-            "Sending GetTokensInCirculation response {} to client", value
-        );
-        Ok(Response::new(IntegerValue { value }))
+        let (mut tx, rx) = mpsc::channel(GET_TOKENS_IN_CIRCULATION_PAGE_SIZE);
+        self.executor.spawn(async move {
+            let mut page: Vec<u64> = heights
+                .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_PAGE_SIZE))
+                .collect();
+            let (initial, decay, tail) = constants.emission_amounts();
+            let schedule = EmissionSchedule::new(initial, decay, tail);
+            while page.len() > 0 {
+                let values: Vec<ValueAtHeightResponse> = page
+                    .clone()
+                    .into_iter()
+                    .map(|height| ValueAtHeightResponse {
+                        height,
+                        value: schedule.supply_at_block(height).into(),
+                    })
+                    .collect();
+                let result_size = values.len();
+                for value in values {
+                    match tx.send(Ok(value.into())).await {
+                        Ok(_) => (),
+                        Err(err) => {
+                            warn!(target: LOG_TARGET, "Error sending value via GRPC:  {}", err);
+                            match tx.send(Err(Status::unknown("Error sending data"))).await {
+                                Ok(_) => (),
+                                Err(send_err) => {
+                                    warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+                                },
+                            }
+                            return;
+                        },
+                    }
+                }
+                if result_size < GET_TOKENS_IN_CIRCULATION_PAGE_SIZE {
+                    break;
+                }
+                page = heights
+                    .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_PAGE_SIZE))
+                    .collect();
+            }
+        });
+
+        debug!(target: LOG_TARGET, "Sending GetTokensInCirculation response to client");
+        Ok(Response::new(rx))
     }
 }
 

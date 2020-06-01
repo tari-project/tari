@@ -44,7 +44,7 @@ service BaseNode {
     // Get Version
     rpc GetVersion(Empty) returns (StringValue);
     // Get coins in circulation
-    rpc GetTokensInCirculation(IntegerValue) returns (IntegerValue);
+    rpc GetTokensInCirculation(GetBlocksRequest) returns (stream ValueAtHeightResponse);
     // Get network difficulties
     rpc GetNetworkDifficulty(HeightRequest) returns (stream NetworkDifficultyResponse);
 }
@@ -57,6 +57,7 @@ message NetworkDifficultyResponse {
     uint64 difficulty = 1;
     uint64 estimated_hash_rate = 2;
     uint64 height = 3;
+    uint64 timestamp = 4;
 }
 
 // A generic single value response for a specific height
