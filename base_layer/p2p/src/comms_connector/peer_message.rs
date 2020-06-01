@@ -27,6 +27,7 @@ use tari_comms_dht::{domain_message::MessageHeader, envelope::DhtMessageHeader};
 const LOG_TARGET: &str = "comms::dht::requests::inbound";
 
 /// A domain-level message
+#[derive(Debug)]
 pub struct PeerMessage {
     /// The message envelope header
     pub dht_header: DhtMessageHeader,

@@ -44,7 +44,16 @@ pub fn pubsub_connector(executor: Handle, buf_size: usize) -> (PubsubDomainConne
         // Map DomainMessage into a TopicPayload
         .map(|msg: Arc<PeerMessage>| {
             TariMessageType::from_i32(msg.message_header.message_type)
-                .map(|msg_type| TopicPayload::new(msg_type, msg))
+                .map(|msg_type| {
+                    let message_tag_trace = msg.dht_header.message_tag;
+                    let payload = TopicPayload::new(msg_type, msg);
+                    trace!(
+                        target: LOG_TARGET,
+                        "Created topic payload message {:?}, Trace: {}",
+                        &payload.topic(), message_tag_trace
+                    );
+                    payload
+                })
                 .ok_or_else(|| "Invalid or unrecognised Tari message type".to_string())
         })
         // Forward TopicPayloads to the publisher
