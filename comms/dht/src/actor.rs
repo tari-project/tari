@@ -342,12 +342,7 @@ impl DhtActor {
         outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .closest(
-                        node_identity.node_id().clone(),
-                        config.num_neighbouring_nodes,
-                        vec![],
-                        PeerFeatures::MESSAGE_PROPAGATION,
-                    )
+                    .closest(node_identity.node_id().clone(), config.num_neighbouring_nodes, vec![])
                     .with_dht_message_type(DhtMessageType::Join)
                     .force_origin()
                     .finish(),
@@ -392,14 +387,27 @@ impl DhtActor {
                 Ok(peers.into_iter().map(|p| p.node_id).collect())
             },
             Closest(closest_request) => {
-                Self::select_closest_peers_for_propagation(
-                    &peer_manager,
-                    &closest_request.node_id,
-                    closest_request.n,
-                    &closest_request.excluded_peers,
-                    closest_request.peer_features,
-                )
-                .await
+                let candidates = if closest_request.connected_only {
+                    let connections = connectivity
+                        .select_connections(ConnectivitySelection::closest_to(
+                            closest_request.node_id,
+                            closest_request.n,
+                            closest_request.excluded_peers,
+                        ))
+                        .await?;
+
+                    connections.iter().map(|conn| conn.peer_node_id()).cloned().collect()
+                } else {
+                    Self::select_closest_peers_for_propagation(
+                        &peer_manager,
+                        &closest_request.node_id,
+                        closest_request.n,
+                        &closest_request.excluded_peers,
+                        PeerFeatures::MESSAGE_PROPAGATION,
+                    )
+                    .await?
+                };
+                Ok(candidates)
             },
             Random(n, excluded) => {
                 // Send to a random set of peers of size n that are Communication Nodes
@@ -619,10 +627,7 @@ mod test {
         test_utils::{make_client_identity, make_node_identity, make_peer_manager},
     };
     use chrono::{DateTime, Utc};
-    use tari_comms::{
-        peer_manager::PeerFeatures,
-        test_utils::mocks::{create_connectivity_mock, create_peer_connection_mock_pair},
-    };
+    use tari_comms::test_utils::mocks::{create_connectivity_mock, create_peer_connection_mock_pair};
     use tari_shutdown::Shutdown;
     use tari_test_utils::random;
 
@@ -751,8 +756,8 @@ mod test {
         let send_request = Box::new(BroadcastClosestRequest {
             n: 10,
             node_id: node_identity.node_id().clone(),
-            peer_features: PeerFeatures::DHT_STORE_FORWARD,
             excluded_peers: vec![],
+            connected_only: false,
         });
         let peers = requester
             .select_peers(BroadcastStrategy::Closest(send_request))

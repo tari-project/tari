@@ -22,17 +22,14 @@
 
 use crate::envelope::NodeDestination;
 use std::{fmt, fmt::Formatter};
-use tari_comms::{
-    peer_manager::{node_id::NodeId, PeerFeatures},
-    types::CommsPublicKey,
-};
+use tari_comms::{peer_manager::node_id::NodeId, types::CommsPublicKey};
 
 #[derive(Debug, Clone)]
 pub struct BroadcastClosestRequest {
     pub n: usize,
     pub node_id: NodeId,
-    pub peer_features: PeerFeatures,
     pub excluded_peers: Vec<NodeId>,
+    pub connected_only: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -128,7 +125,7 @@ mod test {
                 node_id: NodeId::default(),
                 n: 0,
                 excluded_peers: Default::default(),
-                peer_features: Default::default()
+                connected_only: false
             }))
             .is_direct(),
             false
@@ -152,7 +149,7 @@ mod test {
             node_id: NodeId::default(),
             n: 0,
             excluded_peers: Default::default(),
-            peer_features: Default::default()
+            connected_only: false
         }))
         .direct_public_key()
         .is_none(),);
@@ -178,7 +175,7 @@ mod test {
             node_id: NodeId::default(),
             n: 0,
             excluded_peers: Default::default(),
-            peer_features: Default::default(),
+            connected_only: false
         }))
         .direct_node_id()
         .is_none(),);

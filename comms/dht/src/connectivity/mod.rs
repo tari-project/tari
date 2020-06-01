@@ -175,14 +175,17 @@ impl DhtConnectivity {
             PeerConnectFailed(node_id) | PeerOffline(node_id) | PeerBanned(node_id) => {
                 self.replace_managed_peer(node_id).await?;
             },
-            ConnectivityStateDegraded(_) | ConnectivityStateOnline(_) => {
+            ConnectivityStateDegraded(n) | ConnectivityStateOnline(n) => {
                 if self.config.auto_join && self.can_send_join() {
                     info!(target: LOG_TARGET, "Joining the network automatically");
                     self.dht_requester
                         .send_join()
                         .await
                         .map_err(DhtConnectivityError::SendJoinFailed)?;
-                    self.stats.mark_join_sent();
+                    // If join is only being sent to a single peer, allow it to be resent
+                    if *n > 1 {
+                        self.stats.mark_join_sent();
+                    }
                 }
             },
             _ => {},
