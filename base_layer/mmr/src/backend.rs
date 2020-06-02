@@ -57,6 +57,9 @@ pub trait ArrayLikeExt {
     /// Shift the array, by discarding the first n elements from the front.
     fn shift(&mut self, n: usize) -> Result<(), MerkleMountainRangeError>;
 
+    /// Store a new item first in the array, previous items will be shifted up to make room.
+    fn push_front(&mut self, item: Self::Value) -> Result<(), MerkleMountainRangeError>;
+
     /// Execute the given closure for each value in the array
     fn for_each<F>(&self, f: F) -> Result<(), MerkleMountainRangeError>
     where F: FnMut(Result<Self::Value, MerkleMountainRangeError>);
@@ -104,6 +107,11 @@ impl<T: Clone> ArrayLikeExt for Vec<T> {
     fn shift(&mut self, n: usize) -> Result<(), MerkleMountainRangeError> {
         let drain_n = min(n, self.len());
         self.drain(0..drain_n);
+        Ok(())
+    }
+
+    fn push_front(&mut self, item: Self::Value) -> Result<(), MerkleMountainRangeError> {
+        self.insert(0, item);
         Ok(())
     }
 

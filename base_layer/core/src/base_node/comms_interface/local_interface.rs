@@ -31,7 +31,6 @@ use crate::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{ChainMetadata, HistoricalBlock},
     proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::types::HashOutput,
 };
 use futures::{stream::Fuse, StreamExt};
 use std::sync::Arc;

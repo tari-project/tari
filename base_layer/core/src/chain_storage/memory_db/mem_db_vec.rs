@@ -114,6 +114,13 @@ impl<T: Clone> ArrayLikeExt for MemDbVec<T> {
         Ok(())
     }
 
+    fn push_front(&mut self, item: Self::Value) -> Result<(), MerkleMountainRangeError> {
+        self.db
+            .write()
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
+            .push_front(item)
+    }
+
     fn for_each<F>(&self, f: F) -> Result<(), MerkleMountainRangeError>
     where F: FnMut(Result<Self::Value, MerkleMountainRangeError>) {
         self.db
@@ -153,8 +160,20 @@ mod test {
         assert!(mem_vec.shift(2).is_ok());
         assert!(db_vec.shift(2).is_ok());
         assert_eq!(db_vec.len().unwrap(), 2);
-        assert_eq!(db_vec.get(0).unwrap(), Some(300));
-        assert_eq!(db_vec.get(1).unwrap(), Some(400));
+        mem_vec
+            .iter()
+            .enumerate()
+            .for_each(|(i, val)| assert_eq!(db_vec.get(i).unwrap(), Some(val.clone())));
+
+        assert!(mem_vec.push_front(200).is_ok());
+        assert!(mem_vec.push_front(100).is_ok());
+        assert!(db_vec.push_front(200).is_ok());
+        assert!(db_vec.push_front(100).is_ok());
+        assert_eq!(db_vec.len().unwrap(), 4);
+        mem_vec
+            .iter()
+            .enumerate()
+            .for_each(|(i, val)| assert_eq!(db_vec.get(i).unwrap(), Some(val.clone())));
 
         assert!(db_vec.clear().is_ok());
         assert_eq!(db_vec.len().unwrap(), 0);
