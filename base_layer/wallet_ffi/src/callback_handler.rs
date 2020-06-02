@@ -51,6 +51,7 @@
 use futures::{stream::Fuse, StreamExt};
 use log::*;
 use tari_broadcast_channel::Subscriber;
+use tari_comms::types::CommsPublicKey;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     output_manager_service::{handle::OutputManagerEvent, TxId},
@@ -78,6 +79,7 @@ where TBackend: TransactionBackend + 'static
     transaction_service_event_stream: Fuse<TransactionEventReceiver>,
     output_manager_service_event_stream: Fuse<Subscriber<OutputManagerEvent>>,
     shutdown_signal: Option<ShutdownSignal>,
+    comms_public_key: CommsPublicKey,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -89,6 +91,7 @@ where TBackend: TransactionBackend + 'static
         transaction_service_event_stream: Fuse<TransactionEventReceiver>,
         output_manager_service_event_stream: Fuse<Subscriber<OutputManagerEvent>>,
         shutdown_signal: ShutdownSignal,
+        comms_public_key: CommsPublicKey,
         callback_received_transaction: unsafe extern "C" fn(*mut InboundTransaction),
         callback_received_transaction_reply: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_received_finalized_transaction: unsafe extern "C" fn(*mut CompletedTransaction),
@@ -151,6 +154,7 @@ where TBackend: TransactionBackend + 'static
             transaction_service_event_stream,
             output_manager_service_event_stream,
             shutdown_signal: Some(shutdown_signal),
+            comms_public_key,
         }
     }
 
@@ -302,10 +306,14 @@ where TBackend: TransactionBackend + 'static
             transaction = Some(tx);
         } else {
             if let Ok(tx) = self.db.get_cancelled_pending_outbound_transaction(tx_id).await {
-                transaction = Some(CompletedTransaction::from(tx));
+                let mut outbound_tx = CompletedTransaction::from(tx);
+                outbound_tx.source_public_key = self.comms_public_key.clone();
+                transaction = Some(outbound_tx);
             } else {
                 if let Ok(tx) = self.db.get_cancelled_pending_inbound_transaction(tx_id).await {
-                    transaction = Some(CompletedTransaction::from(tx));
+                    let mut inbound_tx = CompletedTransaction::from(tx);
+                    inbound_tx.destination_public_key = self.comms_public_key.clone();
+                    transaction = Some(inbound_tx);
                 }
             }
         }
