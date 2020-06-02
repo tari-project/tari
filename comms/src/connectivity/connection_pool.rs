@@ -132,7 +132,7 @@ impl ConnectionPool {
         self.connections.contains_key(node_id)
     }
 
-    pub fn insert_connection(&mut self, conn: PeerConnection) {
+    pub fn insert_connection(&mut self, conn: PeerConnection) -> ConnectionStatus {
         match self.connections.entry(conn.peer_node_id().clone()) {
             Entry::Occupied(mut entry) => {
                 let entry_mut = entry.get_mut();
@@ -142,10 +142,9 @@ impl ConnectionPool {
                     ConnectionStatus::Disconnected
                 };
                 entry_mut.set_connection(conn);
+                entry_mut.status
             },
-            Entry::Vacant(entry) => {
-                entry.insert(PeerConnectionState::connected(conn));
-            },
+            Entry::Vacant(entry) => entry.insert(PeerConnectionState::connected(conn)).status,
         }
     }
 

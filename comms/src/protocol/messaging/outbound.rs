@@ -25,37 +25,38 @@ use crate::{
     connection_manager::{ConnectionManagerError, ConnectionManagerRequester, NegotiatedSubstream, PeerConnection},
     message::OutboundMessage,
     multiplexing::Substream,
-    peer_manager::{NodeId, NodeIdentity},
+    peer_manager::NodeId,
 };
-use futures::{channel::mpsc, SinkExt, StreamExt};
+use futures::{channel::mpsc, SinkExt};
 use log::*;
-use std::sync::Arc;
+use std::time::Duration;
+use tokio::{stream::StreamExt, time};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::outbound";
 
 pub struct OutboundMessaging {
     conn_man_requester: ConnectionManagerRequester,
-    node_identity: Arc<NodeIdentity>,
     request_rx: mpsc::UnboundedReceiver<OutboundMessage>,
     messaging_events_tx: mpsc::Sender<MessagingEvent>,
     peer_node_id: NodeId,
+    inactivity_timeout: Duration,
 }
 
 impl OutboundMessaging {
     pub fn new(
         conn_man_requester: ConnectionManagerRequester,
-        node_identity: Arc<NodeIdentity>,
         messaging_events_tx: mpsc::Sender<MessagingEvent>,
         request_rx: mpsc::UnboundedReceiver<OutboundMessage>,
         peer_node_id: NodeId,
+        inactivity_timeout: Duration,
     ) -> Self
     {
         Self {
             conn_man_requester,
-            node_identity,
             request_rx,
             messaging_events_tx,
             peer_node_id,
+            inactivity_timeout,
         }
     }
 
@@ -124,41 +125,60 @@ impl OutboundMessaging {
 
     async fn start_forwarding_messages(mut self, substream: Substream) -> Result<(), MessagingProtocolError> {
         let mut framed = MessagingProtocol::framed(substream);
-        while let Some(mut out_msg) = self.request_rx.next().await {
-            debug!(
-                target: LOG_TARGET,
-                "Sending message ({} bytes) ({}) on outbound messaging substream",
-                out_msg.body.len(),
-                out_msg.tag,
-            );
-            match framed.send(out_msg.body.clone()).await {
-                Ok(_) => {
-                    out_msg.reply_success();
-                    let _ = self
-                        .messaging_events_tx
-                        .send(MessagingEvent::MessageSent(out_msg.tag))
-                        .await;
-                },
-                Err(err) => {
+        loop {
+            match time::timeout(self.inactivity_timeout, self.request_rx.next()).await {
+                Ok(Some(mut out_msg)) => {
                     debug!(
                         target: LOG_TARGET,
-                        "[ThisNode={}] OutboundMessaging failed to send message to peer '{}' because '{}'",
-                        self.node_identity.node_id().short_str(),
-                        self.peer_node_id.short_str(),
-                        err
+                        "Sending message ({} bytes) ({}) on outbound messaging substream",
+                        out_msg.body.len(),
+                        out_msg.tag,
                     );
-                    out_msg.reply_fail();
-                    let _ = self
-                        .messaging_events_tx
-                        .send(MessagingEvent::SendMessageFailed(
-                            out_msg,
-                            SendFailReason::SubstreamSendFailed,
-                        ))
-                        .await;
-                    // FATAL: Failed to send on the substream
-                    self.flush_all_messages_to_failed_event(SendFailReason::SubstreamSendFailed)
-                        .await;
-                    return Err(MessagingProtocolError::OutboundSubstreamFailure);
+                    match framed.send(out_msg.body.clone()).await {
+                        Ok(_) => {
+                            out_msg.reply_success();
+                            let _ = self
+                                .messaging_events_tx
+                                .send(MessagingEvent::MessageSent(out_msg.tag))
+                                .await;
+                        },
+                        Err(err) => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "OutboundMessaging failed to send message to peer '{}' because '{}'",
+                                self.peer_node_id.short_str(),
+                                err
+                            );
+                            out_msg.reply_fail();
+                            let _ = self
+                                .messaging_events_tx
+                                .send(MessagingEvent::SendMessageFailed(
+                                    out_msg,
+                                    SendFailReason::SubstreamSendFailed,
+                                ))
+                                .await;
+                            // FATAL: Failed to send on the substream
+                            self.flush_all_messages_to_failed_event(SendFailReason::SubstreamSendFailed)
+                                .await;
+                            return Err(MessagingProtocolError::OutboundSubstreamFailure);
+                        },
+                    }
+                },
+                Ok(None) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Outbound messaging for peer '{}' has stopped because the stream was closed",
+                        self.peer_node_id.short_str()
+                    );
+                    break;
+                },
+                Err(_) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Outbound messaging for peer '{}' has stopped because it was inactive",
+                        self.peer_node_id.short_str()
+                    );
+                    break;
                 },
             }
         }

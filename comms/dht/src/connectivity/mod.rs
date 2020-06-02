@@ -161,6 +161,16 @@ impl DhtConnectivity {
             "Adding {} neighbouring peer(s)",
             self.neighbours.len(),
         );
+        debug!(
+            target: LOG_TARGET,
+            "Adding {} peer(s) to connectivity manager: {}",
+            self.neighbours.len(),
+            self.neighbours
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
 
         self.connectivity.add_managed_peers(self.neighbours.clone()).await?;
         Ok(())
@@ -172,7 +182,10 @@ impl DhtConnectivity {
             PeerConnected(conn) => {
                 self.handle_new_peer_connected(conn).await?;
             },
-            PeerConnectFailed(node_id) | PeerOffline(node_id) | PeerBanned(node_id) => {
+            ManagedPeerDisconnected(node_id) |
+            ManagedPeerConnectFailed(node_id) |
+            PeerOffline(node_id) |
+            PeerBanned(node_id) => {
                 self.replace_managed_peer(node_id).await?;
             },
             ConnectivityStateDegraded(n) | ConnectivityStateOnline(n) => {
@@ -217,6 +230,12 @@ impl DhtConnectivity {
                     random_peers.len(),
                     keep.len(),
                     to_remove.len()
+                );
+                trace!(
+                    target: LOG_TARGET,
+                    "Random peers: Adding = {:?}, Removing = {:?}",
+                    random_peers,
+                    to_remove
                 );
                 self.connectivity.add_managed_peers(random_peers).await?;
                 for n in to_remove {
@@ -291,6 +310,7 @@ impl DhtConnectivity {
 
     async fn replace_managed_peer(&mut self, current_peer: &NodeId) -> Result<(), DhtConnectivityError> {
         if !self.is_managed(current_peer) {
+            info!(target: LOG_TARGET, "{} is not managed. Ignoring", current_peer);
             return Ok(());
         }
 

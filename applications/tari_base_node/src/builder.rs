@@ -496,6 +496,11 @@ where
     let base_node_subscriptions = Arc::new(base_node_subscriptions);
     create_peer_db_folder(&config.peer_db_path)?;
     let (base_node_comms, base_node_dht) = setup_base_node_comms(base_node_identity, config, publisher).await?;
+    base_node_comms
+        .connectivity()
+        .add_managed_peers(vec![wallet_node_identity.node_id().clone()])
+        .await
+        .map_err(|err| err.to_string())?;
 
     debug!(target: LOG_TARGET, "Registering base node services");
     let base_node_handles = register_base_node_services(

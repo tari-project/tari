@@ -26,10 +26,10 @@ use crate::{
     peer_manager::Peer,
     protocol::messaging::{MessagingEvent, MessagingProtocol},
 };
-use futures::{channel::mpsc, AsyncRead, AsyncWrite, SinkExt, StreamExt};
+use futures::{channel::mpsc, AsyncRead, AsyncWrite, SinkExt};
 use log::*;
 use std::{sync::Arc, time::Duration};
-use tokio::sync::broadcast;
+use tokio::{stream::StreamExt, sync::broadcast};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
 
@@ -39,6 +39,7 @@ pub struct InboundMessaging {
     messaging_events_tx: broadcast::Sender<Arc<MessagingEvent>>,
     rate_limit_capacity: usize,
     rate_limit_restock_interval: Duration,
+    inactivity_timeout: Duration,
 }
 
 impl InboundMessaging {
@@ -48,6 +49,7 @@ impl InboundMessaging {
         messaging_events_tx: broadcast::Sender<Arc<MessagingEvent>>,
         rate_limit_capacity: usize,
         rate_limit_restock_interval: Duration,
+        inactivity_timeout: Duration,
     ) -> Self
     {
         Self {
@@ -56,17 +58,25 @@ impl InboundMessaging {
             messaging_events_tx,
             rate_limit_capacity,
             rate_limit_restock_interval,
+            inactivity_timeout,
         }
     }
 
     pub async fn run<S>(mut self, socket: S)
     where S: AsyncRead + AsyncWrite + Unpin {
-        let mut framed_socket =
-            MessagingProtocol::framed(socket).rate_limit(self.rate_limit_capacity, self.rate_limit_restock_interval);
+        debug!(
+            target: LOG_TARGET,
+            "Starting inbound messaging protocol for peer '{}'",
+            self.peer.node_id.short_str()
+        );
+        let mut framed_socket = MessagingProtocol::framed(socket)
+            .timeout(self.inactivity_timeout)
+            .rate_limit(self.rate_limit_capacity, self.rate_limit_restock_interval);
         let peer = &self.peer;
+
         while let Some(result) = framed_socket.next().await {
             match result {
-                Ok(raw_msg) => {
+                Ok(Ok(raw_msg)) => {
                     let inbound_msg = InboundMessage::new(Arc::clone(&peer), raw_msg.clone().freeze());
                     trace!(
                         target: LOG_TARGET,
@@ -97,7 +107,7 @@ impl InboundMessaging {
                     debug!(target: LOG_TARGET, "Inbound handler sending event '{}'", event);
                     let _ = self.messaging_events_tx.send(Arc::new(event));
                 },
-                Err(err) => {
+                Ok(Err(err)) => {
                     error!(
                         target: LOG_TARGET,
                         "Failed to receive from peer '{}' because '{}'",
@@ -106,13 +116,17 @@ impl InboundMessaging {
                     );
                     break;
                 },
+
+                Err(_) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Inbound messaging for peer '{}' has stopped because it was inactive for {}s",
+                        peer.node_id.short_str(),
+                        self.inactivity_timeout.as_secs(),
+                    );
+                    break;
+                },
             }
         }
-
-        debug!(
-            target: LOG_TARGET,
-            "Inbound messaging handler for peer '{}' has stopped",
-            peer.node_id.short_str()
-        );
     }
 }
