@@ -582,22 +582,13 @@ impl<D: Digest> InnerDatabase<D> {
             kernels: HashMap::default(),
             orphans: HashMap::default(),
             utxo_mmr,
-            curr_utxo_checkpoint: {
-                let acc_count = fetch_last_mmr_node_added_count(&utxo_checkpoints);
-                MerkleCheckPoint::new(Vec::new(), Bitmap::create(), acc_count)
-            },
+            curr_utxo_checkpoint: MerkleCheckPoint::new(Vec::new(), Bitmap::create(), 0),
             utxo_checkpoints,
             kernel_mmr,
-            curr_kernel_checkpoint: {
-                let acc_count = fetch_last_mmr_node_added_count(&kernel_checkpoints);
-                MerkleCheckPoint::new(Vec::new(), Bitmap::create(), acc_count)
-            },
+            curr_kernel_checkpoint: MerkleCheckPoint::new(Vec::new(), Bitmap::create(), 0),
             kernel_checkpoints,
             range_proof_mmr,
-            curr_range_proof_checkpoint: {
-                let acc_count = fetch_last_mmr_node_added_count(&range_proof_checkpoints);
-                MerkleCheckPoint::new(Vec::new(), Bitmap::create(), acc_count)
-            },
+            curr_range_proof_checkpoint: MerkleCheckPoint::new(Vec::new(), Bitmap::create(), 0),
             range_proof_checkpoints,
         }
     }
@@ -715,43 +706,29 @@ fn rewind_checkpoint_index(cp_count: usize, steps_back: usize) -> usize {
     }
 }
 
-/// Returns the accumulated node added count.
-///
-/// ## Panics
-///
-/// This will panic if the underlying checkpoint RwLock is poisoned
-fn fetch_last_mmr_node_added_count(checkpoints: &MemDbVec<MerkleCheckPoint>) -> u32 {
-    let cp_len = checkpoints.len().expect("MemDbVec RwLock is poisoned");
-
-    if cp_len == 0 {
-        return 0;
-    }
-
-    let last_cp = checkpoints
-        .get(cp_len - 1)
-        .expect("MemDbVec RwLock is poisoned")
-        .expect("Checkpoint len() > 0 but get returned None for last index");
-
-    last_cp.accumulated_nodes_added_count()
-}
-
-/// Calculate the total leaf node count upto a specified height.
+// Calculate the total leaf node count upto a specified height.
 fn fetch_mmr_nodes_added_count(
     checkpoints: &MemDbVec<MerkleCheckPoint>,
     height: u64,
 ) -> Result<u32, ChainStorageError>
 {
-    let last_index = min(checkpoints.len()?, (height + 1) as usize);
-    let count = checkpoints
-        .get(last_index)
-        .map_err(|e| ChainStorageError::AccessError(format!("Checkpoint error: {}", e.to_string())))?
-        .map(|cp| cp.accumulated_nodes_added_count())
-        .unwrap_or(0);
-
-    Ok(count)
+    let cp_count = checkpoints
+        .len()
+        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+    Ok(match cp_count.checked_sub(1) {
+        Some(last_index) => {
+            let index = min(last_index, height as usize);
+            checkpoints
+                .get(index)
+                .map_err(|e| ChainStorageError::AccessError(format!("Checkpoint error: {}", e.to_string())))?
+                .map(|cp| cp.accumulated_nodes_added_count())
+                .unwrap_or(0)
+        },
+        None => 0,
+    })
 }
 
-/// Rewinds checkpoints by `steps_back` elements and returns the last checkpoint.
+// Rewinds checkpoints by `steps_back` elements and returns the last checkpoint.
 fn rewind_checkpoints(
     checkpoints: &mut MemDbVec<MerkleCheckPoint>,
     steps_back: usize,

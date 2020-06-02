@@ -66,7 +66,7 @@ use croaring::Bitmap;
 use digest::Digest;
 use lmdb_zero::{Database, Environment, WriteTransaction};
 use log::*;
-use std::{cmp, collections::VecDeque, fmt::Display, path::Path, sync::Arc};
+use std::{cmp::min, collections::VecDeque, fmt::Display, path::Path, sync::Arc};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable};
 use tari_mmr::{
     functions::{prune_mutable_mmr, PrunedMutableMmr},
@@ -764,40 +764,38 @@ fn fetch_pruning_horizon(env: &Environment, db: &Database) -> Result<u64, ChainS
     )
 }
 
-/// Calculate the total leaf node count upto a specified height.
+// Calculate the total leaf node count upto a specified height.
 fn fetch_mmr_nodes_added_count<T>(checkpoints: &T, height: u64) -> Result<u32, ChainStorageError>
 where
     T: ArrayLike<Value = MerkleCheckPoint>,
     T::Error: Display,
 {
-    let len = checkpoints
+    let cp_count = checkpoints
         .len()
         .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-
-    let last_index = cmp::min(len - 1, height as usize);
-    let count = checkpoints
-        .get(last_index)
-        .map_err(|e| ChainStorageError::AccessError(format!("Checkpoint error: {}", e.to_string())))?
-        .map(|cp| cp.accumulated_nodes_added_count())
-        .unwrap_or(0);
-
-    Ok(count as u32)
+    Ok(match cp_count.checked_sub(1) {
+        Some(last_index) => {
+            let index = min(last_index, height as usize);
+            checkpoints
+                .get(index)
+                .map_err(|e| ChainStorageError::AccessError(format!("Checkpoint error: {}", e.to_string())))?
+                .map(|cp| cp.accumulated_nodes_added_count())
+                .unwrap_or(0)
+        },
+        None => 0,
+    })
 }
 
+// Returns the accumulated node added count.
 fn fetch_last_mmr_node_added_count<T>(checkpoints: &T) -> Result<u32, ChainStorageError>
 where
     T: ArrayLike<Value = MerkleCheckPoint>,
     T::Error: Display,
 {
-    let cp_len = checkpoints
+    let cp_count = checkpoints
         .len()
         .map_err(|e| ChainStorageError::AccessError(format!("Failed to fetch range proof checkpoint length: {}", e)))?;
-
-    if cp_len == 0 {
-        return Ok(0);
-    }
-
-    fetch_mmr_nodes_added_count(checkpoints, cp_len as u64)
+    fetch_mmr_nodes_added_count(checkpoints, cp_count.saturating_sub(1) as u64)
 }
 
 // Calculated the new checkpoint count after rewinding a set number of steps back.
@@ -808,7 +806,8 @@ fn rewind_checkpoint_index(cp_count: usize, steps_back: usize) -> usize {
         1
     }
 }
-/// Rewinds checkpoints by `steps_back` elements and returns the last checkpoint.
+
+// Rewinds checkpoints by `steps_back` elements and returns the last checkpoint.
 fn rewind_checkpoints(
     checkpoints: &mut LMDBVec<MerkleCheckPoint>,
     steps_back: usize,
@@ -817,7 +816,6 @@ fn rewind_checkpoints(
     let cp_count = checkpoints
         .len()
         .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-
     let rewind_len = rewind_checkpoint_index(cp_count, steps_back);
     checkpoints
         .truncate(rewind_len)
