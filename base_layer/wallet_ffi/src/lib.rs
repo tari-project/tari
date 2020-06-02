@@ -2389,6 +2389,7 @@ pub unsafe extern "C" fn wallet_create(
                         w.transaction_service.get_event_stream_fused(),
                         w.output_manager_service.get_event_stream_fused(),
                         w.comms.shutdown_signal(),
+                        w.comms.node_identity().public_key().clone(),
                         callback_received_transaction,
                         callback_received_transaction_reply,
                         callback_received_finalized_transaction,
