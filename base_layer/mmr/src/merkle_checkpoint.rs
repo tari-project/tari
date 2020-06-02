@@ -105,6 +105,12 @@ impl MerkleCheckPoint {
         self.prev_accumulated_nodes_added_count + self.nodes_added.len() as u32
     }
 
+    /// Merge the provided Merkle checkpoint into the current checkpoint.
+    pub fn append(&mut self, mut cp: MerkleCheckPoint) {
+        self.nodes_added.append(&mut cp.nodes_added);
+        self.nodes_deleted.or_inplace(&cp.nodes_deleted);
+    }
+
     /// Break a checkpoint up into its constituent parts
     pub fn into_parts(self) -> (Vec<Hash>, Bitmap) {
         (self.nodes_added, self.nodes_deleted)
