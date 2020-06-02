@@ -61,6 +61,7 @@ const MAX_SEND_RETRIES: usize = 1;
 /// The maximum amount of inbound messages to accept within the `RATE_LIMIT_RESTOCK_INTERVAL` window
 const RATE_LIMIT_CAPACITY: usize = 10;
 const RATE_LIMIT_RESTOCK_INTERVAL: Duration = Duration::from_millis(100);
+const MAX_FRAME_LENGTH: usize = 8 * 1_024 * 1_024;
 
 pub type MessagingEventSender = broadcast::Sender<Arc<MessagingEvent>>;
 pub type MessagingEventReceiver = broadcast::Receiver<Arc<MessagingEvent>>;
@@ -205,7 +206,10 @@ impl MessagingProtocol {
 
     pub fn framed<TSubstream>(socket: TSubstream) -> Framed<IoCompat<TSubstream>, LengthDelimitedCodec>
     where TSubstream: AsyncRead + AsyncWrite + Unpin {
-        Framed::new(IoCompat::new(socket), LengthDelimitedCodec::new())
+        let codec = LengthDelimitedCodec::builder()
+            .max_frame_length(MAX_FRAME_LENGTH)
+            .new_codec();
+        Framed::new(IoCompat::new(socket), codec)
     }
 
     async fn handle_internal_messaging_event(&mut self, event: MessagingEvent) {
