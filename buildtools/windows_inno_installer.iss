@@ -3,7 +3,7 @@
 
 #define MyOrgName "Tari"
 #define MyAppName "Base Node"
-#define MyAppVersion "0.2.4-0d60fff-release"
+#define MyAppVersion "0.3.0-0f59836-release"
 #define MyAppPublisher "The Tari Development Community"
 #define MyAppURL "https://github.com/tari-project/tari"
 #define MyAppSupp "Tari Website"
