@@ -113,7 +113,7 @@ where
     W: ContactsBackend + 'static,
 {
     pub fn new(
-        config: WalletConfig,
+        mut config: WalletConfig,
         mut runtime: Runtime,
         wallet_backend: T,
         transaction_backend: U,
@@ -134,20 +134,20 @@ where
         );
         let subscription_factory = Arc::new(subscription_factory);
 
-        let (comms, dht) = runtime.block_on(initialize_comms(config.comms_config.clone(), publisher))?;
+        // Wallet should join the network
+        config.comms_config.dht.auto_join = true;
+        let (comms, dht) = runtime.block_on(initialize_comms(config.comms_config.clone(), publisher, vec![]))?;
 
         let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
             .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
                     auto_ping_interval: Some(Duration::from_secs(30)),
-                    enable_auto_join: true,
-                    useragent: format!("tari\\wallet\\{}", env!("CARGO_PKG_VERSION")),
+                    useragent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
                     ..Default::default()
                 },
                 Arc::clone(&subscription_factory),
                 dht.dht_requester(),
-                comms.connection_manager(),
             ))
             .add_initializer(OutputManagerServiceInitializer::new(
                 OutputManagerServiceConfig::default(),
@@ -234,6 +234,8 @@ where
 
         self.runtime
             .block_on(self.comms.peer_manager().add_peer(peer.clone()))?;
+        self.runtime
+            .block_on(self.comms.connectivity().add_managed_peers(vec![peer.node_id.clone()]))?;
         self.runtime.block_on(
             self.transaction_service
                 .set_base_node_public_key(peer.public_key.clone()),
@@ -261,7 +263,7 @@ where
             .block_on(self.output_manager_service.add_output(unblinded_output.clone()))?;
 
         let tx_id = self.runtime.block_on(self.transaction_service.import_utxo(
-            amount.clone(),
+            amount,
             source_public_key.clone(),
             message,
         ))?;
@@ -312,5 +314,37 @@ where
             .runtime
             .block_on(self.output_manager_service.sync_with_base_node())?;
         Ok(request_key)
+    }
+
+    /// Do a coin split
+    pub fn coin_split(
+        &mut self,
+        amount_per_split: MicroTari,
+        split_count: usize,
+        fee_per_gram: MicroTari,
+        message: String,
+        lock_height: Option<u64>,
+    ) -> Result<TxId, WalletError>
+    {
+        let coin_split_tx = self.runtime.block_on(self.output_manager_service.create_coin_split(
+            amount_per_split,
+            split_count,
+            fee_per_gram,
+            lock_height,
+        ));
+
+        match coin_split_tx {
+            Ok((tx_id, split_tx, amount, fee)) => {
+                let coin_tx = self.runtime.block_on(
+                    self.transaction_service
+                        .submit_transaction(tx_id, split_tx, fee, amount, message),
+                );
+                match coin_tx {
+                    Ok(_) => Ok(tx_id),
+                    Err(e) => Err(WalletError::TransactionServiceError(e)),
+                }
+            },
+            Err(e) => Err(WalletError::OutputManagerError(e)),
+        }
     }
 }

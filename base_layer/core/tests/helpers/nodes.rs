@@ -68,7 +68,6 @@ use tari_p2p::{
     },
 };
 use tari_service_framework::StackBuilder;
-use tari_test_utils::async_assert_eventually;
 use tokio::runtime::Runtime;
 
 /// The NodeInterfaces is used as a container for providing access to all the services and interfaces of a single node.
@@ -241,6 +240,15 @@ impl BaseNodeBuilder {
     }
 }
 
+pub fn wait_until_online(runtime: &mut Runtime, nodes: &[&NodeInterfaces]) {
+    for node in nodes {
+        runtime
+            .block_on(node.comms.connectivity().wait_for_connectivity(Duration::from_secs(10)))
+            .map_err(|err| format!("Node '{}' failed to go online {:?}", node.node_identity.node_id(), err))
+            .unwrap();
+    }
+}
+
 // Creates a network with two Base Nodes where each node in the network knows the other nodes in the network.
 pub fn create_network_with_2_base_nodes(
     runtime: &mut Runtime,
@@ -257,30 +265,11 @@ pub fn create_network_with_2_base_nodes(
         .start(runtime, data_path);
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity)
-        // Alice will call Bob, otherwise Bob may connect
-        // first and result in a DialCancelled
-        // .with_peers(vec![alice_node_identity])
+        .with_peers(vec![alice_node_identity])
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
 
-    // Wait for peers to connect
-    runtime.block_on(async {
-        let _ = alice_node
-            .comms
-            .connection_manager()
-            .dial_peer(bob_node.node_identity.node_id().clone())
-            .await;
-        async_assert_eventually!(
-            bob_node
-                .comms
-                .peer_manager()
-                .exists(alice_node.node_identity.public_key())
-                .await,
-            expect = true,
-            max_attempts = 20,
-            interval = Duration::from_millis(1000)
-        );
-    });
+    wait_until_online(runtime, &[&alice_node, &bob_node]);
 
     (alice_node, bob_node, consensus_manager)
 }
@@ -310,9 +299,7 @@ pub fn create_network_with_2_base_nodes_with_config(
         .start(runtime, data_path);
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity)
-        // Alice will call Bob, otherwise Bob may connect
-        // first and result in a DialCancelled
-        // .with_peers(vec![alice_node_identity])
+        .with_peers(vec![alice_node_identity])
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
@@ -320,24 +307,7 @@ pub fn create_network_with_2_base_nodes_with_config(
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
 
-    // Wait for peers to connect
-    runtime.block_on(async {
-        let _ = alice_node
-            .comms
-            .connection_manager()
-            .dial_peer(bob_node.node_identity.node_id().clone())
-            .await;
-        async_assert_eventually!(
-            bob_node
-                .comms
-                .peer_manager()
-                .exists(alice_node.node_identity.public_key())
-                .await,
-            expect = true,
-            max_attempts = 20,
-            interval = Duration::from_millis(1000)
-        );
-    });
+    wait_until_online(runtime, &[&alice_node, &bob_node]);
 
     (alice_node, bob_node, consensus_manager)
 }
@@ -378,6 +348,13 @@ pub fn create_network_with_3_base_nodes_with_config(
     let carol_node_identity = random_node_identity();
     let network = Network::LocalNet;
 
+    log::info!(
+        "Alice = {}, Bob = {}, Carol = {}",
+        alice_node_identity.node_id().short_str(),
+        bob_node_identity.node_id().short_str(),
+        carol_node_identity.node_id().short_str()
+    );
+
     let (alice_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone(), carol_node_identity.clone()])
@@ -389,7 +366,7 @@ pub fn create_network_with_3_base_nodes_with_config(
         .start(runtime, data_path);
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity.clone())
-        .with_peers(vec![carol_node_identity.clone()])
+        .with_peers(vec![carol_node_identity.clone(), alice_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
@@ -398,6 +375,7 @@ pub fn create_network_with_3_base_nodes_with_config(
         .start(runtime, data_path);
     let (carol_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(carol_node_identity.clone())
+        .with_peers(vec![alice_node_identity.clone(), bob_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
@@ -405,48 +383,7 @@ pub fn create_network_with_3_base_nodes_with_config(
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path);
 
-    runtime.block_on(async {
-        // Alice (pre)connects to bob and carol
-        let mut conn_man = alice_node.comms.connection_manager();
-        let _ = conn_man.dial_peer(bob_node.node_identity.node_id().clone()).await;
-        let _ = conn_man.dial_peer(carol_node.node_identity.node_id().clone()).await;
-
-        // Bob (pre)connects to carol
-        let mut conn_man = bob_node.comms.connection_manager();
-        let _ = conn_man.dial_peer(carol_node.node_identity.node_id().clone()).await;
-
-        // All nodes have an existing connection
-        async_assert_eventually!(
-            bob_node
-                .comms
-                .peer_manager()
-                .exists(alice_node.node_identity.public_key())
-                .await,
-            expect = true,
-            max_attempts = 20,
-            interval = Duration::from_millis(1000)
-        );
-        async_assert_eventually!(
-            carol_node
-                .comms
-                .peer_manager()
-                .exists(alice_node.node_identity.public_key())
-                .await,
-            expect = true,
-            max_attempts = 20,
-            interval = Duration::from_millis(1000)
-        );
-        async_assert_eventually!(
-            carol_node
-                .comms
-                .peer_manager()
-                .exists(bob_node.node_identity.public_key())
-                .await,
-            expect = true,
-            max_attempts = 20,
-            interval = Duration::from_millis(1000)
-        );
-    });
+    wait_until_online(runtime, &[&alice_node, &bob_node, &carol_node]);
 
     (alice_node, bob_node, carol_node, consensus_manager)
 }
@@ -479,13 +416,11 @@ where
     TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
-    let (comms, dht) = initialize_local_test_comms(node_identity, publisher, data_path, Duration::from_secs(2 * 60))
-        .await
-        .unwrap();
-
-    for p in peers {
-        comms.peer_manager().add_peer(p.to_peer()).await.unwrap();
-    }
+    let peers = peers.into_iter().map(|p| p.to_peer()).collect();
+    let (comms, dht) =
+        initialize_local_test_comms(node_identity, publisher, data_path, Duration::from_secs(2 * 60), peers)
+            .await
+            .unwrap();
 
     (comms, dht)
 }
@@ -523,7 +458,6 @@ fn setup_base_node_services(
             liveness_service_config,
             Arc::clone(&subscription_factory),
             dht.dht_requester(),
-            comms.connection_manager(),
         ))
         .add_initializer(BaseNodeServiceInitializer::new(
             subscription_factory.clone(),

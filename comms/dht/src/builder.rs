@@ -24,7 +24,7 @@ use crate::{dht::DhtInitializationError, outbound::DhtOutboundRequest, DbConnect
 use futures::channel::mpsc;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
-    connection_manager::ConnectionManagerRequester,
+    connectivity::ConnectivityRequester,
     peer_manager::{NodeIdentity, PeerManager},
 };
 use tari_shutdown::ShutdownSignal;
@@ -34,7 +34,7 @@ pub struct DhtBuilder {
     peer_manager: Arc<PeerManager>,
     config: DhtConfig,
     outbound_tx: mpsc::Sender<DhtOutboundRequest>,
-    connection_manager: ConnectionManagerRequester,
+    connectivity: ConnectivityRequester,
     shutdown_signal: ShutdownSignal,
 }
 
@@ -43,7 +43,7 @@ impl DhtBuilder {
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_tx: mpsc::Sender<DhtOutboundRequest>,
-        connection_manager: ConnectionManagerRequester,
+        connectivity: ConnectivityRequester,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
@@ -55,7 +55,7 @@ impl DhtBuilder {
             node_identity,
             peer_manager,
             outbound_tx,
-            connection_manager,
+            connectivity,
             shutdown_signal,
         }
     }
@@ -100,13 +100,28 @@ impl DhtBuilder {
         self
     }
 
-    pub fn with_num_neighbouring_nodes(mut self, num_neighbours: usize) -> Self {
-        self.config.num_neighbouring_nodes = num_neighbours;
+    pub fn with_num_random_nodes(mut self, n: usize) -> Self {
+        self.config.num_random_nodes = n;
+        self
+    }
+
+    pub fn with_num_neighbouring_nodes(mut self, n: usize) -> Self {
+        self.config.num_neighbouring_nodes = n;
+        self
+    }
+
+    pub fn with_propagation_factor(mut self, propagation_factor: usize) -> Self {
+        self.config.propagation_factor = propagation_factor;
         self
     }
 
     pub fn with_discovery_timeout(mut self, timeout: Duration) -> Self {
         self.config.discovery_request_timeout = timeout;
+        self
+    }
+
+    pub fn enable_auto_join(mut self) -> Self {
+        self.config.auto_join = true;
         self
     }
 
@@ -119,7 +134,7 @@ impl DhtBuilder {
             self.node_identity,
             self.peer_manager,
             self.outbound_tx,
-            self.connection_manager,
+            self.connectivity,
             self.shutdown_signal,
         )
         .await

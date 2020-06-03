@@ -20,6 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// For help in getting started with diesel as well as how to update the tables look here: http://diesel.rs/guides/getting-started/
+// You also need to ensure that you installed diesel with the sqlite feature flag
+// If you updated the tables the following needs to be run:
+//          diesel setup --database-url test.sqlite3
+//          diesel migration run --database-url test.sqlite3
+// After running this, make sure that the diesel update did not change BigInt to Integer
+
 pub mod connection_manager;
 pub mod database;
 pub mod memory_db;

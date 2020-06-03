@@ -49,6 +49,7 @@ use crate::{
 use croaring::Bitmap;
 use digest::Digest;
 use std::{
+    cmp::min,
     collections::{HashMap, VecDeque},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
@@ -109,33 +110,8 @@ impl<D> MemoryDatabase<D>
 where D: Digest + Send + Sync
 {
     pub fn new(mmr_cache_config: MmrCacheConfig) -> Self {
-        let utxo_checkpoints = MemDbVec::<MerkleCheckPoint>::new();
-        let utxo_mmr = MmrCache::<D, _, _>::new(MemDbVec::new(), utxo_checkpoints.clone(), mmr_cache_config).unwrap();
-        let kernel_checkpoints = MemDbVec::<MerkleCheckPoint>::new();
-        let kernel_mmr =
-            MmrCache::<D, _, _>::new(MemDbVec::new(), kernel_checkpoints.clone(), mmr_cache_config).unwrap();
-        let range_proof_checkpoints = MemDbVec::<MerkleCheckPoint>::new();
-        let range_proof_mmr =
-            MmrCache::<D, _, _>::new(MemDbVec::new(), range_proof_checkpoints.clone(), mmr_cache_config).unwrap();
         Self {
-            db: Arc::new(RwLock::new(InnerDatabase {
-                metadata: HashMap::default(),
-                headers: HashMap::default(),
-                block_hashes: HashMap::default(),
-                utxos: HashMap::default(),
-                stxos: HashMap::default(),
-                kernels: HashMap::default(),
-                orphans: HashMap::default(),
-                utxo_mmr,
-                utxo_checkpoints,
-                curr_utxo_checkpoint: MerkleCheckPoint::new(Vec::new(), Bitmap::create()),
-                kernel_mmr,
-                kernel_checkpoints,
-                curr_kernel_checkpoint: MerkleCheckPoint::new(Vec::new(), Bitmap::create()),
-                range_proof_mmr,
-                range_proof_checkpoints,
-                curr_range_proof_checkpoint: MerkleCheckPoint::new(Vec::new(), Bitmap::create()),
-            })),
+            db: Arc::new(RwLock::new(InnerDatabase::new(mmr_cache_config))),
         }
     }
 
@@ -202,6 +178,10 @@ impl<D> BlockchainBackend for MemoryDatabase<D>
 where D: Digest + Send + Sync
 {
     fn write(&mut self, tx: DbTransaction) -> Result<(), ChainStorageError> {
+        if tx.operations.is_empty() {
+            return Ok(());
+        }
+
         let mut db = self
             .db
             .write()
@@ -292,7 +272,7 @@ where D: Digest + Send + Sync
                     MmrTree::Kernel => {
                         let curr_checkpoint = db.curr_kernel_checkpoint.clone();
                         db.kernel_checkpoints.push(curr_checkpoint)?;
-                        db.curr_kernel_checkpoint.clear();
+                        db.curr_kernel_checkpoint.reset();
 
                         db.kernel_mmr
                             .update()
@@ -301,7 +281,7 @@ where D: Digest + Send + Sync
                     MmrTree::Utxo => {
                         let curr_checkpoint = db.curr_utxo_checkpoint.clone();
                         db.utxo_checkpoints.push(curr_checkpoint)?;
-                        db.curr_utxo_checkpoint.clear();
+                        db.curr_utxo_checkpoint.reset();
 
                         db.utxo_mmr
                             .update()
@@ -310,7 +290,7 @@ where D: Digest + Send + Sync
                     MmrTree::RangeProof => {
                         let curr_checkpoint = db.curr_range_proof_checkpoint.clone();
                         db.range_proof_checkpoints.push(curr_checkpoint)?;
-                        db.curr_range_proof_checkpoint.clear();
+                        db.curr_range_proof_checkpoint.reset();
 
                         db.range_proof_mmr
                             .update()
@@ -319,31 +299,25 @@ where D: Digest + Send + Sync
                 },
                 WriteOperation::RewindMmr(tree, steps_back) => match tree {
                     MmrTree::Kernel => {
-                        db.curr_kernel_checkpoint.clear();
-                        let cp_count = db.kernel_checkpoints.len()?;
-                        db.kernel_checkpoints
-                            .truncate(rewind_checkpoint_index(cp_count, steps_back))?;
+                        let last_cp = rewind_checkpoints(&mut db.kernel_checkpoints, steps_back)?;
                         db.kernel_mmr
                             .update()
                             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                        db.curr_kernel_checkpoint.reset_to(&last_cp);
                     },
                     MmrTree::Utxo => {
-                        db.curr_utxo_checkpoint.clear();
-                        let cp_count = db.utxo_checkpoints.len()?;
-                        db.utxo_checkpoints
-                            .truncate(rewind_checkpoint_index(cp_count, steps_back))?;
+                        let last_cp = rewind_checkpoints(&mut db.utxo_checkpoints, steps_back)?;
                         db.utxo_mmr
                             .update()
                             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                        db.curr_utxo_checkpoint.reset_to(&last_cp);
                     },
                     MmrTree::RangeProof => {
-                        db.curr_range_proof_checkpoint.clear();
-                        let cp_count = db.range_proof_checkpoints.len()?;
-                        db.range_proof_checkpoints
-                            .truncate(rewind_checkpoint_index(cp_count, steps_back))?;
+                        let last_cp = rewind_checkpoints(&mut db.range_proof_checkpoints, steps_back)?;
                         db.range_proof_mmr
                             .update()
                             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                        db.curr_range_proof_checkpoint.reset_to(&last_cp);
                     },
                 },
             }
@@ -450,6 +424,15 @@ where D: Digest + Send + Sync
         .ok_or_else(|| ChainStorageError::OutOfRange)
     }
 
+    fn fetch_mmr_node_count(&self, tree: MmrTree, height: u64) -> Result<u32, ChainStorageError> {
+        let db = self.db_access()?;
+        match tree {
+            MmrTree::Kernel => fetch_mmr_nodes_added_count(&db.kernel_checkpoints, height),
+            MmrTree::Utxo => fetch_mmr_nodes_added_count(&db.utxo_checkpoints, height),
+            MmrTree::RangeProof => fetch_mmr_nodes_added_count(&db.range_proof_checkpoints, height),
+        }
+    }
+
     fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Vec<u8>, bool), ChainStorageError> {
         let db = self.db_access()?;
         let (hash, deleted) = match tree {
@@ -461,6 +444,14 @@ where D: Digest + Send + Sync
             ChainStorageError::UnexpectedResult(format!("A leaf node hash in the {} MMR tree was not found", tree))
         })?;
         Ok((hash, deleted))
+    }
+
+    fn fetch_mmr_nodes(&self, tree: MmrTree, pos: u32, count: u32) -> Result<Vec<(Vec<u8>, bool)>, ChainStorageError> {
+        let mut leaf_nodes = Vec::<(Vec<u8>, bool)>::with_capacity(count as usize);
+        for pos in pos..pos + count {
+            leaf_nodes.push(self.fetch_mmr_node(tree.clone(), pos)?);
+        }
+        Ok(leaf_nodes)
     }
 
     /// Iterate over all the stored orphan blocks and execute the function `f` for each block.
@@ -572,11 +563,8 @@ where D: Digest
     }
 }
 
-impl<D> Default for InnerDatabase<D>
-where D: Digest
-{
-    fn default() -> Self {
-        let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 100 };
+impl<D: Digest> InnerDatabase<D> {
+    pub fn new(mmr_cache_config: MmrCacheConfig) -> Self {
         let utxo_checkpoints = MemDbVec::new();
         let utxo_mmr = MmrCache::<D, _, _>::new(MemDbVec::new(), utxo_checkpoints.clone(), mmr_cache_config).unwrap();
         let kernel_checkpoints = MemDbVec::new();
@@ -594,15 +582,23 @@ where D: Digest
             kernels: HashMap::default(),
             orphans: HashMap::default(),
             utxo_mmr,
+            curr_utxo_checkpoint: MerkleCheckPoint::new(Vec::new(), Bitmap::create(), 0),
             utxo_checkpoints,
-            curr_utxo_checkpoint: MerkleCheckPoint::new(Vec::new(), Bitmap::create()),
             kernel_mmr,
+            curr_kernel_checkpoint: MerkleCheckPoint::new(Vec::new(), Bitmap::create(), 0),
             kernel_checkpoints,
-            curr_kernel_checkpoint: MerkleCheckPoint::new(Vec::new(), Bitmap::create()),
             range_proof_mmr,
+            curr_range_proof_checkpoint: MerkleCheckPoint::new(Vec::new(), Bitmap::create(), 0),
             range_proof_checkpoints,
-            curr_range_proof_checkpoint: MerkleCheckPoint::new(Vec::new(), Bitmap::create()),
         }
+    }
+}
+
+impl<D> Default for InnerDatabase<D>
+where D: Digest
+{
+    fn default() -> Self {
+        Self::new(MmrCacheConfig::default())
     }
 }
 
@@ -708,4 +704,49 @@ fn rewind_checkpoint_index(cp_count: usize, steps_back: usize) -> usize {
     } else {
         1
     }
+}
+
+// Calculate the total leaf node count upto a specified height.
+fn fetch_mmr_nodes_added_count(
+    checkpoints: &MemDbVec<MerkleCheckPoint>,
+    height: u64,
+) -> Result<u32, ChainStorageError>
+{
+    let cp_count = checkpoints
+        .len()
+        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+    Ok(match cp_count.checked_sub(1) {
+        Some(last_index) => {
+            let index = min(last_index, height as usize);
+            checkpoints
+                .get(index)
+                .map_err(|e| ChainStorageError::AccessError(format!("Checkpoint error: {}", e.to_string())))?
+                .map(|cp| cp.accumulated_nodes_added_count())
+                .unwrap_or(0)
+        },
+        None => 0,
+    })
+}
+
+// Rewinds checkpoints by `steps_back` elements and returns the last checkpoint.
+fn rewind_checkpoints(
+    checkpoints: &mut MemDbVec<MerkleCheckPoint>,
+    steps_back: usize,
+) -> Result<MerkleCheckPoint, ChainStorageError>
+{
+    let cp_count = checkpoints
+        .len()
+        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+
+    let rewind_len = rewind_checkpoint_index(cp_count, steps_back);
+    checkpoints
+        .truncate(rewind_len)
+        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+
+    let last_cp = checkpoints
+        .get(rewind_len - 1)
+        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+        .expect("rewind_checkpoint_index should ensure that all checkpoints cannot be removed");
+
+    Ok(last_cp)
 }

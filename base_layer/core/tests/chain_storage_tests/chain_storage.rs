@@ -60,7 +60,7 @@ use tari_core::{
     txn_schema,
     validation::{
         accum_difficulty_validators::MockAccumDifficultyValidator,
-        block_validators::{MockStatelessBlockValidator, StatelessBlockValidator},
+        block_validators::MockStatelessBlockValidator,
         mocks::MockValidator,
     },
 };
@@ -534,6 +534,36 @@ fn rewind_to_height() {
 }
 
 #[test]
+fn rewind_past_horizon_height() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let consensus_constansts = consensus_manager.consensus_constants();
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockAccumDifficultyValidator {},
+    );
+    let db = MemoryDatabase::<HashDigest>::default();
+    let config = BlockchainDatabaseConfig {
+        orphan_storage_capacity: 3,
+        pruning_horizon: 2,
+    };
+    let store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
+
+    let block0 = store.fetch_block(0).unwrap().block().clone();
+    let block1 = append_block(&store, &block0, vec![], &consensus_constansts, 1.into()).unwrap();
+    let block2 = append_block(&store, &block1, vec![], &consensus_constansts, 1.into()).unwrap();
+    let block3 = append_block(&store, &block2, vec![], &consensus_constansts, 1.into()).unwrap();
+    let _block4 = append_block(&store, &block3, vec![], &consensus_constansts, 1.into()).unwrap();
+
+    let metadata = store.get_metadata().unwrap();
+    let horizon_height = metadata.horizon_block(metadata.height_of_longest_chain.unwrap_or(0));
+    assert!(store.rewind_to_height(horizon_height - 1).is_err());
+    assert!(store.rewind_to_height(horizon_height).is_ok());
+    assert_eq!(store.get_height(), Ok(Some(horizon_height)));
+}
+
+#[test]
 fn handle_tip_reorg() {
     // GB --> A1 --> A2(Low PoW)      [Main Chain]
     //          \--> B2(Highest PoW)  [Forked Chain]
@@ -812,7 +842,7 @@ fn store_and_retrieve_chain_and_orphan_blocks_with_hashes() {
 }
 
 #[test]
-fn restore_metadata() {
+fn restore_metadata_and_pruning_horizon_update() {
     let path = create_temporary_data_path();
 
     // Perform test
@@ -824,12 +854,13 @@ fn restore_metadata() {
         );
         let network = Network::LocalNet;
         let rules = ConsensusManagerBuilder::new(network).build();
+        let mut config = BlockchainDatabaseConfig::default();
         let block_hash: BlockHash;
-        let pruning_horizon: u64 = 1000;
+        let pruning_horizon1: u64 = 1000;
+        let pruning_horizon2: u64 = 900;
         {
             let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
-            let mut config = BlockchainDatabaseConfig::default();
-            config.pruning_horizon = pruning_horizon;
+            config.pruning_horizon = pruning_horizon1;
             let db = BlockchainDatabase::new(db, &rules, validators.clone(), config).unwrap();
 
             let block0 = db.fetch_block(0).unwrap().block().clone();
@@ -839,16 +870,30 @@ fn restore_metadata() {
             let metadata = db.get_metadata().unwrap();
             assert_eq!(metadata.height_of_longest_chain, Some(1));
             assert_eq!(metadata.best_block, Some(block_hash.clone()));
-            assert_eq!(metadata.pruning_horizon, pruning_horizon);
+            assert_eq!(metadata.pruning_horizon, pruning_horizon1);
         }
-        // Restore blockchain db
-        let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
-        let db = BlockchainDatabase::new(db, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
+        // Restore blockchain db with invalid pruning horizon update
+        {
+            config.pruning_horizon = 2000;
+            let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
+            let db = BlockchainDatabase::new(db, &rules, validators.clone(), config).unwrap();
 
-        let metadata = db.get_metadata().unwrap();
-        assert_eq!(metadata.height_of_longest_chain, Some(1));
-        assert_eq!(metadata.best_block, Some(block_hash));
-        assert_eq!(metadata.pruning_horizon, pruning_horizon);
+            let metadata = db.get_metadata().unwrap();
+            assert_eq!(metadata.height_of_longest_chain, Some(1));
+            assert_eq!(metadata.best_block, Some(block_hash.clone()));
+            assert_eq!(metadata.pruning_horizon, pruning_horizon1);
+        }
+        // Restore blockchain db with valid pruning horizon update
+        {
+            config.pruning_horizon = pruning_horizon2; // Invalid pruning horizon, keep original
+            let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
+            let db = BlockchainDatabase::new(db, &rules, validators, config).unwrap();
+
+            let metadata = db.get_metadata().unwrap();
+            assert_eq!(metadata.height_of_longest_chain, Some(1));
+            assert_eq!(metadata.best_block, Some(block_hash));
+            assert_eq!(metadata.pruning_horizon, pruning_horizon2);
+        }
     }
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
@@ -1034,6 +1079,51 @@ fn orphan_cleanup_on_block_add() {
     assert!(store.fetch_orphan(orphan5_hash).is_err());
     assert!(store.fetch_orphan(orphan6_hash).is_err());
     assert_eq!(store.fetch_orphan(orphan7_hash), Ok(orphan7));
+}
+
+#[test]
+fn horizon_height_orphan_cleanup() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let consensus_constansts = consensus_manager.consensus_constants();
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockAccumDifficultyValidator {},
+    );
+    let db = MemoryDatabase::<HashDigest>::default();
+    let config = BlockchainDatabaseConfig {
+        orphan_storage_capacity: 3,
+        pruning_horizon: 2,
+    };
+    let store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
+    let orphan1 = create_orphan_block(2, vec![], &consensus_constansts);
+    let orphan2 = create_orphan_block(3, vec![], &consensus_constansts);
+    let orphan3 = create_orphan_block(1, vec![], &consensus_constansts);
+    let orphan4 = create_orphan_block(4, vec![], &consensus_constansts);
+    let orphan1_hash = orphan1.hash();
+    let orphan2_hash = orphan2.hash();
+    let orphan3_hash = orphan3.hash();
+    let orphan4_hash = orphan4.hash();
+    assert_eq!(store.add_block(orphan1), Ok(BlockAddResult::OrphanBlock));
+    assert_eq!(store.add_block(orphan2.clone()), Ok(BlockAddResult::OrphanBlock));
+    assert_eq!(store.add_block(orphan3), Ok(BlockAddResult::OrphanBlock));
+    assert_eq!(store.db_read_access().unwrap().get_orphan_count(), Ok(3));
+
+    let block0 = store.fetch_block(0).unwrap().block().clone();
+    let block1 = append_block(&store, &block0, vec![], &consensus_constansts, 1.into()).unwrap();
+    let block2 = append_block(&store, &block1, vec![], &consensus_constansts, 1.into()).unwrap();
+    let block3 = append_block(&store, &block2, vec![], &consensus_constansts, 1.into()).unwrap();
+    let _block4 = append_block(&store, &block3, vec![], &consensus_constansts, 1.into()).unwrap();
+
+    // Adding another orphan block will trigger the orphan cleanup as the storage limit was reached
+    assert_eq!(store.add_block(orphan4.clone()), Ok(BlockAddResult::OrphanBlock));
+
+    assert_eq!(store.db_read_access().unwrap().get_orphan_count(), Ok(2));
+    assert!(store.fetch_orphan(orphan1_hash).is_err());
+    assert_eq!(store.fetch_orphan(orphan2_hash), Ok(orphan2));
+    assert!(store.fetch_orphan(orphan3_hash).is_err());
+    assert_eq!(store.fetch_orphan(orphan4_hash), Ok(orphan4));
 }
 
 #[test]

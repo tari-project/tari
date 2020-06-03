@@ -44,16 +44,15 @@ use futures::{
 use log::*;
 use std::{convert::TryFrom, sync::Arc, time::Duration};
 use tari_comms::{
-    connection_manager::ConnectionManagerRequester,
+    connectivity::{ConnectivityEvent, ConnectivityEventRx, ConnectivityRequester},
     peer_manager::{node_id::NodeDistance, NodeId, PeerFeatures},
     types::CommsPublicKey,
-    ConnectionManagerEvent,
     NodeIdentity,
     PeerManager,
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::ByteArray;
-use tokio::{sync::broadcast, task, time};
+use tokio::{task, time};
 
 const LOG_TARGET: &str = "comms::dht::storeforward::actor";
 /// The interval to initiate a database cleanup.
@@ -163,7 +162,7 @@ pub struct StoreAndForwardService {
     dht_requester: DhtRequester,
     database: StoreAndForwardDatabase,
     peer_manager: Arc<PeerManager>,
-    connection_events: Fuse<broadcast::Receiver<Arc<ConnectionManagerEvent>>>,
+    connection_events: Fuse<ConnectivityEventRx>,
     outbound_requester: OutboundMessageRequester,
     request_rx: Fuse<mpsc::Receiver<StoreAndForwardRequest>>,
     shutdown_signal: Option<ShutdownSignal>,
@@ -176,7 +175,7 @@ impl StoreAndForwardService {
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         dht_requester: DhtRequester,
-        connection_manager: ConnectionManagerRequester,
+        connectivity: ConnectivityRequester,
         outbound_requester: OutboundMessageRequester,
         request_rx: mpsc::Receiver<StoreAndForwardRequest>,
         shutdown_signal: ShutdownSignal,
@@ -189,16 +188,15 @@ impl StoreAndForwardService {
             peer_manager,
             dht_requester,
             request_rx: request_rx.fuse(),
-            connection_events: connection_manager.get_event_subscription().fuse(),
+            connection_events: connectivity.subscribe_event_stream().fuse(),
             outbound_requester,
             shutdown_signal: Some(shutdown_signal),
         }
     }
 
-    pub async fn spawn(self) -> SafResult<()> {
+    pub fn spawn(self) {
         info!(target: LOG_TARGET, "Store and forward service started");
         task::spawn(Self::run(self));
-        Ok(())
     }
 
     async fn run(mut self) {
@@ -217,7 +215,7 @@ impl StoreAndForwardService {
 
                event = self.connection_events.select_next_some() => {
                     if let Ok(event) = event {
-                         if let Err(err) = self.handle_connection_manager_event(&event).await {
+                         if let Err(err) = self.handle_connectivity_event(&event).await {
                             error!(target: LOG_TARGET, "Error handling connection manager event: {:?}", err);
                         }
                     }
@@ -290,8 +288,8 @@ impl StoreAndForwardService {
         }
     }
 
-    async fn handle_connection_manager_event(&mut self, event: &ConnectionManagerEvent) -> SafResult<()> {
-        use ConnectionManagerEvent::*;
+    async fn handle_connectivity_event(&mut self, event: &ConnectivityEvent) -> SafResult<()> {
+        use ConnectivityEvent::*;
         if !self.config.saf_auto_request {
             debug!(
                 target: LOG_TARGET,
@@ -419,7 +417,7 @@ impl StoreAndForwardService {
                 since(self.config.saf_low_priority_msg_storage_ttl),
             )
             .await?;
-        info!(target: LOG_TARGET, "Cleaned {} old low priority messages", num_removed);
+        debug!(target: LOG_TARGET, "Cleaned {} old low priority messages", num_removed);
 
         let num_removed = self
             .database
@@ -428,14 +426,14 @@ impl StoreAndForwardService {
                 since(self.config.saf_high_priority_msg_storage_ttl),
             )
             .await?;
-        info!(target: LOG_TARGET, "Cleaned {} old high priority messages", num_removed);
+        debug!(target: LOG_TARGET, "Cleaned {} old high priority messages", num_removed);
 
         let num_removed = self
             .database
             .truncate_messages(self.config.saf_msg_storage_capacity)
             .await?;
         if num_removed > 0 {
-            info!(
+            debug!(
                 target: LOG_TARGET,
                 "Storage limits exceeded, removing {} oldest messages", num_removed
             );

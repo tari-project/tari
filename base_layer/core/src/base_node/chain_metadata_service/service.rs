@@ -27,7 +27,7 @@ use crate::{
         comms_interface::{BlockEvent, LocalNodeCommsInterface},
         proto,
     },
-    chain_storage::BlockAddResult,
+    chain_storage::{BlockAddResult, ChainMetadata},
 };
 use chrono::{NaiveDateTime, Utc};
 use futures::{stream::StreamExt, SinkExt};
@@ -211,9 +211,11 @@ impl ChainMetadataService {
     ) -> Result<(), ChainMetadataSyncError>
     {
         if let Some(chain_metadata_bytes) = metadata.get(MetadataKey::ChainMetadata) {
-            let chain_metadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?.into();
-            debug!(target: LOG_TARGET, "Received chain metadata from NodeId '{}'", node_id);
-            trace!(target: LOG_TARGET, "{}", chain_metadata);
+            let chain_metadata: ChainMetadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?.into();
+            debug!(
+                target: LOG_TARGET,
+                "Received chain metadata from NodeId '{}' - #{:?}", node_id, chain_metadata.height_of_longest_chain
+            );
 
             if let Some(pos) = self
                 .peer_chain_metadata
@@ -239,9 +241,11 @@ impl ChainMetadataService {
             .get(MetadataKey::ChainMetadata)
             .ok_or_else(|| ChainMetadataSyncError::NoChainMetadata)?;
 
-        let chain_metadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?.into();
-        debug!(target: LOG_TARGET, "Received chain metadata from NodeId '{}'", node_id);
-        trace!(target: LOG_TARGET, "{}", chain_metadata);
+        let chain_metadata: ChainMetadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?.into();
+        debug!(
+            target: LOG_TARGET,
+            "Received chain metadata from NodeId '{}' - #{:?}", node_id, chain_metadata.height_of_longest_chain
+        );
 
         if let Some(pos) = self
             .peer_chain_metadata
@@ -335,7 +339,6 @@ mod test {
 
         let node_id = NodeId::new();
         let pong_event = PingPongEvent {
-            is_neighbour: true,
             metadata,
             node_id: node_id.clone(),
             latency: None,
@@ -367,7 +370,6 @@ mod test {
         let metadata = Metadata::new();
         let node_id = NodeId::new();
         let pong_event = PingPongEvent {
-            is_neighbour: true,
             metadata,
             node_id,
             latency: None,
@@ -391,7 +393,6 @@ mod test {
         metadata.insert(MetadataKey::ChainMetadata, b"no-good".to_vec());
         let node_id = NodeId::new();
         let pong_event = PingPongEvent {
-            is_neighbour: true,
             metadata,
             node_id,
             latency: None,

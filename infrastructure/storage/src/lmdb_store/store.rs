@@ -297,9 +297,9 @@ pub struct LMDBStore {
 /// However, in that case `shutdown` returns an error.
 impl LMDBStore {
     pub fn flush(&self) -> Result<(), lmdb_zero::error::Error> {
-        debug!(target: LOG_TARGET, "Forcing flush of buffers to disk");
+        trace!(target: LOG_TARGET, "Forcing flush of buffers to disk");
         self.env.sync(true)?;
-        debug!(target: LOG_TARGET, "Buffers have been flushed");
+        debug!(target: LOG_TARGET, "LMDB Buffers have been flushed");
         Ok(())
     }
 
@@ -313,7 +313,7 @@ impl LMDBStore {
             ),
             Ok(info) => {
                 let size_mb = info.mapsize / 1024 / 1024;
-                info!(
+                debug!(
                     target: LOG_TARGET,
                     "LMDB Environment information ({}). Map Size={} MB. Last page no={}. Last tx id={}",
                     self.path,
@@ -332,7 +332,7 @@ impl LMDBStore {
             ),
             Ok(stats) => {
                 let page_size = stats.psize / 1024;
-                info!(
+                debug!(
                     target: LOG_TARGET,
                     "LMDB Environment statistics ({}). Page size={}kB. Tree depth={}. Branch pages={}. Leaf Pages={}, \
                      Overflow pages={}, Entries={}",
@@ -419,7 +419,7 @@ impl LMDBDatabase {
             ),
             Ok(stats) => {
                 let page_size = stats.psize / 1024;
-                info!(
+                debug!(
                     target: LOG_TARGET,
                     "LMDB Database statistics ({}). Page size={}kB. Tree depth={}. Branch pages={}. Leaf Pages={}, \
                      Overflow pages={}, Entries={}",

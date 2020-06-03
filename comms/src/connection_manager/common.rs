@@ -34,7 +34,6 @@ use crate::{
 };
 use futures::StreamExt;
 use log::*;
-use std::sync::Arc;
 use tari_crypto::tari_utilities::ByteArray;
 
 const LOG_TARGET: &str = "comms::connection_manager::common";
@@ -88,7 +87,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
     authenticated_public_key: CommsPublicKey,
     peer_identity: PeerIdentityMsg,
     allow_test_addrs: bool,
-) -> Result<Arc<Peer>, ConnectionManagerError>
+) -> Result<NodeId, ConnectionManagerError>
 {
     // let peer_manager = peer_manager.inner();
     // Validate the given node id for base nodes
@@ -119,28 +118,19 @@ pub async fn validate_and_add_peer_from_peer_identity(
         .collect::<Vec<_>>();
 
     // Add or update the peer
-    match known_peer {
-        Some(peer) => {
+    let peer = match known_peer {
+        Some(mut peer) => {
             debug!(
                 target: LOG_TARGET,
                 "Peer '{}' already exists in peer list. Updating.",
                 peer.node_id.short_str()
             );
-            let mut conn_stats = peer.connection_stats;
-            conn_stats.set_connection_success();
-            peer_manager
-                .update_peer(
-                    &authenticated_public_key,
-                    Some(peer_node_id.clone()),
-                    Some(addresses),
-                    None,
-                    None,
-                    Some(false),
-                    Some(PeerFeatures::from_bits_truncate(peer_identity.features)),
-                    Some(conn_stats),
-                    Some(supported_protocols),
-                )
-                .await?;
+            peer.connection_stats.set_connection_success();
+            peer.addresses = addresses.into();
+            peer.set_offline(false);
+            peer.features = PeerFeatures::from_bits_truncate(peer_identity.features);
+            peer.supported_protocols = supported_protocols;
+            peer
         },
         None => {
             debug!(
@@ -157,13 +147,13 @@ pub async fn validate_and_add_peer_from_peer_identity(
                 &supported_protocols,
             );
             new_peer.connection_stats.set_connection_success();
-            peer_manager.add_peer(new_peer).await?;
+            new_peer
         },
-    }
+    };
 
-    let peer = Arc::new(peer_manager.find_by_node_id(&peer_node_id).await?);
+    peer_manager.add_peer(peer).await?;
 
-    Ok(peer)
+    Ok(peer_node_id)
 }
 
 pub async fn find_unbanned_peer(

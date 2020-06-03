@@ -47,7 +47,7 @@ where
 /// # use tari_test_utils::collect_stream;
 ///
 /// let mut rt = Runtime::new().unwrap();
-/// let stream = stream::iter(1..10);
+/// let mut stream = stream::iter(1..10);
 /// assert_eq!(rt.block_on(async { collect_stream!(stream, take=3, timeout=Duration::from_secs(1)) }), vec![1,2,3]);
 /// ```
 #[macro_export]
@@ -57,7 +57,7 @@ macro_rules! collect_stream {
         use tokio::time;
 
         // Evaluate $stream once, NOT in the loop 🐛🚨
-        let mut stream = $stream;
+        let mut stream = &mut $stream;
 
         let mut items = Vec::new();
         loop {

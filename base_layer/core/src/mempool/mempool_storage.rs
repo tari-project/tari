@@ -152,7 +152,7 @@ where T: BlockchainBackend
     pub fn process_reorg(&mut self, removed_blocks: Vec<Block>, new_blocks: Vec<Block>) -> Result<(), MempoolError> {
         debug!(target: LOG_TARGET, "Mempool processing reorg");
         for block in &removed_blocks {
-            trace!(
+            debug!(
                 target: LOG_TARGET,
                 "Mempool processing reorg removed block {} ({})",
                 block.header.height,
@@ -160,7 +160,7 @@ where T: BlockchainBackend
             );
         }
         for block in &new_blocks {
-            trace!(
+            debug!(
                 target: LOG_TARGET,
                 "Mempool processing reorg added new block {} ({})",
                 block.header.height,
@@ -185,7 +185,7 @@ where T: BlockchainBackend
         self.process_published_blocks(new_blocks)?;
 
         if new_tip_height < prev_tip_height {
-            trace!(
+            debug!(
                 target: LOG_TARGET,
                 "Checking for time locked transactions in unconfirmed pool as chain height was reduced from {} to {} \
                  during reorg.",

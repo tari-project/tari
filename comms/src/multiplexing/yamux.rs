@@ -120,7 +120,12 @@ impl Yamux {
 
     /// Return the number of active substreams
     pub fn substream_count(&self) -> usize {
-        self.substream_counter.count()
+        self.substream_counter.get()
+    }
+
+    /// Return a SubstreamCounter for this connection
+    pub(crate) fn substream_counter(&self) -> SubstreamCounter {
+        self.substream_counter.clone()
     }
 
     pub fn is_terminated(&self) -> bool {
@@ -157,7 +162,11 @@ impl Control {
     }
 
     pub fn substream_count(&self) -> usize {
-        self.substream_counter.count()
+        self.substream_counter.get()
+    }
+
+    pub(crate) fn substream_counter(&self) -> SubstreamCounter {
+        self.substream_counter.clone()
     }
 }
 
@@ -177,7 +186,7 @@ impl IncomingSubstreams {
     }
 
     pub fn substream_count(&self) -> usize {
-        self.substream_counter.count()
+        self.substream_counter.get()
     }
 }
 
@@ -315,7 +324,7 @@ impl SubstreamCounter {
     }
 
     /// Get the substream count
-    pub fn count(&self) -> usize {
+    pub fn get(&self) -> usize {
         // Substract one to account for the initial CounterGuard reference
         Arc::strong_count(&*self.0) - 1
     }

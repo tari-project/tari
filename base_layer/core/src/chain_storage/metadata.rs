@@ -39,11 +39,17 @@ pub struct ChainMetadata {
 }
 
 impl ChainMetadata {
-    pub fn new(height: u64, hash: BlockHash, horizon: u64, accumulated_difficulty: Difficulty) -> ChainMetadata {
+    pub fn new(
+        height: u64,
+        hash: BlockHash,
+        pruning_horizon: u64,
+        accumulated_difficulty: Difficulty,
+    ) -> ChainMetadata
+    {
         ChainMetadata {
             height_of_longest_chain: Some(height),
             best_block: Some(hash),
-            pruning_horizon: horizon,
+            pruning_horizon,
             accumulated_difficulty: Some(accumulated_difficulty),
         }
     }
@@ -70,6 +76,16 @@ impl ChainMetadata {
     /// Set the pruning horizon to indicate that the chain is in pruned mode (i.e. a pruning horizon of 2880)
     pub fn pruned_mode(&mut self) {
         self.pruning_horizon = 2880;
+    }
+
+    /// Check if the node is an archival node based on its pruning horizon.
+    pub fn is_archival_node(&self) -> bool {
+        self.pruning_horizon == 0
+    }
+
+    /// Check if the node is a pruned node based on its pruning horizon.
+    pub fn is_pruned_node(&self) -> bool {
+        self.pruning_horizon != 0
     }
 }
 

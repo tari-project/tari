@@ -73,6 +73,11 @@ impl XorDistance {
     pub const fn max_distance() -> Self {
         Self([255; NODE_XOR_DISTANCE_ARRAY_SIZE])
     }
+
+    /// Returns a zero distance.
+    pub const fn zero() -> Self {
+        Self([0; NODE_XOR_DISTANCE_ARRAY_SIZE])
+    }
 }
 
 impl PartialEq for XorDistance {

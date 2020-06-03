@@ -182,6 +182,7 @@ where
             event_publisher: event_publisher.clone(),
             node_identity: node_identity.clone(),
             factories: factories.clone(),
+            config: config.clone(),
         };
         TransactionService {
             config,
@@ -1517,13 +1518,17 @@ where
                 pending_tx
                     .outputs_to_be_spent
                     .iter()
-                    .map(|o| o.as_transaction_input(&self.factories.commitment, OutputFeatures::default()))
+                    .map(|o| {
+                        o.unblinded_output
+                            .as_transaction_input(&self.factories.commitment, OutputFeatures::default())
+                    })
                     .collect(),
                 pending_tx
                     .outputs_to_be_received
                     .iter()
                     .map(|o| {
-                        o.as_transaction_output(&self.factories)
+                        o.unblinded_output
+                            .as_transaction_output(&self.factories)
                             .expect("Failed to convert to Transaction Output")
                     })
                     .collect(),
@@ -1696,4 +1701,5 @@ where TBackend: TransactionBackend + Clone + 'static
     pub event_publisher: TransactionEventSender,
     pub node_identity: Arc<NodeIdentity>,
     pub factories: CryptoFactories,
+    pub config: TransactionServiceConfig,
 }

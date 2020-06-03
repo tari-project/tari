@@ -27,10 +27,7 @@ use crate::{
     proto::envelope::DhtMessageType,
 };
 use std::{fmt, fmt::Display};
-use tari_comms::{
-    peer_manager::{NodeId, PeerFeatures},
-    types::CommsPublicKey,
-};
+use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 
 /// Configuration for outbound messages.
 ///
@@ -115,19 +112,24 @@ impl SendMessageParams {
 
     /// Set broadcast_strategy to Closest.`excluded_peers` are excluded. Only Peers which have all `features` are
     /// included.
-    pub fn closest(
-        &mut self,
-        node_id: NodeId,
-        n: usize,
-        excluded_peers: Vec<NodeId>,
-        peer_features: PeerFeatures,
-    ) -> &mut Self
-    {
+    pub fn closest(&mut self, node_id: NodeId, n: usize, excluded_peers: Vec<NodeId>) -> &mut Self {
         self.params_mut().broadcast_strategy = BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
             excluded_peers,
             node_id,
-            peer_features,
             n,
+            connected_only: false,
+        }));
+        self
+    }
+
+    /// Set broadcast_strategy to Closest.`excluded_peers` are excluded. Only Peers which have all `features` are
+    /// included.
+    pub fn closest_connected(&mut self, node_id: NodeId, n: usize, excluded_peers: Vec<NodeId>) -> &mut Self {
+        self.params_mut().broadcast_strategy = BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
+            excluded_peers,
+            node_id,
+            n,
+            connected_only: true,
         }));
         self
     }
@@ -135,7 +137,7 @@ impl SendMessageParams {
     /// Set broadcast_strategy to Neighbours. `excluded_peers` are excluded. Only Peers that have
     /// `PeerFeatures::MESSAGE_PROPAGATION` are included.
     pub fn broadcast(&mut self, excluded_peers: Vec<NodeId>) -> &mut Self {
-        self.params_mut().broadcast_strategy = BroadcastStrategy::Neighbours(excluded_peers);
+        self.params_mut().broadcast_strategy = BroadcastStrategy::Broadcast(excluded_peers);
         self
     }
 

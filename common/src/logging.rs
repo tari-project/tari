@@ -68,10 +68,10 @@ macro_rules! log_if_error {
         log_if_error!(level:$level, target: "$crate", $msg, $expr)
     }};
      (target: $target:expr, $msg:expr, $expr:expr $(,)*) => {{
-        log_if_error!(level:error, target: $target, $msg, $expr)
+        log_if_error!(level:warn, target: $target, $msg, $expr)
     }};
     ($msg:expr, $expr:expr $(,)*) => {{
-        log_if_error!(level:error, target: "$crate", $msg, $expr)
+        log_if_error!(level:warn, target: "$crate", $msg, $expr)
     }};
 }
 

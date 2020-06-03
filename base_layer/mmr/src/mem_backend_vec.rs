@@ -117,6 +117,13 @@ impl<T: Clone> ArrayLikeExt for MemBackendVec<T> {
         Ok(())
     }
 
+    fn push_front(&mut self, item: Self::Value) -> Result<(), MerkleMountainRangeError> {
+        self.db
+            .write()
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
+            .push_front(item)
+    }
+
     fn for_each<F>(&self, f: F) -> Result<(), MerkleMountainRangeError>
     where F: FnMut(Result<Self::Value, MerkleMountainRangeError>) {
         self.db

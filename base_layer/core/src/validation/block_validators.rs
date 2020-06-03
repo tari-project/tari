@@ -80,7 +80,7 @@ impl StatelessValidation<Block> for StatelessBlockValidator {
         trace!(target: LOG_TARGET, "SV - Output constraints are ok for {} ", &block_id);
         check_cut_through(block)?;
         trace!(target: LOG_TARGET, "SV - Cut-through is ok for {} ", &block_id);
-        info!(
+        debug!(
             target: LOG_TARGET,
             "{} has PASSED stateless VALIDATION check.", &block_id
         );
@@ -116,21 +116,41 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator {
     fn validate(&self, block: &Block, db: &B) -> Result<(), ValidationError> {
         let block_id = format!("block #{} ({})", block.header.height, block.hash().to_hex());
         check_inputs_are_utxos(block, db)?;
-        trace!(target: LOG_TARGET, "FCV - All inputs are valid for {}", &block_id);
+        trace!(
+            target: LOG_TARGET,
+            "Block validation: All inputs are valid for {}",
+            &block_id
+        );
         check_mmr_roots(block, db)?;
-        trace!(target: LOG_TARGET, "FCV - MMR roots are valid for {}", &block_id);
+        trace!(
+            target: LOG_TARGET,
+            "Block validation: MMR roots are valid for {}",
+            &block_id
+        );
         check_timestamp_ftl(&block.header, &self.rules)?;
-        trace!(target: LOG_TARGET, "FCV - FTL timestamp is ok for {} ", &block_id);
+        trace!(
+            target: LOG_TARGET,
+            "Block validation: FTL timestamp is ok for {} ",
+            &block_id
+        );
         let tip_height = db
             .fetch_metadata()
             .map_err(|e| ValidationError::CustomError(e.to_string()))?
             .height_of_longest_chain
             .unwrap_or(0);
         check_median_timestamp(db, &block.header, tip_height, self.rules.clone())?;
-        trace!(target: LOG_TARGET, "FCV - Median timestamp is ok for {} ", &block_id);
+        trace!(
+            target: LOG_TARGET,
+            "Block validation: Median timestamp is ok for {} ",
+            &block_id
+        );
         check_achieved_and_target_difficulty(db, &block.header, tip_height, self.rules.clone())?;
-        trace!(target: LOG_TARGET, "FCV - Achieved difficulty is ok for {} ", &block_id);
-        info!(target: LOG_TARGET, "FCV - Block is VALID for {}", &block_id);
+        trace!(
+            target: LOG_TARGET,
+            "Block validation: Achieved difficulty is ok for {} ",
+            &block_id
+        );
+        debug!(target: LOG_TARGET, "Block validation: Block is VALID for {}", &block_id);
         Ok(())
     }
 }

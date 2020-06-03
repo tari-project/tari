@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    peer_manager::{NodeIdentity, PeerFeatures},
+    peer_manager::{NodeId, NodeIdentity, PeerFeatures},
     transports::MemoryTransport,
 };
 use rand::rngs::OsRng;
@@ -37,5 +37,16 @@ pub fn build_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
 pub fn ordered_node_identities(n: usize, features: PeerFeatures) -> Vec<Arc<NodeIdentity>> {
     let mut ids = (0..n).map(|_| build_node_identity(features)).collect::<Vec<_>>();
     ids.sort_unstable_by(|a, b| a.node_id().cmp(b.node_id()));
+    ids
+}
+
+pub fn ordered_node_identities_by_distance(
+    node_id: &NodeId,
+    n: usize,
+    features: PeerFeatures,
+) -> Vec<Arc<NodeIdentity>>
+{
+    let mut ids = (0..n).map(|_| build_node_identity(features)).collect::<Vec<_>>();
+    ids.sort_unstable_by(|a, b| a.node_id().distance(node_id).cmp(&b.node_id().distance(node_id)));
     ids
 }

@@ -25,14 +25,12 @@ use std::sync::Arc;
 use tari_comms::{
     message::MessageTag,
     multiaddr::Multiaddr,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
-    types::CommsPublicKey,
+    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
 };
 use tari_comms_dht::{
     envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, Network, NodeDestination},
     inbound::DhtInboundMessage,
 };
-use tari_crypto::keys::PublicKey;
 
 macro_rules! unwrap_oms_send_msg {
     ($var:expr, reply_value=$reply_value:expr) => {
@@ -49,11 +47,6 @@ macro_rules! unwrap_oms_send_msg {
             reply_value = tari_comms_dht::outbound::SendMessageResponse::Queued(vec![].into())
         );
     };
-}
-
-pub fn make_node_id() -> NodeId {
-    let (public_key, _) = CommsPublicKey::random_keypair(&mut OsRng);
-    NodeId::from_key(&public_key).unwrap()
 }
 
 pub fn make_node_identity() -> Arc<NodeIdentity> {

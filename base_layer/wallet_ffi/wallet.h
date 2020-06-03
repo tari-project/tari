@@ -435,6 +435,9 @@ bool wallet_test_receive_transaction(struct TariWallet *wallet,int* error_out);
 /// Cancel a Pending Outbound Transaction
 bool wallet_cancel_pending_transaction(struct TariWallet *wallet, unsigned long long transaction_id, int* error_out);
 
+/// Perform a coin split
+unsigned long long wallet_coin_split(struct TariWallet *wallet, unsigned long long amount, unsigned long long count, unsigned long long fee, const char* msg, unsigned long long lock_height, int* error_out);
+
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);
 

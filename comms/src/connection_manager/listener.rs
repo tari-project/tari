@@ -34,7 +34,7 @@ use crate::{
     multiaddr::Multiaddr,
     multiplexing::Yamux,
     noise::NoiseConfig,
-    peer_manager::NodeIdentity,
+    peer_manager::{NodeIdentity, PeerFeatures},
     protocol::ProtocolId,
     runtime,
     transports::Transport,
@@ -134,7 +134,7 @@ where
                 }
             },
             Err(err) => {
-                error!(target: LOG_TARGET, "PeerListener was unable to start because '{}'", err);
+                warn!(target: LOG_TARGET, "PeerListener was unable to start because '{}'", err);
                 self.send_event(ConnectionManagerEvent::ListenFailed(err)).await;
             },
         }
@@ -181,7 +181,7 @@ where
     {
         permit.fetch_sub(1, Ordering::SeqCst);
         let liveness = LivenessSession::new(socket);
-        info!(target: LOG_TARGET, "Started liveness session");
+        debug!(target: LOG_TARGET, "Started liveness session");
         runtime::current_executor().spawn(async move {
             future::select(liveness.run(), shutdown_signal).await;
             permit.fetch_add(1, Ordering::SeqCst);
@@ -246,13 +246,13 @@ where
                     if liveness_session_count.load(Ordering::SeqCst) > 0 &&
                         Self::is_address_in_liveness_cidr_range(&peer_addr, &config.liveness_cidr_whitelist)
                     {
-                        info!(
+                        debug!(
                             target: LOG_TARGET,
                             "Connection at address '{}' requested liveness session", peer_addr
                         );
                         Self::spawn_liveness_session(socket, liveness_session_count, shutdown_signal).await;
                     } else {
-                        warn!(
+                        debug!(
                             target: LOG_TARGET,
                             "No liveness sessions available or permitted for peer address '{}'", peer_addr
                         );
@@ -327,14 +327,16 @@ where
         )
         .await?;
 
+        let features = PeerFeatures::from_bits_truncate(peer_identity.features);
         debug!(
             target: LOG_TARGET,
-            "Peer identity exchange succeeded on Inbound connection for peer '{}'",
-            peer_identity.node_id.to_hex()
+            "Peer identity exchange succeeded on Inbound connection for peer '{}' (Features = {:?})",
+            peer_identity.node_id.to_hex(),
+            features
         );
         trace!(target: LOG_TARGET, "{:?}", peer_identity);
 
-        let peer = common::validate_and_add_peer_from_peer_identity(
+        let peer_node_id = common::validate_and_add_peer_from_peer_identity(
             &peer_manager,
             known_peer,
             authenticated_public_key,
@@ -347,13 +349,14 @@ where
             target: LOG_TARGET,
             "[ThisNode={}] Peer '{}' added to peer list.",
             node_identity.node_id().short_str(),
-            peer.node_id.short_str()
+            peer_node_id.short_str()
         );
 
         peer_connection::create(
             muxer,
             peer_addr,
-            peer,
+            peer_node_id,
+            features,
             CONNECTION_DIRECTION,
             conn_man_notifier,
             our_supported_protocols,

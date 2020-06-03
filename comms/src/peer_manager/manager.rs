@@ -54,6 +54,10 @@ impl PeerManager {
         })
     }
 
+    pub async fn count(&self) -> usize {
+        self.peer_storage.read().await.count()
+    }
+
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exist, the stored version will be replaced with the newly provided peer.
     pub async fn add_peer(&self, peer: Peer) -> Result<PeerId, PeerManagerError> {
@@ -66,7 +70,6 @@ impl PeerManager {
     pub async fn update_peer(
         &self,
         public_key: &CommsPublicKey,
-        node_id: Option<NodeId>,
         net_addresses: Option<Vec<Multiaddr>>,
         flags: Option<PeerFlags>,
         #[allow(clippy::option_option)] banned_until: Option<Option<Duration>>,
@@ -78,7 +81,6 @@ impl PeerManager {
     {
         self.peer_storage.write().await.update_peer(
             public_key,
-            node_id,
             net_addresses,
             flags,
             banned_until,
@@ -86,42 +88,6 @@ impl PeerManager {
             peer_features,
             connection_stats,
             supported_protocols,
-        )
-    }
-
-    /// Set the last connection to this peer as a success
-    pub async fn set_last_connect_success(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        let mut storage = self.peer_storage.write().await;
-        let mut peer = storage.find_by_node_id(node_id)?;
-        peer.connection_stats.set_connection_success();
-        storage.update_peer(
-            &peer.public_key,
-            None,
-            None,
-            None,
-            None,
-            Some(false),
-            None,
-            Some(peer.connection_stats),
-            None,
-        )
-    }
-
-    /// Set the last connection to this peer as a failure
-    pub async fn set_last_connect_failed(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        let mut storage = self.peer_storage.write().await;
-        let mut peer = storage.find_by_node_id(node_id)?;
-        peer.connection_stats.set_connection_failed();
-        storage.update_peer(
-            &peer.public_key,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            Some(peer.connection_stats),
-            None,
         )
     }
 
@@ -168,23 +134,16 @@ impl PeerManager {
         &self,
         pubkey: &CommsPublicKey,
         node_id: NodeId,
-        net_addresses: Vec<Multiaddr>,
+        addresses: Vec<Multiaddr>,
         peer_features: PeerFeatures,
     ) -> Result<Peer, PeerManagerError>
     {
         match self.find_by_public_key(&pubkey).await {
             Ok(mut peer) => {
                 peer.connection_stats.set_connection_success();
-                peer.update(
-                    Some(node_id),
-                    Some(net_addresses),
-                    None,
-                    None,
-                    Some(false),
-                    Some(peer_features),
-                    None,
-                    None,
-                );
+                peer.addresses = addresses.into();
+                peer.set_offline(false);
+                peer.features = peer_features;
                 self.add_peer(peer.clone()).await?;
                 Ok(peer)
             },
@@ -192,7 +151,7 @@ impl PeerManager {
                 self.add_peer(Peer::new(
                     pubkey.clone(),
                     node_id,
-                    net_addresses.into(),
+                    addresses.into(),
                     PeerFlags::default(),
                     peer_features,
                     &[],
@@ -288,18 +247,23 @@ impl PeerManager {
     }
 
     /// Unbans the peer if it is banned. This function is idempotent.
-    pub async fn unban(&self, public_key: &CommsPublicKey) -> Result<NodeId, PeerManagerError> {
-        self.peer_storage.write().await.unban(public_key)
+    pub async fn unban_peer(&self, public_key: &CommsPublicKey) -> Result<NodeId, PeerManagerError> {
+        self.peer_storage.write().await.unban_peer(public_key)
     }
 
     /// Ban the peer for a length of time specified by the duration
-    pub async fn ban_for(&self, public_key: &CommsPublicKey, duration: Duration) -> Result<NodeId, PeerManagerError> {
-        self.peer_storage.write().await.ban_for(public_key, duration)
+    pub async fn ban_peer(&self, public_key: &CommsPublicKey, duration: Duration) -> Result<NodeId, PeerManagerError> {
+        self.peer_storage.write().await.ban_peer(public_key, duration)
+    }
+
+    /// Ban the peer for a length of time specified by the duration
+    pub async fn ban_peer_by_node_id(&self, node_id: &NodeId, duration: Duration) -> Result<NodeId, PeerManagerError> {
+        self.peer_storage.write().await.ban_peer_by_node_id(node_id, duration)
     }
 
     /// Changes the offline flag bit of the peer
-    pub async fn set_offline(&self, public_key: &CommsPublicKey, is_offline: bool) -> Result<NodeId, PeerManagerError> {
-        self.peer_storage.write().await.set_offline(public_key, is_offline)
+    pub async fn set_offline(&self, node_id: &NodeId, is_offline: bool) -> Result<NodeId, PeerManagerError> {
+        self.peer_storage.write().await.set_offline(node_id, is_offline)
     }
 
     /// Adds a new net address to the peer if it doesn't yet exist

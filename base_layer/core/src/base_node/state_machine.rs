@@ -32,7 +32,7 @@ use futures::{future, future::Either, SinkExt};
 use log::*;
 use std::{future::Future, sync::Arc};
 use tari_broadcast_channel::{bounded, Publisher, Subscriber};
-use tari_comms::{connection_manager::ConnectionManagerRequester, PeerManager};
+use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &str = "c::bn::base_node";
@@ -63,7 +63,7 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) local_node_interface: LocalNodeCommsInterface,
     pub(super) comms: OutboundNodeCommsInterface,
     pub(super) peer_manager: Arc<PeerManager>,
-    pub(super) connection_manager: ConnectionManagerRequester,
+    pub(super) connectivity: ConnectivityRequester,
     pub(super) metadata_event_stream: Subscriber<ChainMetadataEvent>,
     pub(super) config: BaseNodeStateMachineConfig,
     pub(super) info: StatusInfo,
@@ -81,7 +81,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         local_node_interface: &LocalNodeCommsInterface,
         comms: &OutboundNodeCommsInterface,
         peer_manager: Arc<PeerManager>,
-        connection_manager: ConnectionManagerRequester,
+        connectivity: ConnectivityRequester,
         metadata_event_stream: Subscriber<ChainMetadataEvent>,
         config: BaseNodeStateMachineConfig,
         shutdown_signal: ShutdownSignal,
@@ -94,7 +94,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             local_node_interface: local_node_interface.clone(),
             comms: comms.clone(),
             peer_manager,
-            connection_manager,
+            connectivity,
             metadata_event_stream,
             interrupt_signal: shutdown_signal,
             config,
@@ -157,7 +157,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             if let Shutdown(reason) = &state {
                 debug!(
                     target: LOG_TARGET,
-                    "=== Base Node state machine is shutting down because {}", reason
+                    "Base Node state machine is shutting down because {}", reason
                 );
                 break;
             }
@@ -169,9 +169,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             let next_event = select_next_state_event(interrupt_signal, next_state_future).await;
             // Publish the event on the event bus
             let _ = self.event_sender.send(next_event.clone()).await;
-            debug!(
+            trace!(
                 target: LOG_TARGET,
-                "=== Base Node event in State [{}]:  {}", state, next_event
+                "Base Node event in State [{}]:  {}",
+                state,
+                next_event
             );
             state = self.transition(state, next_event);
         }

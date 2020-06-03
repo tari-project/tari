@@ -24,6 +24,7 @@ pub use super::base_node::base_node_service_response::Response as ProtoNodeComms
 use super::base_node::{
     BlockHeaders as ProtoBlockHeaders,
     HistoricalBlocks as ProtoHistoricalBlocks,
+    MmrNodes as ProtoMmrNodes,
     TransactionKernels as ProtoTransactionKernels,
     TransactionOutputs as ProtoTransactionOutputs,
 };
@@ -68,6 +69,8 @@ impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
             NewBlockTemplate(block_template) => ci::NodeCommsResponse::NewBlockTemplate(block_template.try_into()?),
             NewBlock(block) => ci::NodeCommsResponse::NewBlock(block.try_into()?),
             TargetDifficulty(difficulty) => ci::NodeCommsResponse::TargetDifficulty(Difficulty::from(difficulty)),
+            MmrNodeCount(u64) => ci::NodeCommsResponse::MmrNodeCount(u64),
+            MmrNodes(response) => ci::NodeCommsResponse::MmrNodes(response.added, response.deleted),
         };
 
         Ok(response)
@@ -102,6 +105,8 @@ impl From<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
             NewBlockTemplate(block_template) => ProtoNodeCommsResponse::NewBlockTemplate(block_template.into()),
             NewBlock(block) => ProtoNodeCommsResponse::NewBlock(block.into()),
             TargetDifficulty(difficulty) => ProtoNodeCommsResponse::TargetDifficulty(difficulty.as_u64()),
+            MmrNodeCount(node_count) => ProtoNodeCommsResponse::MmrNodeCount(node_count),
+            MmrNodes(added, deleted) => ProtoNodeCommsResponse::MmrNodes(ProtoMmrNodes { added, deleted }),
         }
     }
 }

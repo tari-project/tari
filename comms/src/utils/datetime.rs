@@ -31,3 +31,33 @@ pub fn safe_future_datetime_from_duration(duration: Duration) -> DateTime<Utc> {
             .expect("cannot fail")
     })
 }
+
+pub fn format_duration(duration: Duration) -> String {
+    let secs = duration.as_secs();
+    if secs > 60 {
+        let mins = secs / 60;
+        if mins > 60 {
+            let hours = mins / 60;
+            format!("{}h {}m {}s", hours, mins % 60, secs % 60)
+        } else {
+            format!("{}m {}s", mins, secs % 60)
+        }
+    } else {
+        format!("{}s", secs)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn formats_duration() {
+        let s = format_duration(Duration::from_secs(5));
+        assert_eq!(s, "5s");
+        let s = format_duration(Duration::from_secs(23 * 60 + 10));
+        assert_eq!(s, "23m 10s");
+        let s = format_duration(Duration::from_secs(9 * 60 * 60 + 35 * 60 + 45));
+        assert_eq!(s, "9h 35m 45s");
+    }
+}

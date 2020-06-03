@@ -21,9 +21,12 @@ mod macros;
 pub mod connection_manager;
 pub use connection_manager::{validate_peer_addresses, ConnectionManagerEvent, PeerConnection, PeerConnectionError};
 
+pub mod connectivity;
+
 pub mod peer_manager;
 pub use peer_manager::{NodeIdentity, PeerManager};
 
+mod common;
 mod consts;
 mod multiplexing;
 mod noise;

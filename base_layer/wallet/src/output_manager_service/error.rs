@@ -90,6 +90,7 @@ pub enum OutputManagerStorageError {
     KeyManagerNotInitialized,
     OutOfRangeError(OutOfRangeError),
     R2d2Error,
+    TransactionError(TransactionError),
     DieselError(DieselError),
     DieselConnectionError(diesel::ConnectionError),
     #[error(msg_embedded, no_from, non_std)]

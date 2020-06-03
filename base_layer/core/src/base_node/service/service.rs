@@ -562,7 +562,7 @@ async fn handle_incoming_block<B: BlockchainBackend + 'static>(
 {
     let DomainMessage::<_> { source_peer, inner, .. } = domain_block_msg;
 
-    info!(
+    debug!(
         "New candidate block #{} (accum_diff: {}, hash: ({})) received.",
         inner.header.height,
         inner.header.total_accumulated_difficulty_inclusive(),

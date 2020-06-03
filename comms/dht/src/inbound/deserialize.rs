@@ -61,7 +61,7 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
     fn call(&mut self, message: InboundMessage) -> Self::Future {
         let next_service = self.next_service.clone();
         async move {
-            trace!(target: LOG_TARGET, "Deserializing InboundMessage");
+            trace!(target: LOG_TARGET, "Deserializing InboundMessage {}", message.tag);
 
             let InboundMessage {
                 source_peer,
@@ -84,7 +84,7 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
                         source_peer,
                         dht_envelope.body,
                     );
-                    debug!(
+                    trace!(
                         target: LOG_TARGET,
                         "Deserialization succeeded. Passing message {} onto next service (Trace: {})",
                         tag,

@@ -31,7 +31,7 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::{error::Error, iter, path::PathBuf, sync::Arc, time::Duration};
 use tari_comms::{
     backoff::ConstantBackoff,
-    peer_manager::NodeIdentity,
+    peer_manager::{NodeIdentity, Peer, PeerManagerError},
     pipeline,
     pipeline::SinkService,
     tor,
@@ -40,6 +40,7 @@ use tari_comms::{
     CommsBuilder,
     CommsBuilderError,
     CommsNode,
+    PeerManager,
 };
 use tari_comms_dht::{Dht, DhtBuilder, DhtConfig, DhtInitializationError};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
@@ -54,6 +55,8 @@ pub enum CommsInitializationError {
     HiddenServiceBuilderError(tor::HiddenServiceBuilderError),
     #[error(non_std, no_from, msg_embedded)]
     InvalidLivenessCidrs(String),
+    /// Could not add seed peers to comms layer
+    FailedToAddSeedPeer(PeerManagerError),
 }
 
 impl CommsInitializationError {
@@ -109,6 +112,7 @@ pub async fn initialize_local_test_comms<TSink>(
     connector: InboundDomainConnector<TSink>,
     data_path: &str,
     discovery_request_timeout: Duration,
+    seed_peers: Vec<Peer>,
 ) -> Result<(CommsNode, Dht), CommsInitializationError>
 where
     TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
@@ -141,7 +145,10 @@ where
         .with_node_identity(node_identity)
         .with_peer_storage(peer_database)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
+        .with_min_connectivity(1.0)
         .build()?;
+
+    add_peers_to_comms(&comms.peer_manager, &comms.node_identity, seed_peers).await?;
 
     // Create outbound channel
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
@@ -150,7 +157,7 @@ where
         comms.node_identity(),
         comms.peer_manager(),
         outbound_tx,
-        comms.connection_manager_requester(),
+        comms.connectivity(),
         comms.shutdown_signal(),
     )
     .local_test()
@@ -185,6 +192,7 @@ where
 pub async fn initialize_comms<TSink>(
     config: CommsConfig,
     connector: InboundDomainConnector<TSink>,
+    seed_peers: Vec<Peer>,
 ) -> Result<(CommsNode, Dht), CommsInitializationError>
 where
     TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
@@ -202,7 +210,7 @@ where
             let comms = builder
                 .with_transport(MemoryTransport)
                 .with_listener_address(listener_address.clone());
-            configure_comms_and_dht(comms, config, connector).await
+            configure_comms_and_dht(comms, config, connector, seed_peers).await
         },
         TransportType::Tcp {
             listener_address,
@@ -216,7 +224,7 @@ where
             let comms = builder
                 .with_transport(transport)
                 .with_listener_address(listener_address.clone());
-            configure_comms_and_dht(comms, config, connector).await
+            configure_comms_and_dht(comms, config, connector, seed_peers).await
         },
         TransportType::Tor(tor_config) => {
             debug!(
@@ -232,7 +240,7 @@ where
             let comms = builder.configure_from_hidden_service(hidden_service);
             debug!(target: LOG_TARGET, "Comms stack configured");
 
-            let (comms, dht) = configure_comms_and_dht(comms, config, connector).await?;
+            let (comms, dht) = configure_comms_and_dht(comms, config, connector, seed_peers).await?;
             debug!(target: LOG_TARGET, "DHT configured");
             // Set the public address to the onion address that comms is using
             comms
@@ -254,7 +262,7 @@ where
             let comms = builder
                 .with_transport(SocksTransport::new(socks_config.clone()))
                 .with_listener_address(listener_address.clone());
-            configure_comms_and_dht(comms, config, connector).await
+            configure_comms_and_dht(comms, config, connector, seed_peers).await
         },
     }
 }
@@ -279,6 +287,7 @@ async fn configure_comms_and_dht<TTransport, TSink>(
     builder: CommsBuilder<TTransport>,
     config: CommsConfig,
     connector: InboundDomainConnector<TSink>,
+    seed_peers: Vec<Peer>,
 ) -> Result<(CommsNode, Dht), CommsInitializationError>
 where
     TTransport: Transport + Unpin + Send + Sync + Clone + 'static,
@@ -306,6 +315,8 @@ where
         .with_peer_storage(peer_database)
         .build()?;
 
+    add_peers_to_comms(&comms.peer_manager, &comms.node_identity, seed_peers).await?;
+
     // Create outbound channel
     let (outbound_tx, outbound_rx) = mpsc::channel(config.outbound_buffer_size);
 
@@ -313,7 +324,7 @@ where
         comms.node_identity(),
         comms.peer_manager(),
         outbound_tx,
-        comms.connection_manager_requester(),
+        comms.connectivity(),
         comms.shutdown_signal(),
     )
     .with_config(config.dht)
@@ -341,4 +352,38 @@ where
         .await?;
 
     Ok((comms, dht))
+}
+
+/// Adds a new peer to the base node
+/// ## Parameters
+/// `comms_node` - A reference to the comms node. This is the communications stack
+/// `peers` - A list of peers to be added to the comms node, the current node identity of the comms stack is excluded if
+/// found in the list.
+///
+/// ## Returns
+/// A Result to determine if the call was successful or not, string will indicate the reason on error
+async fn add_peers_to_comms(
+    peer_manager: &PeerManager,
+    node_identity: &NodeIdentity,
+    peers: Vec<Peer>,
+) -> Result<(), CommsInitializationError>
+{
+    for peer in peers {
+        let peer_desc = peer.to_string();
+        debug!(target: LOG_TARGET, "Adding seed peer [{}]", peer);
+
+        if &peer.public_key == node_identity.public_key() {
+            debug!(
+                target: LOG_TARGET,
+                "Attempting to add yourself [{}] as a seed peer to comms layer, ignoring request", peer_desc
+            );
+            continue;
+        }
+
+        peer_manager
+            .add_peer(peer)
+            .await
+            .map_err(CommsInitializationError::FailedToAddSeedPeer)?;
+    }
+    Ok(())
 }

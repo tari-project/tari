@@ -29,7 +29,10 @@ use crate::{
     },
 };
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Error, Formatter};
+use std::{
+    convert::TryFrom,
+    fmt::{Display, Error, Formatter},
+};
 use strum_macros::Display;
 use tari_crypto::tari_utilities::{hex::to_hex, Hashable};
 
@@ -274,6 +277,19 @@ impl Display for MmrTree {
             MmrTree::RangeProof => f.write_str("Range Proof"),
             MmrTree::Utxo => f.write_str("UTXO"),
             MmrTree::Kernel => f.write_str("Kernel"),
+        }
+    }
+}
+
+impl TryFrom<i32> for MmrTree {
+    type Error = String;
+
+    fn try_from(v: i32) -> Result<Self, Self::Error> {
+        match v {
+            0 => Ok(MmrTree::Utxo),
+            1 => Ok(MmrTree::Kernel),
+            2 => Ok(MmrTree::RangeProof),
+            _ => Err("Invalid MmrTree".into()),
         }
     }
 }

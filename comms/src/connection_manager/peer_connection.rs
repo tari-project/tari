@@ -26,8 +26,8 @@ use super::{
     types::ConnectionDirection,
 };
 use crate::{
-    multiplexing::{Control, IncomingSubstreams, Substream, Yamux},
-    peer_manager::{NodeId, Peer, PeerFeatures},
+    multiplexing::{Control, IncomingSubstreams, Substream, SubstreamCounter, Yamux},
+    peer_manager::{NodeId, PeerFeatures},
     protocol::{ProtocolId, ProtocolNegotiation},
     runtime,
 };
@@ -41,10 +41,7 @@ use log::*;
 use multiaddr::Multiaddr;
 use std::{
     fmt,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::atomic::{AtomicUsize, Ordering},
     time::{Duration, Instant},
 };
 use tari_shutdown::Shutdown;
@@ -58,7 +55,8 @@ static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 pub fn create(
     connection: Yamux,
     peer_addr: Multiaddr,
-    peer: Arc<Peer>,
+    peer_node_id: NodeId,
+    peer_features: PeerFeatures,
     direction: ConnectionDirection,
     event_notifier: mpsc::Sender<ConnectionManagerEvent>,
     our_supported_protocols: Vec<ProtocolId>,
@@ -67,14 +65,23 @@ pub fn create(
     trace!(
         target: LOG_TARGET,
         "(Peer={}) Socket successfully upgraded to multiplexed socket",
-        peer.node_id.short_str()
+        peer_node_id.short_str()
     );
     let (peer_tx, peer_rx) = mpsc::channel(PEER_REQUEST_BUFFER_SIZE);
     let id = ID_COUNTER.fetch_add(1, Ordering::Relaxed); // Monotonic
-    let peer_conn = PeerConnection::new(id, peer_tx, peer.clone(), peer_addr, direction);
+    let substream_counter = connection.substream_counter();
+    let peer_conn = PeerConnection::new(
+        id,
+        peer_tx,
+        peer_node_id.clone(),
+        peer_features,
+        peer_addr,
+        direction,
+        substream_counter,
+    );
     let peer_actor = PeerConnectionActor::new(
         id,
-        peer.node_id.clone(),
+        peer_node_id,
         direction,
         connection,
         peer_rx,
@@ -103,44 +110,44 @@ pub type ConnId = usize;
 #[derive(Clone, Debug)]
 pub struct PeerConnection {
     id: ConnId,
-    peer: Arc<Peer>,
+    peer_node_id: NodeId,
+    peer_features: PeerFeatures,
     request_tx: mpsc::Sender<PeerConnectionRequest>,
     address: Multiaddr,
     direction: ConnectionDirection,
     started_at: Instant,
+    substream_counter: SubstreamCounter,
 }
 
 impl PeerConnection {
     pub(crate) fn new(
         id: ConnId,
         request_tx: mpsc::Sender<PeerConnectionRequest>,
-        peer: Arc<Peer>,
+        peer_node_id: NodeId,
+        peer_features: PeerFeatures,
         address: Multiaddr,
         direction: ConnectionDirection,
+        substream_counter: SubstreamCounter,
     ) -> Self
     {
         Self {
             id,
             request_tx,
-            peer,
+            peer_node_id,
+            peer_features,
             address,
             direction,
             started_at: Instant::now(),
+            substream_counter,
         }
     }
 
-    /// Returns the peer associated with this peer connection.
-    /// WARNING: This is not kept in-sync with the peer database
-    pub fn peer(&self) -> Arc<Peer> {
-        self.peer.clone()
-    }
-
     pub fn peer_node_id(&self) -> &NodeId {
-        &self.peer.node_id
+        &self.peer_node_id
     }
 
     pub fn peer_features(&self) -> PeerFeatures {
-        self.peer.features
+        self.peer_features
     }
 
     pub fn direction(&self) -> ConnectionDirection {
@@ -159,8 +166,12 @@ impl PeerConnection {
         !self.request_tx.is_closed()
     }
 
-    pub fn connected_since(&self) -> Duration {
+    pub fn age(&self) -> Duration {
         self.started_at.elapsed()
+    }
+
+    pub fn substream_count(&self) -> usize {
+        self.substream_counter.get()
     }
 
     pub async fn open_substream(
@@ -177,6 +188,8 @@ impl PeerConnection {
             .map_err(|_| PeerConnectionError::InternalReplyCancelled)?
     }
 
+    /// Immediately disconnects the peer connection. This can only fail if the peer connection worker
+    /// is shut down (and the peer is already disconnected)
     pub async fn disconnect(&mut self) -> Result<(), PeerConnectionError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.request_tx
@@ -202,11 +215,12 @@ impl fmt::Display for PeerConnection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "Id = {}, Node ID = {}, Direction = {}, Peer Address = {}",
+            "Id = {}, Node ID = {}, Direction = {}, Peer Address = {}, Features = {:?}",
             self.id,
-            self.peer.node_id.short_str(),
-            self.direction.to_string(),
-            self.address.to_string()
+            self.peer_node_id.short_str(),
+            self.direction,
+            self.address,
+            self.peer_features,
         )
     }
 }
@@ -360,7 +374,7 @@ impl PeerConnectionActor {
     ///
     /// # Arguments
     ///
-    /// silent - true to supress the PeerDisconnected event, false to publish the event
+    /// silent - true to suppress the PeerDisconnected event, false to publish the event
     async fn disconnect(&mut self, silent: bool) {
         if let Err(err) = self.control.close().await {
             warn!(
@@ -371,7 +385,7 @@ impl PeerConnectionActor {
                 err
             );
         }
-        trace!(target: LOG_TARGET, "Connection closed");
+        debug!(target: LOG_TARGET, "Connection closed");
 
         self.shutdown = true;
         // Shut down the incoming substream task

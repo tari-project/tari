@@ -319,12 +319,7 @@ where
             DialPeer(node_id, reply_tx) => match self.get_active_connection(&node_id) {
                 Some(conn) => {
                     debug!(target: LOG_TARGET, "[{}] Found existing active connection", conn);
-                    log_if_error_fmt!(
-                        target: LOG_TARGET,
-                        reply_tx.send(Ok(conn.clone())),
-                        "Failed to send reply for dial request for peer '{}'",
-                        node_id.short_str()
-                    );
+                    let _ = reply_tx.send(Ok(conn.clone()));
                 },
                 None => {
                     debug!(
@@ -336,6 +331,14 @@ where
                     );
                     self.dial_peer(node_id, reply_tx).await
                 },
+            },
+            CancelDial(node_id) => {
+                if let Err(err) = self.dialer_tx.send(DialerRequest::CancelPendingDial(node_id)).await {
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to send cancel dial request to dialer: {}", err
+                    );
+                }
             },
             NotifyListening(reply_tx) => match self.listener_address.as_ref() {
                 Some(addr) => {
@@ -365,13 +368,17 @@ where
                         .count(),
                 );
             },
-            DisconnectPeer(node_id, reply_tx) => match self.active_connections.remove(&node_id) {
-                Some(mut conn) => {
-                    let _ = reply_tx.send(conn.disconnect().await.map_err(Into::into));
-                },
-                None => {
-                    let _ = reply_tx.send(Ok(()));
-                },
+            DisconnectPeer(node_id) => {
+                if let Some(mut conn) = self.active_connections.remove(&node_id) {
+                    if let Err(err) = conn.disconnect().await {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Error when disconnecting peer {}: {:?}",
+                            conn.peer_node_id(),
+                            err
+                        );
+                    }
+                }
             },
         }
     }
@@ -415,17 +422,6 @@ where
             },
             PeerConnected(new_conn) => {
                 let node_id = new_conn.peer_node_id().clone();
-
-                if let Err(err) = self.peer_manager.set_last_connect_success(&node_id).await {
-                    error!(
-                        target: LOG_TARGET,
-                        "set_last_connect_success failed because '{:?}'", err
-                    );
-                }
-
-                // If we're dialing this node, let's cancel it
-                self.send_dialer_request(DialerRequest::CancelPendingDial(node_id.clone()))
-                    .await;
 
                 match self.active_connections.get(&node_id) {
                     Some(existing_conn) => {
@@ -488,9 +484,6 @@ where
                 }
             },
             PeerConnectFailed(node_id, err) => {
-                if let Err(err) = self.peer_manager.set_last_connect_failed(&node_id).await {
-                    error!(target: LOG_TARGET, "set_peer_connect_failed failed because '{:?}'", err);
-                }
                 self.publish_event(PeerConnectFailed(node_id, err));
             },
             event => {
@@ -509,7 +502,7 @@ where
     #[inline]
     async fn send_dialer_request(&mut self, req: DialerRequest) {
         if let Err(err) = self.dialer_tx.send(req).await {
-            error!(target: LOG_TARGET, "Unable to send DialerRequest because '{}'", err);
+            error!(target: LOG_TARGET, "Failed to send request to dialer because '{}'", err);
         }
     }
 
@@ -560,7 +553,7 @@ where
                 match conn.disconnect_silent().await {
                     Ok(_) => {},
                     Err(err) => {
-                        error!(target: LOG_TARGET, "Failed to disconnect because '{:?}'", err);
+                        warn!(target: LOG_TARGET, "Failed to disconnect because '{:?}'", err);
                     },
                 }
             }
@@ -568,14 +561,8 @@ where
     }
 
     fn publish_event(&self, event: ConnectionManagerEvent) {
-        let event = Arc::new(event);
-        if self.connection_manager_events_tx.send(event.clone()).is_err() {
-            trace!(
-                target: LOG_TARGET,
-                "Didn't send event '{}' because there are no subscribers",
-                event
-            );
-        }
+        // Error on no subscribers can be ignored
+        let _ = self.connection_manager_events_tx.send(Arc::new(event));
     }
 
     #[inline]
@@ -591,19 +578,12 @@ where
     {
         match self.peer_manager.find_by_node_id(&node_id).await {
             Ok(peer) => {
-                if let Err(err) = self.dialer_tx.send(DialerRequest::Dial(Box::new(peer), reply_tx)).await {
-                    error!(target: LOG_TARGET, "Failed to send request to dialer because '{}'", err);
-                }
+                self.send_dialer_request(DialerRequest::Dial(Box::new(peer), reply_tx))
+                    .await;
             },
             Err(err) => {
-                error!(target: LOG_TARGET, "Failed to fetch peer to dial because '{}'", err);
-                log_if_error_fmt!(
-                    level: warn,
-                    target: LOG_TARGET,
-                    reply_tx.send(Err(ConnectionManagerError::PeerManagerError(err))),
-                    "Failed to send error reply when dialing peer '{}'",
-                    node_id.short_str()
-                );
+                warn!(target: LOG_TARGET, "Failed to fetch peer to dial because '{}'", err);
+                let _ = reply_tx.send(Err(ConnectionManagerError::PeerManagerError(err)));
             },
         }
     }

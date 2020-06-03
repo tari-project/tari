@@ -33,6 +33,7 @@ use crate::{
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags, PeerManagerError},
     protocol::{ProtocolEvent, ProtocolId, Protocols, IDENTITY_PROTOCOL},
     test_utils::{
+        count_string_occurrences,
         node_identity::{build_node_identity, ordered_node_identities},
         test_node::{build_connection_manager, build_peer_manager, TestNodeConfig},
     },
@@ -170,17 +171,6 @@ async fn dial_success() {
     let mut buf = [0u8; MSG.len()];
     substream_in.read_exact(&mut buf).await.unwrap();
     assert_eq!(buf, MSG);
-}
-
-fn count_string_occurrences<T, U>(events: &[T], expected: &[&str]) -> usize
-where
-    T: AsRef<U>,
-    U: ToString,
-{
-    events
-        .iter()
-        .filter(|event| expected.iter().any(|exp| event.as_ref().to_string().starts_with(exp)))
-        .count()
 }
 
 #[tokio_macros::test_basic]

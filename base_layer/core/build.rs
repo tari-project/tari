@@ -22,12 +22,14 @@
 
 fn main() {
     tari_common::protobuf_build::ProtoCompiler::new()
+        .out_dir("src/proto/generated")
         .include_paths(&["src/transactions/proto", "src/proto"])
         .proto_paths(&[
             "src/mempool/proto",
             "src/base_node/proto",
             "src/transactions/transaction_protocol/proto",
         ])
+        .emit_rerun_if_changed_directives()
         .compile()
         .unwrap();
 }

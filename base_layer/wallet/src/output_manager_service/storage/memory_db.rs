@@ -22,14 +22,17 @@
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
-    storage::database::{
-        DbKey,
-        DbKeyValuePair,
-        DbValue,
-        KeyManagerState,
-        OutputManagerBackend,
-        PendingTransactionOutputs,
-        WriteOperation,
+    storage::{
+        database::{
+            DbKey,
+            DbKeyValuePair,
+            DbValue,
+            KeyManagerState,
+            OutputManagerBackend,
+            PendingTransactionOutputs,
+            WriteOperation,
+        },
+        models::DbUnblindedOutput,
     },
     TxId,
 };
@@ -39,7 +42,6 @@ use std::{
     sync::{Arc, RwLock},
     time::Duration,
 };
-use tari_core::transactions::transaction::UnblindedOutput;
 
 /// This structure is an In-Memory database backend that implements the `OutputManagerBackend` trait and provides all
 /// the functionality required by the trait.
@@ -86,13 +88,13 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             DbKey::SpentOutput(k) => db
                 .spent_outputs
                 .iter()
-                .find(|v| &v.output.spending_key == k)
-                .map(|v| DbValue::SpentOutput(Box::new(UnblindedOutput::from((*v).clone())))),
+                .find(|v| &v.output.unblinded_output.spending_key == k)
+                .map(|v| DbValue::SpentOutput(Box::new(DbUnblindedOutput::from((*v).clone())))),
             DbKey::UnspentOutput(k) => db
                 .unspent_outputs
                 .iter()
-                .find(|v| &v.output.spending_key == k)
-                .map(|v| DbValue::UnspentOutput(Box::new(UnblindedOutput::from((*v).clone())))),
+                .find(|v| &v.output.unblinded_output.spending_key == k)
+                .map(|v| DbValue::UnspentOutput(Box::new(DbUnblindedOutput::from((*v).clone())))),
             DbKey::PendingTransactionOutputs(tx_id) => {
                 let mut result = db.pending_transactions.get(tx_id);
                 if result.is_none() {
@@ -103,19 +105,19 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             DbKey::UnspentOutputs => Some(DbValue::UnspentOutputs(
                 db.unspent_outputs
                     .iter()
-                    .map(|o| UnblindedOutput::from((*o).clone()))
+                    .map(|o| DbUnblindedOutput::from((*o).clone()))
                     .collect(),
             )),
             DbKey::SpentOutputs => Some(DbValue::SpentOutputs(
                 db.spent_outputs
                     .iter()
-                    .map(|o| UnblindedOutput::from((*o).clone()))
+                    .map(|o| DbUnblindedOutput::from((*o).clone()))
                     .collect(),
             )),
             DbKey::AllPendingTransactionOutputs => {
                 let mut pending_tx_outputs = db.pending_transactions.clone();
                 for (k, v) in db.short_term_pending_transactions.iter() {
-                    pending_tx_outputs.insert(k.clone(), v.clone());
+                    pending_tx_outputs.insert(*k, v.clone());
                 }
                 Some(DbValue::AllPendingTransactionOutputs(pending_tx_outputs))
             },
@@ -126,7 +128,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             DbKey::InvalidOutputs => Some(DbValue::InvalidOutputs(
                 db.invalid_outputs
                     .iter()
-                    .map(|o| UnblindedOutput::from((*o).clone()))
+                    .map(|o| DbUnblindedOutput::from((*o).clone()))
                     .collect(),
             )),
         };
@@ -139,16 +141,26 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         match op {
             WriteOperation::Insert(kvp) => match kvp {
                 DbKeyValuePair::SpentOutput(k, o) => {
-                    if db.spent_outputs.iter().any(|v| v.output.spending_key == k) ||
-                        db.unspent_outputs.iter().any(|v| v.output.spending_key == k)
+                    if db
+                        .spent_outputs
+                        .iter()
+                        .any(|v| v.output.unblinded_output.spending_key == k) ||
+                        db.unspent_outputs
+                            .iter()
+                            .any(|v| v.output.unblinded_output.spending_key == k)
                     {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
                     db.spent_outputs.push(DbOutput::from(*o));
                 },
                 DbKeyValuePair::UnspentOutput(k, o) => {
-                    if db.unspent_outputs.iter().any(|v| v.output.spending_key == k) ||
-                        db.spent_outputs.iter().any(|v| v.output.spending_key == k)
+                    if db
+                        .unspent_outputs
+                        .iter()
+                        .any(|v| v.output.unblinded_output.spending_key == k) ||
+                        db.spent_outputs
+                            .iter()
+                            .any(|v| v.output.unblinded_output.spending_key == k)
                     {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
@@ -160,18 +172,26 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                 DbKeyValuePair::KeyManagerState(km) => db.key_manager_state = Some(km),
             },
             WriteOperation::Remove(k) => match k {
-                DbKey::SpentOutput(k) => match db.spent_outputs.iter().position(|v| v.output.spending_key == k) {
+                DbKey::SpentOutput(k) => match db
+                    .spent_outputs
+                    .iter()
+                    .position(|v| v.output.unblinded_output.spending_key == k)
+                {
                     None => return Err(OutputManagerStorageError::ValueNotFound(DbKey::SpentOutput(k))),
                     Some(pos) => {
-                        return Ok(Some(DbValue::SpentOutput(Box::new(UnblindedOutput::from(
+                        return Ok(Some(DbValue::SpentOutput(Box::new(DbUnblindedOutput::from(
                             db.spent_outputs.remove(pos),
                         )))));
                     },
                 },
-                DbKey::UnspentOutput(k) => match db.unspent_outputs.iter().position(|v| v.output.spending_key == k) {
+                DbKey::UnspentOutput(k) => match db
+                    .unspent_outputs
+                    .iter()
+                    .position(|v| v.output.unblinded_output.spending_key == k)
+                {
                     None => return Err(OutputManagerStorageError::ValueNotFound(DbKey::UnspentOutput(k))),
                     Some(pos) => {
-                        return Ok(Some(DbValue::UnspentOutput(Box::new(UnblindedOutput::from(
+                        return Ok(Some(DbValue::UnspentOutput(Box::new(DbUnblindedOutput::from(
                             db.unspent_outputs.remove(pos),
                         )))));
                     },
@@ -222,8 +242,8 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
     fn short_term_encumber_outputs(
         &self,
         tx_id: TxId,
-        outputs_to_send: &[UnblindedOutput],
-        outputs_to_receive: &[UnblindedOutput],
+        outputs_to_send: &[DbUnblindedOutput],
+        outputs_to_receive: &[DbUnblindedOutput],
     ) -> Result<(), OutputManagerStorageError>
     {
         let mut db = acquire_write_lock!(self.db);
@@ -232,9 +252,9 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             if let Some(pos) = db
                 .unspent_outputs
                 .iter()
-                .position(|v| v.output.spending_key == i.spending_key)
+                .position(|v| v.output.unblinded_output.spending_key == i.unblinded_output.spending_key)
             {
-                outputs_to_be_spent.push(UnblindedOutput::from(db.unspent_outputs.remove(pos)));
+                outputs_to_be_spent.push(DbUnblindedOutput::from(db.unspent_outputs.remove(pos)));
             } else {
                 return Err(OutputManagerStorageError::ValuesNotFound);
             }
@@ -277,7 +297,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         drop(db);
 
         for tx_id in short_term_encumberances.keys() {
-            self.cancel_pending_transaction(tx_id.clone())?;
+            self.cancel_pending_transaction(*tx_id)?;
         }
         Ok(())
     }
@@ -306,18 +326,18 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
 
         for (tx_id, pt) in db.pending_transactions.iter() {
             if pt.timestamp + ChronoDuration::from_std(period)? < Utc::now().naive_utc() {
-                transactions_to_be_cancelled.push(tx_id.clone());
+                transactions_to_be_cancelled.push(*tx_id);
             }
         }
         for (tx_id, pt) in db.short_term_pending_transactions.iter() {
             if pt.timestamp + ChronoDuration::from_std(period)? < Utc::now().naive_utc() {
-                transactions_to_be_cancelled.push(tx_id.clone());
+                transactions_to_be_cancelled.push(*tx_id);
             }
         }
 
         drop(db);
         for t in transactions_to_be_cancelled {
-            self.cancel_pending_transaction(t.clone())?;
+            self.cancel_pending_transaction(t)?;
         }
 
         Ok(())
@@ -337,12 +357,12 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         Ok(())
     }
 
-    fn invalidate_unspent_output(&self, output: &UnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError> {
+    fn invalidate_unspent_output(&self, output: &DbUnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError> {
         let mut db = acquire_write_lock!(self.db);
         match db
             .unspent_outputs
             .iter()
-            .position(|v| v.output.spending_key == output.spending_key)
+            .position(|v| v.output.unblinded_output.spending_key == output.unblinded_output.spending_key)
         {
             Some(pos) => {
                 let output = db.unspent_outputs.remove(pos);
@@ -357,12 +377,12 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
 // A struct that contains the extra info we are using in the Sql version of this backend
 #[derive(Clone)]
 struct DbOutput {
-    output: UnblindedOutput,
+    output: DbUnblindedOutput,
     tx_id: Option<u64>,
 }
 
 impl DbOutput {
-    pub fn new(tx_id: u64, output: UnblindedOutput) -> Self {
+    pub fn new(tx_id: u64, output: DbUnblindedOutput) -> Self {
         Self {
             output,
             tx_id: Some(tx_id),
@@ -370,8 +390,8 @@ impl DbOutput {
     }
 }
 
-impl From<UnblindedOutput> for DbOutput {
-    fn from(uo: UnblindedOutput) -> Self {
+impl From<DbUnblindedOutput> for DbOutput {
+    fn from(uo: DbUnblindedOutput) -> Self {
         Self {
             output: uo,
             tx_id: None,
@@ -379,7 +399,7 @@ impl From<UnblindedOutput> for DbOutput {
     }
 }
 
-impl From<DbOutput> for UnblindedOutput {
+impl From<DbOutput> for DbUnblindedOutput {
     fn from(o: DbOutput) -> Self {
         o.output
     }

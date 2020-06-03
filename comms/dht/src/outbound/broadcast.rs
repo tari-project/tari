@@ -49,7 +49,7 @@ use rand::rngs::OsRng;
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
     message::{MessageExt, MessageTag},
-    peer_manager::{NodeIdentity, Peer},
+    peer_manager::{NodeId, NodeIdentity, Peer},
     pipeline::PipelineError,
     types::{Challenge, CommsPublicKey},
     utils::signature,
@@ -194,7 +194,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             .generate_outbound_messages(request)
             .await
             .map_err(PipelineError::from_debug)?;
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Passing {} message(s) to next_service",
             messages.len()
@@ -205,7 +205,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             .unordered()
             .filter_map(|result| future::ready(result.err()))
             .for_each(|err| {
-                error!(target: LOG_TARGET, "Error when sending broadcast messages: {}", err);
+                warn!(target: LOG_TARGET, "Error when sending broadcast messages: {}", err);
                 future::ready(())
             })
             .await;
@@ -289,7 +289,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         Ok(Some(peer)) => {
                             // Set the reply_tx so that it can be used later
                             reply_tx = Some(discovery_reply_tx);
-                            peers = vec![Arc::new(peer)];
+                            peers = vec![peer.node_id];
                         },
                         Ok(None) => {
                             // Message sent to 0 peers
@@ -339,11 +339,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         }
     }
 
-    async fn select_peers(
-        &mut self,
-        broadcast_strategy: BroadcastStrategy,
-    ) -> Result<Vec<Arc<Peer>>, DhtOutboundError>
-    {
+    async fn select_peers(&mut self, broadcast_strategy: BroadcastStrategy) -> Result<Vec<NodeId>, DhtOutboundError> {
         self.dht_requester
             .select_peers(broadcast_strategy)
             .await
@@ -398,7 +394,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     #[allow(clippy::too_many_arguments)]
     async fn generate_send_messages(
         &mut self,
-        selected_peers: Vec<Arc<Peer>>,
+        selected_peers: Vec<NodeId>,
         destination: NodeDestination,
         dht_message_type: DhtMessageType,
         encryption: OutboundEncryption,
@@ -420,14 +416,14 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         // Construct a DhtOutboundMessage for each recipient
         let messages = selected_peers
             .into_iter()
-            .map(|peer| {
+            .map(|node_id| {
                 let (reply_tx, reply_rx) = oneshot::channel();
                 let tag = MessageTag::new();
                 let send_state = MessageSendState::new(tag, reply_rx);
                 (
                     DhtOutboundMessage {
                         tag,
-                        destination_peer: peer,
+                        destination_node_id: node_id,
                         destination: destination.clone(),
                         dht_message_type,
                         network: self.target_network,
@@ -449,7 +445,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
     async fn add_to_dedup_cache(&mut self, body: &[u8]) -> Result<bool, DhtOutboundError> {
         let hash = Challenge::new().chain(&body).result().to_vec();
-        info!(
+        trace!(
             target: LOG_TARGET,
             "Dedup added message hash {} to cache for message",
             hash.to_hex(),
@@ -470,7 +466,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     {
         match encryption {
             OutboundEncryption::EncryptFor(public_key) => {
-                debug!(target: LOG_TARGET, "Encrypting message for {}", public_key);
+                trace!(target: LOG_TARGET, "Encrypting message for {}", public_key);
                 // Generate ephemeral public/private key pair and ECDH shared secret
                 let (e_sk, e_pk) = CommsPublicKey::random_keypair(&mut OsRng);
                 let shared_ephemeral_secret = crypt::generate_ecdh_secret(&e_sk, &**public_key);
@@ -488,7 +484,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 ))
             },
             OutboundEncryption::None => {
-                debug!(target: LOG_TARGET, "Encryption not requested for message");
+                trace!(target: LOG_TARGET, "Encryption not requested for message");
 
                 if include_origin {
                     let origin_mac = create_origin_mac(&self.node_identity, &body)?;
@@ -516,14 +512,7 @@ mod test {
     use super::*;
     use crate::{
         outbound::SendMessageParams,
-        test_utils::{
-            create_dht_actor_mock,
-            create_dht_discovery_mock,
-            make_peer,
-            service_spy,
-            DhtDiscoveryMockState,
-            DhtMockState,
-        },
+        test_utils::{create_dht_actor_mock, create_dht_discovery_mock, make_peer, service_spy, DhtDiscoveryMockState},
     };
     use futures::channel::oneshot;
     use rand::rngs::OsRng;
@@ -568,12 +557,11 @@ mod test {
             .unwrap(),
         );
 
-        let (dht_requester, mut dht_mock) = create_dht_actor_mock(10);
+        let (dht_requester, dht_mock) = create_dht_actor_mock(10);
         let (dht_discover_requester, _) = create_dht_discovery_mock(10, Duration::from_secs(10));
 
-        let mock_state = DhtMockState::new();
+        let mock_state = dht_mock.get_shared_state();
         mock_state.set_select_peers_response(vec![example_peer.clone(), other_peer.clone()]);
-        dht_mock.set_shared_state(mock_state);
 
         rt.spawn(dht_mock.run());
 
@@ -599,10 +587,8 @@ mod test {
         let requests = spy.take_requests();
         assert!(requests
             .iter()
-            .any(|msg| msg.destination_peer.node_id == example_peer.node_id));
-        assert!(requests
-            .iter()
-            .any(|msg| msg.destination_peer.node_id == other_peer.node_id));
+            .any(|msg| msg.destination_node_id == example_peer.node_id));
+        assert!(requests.iter().any(|msg| msg.destination_node_id == other_peer.node_id));
     }
 
     #[test]

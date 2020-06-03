@@ -22,8 +22,7 @@
 
 #[allow(dead_code)]
 mod helpers;
-use tari_core::base_node::comms_interface::Broadcast;
-
+use croaring::Bitmap;
 use futures::join;
 use helpers::{
     block_builders::{
@@ -40,18 +39,19 @@ use helpers::{
         create_network_with_3_base_nodes,
         create_network_with_3_base_nodes_with_config,
         random_node_identity,
+        wait_until_online,
         BaseNodeBuilder,
     },
 };
 use std::time::Duration;
 use tari_core::{
     base_node::{
-        comms_interface::{BlockEvent, CommsInterfaceError},
+        comms_interface::{BlockEvent, Broadcast, CommsInterfaceError},
         consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
         service::BaseNodeServiceConfig,
     },
     blocks::BlockHeader,
-    chain_storage::{BlockAddResult, DbTransaction},
+    chain_storage::{BlockAddResult, DbTransaction, MmrTree},
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     mempool::MempoolServiceConfig,
     proof_of_work::{Difficulty, PowAlgorithm},
@@ -70,7 +70,7 @@ use tari_core::{
 use tari_crypto::tari_utilities::hash::Hashable;
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::services::liveness::LivenessConfig;
-use tari_test_utils::random::string;
+use tari_test_utils::random;
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
@@ -78,7 +78,7 @@ use tokio::runtime::Runtime;
 fn request_response_get_metadata() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
@@ -111,7 +111,7 @@ fn request_response_get_metadata() {
 #[test]
 fn request_and_response_fetch_headers() {
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) =
         create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
 
@@ -155,7 +155,7 @@ fn request_and_response_fetch_headers() {
 #[test]
 fn request_and_response_fetch_headers_with_hashes() {
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
     let (mut alice_node, bob_node, _consensus_manager) =
         create_network_with_2_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
 
@@ -194,7 +194,7 @@ fn request_and_response_fetch_headers_with_hashes() {
 #[test]
 fn request_and_response_fetch_kernels() {
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) =
         create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
 
@@ -236,7 +236,7 @@ fn request_and_response_fetch_kernels() {
 fn request_and_response_fetch_utxos() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) =
         create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
 
@@ -274,7 +274,7 @@ fn request_and_response_fetch_utxos() {
 fn request_and_response_fetch_blocks() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
@@ -324,7 +324,7 @@ fn request_and_response_fetch_blocks() {
 fn request_and_response_fetch_blocks_with_hashes() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
@@ -383,7 +383,7 @@ fn request_and_response_fetch_blocks_with_hashes() {
 #[test]
 fn propagate_and_forward_valid_block() {
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
     let factories = CryptoFactories::default();
     // Alice will propagate block to bob, bob will receive it, verify it and then propagate it to carol and dan. Dan and
     // Carol will also try to propagate the block to each other, as they dont know that bob sent it to the other node.
@@ -431,6 +431,12 @@ fn propagate_and_forward_valid_block() {
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
 
+    wait_until_online(&mut runtime, &[&alice_node, &bob_node, &carol_node, &dan_node]);
+
+    let bob_block_event_stream = bob_node.local_nci.get_block_event_stream_fused();
+    let carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
+    let dan_block_event_stream = dan_node.local_nci.get_block_event_stream_fused();
+
     let block1 = append_block(
         &alice_node.blockchain_db,
         &block0,
@@ -450,11 +456,8 @@ fn propagate_and_forward_valid_block() {
             .await
             .is_ok());
 
-        let bob_block_event_stream = bob_node.local_nci.get_block_event_stream_fused();
         let bob_block_event_fut = event_stream_next(bob_block_event_stream, Duration::from_millis(20000));
-        let carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
         let carol_block_event_fut = event_stream_next(carol_block_event_stream, Duration::from_millis(20000));
-        let dan_block_event_stream = dan_node.local_nci.get_block_event_stream_fused();
         let dan_block_event_fut = event_stream_next(dan_block_event_stream, Duration::from_millis(20000));
         let (bob_block_event, carol_block_event, dan_block_event) =
             join!(bob_block_event_fut, carol_block_event_fut, dan_block_event_fut);
@@ -485,7 +488,7 @@ fn propagate_and_forward_valid_block() {
 #[test]
 fn propagate_and_forward_invalid_block() {
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
     let factories = CryptoFactories::default();
     // Alice will propagate an invalid block to Carol and Bob, they will check the received block and not propagate the
     // block to dan.
@@ -540,6 +543,8 @@ fn propagate_and_forward_invalid_block() {
         .with_peers(vec![bob_node_identity, carol_node_identity])
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().to_str().unwrap());
+
+    wait_until_online(&mut runtime, &[&alice_node, &bob_node, &carol_node, &dan_node]);
 
     // Make block 1 invalid
     let mut block1 = append_block(
@@ -597,7 +602,7 @@ fn service_request_timeout() {
         request_timeout: Duration::from_millis(1),
         desired_response_fraction: BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
     };
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
     let (mut alice_node, bob_node, _consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
         base_node_service_config,
@@ -624,7 +629,7 @@ fn service_request_timeout() {
 #[test]
 fn local_get_metadata() {
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
     let network = Network::LocalNet;
     let (mut node, consensus_manager) =
         BaseNodeBuilder::new(network).start(&mut runtime, temp_dir.path().to_str().unwrap());
@@ -646,7 +651,7 @@ fn local_get_metadata() {
 fn local_get_new_block_template_and_get_new_block() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
     let (block0, outputs) = create_genesis_block_with_utxos(&factories, &[T, T], &consensus_constants);
@@ -690,7 +695,7 @@ fn local_get_new_block_template_and_get_new_block() {
 fn local_get_target_difficulty() {
     let network = Network::LocalNet;
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
     let (mut node, consensus_manager) =
         BaseNodeBuilder::new(network).start(&mut runtime, temp_dir.path().to_str().unwrap());
 
@@ -733,7 +738,7 @@ fn local_get_target_difficulty() {
 #[test]
 fn local_submit_block() {
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
     let network = Network::LocalNet;
     let (mut node, consensus_manager) =
         BaseNodeBuilder::new(network).start(&mut runtime, temp_dir.path().to_str().unwrap());
@@ -760,5 +765,161 @@ fn local_submit_block() {
         }
 
         node.comms.shutdown().await;
+    });
+}
+
+#[test]
+fn request_and_response_fetch_mmr_node_and_count() {
+    let mut runtime = Runtime::new().unwrap();
+    let factories = CryptoFactories::default();
+    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let network = Network::LocalNet;
+    let consensus_constants = network.create_consensus_constants();
+    let (block0, _) = create_genesis_block(&factories, &consensus_constants);
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants)
+        .with_block(block0.clone())
+        .build();
+    let (mut alice_node, mut bob_node, _) = create_network_with_2_base_nodes_with_config(
+        &mut runtime,
+        BaseNodeServiceConfig::default(),
+        MmrCacheConfig::default(),
+        MempoolServiceConfig::default(),
+        LivenessConfig::default(),
+        consensus_manager.clone(),
+        temp_dir.path().to_str().unwrap(),
+    );
+
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
+    let (utxo3, _) = create_utxo(MicroTari(20_000), &factories, None);
+    let (utxo4, _) = create_utxo(MicroTari(25_000), &factories, None);
+    let kernel1 = create_test_kernel(5.into(), 0);
+    let kernel2 = create_test_kernel(15.into(), 1);
+    let kernel3 = create_test_kernel(20.into(), 2);
+    let utxo_hash1 = utxo1.hash();
+    let utxo_hash2 = utxo2.hash();
+    let utxo_hash3 = utxo3.hash();
+    let utxo_hash4 = utxo4.hash();
+    let rp_hash2 = utxo2.proof.hash();
+    let rp_hash3 = utxo3.proof.hash();
+    let kernel_hash2 = kernel2.hash();
+    let kernel_hash3 = kernel3.hash();
+
+    let mut blocks = vec![block0];
+    let db = &mut bob_node.blockchain_db;
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo1.clone(), true);
+    txn.insert_utxo(utxo2.clone(), true);
+    txn.insert_kernel(kernel1.clone(), true);
+    assert!(db.commit(txn).is_ok());
+    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo3.clone(), true);
+    txn.spend_utxo(utxo_hash1.clone());
+    txn.insert_kernel(kernel2.clone(), true);
+    assert!(db.commit(txn).is_ok());
+    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo4.clone(), true);
+    txn.spend_utxo(utxo_hash3.clone());
+    txn.insert_kernel(kernel3.clone(), true);
+    assert!(db.commit(txn).is_ok());
+    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+
+    runtime.block_on(async {
+        let node_count = alice_node
+            .outbound_nci
+            .fetch_mmr_node_count(MmrTree::Utxo, 2, None)
+            .await
+            .unwrap();
+        assert_eq!(node_count, 4);
+        let node_count = alice_node
+            .outbound_nci
+            .fetch_mmr_node_count(MmrTree::Kernel, 2, None)
+            .await
+            .unwrap();
+        assert_eq!(node_count, 3);
+        let node_count = alice_node
+            .outbound_nci
+            .fetch_mmr_node_count(MmrTree::RangeProof, 2, None)
+            .await
+            .unwrap();
+        assert_eq!(node_count, 4);
+
+        let (added, deleted) = alice_node
+            .outbound_nci
+            .fetch_mmr_nodes(MmrTree::Utxo, 1, 4, None)
+            .await
+            .unwrap();
+        let deleted = Bitmap::deserialize(&deleted).to_vec();
+        assert_eq!(added, vec![utxo_hash1, utxo_hash2, utxo_hash3, utxo_hash4.clone()]);
+        assert_eq!(deleted, vec![1, 3]);
+        let (added, deleted) = alice_node
+            .outbound_nci
+            .fetch_mmr_nodes(MmrTree::Kernel, 2, 2, None)
+            .await
+            .unwrap();
+        let deleted = Bitmap::deserialize(&deleted).to_vec();
+        assert_eq!(added, vec![kernel_hash2, kernel_hash3]);
+        assert_eq!(deleted.len(), 0);
+        let (added, deleted) = alice_node
+            .outbound_nci
+            .fetch_mmr_nodes(MmrTree::RangeProof, 2, 2, None)
+            .await
+            .unwrap();
+        let deleted = Bitmap::deserialize(&deleted).to_vec();
+        assert_eq!(added, vec![rp_hash2, rp_hash3]);
+        assert_eq!(deleted.len(), 0);
+
+        // Out of bounds queries
+        let node_count = alice_node
+            .outbound_nci
+            .fetch_mmr_node_count(MmrTree::Utxo, 5, None)
+            .await
+            .unwrap();
+        assert_eq!(node_count, 5);
+        let node_count = alice_node
+            .outbound_nci
+            .fetch_mmr_node_count(MmrTree::Kernel, 6, None)
+            .await
+            .unwrap();
+        assert_eq!(node_count, 4);
+        let node_count = alice_node
+            .outbound_nci
+            .fetch_mmr_node_count(MmrTree::RangeProof, 7, None)
+            .await
+            .unwrap();
+        assert_eq!(node_count, 5);
+
+        let (added, deleted) = alice_node
+            .outbound_nci
+            .fetch_mmr_nodes(MmrTree::Utxo, 4, 5, None)
+            .await
+            .unwrap();
+        let deleted = Bitmap::deserialize(&deleted).to_vec();
+        assert_eq!(added.len(), 0);
+        assert_eq!(deleted.len(), 0);
+        let (added, deleted) = alice_node
+            .outbound_nci
+            .fetch_mmr_nodes(MmrTree::Kernel, 4, 5, None)
+            .await
+            .unwrap();
+        let deleted = Bitmap::deserialize(&deleted).to_vec();
+        assert_eq!(added.len(), 0);
+        assert_eq!(deleted.len(), 0);
+        let (added, deleted) = alice_node
+            .outbound_nci
+            .fetch_mmr_nodes(MmrTree::RangeProof, 4, 5, None)
+            .await
+            .unwrap();
+        let deleted = Bitmap::deserialize(&deleted).to_vec();
+        assert_eq!(added.len(), 0);
+        assert_eq!(deleted.len(), 0);
+
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
     });
 }

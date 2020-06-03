@@ -107,7 +107,7 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(
             OutputManagerServiceConfig {
-                base_node_query_timeout: Duration::from_secs(3),
+                base_node_query_timeout: Duration::from_secs(10),
             },
             outbound_message_requester.clone(),
             ts_handle.clone(),
@@ -143,7 +143,9 @@ async fn complete_transaction(mut stp: SenderTransactionProtocol, mut oms: Outpu
         let pt = oms.get_pending_transactions().await.unwrap();
         assert_eq!(pt.len(), 1);
         assert_eq!(
-            pt.get(&sender_tx_id).unwrap().outputs_to_be_received[0].value,
+            pt.get(&sender_tx_id).unwrap().outputs_to_be_received[0]
+                .unblinded_output
+                .value,
             stp.get_amount_to_self().unwrap()
         );
     }

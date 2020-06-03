@@ -93,6 +93,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(());
         }
 
+        trace!(
+            target: LOG_TARGET,
+            "Executing {} for {} (Trace: {})",
+            message.dht_header.message_type,
+            message.tag,
+            message.dht_header.message_tag
+        );
         match message.dht_header.message_type {
             DhtMessageType::Join => self.handle_join(message).await.map_err(PipelineError::from_debug)?,
             DhtMessageType::Discovery => self.handle_discover(message).await.map_err(PipelineError::from_debug)?,
@@ -106,7 +113,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .map_err(PipelineError::from_debug)?,
             // Not a DHT message, call downstream middleware
             _ => {
-                trace!(target: LOG_TARGET, "Passing message onto next service");
+                trace!(
+                    target: LOG_TARGET,
+                    "Passing message {} onto next service (Trace: {})",
+                    message.tag,
+                    message.dht_header.message_tag
+                );
                 self.next_service.oneshot(message).await?;
             },
         }
@@ -143,7 +155,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         })?;
 
         if &authenticated_pk == self.node_identity.public_key() {
-            warn!(target: LOG_TARGET, "Received our own join message. Discarding it.");
+            debug!(target: LOG_TARGET, "Received our own join message. Discarding it.");
             return Ok(());
         }
 
@@ -152,7 +164,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .decode_part::<JoinMessage>(0)?
             .ok_or_else(|| DhtInboundError::InvalidMessageBody)?;
 
-        info!(
+        debug!(
             target: LOG_TARGET,
             "Received join Message from '{}' {}", authenticated_pk, join_msg
         );
@@ -181,7 +193,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         // DO NOT propagate this peer if this node has banned them
         if origin_peer.is_banned() {
-            warn!(
+            debug!(
                 target: LOG_TARGET,
                 "Received Join request for banned peer. This join request will not be propagated."
             );
@@ -222,17 +234,17 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(());
         }
 
-        debug!(
-            target: LOG_TARGET,
-            "Propagating join message to at most {} peer(s)", self.config.num_neighbouring_nodes
-        );
-
         // Only propagate a join that was not directly sent to this node (presumably in response to a join this node
         // sent)
         // TODO: Join should have a response message type
         if dht_header.destination != self.node_identity.public_key() &&
             dht_header.destination != self.node_identity.node_id()
         {
+            debug!(
+                target: LOG_TARGET,
+                "Propagating Join message from peer '{}'",
+                origin_node_id.short_str()
+            );
             // Propagate message to closer peers
             self.outbound_service
                 .send_raw(
@@ -311,7 +323,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             DhtInboundError::OriginRequired("Origin header required for Discovery message".to_string())
         })?;
 
-        info!(
+        debug!(
             target: LOG_TARGET,
             "Received discovery message from '{}', forwarded by {}", authenticated_pk, message.source_peer
         );

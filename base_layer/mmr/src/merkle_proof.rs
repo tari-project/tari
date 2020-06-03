@@ -251,10 +251,6 @@ impl MerkleProof {
         let sibling = self.path.remove(0); // FIXME Compare perf vs using a VecDeque
         let (parent_pos, sibling_pos) = family(pos);
         if parent_pos > self.mmr_size {
-            error!(
-                "Found edge case. pos: {}, peaks: {:?}, mmr_size: {}, siblings: {:?}, peak_path: {:?}",
-                pos, peaks, self.mmr_size, &self.path, &self.peaks
-            );
             Err(MerkleProofError::Unexpected)
         } else {
             let parent = if is_left_sibling(sibling_pos) {

@@ -73,25 +73,32 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
             let hash = hash_inbound_message(&message);
             trace!(
                 target: LOG_TARGET,
-                "Inserting message hash {} for message {}",
+                "Inserting message hash {} for message {} (Trace: {})",
                 hash.to_hex(),
-                message.tag
+                message.tag,
+                message.dht_header.message_tag
             );
             if dht_requester
                 .insert_message_hash(hash)
                 .await
                 .map_err(PipelineError::from_debug)?
             {
-                info!(
+                trace!(
                     target: LOG_TARGET,
-                    "Received duplicate message {} from peer '{}'. Message discarded.",
+                    "Received duplicate message {} from peer '{}' (Trace: {}). Message discarded.",
                     message.tag,
                     message.source_peer.node_id.short_str(),
+                    message.dht_header.message_tag,
                 );
                 return Ok(());
             }
 
-            debug!(target: LOG_TARGET, "Passing message {} onto next service", message.tag);
+            trace!(
+                target: LOG_TARGET,
+                "Passing message {} onto next service (Trace: {})",
+                message.tag,
+                message.dht_header.message_tag
+            );
             next_service.oneshot(message).await
         }
     }
@@ -120,7 +127,7 @@ mod test {
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
-        test_utils::{create_dht_actor_mock, make_dht_inbound_message, make_node_identity, service_spy, DhtMockState},
+        test_utils::{create_dht_actor_mock, make_dht_inbound_message, make_node_identity, service_spy},
     };
     use tari_test_utils::panic_context;
     use tokio::runtime::Runtime;
@@ -130,10 +137,9 @@ mod test {
         let mut rt = Runtime::new().unwrap();
         let spy = service_spy();
 
-        let (dht_requester, mut mock) = create_dht_actor_mock(1);
-        let mock_state = DhtMockState::new();
+        let (dht_requester, mock) = create_dht_actor_mock(1);
+        let mock_state = mock.get_shared_state();
         mock_state.set_signature_cache_insert(false);
-        mock.set_shared_state(mock_state.clone());
         rt.spawn(mock.run());
 
         let mut dedup = DedupLayer::new(dht_requester).layer(spy.to_service::<PipelineError>());

@@ -22,17 +22,14 @@
 
 use crate::envelope::NodeDestination;
 use std::{fmt, fmt::Formatter};
-use tari_comms::{
-    peer_manager::{node_id::NodeId, PeerFeatures},
-    types::CommsPublicKey,
-};
+use tari_comms::{peer_manager::node_id::NodeId, types::CommsPublicKey};
 
 #[derive(Debug, Clone)]
 pub struct BroadcastClosestRequest {
     pub n: usize,
     pub node_id: NodeId,
-    pub peer_features: PeerFeatures,
     pub excluded_peers: Vec<NodeId>,
+    pub connected_only: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -47,9 +44,7 @@ pub enum BroadcastStrategy {
     Random(usize, Vec<NodeId>),
     /// Send to all n nearest Communication Nodes according to the given BroadcastClosestRequest
     Closest(Box<BroadcastClosestRequest>),
-    /// A convenient strategy which behaves the same as the `Closest` strategy with the `NodeId` set
-    /// to this node. The given NodeIds are excluded from the selection.
-    Neighbours(Vec<NodeId>),
+    Broadcast(Vec<NodeId>),
     /// Propagate to a set of closest neighbours and random peers
     Propagate(NodeDestination, Vec<NodeId>),
 }
@@ -63,7 +58,7 @@ impl fmt::Display for BroadcastStrategy {
             Flood => write!(f, "Flood"),
             Closest(request) => write!(f, "Closest({})", request.n),
             Random(n, excluded) => write!(f, "Random({}, {} excluded)", n, excluded.len()),
-            Neighbours(excluded) => write!(f, "Neighbours({} excluded)", excluded.len()),
+            Broadcast(excluded) => write!(f, "Broadcast({} excluded)", excluded.len()),
             Propagate(destination, excluded) => write!(f, "Propagate({}, {} excluded)", destination, excluded.len(),),
         }
     }
@@ -73,7 +68,7 @@ impl BroadcastStrategy {
     pub fn is_broadcast(&self) -> bool {
         use BroadcastStrategy::*;
         match self {
-            Closest(_) | Flood | Neighbours(_) | Random(_, _) | Propagate(_, _) => true,
+            Closest(_) | Flood | Broadcast(_) | Random(_, _) | Propagate(_, _) => true,
             _ => false,
         }
     }
@@ -119,7 +114,7 @@ mod test {
     fn is_direct() {
         assert!(BroadcastStrategy::DirectPublicKey(Box::new(CommsPublicKey::default())).is_direct());
         assert!(BroadcastStrategy::DirectNodeId(Box::new(NodeId::default())).is_direct());
-        assert_eq!(BroadcastStrategy::Neighbours(Default::default()).is_direct(), false);
+        assert_eq!(BroadcastStrategy::Broadcast(Default::default()).is_direct(), false);
         assert_eq!(
             BroadcastStrategy::Propagate(Default::default(), Default::default()).is_direct(),
             false
@@ -130,7 +125,7 @@ mod test {
                 node_id: NodeId::default(),
                 n: 0,
                 excluded_peers: Default::default(),
-                peer_features: Default::default()
+                connected_only: false
             }))
             .is_direct(),
             false
@@ -146,7 +141,7 @@ mod test {
         assert!(BroadcastStrategy::DirectNodeId(Box::new(NodeId::default()))
             .direct_public_key()
             .is_none());
-        assert!(BroadcastStrategy::Neighbours(Default::default(),)
+        assert!(BroadcastStrategy::Broadcast(Default::default(),)
             .direct_public_key()
             .is_none());
         assert!(BroadcastStrategy::Flood.direct_public_key().is_none());
@@ -154,7 +149,7 @@ mod test {
             node_id: NodeId::default(),
             n: 0,
             excluded_peers: Default::default(),
-            peer_features: Default::default()
+            connected_only: false
         }))
         .direct_public_key()
         .is_none(),);
@@ -172,7 +167,7 @@ mod test {
         assert!(BroadcastStrategy::DirectNodeId(Box::new(NodeId::default()))
             .direct_node_id()
             .is_some());
-        assert!(BroadcastStrategy::Neighbours(Default::default(),)
+        assert!(BroadcastStrategy::Broadcast(Default::default(),)
             .direct_node_id()
             .is_none());
         assert!(BroadcastStrategy::Flood.direct_node_id().is_none());
@@ -180,7 +175,7 @@ mod test {
             node_id: NodeId::default(),
             n: 0,
             excluded_peers: Default::default(),
-            peer_features: Default::default(),
+            connected_only: false
         }))
         .direct_node_id()
         .is_none(),);

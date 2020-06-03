@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::consensus_constants::ConsensusConstants;
-
+use tari_common::configuration::Network as GlobalNetwork;
 /// Specifies the configured chain network.
 #[derive(Copy, Clone)]
 pub enum Network {
@@ -40,6 +40,15 @@ impl Network {
             Network::MainNet => ConsensusConstants::mainnet(),
             Network::Rincewind => ConsensusConstants::rincewind(),
             Network::LocalNet => ConsensusConstants::localnet(),
+        }
+    }
+}
+
+impl From<GlobalNetwork> for Network {
+    fn from(global_network: GlobalNetwork) -> Self {
+        match global_network {
+            GlobalNetwork::MainNet => Network::MainNet,
+            GlobalNetwork::Rincewind => Network::Rincewind,
         }
     }
 }

@@ -20,12 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod base_node {
-    include!(concat!(env!("OUT_DIR"), "/", "tari.base_node.rs"));
-}
-use crate::proto::core;
-// Required for `super::types` used in generated files
-use crate::transactions::proto::types;
+#[cfg(feature = "base_node_proto")]
+pub use crate::proto::generated::base_node;
 
 #[cfg(feature = "base_node")]
 pub mod chain_metadata;

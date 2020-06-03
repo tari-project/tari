@@ -183,7 +183,6 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
         .add_initializer(LivenessInitializer::new(
             LivenessConfig {
                 auto_ping_interval: Some(Duration::from_secs(10)),
-                enable_auto_join: false,
                 refresh_neighbours_interval: Default::default(),
                 refresh_random_pool_interval: Default::default(),
                 random_peer_selection_ratio: 0.0,
@@ -191,7 +190,6 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
             },
             Arc::clone(&subscription_factory),
             dht.dht_requester(),
-            comms.connection_manager(),
         ))
         .finish();
 
@@ -264,7 +262,8 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
         TransactionServiceConfig {
             mempool_broadcast_timeout: Duration::from_secs(5),
             base_node_mined_timeout: mined_request_timeout.unwrap_or(Duration::from_secs(5)),
-            ..Default::default()
+            direct_send_timeout: Duration::from_secs(5),
+            broadcast_send_timeout: Duration::from_secs(5),
         },
         TransactionDatabase::new(backend),
         ts_request_receiver,
@@ -884,7 +883,7 @@ fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(al
         _,
         _,
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend, None);
-    let alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
@@ -991,7 +990,7 @@ fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alic
         _,
         _,
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), alice_backend, None);
-    let alice_event_stream = alice_ts.get_event_stream_fused();
+    let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
@@ -2850,7 +2849,6 @@ fn test_resend_of_tx_on_pong_event<T: TransactionBackend + Clone + 'static>(back
             None,
             Metadata::new(),
             true,
-            true,
         ))))) {
             Ok(_) => {
                 break;
@@ -2889,7 +2887,6 @@ fn test_resend_of_tx_on_pong_event<T: TransactionBackend + Clone + 'static>(back
             bob_node_identity.node_id().clone(),
             None,
             Metadata::new(),
-            true,
             true,
         )))))
         .unwrap();
@@ -3201,4 +3198,212 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
 
     // Should be 2 messages sent, Direct and SAF
     let _ = alice_outbound_service.wait_call_count(2, Duration::from_secs(60));
+}
+
+#[test]
+fn test_tx_direct_send_behaviour() {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+
+    let bob_node_identity =
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+
+    let (
+        mut alice_ts,
+        mut alice_output_manager,
+        alice_outbound_service,
+        mut _alice_tx_sender,
+        mut _alice_tx_ack_sender,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+    ) = setup_transaction_service_no_comms(
+        &mut runtime,
+        factories.clone(),
+        TransactionMemoryDatabase::new(),
+        Some(Duration::from_secs(5)),
+    );
+    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+
+    let (_utxo, uo) = make_input(&mut OsRng, 1000000 * uT, &factories.commitment);
+    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+    let (_utxo, uo) = make_input(&mut OsRng, 1000000 * uT, &factories.commitment);
+    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+    let (_utxo, uo) = make_input(&mut OsRng, 1000000 * uT, &factories.commitment);
+    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+    let (_utxo, uo) = make_input(&mut OsRng, 1000000 * uT, &factories.commitment);
+    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+
+    let amount_sent = 10000 * uT;
+
+    alice_outbound_service.set_behaviour(MockBehaviour {
+        direct: ResponseType::Failed,
+        broadcast: ResponseType::Failed,
+    });
+
+    let _tx_id = runtime
+        .block_on(alice_ts.send_transaction(
+            bob_node_identity.public_key().clone(),
+            amount_sent,
+            100 * uT,
+            "Testing Message1".to_string(),
+        ))
+        .unwrap();
+
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let mut direct_count = 0;
+        let mut saf_count = 0;
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                    match &*event.unwrap() {
+                        TransactionEvent::TransactionDirectSendResult(_, result) => if (!result) { direct_count+=1 },
+                        TransactionEvent::TransactionStoreForwardSendResult(_, result) => if (!result) { saf_count+=1 },
+                        _ => (),
+                    }
+
+                    if direct_count == 1 && saf_count == 1 {
+                        break;
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert_eq!(direct_count, 1, "Should be 1 failed direct");
+        assert_eq!(saf_count, 1, "Should be 1 failed saf");
+    });
+
+    alice_outbound_service.set_behaviour(MockBehaviour {
+        direct: ResponseType::QueuedFail,
+        broadcast: ResponseType::Queued,
+    });
+
+    let _tx_id = runtime
+        .block_on(alice_ts.send_transaction(
+            bob_node_identity.public_key().clone(),
+            amount_sent,
+            100 * uT,
+            "Testing Message2".to_string(),
+        ))
+        .unwrap();
+
+    alice_outbound_service
+        .wait_call_count(1, Duration::from_secs(60))
+        .unwrap();
+
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let mut direct_count = 0;
+        let mut saf_count = 0;
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                    match &*event.unwrap() {
+                        TransactionEvent::TransactionDirectSendResult(_, result) => if (!result) { direct_count+=1 },
+                        TransactionEvent::TransactionStoreForwardSendResult(_, result) => if *result { saf_count+=1 },
+                        _ => (),
+                    }
+
+                    if direct_count == 1 && saf_count == 1 {
+                        break;
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert_eq!(direct_count, 1, "Should be 1 failed direct");
+        assert_eq!(saf_count, 1, "Should be 1 succeeded saf");
+    });
+
+    alice_outbound_service.set_behaviour(MockBehaviour {
+        direct: ResponseType::QueuedSuccessDelay(Duration::from_secs(1)),
+        broadcast: ResponseType::Queued,
+    });
+
+    let _tx_id = runtime
+        .block_on(alice_ts.send_transaction(
+            bob_node_identity.public_key().clone(),
+            amount_sent,
+            100 * uT,
+            "Testing Message3".to_string(),
+        ))
+        .unwrap();
+
+    alice_outbound_service
+        .wait_call_count(1, Duration::from_secs(60))
+        .unwrap();
+
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let mut direct_count = 0;
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                    match &*event.unwrap() {
+                        TransactionEvent::TransactionDirectSendResult(_, result) => if *result { direct_count+=1 },
+                        TransactionEvent::TransactionStoreForwardSendResult(_, _) => assert!(false, "Should be no SAF messages"),
+                        _ => (),
+                    }
+
+                    if direct_count >= 1  {
+                        break;
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert_eq!(direct_count, 1, "Should be 1 succeeded direct");
+    });
+
+    alice_outbound_service.set_behaviour(MockBehaviour {
+        direct: ResponseType::QueuedSuccessDelay(Duration::from_secs(30)),
+        broadcast: ResponseType::Queued,
+    });
+
+    let _tx_id = runtime
+        .block_on(alice_ts.send_transaction(
+            bob_node_identity.public_key().clone(),
+            amount_sent,
+            100 * uT,
+            "Testing Message4".to_string(),
+        ))
+        .unwrap();
+
+    alice_outbound_service
+        .wait_call_count(1, Duration::from_secs(60))
+        .unwrap();
+
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let mut saf_count = 0;
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                    match &*event.unwrap() {
+                        TransactionEvent::TransactionStoreForwardSendResult(_, result) => if *result { saf_count+=1 },
+                        TransactionEvent::TransactionDirectSendResult(_, result) => if *result { assert!(false, "Should be no direct messages") },
+                        _ => (),
+                    }
+
+                    if saf_count >= 1  {
+                        break;
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert_eq!(saf_count, 1, "Should be 1 succeeded saf");
+    });
 }

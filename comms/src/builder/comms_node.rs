@@ -25,6 +25,7 @@ use crate::{
     backoff::BoxedBackoff,
     bounded_executor::BoundedExecutor,
     connection_manager::{ConnectionManager, ConnectionManagerEvent, ConnectionManagerRequester},
+    connectivity::{ConnectivityManager, ConnectivityRequester},
     message::InboundMessage,
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerManager},
@@ -53,6 +54,8 @@ pub struct BuiltCommsNode<
     pub connection_manager: ConnectionManager<TTransport, BoxedBackoff>,
     pub connection_manager_requester: ConnectionManagerRequester,
     pub connection_manager_event_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
+    pub connectivity_manager: ConnectivityManager,
+    pub connectivity_requester: ConnectivityRequester,
     pub messaging_pipeline: Option<pipeline::Config<TInPipe, TOutPipe, TOutReq>>,
     pub node_identity: Arc<NodeIdentity>,
     pub messaging: MessagingProtocol,
@@ -94,6 +97,8 @@ where
             connection_manager: self.connection_manager,
             connection_manager_requester: self.connection_manager_requester,
             connection_manager_event_tx: self.connection_manager_event_tx,
+            connectivity_manager: self.connectivity_manager,
+            connectivity_requester: self.connectivity_requester,
             node_identity: self.node_identity,
             messaging: self.messaging,
             messaging_event_tx: self.messaging_event_tx,
@@ -129,6 +134,8 @@ where
             connection_manager,
             connection_manager_requester,
             connection_manager_event_tx,
+            connectivity_manager,
+            connectivity_requester,
             messaging_pipeline,
             messaging_request_tx,
             inbound_message_rx,
@@ -162,6 +169,9 @@ where
         let conn_man_shutdown_signal = connection_manager.complete_signal();
 
         let executor = runtime::current_executor();
+
+        // Connectivity manager
+        executor.spawn(connectivity_manager.create().run());
         executor.spawn(connection_manager.run());
 
         // Spawn messaging protocol
@@ -188,12 +198,13 @@ where
             shutdown,
             connection_manager_event_tx,
             connection_manager_requester,
+            connectivity_requester,
             listening_addr,
             node_identity,
             peer_manager,
             messaging_event_tx,
             hidden_service,
-            complete_signals: vec![messaging_signal, conn_man_shutdown_signal],
+            complete_signals: vec![conn_man_shutdown_signal, messaging_signal],
         })
     }
 
@@ -217,6 +228,11 @@ where
         self.connection_manager_requester.clone()
     }
 
+    /// Return an owned copy of a ConnectivityRequester. This is the async interface to the ConnectivityManager
+    pub fn connectivity(&self) -> ConnectivityRequester {
+        self.connectivity_requester.clone()
+    }
+
     /// Returns a new `ShutdownSignal`
     pub fn shutdown_signal(&self) -> ShutdownSignal {
         self.shutdown.to_signal()
@@ -235,6 +251,8 @@ pub struct CommsNode {
     connection_manager_event_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
     /// Requester object for the ConnectionManager
     connection_manager_requester: ConnectionManagerRequester,
+    /// Requester for the ConnectivityManager
+    connectivity_requester: ConnectivityRequester,
     /// Node identity for this node
     node_identity: Arc<NodeIdentity>,
     /// Shared PeerManager instance
@@ -288,6 +306,11 @@ impl CommsNode {
     /// Return an owned copy of a ConnectionManagerRequester. Used to initiate connections to peers.
     pub fn connection_manager(&self) -> ConnectionManagerRequester {
         self.connection_manager_requester.clone()
+    }
+
+    /// Return an owned copy of a ConnectivityRequester. This is the async interface to the ConnectivityManager
+    pub fn connectivity(&self) -> ConnectivityRequester {
+        self.connectivity_requester.clone()
     }
 
     /// Returns a new `ShutdownSignal`

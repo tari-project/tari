@@ -152,7 +152,7 @@ async fn main() {
 
     let (messaging_events_tx, mut messaging_events_rx) = mpsc::unbounded();
 
-    let mut seed_node = make_node(PeerFeatures::COMMUNICATION_NODE, None, messaging_events_tx.clone()).await;
+    let seed_node = make_node(PeerFeatures::COMMUNICATION_NODE, None, messaging_events_tx.clone()).await;
 
     let mut nodes = future::join_all(
         repeat_with(|| {
@@ -183,8 +183,13 @@ async fn main() {
             "Node '{}' is joining the network via the seed node '{}'",
             node, seed_node
         );
+        node.comms
+            .connectivity()
+            .wait_for_connectivity(Duration::from_secs(10))
+            .await
+            .unwrap();
+
         node.dht.dht_requester().send_join().await.unwrap();
-        seed_node.expect_peer_connection(&node.get_node_id()).await.unwrap();
     }
 
     take_a_break().await;
@@ -202,15 +207,13 @@ async fn main() {
             wallet,
             get_name(&wallet.seed_peer.as_ref().unwrap().node_id)
         );
-        wallet.dht.dht_requester().send_join().await.unwrap();
-        let seed_node_id = &wallet.seed_peer.as_ref().unwrap().node_id;
-        nodes
-            .iter_mut()
-            .find(|n| &n.get_node_id() == seed_node_id)
-            .expect("node must exist")
-            .expect_peer_connection(&wallet.get_node_id())
+        wallet
+            .comms
+            .connectivity()
+            .wait_for_connectivity(Duration::from_secs(10))
             .await
             .unwrap();
+        wallet.dht.dht_requester().send_join().await.unwrap();
     }
 
     let mut total_messages = 0;
@@ -222,8 +225,8 @@ async fn main() {
     network_connectivity_stats(&nodes, &wallets).await;
 
     {
-        let all_known_peers = seed_node.comms.peer_manager().all().await.unwrap();
-        println!("Seed node knows {} peers", all_known_peers.len());
+        let count = seed_node.comms.peer_manager().count().await;
+        println!("Seed node knows {} peers", count);
     }
 
     total_messages += discovery(&wallets, &mut messaging_events_rx).await;
@@ -231,17 +234,19 @@ async fn main() {
     take_a_break().await;
     total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
 
-    let random_wallet = wallets.remove(OsRng.gen_range(0, wallets.len() - 1));
-    let (num_msgs, random_wallet) = do_store_and_forward_message_propagation(
-        random_wallet,
-        &wallets,
-        messaging_events_tx,
-        &mut messaging_events_rx,
-    )
-    .await;
-    total_messages += num_msgs;
-    // Put the wallet back
-    wallets.push(random_wallet);
+    for _ in 0..5 {
+        let random_wallet = wallets.remove(OsRng.gen_range(0, wallets.len() - 1));
+        let (num_msgs, random_wallet) = do_store_and_forward_message_propagation(
+            random_wallet,
+            &wallets,
+            messaging_events_tx.clone(),
+            &mut messaging_events_rx,
+        )
+        .await;
+        total_messages += num_msgs;
+        // Put the wallet back
+        wallets.push(random_wallet);
+    }
 
     do_network_wide_propagation(&mut nodes).await;
 
@@ -368,7 +373,7 @@ async fn network_peer_list_stats(nodes: &[TestNode], wallets: &[TestNode]) {
             if node
                 .comms
                 .peer_manager()
-                .exists(wallet.node_identity().public_key())
+                .exists_node_id(wallet.node_identity().node_id())
                 .await
             {
                 num_known += 1;
@@ -557,7 +562,12 @@ async fn do_store_and_forward_message_propagation(
     let (tx, ims_rx) = mpsc::channel(1);
     let (comms, dht) = setup_comms_dht(node_identity, create_peer_storage(wallets_peers), tx).await;
     let mut wallet = TestNode::new(comms, dht, None, ims_rx, messaging_tx);
-    wallet.dht.dht_requester().send_join().await.unwrap();
+    wallet
+        .comms
+        .connectivity()
+        .wait_for_connectivity(Duration::from_secs(10))
+        .await
+        .unwrap();
     wallet
         .dht
         .store_and_forward_requester()
@@ -567,7 +577,7 @@ async fn do_store_and_forward_message_propagation(
 
     let mut num_msgs = 0;
     loop {
-        let result = time::timeout(Duration::from_secs(20), wallet.ims_rx.as_mut().unwrap().next()).await;
+        let result = time::timeout(Duration::from_secs(10), wallet.ims_rx.as_mut().unwrap().next()).await;
         num_msgs += 1;
         match result {
             Ok(msg) => {
@@ -623,6 +633,9 @@ async fn drain_messaging_events(messaging_rx: &mut MessagingEventRx, show_logs: 
                         node_id_buf.len(),
                         node_id_buf.drain(..).map(get_short_name).collect::<Vec<_>>().join(", ")
                     );
+
+                    last_from_node = Some(from_node);
+                    node_id_buf.push(to_node)
                 },
                 None => {
                     last_from_node = Some(from_node);
@@ -778,19 +791,18 @@ impl TestNode {
     }
 
     #[inline]
-    pub fn get_node_id(&self) -> NodeId {
-        self.node_identity().node_id().clone()
-    }
-
-    #[inline]
     pub fn to_peer(&self) -> Peer {
         self.comms.node_identity().to_peer()
     }
 
+    #[allow(dead_code)]
     pub async fn expect_peer_connection(&mut self, node_id: &NodeId) -> Option<PeerConnection> {
+        if let Some(conn) = self.comms.connectivity().get_connection(node_id.clone()).await.unwrap() {
+            return Some(conn);
+        }
         use ConnectionManagerEvent::*;
         loop {
-            let event = time::timeout(Duration::from_secs(10), self.conn_man_events_rx.next())
+            let event = time::timeout(Duration::from_secs(30), self.conn_man_events_rx.next())
                 .await
                 .ok()??;
 
@@ -870,6 +882,7 @@ async fn setup_comms_dht(
         .with_listener_address(node_identity.public_address())
         .with_transport(MemoryTransport)
         .with_node_identity(node_identity)
+        .with_min_connectivity(0.3)
         .with_peer_storage(storage)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(1000)))
         .build()
@@ -879,12 +892,15 @@ async fn setup_comms_dht(
         comms.node_identity(),
         comms.peer_manager(),
         outbound_tx,
-        comms.connection_manager_requester(),
+        comms.connectivity(),
         comms.shutdown_signal(),
     )
     .local_test()
+    .enable_auto_join()
     .with_discovery_timeout(Duration::from_secs(15))
-    .with_num_neighbouring_nodes(8)
+    .with_num_neighbouring_nodes(10)
+    .with_num_random_nodes(5)
+    .with_propagation_factor(4)
     .finish()
     .await
     .unwrap();
@@ -915,5 +931,5 @@ async fn setup_comms_dht(
 
 async fn take_a_break() {
     banner!("Taking a break for a few seconds to let things settle...");
-    time::delay_for(Duration::from_millis(NUM_NODES as u64 * 100)).await;
+    time::delay_for(Duration::from_millis(NUM_NODES as u64 * 50)).await;
 }

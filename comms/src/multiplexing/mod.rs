@@ -21,4 +21,4 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod yamux;
-pub use self::yamux::{ConnectionError, Control, IncomingSubstreams, Substream, Yamux};
+pub use self::yamux::{ConnectionError, Control, IncomingSubstreams, Substream, SubstreamCounter, Yamux};
