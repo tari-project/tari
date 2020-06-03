@@ -380,7 +380,7 @@ impl LMDBDatabase {
         let tx = WriteTransaction::new(env)?;
         {
             let mut accessor = tx.access();
-            let buf = LMDBWriteTransaction::convert_value(value, 512)?;
+            let buf = LMDBWriteTransaction::convert_value(value)?;
             accessor.put(&*self.db, key, &buf, put::Flags::empty())?;
         }
         tx.commit().map_err(LMDBError::from)
@@ -613,7 +613,7 @@ impl<'txn, 'db: 'txn> LMDBWriteTransaction<'txn, 'db> {
         K: AsLmdbBytes + ?Sized,
         V: serde::Serialize,
     {
-        let buf = LMDBWriteTransaction::convert_value(value, 512)?;
+        let buf = Self::convert_value(value)?;
         self.access.put(&self.db, key, &buf, put::Flags::empty())?;
         Ok(())
     }
@@ -631,9 +631,10 @@ impl<'txn, 'db: 'txn> LMDBWriteTransaction<'txn, 'db> {
         Ok(self.access.del_key(&self.db, key)?)
     }
 
-    fn convert_value<V>(value: &V, size_estimate: usize) -> Result<Vec<u8>, LMDBError>
+    fn convert_value<V>(value: &V) -> Result<Vec<u8>, LMDBError>
     where V: serde::Serialize {
-        let mut buf = Vec::with_capacity(size_estimate);
+        let size = bincode::serialized_size(value).map_err(|e| LMDBError::SerializationErr(e.to_string()))?;
+        let mut buf = Vec::with_capacity(size as usize);
         bincode::serialize_into(&mut buf, value).map_err(|e| LMDBError::SerializationErr(e.to_string()))?;
         Ok(buf)
     }
