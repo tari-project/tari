@@ -125,6 +125,7 @@ where
             .take(8)
             .collect::<String>()
     };
+    std::fs::create_dir_all(data_path).unwrap();
     let datastore = LMDBBuilder::new()
         .set_path(data_path)
         .set_environment_size(50)
