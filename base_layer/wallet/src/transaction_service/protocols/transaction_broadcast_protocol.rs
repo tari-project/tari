@@ -261,6 +261,8 @@ where TBackend: TransactionBackend + Clone + 'static
                         ));
                     },
                 };
+
+                #[allow(clippy::single_match)]
                 match completed_tx.status {
                     TransactionStatus::Completed => match ts {
                         // Getting this response means the Mempool Rejected this transaction so it will be

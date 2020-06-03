@@ -478,9 +478,10 @@ where T: TransactionBackend + 'static
     ) -> Result<OutboundTransaction, TransactionStorageError>
     {
         let db_clone = self.db.clone();
-        let key = match cancelled {
-            true => DbKey::CancelledPendingOutboundTransaction(tx_id),
-            false => DbKey::PendingOutboundTransaction(tx_id),
+        let key = if cancelled {
+            DbKey::CancelledPendingOutboundTransaction(tx_id)
+        } else {
+            DbKey::PendingOutboundTransaction(tx_id)
         };
         let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&key) {
             Ok(None) => Err(TransactionStorageError::ValueNotFound(key)),
@@ -516,9 +517,10 @@ where T: TransactionBackend + 'static
     ) -> Result<InboundTransaction, TransactionStorageError>
     {
         let db_clone = self.db.clone();
-        let key = match cancelled {
-            true => DbKey::CancelledPendingInboundTransaction(tx_id),
-            false => DbKey::PendingInboundTransaction(tx_id),
+        let key = if cancelled {
+            DbKey::CancelledPendingInboundTransaction(tx_id)
+        } else {
+            DbKey::PendingInboundTransaction(tx_id)
         };
         let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&key) {
             Ok(None) => Err(TransactionStorageError::ValueNotFound(key)),
@@ -554,9 +556,10 @@ where T: TransactionBackend + 'static
     ) -> Result<CompletedTransaction, TransactionStorageError>
     {
         let db_clone = self.db.clone();
-        let key = match cancelled {
-            true => DbKey::CancelledCompletedTransaction(tx_id),
-            false => DbKey::CompletedTransaction(tx_id),
+        let key = if cancelled {
+            DbKey::CancelledCompletedTransaction(tx_id)
+        } else {
+            DbKey::CompletedTransaction(tx_id)
         };
         let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&key) {
             Ok(None) => Err(TransactionStorageError::ValueNotFound(key)),
@@ -588,9 +591,10 @@ where T: TransactionBackend + 'static
     {
         let db_clone = self.db.clone();
 
-        let key = match cancelled {
-            true => DbKey::CancelledPendingInboundTransactions,
-            false => DbKey::PendingInboundTransactions,
+        let key = if cancelled {
+            DbKey::CancelledPendingInboundTransactions
+        } else {
+            DbKey::PendingInboundTransactions
         };
 
         let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&key) {
@@ -628,9 +632,10 @@ where T: TransactionBackend + 'static
     {
         let db_clone = self.db.clone();
 
-        let key = match cancelled {
-            true => DbKey::CancelledPendingOutboundTransactions,
-            false => DbKey::PendingOutboundTransactions,
+        let key = if cancelled {
+            DbKey::CancelledPendingOutboundTransactions
+        } else {
+            DbKey::PendingOutboundTransactions
         };
 
         let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&key) {
@@ -681,9 +686,10 @@ where T: TransactionBackend + 'static
     {
         let db_clone = self.db.clone();
 
-        let key = match cancelled {
-            true => DbKey::CancelledCompletedTransactions,
-            false => DbKey::CompletedTransactions,
+        let key = if cancelled {
+            DbKey::CancelledCompletedTransactions
+        } else {
+            DbKey::CompletedTransactions
         };
 
         let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&key) {
