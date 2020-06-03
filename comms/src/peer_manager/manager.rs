@@ -22,7 +22,6 @@
 
 use crate::{
     peer_manager::{
-        connection_stats::PeerConnectionStats,
         node_id::{NodeDistance, NodeId},
         peer::{Peer, PeerFlags},
         peer_id::PeerId,
@@ -31,7 +30,6 @@ use crate::{
         PeerManagerError,
         PeerQuery,
     },
-    protocol::ProtocolId,
     types::{CommsDatabase, CommsPublicKey},
 };
 use multiaddr::Multiaddr;
@@ -62,33 +60,6 @@ impl PeerManager {
     /// exist, the stored version will be replaced with the newly provided peer.
     pub async fn add_peer(&self, peer: Peer) -> Result<PeerId, PeerManagerError> {
         self.peer_storage.write().await.add_peer(peer)
-    }
-
-    /// Updates fields for a peer. Any fields set to Some(xx) will be updated. All None
-    /// fields will remain the same.
-    #[allow(clippy::too_many_arguments)]
-    pub async fn update_peer(
-        &self,
-        public_key: &CommsPublicKey,
-        net_addresses: Option<Vec<Multiaddr>>,
-        flags: Option<PeerFlags>,
-        #[allow(clippy::option_option)] banned_until: Option<Option<Duration>>,
-        #[allow(clippy::option_option)] is_offline: Option<bool>,
-        peer_features: Option<PeerFeatures>,
-        connection_stats: Option<PeerConnectionStats>,
-        supported_protocols: Option<Vec<ProtocolId>>,
-    ) -> Result<(), PeerManagerError>
-    {
-        self.peer_storage.write().await.update_peer(
-            public_key,
-            net_addresses,
-            flags,
-            banned_until,
-            is_offline,
-            peer_features,
-            connection_stats,
-            supported_protocols,
-        )
     }
 
     /// The peer with the specified public_key will be removed from the PeerManager
@@ -291,12 +262,12 @@ impl PeerManager {
     }
 
     /// Return some basic stats about the region around region_node_id
-    pub async fn get_region_stats<'a>(
+    pub async fn get_region_stats(
         &self,
-        region_node_id: &'a NodeId,
+        region_node_id: &NodeId,
         n: usize,
         features: PeerFeatures,
-    ) -> Result<RegionStats<'a>, PeerManagerError>
+    ) -> Result<RegionStats, PeerManagerError>
     {
         self.peer_storage
             .read()

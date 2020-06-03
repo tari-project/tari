@@ -158,14 +158,14 @@ impl Peer {
         self.id = Some(id);
     }
 
+    #[allow(clippy::option_option)]
     pub fn update(
         &mut self,
         net_addresses: Option<Vec<Multiaddr>>,
         flags: Option<PeerFlags>,
-        #[allow(clippy::option_option)] banned_until: Option<Option<Duration>>,
-        #[allow(clippy::option_option)] is_offline: Option<bool>,
+        banned_until: Option<Option<Duration>>,
+        is_offline: Option<bool>,
         features: Option<PeerFeatures>,
-        connection_stats: Option<PeerConnectionStats>,
         supported_protocols: Option<Vec<ProtocolId>>,
     )
     {
@@ -185,9 +185,6 @@ impl Peer {
         }
         if let Some(new_features) = features {
             self.features = new_features;
-        }
-        if let Some(connection_stats) = connection_stats {
-            self.connection_stats = connection_stats;
         }
         if let Some(supported_protocols) = supported_protocols {
             self.supported_protocols = supported_protocols;
@@ -331,7 +328,6 @@ mod test {
             Some(Some(Duration::from_secs(1000))),
             None,
             Some(PeerFeatures::MESSAGE_PROPAGATION),
-            Some(PeerConnectionStats::new()),
             Some(vec![protocol::IDENTITY_PROTOCOL.clone()]),
         );
 

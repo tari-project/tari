@@ -378,10 +378,11 @@ impl DhtConnectivity {
             d > dist
         });
 
-        let mut removed_peer = None;
-        if self.neighbours.len() + 1 > self.config.num_neighbouring_nodes {
-            removed_peer = self.neighbours.pop();
-        }
+        let removed_peer = if self.neighbours.len() + 1 > self.config.num_neighbouring_nodes {
+            self.neighbours.pop()
+        } else {
+            None
+        };
 
         match pos {
             Some(idx) => {

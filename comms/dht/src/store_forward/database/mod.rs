@@ -150,7 +150,7 @@ impl StoreAndForwardDatabase {
                     .filter(|message| match message.destination_node_id {
                         Some(ref dest_node_id) => match NodeId::from_hex(dest_node_id).ok() {
                             Some(dest_node_id) => {
-                                &dest_node_id == node_id || &dest_node_id.distance(node_id) <= &*dist_threshold
+                                &dest_node_id == node_id || dest_node_id.distance(node_id) <= *dist_threshold
                             },
                             None => false,
                         },

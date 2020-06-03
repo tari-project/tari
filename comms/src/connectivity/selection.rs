@@ -56,7 +56,7 @@ pub fn select_closest<'a>(pool: &'a ConnectionPool, node_id: &NodeId, exclude: &
 
 pub fn select_random_nodes<'a>(pool: &'a ConnectionPool, n: usize, exclude: &[NodeId]) -> Vec<&'a PeerConnection> {
     let nodes = select_connected_nodes(pool, exclude);
-    nodes.choose_multiple(&mut OsRng, n).map(|c| *c).collect()
+    nodes.choose_multiple(&mut OsRng, n).cloned().collect()
 }
 
 #[cfg(test)]
