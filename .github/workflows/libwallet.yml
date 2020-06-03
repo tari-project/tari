@@ -2,8 +2,9 @@
 name: Build libwallet
 on:
   push:
-    tags:
-      - "libwallet-*"
+# Temp for debugging
+#    tags:
+#      - "libwallet-*"
 jobs:
   build_libs:
     runs-on: ubuntu-latest
