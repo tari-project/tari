@@ -93,25 +93,18 @@ impl MessageSendStates {
         let mut unordered = self.into_futures_unordered();
         let mut succeeded = Vec::new();
         let mut failed = Vec::new();
-        loop {
-            match unordered.next().await {
-                Some((tag, result)) => {
-                    match result {
-                        Ok(_) => {
-                            count += 1;
-                            succeeded.push(tag);
-                        },
-                        Err(_) => {
-                            failed.push(tag);
-                        },
-                    }
-                    if (count as f32) / (total as f32) >= threshold_perc {
-                        break;
-                    }
+        while let Some((tag, result)) = unordered.next().await {
+            match result {
+                Ok(_) => {
+                    count += 1;
+                    succeeded.push(tag);
                 },
-                None => {
-                    break;
+                Err(_) => {
+                    failed.push(tag);
                 },
+            }
+            if (count as f32) / (total as f32) >= threshold_perc {
+                break;
             }
         }
 

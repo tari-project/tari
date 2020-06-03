@@ -22,7 +22,7 @@
 
 use std::str::FromStr;
 
-pub fn parse_cidrs<'a, I: IntoIterator<Item = T>, T: AsRef<str>>(cidr_strs: I) -> Result<Vec<cidr::AnyIpCidr>, String> {
+pub fn parse_cidrs<I: IntoIterator<Item = T>, T: AsRef<str>>(cidr_strs: I) -> Result<Vec<cidr::AnyIpCidr>, String> {
     let (success, failed) = cidr_strs
         .into_iter()
         .map(|s| ::cidr::AnyIpCidr::from_str(s.as_ref()))

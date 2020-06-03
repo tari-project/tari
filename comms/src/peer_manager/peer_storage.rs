@@ -23,7 +23,6 @@
 use crate::{
     consts::PEER_MANAGER_MAX_FLOOD_PEERS,
     peer_manager::{
-        connection_stats::PeerConnectionStats,
         node_id::{NodeDistance, NodeId},
         peer::{Peer, PeerFlags},
         peer_id::{generate_peer_key, PeerId},
@@ -119,15 +118,15 @@ where DS: KeyValueStore<PeerId, Peer>
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exist, the stored version will be replaced with the newly provided peer.
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::option_option)]
     pub fn update_peer(
         &mut self,
         public_key: &CommsPublicKey,
         net_addresses: Option<Vec<Multiaddr>>,
         flags: Option<PeerFlags>,
-        #[allow(clippy::option_option)] banned_until: Option<Option<Duration>>,
-        #[allow(clippy::option_option)] is_offline: Option<bool>,
+        banned_until: Option<Option<Duration>>,
+        is_offline: Option<bool>,
         peer_features: Option<PeerFeatures>,
-        connection_stats: Option<PeerConnectionStats>,
         supported_protocols: Option<Vec<ProtocolId>>,
     ) -> Result<(), PeerManagerError>
     {
@@ -147,7 +146,6 @@ where DS: KeyValueStore<PeerId, Peer>
                     banned_until,
                     is_offline,
                     peer_features,
-                    connection_stats,
                     supported_protocols,
                 );
 
@@ -506,12 +504,12 @@ where DS: KeyValueStore<PeerId, Peer>
 
     /// Return some basic stats for the region surrounding the region_node_id. The size of the local region is
     /// determined by the maximum distance of the n closest valid nodes.
-    pub fn get_region_stats<'a>(
+    pub fn get_region_stats(
         &self,
-        region_node_id: &'a NodeId,
+        region_node_id: &NodeId,
         n: usize,
         features: PeerFeatures,
-    ) -> Result<RegionStats<'a>, PeerManagerError>
+    ) -> Result<RegionStats, PeerManagerError>
     {
         let mut peer_keys = Vec::new();
         let mut valid_dists = Vec::new();
@@ -566,7 +564,7 @@ where DS: KeyValueStore<PeerId, Peer>
         let num_banned = banned_dists.into_iter().filter(|d| *d <= distance).count();
         Ok(RegionStats {
             distance,
-            ref_node_id: region_node_id,
+            node_id: region_node_id.clone(),
             total,
             num_offline,
             num_banned,
@@ -580,17 +578,17 @@ impl Into<CommsDatabase> for PeerStorage<CommsDatabase> {
     }
 }
 
-pub struct RegionStats<'a> {
+pub struct RegionStats {
     distance: NodeDistance,
-    ref_node_id: &'a NodeId,
+    node_id: NodeId,
     total: usize,
     num_offline: usize,
     num_banned: usize,
 }
 
-impl RegionStats<'_> {
+impl RegionStats {
     pub fn in_region(&self, node_id: &NodeId) -> bool {
-        node_id.distance(self.ref_node_id) <= self.distance
+        node_id.distance(&self.node_id) <= self.distance
     }
 
     pub fn offline_ratio(&self) -> f32 {
@@ -602,7 +600,7 @@ impl RegionStats<'_> {
     }
 }
 
-impl fmt::Display for RegionStats<'_> {
+impl fmt::Display for RegionStats {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,

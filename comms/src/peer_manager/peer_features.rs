@@ -38,13 +38,13 @@ bitflags! {
 
 impl PeerFeatures {
     #[inline]
-    pub fn is_client(&self) -> bool {
-        self == &PeerFeatures::COMMUNICATION_CLIENT
+    pub fn is_client(self) -> bool {
+        self == PeerFeatures::COMMUNICATION_CLIENT
     }
 
     #[inline]
-    pub fn is_node(&self) -> bool {
-        self == &PeerFeatures::COMMUNICATION_NODE
+    pub fn is_node(self) -> bool {
+        self == PeerFeatures::COMMUNICATION_NODE
     }
 }
 

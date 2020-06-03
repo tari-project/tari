@@ -169,6 +169,7 @@ pub struct StoreAndForwardService {
 }
 
 impl StoreAndForwardService {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: DhtConfig,
         conn: DbConnection,
@@ -298,6 +299,7 @@ impl StoreAndForwardService {
             return Ok(());
         }
 
+        #[allow(clippy::single_match)]
         match event {
             PeerConnected(conn) => {
                 // Whenever we connect to a peer, request SAF messages
