@@ -37,12 +37,11 @@ use log::*;
 use std::{convert::TryFrom, sync::Arc};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_p2p::{
-    comms_connector::PeerMessage,
+    comms_connector::{PeerMessage, SubscriptionFactory},
     domain_message::DomainMessage,
     services::utils::{map_decode, ok_or_skip_result},
     tari_message::TariMessageType,
 };
-use tari_pubsub::TopicSubscriptionFactory;
 use tari_service_framework::{
     handles::ServiceHandlesFuture,
     reply_channel,
@@ -53,12 +52,13 @@ use tari_shutdown::ShutdownSignal;
 use tokio::{runtime, sync::broadcast};
 
 const LOG_TARGET: &str = "c::bn::service::initializer";
+const SUBSCRIPTION_LABEL: &str = "Base Node";
 
 /// Initializer for the Base Node service handle and service future.
 pub struct BaseNodeServiceInitializer<T>
 where T: BlockchainBackend
 {
-    inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
+    inbound_message_subscription_factory: Arc<SubscriptionFactory>,
     blockchain_db: BlockchainDatabase<T>,
     mempool: Mempool<T>,
     consensus_manager: ConsensusManager,
@@ -70,7 +70,7 @@ where T: BlockchainBackend
 {
     /// Create a new BaseNodeServiceInitializer from the inbound message subscriber.
     pub fn new(
-        inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
+        inbound_message_subscription_factory: Arc<SubscriptionFactory>,
         blockchain_db: BlockchainDatabase<T>,
         mempool: Mempool<T>,
         consensus_manager: ConsensusManager,
@@ -89,7 +89,7 @@ where T: BlockchainBackend
     /// Get a stream for inbound Base Node request messages
     fn inbound_request_stream(&self) -> impl Stream<Item = DomainMessage<proto::BaseNodeServiceRequest>> {
         self.inbound_message_subscription_factory
-            .get_subscription(TariMessageType::BaseNodeRequest)
+            .get_subscription(TariMessageType::BaseNodeRequest, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::BaseNodeServiceRequest>)
             .filter_map(ok_or_skip_result)
     }
@@ -97,7 +97,7 @@ where T: BlockchainBackend
     /// Get a stream for inbound Base Node response messages
     fn inbound_response_stream(&self) -> impl Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>> {
         self.inbound_message_subscription_factory
-            .get_subscription(TariMessageType::BaseNodeResponse)
+            .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::BaseNodeServiceResponse>)
             .filter_map(ok_or_skip_result)
     }
@@ -105,7 +105,7 @@ where T: BlockchainBackend
     /// Create a stream of 'New Block` messages
     fn inbound_block_stream(&self) -> impl Stream<Item = DomainMessage<Block>> {
         self.inbound_message_subscription_factory
-            .get_subscription(TariMessageType::NewBlock)
+            .get_subscription(TariMessageType::NewBlock, SUBSCRIPTION_LABEL)
             .filter_map(extract_block)
     }
 }

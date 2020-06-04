@@ -36,12 +36,11 @@ use tari_broadcast_channel::bounded;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{base_node::proto::base_node as BaseNodeProto, transactions::types::CryptoFactories};
 use tari_p2p::{
-    comms_connector::PeerMessage,
+    comms_connector::SubscriptionFactory,
     domain_message::DomainMessage,
     services::utils::{map_decode, ok_or_skip_result},
     tari_message::TariMessageType,
 };
-use tari_pubsub::TopicSubscriptionFactory;
 use tari_service_framework::{
     handles::ServiceHandlesFuture,
     reply_channel,
@@ -59,6 +58,7 @@ pub mod service;
 pub mod storage;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::initializer";
+const SUBSCRIPTION_LABEL: &str = "Output Manager";
 
 pub type TxId = u64;
 
@@ -66,7 +66,7 @@ pub struct OutputManagerServiceInitializer<T>
 where T: OutputManagerBackend
 {
     config: OutputManagerServiceConfig,
-    subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
+    subscription_factory: Arc<SubscriptionFactory>,
     backend: Option<T>,
     factories: CryptoFactories,
 }
@@ -76,7 +76,7 @@ where T: OutputManagerBackend
 {
     pub fn new(
         config: OutputManagerServiceConfig,
-        subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
+        subscription_factory: Arc<SubscriptionFactory>,
         backend: T,
         factories: CryptoFactories,
     ) -> Self
@@ -91,7 +91,7 @@ where T: OutputManagerBackend
 
     fn base_node_response_stream(&self) -> impl Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>> {
         self.subscription_factory
-            .get_subscription(TariMessageType::BaseNodeResponse)
+            .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
             .map(map_decode::<BaseNodeProto::BaseNodeServiceResponse>)
             .filter_map(ok_or_skip_result)
     }

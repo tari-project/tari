@@ -53,7 +53,6 @@ use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
 use tari_comms_dht::{outbound::OutboundMessageRequester, DhtRequester};
-use tari_pubsub::TopicSubscriptionFactory;
 use tari_service_framework::{
     handles::ServiceHandlesFuture,
     reply_channel,
@@ -72,6 +71,7 @@ pub use self::{
     handle::{LivenessEvent, LivenessEventSender, LivenessHandle, LivenessRequest, LivenessResponse, PingPongEvent},
     state::Metadata,
 };
+use crate::comms_connector::TopicSubscriptionFactory;
 pub use crate::proto::liveness::MetadataKey;
 use tokio::sync::broadcast;
 
@@ -102,7 +102,7 @@ impl LivenessInitializer {
     /// Get a stream of inbound PingPong messages
     fn ping_stream(&self) -> impl Stream<Item = DomainMessage<PingPongMessage>> {
         self.inbound_message_subscription_factory
-            .get_subscription(TariMessageType::PingPong)
+            .get_subscription(TariMessageType::PingPong, "Liveness")
             .map(map_decode::<PingPongMessage>)
             .filter_map(ok_or_skip_result)
     }

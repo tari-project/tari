@@ -48,7 +48,7 @@ pub async fn setup_liveness_service(
 ) -> (LivenessHandle, CommsNode, Dht)
 {
     let rt_handle = runtime::Handle::current();
-    let (publisher, subscription_factory) = pubsub_connector(rt_handle.clone(), 100, 101);
+    let (publisher, subscription_factory) = pubsub_connector(rt_handle.clone(), 100);
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht) = setup_comms_services(node_identity.clone(), peers, publisher, data_path).await;
 
