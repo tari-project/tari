@@ -164,6 +164,7 @@ struct BroadcastTask<S> {
     request: Option<DhtOutboundRequest>,
     target_network: Network,
 }
+type FinalMessageParts = (Option<Arc<CommsPublicKey>>, Option<Bytes>, Bytes);
 
 impl<S> BroadcastTask<S>
 where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
@@ -462,7 +463,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         encryption: &OutboundEncryption,
         include_origin: bool,
         body: Bytes,
-    ) -> Result<(Option<Arc<CommsPublicKey>>, Option<Bytes>, Bytes), DhtOutboundError>
+    ) -> Result<FinalMessageParts, DhtOutboundError>
     {
         match encryption {
             OutboundEncryption::EncryptFor(public_key) => {

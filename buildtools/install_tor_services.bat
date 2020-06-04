@@ -1,6 +1,9 @@
 @rem Control variables
 @rem - Tor Services {Note: `powershell` cannot `expand-archive` to `C:\Program Files (x86)`}
-@set tor_zip=tor-win32-0.4.2.7.zip
+@rem   - Download 'Windows Expert Bundle' at https://www.torproject.org/download/tor/
+https://www.torproject.org/dist/torbrowser/9.5/tor-win32-0.4.3.5.zip
+@set tor_version=9.5
+@set tor_zip=tor-win32-0.4.3.5.zip
 @set tor_folder=%USERPROFILE%\.tor_services
 @set tor_runtime=tor.exe
 
@@ -17,7 +20,7 @@
 
 :INSTALL_TOR_SERVICES
 @rem Download install file
-@powershell wget https://www.torproject.org/dist/torbrowser/9.0.9/%tor_zip% -outfile "%TEMP%\%tor_zip%"
+@powershell wget  https://www.torproject.org/dist/torbrowser/%tor_version%/%tor_zip% -outfile "%TEMP%\%tor_zip%"
 @rem Install 
 @powershell expand-archive -Force -LiteralPath "%TEMP%\%tor_zip%" -DestinationPath "%tor_folder%"
 @rem Set Tari environment variables

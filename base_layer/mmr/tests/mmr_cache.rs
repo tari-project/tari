@@ -157,3 +157,76 @@ fn multiple_rewinds() {
     assert!(mmr_cache.update().is_ok());
     assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2]).clone()));
 }
+
+#[test]
+fn checkpoint_merging() {
+    let config = MmrCacheConfig { rewind_hist_len: 2 };
+    let mut checkpoint_db = MemBackendVec::<MerkleCheckPoint>::new();
+    let mut mmr_cache = MmrCache::<Hasher, _, _>::new(Vec::new(), checkpoint_db.clone(), config).unwrap();
+
+    let h1 = int_to_hash(1);
+    let h2 = int_to_hash(2);
+    let h3 = int_to_hash(3);
+    let h4 = int_to_hash(4);
+    let h5 = int_to_hash(5);
+    let h6 = int_to_hash(6);
+    let ha = combine_hashes(&[&h1, &h2]);
+    let hb = combine_hashes(&[&h3, &h4]);
+    let hc = combine_hashes(&[&h5, &h6]);
+    let hahb = combine_hashes(&[&ha, &hb]);
+    let cp4_mmr_only_root = combine_hashes(&[&hahb]);
+    let cp6_mmr_only_root = combine_hashes(&[&hahb, &hc]);
+    let cp1 = MerkleCheckPoint::new(vec![h1.clone()], Bitmap::create(), 0);
+    let cp2 = MerkleCheckPoint::new(vec![h2.clone()], Bitmap::create(), 0);
+    let cp3 = MerkleCheckPoint::new(vec![h3.clone()], Bitmap::create(), 0);
+    let cp4 = MerkleCheckPoint::new(vec![h4.clone()], Bitmap::create(), 0);
+    let cp5 = MerkleCheckPoint::new(vec![h5.clone()], Bitmap::create(), 0);
+    let cp6 = MerkleCheckPoint::new(vec![h6.clone()], Bitmap::create(), 0);
+
+    checkpoint_db.push(cp1).unwrap();
+    assert!(mmr_cache.update().is_ok());
+    checkpoint_db.push(cp2).unwrap();
+    assert!(mmr_cache.update().is_ok());
+    checkpoint_db.push(cp3).unwrap();
+    assert!(mmr_cache.update().is_ok());
+    checkpoint_db.push(cp4).unwrap();
+    assert!(mmr_cache.update().is_ok());
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(cp4_mmr_only_root.clone()));
+
+    let mut merged_cp = checkpoint_db.get(0).unwrap().unwrap();
+    merged_cp.append(checkpoint_db.get(1).unwrap().unwrap());
+    assert!(checkpoint_db.shift(2).is_ok());
+    assert!(checkpoint_db.push_front(merged_cp).is_ok());
+    assert_eq!(checkpoint_db.len(), Ok(3));
+    assert!(mmr_cache.checkpoints_merged(2).is_ok());
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(cp4_mmr_only_root.clone()));
+
+    checkpoint_db.push(cp5).unwrap();
+    assert!(mmr_cache.update().is_ok());
+    checkpoint_db.push(cp6).unwrap();
+    assert!(mmr_cache.update().is_ok());
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(cp6_mmr_only_root.clone()));
+
+    let mut merged_cp = checkpoint_db.get(0).unwrap().unwrap();
+    merged_cp.append(checkpoint_db.get(1).unwrap().unwrap());
+    merged_cp.append(checkpoint_db.get(2).unwrap().unwrap());
+    assert!(checkpoint_db.shift(3).is_ok());
+    assert!(checkpoint_db.push_front(merged_cp).is_ok());
+    assert_eq!(checkpoint_db.len(), Ok(3));
+    assert!(mmr_cache.checkpoints_merged(3).is_ok());
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(cp6_mmr_only_root.clone()));
+
+    // Recreate the MmrCache from the altered checkpoints
+    let mut mmr_cache = MmrCache::<Hasher, _, _>::new(Vec::new(), checkpoint_db.clone(), config).unwrap();
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(cp6_mmr_only_root.clone()));
+
+    // Replace all existing checkpoints with a single accumulated checkpoint
+    let mut merged_cp = checkpoint_db.get(0).unwrap().unwrap();
+    merged_cp.append(checkpoint_db.get(1).unwrap().unwrap());
+    merged_cp.append(checkpoint_db.get(2).unwrap().unwrap());
+    assert!(checkpoint_db.shift(3).is_ok());
+    assert!(checkpoint_db.push_front(merged_cp).is_ok());
+    assert_eq!(checkpoint_db.len(), Ok(1));
+    assert!(mmr_cache.checkpoints_merged(3).is_ok());
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(cp6_mmr_only_root.clone()));
+}

@@ -74,7 +74,7 @@ impl TransactionMemoryDatabase {
         }
     }
 }
-
+#[allow(clippy::cognitive_complexity)]
 impl TransactionBackend for TransactionMemoryDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, TransactionStorageError> {
         let db = acquire_read_lock!(self.db);

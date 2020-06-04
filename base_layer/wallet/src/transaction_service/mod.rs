@@ -49,10 +49,7 @@ use tari_core::{
 use tari_p2p::{
     comms_connector::PeerMessage,
     domain_message::DomainMessage,
-    services::{
-        liveness::LivenessHandle,
-        utils::{map_decode, ok_or_skip_result},
-    },
+    services::utils::{map_decode, ok_or_skip_result},
     tari_message::TariMessageType,
 };
 use tari_pubsub::TopicSubscriptionFactory;
@@ -178,9 +175,6 @@ where T: TransactionBackend + Clone + 'static
             let output_manager_service = handles
                 .get_handle::<OutputManagerHandle>()
                 .expect("Output Manager Service handle required for TransactionService");
-            let liveness_service = handles
-                .get_handle::<LivenessHandle>()
-                .expect("LivenessHandle handle required for Transaction Service");
 
             let service = TransactionService::new(
                 config,
@@ -193,7 +187,6 @@ where T: TransactionBackend + Clone + 'static
                 base_node_response_stream,
                 output_manager_service,
                 outbound_message_service,
-                liveness_service,
                 publisher,
                 node_identity,
                 factories,

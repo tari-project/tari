@@ -98,7 +98,7 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock(20);
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
     let (base_node_response_sender, base_node_response_receiver) = mpsc::channel(20);
-    let (oms_event_publisher, oms_event_subscriber) = bounded(100);
+    let (oms_event_publisher, oms_event_subscriber) = bounded(100, 115);
 
     let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
     let (event_publisher, _) = channel(100);

@@ -41,16 +41,16 @@ use tari_comms_dht::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{KernelFeatures, TransactionError},
+    transaction::{KernelFeatures, Transaction, TransactionError},
     transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::SingleRoundSenderData},
     SenderTransactionProtocol,
 };
-use tari_p2p::{services::liveness::LivenessEvent, tari_message::TariMessageType};
+use tari_p2p::tari_message::TariMessageType;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::send_protocol";
 
 #[derive(Debug, PartialEq)]
-pub enum TransactionProtocolStage {
+pub enum TransactionSendProtocolStage {
     Initial,
     WaitForReply,
 }
@@ -63,7 +63,7 @@ where TBackend: TransactionBackend + Clone + 'static
     amount: MicroTari,
     message: String,
     sender_protocol: SenderTransactionProtocol,
-    stage: TransactionProtocolStage,
+    stage: TransactionSendProtocolStage,
     resources: TransactionServiceResources<TBackend>,
     transaction_reply_receiver: Option<Receiver<(CommsPublicKey, RecipientSignedMessage)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
@@ -82,7 +82,7 @@ where TBackend: TransactionBackend + Clone + 'static
         amount: MicroTari,
         message: String,
         sender_protocol: SenderTransactionProtocol,
-        stage: TransactionProtocolStage,
+        stage: TransactionSendProtocolStage,
     ) -> Self
     {
         Self {
@@ -101,80 +101,94 @@ where TBackend: TransactionBackend + Clone + 'static
     /// Execute the Transaction Send Protocol as an async task.
     pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
         info!(
-            "Starting Transaction Send protocol for TxId: {} at Stage {:?}",
-            self.id, self.stage
+            target: LOG_TARGET,
+            "Starting Transaction Send protocol for TxId: {} at Stage {:?}", self.id, self.stage
         );
 
-        // Only Send the transaction if the protocol stage is Initial. If the protocol is started in a later stage
-        // ignore this
-        if self.stage == TransactionProtocolStage::Initial {
-            if !self.sender_protocol.is_single_round_message_ready() {
-                error!(target: LOG_TARGET, "Sender Transaction Protocol is in an invalid state");
-                return Err(TransactionServiceProtocolError::new(
-                    self.id,
-                    TransactionServiceError::InvalidStateError,
-                ));
-            }
-
-            let msg = self
-                .sender_protocol
-                .build_single_round_message()
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-            let tx_id = msg.tx_id;
-
-            if tx_id != self.id {
-                return Err(TransactionServiceProtocolError::new(
-                    self.id,
-                    TransactionServiceError::InvalidStateError,
-                ));
-            }
-
-            let SendResult {
-                direct_send_result,
-                store_and_forward_send_result,
-            } = self.send_transaction(msg).await?;
-
-            if !direct_send_result && !store_and_forward_send_result {
-                return Err(TransactionServiceProtocolError::new(
-                    self.id,
-                    TransactionServiceError::OutboundSendFailure,
-                ));
-            }
-
-            self.resources
-                .output_manager_service
-                .confirm_pending_transaction(self.id)
-                .await
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-
-            let fee = self
-                .sender_protocol
-                .get_fee_amount()
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-            let outbound_tx = OutboundTransaction::new(
-                tx_id,
-                self.dest_pubkey.clone(),
-                self.amount,
-                fee,
-                self.sender_protocol.clone(),
-                TransactionStatus::Pending,
-                self.message.clone(),
-                Utc::now().naive_utc(),
-                direct_send_result,
-            );
-
-            self.resources
-                .db
-                .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx)
-                .await
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-
-            info!(
-                target: LOG_TARGET,
-                "Pending Outbound Transaction TxId: {:?} added. Waiting for Reply or Cancellation", self.id,
-            );
+        match self.stage {
+            TransactionSendProtocolStage::Initial => {
+                self.initial_send_transaction().await?;
+                self.wait_for_reply().await?;
+            },
+            TransactionSendProtocolStage::WaitForReply => {
+                self.wait_for_reply().await?;
+            },
         }
 
+        Ok(self.id)
+    }
+
+    async fn initial_send_transaction(&mut self) -> Result<(), TransactionServiceProtocolError> {
+        if !self.sender_protocol.is_single_round_message_ready() {
+            error!(target: LOG_TARGET, "Sender Transaction Protocol is in an invalid state");
+            return Err(TransactionServiceProtocolError::new(
+                self.id,
+                TransactionServiceError::InvalidStateError,
+            ));
+        }
+
+        let msg = self
+            .sender_protocol
+            .build_single_round_message()
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+        let tx_id = msg.tx_id;
+
+        if tx_id != self.id {
+            return Err(TransactionServiceProtocolError::new(
+                self.id,
+                TransactionServiceError::InvalidStateError,
+            ));
+        }
+
+        let SendResult {
+            direct_send_result,
+            store_and_forward_send_result,
+        } = self.send_transaction(msg).await?;
+
+        if !direct_send_result && !store_and_forward_send_result {
+            return Err(TransactionServiceProtocolError::new(
+                self.id,
+                TransactionServiceError::OutboundSendFailure,
+            ));
+        }
+
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(self.id)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+
+        let fee = self
+            .sender_protocol
+            .get_fee_amount()
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+        let outbound_tx = OutboundTransaction::new(
+            tx_id,
+            self.dest_pubkey.clone(),
+            self.amount,
+            fee,
+            self.sender_protocol.clone(),
+            TransactionStatus::Pending,
+            self.message.clone(),
+            Utc::now().naive_utc(),
+            direct_send_result,
+        );
+
+        self.resources
+            .db
+            .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+
+        info!(
+            target: LOG_TARGET,
+            "Pending Outbound Transaction TxId: {:?} added. Waiting for Reply or Cancellation", self.id,
+        );
+
+        Ok(())
+    }
+
+    async fn wait_for_reply(&mut self) -> Result<(), TransactionServiceProtocolError> {
         // Waiting  for Transaction Reply
         let tx_id = self.id;
         let mut receiver = self
@@ -195,26 +209,12 @@ where TBackend: TransactionBackend + Clone + 'static
             .await
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
-        let mut direct_send_result = outbound_tx.direct_send_success;
-
         if !outbound_tx.sender_protocol.is_collecting_single_signature() {
             error!(target: LOG_TARGET, "Pending Transaction not in correct state");
             return Err(TransactionServiceProtocolError::new(
                 self.id,
                 TransactionServiceError::InvalidStateError,
             ));
-        }
-
-        // Add receiver to Liveness Service to monitor for liveness
-        let mut liveness_event_stream = self.resources.liveness_service.get_event_stream_fused();
-        let destination_node_id = NodeId::from_key(&self.dest_pubkey)
-            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-        if !direct_send_result {
-            self.resources
-                .liveness_service
-                .add_node_id(destination_node_id.clone())
-                .await
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
         }
 
         #[allow(unused_assignments)]
@@ -234,25 +234,6 @@ where TBackend: TransactionBackend + Clone + 'static
                         error!(target: LOG_TARGET, "Transaction Reply does not have the correct TxId");
                     } else {
                         break;
-                    }
-                },
-                liveness_event = liveness_event_stream.select_next_some() => {
-                    if let Ok(event) = liveness_event {
-                        if let LivenessEvent::ReceivedPong(pong_event) = (*event).clone() {
-                            if !direct_send_result && pong_event.node_id == destination_node_id {
-                                debug!(target: LOG_TARGET, "Pong message received from counter-party before Transaction Reply is received, resending transaction TxId: {}", self.id);
-                                let msg = self.sender_protocol.get_single_round_message().map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-                                // If a direct send attempt is successful then stop resending on Pong and remove an instance of this node_id to be monitored in liveness
-                                if self.send_transaction_direct_only(msg).await? {
-                                    direct_send_result = true;
-                                     self.resources
-                                        .liveness_service
-                                        .remove_node_id(destination_node_id.clone())
-                                        .await
-                                        .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-                                }
-                            }
-                        }
                     }
                 },
                 _ = cancellation_receiver => {
@@ -315,11 +296,6 @@ where TBackend: TransactionBackend + Clone + 'static
             "Transaction Recipient Reply for TX_ID = {} received", tx_id,
         );
 
-        let finalized_transaction_message = proto::TransactionFinalizedMessage {
-            tx_id,
-            transaction: Some(tx.clone().into()),
-        };
-
         let _ = self
             .resources
             .event_publisher
@@ -333,75 +309,9 @@ where TBackend: TransactionBackend + Clone + 'static
                 e
             });
 
-        match self
-            .resources
-            .outbound_message_service
-            .send_direct(
-                outbound_tx.destination_public_key.clone(),
-                OutboundEncryption::None,
-                OutboundDomainMessage::new(
-                    TariMessageType::TransactionFinalized,
-                    finalized_transaction_message.clone(),
-                ),
-            )
-            .await
-        {
-            Ok(result) => match result.resolve_ok().await {
-                None => {
-                    self.send_transaction_finalized_message_store_and_forward(finalized_transaction_message.clone())
-                        .await?
-                },
-                Some(send_states) => {
-                    if send_states.len() == 1 {
-                        let msg_tag = send_states[0].tag;
-                        debug!(
-                            target: LOG_TARGET,
-                            "Transaction Finalized (TxId: {}) Direct Send to {} queued with {}",
-                            self.id,
-                            self.dest_pubkey,
-                            &msg_tag,
-                        );
-                        match send_states.wait_single().await {
-                            true => {
-                                info!(
-                                    target: LOG_TARGET,
-                                    "Direct Send of Transaction Finalized message for TX_ID: {} was successful ({})",
-                                    self.id,
-                                    msg_tag
-                                );
-                            },
-                            false => {
-                                error!(
-                                    target: LOG_TARGET,
-                                    "Direct Send of Transaction Finalized message for TX_ID: {} was unsuccessful and \
-                                     no message was sent",
-                                    self.id
-                                );
-                                self.send_transaction_finalized_message_store_and_forward(
-                                    finalized_transaction_message.clone(),
-                                )
-                                .await?
-                            },
-                        }
-                    } else {
-                        error!(
-                            target: LOG_TARGET,
-                            "Transaction Finalized message Send Direct for TxID: {} failed", self.id
-                        );
-                        self.send_transaction_finalized_message_store_and_forward(finalized_transaction_message.clone())
-                            .await?
-                    }
-                },
-            },
-            Err(e) => {
-                return Err(TransactionServiceProtocolError::new(
-                    self.id,
-                    TransactionServiceError::from(e),
-                ))
-            },
-        }
+        self.send_transaction_finalized_message(tx.clone()).await?;
 
-        Ok(self.id)
+        Ok(())
     }
 
     /// Attempt to send the transaction to the recipient both directly and via Store-and-forward. If both fail to send
@@ -434,7 +344,7 @@ where TBackend: TransactionBackend + Clone + 'static
         {
             Ok(result) => match result {
                 SendMessageResponse::Queued(send_states) => {
-                    if self.wait_on_dial(send_states).await {
+                    if self.wait_on_dial(send_states, "Transaction").await {
                         direct_send_result = true;
                     } else {
                         store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
@@ -451,12 +361,11 @@ where TBackend: TransactionBackend + Clone + 'static
                     store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
                     // now wait for discovery to complete
                     match rx.await {
-                        Ok(send_msg_response) => match send_msg_response {
-                            SendMessageResponse::Queued(send_states) => {
+                        Ok(send_msg_response) => {
+                            if let SendMessageResponse::Queued(send_states) = send_msg_response {
                                 debug!("Discovery of {} completed for TxID: {}", self.dest_pubkey, self.id);
-                                direct_send_result = self.wait_on_dial(send_states).await;
-                            },
-                            _ => (),
+                                direct_send_result = self.wait_on_dial(send_states, "Transaction").await;
+                            }
                         },
                         Err(e) => {
                             error!(
@@ -509,34 +418,36 @@ where TBackend: TransactionBackend + Clone + 'static
     }
 
     /// This function contains the logic to wait on a dial and send of a queued message
-    async fn wait_on_dial(&self, send_states: MessageSendStates) -> bool {
+    async fn wait_on_dial(&self, send_states: MessageSendStates, message: &str) -> bool {
         if send_states.len() == 1 {
             debug!(
                 target: LOG_TARGET,
-                "Transaction (TxId: {}) Direct Send to {} queued with Message {}",
+                "{} (TxId: {}) Direct Send to {} queued with Message {}",
+                message,
                 self.id,
                 self.dest_pubkey,
                 send_states[0].tag,
             );
             let (sent, failed) = send_states
-                .wait_n_timeout(self.resources.config.direct_send_timeout.clone(), 1)
+                .wait_n_timeout(self.resources.config.direct_send_timeout, 1)
                 .await;
             if !sent.is_empty() {
                 info!(
                     target: LOG_TARGET,
-                    "Direct Send process for TX_ID: {} was successful with Message: {}", self.id, sent[0]
+                    "Direct Send process for {} TX_ID: {} was successful with Message: {}", message, self.id, sent[0]
                 );
                 true
             } else {
                 if failed.is_empty() {
                     error!(
                         target: LOG_TARGET,
-                        "Direct Send process for TX_ID: {} timed out", self.id
+                        "Direct Send process for {} TX_ID: {} timed out", message, self.id
                     );
                 } else {
                     error!(
                         target: LOG_TARGET,
-                        "Direct Send process for TX_ID: {} and Message {} was unsuccessful and no message was sent",
+                        "Direct Send process for {} TX_ID: {} and Message {} was unsuccessful and no message was sent",
+                        message,
                         self.id,
                         failed[0]
                     );
@@ -546,7 +457,7 @@ where TBackend: TransactionBackend + Clone + 'static
         } else {
             error!(
                 target: LOG_TARGET,
-                "Transaction Send Direct for TxID: {} failed", self.id
+                "{} Send Direct for TxID: {} failed", message, self.id
             );
             false
         }
@@ -634,64 +545,90 @@ where TBackend: TransactionBackend + Clone + 'static
         }
     }
 
-    /// Contains all the logic to send a transaction to the recipient only directly
-    /// # Arguments
-    /// `msg`: The transaction data message to be sent
-    async fn send_transaction_direct_only(
+    async fn send_transaction_finalized_message(
         &mut self,
-        msg: SingleRoundSenderData,
-    ) -> Result<bool, TransactionServiceProtocolError>
+        transaction: Transaction,
+    ) -> Result<(), TransactionServiceProtocolError>
     {
-        let proto_message = proto::TransactionSenderMessage::single(msg.clone().into());
-
-        info!(
-            target: LOG_TARGET,
-            "Attempting to resend Transaction (TxId: {}) to recipient with Node Id: {} directly only.",
-            self.id,
-            self.dest_pubkey,
-        );
-
+        let finalized_transaction_message = proto::TransactionFinalizedMessage {
+            tx_id: self.id,
+            transaction: Some(transaction.clone().into()),
+        };
+        let mut store_and_forward_send_result = false;
+        let mut direct_send_result = false;
         match self
             .resources
             .outbound_message_service
             .send_direct(
                 self.dest_pubkey.clone(),
                 OutboundEncryption::None,
-                OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message.clone()),
+                OutboundDomainMessage::new(
+                    TariMessageType::TransactionFinalized,
+                    finalized_transaction_message.clone(),
+                ),
             )
             .await
         {
-            Ok(result) => match result.resolve_ok().await {
-                Some(send_states) if send_states.len() == 1 => {
-                    if self.wait_on_dial(send_states).await {
-                        if let Err(e) = self.resources.db.mark_direct_send_success(self.id).await {
-                            error!(target: LOG_TARGET, "Error updating database: {:?}", e);
-                        }
+            Ok(result) => match result {
+                SendMessageResponse::Queued(send_states) => {
+                    if self.wait_on_dial(send_states, "Finalized Transaction").await {
+                        direct_send_result = true;
+                    } else {
+                        store_and_forward_send_result = self
+                            .send_transaction_finalized_message_store_and_forward(finalized_transaction_message.clone())
+                            .await?;
                     }
                 },
-                _ => {
+                SendMessageResponse::Failed => {
                     error!(
                         target: LOG_TARGET,
-                        "Transaction Send Direct for TxID: {} failed", self.id
+                        "Finalized Transaction Send Direct for TxID: {} failed", self.id
                     );
-                    return Ok(false);
+                    store_and_forward_send_result = self
+                        .send_transaction_finalized_message_store_and_forward(finalized_transaction_message.clone())
+                        .await?;
+                },
+                SendMessageResponse::PendingDiscovery(rx) => {
+                    store_and_forward_send_result = self
+                        .send_transaction_finalized_message_store_and_forward(finalized_transaction_message.clone())
+                        .await?;
+                    // now wait for discovery to complete
+                    match rx.await {
+                        Ok(send_msg_response) => {
+                            if let SendMessageResponse::Queued(send_states) = send_msg_response {
+                                debug!("Discovery of {} completed for TxID: {}", self.dest_pubkey, self.id);
+                                direct_send_result = self.wait_on_dial(send_states, "Finalized Transaction").await;
+                            }
+                        },
+                        Err(e) => {
+                            error!(
+                                target: LOG_TARGET,
+                                "Error waiting for Discovery while sending message to TxId: {} {:?}", self.id, e
+                            );
+                        },
+                    }
                 },
             },
             Err(e) => {
-                error!(
-                    target: LOG_TARGET,
-                    "Transaction Direct Send for TxID: {} failed: {:?}", self.id, e
-                );
-                return Ok(false);
+                return Err(TransactionServiceProtocolError::new(
+                    self.id,
+                    TransactionServiceError::from(e),
+                ))
             },
         }
-        Ok(true)
+        if !direct_send_result && !store_and_forward_send_result {
+            return Err(TransactionServiceProtocolError::new(
+                self.id,
+                TransactionServiceError::OutboundSendFailure,
+            ));
+        }
+        Ok(())
     }
 
     async fn send_transaction_finalized_message_store_and_forward(
         &mut self,
         msg: proto::TransactionFinalizedMessage,
-    ) -> Result<(), TransactionServiceProtocolError>
+    ) -> Result<bool, TransactionServiceProtocolError>
     {
         match self
             .resources
@@ -741,7 +678,7 @@ where TBackend: TransactionBackend + Clone + 'static
             },
         };
 
-        Ok(())
+        Ok(true)
     }
 }
 

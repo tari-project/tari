@@ -25,7 +25,7 @@ use crate::{comms_connector::InboundDomainConnector, tari_message::TariMessageTy
 use futures::{channel::mpsc, FutureExt, SinkExt, StreamExt};
 use log::*;
 use std::sync::Arc;
-use tari_pubsub::{pubsub_channel, TopicPayload, TopicSubscriptionFactory};
+use tari_pubsub::{pubsub_channel_with_id, TopicPayload, TopicSubscriptionFactory};
 use tokio::runtime::Handle;
 
 const LOG_TARGET: &str = "comms::middleware::pubsub";
@@ -35,8 +35,13 @@ pub type PubsubDomainConnector = InboundDomainConnector<mpsc::Sender<Arc<PeerMes
 pub type SubscriptionFactory = TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>;
 
 /// Connects `InboundDomainConnector` to a `tari_pubsub::TopicPublisher` through a buffered channel
-pub fn pubsub_connector(executor: Handle, buf_size: usize) -> (PubsubDomainConnector, SubscriptionFactory) {
-    let (publisher, subscription_factory) = pubsub_channel(buf_size);
+pub fn pubsub_connector(
+    executor: Handle,
+    buf_size: usize,
+    buf_id: usize,
+) -> (PubsubDomainConnector, SubscriptionFactory)
+{
+    let (publisher, subscription_factory) = pubsub_channel_with_id(buf_size, buf_id);
     let (sender, receiver) = mpsc::channel(buf_size);
 
     // Spawn a task which forwards messages from the pubsub service to the TopicPublisher
@@ -44,7 +49,16 @@ pub fn pubsub_connector(executor: Handle, buf_size: usize) -> (PubsubDomainConne
         // Map DomainMessage into a TopicPayload
         .map(|msg: Arc<PeerMessage>| {
             TariMessageType::from_i32(msg.message_header.message_type)
-                .map(|msg_type| TopicPayload::new(msg_type, msg))
+                .map(|msg_type| {
+                    let message_tag_trace = msg.dht_header.message_tag;
+                    let payload = TopicPayload::new(msg_type, msg);
+                    trace!(
+                        target: LOG_TARGET,
+                        "Created topic payload message {:?}, Trace: {}",
+                        &payload.topic(), message_tag_trace
+                    );
+                    payload
+                })
                 .ok_or_else(|| "Invalid or unrecognised Tari message type".to_string())
         })
         // Forward TopicPayloads to the publisher

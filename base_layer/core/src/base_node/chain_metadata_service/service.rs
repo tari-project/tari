@@ -303,7 +303,7 @@ mod test {
 
             let (base_node, mut base_node_receiver) = create_base_node_nci();
 
-            let (publisher, _subscriber) = broadcast_channel::bounded(1);
+            let (publisher, _subscriber) = broadcast_channel::bounded(1, 106);
             let mut service = ChainMetadataService::new(liveness_handle, base_node, publisher);
 
             let mut proto_chain_metadata = create_sample_proto_chain_metadata();
@@ -347,7 +347,7 @@ mod test {
 
         let (base_node, _) = create_base_node_nci();
 
-        let (publisher, _subscriber) = broadcast_channel::bounded(1);
+        let (publisher, _subscriber) = broadcast_channel::bounded(1, 107);
         let mut service = ChainMetadataService::new(liveness_handle, base_node, publisher);
 
         // To prevent the chain metadata buffer being flushed after receiving a single pong event,
@@ -377,7 +377,7 @@ mod test {
         };
 
         let (base_node, _) = create_base_node_nci();
-        let (publisher, _subscriber) = broadcast_channel::bounded(1);
+        let (publisher, _subscriber) = broadcast_channel::bounded(1, 108);
         let mut service = ChainMetadataService::new(liveness_handle, base_node, publisher);
 
         let sample_event = LivenessEvent::ReceivedPong(Box::new(pong_event));
@@ -400,7 +400,7 @@ mod test {
         };
 
         let (base_node, _) = create_base_node_nci();
-        let (publisher, _subscriber) = broadcast_channel::bounded(1);
+        let (publisher, _subscriber) = broadcast_channel::bounded(1, 109);
         let mut service = ChainMetadataService::new(liveness_handle, base_node, publisher);
 
         let sample_event = LivenessEvent::ReceivedPong(Box::new(pong_event));

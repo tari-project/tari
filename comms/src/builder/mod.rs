@@ -326,7 +326,7 @@ where
     ) -> ConnectivityManager
     {
         ConnectivityManager {
-            config: self.connectivity_config.clone(),
+            config: self.connectivity_config,
             request_rx,
             event_tx,
             connection_manager: connection_manager_requester,

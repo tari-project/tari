@@ -22,7 +22,7 @@
 
 use futures::Sink;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
-use std::{error::Error, iter, sync::Arc, time::Duration};
+use std::{error::Error, iter, path::Path, sync::Arc, time::Duration};
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     transports::MemoryTransport,
@@ -275,14 +275,14 @@ pub fn create_network_with_2_base_nodes(
 }
 
 // Creates a network with two Base Nodes where each node in the network knows the other nodes in the network.
-pub fn create_network_with_2_base_nodes_with_config(
+pub fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
     runtime: &mut Runtime,
     base_node_service_config: BaseNodeServiceConfig,
     mmr_cache_config: MmrCacheConfig,
     mempool_service_config: MempoolServiceConfig,
     liveness_service_config: LivenessConfig,
     consensus_manager: ConsensusManager,
-    data_path: &str,
+    data_path: P,
 ) -> (NodeInterfaces, NodeInterfaces, ConsensusManager)
 {
     let alice_node_identity = random_node_identity();
@@ -290,13 +290,12 @@ pub fn create_network_with_2_base_nodes_with_config(
     let network = Network::LocalNet;
     let (alice_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity.clone())
-        .with_peers(vec![bob_node_identity.clone()])
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
-        .start(runtime, data_path);
+        .start(runtime, data_path.as_ref().join("alice").as_os_str().to_str().unwrap());
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity)
         .with_peers(vec![alice_node_identity])
@@ -305,7 +304,7 @@ pub fn create_network_with_2_base_nodes_with_config(
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
-        .start(runtime, data_path);
+        .start(runtime, data_path.as_ref().join("bob").as_os_str().to_str().unwrap());
 
     wait_until_online(runtime, &[&alice_node, &bob_node]);
 
@@ -333,14 +332,14 @@ pub fn create_network_with_3_base_nodes(
 }
 
 // Creates a network with three Base Nodes where each node in the network knows the other nodes in the network.
-pub fn create_network_with_3_base_nodes_with_config(
+pub fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
     runtime: &mut Runtime,
     base_node_service_config: BaseNodeServiceConfig,
     mmr_cache_config: MmrCacheConfig,
     mempool_service_config: MempoolServiceConfig,
     liveness_service_config: LivenessConfig,
     consensus_manager: ConsensusManager,
-    data_path: &str,
+    data_path: P,
 ) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces, ConsensusManager)
 {
     let alice_node_identity = random_node_identity();
@@ -354,7 +353,23 @@ pub fn create_network_with_3_base_nodes_with_config(
         bob_node_identity.node_id().short_str(),
         carol_node_identity.node_id().short_str()
     );
-
+    let (carol_node, consensus_manager) = BaseNodeBuilder::new(network)
+        .with_node_identity(carol_node_identity.clone())
+        .with_base_node_service_config(base_node_service_config)
+        .with_mmr_cache_config(mmr_cache_config)
+        .with_mempool_service_config(mempool_service_config)
+        .with_liveness_service_config(liveness_service_config.clone())
+        .with_consensus_manager(consensus_manager)
+        .start(runtime, data_path.as_ref().join("carol").as_os_str().to_str().unwrap());
+    let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
+        .with_node_identity(bob_node_identity.clone())
+        .with_peers(vec![carol_node_identity.clone()])
+        .with_base_node_service_config(base_node_service_config)
+        .with_mmr_cache_config(mmr_cache_config)
+        .with_mempool_service_config(mempool_service_config)
+        .with_liveness_service_config(liveness_service_config.clone())
+        .with_consensus_manager(consensus_manager)
+        .start(runtime, data_path.as_ref().join("bob").as_os_str().to_str().unwrap());
     let (alice_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone(), carol_node_identity.clone()])
@@ -363,25 +378,7 @@ pub fn create_network_with_3_base_nodes_with_config(
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
-        .start(runtime, data_path);
-    let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
-        .with_node_identity(bob_node_identity.clone())
-        .with_peers(vec![carol_node_identity.clone(), alice_node_identity.clone()])
-        .with_base_node_service_config(base_node_service_config)
-        .with_mmr_cache_config(mmr_cache_config)
-        .with_mempool_service_config(mempool_service_config)
-        .with_liveness_service_config(liveness_service_config.clone())
-        .with_consensus_manager(consensus_manager)
-        .start(runtime, data_path);
-    let (carol_node, consensus_manager) = BaseNodeBuilder::new(network)
-        .with_node_identity(carol_node_identity.clone())
-        .with_peers(vec![alice_node_identity.clone(), bob_node_identity.clone()])
-        .with_base_node_service_config(base_node_service_config)
-        .with_mmr_cache_config(mmr_cache_config)
-        .with_mempool_service_config(mempool_service_config)
-        .with_liveness_service_config(liveness_service_config.clone())
-        .with_consensus_manager(consensus_manager)
-        .start(runtime, data_path);
+        .start(runtime, data_path.as_ref().join("alice").as_os_str().to_str().unwrap());
 
     wait_until_online(runtime, &[&alice_node, &bob_node, &carol_node]);
 
@@ -448,7 +445,7 @@ fn setup_base_node_services(
     CommsNode,
 )
 {
-    let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100);
+    let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100, 104);
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht) = runtime.block_on(setup_comms_services(node_identity, peers, publisher, data_path));
 

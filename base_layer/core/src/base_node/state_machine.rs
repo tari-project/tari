@@ -87,8 +87,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
-        let (event_sender, event_receiver): (Publisher<_>, Subscriber<_>) = bounded(10);
-        let (status_event_publisher, status_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(1); // only latest update is important
+        let (event_sender, event_receiver): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
+        let (status_event_publisher, status_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(1, 4); // only latest update is important
         Self {
             db: db.clone(),
             local_node_interface: local_node_interface.clone(),

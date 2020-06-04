@@ -492,7 +492,7 @@ fn request_response_get_stats() {
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
         consensus_manager,
-        temp_dir.path().to_str().unwrap(),
+        temp_dir.path(),
     );
 
     // Create a tx spending the genesis output. Then create 2 orphan txs

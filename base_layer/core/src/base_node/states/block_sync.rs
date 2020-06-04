@@ -719,7 +719,7 @@ async fn exclude_sync_peer(sync_peers: &mut Vec<NodeId>, sync_peer: NodeId) -> R
     Ok(())
 }
 
-// Ban and disconnect the provided sync peer.
+// Ban and disconnect the provided sync peer if this node is online
 async fn ban_sync_peer_if_online<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
     sync_peers: &mut Vec<NodeId>,
@@ -746,7 +746,6 @@ async fn ban_sync_peer<B: BlockchainBackend + 'static>(
 ) -> Result<(), BlockSyncError>
 {
     info!(target: LOG_TARGET, "Banning peer {} from local node.", sync_peer);
-    sync_peers.retain(|p| *p != sync_peer);
     shared.connectivity.ban_peer(sync_peer.clone(), ban_duration).await?;
     exclude_sync_peer(sync_peers, sync_peer).await
 }

@@ -107,7 +107,7 @@ async fn initialize() {
 
     // Wait for calls to add peers
     async_assert!(
-        connectivity.call_count() >= 2,
+        connectivity.call_count().await >= 2,
         max_attempts = 20,
         interval = Duration::from_millis(10),
     );
@@ -146,7 +146,7 @@ async fn added_neighbours() {
 
     // Wait for calls to add peers
     async_assert!(
-        connectivity.call_count() >= 1,
+        connectivity.call_count().await >= 1,
         max_attempts = 20,
         interval = Duration::from_millis(10),
     );
@@ -158,7 +158,7 @@ async fn added_neighbours() {
     connectivity.publish_event(ConnectivityEvent::PeerConnected(conn));
 
     async_assert!(
-        connectivity.call_count() >= 2,
+        connectivity.call_count().await >= 2,
         max_attempts = 20,
         interval = Duration::from_millis(10),
     );
@@ -171,6 +171,47 @@ async fn added_neighbours() {
     let managed = connectivity.get_managed_peers().await;
     assert_eq!(managed.len(), 5);
     assert!(managed.contains(closer_peer.node_id()));
+}
+
+#[tokio_macros::test_basic]
+async fn reinitialize_pools_when_offline() {
+    let node_identity = make_node_identity();
+    let node_identities = repeat_with(|| make_node_identity()).take(5).collect::<Vec<_>>();
+    // Closest to this node
+    let peers = node_identities.iter().map(|ni| ni.to_peer()).collect::<Vec<_>>();
+
+    let config = DhtConfig {
+        num_neighbouring_nodes: 5,
+        num_random_nodes: 0,
+        ..Default::default()
+    };
+    let (dht_connectivity, _, connectivity, _, _, _shutdown) = setup(config, node_identity, peers).await;
+    dht_connectivity.spawn();
+
+    // Wait for calls to add peers
+    async_assert!(
+        connectivity.call_count().await >= 1,
+        max_attempts = 20,
+        interval = Duration::from_millis(10),
+    );
+
+    let calls = connectivity.take_calls().await;
+    assert_eq!(count_string_occurrences(&calls, &["AddManagedPeers"]), 1);
+
+    connectivity.publish_event(ConnectivityEvent::ConnectivityStateOffline);
+
+    async_assert!(
+        connectivity.call_count().await >= 1,
+        max_attempts = 20,
+        interval = Duration::from_millis(10),
+    );
+    let calls = connectivity.take_calls().await;
+    assert_eq!(count_string_occurrences(&calls, &["RemovePeer"]), 5);
+    assert_eq!(count_string_occurrences(&calls, &["AddManagedPeers"]), 1);
+
+    // Check that the closer neighbour was added to managed peers
+    let managed = connectivity.get_managed_peers().await;
+    assert_eq!(managed.len(), 5);
 }
 
 #[tokio_macros::test_basic]
