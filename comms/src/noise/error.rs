@@ -20,21 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
 use std::io;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum NoiseError {
-    SnowError(snow::Error),
-    #[error(no_from)]
+    #[error("Snow Error: {0}")]
+    SnowError(#[from] snow::Error),
+    #[error("Handshake Failed: {0}")]
     HandshakeFailed(io::Error),
-}
-
-impl NoiseError {
-    pub fn to_friendly_string(&self) -> String {
-        match self {
-            NoiseError::SnowError(err) => format!("SnowError: {:?}", err),
-            NoiseError::HandshakeFailed(err) => format!("HandshakeFailed: {:?}", err),
-        }
-    }
 }

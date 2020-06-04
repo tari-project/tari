@@ -20,39 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::peer_manager::node_id::NodeIdError;
-use derive_error::Error;
 use prost::DecodeError;
-use tari_crypto::{
-    signatures::SchnorrSignatureError,
-    tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError},
-};
+use thiserror::Error;
 
-// TODO: only used by control service, so belongs in that module
 #[derive(Error, Debug)]
 pub enum MessageError {
-    /// Multipart message contained an invalid number of frames
-    InvalidMultipartMessageLength,
-    /// Failed to serialize message
-    SerializeFailed,
-    /// Failed to deserialize message
-    DeserializeFailed,
-    /// An error occurred serialising an object into binary
-    BinarySerializeError,
-    /// An error occurred deserialising binary data into an object
-    BinaryDeserializeError,
-    MessageFormatError(MessageFormatError),
-    SchnorrSignatureError(SchnorrSignatureError),
-    /// Failed to Encode or Decode the message using the Cipher
-    CipherError(CipherError),
-    NodeIdError(NodeIdError),
-    /// Problem initializing the RNG
-    RngError,
-
-    /// The header contained an invalid public key
-    InvalidHeaderPublicKey,
-    /// Failed to decode protobuf message
-    DecodeError(DecodeError),
-    /// Failed to decode message part of envelope body
-    EnvelopeBodyDecodeFailed,
+    #[error("Failed to decode protobuf message: {0}")]
+    DecodeError(#[from] DecodeError),
 }

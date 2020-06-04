@@ -21,24 +21,25 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{discovery::DhtDiscoveryError, outbound::DhtOutboundError};
-use derive_error::Error;
-use prost::DecodeError;
 use tari_comms::{message::MessageError, peer_manager::PeerManagerError};
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum DhtInboundError {
-    MessageError(MessageError),
-    PeerManagerError(PeerManagerError),
-    DhtOutboundError(DhtOutboundError),
-    /// Failed to decode message
-    DecodeError(DecodeError),
-    /// Message body invalid
+    #[error("MessageError: {0}")]
+    MessageError(#[from] MessageError),
+    #[error("PeerManagerError: {0}")]
+    PeerManagerError(#[from] PeerManagerError),
+    #[error("DhtOutboundError: {0}")]
+    DhtOutboundError(#[from] DhtOutboundError),
+    #[error("Message body invalid")]
     InvalidMessageBody,
-    /// Node ID is invalid
+    #[error("Node ID is invalid")]
     InvalidNodeId,
-    /// All given addresses were invalid
+    #[error("All given addresses were invalid")]
     InvalidAddresses,
-    DhtDiscoveryError(DhtDiscoveryError),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("DhtDiscoveryError: {0}")]
+    DhtDiscoveryError(#[from] DhtDiscoveryError),
+    #[error("OriginRequired: {0}")]
     OriginRequired(String),
 }

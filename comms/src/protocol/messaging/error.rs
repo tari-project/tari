@@ -20,31 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connection_manager::PeerConnectionError,
-    message::MessageError,
-    peer_manager::PeerManagerError,
-    protocol::ProtocolError,
-};
-use derive_error::Error;
+use crate::{connection_manager::PeerConnectionError, peer_manager::PeerManagerError, protocol::ProtocolError};
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum InboundMessagingError {
-    PeerManagerError(PeerManagerError),
-    /// Failed to decode message
-    MessageDecodeError(prost::DecodeError),
-    MessageError(MessageError),
+    #[error("PeerManagerError: {0}")]
+    PeerManagerError(#[from] PeerManagerError),
+    #[error("Failed to decode message: {0}")]
+    MessageDecodeError(#[from] prost::DecodeError),
 }
 #[derive(Debug, Error)]
 pub enum MessagingProtocolError {
-    /// Failed to send message
-    #[error(no_from, non_std)]
+    #[error("Failed to send message")]
     MessageSendFailed,
-    ProtocolError(ProtocolError),
-    PeerConnectionError(PeerConnectionError),
-    /// Failed to dial peer
+    #[error("ProtocolError: {0}")]
+    ProtocolError(#[from] ProtocolError),
+    #[error("PeerConnectionError: {0}")]
+    PeerConnectionError(#[from] PeerConnectionError),
+    #[error("Failed to dial peer")]
     PeerDialFailed,
-    /// Failure when sending on an outbound substream
+    #[error("Failure when sending on an outbound substream")]
     OutboundSubstreamFailure,
-    MessageError(MessageError),
 }

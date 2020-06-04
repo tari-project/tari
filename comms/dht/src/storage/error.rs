@@ -20,18 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
 use tari_utilities::message_format::MessageFormatError;
+use thiserror::Error;
 use tokio::task;
 
 #[derive(Debug, Error)]
 pub enum StorageError {
-    /// Database path contained non-UTF8 characters that are not supported by the host OS
+    #[error("Database path contained non-UTF8 characters that are not supported by the host OS")]
     InvalidUnicodePath,
-    JoinError(task::JoinError),
-    ConnectionError(diesel::ConnectionError),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("ConnectionError: {0}")]
+    ConnectionError(#[from] diesel::ConnectionError),
+    #[error("Error when joining to tokio task : {0}")]
+    JoinError(#[from] task::JoinError),
+    #[error("DatabaseMigrationFailed: {0}")]
     DatabaseMigrationFailed(String),
-    ResultError(diesel::result::Error),
-    MessageFormatError(MessageFormatError),
+    #[error("ResultError: {0}")]
+    ResultError(#[from] diesel::result::Error),
+    #[error("MessageFormatError: {0}")]
+    MessageFormatError(#[from] MessageFormatError),
 }

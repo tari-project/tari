@@ -20,32 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use super::parsers::ParseError;
-use derive_error::Error;
 use std::io;
+use thiserror::Error;
 use tokio_util::codec::LinesCodecError;
 
 #[derive(Debug, Error)]
 pub enum TorClientError {
-    /// Failed to read/write line to socket. The maximum line length was exceeded.
+    #[error("Failed to read/write line to socket. The maximum line length was exceeded.")]
     MaxLineLengthExceeded,
-    Io(io::Error),
-    /// Command failed
-    #[error(no_from, non_std)]
+    #[error("IO Error: {0}")]
+    Io(#[from] io::Error),
+    #[error("Command failed: {0}")]
     TorCommandFailed(String),
-    /// Tor control port connection unexpectedly closed
+    #[error("Tor control port connection unexpectedly closed")]
     UnexpectedEof,
-    ParseError(ParseError),
-    /// The server returned no response
+    #[error("Parse error: {0}")]
+    ParseError(#[from] ParseError),
+    #[error("The server returned no response")]
     ServerNoResponse,
-    /// Server did not return a ServiceID for ADD_ONION command
+    #[error("Server did not return a ServiceID for ADD_ONION command")]
     AddOnionNoServiceId,
-    /// The given service id was invalid
+    #[error("The given service id was invalid")]
     InvalidServiceId,
-    /// Onion address is exists
+    #[error("Onion address is exists")]
     OnionAddressCollision,
-    /// Response returned an no value for key
+    #[error("Response returned an no value for key")]
     KeyValueNoValue,
-    /// The command sender disconnected
+    #[error("The command sender disconnected")]
     CommandSenderDisconnected,
 }
 

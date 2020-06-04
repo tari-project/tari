@@ -21,11 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::response::ResponseLine;
-use derive_error::Error;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ControlEventError {
+    #[error("Received an empty response")]
     EmptyResponse,
+    #[error("Received invalid event data")]
     InvalidEventData,
 }
 

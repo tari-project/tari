@@ -25,58 +25,58 @@ use crate::{
     peer_manager::PeerManagerError,
     protocol::{IdentityProtocolError, ProtocolError},
 };
-use derive_error::Error;
 use futures::channel::mpsc;
+use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum ConnectionManagerError {
-    PeerManagerError(PeerManagerError),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Peer manager error: {0}")]
+    PeerManagerError(#[from] PeerManagerError),
+    #[error("Peer connection error: {0}")]
     PeerConnectionError(String),
-    /// Cannot connect to peers which are not persisted in the peer manager database.
+    #[error("Cannot connect to peers which are not persisted in the peer manager database.")]
     PeerNotPersisted,
-    /// Failed to send request to ConnectionManagerActor. Channel closed.
+    #[error("Failed to send request to ConnectionManagerActor. Channel closed.")]
     SendToActorFailed,
-    /// Request was canceled before the response could be sent
+    #[error("Request was canceled before the response could be sent")]
     ActorRequestCanceled,
-    /// The dial reply channel was closed when sending a reply
+    #[error("The dial reply channel was closed when sending a reply")]
     DialReplyChannelClosed,
-    /// Failed to connect on all addresses for peer
+    #[error("Failed to connect on all addresses for peer")]
     DialConnectFailedAllAddresses,
-    /// Failed to connect to peer within the maximum number of attempts
+    #[error("Failed to connect to peer within the maximum number of attempts")]
     ConnectFailedMaximumAttemptsReached,
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Yamux connection error: {0}")]
     YamuxConnectionError(String),
-    /// Establisher channel is closed or full
-    /// Failed to perform yamux upgrade on socket
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Failed to perform yamux upgrade on socket: {0}")]
     YamuxUpgradeFailure(String),
-    /// Establisher channel is closed or full
+    #[error("Establisher channel is closed or full")]
     EstablisherChannelError,
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Transport error: {0}")]
     TransportError(String),
-    /// The peer authenticated to a public key which did not match the dialed peer's public key
+    #[error("The peer authenticated to a public key which did not match the dialed peer's public key")]
     DialedPublicKeyMismatch,
-    /// The noise transport failed to provide a valid static public key for the peer
+    #[error("The noise transport failed to provide a valid static public key for the peer")]
     InvalidStaticPublicKey,
     // This is a String because we need this error to be clonable so that we can
     // send the same response to multiple requesters
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Noise error: {0}")]
     NoiseError(String),
-    /// Incoming listener stream unexpectedly closed
+    #[error("Incoming listener stream unexpectedly closed")]
     IncomingListenerStreamClosed,
-    /// The peer offered a NodeId that failed to validate against it's public key
+    #[error("The peer offered a NodeId that failed to validate against it's public key")]
     PeerIdentityInvalidNodeId,
-    /// Peer is banned, denying connection
+    #[error("Peer is banned, denying connection")]
     PeerBanned,
-    /// Unable to parse any of the network addresses offered by the connecting peer
+    #[error("Unable to parse any of the network addresses offered by the connecting peer")]
     PeerIdentityNoValidAddresses,
-    IdentityProtocolError(IdentityProtocolError),
-    /// The dial was cancelled
+    #[error("Identity protocol failed: {0}")]
+    IdentityProtocolError(#[from] IdentityProtocolError),
+    #[error("The dial was cancelled")]
     DialCancelled,
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Invalid multiaddr: {0}")]
     InvalidMultiaddr(String),
-    /// Failed to send wire format byte
+    #[error("Failed to send wire format byte")]
     WireFormatSendFailed,
 }
 
@@ -88,7 +88,7 @@ impl From<yamux::ConnectionError> for ConnectionManagerError {
 
 impl From<noise::NoiseError> for ConnectionManagerError {
     fn from(err: noise::NoiseError) -> Self {
-        ConnectionManagerError::NoiseError(err.to_friendly_string())
+        ConnectionManagerError::NoiseError(err.to_string())
     }
 }
 
@@ -100,10 +100,12 @@ impl From<PeerConnectionError> for ConnectionManagerError {
 
 #[derive(Debug, Error)]
 pub enum PeerConnectionError {
-    YamuxConnectionError(yamux::ConnectionError),
-    /// Internal oneshot reply channel was unexpectedly cancelled
+    #[error("Yamux connection error: {0}")]
+    YamuxConnectionError(#[from] yamux::ConnectionError),
+    #[error("Internal oneshot reply channel was unexpectedly cancelled")]
     InternalReplyCancelled,
-    /// Failed to send internal request
-    InternalRequestSendFailed(mpsc::SendError),
-    ProtocolError(ProtocolError),
+    #[error("Failed to send internal request: {0}")]
+    InternalRequestSendFailed(#[from] mpsc::SendError),
+    #[error("Protocol error: {0}")]
+    ProtocolError(#[from] ProtocolError),
 }

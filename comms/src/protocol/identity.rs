@@ -27,12 +27,12 @@ use crate::{
     proto::identity::PeerIdentityMsg,
     protocol::{ProtocolError, ProtocolId, ProtocolNegotiation},
 };
-use derive_error::Error;
 use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
 use prost::Message;
 use std::io;
 use tari_crypto::tari_utilities::ByteArray;
+use thiserror::Error;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 pub static IDENTITY_PROTOCOL: ProtocolId = ProtocolId::from_static(b"/tari/identity/1.0.0");
@@ -105,21 +105,21 @@ where
 
 #[derive(Debug, Error, Clone)]
 pub enum IdentityProtocolError {
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("IoError: {0}")]
     IoError(String),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("ProtocolError: {0}")]
     ProtocolError(String),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("ProtobufDecodeError: {0}")]
     ProtobufDecodeError(String),
-    /// Failed to encode protobuf message
+    #[error("Failed to encode protobuf message")]
     ProtobufEncodingError,
-    /// Peer unexpectedly closed the connection
+    #[error("Peer unexpectedly closed the connection")]
     PeerUnexpectedCloseConnection,
 }
 
 impl From<ProtocolError> for IdentityProtocolError {
     fn from(err: ProtocolError) -> Self {
-        IdentityProtocolError::ProtocolError(err.to_friendly_string())
+        IdentityProtocolError::ProtocolError(err.to_string())
     }
 }
 

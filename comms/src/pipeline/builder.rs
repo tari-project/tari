@@ -24,8 +24,8 @@ use crate::{
     message::{InboundMessage, OutboundMessage},
     pipeline::SinkService,
 };
-use derive_error::Error;
 use futures::channel::mpsc;
+use thiserror::Error;
 use tower::Service;
 
 const DEFAULT_MAX_CONCURRENT_TASKS: usize = 50;
@@ -157,9 +157,9 @@ pub struct Config<TInSvc, TOutSvc, TOutReq> {
 
 #[derive(Debug, Error)]
 pub enum PipelineBuilderError {
-    /// Inbound pipeline was not provided
+    #[error("Inbound pipeline was not provided")]
     InboundNotProvided,
-    /// Outbound pipeline was not provided
+    #[error("Outbound pipeline was not provided")]
     OutboundPipelineNotProvided,
 }
 

@@ -22,7 +22,6 @@ tari_storage = { version = "^0.1", path = "../../infrastructure/storage"}
 bitflags = "1.2.0"
 bytes = "0.4.12"
 chrono = "0.4.9"
-derive-error = "0.0.4"
 diesel = {version="1.4", features = ["sqlite", "serde_json", "chrono", "numeric"]}
 diesel_migrations =  "1.4"
 digest = "0.8.1"
@@ -40,6 +39,7 @@ ttl_cache = "0.5.1"
 
 # tower-filter dependencies
 pin-project = "0.4"
+thiserror = "1.0.19"
 
 [dev-dependencies]
 tari_test_utils = { version = "^0.0", path = "../../infrastructure/test_utils"}

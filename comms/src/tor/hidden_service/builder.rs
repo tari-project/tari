@@ -33,18 +33,19 @@ use crate::{
     },
 };
 use bitflags::bitflags;
-use derive_error::Error;
 use log::*;
+use thiserror::Error;
 
 const LOG_TARGET: &str = "comms::tor::hidden_service";
 
 #[derive(Debug, Error)]
 pub enum HiddenServiceBuilderError {
-    /// The proxied port mapping was not provided. Use `with_proxied_port_mapping` to set it.
+    #[error("The proxied port mapping was not provided. Use `with_proxied_port_mapping` to set it.")]
     ProxiedPortMappingNotProvided,
-    /// The control server address was not provided. Use `with_control_server_address` to set it.
+    #[error("The control server address was not provided. Use `with_control_server_address` to set it.")]
     TorControlServerAddressNotProvided,
-    HiddenServiceControllerError(HiddenServiceControllerError),
+    #[error("HiddenServiceControllerError: {0}")]
+    HiddenServiceControllerError(#[from] HiddenServiceControllerError),
 }
 
 bitflags! {

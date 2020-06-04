@@ -26,7 +26,6 @@ use crate::{
     inbound::message::{DecryptedDhtMessage, DhtInboundMessage},
     proto::envelope::OriginMac,
 };
-use derive_error::Error;
 use futures::{task::Context, Future};
 use log::*;
 use prost::Message;
@@ -39,23 +38,24 @@ use tari_comms::{
     utils::signature,
 };
 use tari_utilities::ByteArray;
+use thiserror::Error;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::middleware::decryption";
 
 #[derive(Error, Debug)]
 enum DecryptionError {
-    /// Failed to validate origin MAC signature
+    #[error("Failed to validate origin MAC signature")]
     OriginMacInvalidSignature,
-    /// Origin MAC contained an invalid public key
+    #[error("Origin MAC contained an invalid public key")]
     OriginMacInvalidPublicKey,
-    /// Origin MAC not provided for encrypted message
+    #[error("Origin MAC not provided for encrypted message")]
     OriginMacNotProvided,
-    /// Failed to decrypt origin MAC
+    #[error("Failed to decrypt origin MAC")]
     OriginMacDecryptedFailed,
-    /// Failed to decode clear-text origin MAC
+    #[error("Failed to decode clear-text origin MAC")]
     OriginMacClearTextDecodeFailed,
-    /// Failed to decrypt message body
+    #[error("Failed to decrypt message body")]
     MessageBodyDecryptionFailed,
 }
 
@@ -213,7 +213,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         body: &[u8],
     ) -> Result<(), DecryptionError>
     {
-        if signature::verify(public_key, signature, body).unwrap_or(false) {
+        if signature::verify(public_key, signature, body) {
             Ok(())
         } else {
             Err(DecryptionError::OriginMacInvalidSignature)

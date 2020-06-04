@@ -20,8 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
 use std::fmt::Debug;
+use thiserror::Error;
 
 #[macro_use]
 mod macros;
@@ -39,8 +39,7 @@ pub trait TestFactory: Default {
 
 #[derive(Debug, Error)]
 pub enum TestFactoryError {
-    /// Failed to build object
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("Failed to build object: {0}")]
     BuildFailed(String),
 }
 

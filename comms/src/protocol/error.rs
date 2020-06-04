@@ -20,35 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
-use futures::channel::mpsc;
 use std::io;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ProtocolError {
-    IoError(io::Error),
-    /// The ProtocolId was longer than 255
+    #[error("IO error: {0}")]
+    IoError(#[from] io::Error),
+    #[error("The ProtocolId was longer than {}", u8::max_value())]
     ProtocolIdTooLong,
-    /// Protocol negotiation failed because the peer did not accept any protocols
+    #[error("Protocol negotiation failed because the peer did not accept any protocols")]
     ProtocolOutboundNegotiationFailed,
-    /// Protocol negotiation failed because the peer did not offer any protocols supported by this node
+    #[error("Protocol negotiation failed because the peer did not offer any protocols supported by this node")]
     ProtocolInboundNegotiationFailed,
-    /// Optimistic protocol negotiation failed because the peer did not offer a protocol supported by this node
+    #[error("Optimistic protocol negotiation failed because the peer did not offer a protocol supported by this node")]
     ProtocolOptimisticNegotiationFailed,
-    /// Protocol negotiation terminated by peer
+    #[error("Protocol negotiation terminated by peer")]
     ProtocolNegotiationTerminatedByPeer,
-    /// Protocol was not registered
+    #[error("Protocol was not registered")]
     ProtocolNotRegistered,
-    SendError(mpsc::SendError),
-}
-
-impl ProtocolError {
-    pub fn to_friendly_string(&self) -> String {
-        use ProtocolError::*;
-        match self {
-            IoError(err) => format!("IoError: {:?}", err),
-            SendError(err) => format!("SendError: {:?}", err),
-            err => format!("{}", err),
-        }
-    }
+    #[error("Failed to send notification because notification sender disconnected")]
+    NotificationSenderDisconnected,
 }

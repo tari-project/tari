@@ -36,7 +36,6 @@ use crate::{
     PeerManager,
 };
 use bytes::Bytes;
-use derive_error::Error;
 use futures::{channel::mpsc, stream::Fuse, AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
 use std::{
@@ -46,6 +45,7 @@ use std::{
     time::Duration,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
+use thiserror::Error;
 use tokio::sync::broadcast;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
@@ -76,11 +76,11 @@ pub enum MessagingRequest {
 /// occurred
 #[derive(Debug, Error, Copy, Clone)]
 pub enum SendFailReason {
-    /// Dial was attempted, but failed
+    #[error("Dial was attempted, but failed")]
     PeerDialFailed,
-    /// Failed to open a messaging substream to peer
+    #[error("Failed to open a messaging substream to peer")]
     SubstreamOpenFailed,
-    /// Failed to send on substream channel
+    #[error("Failed to send on substream channel")]
     SubstreamSendFailed,
 }
 

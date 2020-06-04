@@ -517,16 +517,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let origin_mac = OriginMac::decode(origin_mac_body)?;
         let public_key =
             CommsPublicKey::from_bytes(&origin_mac.public_key).map_err(|_| StoreAndForwardError::InvalidOriginMac)?;
-        signature::verify(&public_key, &origin_mac.signature, body)
-            .map_err(|_| StoreAndForwardError::InvalidOriginMac)
-            .and_then(|is_valid| {
-                if is_valid {
-                    Ok(())
-                } else {
-                    Err(StoreAndForwardError::InvalidOriginMac)
-                }
-            })?;
-        Ok(public_key)
+
+        if signature::verify(&public_key, &origin_mac.signature, body) {
+            Ok(public_key)
+        } else {
+            Err(StoreAndForwardError::InvalidOriginMac)
+        }
     }
 }
 

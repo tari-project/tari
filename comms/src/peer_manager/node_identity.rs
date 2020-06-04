@@ -30,7 +30,6 @@ use crate::{
     },
     types::{CommsPublicKey, CommsSecretKey},
 };
-use derive_error::Error;
 use multiaddr::Multiaddr;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
@@ -39,12 +38,14 @@ use tari_crypto::{
     keys::{PublicKey, SecretKey},
     tari_utilities::hex::serialize_to_hex,
 };
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum NodeIdentityError {
-    NodeIdError(NodeIdError),
-    /// The Thread Safety has been breached and the data access has become poisoned
-    PoisonedAccess,
+    #[error("NodeIdError: {0}")]
+    NodeIdError(#[from] NodeIdError),
+    #[error("Address lock has been poisoned")]
+    AddressLockPoisoned,
 }
 
 /// The public and private identity of this node on the network
@@ -111,7 +112,7 @@ impl NodeIdentity {
         *self
             .public_address
             .write()
-            .map_err(|_| NodeIdentityError::PoisonedAccess)? = address;
+            .map_err(|_| NodeIdentityError::AddressLockPoisoned)? = address;
         Ok(())
     }
 

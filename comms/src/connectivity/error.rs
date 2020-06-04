@@ -21,18 +21,20 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{connection_manager::ConnectionManagerError, peer_manager::PeerManagerError};
-use derive_error::Error;
+use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum ConnectivityError {
-    /// Cannot send request because ConnectivityActor disconnected
+    #[error("Cannot send request because ConnectivityActor disconnected")]
     ActorDisconnected,
-    /// Response was unexpectedly cancelled
+    #[error("Response was unexpectedly cancelled")]
     ActorResponseCancelled,
-    PeerManagerError(PeerManagerError),
-    ConnectionFailed(ConnectionManagerError),
-    /// Connectivity event stream closed unexpectedly
+    #[error("PeerManagerError: {0}")]
+    PeerManagerError(#[from] PeerManagerError),
+    #[error("ConnectionFailed: {0}")]
+    ConnectionFailed(#[from] ConnectionManagerError),
+    #[error("Connectivity event stream closed unexpectedly")]
     ConnectivityEventStreamClosed,
-    /// Timeout while waiting for ONLINE connectivity
+    #[error("Timeout while waiting for ONLINE connectivity")]
     OnlineWaitTimeout,
 }

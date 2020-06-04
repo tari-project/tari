@@ -36,7 +36,6 @@ use crate::{
     DhtConfig,
 };
 use chrono::{DateTime, Utc};
-use derive_error::Error;
 use futures::{
     channel::{mpsc, mpsc::SendError, oneshot},
     future,
@@ -54,6 +53,7 @@ use tari_comms::{
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::message_format::{MessageFormat, MessageFormatError};
+use thiserror::Error;
 use tokio::task;
 use ttl_cache::TtlCache;
 
@@ -61,25 +61,29 @@ const LOG_TARGET: &str = "comms::dht::actor";
 
 #[derive(Debug, Error)]
 pub enum DhtActorError {
-    /// MPSC channel is disconnected
+    #[error("MPSC channel is disconnected")]
     ChannelDisconnected,
-    /// MPSC sender was unable to send because the channel buffer is full
+    #[error("MPSC sender was unable to send because the channel buffer is full")]
     SendBufferFull,
-    /// Reply sender canceled the request
+    #[error("Reply sender canceled the request")]
     ReplyCanceled,
-    PeerManagerError(PeerManagerError),
-    #[error(msg_embedded, no_from, non_std)]
-    SendFailed(String),
-    DiscoveryError(DhtDiscoveryError),
-    BlockingJoinError(tokio::task::JoinError),
-    StorageError(StorageError),
-    #[error(no_from)]
+    #[error("PeerManagerError: {0}")]
+    PeerManagerError(#[from] PeerManagerError),
+    #[error("Failed to broadcast join message: {0}")]
+    FailedToBroadcastJoinMessage(String),
+    #[error("DiscoveryError: {0}")]
+    DiscoveryError(#[from] DhtDiscoveryError),
+    #[error("StorageError: {0}")]
+    StorageError(#[from] StorageError),
+    #[error("StoredValueFailedToDeserialize: {0}")]
     StoredValueFailedToDeserialize(MessageFormatError),
-    #[error(no_from)]
+    #[error("FailedToSerializeValue: {0}")]
     FailedToSerializeValue(MessageFormatError),
-    ConnectionManagerError(ConnectionManagerError),
-    ConnectivityError(ConnectivityError),
-    /// Connectivity event stream closed
+    #[error("ConnectionManagerError: {0}")]
+    ConnectionManagerError(#[from] ConnectionManagerError),
+    #[error("ConnectivityError: {0}")]
+    ConnectivityError(#[from] ConnectivityError),
+    #[error("Connectivity event stream closed")]
     ConnectivityEventStreamClosed,
 }
 
@@ -350,7 +354,9 @@ impl DhtActor {
                 message,
             )
             .await
-            .map_err(|err| DhtActorError::SendFailed(format!("Failed to send join message: {}", err)))?;
+            .map_err(|err| {
+                DhtActorError::FailedToBroadcastJoinMessage(format!("Failed to send join message: {}", err))
+            })?;
 
         Ok(())
     }
