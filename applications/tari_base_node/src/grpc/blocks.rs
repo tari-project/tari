@@ -44,7 +44,7 @@ pub async fn block_heights(
     from_tip: u64,
 ) -> Result<Vec<u64>, Status>
 {
-    let heights = if start_height >= 0 && end_height > 0 {
+    let heights = if end_height > 0 {
         Ok(BlockHeader::get_height_range(start_height, end_height))
     } else if from_tip > 0 {
         BlockHeader::get_heights_from_tip(handler, from_tip)
