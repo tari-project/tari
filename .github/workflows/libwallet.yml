@@ -2,9 +2,8 @@
 name: Build libwallet
 on:
   push:
-# Temp for debugging
-#    tags:
-#      - "libwallet-*"
+    tags:
+      - "libwallet-*"
 jobs:
   build_libs:
     runs-on: ubuntu-latest
@@ -14,7 +13,7 @@ jobs:
       # Step 2: Build and package the libraries
       - name: Build libwallet
         id: build-libwallet
-        uses: tari-project/action-buildlibs@v0.0.3
+        uses: tari-project/action-buildlibs@v0.0.8
         with:
           platforms: "x86_64-linux-android;aarch64-linux-android"
           level: "24"
