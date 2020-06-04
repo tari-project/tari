@@ -24,9 +24,9 @@ use blake2::{
     digest::{Input, VariableOutput},
     VarBlake2b,
 };
-use derive_error::Error;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use std::{
+    cmp,
     cmp::Ordering,
     convert::{TryFrom, TryInto},
     fmt,
@@ -38,6 +38,7 @@ use tari_crypto::tari_utilities::{
     ByteArray,
     ByteArrayError,
 };
+use thiserror::Error;
 
 const NODE_ID_ARRAY_SIZE: usize = 13; // 104-bit as per RFC-0151
 type NodeIdArray = [u8; NODE_ID_ARRAY_SIZE];
@@ -46,9 +47,10 @@ pub type NodeDistance = XorDistance; // or HammingDistance
 
 #[derive(Debug, Error, Clone)]
 pub enum NodeIdError {
+    #[error("Incorrect byte count (expected {} bytes)", NODE_ID_ARRAY_SIZE)]
     IncorrectByteCount,
-    OutOfBounds,
-    DigestError,
+    #[error("Invalid digest output size")]
+    InvalidDigestOutputSize,
 }
 
 //------------------------------------- XOR Metric -----------------------------------------------//
@@ -210,7 +212,7 @@ impl NodeId {
     /// Derive a node id from a public key: node_id=hash(public_key)
     pub fn from_key<K: ByteArray>(key: &K) -> Result<Self, NodeIdError> {
         let bytes = key.as_bytes();
-        let mut hasher = VarBlake2b::new(NODE_ID_ARRAY_SIZE).map_err(|_| NodeIdError::DigestError)?;
+        let mut hasher = VarBlake2b::new(NODE_ID_ARRAY_SIZE).map_err(|_| NodeIdError::InvalidDigestOutputSize)?;
         hasher.input(bytes);
         let v = hasher.vec_result();
         Self::try_from(v.as_slice())
@@ -227,10 +229,8 @@ impl NodeId {
     }
 
     /// Find and return the indices of the K nearest neighbours from the provided node id list
-    pub fn closest_indices(&self, node_ids: &[NodeId], k: usize) -> Result<Vec<usize>, NodeIdError> {
-        if k > node_ids.len() {
-            return Err(NodeIdError::OutOfBounds);
-        }
+    pub fn closest_indices(&self, node_ids: &[NodeId], k: usize) -> Vec<usize> {
+        let k = cmp::min(k, node_ids.len());
         let mut indices: Vec<usize> = Vec::with_capacity(node_ids.len());
         let mut dists: Vec<NodeDistance> = Vec::with_capacity(node_ids.len());
         for (i, node_id) in node_ids.iter().enumerate() {
@@ -248,17 +248,17 @@ impl NodeId {
             }
             nearest_node_indices.push(indices[i]);
         }
-        Ok(nearest_node_indices)
+        nearest_node_indices
     }
 
     /// Find and return the node ids of the K nearest neighbours from the provided node id list
-    pub fn closest(&self, node_ids: &[NodeId], k: usize) -> Result<Vec<NodeId>, NodeIdError> {
-        let nearest_node_indices = self.closest_indices(&node_ids.to_vec(), k)?;
+    pub fn closest(&self, node_ids: &[NodeId], k: usize) -> Vec<NodeId> {
+        let nearest_node_indices = self.closest_indices(&node_ids.to_vec(), k);
         let mut nearest_node_ids: Vec<NodeId> = Vec::with_capacity(nearest_node_indices.len());
         for nearest in nearest_node_indices {
             nearest_node_ids.push(node_ids[nearest].clone());
         }
-        Ok(nearest_node_ids)
+        nearest_node_ids
     }
 
     pub fn into_inner(self) -> NodeIdArray {
@@ -495,34 +495,30 @@ mod test {
         let node_id = NodeId::try_from(&[169, 125, 200, 137, 210, 73, 241, 238, 25, 108, 8, 48, 66][..]).unwrap();
 
         let k = 3;
-        match node_id.closest(&node_ids, k) {
-            Ok(knn_node_ids) => {
-                println!(" KNN = {:?}", knn_node_ids);
-                assert_eq!(knn_node_ids.len(), k);
-                // XOR metric nearest neighbours
-                assert_eq!(knn_node_ids[0].0, [
-                    173, 218, 34, 188, 211, 173, 235, 82, 18, 159, 55, 47, 242
-                ]);
-                assert_eq!(knn_node_ids[1].0, [
-                    186, 43, 62, 14, 60, 214, 9, 180, 145, 122, 55, 160, 83
-                ]);
-                assert_eq!(knn_node_ids[2].0, [
-                    143, 189, 32, 210, 30, 231, 82, 5, 86, 85, 28, 82, 154
-                ]);
-                // Hamming distance nearest neighbours
-                // assert_eq!(knn_node_ids[0].0, [
-                // 75, 146, 162, 130, 22, 63, 247, 182, 156, 103, 174, 32, 134
-                // ]);
-                // assert_eq!(knn_node_ids[1].0, [
-                // 134, 116, 78, 53, 246, 206, 200, 147, 126, 96, 54, 113, 67
-                // ]);
-                // assert_eq!(knn_node_ids[2].0, [
-                // 144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159
-                // ]);
-            },
-            Err(_e) => assert!(false),
-        };
-        assert!(node_id.closest(&node_ids, node_ids.len() + 1).is_err());
+        let knn_node_ids = node_id.closest(&node_ids, k);
+        println!(" KNN = {:?}", knn_node_ids);
+        assert_eq!(knn_node_ids.len(), k);
+        // XOR metric nearest neighbours
+        assert_eq!(knn_node_ids[0].0, [
+            173, 218, 34, 188, 211, 173, 235, 82, 18, 159, 55, 47, 242
+        ]);
+        assert_eq!(knn_node_ids[1].0, [
+            186, 43, 62, 14, 60, 214, 9, 180, 145, 122, 55, 160, 83
+        ]);
+        assert_eq!(knn_node_ids[2].0, [
+            143, 189, 32, 210, 30, 231, 82, 5, 86, 85, 28, 82, 154
+        ]);
+        // Hamming distance nearest neighbours
+        // assert_eq!(knn_node_ids[0].0, [
+        // 75, 146, 162, 130, 22, 63, 247, 182, 156, 103, 174, 32, 134
+        // ]);
+        // assert_eq!(knn_node_ids[1].0, [
+        // 134, 116, 78, 53, 246, 206, 200, 147, 126, 96, 54, 113, 67
+        // ]);
+        // assert_eq!(knn_node_ids[2].0, [
+        // 144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159
+        // ]);
+        assert_eq!(node_id.closest(&node_ids, node_ids.len() + 1).len(), node_ids.len());
     }
 
     #[test]

@@ -1,6 +1,5 @@
 use bytes::Bytes;
 use chrono::Utc;
-use derive_error::Error;
 use futures::{
     channel::{mpsc, mpsc::SendError},
     SinkExt,
@@ -22,6 +21,7 @@ use tari_comms::{
 use tari_crypto::tari_utilities::message_format::MessageFormat;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tempdir::TempDir;
+use thiserror::Error;
 use tokio::{runtime, task};
 
 // Tor example for tari_comms.
@@ -30,16 +30,21 @@ use tokio::{runtime, task};
 
 #[derive(Debug, Error)]
 enum Error {
-    /// Invalid control port address provided. USAGE: tor_example 'Tor_multiaddress'.
+    #[error("Invalid control port address provided. USAGE: tor_example 'Tor_multiaddress'.")]
     InvalidArgControlPortAddress,
-    NodeIdentityError(NodeIdentityError),
-    HiddenServiceBuilderError(tor::HiddenServiceBuilderError),
-    CommsBuilderError(CommsBuilderError),
-    PeerManagerError(PeerManagerError),
-    /// Failed to send message
-    SendError(SendError),
-    JoinError(task::JoinError),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("NodeIdentityError: {0}")]
+    NodeIdentityError(#[from] NodeIdentityError),
+    #[error("HiddenServiceBuilderError: {0}")]
+    HiddenServiceBuilderError(#[from] tor::HiddenServiceBuilderError),
+    #[error("CommsBuilderError: {0}")]
+    CommsBuilderError(#[from] CommsBuilderError),
+    #[error("PeerManagerError: {0}")]
+    PeerManagerError(#[from] PeerManagerError),
+    #[error("Failed to send message")]
+    SendError(#[from] SendError),
+    #[error("JoinError: {0}")]
+    JoinError(#[from] task::JoinError),
+    #[error("{0}")]
     Custom(String),
 }
 

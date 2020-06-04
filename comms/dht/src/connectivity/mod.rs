@@ -24,7 +24,6 @@
 mod test;
 
 use crate::{DhtActorError, DhtConfig, DhtRequester};
-use derive_error::Error;
 use futures::StreamExt;
 use log::*;
 use std::{sync::Arc, time::Instant};
@@ -36,17 +35,19 @@ use tari_comms::{
     PeerManager,
 };
 use tari_shutdown::ShutdownSignal;
+use thiserror::Error;
 use tokio::{task, task::JoinHandle, time};
 
 const LOG_TARGET: &str = "comms::dht::connectivity";
 
 #[derive(Debug, Error)]
 pub enum DhtConnectivityError {
-    ConnectivityError(ConnectivityError),
-    PeerManagerError(PeerManagerError),
-    /// Failed to send network Join message
-    #[error(no_from)]
-    SendJoinFailed(DhtActorError),
+    #[error("ConnectivityError: {0}")]
+    ConnectivityError(#[from] ConnectivityError),
+    #[error("PeerManagerError: {0}")]
+    PeerManagerError(#[from] PeerManagerError),
+    #[error("Failed to send network Join message: {0}")]
+    SendJoinFailed(#[from] DhtActorError),
 }
 
 /// # DHT Connectivity Actor

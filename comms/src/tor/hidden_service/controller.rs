@@ -38,27 +38,28 @@ use crate::{
     },
     utils::multiaddr::socketaddr_to_multiaddr,
 };
-use derive_error::Error;
 use futures::{future, future::Either, pin_mut, StreamExt};
 use log::*;
 use std::{net::SocketAddr, time::Duration};
 use tari_shutdown::{Shutdown, ShutdownSignal};
+use thiserror::Error;
 use tokio::{sync::broadcast, task, time};
 
 const LOG_TARGET: &str = "comms::tor::hidden_service_controller";
 
 #[derive(Debug, Error)]
 pub enum HiddenServiceControllerError {
-    /// Tor client is not connected
+    #[error("Tor client is not connected")]
     NotConnected,
-    /// Failed to parse SOCKS address returned by control port
+    #[error("Failed to parse SOCKS address returned by control port")]
     FailedToParseSocksAddress,
-    TorClientError(TorClientError),
-    /// Unable to connect to the Tor control port
+    #[error("TorClientError: {0}")]
+    TorClientError(#[from] TorClientError),
+    #[error("Unable to connect to the Tor control port")]
     TorControlPortOffline,
-    /// The given tor service id is not a valid detached service id
+    #[error("The given tor service id is not a valid detached service id")]
     InvalidDetachedServiceId,
-    /// The shutdown signal interrupted the HiddenServiceController
+    #[error("The shutdown signal interrupted the HiddenServiceController")]
     ShutdownSignalInterrupt,
 }
 

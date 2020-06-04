@@ -20,18 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
-use derive_error::Error;
 use std::sync::PoisonError;
 use tari_storage::KeyValStoreError;
+use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum PeerManagerError {
-    /// The requested peer does not exist
+    #[error("The requested peer does not exist")]
     PeerNotFoundError,
-    /// The peer has been banned
+    #[error("The peer has been banned")]
     BannedPeer,
-    // An problem has been encountered with the database
-    DatabaseError(KeyValStoreError),
+    #[error("An problem has been encountered with the database: {0}")]
+    DatabaseError(#[from] KeyValStoreError),
 }
 
 impl PeerManagerError {

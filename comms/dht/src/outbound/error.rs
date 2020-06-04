@@ -20,33 +20,38 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
 use futures::channel::mpsc::SendError;
 use tari_comms::message::MessageError;
 use tari_crypto::{
     signatures::SchnorrSignatureError,
     tari_utilities::{ciphers::cipher::CipherError, message_format::MessageFormatError},
 };
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum DhtOutboundError {
-    SendError(SendError),
-    MessageSerializationError(MessageError),
-    MessageFormatError(MessageFormatError),
-    SignatureError(SchnorrSignatureError),
-    CipherError(CipherError),
-    /// Requester reply channel closed before response was received
+    #[error("SendError: {0}")]
+    SendError(#[from] SendError),
+    #[error("MessageSerializationError: {0}")]
+    MessageSerializationError(#[from] MessageError),
+    #[error("MessageFormatError: {0}")]
+    MessageFormatError(#[from] MessageFormatError),
+    #[error("SignatureError: {0}")]
+    SignatureError(#[from] SchnorrSignatureError),
+    #[error("CipherError: {0}")]
+    CipherError(#[from] CipherError),
+    #[error("Requester reply channel closed before response was received")]
     RequesterReplyChannelClosed,
-    /// Peer selection failed
+    #[error("Peer selection failed")]
     PeerSelectionFailed,
-    /// Failed to send broadcast message
+    #[error("Failed to send broadcast message")]
     BroadcastFailed,
-    /// Reply channel cancelled
+    #[error("Reply channel cancelled")]
     ReplyChannelCanceled,
-    /// Attempted to send a message to ourselves
+    #[error("Attempted to send a message to ourselves")]
     SendToOurselves,
-    /// Discovery process failed
+    #[error("Discovery process failed")]
     DiscoveryFailed,
-    /// Failed to insert message hash
+    #[error("Failed to insert message hash")]
     FailedToInsertMessageHash,
 }

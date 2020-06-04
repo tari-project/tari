@@ -21,61 +21,64 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{actor::DhtActorError, envelope::DhtMessageError, outbound::DhtOutboundError, storage::StorageError};
-use derive_error::Error;
 use prost::DecodeError;
-use std::io;
 use tari_comms::{message::MessageError, peer_manager::PeerManagerError};
 use tari_utilities::{byte_array::ByteArrayError, ciphers::cipher::CipherError};
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum StoreAndForwardError {
-    DhtMessageError(DhtMessageError),
-    MessageError(MessageError),
-    PeerManagerError(PeerManagerError),
-    DhtOutboundError(DhtOutboundError),
-    /// Received stored message has an invalid destination
+    #[error("DhtMessageError: {0}")]
+    DhtMessageError(#[from] DhtMessageError),
+    #[error("MessageError: {0}")]
+    MessageError(#[from] MessageError),
+    #[error("PeerManagerError: {0}")]
+    PeerManagerError(#[from] PeerManagerError),
+    #[error("DhtOutboundError: {0}")]
+    DhtOutboundError(#[from] DhtOutboundError),
+    #[error("Received stored message has an invalid destination")]
     InvalidDestination,
-    /// Received stored message has an invalid origin signature
+    #[error("Received stored message has an invalid origin signature")]
     InvalidOriginMac,
-    /// Invalid envelope body
+    #[error("Invalid envelope body")]
     InvalidEnvelopeBody,
-    /// DHT header is invalid
+    #[error("DHT header is invalid")]
     InvalidDhtHeader,
-    /// Received stored message which is not encrypted
+    #[error("Received stored message which is not encrypted")]
     StoredMessageNotEncrypted,
-    /// Unable to decrypt received stored message
+    #[error("Unable to decrypt received stored message")]
     DecryptionFailed,
-    CipherError(CipherError),
-    DhtActorError(DhtActorError),
-    /// Received duplicate stored message
+    #[error("CipherError: {0}")]
+    CipherError(#[from] CipherError),
+    #[error("DhtActorError: {0}")]
+    DhtActorError(#[from] DhtActorError),
+    #[error("Received duplicate stored message")]
     DuplicateMessage,
-    CurrentThreadRuntimeInitializeFailed(io::Error),
-    /// Unable to decode message
-    DecodeError(DecodeError),
-    /// Dht header was not provided
+    #[error("Unable to decode message: {0}")]
+    DecodeError(#[from] DecodeError),
+    #[error("Dht header was not provided")]
     DhtHeaderNotProvided,
-    /// Failed to spawn blocking task
-    JoinError(tokio::task::JoinError),
-    /// Message origin is for all forwarded messages
+    #[error("Message origin is for all forwarded messages")]
     MessageOriginRequired,
-    /// The message was malformed
+    #[error("The message was malformed")]
     MalformedMessage,
 
-    StorageError(StorageError),
-    /// The store and forward service requester channel closed
+    #[error("StorageError: {0}")]
+    StorageError(#[from] StorageError),
+    #[error("The store and forward service requester channel closed")]
     RequesterChannelClosed,
-    /// The request was cancelled by the store and forward service
+    #[error("The request was cancelled by the store and forward service")]
     RequestCancelled,
-    /// The message was not valid for store and forward
+    #[error("The message was not valid for store and forward")]
     InvalidStoreMessage,
-    /// The envelope version is invalid
+    #[error("The envelope version is invalid")]
     InvalidEnvelopeVersion,
-    MalformedNodeId(ByteArrayError),
-    /// NodeDistance threshold was invalid
+    #[error("MalformedNodeId: {0}")]
+    MalformedNodeId(#[from] ByteArrayError),
+    #[error("NodeDistance threshold was invalid")]
     InvalidNodeDistanceThreshold,
-    /// DHT message type should not have been forwarded
+    #[error("DHT message type should not have been forwarded")]
     InvalidDhtMessageType,
-    /// Failed to send request for store and forward messages
-    #[error(no_from)]
+    #[error("Failed to send request for store and forward messages: {0}")]
     RequestMessagesFailed(DhtOutboundError),
 }

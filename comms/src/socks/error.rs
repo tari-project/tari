@@ -20,49 +20,47 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
+use std::io;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum SocksError {
-    /// Failure caused by an IO error.
-    Io(std::io::Error),
-    /// Failure due to invalid target address.
-    #[error(no_from, non_std)]
+    #[error("Failure caused by an IO error: {0}")]
+    Io(#[from] io::Error),
+    #[error("Failure due to invalid target address: {0}.")]
     InvalidTargetAddress(&'static str),
-    /// Proxy server unreachable.
+    #[error("Proxy server unreachable.")]
     ProxyServerUnreachable,
-    /// Proxy server returns an invalid version number.
+    #[error("Proxy server returns an invalid version number.")]
     InvalidResponseVersion,
-    /// No acceptable auth methods
+    #[error("No acceptable auth methods")]
     NoAcceptableAuthMethods,
-    /// Unknown auth method
+    #[error("Unknown auth method")]
     UnknownAuthMethod,
-    /// General SOCKS server failure
+    #[error("General SOCKS server failure")]
     GeneralSocksServerFailure,
-    /// Connection not allowed by ruleset
+    #[error("Connection not allowed by ruleset")]
     ConnectionNotAllowedByRuleset,
-    /// Network unreachable
+    #[error("Network unreachable")]
     NetworkUnreachable,
-    /// Host unreachable
+    #[error("Host unreachable")]
     HostUnreachable,
-    /// Connection refused
+    #[error("Connection refused")]
     ConnectionRefused,
-    /// TTL expired
+    #[error("TTL expired")]
     TtlExpired,
-    /// Command not supported
+    #[error("Command not supported")]
     CommandNotSupported,
-    /// Address type not supported
+    #[error("Address type not supported")]
     AddressTypeNotSupported,
-    /// Unknown error
+    #[error("Unknown error")]
     UnknownError,
-    /// Invalid reserved byte
+    #[error("Invalid reserved byte")]
     InvalidReservedByte,
-    /// Unknown address type
+    #[error("Unknown address type")]
     UnknownAddressType,
-    // Invalid authentication values.
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Invalid authentication values: {0}.")]
     InvalidAuthValues(String),
-    /// Password auth failure
-    #[error(no_from, non_std)]
+    #[error("Password auth failure (code={0})")]
     PasswordAuthFailure(u8),
 }

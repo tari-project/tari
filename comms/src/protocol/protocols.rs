@@ -95,7 +95,10 @@ impl<TSubstream> Protocols<TSubstream> {
     {
         match self.protocols.get_mut(protocol) {
             Some(sender) => {
-                sender.send(ProtocolNotification::new(protocol.clone(), event)).await?;
+                sender
+                    .send(ProtocolNotification::new(protocol.clone(), event))
+                    .await
+                    .map_err(|_| ProtocolError::NotificationSenderDisconnected)?;
                 Ok(())
             },
             None => Err(ProtocolError::ProtocolNotRegistered),

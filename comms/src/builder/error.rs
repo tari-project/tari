@@ -21,23 +21,27 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{connection_manager::ConnectionManagerError, peer_manager::PeerManagerError};
-use derive_error::Error;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum CommsBuilderError {
-    PeerManagerError(PeerManagerError),
-    ConnectionManagerError(ConnectionManagerError),
-    /// Node identity not set. Call `with_node_identity(node_identity)` on [CommsBuilder]
+    #[error("Peer manager error: {0}")]
+    PeerManagerError(#[from] PeerManagerError),
+    #[error("Connection manager error: {0}")]
+    ConnectionManagerError(#[from] ConnectionManagerError),
+    #[error("Node identity not set. Call `with_node_identity(node_identity)` on [CommsBuilder]")]
     NodeIdentityNotSet,
-    /// The PeerStorage was not provided to the CommsBuilder. Use `with_peer_storage` to set it.
+    #[error("The PeerStorage was not provided to the CommsBuilder. Use `with_peer_storage` to set it.")]
     PeerStorageNotProvided,
-    /// The messaging pipeline was not provided to the CommsBuilder. Use `with_messaging_pipeline` to set it.
-    /// pipeline.
+    #[error(
+        "The messaging pipeline was not provided to the CommsBuilder. Use `with_messaging_pipeline` to set it's \
+         pipeline."
+    )]
     MessagingPiplineNotProvided,
-    /// Unable to receive a ConnectionManagerEvent within timeout
+    #[error("Unable to receive a ConnectionManagerEvent within timeout")]
     ConnectionManagerEventStreamTimeout,
-    /// ConnectionManagerEvent stream unexpectedly closed
+    #[error("ConnectionManagerEvent stream unexpectedly closed")]
     ConnectionManagerEventStreamClosed,
-    /// Receiving on ConnectionManagerEvent stream lagged unexpectedly
+    #[error("Receiving on ConnectionManagerEvent stream lagged unexpectedly")]
     ConnectionManagerEventStreamLagged,
 }

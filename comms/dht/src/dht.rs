@@ -39,7 +39,6 @@ use crate::{
     DhtActorError,
     DhtConfig,
 };
-use derive_error::Error;
 use futures::{channel::mpsc, future, Future};
 use log::*;
 use std::sync::Arc;
@@ -50,6 +49,7 @@ use tari_comms::{
     pipeline::PipelineError,
 };
 use tari_shutdown::ShutdownSignal;
+use thiserror::Error;
 use tower::{layer::Layer, Service, ServiceBuilder};
 
 const LOG_TARGET: &str = "comms::dht";
@@ -60,10 +60,12 @@ const DHT_SAF_SERVICE_CHANNEL_SIZE: usize = 100;
 
 #[derive(Debug, Error)]
 pub enum DhtInitializationError {
-    /// Database initialization failed
-    DatabaseMigrationFailed(StorageError),
-    StoreAndForwardInitializationError(StoreAndForwardError),
-    DhtActorInitializationError(DhtActorError),
+    #[error("Database initialization failed: {0}")]
+    DatabaseMigrationFailed(#[from] StorageError),
+    #[error("StoreAndForwardInitializationError: {0}")]
+    StoreAndForwardInitializationError(#[from] StoreAndForwardError),
+    #[error("DhtActorInitializationError: {0}")]
+    DhtActorInitializationError(#[from] DhtActorError),
 }
 
 /// Responsible for starting the DHT actor, building the DHT middleware stack and as a factory

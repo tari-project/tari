@@ -21,36 +21,35 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use bitflags::bitflags;
-use derive_error::Error;
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::{
     convert::{TryFrom, TryInto},
     fmt,
     fmt::Display,
 };
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKey};
 use tari_utilities::{ByteArray, ByteArrayError};
+use thiserror::Error;
 
 // Re-export applicable protos
 pub use crate::proto::envelope::{dht_header::Destination, DhtEnvelope, DhtHeader, DhtMessageType, Network};
-use bytes::Bytes;
-use tari_comms::message::MessageTag;
 
 #[derive(Debug, Error)]
 pub enum DhtMessageError {
-    /// Invalid node destination
+    #[error("Invalid node destination")]
     InvalidDestination,
-    /// Invalid origin public key
+    #[error("Invalid origin public key")]
     InvalidOrigin,
-    /// Invalid or unrecognised DHT message type
+    #[error("Invalid or unrecognised DHT message type")]
     InvalidMessageType,
-    /// Invalid or unrecognised network type
+    #[error("Invalid or unrecognised network type")]
     InvalidNetwork,
-    /// Invalid or unrecognised DHT message flags
+    #[error("Invalid or unrecognised DHT message flags")]
     InvalidMessageFlags,
-    /// Invalid ephemeral public key
+    #[error("Invalid ephemeral public key")]
     InvalidEphemeralPublicKey,
-    /// Header was omitted from the message
+    #[error("Header was omitted from the message")]
     HeaderOmitted,
 }
 
