@@ -13,7 +13,7 @@ jobs:
       # Step 2: Build and package the libraries
       - name: Build libwallet
         id: build-libwallet
-        uses: tari-project/action-buildlibs@v0.0.11
+        uses: tari-project/action-buildlibs@v0.0.12
         with:
           platforms: "x86_64-linux-android;aarch64-linux-android"
           level: "24"
@@ -27,6 +27,6 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: 'us-east-1'   # optional: defaults to us-east-1
-          SOURCE_DIR: '/home/runner/work/_temp/_github_home'
+          SOURCE_DIR: '/home/runner/work/_temp/_github_home/libwallet'
           DEST_DIR: ${{ github.ref }}
 
