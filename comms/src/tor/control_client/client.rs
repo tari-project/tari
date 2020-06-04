@@ -278,7 +278,10 @@ impl fmt::Display for Authentication {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::tor::control_client::{test_server, test_server::canned_responses, types::PrivateKey};
+    use crate::{
+        runtime,
+        tor::control_client::{test_server, test_server::canned_responses, types::PrivateKey},
+    };
     use futures::future;
     use std::net::SocketAddr;
     use tari_test_utils::unpack_enum;
@@ -290,7 +293,7 @@ mod test {
         (tor, mock_state)
     }
 
-    #[tokio_macros::test]
+    #[runtime::test]
     async fn connect() {
         let (mut listener, addr) = TcpTransport::default()
             .listen("/ip4/127.0.0.1/tcp/0".parse().unwrap())
@@ -306,7 +309,7 @@ mod test {
         result_in.unwrap().unwrap().0.await.unwrap();
     }
 
-    #[tokio_macros::test]
+    #[runtime::test]
     async fn authenticate() {
         let (mut tor, mock_state) = setup_test().await;
 
@@ -330,7 +333,7 @@ mod test {
         assert_eq!(req.remove(0), "AUTHENTICATE NOTACTUALLYHEXENCODED");
     }
 
-    #[tokio_macros::test]
+    #[runtime::test]
     async fn get_conf_ok() {
         let (mut tor, mock_state) = setup_test().await;
 
@@ -345,7 +348,7 @@ mod test {
         assert_eq!(results[2], "8082 127.0.0.1:9001");
     }
 
-    #[tokio_macros::test]
+    #[runtime::test]
     async fn get_conf_err() {
         let (mut tor, mock_state) = setup_test().await;
 
@@ -355,7 +358,7 @@ mod test {
         unpack_enum!(TorClientError::TorCommandFailed(_s) = err);
     }
 
-    #[tokio_macros::test]
+    #[runtime::test]
     async fn get_info_multiline_kv_ok() {
         let (mut tor, mock_state) = setup_test().await;
 
@@ -367,7 +370,7 @@ mod test {
         assert_eq!(values, &["127.0.0.1:9050", "unix:/run/tor/socks"]);
     }
 
-    #[tokio_macros::test]
+    #[runtime::test]
     async fn get_info_kv_multiline_value_ok() {
         let (mut tor, mock_state) = setup_test().await;
 
@@ -382,7 +385,7 @@ mod test {
         ]);
     }
 
-    #[tokio_macros::test]
+    #[runtime::test]
     async fn get_info_err() {
         let (mut tor, mock_state) = setup_test().await;
 
@@ -392,7 +395,7 @@ mod test {
         unpack_enum!(TorClientError::TorCommandFailed(_s) = err);
     }
 
-    #[tokio_macros::test]
+    #[runtime::test]
     async fn add_onion_from_private_key_ok() {
         let (mut tor, mock_state) = setup_test().await;
 
@@ -413,7 +416,7 @@ mod test {
         assert_eq!(request, "ADD_ONION RSA1024:dummy-key Port=8080,127.0.0.1:8080");
     }
 
-    #[tokio_macros::test]
+    #[runtime::test]
     async fn add_onion_ok() {
         let (mut tor, mock_state) = setup_test().await;
 
@@ -445,7 +448,7 @@ mod test {
         assert_eq!(request, "ADD_ONION NEW:BEST NumStreams=10 Port=8080,127.0.0.1:8080");
     }
 
-    #[tokio_macros::test]
+    #[runtime::test]
     async fn add_onion_discard_pk_ok() {
         let (mut tor, mock_state) = setup_test().await;
 
@@ -484,7 +487,7 @@ mod test {
         );
     }
 
-    #[tokio_macros::test]
+    #[runtime::test]
     async fn add_onion_err() {
         let (mut tor, mock_state) = setup_test().await;
 
@@ -498,7 +501,7 @@ mod test {
         unpack_enum!(TorClientError::TorCommandFailed(_s) = err);
     }
 
-    #[tokio_macros::test]
+    #[runtime::test]
     async fn del_onion_ok() {
         let (mut tor, mock_state) = setup_test().await;
 
@@ -510,7 +513,7 @@ mod test {
         assert_eq!(request, "DEL_ONION some-fake-id");
     }
 
-    #[tokio_macros::test]
+    #[runtime::test]
     async fn del_onion_err() {
         let (mut tor, mock_state) = setup_test().await;
 

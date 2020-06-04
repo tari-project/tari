@@ -32,6 +32,7 @@ use crate::{
     noise::NoiseConfig,
     peer_manager::PeerFeatures,
     protocol::ProtocolId,
+    runtime,
     test_utils::{node_identity::build_node_identity, test_node::build_peer_manager},
     transports::MemoryTransport,
 };
@@ -46,11 +47,11 @@ use multiaddr::Protocol;
 use std::{error::Error, time::Duration};
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
-use tokio::{runtime::Handle, time::timeout};
+use tokio::time::timeout;
 
-#[tokio_macros::test_basic]
+#[runtime::test_basic]
 async fn listen() -> Result<(), Box<dyn Error>> {
-    let rt_handle = Handle::current();
+    let rt_handle = runtime::current();
     let (event_tx, mut event_rx) = mpsc::channel(1);
     let mut shutdown = Shutdown::new();
     let peer_manager = build_peer_manager();
@@ -83,9 +84,9 @@ async fn listen() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-#[tokio_macros::test_basic]
+#[runtime::test_basic]
 async fn smoke() {
-    let rt_handle = Handle::current();
+    let rt_handle = runtime::current();
     // This test sets up Dialer and Listener components, uses the Dialer to dial the Listener,
     // asserts the emitted events are correct, opens a substream, sends a small message over the substream,
     // receives and checks the message and then disconnects and shuts down.
@@ -188,9 +189,9 @@ async fn smoke() {
     timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
 }
 
-#[tokio_macros::test_basic]
+#[runtime::test_basic]
 async fn banned() {
-    let rt_handle = Handle::current();
+    let rt_handle = runtime::current();
     let (event_tx, mut event_rx) = mpsc::channel(10);
     let mut shutdown = Shutdown::new();
 

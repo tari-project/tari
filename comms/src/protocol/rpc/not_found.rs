@@ -20,19 +20,52 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::compat::IoCompat;
-use futures::{AsyncRead, AsyncWrite};
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use super::RpcStatus;
+use crate::protocol::{
+    rpc::{
+        body::Body,
+        message::{Request, Response},
+        RpcError,
+    },
+    ProtocolId,
+};
+use bytes::Bytes;
+use futures::future;
+use std::task::{Context, Poll};
+use tower::Service;
 
-/// Tari comms canonical framing
-pub type CanonicalFraming<T> = Framed<IoCompat<T>, LengthDelimitedCodec>;
+#[derive(Clone)]
+pub struct ProtocolServiceNotFound;
 
-pub fn canonical<T>(stream: T, max_frame_len: usize) -> CanonicalFraming<T>
-where T: AsyncRead + AsyncWrite + Unpin {
-    Framed::new(
-        IoCompat::new(stream),
-        LengthDelimitedCodec::builder()
-            .max_frame_length(max_frame_len)
-            .new_codec(),
-    )
+impl Service<ProtocolId> for ProtocolServiceNotFound {
+    type Error = RpcError;
+    type Future = future::Ready<Result<Self::Response, Self::Error>>;
+    type Response = NeverService;
+
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, protocol: ProtocolId) -> Self::Future {
+        future::ready(Err(RpcError::ProtocolServiceNotFound(
+            String::from_utf8_lossy(&protocol).to_string(),
+        )))
+    }
+}
+
+// Used to satisfy the ProtocolServiceNotFound: MakeService trait bound. This is never called.
+pub struct NeverService;
+
+impl Service<Request<Bytes>> for NeverService {
+    type Error = RpcStatus;
+    type Future = future::Ready<Result<Self::Response, Self::Error>>;
+    type Response = Response<Body>;
+
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        unimplemented!()
+    }
+
+    fn call(&mut self, _: Request<Bytes>) -> Self::Future {
+        unimplemented!()
+    }
 }

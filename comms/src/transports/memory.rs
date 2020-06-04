@@ -131,13 +131,14 @@ impl Stream for Listener {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::runtime;
     use futures::{
         future::join,
         io::{AsyncReadExt, AsyncWriteExt},
         stream::StreamExt,
     };
 
-    #[tokio_macros::test]
+    #[runtime::test]
     async fn simple_listen_and_dial() -> Result<(), ::std::io::Error> {
         let t = MemoryTransport::default();
 

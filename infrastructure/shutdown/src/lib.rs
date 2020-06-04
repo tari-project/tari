@@ -21,13 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use futures::{
-    channel::oneshot,
-    future::{Fuse, Shared},
+    channel::{oneshot, oneshot::Canceled},
+    future::{Fuse, FusedFuture, Shared},
+    task::{Context, Poll},
+    Future,
     FutureExt,
 };
-
-/// Receiver end of a shutdown signal. Once received the consumer should shut down.
-pub type ShutdownSignal = Shared<Fuse<oneshot::Receiver<()>>>;
+use std::pin::Pin;
 
 /// Trigger for shutdowns.
 ///
@@ -96,6 +96,41 @@ impl Drop for Shutdown {
 impl Default for Shutdown {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Receiver end of a shutdown signal. Once received the consumer should shut down.
+pub type ShutdownSignal = Shared<Fuse<oneshot::Receiver<()>>>;
+
+#[derive(Debug, Clone, Default)]
+pub struct OptionalShutdownSignal(Option<ShutdownSignal>);
+
+impl OptionalShutdownSignal {
+    pub fn none() -> Self {
+        Self(None)
+    }
+}
+
+impl Future for OptionalShutdownSignal {
+    type Output = Result<(), Canceled>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match self.0.as_mut() {
+            Some(inner) => inner.poll_unpin(cx),
+            None => Poll::Pending,
+        }
+    }
+}
+
+impl From<Option<ShutdownSignal>> for OptionalShutdownSignal {
+    fn from(inner: Option<ShutdownSignal>) -> Self {
+        Self(inner)
+    }
+}
+
+impl FusedFuture for OptionalShutdownSignal {
+    fn is_terminated(&self) -> bool {
+        self.0.as_ref().map(FusedFuture::is_terminated).unwrap_or(false)
     }
 }
 

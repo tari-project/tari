@@ -40,6 +40,10 @@ tokio-util = {version="0.2.0", features=["codec"]}
 tower= "0.3.1"
 yamux = "=0.4.7"
 
+# RPC dependencies
+async-trait = {version="0.1.36", optional=true}
+tower-make = {version="0.3.0", optional=true}
+
 [dev-dependencies]
 tari_test_utils = {version="^0.2", path="../infrastructure/test_utils"}
 
@@ -53,3 +57,4 @@ tari_common = { version = "^0.2", path="../common"}
 
 [features]
 avx2 = ["tari_crypto/avx2"]
+rpc = ["async-trait", "tower-make"]

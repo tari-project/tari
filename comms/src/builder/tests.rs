@@ -100,7 +100,7 @@ async fn spawn_node(
     (comms_node, inbound_rx, outbound_tx)
 }
 
-#[tokio_macros::test_basic]
+#[runtime::test_basic]
 async fn peer_to_peer_custom_protocols() {
     const TEST_PROTOCOL: Bytes = Bytes::from_static(b"/tari/test");
     const ANOTHER_TEST_PROTOCOL: Bytes = Bytes::from_static(b"/tari/test-again");
@@ -187,7 +187,7 @@ async fn peer_to_peer_custom_protocols() {
     comms_node2.shutdown().await;
 }
 
-#[tokio_macros::test_basic]
+#[runtime::test_basic]
 async fn peer_to_peer_messaging() {
     const NUM_MSGS: usize = 100;
 
@@ -264,7 +264,7 @@ async fn peer_to_peer_messaging() {
     comms_node2.shutdown().await;
 }
 
-#[tokio_macros::test_basic]
+#[runtime::test_basic]
 async fn peer_to_peer_messaging_simultaneous() {
     const NUM_MSGS: usize = 10;
 

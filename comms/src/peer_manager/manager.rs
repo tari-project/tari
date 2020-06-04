@@ -285,6 +285,7 @@ mod test {
             peer::{Peer, PeerFlags},
             PeerFeatures,
         },
+        runtime,
     };
     use rand::rngs::OsRng;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
@@ -309,7 +310,7 @@ mod test {
         peer
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test_basic]
     async fn get_broadcast_identities() {
         // Create peer manager with random peers
         let peer_manager = PeerManager::new(HashmapDatabase::new()).unwrap();
@@ -422,7 +423,7 @@ mod test {
         assert_ne!(identities1, identities2);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test_basic]
     async fn calc_region_threshold() {
         let n = 5;
         // Create peer manager with random peers
@@ -490,7 +491,7 @@ mod test {
         }
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test_basic]
     async fn closest_peers() {
         let n = 5;
         // Create peer manager with random peers
@@ -524,7 +525,7 @@ mod test {
         }
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test_basic]
     async fn add_or_update_online_peer() {
         let peer_manager = PeerManager::new(HashmapDatabase::new()).unwrap();
         let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);

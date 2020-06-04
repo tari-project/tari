@@ -118,14 +118,14 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::pipeline::SinkService;
+    use crate::{pipeline::SinkService, runtime};
     use bytes::Bytes;
     use futures::stream;
     use std::time::Duration;
     use tari_test_utils::{collect_stream, unpack_enum};
     use tokio::{runtime::Handle, time};
 
-    #[tokio_macros::test_basic]
+    #[runtime::test_basic]
     async fn run() {
         const NUM_ITEMS: usize = 10;
         let items =

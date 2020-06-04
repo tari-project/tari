@@ -20,19 +20,41 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::compat::IoCompat;
-use futures::{AsyncRead, AsyncWrite};
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use super::RpcStatus;
+use prost::DecodeError;
+use std::io;
+use thiserror::Error;
 
-/// Tari comms canonical framing
-pub type CanonicalFraming<T> = Framed<IoCompat<T>, LengthDelimitedCodec>;
+#[derive(Debug, Error)]
+pub enum RpcError {
+    #[error("Failed to decode message: {0}")]
+    DecodeError(#[from] DecodeError),
+    #[error("IO Error: {0}")]
+    Io(#[from] io::Error),
+    #[error("The client connection is closed")]
+    ClientClosed,
+    #[error("Request failed: {0}")]
+    RequestFailed(#[from] RpcStatus),
+    #[error("Maximum number of concurrent RPC sessions reached")]
+    MaximumConcurrencyReached,
+    #[error("Service not found for protocol `{0}`")]
+    ProtocolServiceNotFound(String),
+    #[error("Remote peer unexpectedly closed the RPC connection")]
+    ServerClosedRequest,
+    #[error("Request cancelled")]
+    RequestCancelled,
+    #[error("Client internal error: {0}")]
+    ClientInternalError(String),
+    #[error("RPC negotiation timed out")]
+    NegotiationTimedOut,
+    #[error("RPC negotiation failed: The client does not support any RPC protocol version supported by this node")]
+    NegotiationClientNoSupportedVersion,
+    #[error("RPC negotiation failed: The server does not support any RPC protocol version supported by this node")]
+    NegotiationServerNoSupportedVersion,
+}
 
-pub fn canonical<T>(stream: T, max_frame_len: usize) -> CanonicalFraming<T>
-where T: AsyncRead + AsyncWrite + Unpin {
-    Framed::new(
-        IoCompat::new(stream),
-        LengthDelimitedCodec::builder()
-            .max_frame_length(max_frame_len)
-            .new_codec(),
-    )
+impl RpcError {
+    pub fn client_internal_error<T: ToString>(err: T) -> Self {
+        RpcError::ClientInternalError(err.to_string())
+    }
 }

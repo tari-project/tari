@@ -150,13 +150,14 @@ mod test {
     use crate::{
         connection_manager::ConnectionDirection,
         peer_manager::PeerFeatures,
+        runtime,
         test_utils::node_identity::build_node_identity,
         transports::{MemoryTransport, Transport},
     };
     use futures::{future, StreamExt};
     use tari_crypto::tari_utilities::ByteArray;
 
-    #[tokio_macros::test_basic]
+    #[runtime::test_basic]
     async fn identity_exchange() {
         let transport = MemoryTransport;
         let addr = "/memory/0".parse().unwrap();

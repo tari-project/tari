@@ -53,7 +53,7 @@ mod test {
     use futures::SinkExt;
     use tokio::{time, time::Duration};
 
-    #[tokio_macros::test_basic]
+    #[runtime::test_basic]
     async fn echos() {
         let (inbound, outbound) = MemorySocket::new_pair();
         let liveness = LivenessSession::new(inbound);

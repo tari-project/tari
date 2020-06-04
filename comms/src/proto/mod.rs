@@ -25,3 +25,6 @@ pub(crate) mod envelope;
 
 #[path = "tari.comms.identity.rs"]
 pub(crate) mod identity;
+
+#[path = "tari.comms.rpc.rs"]
+pub(crate) mod rpc;
