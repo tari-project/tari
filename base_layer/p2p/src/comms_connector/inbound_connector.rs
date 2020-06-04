@@ -22,11 +22,13 @@
 
 use super::peer_message::PeerMessage;
 use futures::{task::Context, Future, Sink, SinkExt};
+use log::*;
 use std::{error::Error, pin::Pin, sync::Arc, task::Poll};
 use tari_comms::pipeline::PipelineError;
 use tari_comms_dht::{domain_message::MessageHeader, inbound::DecryptedDhtMessage};
 use tower::Service;
 
+const LOG_TARGET: &str = "comms::middleware::inbound_connector";
 /// This service receives DecryptedDhtMessage, deserializes the MessageHeader and
 /// sends a `PeerMessage` on the given sink.
 #[derive(Clone)]
@@ -99,7 +101,12 @@ impl<TSink> InboundDomainConnector<TSink> {
             dht_header,
             body: msg_bytes,
         };
-
+        trace!(
+            target: LOG_TARGET,
+            "Forwarding message {:?} to pubsub, Trace: {}",
+            inbound_message.tag,
+            &peer_message.dht_header.message_tag
+        );
         Ok(peer_message)
     }
 }
