@@ -183,6 +183,7 @@ pub struct DhtActor {
 }
 
 impl DhtActor {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: DhtConfig,
         conn: DbConnection,

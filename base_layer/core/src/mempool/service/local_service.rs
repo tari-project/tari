@@ -129,7 +129,7 @@ mod test {
 
     #[tokio_macros::test]
     async fn mempool_stats() {
-        let (_, event_subscriber) = bounded(100);
+        let (_, event_subscriber) = bounded(100, 110);
         let (tx, rx) = unbounded();
         let mut service = LocalMempoolService::new(tx, event_subscriber);
         task::spawn(mock_handler(rx));
@@ -140,7 +140,7 @@ mod test {
 
     #[tokio_macros::test]
     async fn mempool_stats_from_multiple() {
-        let (_, event_subscriber) = bounded(100);
+        let (_, event_subscriber) = bounded(100, 111);
         let (tx, rx) = unbounded();
         let mut service = LocalMempoolService::new(tx, event_subscriber);
         let mut service2 = service.clone();

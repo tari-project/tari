@@ -160,7 +160,7 @@ where T: BlockchainBackend + 'static
         let (outbound_tx_sender_service, outbound_tx_stream) = futures_mpsc_channel_unbounded();
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
         let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
-        let (mempool_state_event_publisher, mempool_state_event_subscriber) = bounded(100);
+        let (mempool_state_event_publisher, mempool_state_event_subscriber) = bounded(100, 6);
         let outbound_mp_interface =
             OutboundMempoolServiceInterface::new(outbound_request_sender_service, outbound_tx_sender_service);
         let local_mp_interface = LocalMempoolService::new(local_request_sender_service, mempool_state_event_subscriber);

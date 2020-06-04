@@ -112,7 +112,7 @@ where T: OutputManagerBackend + 'static
         let base_node_response_stream = self.base_node_response_stream();
 
         let (sender, receiver) = reply_channel::unbounded();
-        let (publisher, subscriber) = bounded(100);
+        let (publisher, subscriber) = bounded(100, 7);
 
         let oms_handle = OutputManagerHandle::new(sender, subscriber);
 

@@ -67,7 +67,7 @@ impl PeerConnectionStats {
     /// `last_connection_attempt` is not `Failed`
     pub fn last_failed_at(&self) -> Option<Instant> {
         match &self.last_connection_attempt {
-            LastConnectionAttempt::Failed { failed_at, .. } => Some(failed_at.clone()),
+            LastConnectionAttempt::Failed { failed_at, .. } => Some(*failed_at),
             _ => None,
         }
     }

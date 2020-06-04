@@ -42,7 +42,7 @@ pub struct MockChainMetadata {
 
 impl MockChainMetadata {
     pub fn new() -> Self {
-        let (publisher, subscriber) = bounded(10);
+        let (publisher, subscriber) = bounded(10, 114);
         Self { publisher, subscriber }
     }
 

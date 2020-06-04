@@ -26,13 +26,7 @@ use crate::{
     peer_manager::NodeId,
 };
 use futures::{channel::mpsc, lock::Mutex, stream::Fuse, StreamExt};
-use std::{
-    collections::HashMap,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-};
+use std::{collections::HashMap, sync::Arc};
 use tokio::{sync::broadcast, task};
 
 pub fn create_connectivity_mock() -> (ConnectivityRequester, ConnectivityManagerMock) {
@@ -46,7 +40,6 @@ pub fn create_connectivity_mock() -> (ConnectivityRequester, ConnectivityManager
 
 #[derive(Debug, Clone)]
 pub struct ConnectivityManagerMockState {
-    call_count: Arc<AtomicUsize>,
     calls: Arc<Mutex<Vec<String>>>,
     active_conns: Arc<Mutex<HashMap<NodeId, PeerConnection>>>,
     selected_connections: Arc<Mutex<Vec<PeerConnection>>>,
@@ -57,17 +50,12 @@ pub struct ConnectivityManagerMockState {
 impl ConnectivityManagerMockState {
     pub fn new(event_tx: broadcast::Sender<Arc<ConnectivityEvent>>) -> Self {
         Self {
-            call_count: Arc::new(AtomicUsize::new(0)),
             calls: Arc::new(Mutex::new(Vec::new())),
             event_tx,
             selected_connections: Arc::new(Mutex::new(Vec::new())),
             managed_peers: Arc::new(Mutex::new(Vec::new())),
             active_conns: Arc::new(Mutex::new(HashMap::new())),
         }
-    }
-
-    fn inc_call_count(&self) {
-        self.call_count.fetch_add(1, Ordering::SeqCst);
     }
 
     async fn add_call(&self, call_str: String) {
@@ -91,8 +79,8 @@ impl ConnectivityManagerMockState {
     }
 
     #[allow(dead_code)]
-    pub fn call_count(&self) -> usize {
-        self.call_count.load(Ordering::SeqCst)
+    pub async fn call_count(&self) -> usize {
+        self.calls.lock().await.len()
     }
 
     #[allow(dead_code)]
@@ -139,7 +127,6 @@ impl ConnectivityManagerMock {
 
     async fn handle_request(&self, req: ConnectivityRequest) {
         use ConnectivityRequest::*;
-        self.state.inc_call_count();
         self.state.add_call(format!("{:?}", req)).await;
         match req {
             DialPeer(node_id, reply_tx) => {
