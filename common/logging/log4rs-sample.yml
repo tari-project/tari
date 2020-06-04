@@ -122,3 +122,9 @@ loggers:
     appenders:
       - other
     additive: false
+  # Route log events sent to the "pub_sub" logger to the "other" appender
+  tari_broadcast_channel:
+    level: debug
+    appenders:
+      - other
+    additive: false

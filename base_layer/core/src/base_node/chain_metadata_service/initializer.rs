@@ -46,7 +46,7 @@ impl ServiceInitializer for ChainMetadataServiceInitializer {
         shutdown: ShutdownSignal,
     ) -> Self::Future
     {
-        let (publisher, subscriber) = broadcast_channel::bounded(BROADCAST_EVENT_BUFFER_SIZE);
+        let (publisher, subscriber) = broadcast_channel::bounded(BROADCAST_EVENT_BUFFER_SIZE, 5);
         let handle = ChainMetadataHandle::new(subscriber);
         handles_fut.register(handle);
 

@@ -1385,7 +1385,7 @@ where
 
         let (_sender, receiver) = reply_channel::unbounded();
         let (tx, _rx) = mpsc::channel(20);
-        let (oms_event_publisher, _oms_event_subscriber) = bounded(100);
+        let (oms_event_publisher, _oms_event_subscriber) = bounded(100, 118);
         let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
         let (event_publisher, _) = broadcast::channel(100);
         let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
