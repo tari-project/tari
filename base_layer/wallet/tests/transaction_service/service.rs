@@ -36,6 +36,7 @@ use prost::Message;
 use rand::rngs::OsRng;
 use std::{
     convert::{TryFrom, TryInto},
+    path::Path,
     sync::Arc,
     time::Duration,
 };
@@ -141,13 +142,13 @@ fn create_runtime() -> Runtime {
         .unwrap()
 }
 
-pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
+pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static, P: AsRef<Path>>(
     runtime: &mut Runtime,
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
     factories: CryptoFactories,
     backend: T,
-    database_path: String,
+    database_path: P,
     discovery_request_timeout: Duration,
 ) -> (TransactionServiceHandle, OutputManagerHandle, CommsNode)
 {
@@ -157,7 +158,7 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static>(
         node_identity,
         peers,
         publisher,
-        database_path,
+        database_path.as_ref().to_str().unwrap().to_owned(),
         discovery_request_timeout,
     ));
 
@@ -1101,7 +1102,7 @@ fn finalize_tx_with_missing_output_sqlite_db() {
 #[test]
 fn discovery_async_return_test() {
     let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_folder = db_tempdir.path();
 
     let mut runtime = runtime::Builder::new()
         .basic_scheduler()
@@ -1110,10 +1111,6 @@ fn discovery_async_return_test() {
         .build()
         .unwrap();
     let factories = CryptoFactories::default();
-
-    let alice_backend = TransactionMemoryDatabase::new();
-    let bob_backend = TransactionMemoryDatabase::new();
-    let dave_backend = TransactionMemoryDatabase::new();
 
     // Alice's parameters
     let alice_node_identity = Arc::new(
@@ -1130,55 +1127,33 @@ fn discovery_async_return_test() {
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
     );
 
-    // Dave's parameters
-    let dave_node_identity = Arc::new(
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
-    );
-
     log::info!(
-        "discovery_async_return_test: Alice: '{}', Bob: '{}', Carol: '{}', Dave: '{}'",
+        "discovery_async_return_test: Alice: '{}', Bob: '{}', Carol: '{}'",
         alice_node_identity.node_id().short_str(),
         bob_node_identity.node_id().short_str(),
         carol_node_identity.node_id().short_str(),
-        dave_node_identity.node_id().short_str()
+    );
+
+    let (_carol_ts, _carol_oms, carol_comms) = setup_transaction_service(
+        &mut runtime,
+        carol_node_identity.clone(),
+        vec![],
+        factories.clone(),
+        TransactionMemoryDatabase::new(),
+        db_folder.join("carol"),
+        Duration::from_secs(1),
     );
 
     let (mut alice_ts, mut alice_oms, alice_comms) = setup_transaction_service(
         &mut runtime,
         alice_node_identity.clone(),
-        vec![bob_node_identity.clone()],
+        vec![carol_node_identity.clone()],
         factories.clone(),
-        alice_backend,
-        db_folder.clone(),
+        TransactionMemoryDatabase::new(),
+        db_folder.join("alice"),
         Duration::from_secs(20),
     );
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
-
-    let (_bob_ts, _bob_oms, bob_comms) = setup_transaction_service(
-        &mut runtime,
-        bob_node_identity.clone(),
-        vec![alice_node_identity.clone(), dave_node_identity.clone()],
-        factories.clone(),
-        bob_backend,
-        db_folder.clone(),
-        Duration::from_secs(1),
-    );
-
-    let (_dave_ts, _dave_oms, dave_comms) = setup_transaction_service(
-        &mut runtime,
-        dave_node_identity.clone(),
-        vec![bob_node_identity.clone()],
-        factories.clone(),
-        dave_backend,
-        db_folder,
-        Duration::from_secs(1),
-    );
-    // // Connect Dave to Bob
-    // let _ = runtime.block_on(
-    //     dave_comms
-    //         .connection_manager()
-    //         .dial_peer(bob_node_identity.node_id().clone()),
-    // );
 
     let (_utxo, uo1a) = make_input(&mut OsRng, MicroTari(5500), &factories.commitment);
     runtime.block_on(alice_oms.add_output(uo1a)).unwrap();
@@ -1193,7 +1168,7 @@ fn discovery_async_return_test() {
 
     let tx_id = runtime
         .block_on(alice_ts.send_transaction(
-            carol_node_identity.public_key().clone(),
+            bob_node_identity.public_key().clone(),
             value_a_to_c_1,
             MicroTari::from(20),
             "Discovery Tx!".to_string(),
@@ -1216,7 +1191,7 @@ fn discovery_async_return_test() {
                     }
                 },
                 () = delay => {
-                    break;
+                    panic!("Timeout while waiting for transaction to fail sending");
                 },
             }
         }
@@ -1226,7 +1201,7 @@ fn discovery_async_return_test() {
 
     let tx_id2 = runtime
         .block_on(alice_ts.send_transaction(
-            dave_node_identity.public_key().clone(),
+            carol_node_identity.public_key().clone(),
             value_a_to_c_1,
             MicroTari::from(20),
             "Discovery Tx2!".to_string(),
@@ -1237,26 +1212,21 @@ fn discovery_async_return_test() {
     let mut success_tx_id = 0u64;
     runtime.block_on(async {
         let mut delay = delay_for(Duration::from_secs(60)).fuse();
-        let mut success_count = 0;
 
         loop {
             futures::select! {
                 event = alice_event_stream.select_next_some() => {
                     if let TransactionEvent::TransactionDirectSendResult(tx_id, success) = &*event.unwrap() {
-                        success_count+=1;
-                        success_result = success.clone();
+                        success_result = *success;
                         success_tx_id = *tx_id;
-                        if success_count >= 1 {
-                            break;
-                        }
+                        break;
                     }
                 },
                 () = delay => {
-                    break;
+                    panic!("Timeout while waiting for transaction to successfully be sent");
                 },
             }
         }
-        assert!(success_count >= 1);
     });
 
     assert_eq!(success_tx_id, tx_id2);
@@ -1264,29 +1234,25 @@ fn discovery_async_return_test() {
 
     runtime.block_on(async {
         let mut delay = delay_for(Duration::from_secs(60)).fuse();
-        let mut tx_reply = 0;
         loop {
             futures::select! {
                 event = alice_event_stream.select_next_some() => {
                     if let TransactionEvent::ReceivedTransactionReply(tx_id) = &*event.unwrap() {
                         if tx_id == &tx_id2 {
-                            tx_reply +=1;
                             break;
                         }
                     }
                 },
                 () = delay => {
-                    break;
+                    panic!("Timeout while Alice was waiting for a transaction reply");
                 },
             }
         }
-        assert!(tx_reply >= 1);
     });
 
     runtime.block_on(async move {
         alice_comms.shutdown().await;
-        bob_comms.shutdown().await;
-        dave_comms.shutdown().await;
+        carol_comms.shutdown().await;
     });
 }
 
