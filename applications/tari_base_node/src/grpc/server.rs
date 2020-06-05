@@ -34,6 +34,7 @@ use tari_core::{
     chain_storage::HistoricalBlock,
     consensus::{emission::EmissionSchedule, ConsensusConstants, Network},
     proof_of_work::PowAlgorithm,
+    transactions::fee::{KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
 };
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray, Hashable};
 use tokio::{runtime, sync::mpsc};
@@ -570,6 +571,9 @@ impl From<ConsensusConstants> for base_node_grpc::ConsensusConstants {
             emission_decay: emission_decay.into(),
             emission_tail: emission_tail.into(),
             min_blake_pow_difficulty: cc.min_pow_difficulty(PowAlgorithm::Blake).into(),
+            block_weight_inputs: WEIGHT_PER_INPUT,
+            block_weight_outputs: WEIGHT_PER_OUTPUT,
+            block_weight_kernels: KERNEL_WEIGHT,
         }
     }
 }

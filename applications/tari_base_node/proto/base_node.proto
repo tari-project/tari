@@ -144,6 +144,12 @@ message ConsensusConstants {
     uint64 emission_tail = 12;
     /// This is the initial min difficulty for the difficulty adjustment
     uint64 min_blake_pow_difficulty = 13;
+    /// Block weight for inputs
+    uint64 block_weight_inputs = 14;
+    /// Block weight for output
+    uint64 block_weight_outputs = 15;
+    /// Block weight for kernels
+    uint64 block_weight_kernels = 16;
 }
 
 // The return type of the rpc GetCalcTiming
