@@ -23,7 +23,7 @@
 use crate::{
     broadcast_strategy::BroadcastStrategy,
     outbound::{
-        message::SendMessageResponse,
+        message::{SendFailure, SendMessageResponse},
         message_params::FinalSendMessageParams,
         message_send_state::MessageSendState,
         DhtOutboundRequest,
@@ -192,9 +192,12 @@ impl OutboundServiceMock {
                                     delay_for(delay).await;
                                     let _ = inner_reply_tx.send(Ok(()));
                                 },
-                                _ => {
+                                resp => {
                                     reply_tx
-                                        .send(SendMessageResponse::Failed)
+                                        .send(SendMessageResponse::Failed(SendFailure::General(format!(
+                                            "Unexpected mock response {:?}",
+                                            resp
+                                        ))))
                                         .expect("Reply channel cancelled");
                                 },
                             };
@@ -206,7 +209,9 @@ impl OutboundServiceMock {
                                 let _ = inner_reply_tx.send(Ok(()));
                             } else {
                                 reply_tx
-                                    .send(SendMessageResponse::Failed)
+                                    .send(SendMessageResponse::Failed(SendFailure::General(
+                                        "Mock broadcast behaviour was not set to Queued".to_string(),
+                                    )))
                                     .expect("Reply channel cancelled");
                             }
                         },
@@ -279,7 +284,7 @@ mod condvar_shim {
 }
 
 /// Define the three response options the mock can respond with.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ResponseType {
     Queued,
     QueuedFail,

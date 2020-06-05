@@ -33,6 +33,7 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_utilities::hex::Hex;
+use thiserror::Error;
 
 /// Determines if an outbound message should be Encrypted and, if so, for which public key
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,13 +78,29 @@ impl Default for OutboundEncryption {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum SendFailure {
+    #[error("Attempt to send message to ourselves")]
+    SendToOurselves,
+    #[error("Discovery reply channel cancelled")]
+    SenderCancelled,
+    #[error("Failure when sending: {0}")]
+    General(String),
+    #[error("Discovery failed")]
+    DiscoveryFailed,
+    #[error("Failure when generating messages: {0}")]
+    FailedToGenerateMessages(String),
+    #[error("No messages were queued for sending")]
+    NoMessagesQueued,
+}
+
 #[derive(Debug)]
 pub enum SendMessageResponse {
     /// Returns the message tags which are queued for sending. These tags will be used in a subsequent OutboundEvent to
     /// indicate if the message succeeded/failed to send
     Queued(MessageSendStates),
     /// A failure occurred when sending
-    Failed,
+    Failed(SendFailure),
     /// DHT Discovery has been initiated. The caller may wait on the receiver
     /// to find out of the message was sent.
     /// _NOTE: DHT discovery could take minutes (determined by `DhtConfig::discovery_request_timeout)_
@@ -92,24 +109,26 @@ pub enum SendMessageResponse {
 
 impl SendMessageResponse {
     /// Returns the result of a send message request.
-    /// A `SendMessageResponse::Queued(n)` will resolve immediately returning `Some(n)`.
-    /// A `SendMessageResponse::Failed` will resolve immediately returning a `None`.
-    /// If DHT discovery is initiated, this will resolve once discovery has completed, either
-    /// succeeding (`Some(n)`) or failing (`None`).
-    pub async fn resolve_ok(self) -> Option<MessageSendStates> {
+    /// A `SendMessageResponse::Queued(n)` will resolve immediately returning `Ok(n)` or
+    /// `Err(SendFailure::NoMessagesSent)`. A `SendMessageResponse::Failed` will resolve immediately returning a
+    /// `Err(SendFailure)`. If DHT discovery is initiated, this will resolve once discovery has completed, either
+    /// succeeding or failing.
+    pub async fn resolve(self) -> Result<MessageSendStates, SendFailure> {
         use SendMessageResponse::*;
         match self {
-            Queued(send_states) => Some(send_states),
-            Failed => None,
-            PendingDiscovery(rx) => rx.await.ok()?.queued_or_failed(),
+            Queued(send_states) if !send_states.is_empty() => Ok(send_states),
+            Queued(_) => Err(SendFailure::NoMessagesQueued),
+            Failed(err) => Err(err),
+            PendingDiscovery(rx) => rx.await.map_err(|_| SendFailure::SenderCancelled)?.queued_or_failed(),
         }
     }
 
-    fn queued_or_failed(self) -> Option<MessageSendStates> {
+    fn queued_or_failed(self) -> Result<MessageSendStates, SendFailure> {
         use SendMessageResponse::*;
         match self {
-            Queued(send_states) => Some(send_states),
-            Failed => None,
+            Queued(send_states) if !send_states.is_empty() => Ok(send_states),
+            Queued(_) => Err(SendFailure::NoMessagesQueued),
+            Failed(err) => Err(err),
             PendingDiscovery(_) => panic!("ok_or_failed() called on PendingDiscovery"),
         }
     }

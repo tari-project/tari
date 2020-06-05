@@ -30,7 +30,7 @@ use futures::{channel::mpsc::Receiver, FutureExt, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc, time::Duration};
 use tari_comms::types::CommsPublicKey;
-use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundEncryption};
+use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::proto::{
         base_node as BaseNodeProto,
@@ -154,7 +154,6 @@ where TBackend: TransactionBackend + Clone + 'static
                 .outbound_message_service
                 .send_direct(
                     self.base_node_public_key.clone(),
-                    OutboundEncryption::None,
                     OutboundDomainMessage::new(TariMessageType::MempoolRequest, mempool_request.clone()),
                 )
                 .await
@@ -175,7 +174,6 @@ where TBackend: TransactionBackend + Clone + 'static
                 .outbound_message_service
                 .send_direct(
                     self.base_node_public_key.clone(),
-                    OutboundEncryption::None,
                     OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request),
                 )
                 .await

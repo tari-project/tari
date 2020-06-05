@@ -33,7 +33,7 @@ mod message_params;
 pub use message_params::SendMessageParams;
 
 mod message_send_state;
-pub use message_send_state::MessageSendStates;
+pub use message_send_state::{MessageSendState, MessageSendStates};
 
 mod requester;
 pub use requester::OutboundMessageRequester;

@@ -130,8 +130,9 @@ impl DhtActorMock {
                     .get(&key.to_string())
                     .map(Clone::clone)));
             },
-            SetMetadata(key, value) => {
+            SetMetadata(key, value, reply_tx) => {
                 self.state.settings.write().unwrap().insert(key.to_string(), value);
+                reply_tx.send(Ok(())).unwrap();
             },
         }
     }

@@ -77,7 +77,7 @@ impl Default for FinalSendMessageParams {
             dht_message_type: Default::default(),
             dht_message_flags: Default::default(),
             force_origin: false,
-            is_discovery_enabled: true,
+            is_discovery_enabled: false,
             dht_header: None,
         }
     }

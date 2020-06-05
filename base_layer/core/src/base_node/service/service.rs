@@ -415,48 +415,40 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     let send_message_response = outbound_message_service
         .send_direct(
             origin_public_key,
-            OutboundEncryption::None,
             OutboundDomainMessage::new(TariMessageType::BaseNodeResponse, message),
         )
         .await?;
-    let owned_request_key = inner_msg.request_key;
+
+    let request_key = inner_msg.request_key;
     tokio::spawn(async move {
-        match send_message_response.resolve_ok().await {
-            None => {
+        match send_message_response.resolve().await {
+            Err(err) => {
                 error!(
                     target: LOG_TARGET,
-                    "Incoming request ({}) response failed to send", owned_request_key,
+                    "Incoming request ({}) response failed to send: {}", request_key, err
                 );
             },
-            Some(send_states) => {
-                if send_states.len() == 1 {
-                    let msg_tag = send_states[0].tag;
+            Ok(send_states) => {
+                let msg_tag = send_states[0].tag;
+                trace!(
+                    target: LOG_TARGET,
+                    "Incoming request ({}) response queued with {}",
+                    request_key,
+                    &msg_tag,
+                );
+                if send_states.wait_single().await {
                     trace!(
                         target: LOG_TARGET,
-                        "Incoming request ({}) response queued with {}",
-                        owned_request_key,
-                        &msg_tag,
+                        "Incoming request ({}) response Direct Send was successful {}",
+                        request_key,
+                        msg_tag
                     );
-                    if send_states.wait_single().await {
-                        trace!(
-                            target: LOG_TARGET,
-                            "Incoming request ({}) response Direct Send was successful {}",
-                            owned_request_key,
-                            msg_tag
-                        );
-                    } else {
-                        error!(
-                            target: LOG_TARGET,
-                            "Incoming request ({}) response Direct Send was unsuccessful and no message was sent {}",
-                            owned_request_key,
-                            msg_tag
-                        );
-                    }
                 } else {
                     error!(
                         target: LOG_TARGET,
-                        "Incoming request ({}) response Transaction Finalized message for Send Direct failed",
-                        owned_request_key
+                        "Incoming request ({}) response Direct Send was unsuccessful and no message was sent {}",
+                        request_key,
+                        msg_tag
                     );
                 }
             },
@@ -520,8 +512,8 @@ async fn handle_outbound_request(
         .await
         .map_err(|e| CommsInterfaceError::OutboundMessageService(e.to_string()))?;
 
-    match send_result.resolve_ok().await {
-        Some(send_states) if send_states.is_empty() => {
+    match send_result.resolve().await {
+        Ok(send_states) if send_states.is_empty() => {
             let _ = reply_tx
                 .send(Err(CommsInterfaceError::NoBootstrapNodesConfigured))
                 .or_else(|resp| {
@@ -532,7 +524,7 @@ async fn handle_outbound_request(
                     Err(resp)
                 });
         },
-        Some(send_states) => {
+        Ok(send_states) => {
             // Wait for matching responses to arrive
             waiting_requests.insert(request_key, Some(reply_tx)).await;
             // Spawn timeout for waiting_request
@@ -558,7 +550,8 @@ async fn handle_outbound_request(
                 };
             });
         },
-        None => {
+        Err(err) => {
+            debug!(target: LOG_TARGET, "Failed to send outbound request: {}", err);
             let _ = reply_tx
                 .send(Err(CommsInterfaceError::BroadcastFailed))
                 .or_else(|resp| {

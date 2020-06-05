@@ -337,7 +337,6 @@ where TBackend: TransactionBackend + Clone + 'static
             .outbound_message_service
             .send_direct(
                 self.dest_pubkey.clone(),
-                OutboundEncryption::None,
                 OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message.clone()),
             )
             .await
@@ -350,10 +349,10 @@ where TBackend: TransactionBackend + Clone + 'static
                         store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
                     }
                 },
-                SendMessageResponse::Failed => {
+                SendMessageResponse::Failed(err) => {
                     error!(
                         target: LOG_TARGET,
-                        "Transaction Send Direct for TxID: {} failed", self.id
+                        "Transaction Send Direct for TxID {} failed: {}", self.id, err
                     );
                     store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
                 },
@@ -486,46 +485,20 @@ where TBackend: TransactionBackend + Clone + 'static
             )
             .await
         {
-            Ok(result) => match result.resolve_ok().await {
-                None => {
-                    error!(
+            Ok(send_states) if !send_states.is_empty() => {
+                let (successful_sends, failed_sends) = send_states
+                    .wait_n_timeout(self.resources.config.broadcast_send_timeout, 1)
+                    .await;
+                if !successful_sends.is_empty() {
+                    info!(
                         target: LOG_TARGET,
-                        "Transaction Send (TxId: {}) to neighbours for Store and Forward failed", self.id
+                        "Transaction (TxId: {}) Send to Neighbours for Store and Forward successful with Message \
+                         Tags: {:?}",
+                        self.id,
+                        successful_sends[0],
                     );
-                    Ok(false)
-                },
-                Some(send_states) if !send_states.is_empty() => {
-                    let (successful_sends, failed_sends) = send_states
-                        .wait_n_timeout(self.resources.config.broadcast_send_timeout.clone(), 1)
-                        .await;
-                    if !successful_sends.is_empty() {
-                        info!(
-                            target: LOG_TARGET,
-                            "Transaction (TxId: {}) Send to Neighbours for Store and Forward successful with Message \
-                             Tags: {:?}",
-                            self.id,
-                            successful_sends[0],
-                        );
-                        Ok(true)
-                    } else if !failed_sends.is_empty() {
-                        error!(
-                            target: LOG_TARGET,
-                            "Transaction Send to Neighbours for Store and Forward for TX_ID: {} was unsuccessful and \
-                             no messages were sent",
-                            self.id
-                        );
-                        Ok(false)
-                    } else {
-                        error!(
-                            target: LOG_TARGET,
-                            "Transaction Send to Neighbours for Store and Forward for TX_ID: {} timed out and was \
-                             unsuccessful. Some message might still be sent.",
-                            self.id
-                        );
-                        Ok(false)
-                    }
-                },
-                Some(_) => {
+                    Ok(true)
+                } else if !failed_sends.is_empty() {
                     error!(
                         target: LOG_TARGET,
                         "Transaction Send to Neighbours for Store and Forward for TX_ID: {} was unsuccessful and no \
@@ -533,7 +506,24 @@ where TBackend: TransactionBackend + Clone + 'static
                         self.id
                     );
                     Ok(false)
-                },
+                } else {
+                    error!(
+                        target: LOG_TARGET,
+                        "Transaction Send to Neighbours for Store and Forward for TX_ID: {} timed out and was \
+                         unsuccessful. Some message might still be sent.",
+                        self.id
+                    );
+                    Ok(false)
+                }
+            },
+            Ok(_) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction Send to Neighbours for Store and Forward for TX_ID: {} was unsuccessful and no \
+                     messages were sent",
+                    self.id
+                );
+                Ok(false)
             },
             Err(e) => {
                 error!(
@@ -561,7 +551,6 @@ where TBackend: TransactionBackend + Clone + 'static
             .outbound_message_service
             .send_direct(
                 self.dest_pubkey.clone(),
-                OutboundEncryption::None,
                 OutboundDomainMessage::new(
                     TariMessageType::TransactionFinalized,
                     finalized_transaction_message.clone(),
@@ -579,10 +568,10 @@ where TBackend: TransactionBackend + Clone + 'static
                             .await?;
                     }
                 },
-                SendMessageResponse::Failed => {
+                SendMessageResponse::Failed(err) => {
                     error!(
                         target: LOG_TARGET,
-                        "Finalized Transaction Send Direct for TxID: {} failed", self.id
+                        "Finalized Transaction Send Direct for TxID {} failed: {}", self.id, err
                     );
                     store_and_forward_send_result = self
                         .send_transaction_finalized_message_store_and_forward(finalized_transaction_message.clone())
@@ -643,30 +632,14 @@ where TBackend: TransactionBackend + Clone + 'static
             )
             .await
         {
-            Ok(result) => match result.resolve_ok().await {
-                None => {
-                    error!(
-                        target: LOG_TARGET,
-                        "Sending Finalized Transaction (TxId: {}) to neighbours for Store and Forward failed", self.id
-                    );
-                },
-                Some(tags) if !tags.is_empty() => {
-                    info!(
-                        target: LOG_TARGET,
-                        "Sending Finalized Transaction (TxId: {}) to Neighbours for Store and Forward successful with \
-                         Message Tags: {:?}",
-                        self.id,
-                        tags,
-                    );
-                },
-                Some(_) => {
-                    error!(
-                        target: LOG_TARGET,
-                        "Sending Finalized Transaction to Neighbours for Store and Forward for TX_ID: {} was \
-                         unsuccessful and no messages were sent",
-                        self.id
-                    );
-                },
+            Ok(send_states) => {
+                info!(
+                    target: LOG_TARGET,
+                    "Sending Finalized Transaction (TxId: {}) to Neighbours for Store and Forward successful with \
+                     Message Tags: {:?}",
+                    self.id,
+                    send_states.to_tags(),
+                );
             },
             Err(e) => {
                 error!(

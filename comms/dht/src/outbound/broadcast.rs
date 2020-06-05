@@ -28,7 +28,7 @@ use crate::{
     discovery::DhtDiscoveryRequester,
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     outbound::{
-        message::{DhtOutboundMessage, OutboundEncryption},
+        message::{DhtOutboundMessage, OutboundEncryption, SendFailure},
         message_params::FinalSendMessageParams,
         message_send_state::MessageSendState,
         SendMessageResponse,
@@ -241,7 +241,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             .is_some()
         {
             warn!(target: LOG_TARGET, "Attempt to send a message to ourselves");
-            let _ = reply_tx.send(SendMessageResponse::Failed);
+            let _ = reply_tx.send(SendMessageResponse::Failed(SendFailure::SendToOurselves));
             return Err(DhtOutboundError::SendToOurselves);
         }
 
@@ -297,8 +297,13 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                             let _ = discovery_reply_tx.send(SendMessageResponse::Queued(vec![].into()));
                             return Ok(Vec::new());
                         },
+                        Err(err @ DhtOutboundError::DiscoveryFailed) => {
+                            let _ = discovery_reply_tx.send(SendMessageResponse::Failed(SendFailure::DiscoveryFailed));
+                            return Err(err);
+                        },
                         Err(err) => {
-                            let _ = discovery_reply_tx.send(SendMessageResponse::Failed);
+                            let _ = discovery_reply_tx
+                                .send(SendMessageResponse::Failed(SendFailure::General(err.to_string())));
                             return Err(err);
                         },
                     }
@@ -328,13 +333,15 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         Ok(msgs)
                     },
                     Err(err) => {
-                        let _ = reply_tx.take().expect("cannot fail").send(SendMessageResponse::Failed);
+                        let _ = reply_tx.take().expect("cannot fail").send(SendMessageResponse::Failed(
+                            SendFailure::FailedToGenerateMessages(err.to_string()),
+                        ));
                         Err(err)
                     },
                 }
             },
             Err(err) => {
-                let _ = reply_tx.send(SendMessageResponse::Failed);
+                let _ = reply_tx.send(SendMessageResponse::Failed(SendFailure::General(err.to_string())));
                 Err(err)
             },
         }
@@ -525,12 +532,10 @@ mod test {
     };
     use tari_crypto::keys::PublicKey;
     use tari_test_utils::unpack_enum;
-    use tokio::runtime::Runtime;
+    use tokio::task;
 
-    #[test]
-    fn send_message_flood() {
-        let mut rt = Runtime::new().unwrap();
-
+    #[tokio_macros::test_basic]
+    async fn send_message_flood() {
         let pk = CommsPublicKey::default();
         let example_peer = Peer::new(
             pk.clone(),
@@ -564,7 +569,7 @@ mod test {
         let mock_state = dht_mock.get_shared_state();
         mock_state.set_select_peers_response(vec![example_peer.clone(), other_peer.clone()]);
 
-        rt.spawn(dht_mock.run());
+        task::spawn(dht_mock.run());
 
         let spy = service_spy();
 
@@ -577,12 +582,14 @@ mod test {
         );
         let (reply_tx, _reply_rx) = oneshot::channel();
 
-        rt.block_on(service.call(DhtOutboundRequest::SendMessage(
-            Box::new(SendMessageParams::new().flood().finish()),
-            "custom_msg".as_bytes().into(),
-            reply_tx,
-        )))
-        .unwrap();
+        service
+            .call(DhtOutboundRequest::SendMessage(
+                Box::new(SendMessageParams::new().flood().finish()),
+                "custom_msg".as_bytes().into(),
+                reply_tx,
+            ))
+            .await
+            .unwrap();
 
         assert_eq!(spy.call_count(), 2);
         let requests = spy.take_requests();
@@ -592,10 +599,9 @@ mod test {
         assert!(requests.iter().any(|msg| msg.destination_node_id == other_peer.node_id));
     }
 
-    #[test]
-    fn send_message_direct_not_found() {
+    #[tokio_macros::test_basic]
+    async fn send_message_direct_not_found() {
         // Test for issue https://github.com/tari-project/tari/issues/959
-        let mut rt = Runtime::new().unwrap();
 
         let pk = CommsPublicKey::default();
         let node_identity = NodeIdentity::random(
@@ -606,7 +612,7 @@ mod test {
         .unwrap();
 
         let (dht_requester, dht_mock) = create_dht_actor_mock(10);
-        rt.spawn(dht_mock.run());
+        task::spawn(dht_mock.run());
         let (dht_discover_requester, _) = create_dht_discovery_mock(10, Duration::from_secs(10));
         let spy = service_spy();
 
@@ -619,8 +625,8 @@ mod test {
         );
         let (reply_tx, reply_rx) = oneshot::channel();
 
-        rt.block_on(
-            service.call(DhtOutboundRequest::SendMessage(
+        service
+            .call(DhtOutboundRequest::SendMessage(
                 Box::new(
                     SendMessageParams::new()
                         .direct_public_key(pk)
@@ -629,20 +635,18 @@ mod test {
                 ),
                 Bytes::from_static(b"custom_msg"),
                 reply_tx,
-            )),
-        )
-        .unwrap();
+            ))
+            .await
+            .unwrap();
 
-        let send_message_response = rt.block_on(reply_rx).unwrap();
+        let send_message_response = reply_rx.await.unwrap();
         unpack_enum!(SendMessageResponse::Queued(tags) = send_message_response);
         assert_eq!(tags.len(), 0);
         assert_eq!(spy.call_count(), 0);
     }
 
-    #[test]
-    fn send_message_direct_dht_discovery() {
-        let mut rt = Runtime::new().unwrap();
-
+    #[tokio_macros::test_basic]
+    async fn send_message_direct_dht_discovery() {
         let node_identity = NodeIdentity::random(
             &mut OsRng,
             "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
@@ -651,11 +655,11 @@ mod test {
         .unwrap();
 
         let (dht_requester, dht_mock) = create_dht_actor_mock(10);
-        rt.spawn(dht_mock.run());
+        task::spawn(dht_mock.run());
         let (dht_discover_requester, mut discovery_mock) = create_dht_discovery_mock(10, Duration::from_secs(10));
         let dht_discovery_state = DhtDiscoveryMockState::new();
         discovery_mock.set_shared_state(dht_discovery_state.clone());
-        rt.spawn(discovery_mock.run());
+        task::spawn(discovery_mock.run());
 
         let peer_to_discover = make_peer();
         dht_discovery_state.set_discover_peer_response(peer_to_discover.clone());
@@ -671,23 +675,24 @@ mod test {
         );
         let (reply_tx, reply_rx) = oneshot::channel();
 
-        rt.block_on(
-            service.call(DhtOutboundRequest::SendMessage(
+        service
+            .call(DhtOutboundRequest::SendMessage(
                 Box::new(
                     SendMessageParams::new()
                         .direct_public_key(peer_to_discover.public_key.clone())
+                        .with_discovery(true)
                         .finish(),
                 ),
                 "custom_msg".as_bytes().into(),
                 reply_tx,
-            )),
-        )
-        .unwrap();
+            ))
+            .await
+            .unwrap();
 
-        let send_message_response = rt.block_on(reply_rx).unwrap();
+        let send_message_response = reply_rx.await.unwrap();
 
         unpack_enum!(SendMessageResponse::PendingDiscovery(await_discovery) = send_message_response);
-        let discovery_reply = rt.block_on(await_discovery).unwrap();
+        let discovery_reply = await_discovery.await.unwrap();
         assert_eq!(dht_discovery_state.call_count(), 1);
         unpack_enum!(SendMessageResponse::Queued(tags) = discovery_reply);
         assert_eq!(tags.len(), 1);
