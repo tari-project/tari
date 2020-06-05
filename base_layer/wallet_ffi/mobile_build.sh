@@ -254,6 +254,7 @@ EOF
 [target.${PLATFORMABI}]
 ar = "${AR}"
 linker = "${CC}"
+rustflags = "-L${OUTPUT_DIR}/lib"
 
 EOF
 
