@@ -170,6 +170,16 @@ impl DbTransaction {
         self.operations
             .push(WriteOperation::RewindMmr(MmrTree::RangeProof, steps_back));
     }
+
+    /// Merge checkpoints to ensure that only a specific number of checkpoints remain.
+    pub fn merge_checkpoints(&mut self, max_cp_count: usize) {
+        self.operations
+            .push(WriteOperation::MergeMmrCheckpoints(MmrTree::Kernel, max_cp_count));
+        self.operations
+            .push(WriteOperation::MergeMmrCheckpoints(MmrTree::Utxo, max_cp_count));
+        self.operations
+            .push(WriteOperation::MergeMmrCheckpoints(MmrTree::RangeProof, max_cp_count));
+    }
 }
 
 #[derive(Debug, Display)]
@@ -180,6 +190,7 @@ pub enum WriteOperation {
     UnSpend(DbKey),
     CreateMmrCheckpoint(MmrTree),
     RewindMmr(MmrTree, usize),
+    MergeMmrCheckpoints(MmrTree, usize),
 }
 
 /// A list of key-value pairs that are required for each insert operation

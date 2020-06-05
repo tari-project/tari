@@ -46,6 +46,7 @@ pub struct GlobalConfig {
     pub db_type: DatabaseType,
     pub orphan_storage_capacity: usize,
     pub pruning_horizon: u64,
+    pub pruned_mode_cleanup_interval: u64,
     pub core_threads: usize,
     pub blocking_threads: usize,
     pub identity_file: PathBuf,
@@ -110,6 +111,11 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
 
     let key = config_string(&net_str, "pruning_horizon");
     let pruning_horizon = cfg
+        .get_int(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64;
+
+    let key = config_string(&net_str, "pruned_mode_cleanup_interval");
+    let pruned_mode_cleanup_interval = cfg
         .get_int(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64;
 
@@ -235,6 +241,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         db_type,
         orphan_storage_capacity,
         pruning_horizon,
+        pruned_mode_cleanup_interval,
         core_threads,
         blocking_threads,
         identity_file,
