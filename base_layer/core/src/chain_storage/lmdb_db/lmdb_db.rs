@@ -67,7 +67,7 @@ use digest::Digest;
 use lmdb_zero::{Database, Environment, WriteTransaction};
 use log::*;
 use std::{cmp::min, collections::VecDeque, fmt::Display, path::Path, sync::Arc};
-use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable};
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 use tari_mmr::{
     functions::{prune_mutable_mmr, PrunedMutableMmr},
     ArrayLike,
@@ -381,7 +381,14 @@ where D: Digest + Send + Sync
                                 Some(index) => {
                                     self.curr_utxo_checkpoint.push_deletion(index as u32);
                                 },
-                                None => return Err(ChainStorageError::UnspendableInput),
+                                None => {
+                                    trace!(
+                                        target: LOG_TARGET,
+                                        "could not find hash: {} in txos_hash_to_index db",
+                                        hash.to_hex()
+                                    );
+                                    return Err(ChainStorageError::UnspendableInput);
+                                },
                             }
 
                             let utxo_result: Option<TransactionOutput> = lmdb_get(&self.env, &self.utxos_db, &hash)?;
@@ -390,7 +397,10 @@ where D: Digest + Send + Sync
                                     lmdb_delete(&txn, &self.utxos_db, &hash)?;
                                     lmdb_insert(&txn, &self.stxos_db, &hash, &utxo)?;
                                 },
-                                None => return Err(ChainStorageError::UnspendableInput),
+                                None => {
+                                    trace!(target: LOG_TARGET, "could not find hash: {} in utoxo db", hash.to_hex());
+                                    return Err(ChainStorageError::UnspendableInput);
+                                },
                             }
                         },
                         _ => return Err(ChainStorageError::InvalidOperation("Only UTXOs can be spent".into())),
@@ -403,7 +413,10 @@ where D: Digest + Send + Sync
                                     lmdb_delete(&txn, &self.stxos_db, &hash)?;
                                     lmdb_insert(&txn, &self.utxos_db, &hash, &stxo)?;
                                 },
-                                None => return Err(ChainStorageError::UnspendError),
+                                None => {
+                                    trace!(target: LOG_TARGET, "could not find hash: {} in stxo db", hash.to_hex());
+                                    return Err(ChainStorageError::UnspendError);
+                                },
                             }
                         },
                         _ => return Err(ChainStorageError::InvalidOperation("Only STXOs can be unspent".into())),
