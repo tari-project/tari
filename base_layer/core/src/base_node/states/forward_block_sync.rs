@@ -237,12 +237,13 @@ async fn download_blocks<B: BlockchainBackend + 'static>(
     match shared.comms.fetch_blocks_with_hashes(curr_headers.clone()).await {
         Ok(blocks) => {
             info!(target: LOG_TARGET, "Received {} blocks from peer", blocks.len());
-
-            if let StatusInfo::BlockSync(ref mut info) = shared.info {
-                info.tip_height = Some(blocks[blocks.len() - 1].block().header.height);
-                info.local_height = Some(blocks[0].block().header.height);
+            if !blocks.is_empty() {
+                if let StatusInfo::BlockSync(ref mut info) = shared.info {
+                    info.tip_height = Some(blocks[blocks.len() - 1].block().header.height);
+                    info.local_height = Some(blocks[0].block().header.height);
+                }
+                shared.publish_event_info().await;
             }
-            shared.publish_event_info().await;
             for i in 0..blocks.len() {
                 let hist_block = &blocks[i];
                 let header = &curr_headers[i];
