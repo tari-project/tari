@@ -36,12 +36,15 @@ use futures::{
     stream::Fuse,
     StreamExt,
 };
+use log::*;
 use std::{
     sync::{Arc, Condvar, Mutex, RwLock},
     time::Duration,
 };
 use tari_comms::message::MessageTag;
 use tokio::time::delay_for;
+
+const LOG_TARGET: &str = "mock::outbound_requester";
 
 /// Creates a mock outbound request "handler" for testing purposes.
 ///
@@ -163,6 +166,11 @@ impl OutboundServiceMock {
         while let Some(req) = self.receiver.next().await {
             match req {
                 DhtOutboundRequest::SendMessage(params, body, reply_tx) => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Send message request received with length of {} bytes",
+                        body.len()
+                    );
                     let behaviour = self.mock_state.get_behaviour();
 
                     match (*params).clone().broadcast_strategy {
