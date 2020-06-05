@@ -21,11 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod inbound_connector;
-mod peer_message;
-mod pubsub;
+pub use inbound_connector::InboundDomainConnector;
 
-pub use self::{
-    inbound_connector::InboundDomainConnector,
-    peer_message::PeerMessage,
-    pubsub::{pubsub_connector, PubsubDomainConnector, SubscriptionFactory},
-};
+mod peer_message;
+pub use peer_message::PeerMessage;
+
+mod pubsub;
+pub use pubsub::{pubsub_connector, PubsubDomainConnector, SubscriptionFactory, TopicSubscriptionFactory};

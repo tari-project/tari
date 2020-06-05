@@ -445,7 +445,7 @@ fn setup_base_node_services(
     CommsNode,
 )
 {
-    let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100, 104);
+    let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100);
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht) = runtime.block_on(setup_comms_services(node_identity, peers, publisher, data_path));
 

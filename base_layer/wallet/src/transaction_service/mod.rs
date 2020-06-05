@@ -47,12 +47,11 @@ use tari_core::{
     transactions::{transaction_protocol::proto, types::CryptoFactories},
 };
 use tari_p2p::{
-    comms_connector::PeerMessage,
+    comms_connector::SubscriptionFactory,
     domain_message::DomainMessage,
     services::utils::{map_decode, ok_or_skip_result},
     tari_message::TariMessageType,
 };
-use tari_pubsub::TopicSubscriptionFactory;
 use tari_service_framework::{
     handles::ServiceHandlesFuture,
     reply_channel,
@@ -63,12 +62,13 @@ use tari_shutdown::ShutdownSignal;
 use tokio::{runtime, sync::broadcast};
 
 const LOG_TARGET: &str = "wallet::transaction_service";
+const SUBSCRIPTION_LABEL: &str = "Transaction Service";
 
 pub struct TransactionServiceInitializer<T>
 where T: TransactionBackend
 {
     config: TransactionServiceConfig,
-    subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
+    subscription_factory: Arc<SubscriptionFactory>,
     backend: Option<T>,
     node_identity: Arc<NodeIdentity>,
     factories: CryptoFactories,
@@ -79,7 +79,7 @@ where T: TransactionBackend
 {
     pub fn new(
         config: TransactionServiceConfig,
-        subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
+        subscription_factory: Arc<SubscriptionFactory>,
         backend: T,
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
@@ -97,35 +97,35 @@ where T: TransactionBackend
     /// Get a stream of inbound Text messages
     fn transaction_stream(&self) -> impl Stream<Item = DomainMessage<proto::TransactionSenderMessage>> {
         self.subscription_factory
-            .get_subscription(TariMessageType::SenderPartialTransaction)
+            .get_subscription(TariMessageType::SenderPartialTransaction, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::TransactionSenderMessage>)
             .filter_map(ok_or_skip_result)
     }
 
     fn transaction_reply_stream(&self) -> impl Stream<Item = DomainMessage<proto::RecipientSignedMessage>> {
         self.subscription_factory
-            .get_subscription(TariMessageType::ReceiverPartialTransactionReply)
+            .get_subscription(TariMessageType::ReceiverPartialTransactionReply, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::RecipientSignedMessage>)
             .filter_map(ok_or_skip_result)
     }
 
     fn transaction_finalized_stream(&self) -> impl Stream<Item = DomainMessage<proto::TransactionFinalizedMessage>> {
         self.subscription_factory
-            .get_subscription(TariMessageType::TransactionFinalized)
+            .get_subscription(TariMessageType::TransactionFinalized, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::TransactionFinalizedMessage>)
             .filter_map(ok_or_skip_result)
     }
 
     fn mempool_response_stream(&self) -> impl Stream<Item = DomainMessage<MempoolProto::MempoolServiceResponse>> {
         self.subscription_factory
-            .get_subscription(TariMessageType::MempoolResponse)
+            .get_subscription(TariMessageType::MempoolResponse, SUBSCRIPTION_LABEL)
             .map(map_decode::<MempoolProto::MempoolServiceResponse>)
             .filter_map(ok_or_skip_result)
     }
 
     fn base_node_response_stream(&self) -> impl Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>> {
         self.subscription_factory
-            .get_subscription(TariMessageType::BaseNodeResponse)
+            .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
             .map(map_decode::<BaseNodeProto::BaseNodeServiceResponse>)
             .filter_map(ok_or_skip_result)
     }

@@ -143,7 +143,7 @@ mod pingpong {
 
         let datastore_path = TempDir::new(random_string(8).as_str()).unwrap();
 
-        let (publisher, subscription_factory) = pubsub_connector(rt.handle().clone(), 100, 105);
+        let (publisher, subscription_factory) = pubsub_connector(rt.handle().clone(), 100);
         let subscription_factory = Arc::new(subscription_factory);
 
         let transport_type = if is_tor_enabled {
