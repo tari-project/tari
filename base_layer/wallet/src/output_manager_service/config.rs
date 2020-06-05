@@ -25,12 +25,14 @@ use std::time::Duration;
 #[derive(Clone)]
 pub struct OutputManagerServiceConfig {
     pub base_node_query_timeout: Duration,
+    pub max_utxo_query_size: usize,
 }
 
 impl Default for OutputManagerServiceConfig {
     fn default() -> Self {
         Self {
             base_node_query_timeout: Duration::from_secs(30),
+            max_utxo_query_size: 5000,
         }
     }
 }
