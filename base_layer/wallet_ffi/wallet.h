@@ -71,6 +71,8 @@ struct TariPendingInboundTransaction;
 
 struct TariTransportType;
 
+struct TariSeedWords;
+
 /// -------------------------------- Transport Types ----------------------------------------------- ///
 
 // Creates a memory transport type
@@ -156,6 +158,16 @@ struct TariPrivateKey *private_key_from_hex(const char *hex,int* error_out);
 
 // Frees memory for a TariPrivateKey
 void private_key_destroy(struct TariPrivateKey *pk);
+
+/// -------------------------------- Seed Words  -------------------------------------------------- ///
+// Get the number of seed words in the provided collection
+unsigned int seed_words_get_length(struct TariSeedWords *seed_words, int* error_out);
+
+// Get a seed word from the provided collection at the specified position
+char *seed_words_get_at(struct TariSeedWords *seed_words, unsigned int position, int* error_out);
+
+// Frees the memory for a TariSeedWords collection
+void seed_words_destroy(truct TariSeedWords *seed_words);
 
 /// -------------------------------- Contact ------------------------------------------------------ ///
 
@@ -437,6 +449,9 @@ bool wallet_cancel_pending_transaction(struct TariWallet *wallet, unsigned long 
 
 /// Perform a coin split
 unsigned long long wallet_coin_split(struct TariWallet *wallet, unsigned long long amount, unsigned long long count, unsigned long long fee, const char* msg, unsigned long long lock_height, int* error_out);
+
+/// Get the seed words representing the seed private key of the provided TariWallet
+struct TariSeedWords *wallet_get_seed_words(struct TariWallet *wallet, int* error_out);
 
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);

@@ -214,6 +214,8 @@ pub struct TariPendingOutboundTransactions(Vec<TariPendingOutboundTransaction>);
 #[derive(Debug, PartialEq)]
 pub struct ByteVector(Vec<c_uchar>); // declared like this so that it can be exposed to external header
 
+pub struct TariSeedWords(Vec<String>);
+
 /// -------------------------------- Strings ------------------------------------------------ ///
 
 /// Frees memory for a char array
@@ -707,6 +709,89 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
 }
 
 /// -------------------------------------------------------------------------------------------- ///
+/// ----------------------------------- Seed Words ----------------------------------------------///
+
+/// Gets the length of TariSeedWords
+///
+/// ## Arguments
+/// `seed_words` - The pointer to a TariSeedWords
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_uint` - Returns number of elements in , zero if contacts is null
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn seed_words_get_length(seed_words: *const TariSeedWords, error_out: *mut c_int) -> c_uint {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut len = 0;
+    if seed_words.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("seed words".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        len = (*seed_words).0.len();
+    }
+    len as c_uint
+}
+
+/// Gets a seed word from TariSeedWords at position
+///
+/// ## Arguments
+/// `seed_words` - The pointer to a TariSeedWords
+/// `position` - The integer position
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array. Note that it returns an empty char array if
+/// TariSeedWords collection is null or the position is invalid
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn seed_words_get_at(
+    seed_words: *mut TariSeedWords,
+    position: c_uint,
+    error_out: *mut c_int,
+) -> *mut c_char
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut word = CString::new("").unwrap();
+    if seed_words.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("seed words".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        let len = (*seed_words).0.len();
+        if position > len as u32 {
+            error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+        } else {
+            word = CString::new((*seed_words).0[position as usize].clone()).unwrap()
+        }
+    }
+    CString::into_raw(word)
+}
+
+/// Frees memory for a TariSeedWords
+///
+/// ## Arguments
+/// `seed_words` - The pointer to a TariSeedWords
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn seed_words_destroy(seed_words: *mut TariSeedWords) {
+    if !seed_words.is_null() {
+        Box::from_raw(seed_words);
+    }
+}
 
 /// ----------------------------------- Contact -------------------------------------------------///
 
@@ -4014,6 +4099,42 @@ pub unsafe extern "C" fn wallet_coin_split(
     }
 }
 
+/// Gets the seed words representing the seed private key of the provided `TariWallet`.
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariSeedWords` - A collection of the seed words
+///
+/// # Safety
+/// The ```tari_seed_words_destroy``` method must be called when finished with a
+/// TariSeedWords to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_seed_words(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariSeedWords {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).output_manager_service.get_seed_words())
+    {
+        Ok(sw) => Box::into_raw(Box::new(TariSeedWords(sw.clone()))),
+        Err(e) => {
+            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
 /// Frees memory for a TariWallet
 ///
 /// ## Arguments
@@ -4055,7 +4176,8 @@ mod test {
     use crate::*;
     use libc::{c_char, c_uchar, c_uint};
     use std::{ffi::CString, sync::Mutex, thread};
-    use tari_core::transactions::tari_amount::uT;
+    use tari_core::transactions::{tari_amount::uT, types::PrivateKey};
+    use tari_key_manager::mnemonic::Mnemonic;
     use tari_wallet::{testnet_utils::random_string, transaction_service::storage::database::TransactionStatus};
     use tempdir::TempDir;
 
@@ -4895,6 +5017,19 @@ mod test {
             assert_eq!(split_tx.is_ok(), true);
             string_destroy(split_msg_str as *mut c_char);
 
+            // Test seed words
+            let seed_words = wallet_get_seed_words(alice_wallet, error_ptr);
+            let seed_word_len = seed_words_get_length(seed_words, error_ptr);
+
+            let mut seed_words_vec = Vec::new();
+            for i in 0..seed_word_len {
+                let word = seed_words_get_at(seed_words, i as c_uint, error_ptr);
+                let word_string = CString::from_raw(word).to_str().unwrap().to_owned();
+                seed_words_vec.push(word_string);
+            }
+            let _seed_word_private_key = PrivateKey::from_mnemonic(&seed_words_vec)
+                .expect("Seed words should be able to convert to private key");
+
             let lock = CALLBACK_STATE_FFI.lock().unwrap();
             assert!(lock.received_tx_callback_called);
             assert!(lock.received_tx_reply_callback_called);
@@ -4925,6 +5060,7 @@ mod test {
             comms_config_destroy(alice_config);
             transport_type_destroy(transport_type_alice);
             transport_type_destroy(transport_type_bob);
+            seed_words_destroy(seed_words);
         }
     }
 }
