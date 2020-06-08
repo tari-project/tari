@@ -979,6 +979,8 @@ async fn setup_base_node_comms(
     publisher: PubsubDomainConnector,
 ) -> Result<(CommsNode, Dht), String>
 {
+    // Ensure that the node identity has the correct public address
+    node_identity.set_public_address(config.public_address.clone());
     let comms_config = CommsConfig {
         node_identity,
         transport_type: setup_transport_type(&config),

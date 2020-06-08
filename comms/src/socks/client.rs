@@ -55,7 +55,7 @@ impl Default for Authentication {
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Debug, Copy)]
 enum Command {
     Connect = 0x01,
     Bind = 0x02,
@@ -98,13 +98,20 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     /// Requests the tor proxy to resolve a DNS address is resolved into an IP address.
     /// This operation only works with the tor SOCKS proxy.
     pub async fn tor_resolve(&mut self, address: &Multiaddr) -> Result<Multiaddr> {
-        self.protocol.send_command(Command::TorResolve, address).await
+        // Tor resolve does not return the port back
+        let (dns, rest) = multiaddr_split_first(&address);
+        let mut resolved = self.execute_command(Command::TorResolve, &dns.into()).await?;
+        resolved.pop();
+        for r in rest {
+            resolved.push(r);
+        }
+        Ok(resolved)
     }
 
     /// Requests the tor proxy to reverse resolve an IP address into a DNS address if it is able.
     /// This operation only works with the tor SOCKS proxy.
     pub async fn tor_resolve_ptr(&mut self, address: &Multiaddr) -> Result<Multiaddr> {
-        self.protocol.send_command(Command::TorResolvePtr, address).await
+        self.execute_command(Command::TorResolvePtr, address).await
     }
 
     async fn execute_command(&mut self, command: Command, address: &Multiaddr) -> Result<Multiaddr> {
@@ -138,6 +145,16 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         }
         Ok(())
     }
+}
+
+/// Split the first Protocol from the rest of the address
+fn multiaddr_split_first(addr: &Multiaddr) -> (Protocol<'_>, Vec<Protocol<'_>>) {
+    let mut iter = addr.iter();
+    let proto = iter
+        .next()
+        .expect("prepare_multiaddr_for_tor_resolve: received empty `Multiaddr`");
+    let rest = iter.collect();
+    (proto, rest)
 }
 
 const SOCKS_BUFFER_LENGTH: usize = 513;
@@ -289,8 +306,8 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 let domain_bytes = (&self.buf[5..(self.len - 2)]).to_vec();
                 let domain = String::from_utf8(domain_bytes)
                     .map_err(|_| SocksError::InvalidTargetAddress("domain bytes are not a valid UTF-8 string"))?;
-                let port = u16::from_be_bytes([self.buf[self.len - 2], self.buf[self.len - 1]]);
                 let mut addr: Multiaddr = Protocol::Dns4(Cow::Owned(domain)).into();
+                let port = u16::from_be_bytes([self.buf[self.len - 2], self.buf[self.len - 1]]);
                 addr.push(Protocol::Tcp(port));
                 addr
             },
@@ -374,6 +391,18 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 self.buf[4] = len as u8;
                 self.buf[5..5 + len].copy_from_slice(domain);
                 self.buf[(5 + len)..(7 + len)].copy_from_slice(&port.to_be_bytes());
+                self.len = 7 + len;
+            },
+            // Special case for Tor resolve
+            (Protocol::Dns4(domain), None) => {
+                self.buf[3] = 0x03;
+                let domain = domain.as_bytes();
+                let len = domain.len();
+                self.buf[4] = len as u8;
+                self.buf[5..5 + len].copy_from_slice(domain);
+                // Zero port
+                self.buf[5 + len] = 0;
+                self.buf[6 + len] = 0;
                 self.len = 7 + len;
             },
             (p @ Protocol::Onion(_, _), None) => {

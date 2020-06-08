@@ -23,23 +23,25 @@
 use super::Transport;
 use crate::{
     multiaddr::Protocol,
-    transports::{SocksConfig, SocksTransport, TcpSocket, TcpTransport},
+    transports::{dns::TorDnsResolver, SocksConfig, SocksTransport, TcpSocket, TcpTransport},
 };
 use futures::{Future, FutureExt};
 use multiaddr::Multiaddr;
 use std::io;
 
 /// Transport implementation for TCP with Tor support
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct TcpWithTorTransport {
     socks_transport: Option<SocksTransport>,
     tcp_transport: TcpTransport,
 }
 
 impl TcpWithTorTransport {
-    /// Sets the SOCKS proxy to use for onion addresses
+    /// Sets the SOCKS address to the Tor proxy to use for onion and DNS address resolution
     pub fn set_tor_socks_proxy(&mut self, socks_config: SocksConfig) -> &mut Self {
-        self.socks_transport = Some(SocksTransport::new(socks_config));
+        self.socks_transport = Some(SocksTransport::new(socks_config.clone()));
+        // Resolve DNS using the tor proxy
+        self.tcp_transport.set_dns_resolver(TorDnsResolver::new(socks_config));
         self
     }
 

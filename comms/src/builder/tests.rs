@@ -50,7 +50,7 @@ async fn spawn_node(
         .parse::<Multiaddr>()
         .unwrap();
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-    node_identity.set_public_address(addr.clone()).unwrap();
+    node_identity.set_public_address(addr.clone());
 
     let (inbound_tx, inbound_rx) = mpsc::channel(10);
     let (outbound_tx, outbound_rx) = mpsc::channel(10);

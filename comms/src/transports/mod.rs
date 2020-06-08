@@ -27,6 +27,8 @@
 use futures::{Future, Stream};
 use multiaddr::Multiaddr;
 
+mod dns;
+
 mod memory;
 pub use memory::MemoryTransport;
 

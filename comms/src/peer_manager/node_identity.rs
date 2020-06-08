@@ -44,8 +44,6 @@ use thiserror::Error;
 pub enum NodeIdentityError {
     #[error("NodeIdError: {0}")]
     NodeIdError(#[from] NodeIdError),
-    #[error("Address lock has been poisoned")]
-    AddressLockPoisoned,
 }
 
 /// The public and private identity of this node on the network
@@ -108,12 +106,8 @@ impl NodeIdentity {
     }
 
     /// Modify the control_service_address
-    pub fn set_public_address(&self, address: Multiaddr) -> Result<(), NodeIdentityError> {
-        *self
-            .public_address
-            .write()
-            .map_err(|_| NodeIdentityError::AddressLockPoisoned)? = address;
-        Ok(())
+    pub fn set_public_address(&self, address: Multiaddr) {
+        *acquire_write_lock!(self.public_address) = address;
     }
 
     /// This returns a random NodeIdentity for testing purposes. This function can panic. If public_address

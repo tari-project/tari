@@ -87,6 +87,12 @@ macro_rules! acquire_read_lock {
     };
 }
 
+macro_rules! acquire_write_lock {
+    ($e:expr) => {
+        acquire_lock!($e, write)
+    };
+}
+
 /// Log an error if an `Err` is returned from the `$expr`. If the given expression is `Ok(v)`,
 /// `Some(v)` is returned, otherwise `None` is returned (same as `Result::ok`).
 /// Useful in cases where the error should be logged and ignored.

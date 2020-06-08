@@ -331,7 +331,7 @@ impl DhtConnectivity {
 
     async fn replace_managed_peer(&mut self, current_peer: &NodeId) -> Result<(), DhtConnectivityError> {
         if !self.is_managed(current_peer) {
-            info!(target: LOG_TARGET, "{} is not managed. Ignoring", current_peer);
+            debug!(target: LOG_TARGET, "{} is not managed. Ignoring", current_peer);
             return Ok(());
         }
 

@@ -38,7 +38,7 @@ pub struct SocksConfig {
     pub authentication: socks::Authentication,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SocksTransport {
     socks_config: SocksConfig,
     tcp_transport: TcpTransport,
@@ -46,14 +46,17 @@ pub struct SocksTransport {
 
 impl SocksTransport {
     pub fn new(socks_config: SocksConfig) -> Self {
+        Self {
+            socks_config,
+            tcp_transport: Self::get_tcp_transport(),
+        }
+    }
+
+    pub fn get_tcp_transport() -> TcpTransport {
         let mut tcp_transport = TcpTransport::new();
         tcp_transport.set_nodelay(true);
         tcp_transport.set_keepalive(Some(SOCKS_SO_KEEPALIVE));
-
-        Self {
-            socks_config,
-            tcp_transport,
-        }
+        tcp_transport
     }
 
     async fn socks_connect(

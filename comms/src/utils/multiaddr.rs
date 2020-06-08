@@ -47,8 +47,7 @@ pub fn multiaddr_to_socketaddr(addr: &Multiaddr) -> io::Result<SocketAddr> {
             let addr = format!("{}:{}", domain, port);
             addr.to_socket_addrs()
                 .map_err(|_e| io::Error::new(io::ErrorKind::InvalidInput, format!("Invalid domain '{}'", domain)))?
-                .collect::<Vec<SocketAddr>>()
-                .first()
+                .next()
                 .map_or_else(
                     || {
                         Err(io::Error::new(
@@ -56,7 +55,7 @@ pub fn multiaddr_to_socketaddr(addr: &Multiaddr) -> io::Result<SocketAddr> {
                             format!("Invalid domain '{}'", domain),
                         ))
                     },
-                    |h| Ok(*h),
+                    |h| Ok(h),
                 )
         },
         (Protocol::Ip4(host), Protocol::Tcp(port)) => Ok((host, port).into()),
