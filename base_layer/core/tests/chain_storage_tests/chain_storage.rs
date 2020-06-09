@@ -1321,3 +1321,151 @@ fn pruned_mode_cleanup_and_fetch_block() {
     assert_eq!(store.fetch_block(3).unwrap().block, block3);
     assert_eq!(store.fetch_block(4).unwrap().block, block4);
 }
+
+#[test]
+fn pruned_mode_is_stxo() {
+    let network = Network::LocalNet;
+    let factories = CryptoFactories::default();
+    let consensus_constants = ConsensusConstantsBuilder::new(network)
+        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .build();
+    let (block0, output) = create_genesis_block(&factories, &consensus_constants);
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants.clone())
+        .with_block(block0.clone())
+        .build();
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockAccumDifficultyValidator {},
+    );
+    let db = MemoryDatabase::<HashDigest>::default();
+    let config = BlockchainDatabaseConfig {
+        orphan_storage_capacity: 3,
+        pruning_horizon: 2,
+        pruned_mode_cleanup_interval: 2,
+    };
+    let mut store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
+    let mut blocks = vec![block0];
+    let mut outputs = vec![vec![output]];
+    let txo_hash1 = blocks[0].body.outputs()[0].hash();
+    assert!(store.is_utxo(txo_hash1.clone()).unwrap());
+
+    // Block 1
+    let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![50 * T])];
+    let coinbase_value = consensus_manager.emission_schedule().block_reward(1);
+    assert_eq!(
+        generate_new_block_with_coinbase(
+            &mut store,
+            &factories,
+            &mut blocks,
+            &mut outputs,
+            txs,
+            coinbase_value,
+            &consensus_manager.consensus_constants()
+        ),
+        Ok(BlockAddResult::Ok)
+    );
+    let metadata = store.get_metadata().unwrap();
+    assert_eq!(metadata.height_of_longest_chain, Some(1));
+    let txo_hash2 = outputs[1][0].as_transaction_output(&factories).unwrap().hash();
+    let txo_hash3 = outputs[1][1].as_transaction_output(&factories).unwrap().hash();
+    let txo_hash4 = outputs[1][2].as_transaction_output(&factories).unwrap().hash();
+    assert!(store.is_stxo(txo_hash1.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash2.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash3.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash4.clone()).unwrap());
+
+    // Block 2
+    let txs = vec![txn_schema!(from: vec![outputs[1][1].clone()], to: vec![40 * T])];
+    let coinbase_value = consensus_manager.emission_schedule().block_reward(2);
+    assert_eq!(
+        generate_new_block_with_coinbase(
+            &mut store,
+            &factories,
+            &mut blocks,
+            &mut outputs,
+            txs,
+            coinbase_value,
+            &consensus_manager.consensus_constants()
+        ),
+        Ok(BlockAddResult::Ok)
+    );
+    let metadata = store.get_metadata().unwrap();
+    assert_eq!(metadata.height_of_longest_chain, Some(2));
+    let txo_hash5 = outputs[2][0].as_transaction_output(&factories).unwrap().hash();
+    let txo_hash6 = outputs[2][1].as_transaction_output(&factories).unwrap().hash();
+    let txo_hash7 = outputs[2][2].as_transaction_output(&factories).unwrap().hash();
+    assert!(store.is_stxo(txo_hash1.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash2.clone()).unwrap());
+    assert!(store.is_stxo(txo_hash3.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash4.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash5.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash6.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash7.clone()).unwrap());
+
+    // Block 3
+    let txs = vec![txn_schema!(from: vec![outputs[2][2].clone()], to: vec![30 * T])];
+    let coinbase_value = consensus_manager.emission_schedule().block_reward(3);
+    assert_eq!(
+        generate_new_block_with_coinbase(
+            &mut store,
+            &factories,
+            &mut blocks,
+            &mut outputs,
+            txs,
+            coinbase_value,
+            &consensus_manager.consensus_constants()
+        ),
+        Ok(BlockAddResult::Ok)
+    );
+    let metadata = store.get_metadata().unwrap();
+    assert_eq!(metadata.height_of_longest_chain, Some(3));
+    let txo_hash8 = outputs[3][0].as_transaction_output(&factories).unwrap().hash();
+    let txo_hash9 = outputs[3][1].as_transaction_output(&factories).unwrap().hash();
+    let txo_hash10 = outputs[3][2].as_transaction_output(&factories).unwrap().hash();
+    assert!(store.is_stxo(txo_hash1.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash2.clone()).unwrap());
+    assert!(store.is_stxo(txo_hash3.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash4.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash5.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash6.clone()).unwrap());
+    assert!(store.is_stxo(txo_hash7.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash8.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash9.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash10.clone()).unwrap());
+
+    // Block 4
+    let txs = vec![txn_schema!(from: vec![outputs[3][1].clone()], to: vec![20 * T])];
+    let coinbase_value = consensus_manager.emission_schedule().block_reward(4);
+    assert_eq!(
+        generate_new_block_with_coinbase(
+            &mut store,
+            &factories,
+            &mut blocks,
+            &mut outputs,
+            txs,
+            coinbase_value,
+            &consensus_manager.consensus_constants()
+        ),
+        Ok(BlockAddResult::Ok)
+    );
+    let metadata = store.get_metadata().unwrap();
+    assert_eq!(metadata.height_of_longest_chain, Some(4));
+    let txo_hash11 = outputs[4][0].as_transaction_output(&factories).unwrap().hash();
+    let txo_hash12 = outputs[4][1].as_transaction_output(&factories).unwrap().hash();
+    let txo_hash13 = outputs[4][2].as_transaction_output(&factories).unwrap().hash();
+    assert!(store.is_stxo(txo_hash1.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash2.clone()).unwrap());
+    assert!(store.is_stxo(txo_hash3.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash4.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash5.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash6.clone()).unwrap());
+    assert!(store.is_stxo(txo_hash7.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash8.clone()).unwrap());
+    assert!(store.is_stxo(txo_hash9.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash10.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash11.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash12.clone()).unwrap());
+    assert!(store.is_utxo(txo_hash13.clone()).unwrap());
+}

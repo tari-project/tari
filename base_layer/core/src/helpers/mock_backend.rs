@@ -93,6 +93,10 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
+    fn fetch_mmr_leaf_index(&self, _tree: MmrTree, _hash: &Hash) -> Result<Option<u32>, ChainStorageError> {
+        unimplemented!()
+    }
+
     fn for_each_orphan<F>(&self, _f: F) -> Result<(), ChainStorageError>
     where
         Self: Sized,

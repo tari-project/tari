@@ -23,30 +23,161 @@
 use crate::chain_storage::error::ChainStorageError;
 use std::{
     cmp::min,
+    collections::HashMap,
+    hash::Hash,
     sync::{Arc, RwLock},
 };
 use tari_mmr::{error::MerkleMountainRangeError, ArrayLike, ArrayLikeExt};
 
-#[derive(Debug, Clone)]
-pub struct MemDbVec<T> {
-    db: Arc<RwLock<Vec<T>>>,
+#[derive(Debug)]
+struct MemDbVecStorage<T>
+where T: PartialEq + Eq + Hash + Clone
+{
+    index_offset: i64,
+    key_to_item: HashMap<i64, T>,
+    item_to_key: HashMap<T, i64>,
 }
 
-impl<T> MemDbVec<T> {
-    pub fn new() -> Self {
+impl<T> MemDbVecStorage<T>
+where T: PartialEq + Eq + Hash + Clone
+{
+    fn new() -> Self {
         Self {
-            db: Arc::new(RwLock::new(Vec::<T>::new())),
+            index_offset: 0,
+            key_to_item: HashMap::<i64, T>::new(),
+            item_to_key: HashMap::<T, i64>::new(),
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.key_to_item.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.key_to_item.is_empty()
+    }
+
+    fn push(&mut self, item: T) -> usize {
+        let index = self.len();
+        let key = index_to_key(self.index_offset, index);
+        self.key_to_item.insert(key, item.clone());
+        self.item_to_key.insert(item, key);
+        index
+    }
+
+    fn get(&self, index: usize) -> Option<T> {
+        let key = index_to_key(self.index_offset, index);
+        self.key_to_item.get(&key).map(Clone::clone)
+    }
+
+    fn get_or_panic(&self, index: usize) -> T {
+        self.get(index).unwrap()
+    }
+
+    fn clear(&mut self) {
+        self.key_to_item.clear();
+        self.item_to_key.clear();
+    }
+
+    fn position(&self, item: &T) -> Option<usize> {
+        self.item_to_key
+            .get(item)
+            .map(|key| key_to_index(self.index_offset, *key))
+    }
+
+    fn truncate(&mut self, len: usize) {
+        for index in len..self.len() {
+            let key = index_to_key(self.index_offset, index);
+            if let Some(item) = self.key_to_item.remove(&key) {
+                self.item_to_key.remove(&item);
+            }
+        }
+    }
+
+    fn shift(&mut self, n: usize) {
+        let num_drain = min(n, self.len());
+        for index in 0..num_drain {
+            let key = index_to_key(self.index_offset, index);
+            if let Some(item) = self.key_to_item.remove(&key) {
+                self.item_to_key.remove(&item);
+            }
+        }
+        self.index_offset += num_drain as i64;
+    }
+
+    fn push_front(&mut self, item: T) {
+        let key = self.index_offset - 1;
+        self.index_offset = key;
+        self.key_to_item.insert(key, item.clone());
+        self.item_to_key.insert(item, key);
+    }
+
+    #[cfg(test)]
+    fn check_state(&self) {
+        assert_eq!(self.key_to_item.len(), self.item_to_key.len());
+        for index in 0..self.key_to_item.len() {
+            let key = index_to_key(self.index_offset, index);
+            let item = self
+                .key_to_item
+                .get(&key)
+                .map(Clone::clone)
+                .expect("Missing key to item mapping");
+            let stored_key = self
+                .item_to_key
+                .get(&item)
+                .map(Clone::clone)
+                .expect("Missing item to key mapping");
+            assert_eq!(key, stored_key);
         }
     }
 }
 
-impl<T: Clone> ArrayLike for MemDbVec<T> {
+#[derive(Debug, Clone)]
+pub struct MemDbVec<T>
+where T: PartialEq + Eq + Hash + Clone
+{
+    storage: Arc<RwLock<MemDbVecStorage<T>>>,
+}
+
+impl<T> MemDbVec<T>
+where T: PartialEq + Eq + Hash + Clone
+{
+    pub fn new() -> Self {
+        Self {
+            storage: Arc::new(RwLock::new(MemDbVecStorage::<T>::new())),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn check_state(&self) {
+        self.storage.read().expect("Storage lock issue").check_state();
+    }
+}
+
+// Combine the index offset and array index to create a db key.
+fn index_to_key(offset: i64, index: usize) -> i64 {
+    offset + index as i64
+}
+
+// Convert a db key to the array index.
+fn key_to_index(offset: i64, key: i64) -> usize {
+    let index = key - offset;
+    if index >= 0 {
+        index as usize
+    } else {
+        0
+    }
+}
+
+impl<T> ArrayLike for MemDbVec<T>
+where T: PartialEq + Eq + Hash + Clone
+{
     type Error = ChainStorageError;
     type Value = T;
 
     fn len(&self) -> Result<usize, Self::Error> {
         Ok(self
-            .db
+            .storage
             .read()
             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
             .len())
@@ -54,47 +185,56 @@ impl<T: Clone> ArrayLike for MemDbVec<T> {
 
     fn is_empty(&self) -> Result<bool, Self::Error> {
         Ok(self
-            .db
+            .storage
             .read()
             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
             .is_empty())
     }
 
     fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error> {
-        self.db
+        Ok(self
+            .storage
             .write()
             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-            .push(item);
-        Ok(self.len()? - 1)
+            .push(item))
     }
 
     fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error> {
         Ok(self
-            .db
+            .storage
             .read()
             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
-            .get(index)
-            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?)
+            .get(index))
     }
 
     fn get_or_panic(&self, index: usize) -> Self::Value {
-        self.db.read().unwrap()[index].clone()
+        self.storage.read().unwrap().get_or_panic(index)
     }
 
     fn clear(&mut self) -> Result<(), Self::Error> {
-        self.db
+        self.storage
             .write()
             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
             .clear();
         Ok(())
     }
+
+    fn position(&self, item: &Self::Value) -> Result<Option<usize>, Self::Error> {
+        Ok(self
+            .storage
+            .read()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+            .position(item))
+    }
 }
 
-impl<T: Clone> ArrayLikeExt for MemDbVec<T> {
+impl<T> ArrayLikeExt for MemDbVec<T>
+where T: PartialEq + Eq + Hash + Clone
+{
     type Value = T;
 
     fn truncate(&mut self, len: usize) -> Result<(), MerkleMountainRangeError> {
-        self.db
+        self.storage
             .write()
             .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
             .truncate(len);
@@ -102,33 +242,33 @@ impl<T: Clone> ArrayLikeExt for MemDbVec<T> {
     }
 
     fn shift(&mut self, n: usize) -> Result<(), MerkleMountainRangeError> {
-        let drain_n = min(
-            n,
-            self.len()
-                .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?,
-        );
-        self.db
+        self.storage
             .write()
             .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
-            .drain(0..drain_n);
+            .shift(n);
         Ok(())
     }
 
     fn push_front(&mut self, item: Self::Value) -> Result<(), MerkleMountainRangeError> {
-        self.db
+        self.storage
             .write()
             .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
-            .push_front(item)
+            .push_front(item);
+        Ok(())
     }
 
-    fn for_each<F>(&self, f: F) -> Result<(), MerkleMountainRangeError>
+    fn for_each<F>(&self, mut f: F) -> Result<(), MerkleMountainRangeError>
     where F: FnMut(Result<Self::Value, MerkleMountainRangeError>) {
-        self.db
+        let db = self
+            .storage
             .read()
-            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
-            .iter()
-            .map(|v| Ok(v.clone()))
-            .for_each(f);
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
+        for index in 0..db.len() {
+            let val = db
+                .get(index)
+                .ok_or_else(|| MerkleMountainRangeError::BackendError("Unexpected error".into()))?;
+            f(Ok(val))
+        }
         Ok(())
     }
 }
@@ -175,7 +315,14 @@ mod test {
             .enumerate()
             .for_each(|(i, val)| assert_eq!(db_vec.get(i).unwrap(), Some(val.clone())));
 
+        for index in 0..db_vec.len().unwrap() {
+            let item = db_vec.get(index).unwrap().unwrap();
+            assert_eq!(db_vec.position(&item).unwrap(), Some(index));
+        }
+
         assert!(db_vec.clear().is_ok());
         assert_eq!(db_vec.len().unwrap(), 0);
+
+        db_vec.check_state();
     }
 }

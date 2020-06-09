@@ -214,6 +214,15 @@ where
         }
         Ok((curr_hash, base_deleted | curr_deleted))
     }
+
+    /// Search for the leaf index of the given hash in the nodes of the current and base MMR.
+    pub fn find_leaf_index(&self, hash: &Hash) -> Result<Option<u32>, MerkleMountainRangeError> {
+        let mut index = self.base_mmr.find_leaf_index(hash)?;
+        if index.is_none() {
+            index = self.curr_mmr.find_leaf_index(hash)?;
+        }
+        Ok(index)
+    }
 }
 
 impl<D, BaseBackend, CpBackend> Deref for MmrCache<D, BaseBackend, CpBackend>

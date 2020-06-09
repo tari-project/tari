@@ -43,7 +43,7 @@ impl<T> MemBackendVec<T> {
     }
 }
 
-impl<T: Clone> ArrayLike for MemBackendVec<T> {
+impl<T: Clone + PartialEq> ArrayLike for MemBackendVec<T> {
     type Error = MerkleMountainRangeError;
     type Value = T;
 
@@ -91,9 +91,20 @@ impl<T: Clone> ArrayLike for MemBackendVec<T> {
             .clear();
         Ok(())
     }
+
+    fn position(&self, item: &Self::Value) -> Result<Option<usize>, Self::Error> {
+        for index in 0..self.len()? {
+            if let Some(stored_item) = self.get(index)? {
+                if stored_item == *item {
+                    return Ok(Some(index));
+                }
+            }
+        }
+        Ok(None)
+    }
 }
 
-impl<T: Clone> ArrayLikeExt for MemBackendVec<T> {
+impl<T: Clone + PartialEq> ArrayLikeExt for MemBackendVec<T> {
     type Value = T;
 
     fn truncate(&mut self, len: usize) -> Result<(), MerkleMountainRangeError> {

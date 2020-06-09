@@ -73,6 +73,7 @@ use tari_mmr::{
     ArrayLike,
     ArrayLikeExt,
     Hash as MmrHash,
+    Hash,
     MerkleCheckPoint,
     MerkleProof,
     MmrCache,
@@ -700,6 +701,14 @@ where D: Digest + Send + Sync
             leaf_nodes.push(self.fetch_mmr_node(tree.clone(), pos)?);
         }
         Ok(leaf_nodes)
+    }
+
+    fn fetch_mmr_leaf_index(&self, tree: MmrTree, hash: &Hash) -> Result<Option<u32>, ChainStorageError> {
+        Ok(match tree {
+            MmrTree::Kernel => self.kernel_mmr.find_leaf_index(hash)?,
+            MmrTree::Utxo => self.utxo_mmr.find_leaf_index(hash)?,
+            MmrTree::RangeProof => self.range_proof_mmr.find_leaf_index(hash)?,
+        })
     }
 
     /// Iterate over all the stored orphan blocks and execute the function `f` for each block.

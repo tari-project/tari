@@ -46,6 +46,9 @@ pub trait ArrayLike {
 
     /// Remove all stored items from the the backend.
     fn clear(&mut self) -> Result<(), Self::Error>;
+
+    /// Finds the index of the specified stored item, it will return None if the object could not be found.
+    fn position(&self, item: &Self::Value) -> Result<Option<usize>, Self::Error>;
 }
 
 pub trait ArrayLikeExt {
@@ -65,7 +68,7 @@ pub trait ArrayLikeExt {
     where F: FnMut(Result<Self::Value, MerkleMountainRangeError>);
 }
 
-impl<T: Clone> ArrayLike for Vec<T> {
+impl<T: Clone + PartialEq> ArrayLike for Vec<T> {
     type Error = MerkleMountainRangeError;
     type Value = T;
 
@@ -93,6 +96,10 @@ impl<T: Clone> ArrayLike for Vec<T> {
     fn clear(&mut self) -> Result<(), Self::Error> {
         Vec::clear(self);
         Ok(())
+    }
+
+    fn position(&self, item: &Self::Value) -> Result<Option<usize>, Self::Error> {
+        Ok(self.iter().position(|stored_item| stored_item == item))
     }
 }
 

@@ -133,7 +133,7 @@ where
     }
 
     /// See [MerkleMountainRange::find_leaf_index]
-    pub fn find_leaf_index(&self, hash: &Hash) -> Result<Option<usize>, MerkleMountainRangeError> {
+    pub fn find_leaf_index(&self, hash: &Hash) -> Result<Option<u32>, MerkleMountainRangeError> {
         self.mmr.find_leaf_index(hash)
     }
 
