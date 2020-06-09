@@ -20,13 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
 use futures::channel::oneshot::Sender as OneshotSender;
 use rand::RngCore;
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::RwLock;
 
 pub type RequestKey = u64;
 
@@ -34,13 +31,6 @@ pub type RequestKey = u64;
 pub fn generate_request_key<R>(rng: &mut R) -> RequestKey
 where R: RngCore {
     rng.next_u64()
-}
-
-#[derive(Debug, Error)]
-pub enum WaitingRequestError {
-    /// A problem has been encountered with the storage backend.
-    #[error(non_std, no_from)]
-    BackendError(String),
 }
 
 /// WaitingRequests is used to keep track of a set of WaitingRequests.
@@ -57,25 +47,13 @@ impl<T> WaitingRequests<T> {
     }
 
     /// Insert a new waiting request.
-    pub fn insert(&self, key: RequestKey, reply_tx: Option<OneshotSender<T>>) -> Result<(), WaitingRequestError> {
-        self.requests
-            .write()
-            .map_err(|e| WaitingRequestError::BackendError(e.to_string()))?
-            .insert(key, reply_tx);
-        Ok(())
+    pub async fn insert(&self, key: RequestKey, reply_tx: Option<OneshotSender<T>>) {
+        self.requests.write().await.insert(key, reply_tx);
     }
 
     /// Remove the waiting request corresponding to the provided key.
-    pub fn remove(&self, key: RequestKey) -> Result<Option<OneshotSender<T>>, WaitingRequestError> {
-        if let Some(mut reply_tx) = self
-            .requests
-            .write()
-            .map_err(|e| WaitingRequestError::BackendError(e.to_string()))?
-            .remove(&key)
-        {
-            return Ok(reply_tx.take());
-        }
-        Ok(None)
+    pub async fn remove(&self, key: RequestKey) -> Option<OneshotSender<T>> {
+        self.requests.write().await.remove(&key).unwrap_or(None)
     }
 }
 

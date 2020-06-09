@@ -394,7 +394,7 @@ async fn handle_incoming_response(
         .and_then(|r| r.try_into().ok())
         .ok_or_else(|| MempoolServiceError::InvalidResponse("Received an invalid mempool response".to_string()))?;
 
-    if let Some(reply_tx) = waiting_requests.remove(request_key)? {
+    if let Some(reply_tx) = waiting_requests.remove(request_key).await {
         let _ = reply_tx.send(Ok(response).or_else(|resp| {
             warn!(
                 target: LOG_TARGET,
@@ -439,7 +439,7 @@ async fn handle_outbound_request(
     match send_result.resolve_ok().await {
         Some(send_states) if !send_states.is_empty() => {
             // Spawn timeout and wait for matching response to arrive
-            waiting_requests.insert(request_key, Some(reply_tx))?;
+            waiting_requests.insert(request_key, Some(reply_tx)).await;
             // Spawn timeout for waiting_request
             spawn_request_timeout(timeout_sender, request_key, config.request_timeout);
         },
@@ -498,7 +498,7 @@ async fn handle_request_timeout(
     request_key: RequestKey,
 ) -> Result<(), MempoolServiceError>
 {
-    if let Some(reply_tx) = waiting_requests.remove(request_key)? {
+    if let Some(reply_tx) = waiting_requests.remove(request_key).await {
         let reply_msg = Err(MempoolServiceError::RequestTimedOut);
         let _ = reply_tx.send(reply_msg.or_else(|resp| {
             error!(

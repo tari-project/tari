@@ -476,7 +476,7 @@ async fn handle_incoming_response(
         .and_then(|r| r.try_into().ok())
         .ok_or_else(|| BaseNodeServiceError::InvalidResponse("Received an invalid base node response".to_string()))?;
 
-    if let Some(reply_tx) = waiting_requests.remove(request_key)? {
+    if let Some(reply_tx) = waiting_requests.remove(request_key).await {
         let _ = reply_tx.send(Ok(response).or_else(|resp| {
             warn!(
                 target: LOG_TARGET,
@@ -534,9 +534,7 @@ async fn handle_outbound_request(
         },
         Some(send_states) => {
             // Wait for matching responses to arrive
-            waiting_requests
-                .insert(request_key, Some(reply_tx))
-                .map_err(|_| CommsInterfaceError::UnexpectedApiResponse)?;
+            waiting_requests.insert(request_key, Some(reply_tx)).await;
             // Spawn timeout for waiting_request
             spawn_request_timeout(timeout_sender, request_key, config.request_timeout);
             // Log messages
@@ -601,10 +599,7 @@ async fn handle_request_timeout(
     request_key: RequestKey,
 ) -> Result<(), CommsInterfaceError>
 {
-    if let Some(reply_tx) = waiting_requests
-        .remove(request_key)
-        .map_err(|_| CommsInterfaceError::UnexpectedApiResponse)?
-    {
+    if let Some(reply_tx) = waiting_requests.remove(request_key).await {
         let reply_msg = Err(CommsInterfaceError::RequestTimedOut);
         let _ = reply_tx.send(reply_msg.or_else(|resp| {
             error!(
