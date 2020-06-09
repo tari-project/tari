@@ -54,7 +54,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
-        types::{CryptoFactories, PrivateKey},
+        types::{BlindingFactor, CryptoFactories, PrivateKey},
     },
 };
 use tari_crypto::tari_utilities::ByteArray;
@@ -428,6 +428,23 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         )?;
 
         Ok(tx_id)
+    }
+
+    fn revalidate_unspent_output(&self, spending_key: &BlindingFactor) -> Result<(), OutputManagerStorageError> {
+        let conn = acquire_lock!(self.database_connection);
+        let output = OutputSql::find(&spending_key.to_vec(), &conn)?;
+
+        if OutputStatus::try_from(output.status)? != OutputStatus::Invalid {
+            return Err(OutputManagerStorageError::ValuesNotFound);
+        }
+        let _ = output.update(
+            UpdateOutput {
+                status: Some(OutputStatus::Unspent),
+                tx_id: None,
+            },
+            &(*conn),
+        )?;
+        Ok(())
     }
 }
 

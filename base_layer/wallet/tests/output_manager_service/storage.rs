@@ -290,6 +290,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         .block_on(db.invalidate_output(unspent_outputs[0].clone()))
         .unwrap();
     let invalid_outputs = runtime.block_on(db.get_invalid_outputs()).unwrap();
+
     assert_eq!(invalid_outputs.len(), 1);
     assert_eq!(invalid_outputs[0], unspent_outputs[0]);
 
@@ -297,6 +298,40 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         .block_on(db.invalidate_output(pending_txs[0].outputs_to_be_received[0].clone()))
         .unwrap();
     assert_eq!(tx_id, Some(pending_txs[0].tx_id));
+
+    // test revalidating output
+    let unspent_outputs = runtime.block_on(db.get_unspent_outputs()).unwrap();
+    assert!(
+        unspent_outputs
+            .iter()
+            .find(|o| o.unblinded_output == invalid_outputs[0].unblinded_output)
+            .is_none(),
+        "Should not find ouput"
+    );
+
+    assert!(runtime
+        .block_on(
+            db.revalidate_output(
+                pending_txs[2].outputs_to_be_spent[0]
+                    .unblinded_output
+                    .spending_key
+                    .clone()
+            )
+        )
+        .is_err());
+    runtime
+        .block_on(db.revalidate_output(invalid_outputs[0].unblinded_output.spending_key.clone()))
+        .unwrap();
+    let new_invalid_outputs = runtime.block_on(db.get_invalid_outputs()).unwrap();
+    assert_eq!(new_invalid_outputs.len(), 1);
+    let unspent_outputs = runtime.block_on(db.get_unspent_outputs()).unwrap();
+    assert!(
+        unspent_outputs
+            .iter()
+            .find(|o| o.unblinded_output == invalid_outputs[0].unblinded_output)
+            .is_some(),
+        "Should find revalidated ouput"
+    );
 }
 
 #[test]

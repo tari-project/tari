@@ -42,6 +42,7 @@ use std::{
     sync::{Arc, RwLock},
     time::Duration,
 };
+use tari_core::transactions::types::BlindingFactor;
 
 /// This structure is an In-Memory database backend that implements the `OutputManagerBackend` trait and provides all
 /// the functionality required by the trait.
@@ -368,6 +369,22 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                 let output = db.unspent_outputs.remove(pos);
                 db.invalid_outputs.push(output.clone());
                 Ok(output.tx_id)
+            },
+            None => Err(OutputManagerStorageError::ValuesNotFound),
+        }
+    }
+
+    fn revalidate_unspent_output(&self, spending_key: &BlindingFactor) -> Result<(), OutputManagerStorageError> {
+        let mut db = acquire_write_lock!(self.db);
+        match db
+            .invalid_outputs
+            .iter()
+            .position(|v| v.output.unblinded_output.spending_key == *spending_key)
+        {
+            Some(pos) => {
+                let output = db.invalid_outputs.remove(pos);
+                db.unspent_outputs.push(output);
+                Ok(())
             },
             None => Err(OutputManagerStorageError::ValuesNotFound),
         }
