@@ -41,7 +41,7 @@ use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
     broadcast_strategy::BroadcastStrategy,
     domain_message::OutboundDomainMessage,
-    outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester},
+    outbound::{DhtOutboundError, OutboundMessageRequester},
     DhtRequester,
 };
 use tari_service_framework::RequestContext;
@@ -217,11 +217,7 @@ where
         );
 
         self.oms_handle
-            .send_direct_node_id(
-                node_id,
-                OutboundEncryption::None,
-                OutboundDomainMessage::new(TariMessageType::PingPong, msg),
-            )
+            .send_direct_node_id(node_id, OutboundDomainMessage::new(TariMessageType::PingPong, msg))
             .await
             .map_err(Into::<DhtOutboundError>::into)?;
 
@@ -232,11 +228,7 @@ where
         let msg =
             PingPongMessage::pong_with_metadata(nonce, self.state.metadata().clone(), self.config.useragent.clone());
         self.oms_handle
-            .send_direct(
-                dest,
-                OutboundEncryption::None,
-                OutboundDomainMessage::new(TariMessageType::PingPong, msg),
-            )
+            .send_direct(dest, OutboundDomainMessage::new(TariMessageType::PingPong, msg))
             .await
             .map(|_| ())
             .map_err(Into::into)
@@ -307,11 +299,7 @@ where
             let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone(), self.config.useragent.clone());
             self.state.add_inflight_ping(msg.nonce, &node_id);
             self.oms_handle
-                .send_direct_node_id(
-                    node_id,
-                    OutboundEncryption::None,
-                    OutboundDomainMessage::new(TariMessageType::PingPong, msg),
-                )
+                .send_direct_node_id(node_id, OutboundDomainMessage::new(TariMessageType::PingPong, msg))
                 .await?;
         }
 
@@ -333,11 +321,7 @@ where
                     PingPongMessage::ping_with_metadata(self.state.metadata().clone(), self.config.useragent.clone());
                 self.state.add_inflight_ping(msg.nonce, &node_id);
                 self.oms_handle
-                    .send_direct_node_id(
-                        node_id,
-                        OutboundEncryption::None,
-                        OutboundDomainMessage::new(TariMessageType::PingPong, msg),
-                    )
+                    .send_direct_node_id(node_id, OutboundDomainMessage::new(TariMessageType::PingPong, msg))
                     .await
                     .map_err(Into::<DhtOutboundError>::into)?;
             }
@@ -372,7 +356,11 @@ mod test {
         proto::liveness::MetadataKey,
         services::liveness::{handle::LivenessHandle, state::Metadata},
     };
-    use futures::{channel::mpsc, stream, FutureExt};
+    use futures::{
+        channel::{mpsc, oneshot},
+        stream,
+        FutureExt,
+    };
     use rand::rngs::OsRng;
     use std::time::Duration;
     use tari_comms::{
@@ -382,7 +370,7 @@ mod test {
     };
     use tari_comms_dht::{
         envelope::{DhtMessageHeader, DhtMessageType, Network},
-        outbound::{DhtOutboundRequest, SendMessageResponse},
+        outbound::{DhtOutboundRequest, MessageSendState, SendMessageResponse},
         DhtRequest,
     };
     use tari_crypto::keys::PublicKey;
@@ -469,7 +457,12 @@ mod test {
         task::spawn(async move {
             match outbound_rx.select_next_some().await {
                 DhtOutboundRequest::SendMessage(_, _, reply_tx) => {
-                    reply_tx.send(SendMessageResponse::Queued(vec![].into())).unwrap();
+                    let (_, rx) = oneshot::channel();
+                    reply_tx
+                        .send(SendMessageResponse::Queued(
+                            vec![MessageSendState::new(MessageTag::new(), rx)].into(),
+                        ))
+                        .unwrap();
                 },
             }
         });

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::outbound::DhtOutboundError;
+use crate::outbound::{message::SendFailure, DhtOutboundError};
 use futures::channel::mpsc::SendError;
 use tari_comms::{connection_manager::ConnectionManagerError, peer_manager::PeerManagerError};
 use thiserror::Error;
@@ -41,8 +41,8 @@ pub enum DhtDiscoveryError {
     SendBufferFull,
     #[error("The discovery request timed out")]
     DiscoveryTimeout,
-    #[error("Failed to send discovery message")]
-    DiscoverySendFailed,
+    #[error("Failed to send discovery message: {0}")]
+    DiscoverySendFailed(SendFailure),
     #[error("PeerManagerError: {0}")]
     PeerManagerError(#[from] PeerManagerError),
     #[error("InvalidPeerMultiaddr: {0}")]

@@ -239,10 +239,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     stored_messages,
                 )
                 .await?
-                .resolve_ok()
+                .resolve()
                 .await
             {
-                Some(_) => {
+                Ok(_) => {
                     debug!(
                         target: LOG_TARGET,
                         "Removing {:?} stored messages for peer '{}'",
@@ -252,11 +252,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     trace!(target: LOG_TARGET, "Removing stored messages: {:?}", message_ids,);
                     self.saf_requester.remove_messages(message_ids).await?;
                 },
-                None => {
+                Err(err) => {
                     error!(
                         target: LOG_TARGET,
-                        "Failed to send stored messages to peer '{}'",
-                        message.source_peer.node_id.short_str()
+                        "Failed to send stored messages to peer '{}': {}",
+                        message.source_peer.node_id.short_str(),
+                        err
                     );
                 },
             }

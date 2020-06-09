@@ -471,7 +471,7 @@ async fn do_network_wide_propagation(nodes: &mut [TestNode]) {
                             .unwrap();
                         println!("📬 {} got public message '{}'", node_name, public_msg);
                         is_success = true;
-                        let sent_state = outbound_req
+                        let send_states = outbound_req
                             .propagate(
                                 NodeDestination::Unknown,
                                 OutboundEncryption::None,
@@ -480,8 +480,7 @@ async fn do_network_wide_propagation(nodes: &mut [TestNode]) {
                             )
                             .await
                             .unwrap();
-                        let states = sent_state.resolve_ok().await.unwrap();
-                        println!("🦠 {} propagated to {} peer(s)", node_name, states.len());
+                        println!("🦠 {} propagated to {} peer(s)", node_name, send_states.len());
                     },
                     Err(_) | Ok(None) => {
                         banner!(

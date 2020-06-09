@@ -31,7 +31,7 @@ use helpers::{
 };
 use std::{sync::atomic::Ordering, time::Duration};
 use tari_broadcast_channel::{bounded, Publisher, Subscriber};
-use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundEncryption};
+use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::{service::BaseNodeServiceConfig, states::StateEvent},
     consensus::{ConsensusManagerBuilder, Network},
@@ -80,7 +80,6 @@ fn mining() {
             .outbound_message_service
             .send_direct(
                 alice_node.node_identity.public_key().clone(),
-                OutboundEncryption::None,
                 OutboundDomainMessage::new(
                     TariMessageType::NewTransaction,
                     proto::types::Transaction::from(tx1.clone()),

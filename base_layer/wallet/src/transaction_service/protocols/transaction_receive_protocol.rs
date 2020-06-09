@@ -171,7 +171,6 @@ where TBackend: TransactionBackend + Clone + 'static
                 .outbound_message_service
                 .send_direct(
                     self.source_pubkey.clone(),
-                    OutboundEncryption::None,
                     OutboundDomainMessage::new(TariMessageType::ReceiverPartialTransactionReply, proto_message.clone()),
                 )
                 .await
@@ -191,10 +190,10 @@ where TBackend: TransactionBackend + Clone + 'static
                                 .map_err(|e| TransactionServiceProtocolError::new(self.id, e))?;
                         }
                     },
-                    SendMessageResponse::Failed => {
+                    SendMessageResponse::Failed(err) => {
                         error!(
                             target: LOG_TARGET,
-                            "Transaction Reply Send Direct for TxID: {} failed", self.id
+                            "Transaction Reply Send Direct for TxID {} failed: {}", self.id, err
                         );
                         store_and_forward_send_result = self
                             .send_transaction_reply_store_and_forward(
@@ -304,30 +303,14 @@ where TBackend: TransactionBackend + Clone + 'static
             )
             .await
         {
-            Ok(result) => match result.resolve_ok().await {
-                None => {
-                    error!(
-                        target: LOG_TARGET,
-                        "Sending Transaction Reply (TxId: {}) to neighbours for Store and Forward failed", tx_id,
-                    );
-                },
-                Some(tags) if !tags.is_empty() => {
-                    info!(
-                        target: LOG_TARGET,
-                        "Sending Transaction Reply (TxId: {}) to Neighbours for Store and Forward successful with \
-                         Message Tags: {:?}",
-                        tx_id,
-                        tags,
-                    );
-                },
-                Some(_) => {
-                    error!(
-                        target: LOG_TARGET,
-                        "Sending Transaction Reply to Neighbours for Store and Forward for TX_ID: {} was unsuccessful \
-                         and no messages were sent.",
-                        tx_id,
-                    );
-                },
+            Ok(send_states) => {
+                info!(
+                    target: LOG_TARGET,
+                    "Sending Transaction Reply (TxId: {}) to Neighbours for Store and Forward successful with Message \
+                     Tags: {:?}",
+                    tx_id,
+                    send_states.to_tags(),
+                );
             },
             Err(e) => {
                 error!(

@@ -27,7 +27,9 @@ use crate::{
     outbound::{
         message::{OutboundEncryption, SendMessageResponse},
         message_params::{FinalSendMessageParams, SendMessageParams},
+        message_send_state::MessageSendState,
         DhtOutboundError,
+        MessageSendStates,
     },
 };
 use futures::{
@@ -49,11 +51,10 @@ impl OutboundMessageRequester {
         Self { sender }
     }
 
-    /// Send directly to a peer.
+    /// Send directly to a peer. If the peer does not exist in the peer list, a discovery will be initiated.
     pub async fn send_direct<T>(
         &mut self,
         dest_public_key: CommsPublicKey,
-        encryption: OutboundEncryption,
         message: OutboundDomainMessage<T>,
     ) -> Result<SendMessageResponse, DhtOutboundError>
     where
@@ -62,7 +63,6 @@ impl OutboundMessageRequester {
         self.send_message(
             SendMessageParams::new()
                 .direct_public_key(dest_public_key)
-                .with_encryption(encryption)
                 .with_discovery(true)
                 .finish(),
             message,
@@ -74,37 +74,24 @@ impl OutboundMessageRequester {
     pub async fn send_direct_node_id<T>(
         &mut self,
         dest_node_id: NodeId,
-        encryption: OutboundEncryption,
         message: OutboundDomainMessage<T>,
-    ) -> Result<SendMessageResponse, DhtOutboundError>
+    ) -> Result<MessageSendState, DhtOutboundError>
     where
         T: prost::Message,
     {
-        self.send_message(
-            SendMessageParams::new()
-                .direct_node_id(dest_node_id.clone())
-                .with_destination(NodeDestination::NodeId(Box::new(dest_node_id)))
-                .with_encryption(encryption)
-                .finish(),
-            message,
-        )
-        .await
-    }
+        let resp = self
+            .send_message(
+                SendMessageParams::new().direct_node_id(dest_node_id.clone()).finish(),
+                message,
+            )
+            .await?;
 
-    /// Send to a pre-configured number of closest peers.
-    ///
-    /// Each message is destined for each peer.
-    pub async fn send_direct_neighbours<T>(
-        &mut self,
-        encryption: OutboundEncryption,
-        exclude_peers: Vec<NodeId>,
-        message: OutboundDomainMessage<T>,
-    ) -> Result<SendMessageResponse, DhtOutboundError>
-    where
-        T: prost::Message,
-    {
-        self.propagate(NodeDestination::Unknown, encryption, exclude_peers, message)
-            .await
+        let send_stats = resp.resolve().await?;
+
+        Ok(send_stats
+            .into_inner()
+            .pop()
+            .expect("MessageSendStates::inner is empty!"))
     }
 
     /// Send to a pre-configured number of closest peers, for further message propagation.
@@ -117,7 +104,7 @@ impl OutboundMessageRequester {
         encryption: OutboundEncryption,
         exclude_peers: Vec<NodeId>,
         message: OutboundDomainMessage<T>,
-    ) -> Result<SendMessageResponse, DhtOutboundError>
+    ) -> Result<MessageSendStates, DhtOutboundError>
     where
         T: prost::Message,
     {
@@ -129,7 +116,10 @@ impl OutboundMessageRequester {
                 .finish(),
             message,
         )
+        .await?
+        .resolve()
         .await
+        .map_err(Into::into)
     }
 
     /// Send to a pre-configured number of closest peers, for further message propagation.
@@ -142,7 +132,7 @@ impl OutboundMessageRequester {
         encryption: OutboundEncryption,
         exclude_peers: Vec<NodeId>,
         message: OutboundDomainMessage<T>,
-    ) -> Result<SendMessageResponse, DhtOutboundError>
+    ) -> Result<MessageSendStates, DhtOutboundError>
     where
         T: prost::Message,
     {
@@ -154,7 +144,10 @@ impl OutboundMessageRequester {
                 .finish(),
             message,
         )
+        .await?
+        .resolve()
         .await
+        .map_err(Into::into)
     }
 
     /// Send to _ALL_ known peers.
@@ -166,7 +159,7 @@ impl OutboundMessageRequester {
         destination: NodeDestination,
         encryption: OutboundEncryption,
         message: OutboundDomainMessage<T>,
-    ) -> Result<SendMessageResponse, DhtOutboundError>
+    ) -> Result<MessageSendStates, DhtOutboundError>
     where
         T: prost::Message,
     {
@@ -178,7 +171,10 @@ impl OutboundMessageRequester {
                 .finish(),
             message,
         )
+        .await?
+        .resolve()
         .await
+        .map_err(Into::into)
     }
 
     /// Send to a random subset of peers of size _n_.
@@ -188,7 +184,7 @@ impl OutboundMessageRequester {
         destination: NodeDestination,
         encryption: OutboundEncryption,
         message: OutboundDomainMessage<T>,
-    ) -> Result<SendMessageResponse, DhtOutboundError>
+    ) -> Result<MessageSendStates, DhtOutboundError>
     where
         T: prost::Message,
     {
@@ -200,7 +196,10 @@ impl OutboundMessageRequester {
                 .finish(),
             message,
         )
+        .await?
+        .resolve()
         .await
+        .map_err(Into::into)
     }
 
     /// Send a message with custom parameters

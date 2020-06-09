@@ -352,9 +352,9 @@ impl DhtDiscoveryService {
                 discover_msg,
             )
             .await?
-            .resolve_ok()
+            .resolve()
             .await
-            .ok_or_else(|| DhtDiscoveryError::DiscoverySendFailed)?;
+            .map_err(DhtDiscoveryError::DiscoverySendFailed)?;
 
         // Spawn a task to log how the sending of discovery went
         task::spawn(async move {

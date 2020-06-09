@@ -42,6 +42,10 @@ impl MessageSendState {
     pub fn new(tag: MessageTag, reply_rx: MessagingReplyRx) -> Self {
         Self { tag, reply_rx }
     }
+
+    pub fn wait_for_result(self) -> MessagingReplyRx {
+        self.reply_rx
+    }
 }
 
 #[derive(Debug)]
@@ -213,6 +217,14 @@ impl MessageSendStates {
         });
 
         unordered
+    }
+
+    pub fn into_inner(self) -> Vec<MessageSendState> {
+        self.inner
+    }
+
+    pub fn to_tags(&self) -> Vec<MessageTag> {
+        self.inner.iter().map(|s| s.tag).collect()
     }
 }
 

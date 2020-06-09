@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::outbound::message::SendFailure;
 use futures::channel::mpsc::SendError;
 use tari_comms::message::MessageError;
 use tari_crypto::{
@@ -54,4 +55,17 @@ pub enum DhtOutboundError {
     DiscoveryFailed,
     #[error("Failed to insert message hash")]
     FailedToInsertMessageHash,
+    #[error("Failed to send message: {0}")]
+    SendMessageFailed(SendFailure),
+    #[error("No messages were queued for sending")]
+    NoMessagesQueued,
+}
+
+impl From<SendFailure> for DhtOutboundError {
+    fn from(err: SendFailure) -> Self {
+        match err {
+            SendFailure::NoMessagesQueued => DhtOutboundError::NoMessagesQueued,
+            err => Self::SendMessageFailed(err),
+        }
+    }
 }
