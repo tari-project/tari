@@ -320,6 +320,28 @@ where D: Digest + Send + Sync
                         db.curr_range_proof_checkpoint.reset_to(&last_cp);
                     },
                 },
+                WriteOperation::MergeMmrCheckpoints(tree, max_cp_count) => match tree {
+                    MmrTree::Kernel => {
+                        let (num_cps_merged, _) = merge_checkpoints(&mut db.kernel_checkpoints, max_cp_count)?;
+                        db.kernel_mmr
+                            .checkpoints_merged(num_cps_merged)
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                    },
+                    MmrTree::Utxo => {
+                        let (num_cps_merged, stxo_leaf_indices) =
+                            merge_checkpoints(&mut db.utxo_checkpoints, max_cp_count)?;
+                        db.utxo_mmr
+                            .checkpoints_merged(num_cps_merged)
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                        discard_stxos(&mut db, stxo_leaf_indices)?;
+                    },
+                    MmrTree::RangeProof => {
+                        let (num_cps_merged, _) = merge_checkpoints(&mut db.range_proof_checkpoints, max_cp_count)?;
+                        db.range_proof_mmr
+                            .checkpoints_merged(num_cps_merged)
+                            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                    },
+                },
             }
         }
         Ok(())
@@ -416,10 +438,12 @@ where D: Digest + Send + Sync
 
     fn fetch_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
         let db = self.db_access()?;
+        let tip_height = db.headers.len().saturating_sub(1) as u64;
+        let pruned_mode = self.fetch_metadata()?.is_pruned_node();
         match tree {
-            MmrTree::Kernel => db.kernel_checkpoints.get(height as usize),
-            MmrTree::Utxo => db.utxo_checkpoints.get(height as usize),
-            MmrTree::RangeProof => db.range_proof_checkpoints.get(height as usize),
+            MmrTree::Kernel => fetch_checkpoint(&db.kernel_checkpoints, pruned_mode, tip_height, height),
+            MmrTree::Utxo => fetch_checkpoint(&db.utxo_checkpoints, pruned_mode, tip_height, height),
+            MmrTree::RangeProof => fetch_checkpoint(&db.range_proof_checkpoints, pruned_mode, tip_height, height),
         }?
         .ok_or_else(|| ChainStorageError::OutOfRange)
     }
@@ -706,6 +730,30 @@ fn rewind_checkpoint_index(cp_count: usize, steps_back: usize) -> usize {
     }
 }
 
+// Retrieves the checkpoint corresponding to the provided height, if the checkpoint is part of the horizon state then a
+// BeyondPruningHorizon error will be produced.
+fn fetch_checkpoint(
+    checkpoints: &MemDbVec<MerkleCheckPoint>,
+    pruned_mode: bool,
+    tip_height: u64,
+    height: u64,
+) -> Result<Option<MerkleCheckPoint>, ChainStorageError>
+{
+    let last_cp_index = checkpoints.len()?.saturating_sub(1);
+    let height_offset = tip_height
+        .checked_sub(height)
+        .ok_or_else(|| ChainStorageError::OutOfRange)?;
+    let index = last_cp_index
+        .checked_sub(height_offset as usize)
+        .ok_or_else(|| ChainStorageError::BeyondPruningHorizon)?;
+    if pruned_mode && index == 0 {
+        // In pruned mode the first checkpoint is an accumulation of all checkpoints from the genesis block to horizon
+        // block height.
+        return Err(ChainStorageError::BeyondPruningHorizon);
+    }
+    checkpoints.get(index as usize)
+}
+
 // Calculate the total leaf node count upto a specified height.
 fn fetch_mmr_nodes_added_count(
     checkpoints: &MemDbVec<MerkleCheckPoint>,
@@ -749,4 +797,59 @@ fn rewind_checkpoints(
         .expect("rewind_checkpoint_index should ensure that all checkpoints cannot be removed");
 
     Ok(last_cp)
+}
+
+// Attempt to merge the set of oldest checkpoints into the horizon state and return the number of checkpoints that have
+// been merged.
+fn merge_checkpoints(
+    checkpoints: &mut MemDbVec<MerkleCheckPoint>,
+    max_cp_count: usize,
+) -> Result<(usize, Vec<u32>), ChainStorageError>
+{
+    let cp_count = checkpoints
+        .len()
+        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+    let mut stxo_leaf_indices = Vec::<u32>::new();
+    if let Some(num_cps_merged) = (cp_count + 1).checked_sub(max_cp_count) {
+        if let Some(mut merged_cp) = checkpoints
+            .get(0)
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+        {
+            for index in 1..num_cps_merged {
+                if let Some(cp) = checkpoints
+                    .get(index)
+                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+                {
+                    stxo_leaf_indices.append(&mut cp.nodes_deleted().to_vec());
+                    merged_cp.append(cp);
+                }
+            }
+            checkpoints
+                .shift(num_cps_merged)
+                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+            checkpoints
+                .push_front(merged_cp)
+                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+            return Ok((num_cps_merged, stxo_leaf_indices));
+        }
+    }
+    Ok((0, stxo_leaf_indices))
+}
+
+// Discard the STXOs of the checkpoints that have been merged into the horizon state and return the number of removed
+// STXOs.
+fn discard_stxos<D: Digest>(
+    db: &mut RwLockWriteGuard<InnerDatabase<D>>,
+    leaf_indices: Vec<u32>,
+) -> Result<usize, ChainStorageError>
+{
+    let mut num_removed = 0;
+    for leaf_index in leaf_indices {
+        if let (Some(hash), _) = db.utxo_mmr.fetch_mmr_node(leaf_index)? {
+            if db.stxos.remove(&hash).is_some() {
+                num_removed += 1;
+            }
+        }
+    }
+    Ok(num_removed)
 }

@@ -31,7 +31,7 @@ use tari_core::{
         comms_interface::{CommsInterfaceError, InboundNodeCommsHandlers, NodeCommsRequest, NodeCommsResponse},
         OutboundNodeCommsInterface,
     },
-    blocks::{BlockBuilder, BlockHeader},
+    blocks::{genesis_block, BlockBuilder, BlockHeader},
     chain_storage::{
         BlockchainDatabase,
         BlockchainDatabaseConfig,
@@ -370,8 +370,10 @@ fn inbound_fetch_blocks() {
 fn inbound_fetch_blocks_before_horizon_height() {
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
+    let block0 = genesis_block::get_rincewind_genesis_block_raw();
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants.clone())
+        .with_block(block0.clone())
         .build();
     let validators = Validators::new(
         MockValidator::new(true),
@@ -396,7 +398,6 @@ fn inbound_fetch_blocks_before_horizon_height() {
         outbound_nci,
     );
 
-    let block0 = store.fetch_block(0).unwrap().block().clone();
     let block1 = append_block(&store, &block0, vec![], &consensus_constants, 1.into()).unwrap();
     let block2 = append_block(&store, &block1, vec![], &consensus_constants, 1.into()).unwrap();
     let block3 = append_block(&store, &block2, vec![], &consensus_constants, 1.into()).unwrap();

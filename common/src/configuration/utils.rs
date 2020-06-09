@@ -77,6 +77,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.mainnet.orphan_storage_capacity", 720)
         .unwrap();
     cfg.set_default("base_node.mainnet.pruning_horizon", 0).unwrap();
+    cfg.set_default("base_node.mainnet.pruned_mode_cleanup_interval", 50)
+        .unwrap();
     cfg.set_default("base_node.mainnet.peer_seeds", Vec::<String>::new())
         .unwrap();
     cfg.set_default("base_node.mainnet.block_sync_strategy", "ViaBestChainMetadata")
@@ -125,6 +127,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.rincewind.orphan_storage_capacity", 720)
         .unwrap();
     cfg.set_default("base_node.rincewind.pruning_horizon", 0).unwrap();
+    cfg.set_default("base_node.rincewind.pruned_mode_cleanup_interval", 50)
+        .unwrap();
     cfg.set_default("base_node.rincewind.peer_seeds", Vec::<String>::new())
         .unwrap();
     cfg.set_default("base_node.rincewind.block_sync_strategy", "ViaBestChainMetadata")

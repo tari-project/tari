@@ -23,7 +23,11 @@
 use crate::{
     blocks::{blockheader::BlockHash, Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
-        consts::{BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY, BLOCKCHAIN_DATABASE_PRUNING_HORIZON},
+        consts::{
+            BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
+            BLOCKCHAIN_DATABASE_PRUNED_MODE_CLEANUP_INTERVAL,
+            BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
+        },
         db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree},
         error::ChainStorageError,
         ChainMetadata,
@@ -55,6 +59,7 @@ const LOG_TARGET: &str = "c::cs::database";
 pub struct BlockchainDatabaseConfig {
     pub orphan_storage_capacity: usize,
     pub pruning_horizon: u64,
+    pub pruned_mode_cleanup_interval: u64,
 }
 
 impl Default for BlockchainDatabaseConfig {
@@ -62,6 +67,7 @@ impl Default for BlockchainDatabaseConfig {
         Self {
             orphan_storage_capacity: BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
             pruning_horizon: BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
+            pruned_mode_cleanup_interval: BLOCKCHAIN_DATABASE_PRUNED_MODE_CLEANUP_INTERVAL,
         }
     }
 }
@@ -491,13 +497,32 @@ where T: BlockchainBackend
         }
 
         let mut db = self.db_write_access()?;
-        add_block(
+        let block_add_result = add_block(
             &mut db,
             &self.validators.block,
             &self.validators.accum_difficulty,
             block,
-            self.config.orphan_storage_capacity,
-        )
+        )?;
+
+        // Cleanup orphan block pool
+        match block_add_result {
+            BlockAddResult::OrphanBlock | BlockAddResult::ChainReorg(_) => {
+                cleanup_orphans(&mut db, self.config.orphan_storage_capacity)?
+            },
+            _ => {},
+        }
+
+        // Cleanup of backend when in pruned mode.
+        match block_add_result {
+            BlockAddResult::Ok | BlockAddResult::ChainReorg(_) => cleanup_pruned_mode(
+                &mut db,
+                self.config.pruned_mode_cleanup_interval,
+                self.config.pruning_horizon,
+            )?,
+            _ => {},
+        }
+
+        Ok(block_add_result)
     }
 
     fn store_new_block(&self, block: Block) -> Result<(), ChainStorageError> {
@@ -664,20 +689,13 @@ fn add_block<T: BlockchainBackend>(
     block_validator: &Arc<Validator<Block, T>>,
     accum_difficulty_validator: &Arc<Validator<Difficulty, T>>,
     block: Block,
-    orphan_storage_capacity: usize,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let block_hash = block.hash();
     if db.contains(&DbKey::BlockHash(block_hash))? {
         return Ok(BlockAddResult::BlockExists);
     }
-    let block_add_result = handle_possible_reorg(db, block_validator, accum_difficulty_validator, block)?;
-    // Cleanup orphan block pool
-    match block_add_result {
-        BlockAddResult::Ok | BlockAddResult::BlockExists => {},
-        BlockAddResult::OrphanBlock | BlockAddResult::ChainReorg(_) => cleanup_orphans(db, orphan_storage_capacity)?,
-    }
-    Ok(block_add_result)
+    handle_possible_reorg(db, block_validator, accum_difficulty_validator, block)
 }
 
 // Adds a new block onto the chain tip.
@@ -1323,6 +1341,29 @@ fn cleanup_orphans<T: BlockchainBackend>(
             txn.delete(DbKey::OrphanBlock(block_hash.clone()));
         }
         commit(db, txn)?;
+    }
+    Ok(())
+}
+
+fn cleanup_pruned_mode<T: BlockchainBackend>(
+    db: &mut RwLockWriteGuard<T>,
+    pruned_mode_cleanup_interval: u64,
+    pruning_horizon: u64,
+) -> Result<(), ChainStorageError>
+{
+    let metadata = db.fetch_metadata()?;
+    if metadata.is_pruned_node() {
+        let db_height = metadata.height_of_longest_chain.unwrap_or(0);
+        if db_height % pruned_mode_cleanup_interval == 0 {
+            info!(
+                target: LOG_TARGET,
+                "Pruned mode cleanup interval reached, performing cleanup.",
+            );
+            let max_cp_count = pruning_horizon + 1; // Include accumulated checkpoint
+            let mut txn = DbTransaction::new();
+            txn.merge_checkpoints(max_cp_count as usize);
+            return commit(db, txn);
+        }
     }
     Ok(())
 }

@@ -1308,6 +1308,153 @@ fn lmdb_fetch_checkpoint() {
     }
 }
 
+fn merging_and_fetch_checkpoints_and_stxo_discard<T: BlockchainBackend>(mut db: T) {
+    let factories = CryptoFactories::default();
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
+    let (utxo3, _) = create_utxo(MicroTari(20_000), &factories, None);
+    let kernel1 = create_test_kernel(100.into(), 0);
+    let kernel2 = create_test_kernel(200.into(), 0);
+    let kernel3 = create_test_kernel(300.into(), 0);
+    let mut header1 = BlockHeader::new(0);
+    header1.height = 0;
+    let header2 = BlockHeader::from_previous(&header1);
+    let header3 = BlockHeader::from_previous(&header2);
+    let utxo_hash1 = utxo1.hash();
+    let utxo_hash2 = utxo2.hash();
+    let utxo_hash3 = utxo3.hash();
+    let kernel_hash1 = kernel1.hash();
+    let kernel_hash2 = kernel2.hash();
+    let kernel_hash3 = kernel3.hash();
+    let rp_hash1 = utxo1.proof.hash();
+    let rp_hash2 = utxo2.proof.hash();
+    let rp_hash3 = utxo3.proof.hash();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo1, true);
+    txn.insert_kernel(kernel1, true);
+    txn.insert_header(header1.clone());
+    txn.commit_block();
+    assert!(db.write(txn).is_ok());
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo2, true);
+    txn.insert_kernel(kernel2, true);
+    txn.insert_header(header2.clone());
+    txn.spend_utxo(utxo_hash1.clone());
+    txn.commit_block();
+    assert!(db.write(txn).is_ok());
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo3, true);
+    txn.insert_kernel(kernel3, true);
+    txn.insert_header(header3.clone());
+    txn.spend_utxo(utxo_hash2.clone());
+    txn.commit_block();
+    assert!(db.write(txn).is_ok());
+
+    // Merge should not be performed as cp_count less than max_cp_count
+    let mut txn = DbTransaction::new();
+    txn.merge_checkpoints(100);
+    assert!(db.write(txn).is_ok());
+    let utxo_cp0 = db.fetch_checkpoint(MmrTree::Utxo, 0);
+    let utxo_cp1 = db.fetch_checkpoint(MmrTree::Utxo, 1);
+    let utxo_cp2 = db.fetch_checkpoint(MmrTree::Utxo, 2);
+    let kernel_cp0 = db.fetch_checkpoint(MmrTree::Kernel, 0);
+    let kernel_cp1 = db.fetch_checkpoint(MmrTree::Kernel, 1);
+    let kernel_cp2 = db.fetch_checkpoint(MmrTree::Kernel, 2);
+    let rp_cp0 = db.fetch_checkpoint(MmrTree::RangeProof, 0);
+    let rp_cp1 = db.fetch_checkpoint(MmrTree::RangeProof, 1);
+    let rp_cp2 = db.fetch_checkpoint(MmrTree::RangeProof, 2);
+    assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash1.clone())), Ok(true));
+    assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash2.clone())), Ok(true));
+    assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash3.clone())), Ok(false));
+    assert!(utxo_cp0.unwrap().nodes_added().contains(&utxo_hash1));
+    assert!(utxo_cp1.unwrap().nodes_added().contains(&utxo_hash2));
+    assert!(utxo_cp2.unwrap().nodes_added().contains(&utxo_hash3));
+    assert!(kernel_cp0.unwrap().nodes_added().contains(&kernel_hash1));
+    assert!(kernel_cp1.unwrap().nodes_added().contains(&kernel_hash2));
+    assert!(kernel_cp2.unwrap().nodes_added().contains(&kernel_hash3));
+    assert!(rp_cp0.unwrap().nodes_added().contains(&rp_hash1));
+    assert!(rp_cp1.unwrap().nodes_added().contains(&rp_hash2));
+    assert!(rp_cp2.unwrap().nodes_added().contains(&rp_hash3));
+
+    let mut txn = DbTransaction::new();
+    txn.merge_checkpoints(2);
+    assert!(db.write(txn).is_ok());
+    let utxo_cp0 = db.fetch_checkpoint(MmrTree::Utxo, 0);
+    let utxo_cp1 = db.fetch_checkpoint(MmrTree::Utxo, 1);
+    let utxo_cp2 = db.fetch_checkpoint(MmrTree::Utxo, 2);
+    let kernel_cp0 = db.fetch_checkpoint(MmrTree::Kernel, 0);
+    let kernel_cp1 = db.fetch_checkpoint(MmrTree::Kernel, 1);
+    let kernel_cp2 = db.fetch_checkpoint(MmrTree::Kernel, 2);
+    let rp_cp0 = db.fetch_checkpoint(MmrTree::RangeProof, 0);
+    let rp_cp1 = db.fetch_checkpoint(MmrTree::RangeProof, 1);
+    let rp_cp2 = db.fetch_checkpoint(MmrTree::RangeProof, 2);
+    assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash1.clone())), Ok(false));
+    assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash2.clone())), Ok(true));
+    assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash3.clone())), Ok(false));
+    assert!(utxo_cp0.is_err());
+    assert!(utxo_cp1.unwrap().nodes_added().contains(&utxo_hash2));
+    assert!(utxo_cp2.unwrap().nodes_added().contains(&utxo_hash3));
+    assert!(kernel_cp0.is_err());
+    assert!(kernel_cp1.unwrap().nodes_added().contains(&kernel_hash2));
+    assert!(kernel_cp2.unwrap().nodes_added().contains(&kernel_hash3));
+    assert!(rp_cp0.is_err());
+    assert!(rp_cp1.unwrap().nodes_added().contains(&rp_hash2));
+    assert!(rp_cp2.unwrap().nodes_added().contains(&rp_hash3));
+
+    let mut txn = DbTransaction::new();
+    txn.merge_checkpoints(1);
+    assert!(db.write(txn).is_ok());
+    let utxo_cp0 = db.fetch_checkpoint(MmrTree::Utxo, 0);
+    let utxo_cp1 = db.fetch_checkpoint(MmrTree::Utxo, 1);
+    let utxo_cp2 = db.fetch_checkpoint(MmrTree::Utxo, 2);
+    let kernel_cp0 = db.fetch_checkpoint(MmrTree::Kernel, 0);
+    let kernel_cp1 = db.fetch_checkpoint(MmrTree::Kernel, 1);
+    let kernel_cp2 = db.fetch_checkpoint(MmrTree::Kernel, 2);
+    let rp_cp0 = db.fetch_checkpoint(MmrTree::RangeProof, 0);
+    let rp_cp1 = db.fetch_checkpoint(MmrTree::RangeProof, 1);
+    let rp_cp2 = db.fetch_checkpoint(MmrTree::RangeProof, 2);
+    assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash1.clone())), Ok(false));
+    assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash2.clone())), Ok(false));
+    assert_eq!(db.contains(&DbKey::SpentOutput(utxo_hash3.clone())), Ok(false));
+    assert!(utxo_cp0.is_err());
+    assert!(utxo_cp1.is_err());
+    assert!(utxo_cp2.unwrap().nodes_added().contains(&utxo_hash3));
+    assert!(kernel_cp0.is_err());
+    assert!(kernel_cp1.is_err());
+    assert!(kernel_cp2.unwrap().nodes_added().contains(&kernel_hash3));
+    assert!(rp_cp0.is_err());
+    assert!(rp_cp1.is_err());
+    assert!(rp_cp2.unwrap().nodes_added().contains(&rp_hash3));
+}
+
+#[test]
+fn memory_merging_and_fetch_checkpoints_and_stxo_discard() {
+    let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 1 };
+    let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
+    merging_and_fetch_checkpoints_and_stxo_discard(db);
+}
+
+#[test]
+fn lmdb_merging_and_fetch_checkpoints_and_stxo_discard() {
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 1 };
+        let db = create_lmdb_database(&temp_path, mmr_cache_config).unwrap();
+        merging_and_fetch_checkpoints_and_stxo_discard(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
+}
+
 fn duplicate_utxo<T: BlockchainBackend>(mut db: T) {
     let factories = CryptoFactories::default();
     let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
