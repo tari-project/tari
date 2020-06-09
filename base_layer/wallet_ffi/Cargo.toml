@@ -38,3 +38,4 @@ crate-type = ["staticlib","cdylib"]
 tempdir = "0.3.7"
 lazy_static = "1.3.0"
 env_logger = "0.7.1"
+tari_key_manager = {path = "../key_manager", version = "^0.0"}
