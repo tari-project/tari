@@ -83,6 +83,8 @@ pub trait OutputManagerBackend: Send + Sync {
     /// If an unspent output is detected as invalid (i.e. not available on the blockchain) then it should be moved to
     /// the invalid outputs collection. The function will return the last recorded TxId associated with this output.
     fn invalidate_unspent_output(&self, output: &DbUnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError>;
+    /// If an invalid output is found to be valid this function will turn it back into an unspent output
+    fn revalidate_unspent_output(&self, spending_key: &BlindingFactor) -> Result<(), OutputManagerStorageError>;
 }
 
 /// Holds the outputs that have been selected for a given pending transaction waiting for confirmation
@@ -498,6 +500,14 @@ where T: OutputManagerBackend + 'static
     {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.invalidate_unspent_output(&output))
+            .await
+            .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
+            .and_then(|inner_result| inner_result)
+    }
+
+    pub async fn revalidate_output(&self, spending_key: BlindingFactor) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.revalidate_unspent_output(&spending_key))
             .await
             .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
             .and_then(|inner_result| inner_result)
