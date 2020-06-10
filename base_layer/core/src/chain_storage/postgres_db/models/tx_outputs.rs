@@ -43,16 +43,14 @@ pub struct TxOutput {
     features_maturity: i64,
     commitment: String,
     proof: Option<Vec<u8>>,
-    created_in_block: String,
-    spent: Option<String>,
 }
 #[allow(clippy::ptr_arg)]
 impl TxOutput {
     /// This will insert a transactional output if it does not exist.
-    pub fn insert(output: &TransactionOutput, block: String, conn: &PgConnection) -> Result<bool, PostgresError> {
+    pub fn insert(output: &TransactionOutput, conn: &PgConnection) -> Result<bool, PostgresError> {
         let hash = output.hash();
 
-        let row: TxOutput = TxOutput::from_transaction_output(output, block)?;
+        let row: TxOutput = TxOutput::try_from(output)?;
         if row.hash != hash.to_hex() {
             return Err(PostgresError::Other("tx and tx hash don't match".to_string()));
         }
@@ -75,50 +73,30 @@ impl TxOutput {
         Ok(results.pop())
     }
 
-    /// This will fetch all block outputs of the given block
-    pub fn fetch_block_outputs(hash: &HashOutput, conn: &PgConnection) -> Result<Vec<TxOutput>, PostgresError> {
-        let results: Vec<TxOutput> = tx_outputs::table
-            .filter(tx_outputs::created_in_block.eq(hash.to_hex()))
-            .get_results(conn)
-            .map_err(|e| PostgresError::NotFound(e.to_string()))?;
+    // // This will fetch a transactional output only if the output is unspent
+    // pub fn fetch_unspent_output(hash: &HashOutput, conn: &PgConnection) -> Result<Option<TxOutput>, PostgresError> {
+    //     let mut results: Vec<TxOutput> = tx_outputs::table
+    //         .filter(tx_outputs::hash.eq(hash.to_hex()))
+    //         .filter(tx_outputs::spent.is_null())
+    //         .get_results(conn)
+    //         .map_err(|e| PostgresError::NotFound(e.to_string()))?;
 
-        Ok(results)
-    }
+    //     Ok(results.pop())
+    // }
 
-    /// This will fetch all block inputs of the given block
-    pub fn fetch_block_inputs(hash: &HashOutput, conn: &PgConnection) -> Result<Vec<TxOutput>, PostgresError> {
-        let results: Vec<TxOutput> = tx_outputs::table
-            .filter(tx_outputs::spent.eq(hash.to_hex()))
-            .get_results(conn)
-            .map_err(|e| PostgresError::NotFound(e.to_string()))?;
+    // // This will fetch a transactional output only if the output is spent
+    // pub fn fetch_spent_output(hash: &HashOutput, conn: &PgConnection) -> Result<Option<TxOutput>, PostgresError> {
+    //     let mut results: Vec<TxOutput> = tx_outputs::table
+    //         .filter(tx_outputs::hash.eq(hash.to_hex()))
+    //         .filter(tx_outputs::spent.is_not_null())
+    //         .get_results(conn)
+    //         .map_err(|e| PostgresError::NotFound(e.to_string()))?;
 
-        Ok(results)
-    }
-
-    // This will fetch a transactional output only if the output is unspent
-    pub fn fetch_unspent_output(hash: &HashOutput, conn: &PgConnection) -> Result<Option<TxOutput>, PostgresError> {
-        let mut results: Vec<TxOutput> = tx_outputs::table
-            .filter(tx_outputs::hash.eq(hash.to_hex()))
-            .filter(tx_outputs::spent.is_null())
-            .get_results(conn)
-            .map_err(|e| PostgresError::NotFound(e.to_string()))?;
-
-        Ok(results.pop())
-    }
-
-    // This will fetch a transactional output only if the output is spent
-    pub fn fetch_spent_output(hash: &HashOutput, conn: &PgConnection) -> Result<Option<TxOutput>, PostgresError> {
-        let mut results: Vec<TxOutput> = tx_outputs::table
-            .filter(tx_outputs::hash.eq(hash.to_hex()))
-            .filter(tx_outputs::spent.is_not_null())
-            .get_results(conn)
-            .map_err(|e| PostgresError::NotFound(e.to_string()))?;
-
-        Ok(results.pop())
-    }
+    //     Ok(results.pop())
+    // }
 
     /// Creates a TxOutput from the provided TransactionalOutput
-    pub fn from_transaction_output(output: &TransactionOutput, block: String) -> Result<TxOutput, PostgresError> {
+    pub fn from_transaction_output(output: &TransactionOutput) -> Result<TxOutput, PostgresError> {
         Ok(TxOutput {
             hash: output.hash().to_hex(),
 
@@ -126,8 +104,6 @@ impl TxOutput {
             features_maturity: output.features.maturity as i64,
             commitment: output.commitment.to_hex(),
             proof: Some(output.proof.0.clone()),
-            created_in_block: block,
-            spent: None,
         })
     }
 }
@@ -154,6 +130,21 @@ impl TryFrom<TxOutput> for TransactionOutput {
             return Err(PostgresError::Other("tx and tx hash don't match".to_string()));
         }
         Ok(result)
+    }
+}
+
+impl TryFrom<&TransactionOutput> for TxOutput {
+    type Error = PostgresError;
+
+    fn try_from(value: &TransactionOutput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            hash: value.hash().to_hex(),
+
+            features_flags: value.features.flags.bits() as i16,
+            features_maturity: value.features.maturity as i64,
+            commitment: value.commitment.to_hex(),
+            proof: Some(value.proof.0.clone()),
+        })
     }
 }
 

@@ -41,18 +41,18 @@ const LOG_TARGET: &str = "b::c::storage::postgres:block_headers";
 #[table_name = "block_headers"]
 #[primary_key(hash)]
 pub struct BlockHeader {
-    hash: String,
-    height: i64,
-    version: i32,
-    prev_hash: String,
-    time_stamp: i64,
-    output_mmr: String,
-    range_proof_mmr: String,
-    kernel_mmr: String,
-    total_kernel_offset: String,
-    nonce: i64,
-    proof_of_work: Value,
-    orphan: bool,
+    pub hash: String,
+    pub height: i64,
+    pub version: i32,
+    pub prev_hash: String,
+    pub time_stamp: i64,
+    pub output_mmr: String,
+    pub range_proof_mmr: String,
+    pub kernel_mmr: String,
+    pub total_kernel_offset: String,
+    pub nonce: i64,
+    pub proof_of_work: Value,
+    pub orphan: bool,
 }
 
 impl BlockHeader {
@@ -70,8 +70,14 @@ impl BlockHeader {
     /// This function will seach for a block header via hash, it will return orphan block headers as well.
     pub fn fetch_by_hash(hash: &Vec<u8>, conn: &PgConnection) -> Result<Option<BlockHeader>, PostgresError> {
         let key = hash.to_hex();
+        BlockHeader::fetch_by_hex(&key, conn)
+    }
+
+    /// This function will seach for a block header via hash, provided in string, it will return orphan block headers as
+    /// well.
+    pub fn fetch_by_hex(hash: &String, conn: &PgConnection) -> Result<Option<BlockHeader>, PostgresError> {
         let mut results: Vec<BlockHeader> = block_headers::table
-            .filter(block_headers::hash.eq(&key))
+            .filter(block_headers::hash.eq(hash))
             .get_results(conn)
             .map_err(|e| PostgresError::NotFound(e.to_string()))?;
 

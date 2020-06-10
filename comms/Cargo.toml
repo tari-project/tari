@@ -19,7 +19,7 @@ blake2 = "0.8.1"
 bytes = { version = "0.5.x", features=["serde"] }
 chrono = { version = "0.4.6", features = ["serde"] }
 cidr = "0.1.0"
-clear_on_drop = "0.2.3"
+clear_on_drop = "=0.2.3"
 data-encoding = "2.2.0"
 derive-error = "0.0.4"
 digest = "0.8.0"

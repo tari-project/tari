@@ -43,17 +43,35 @@ table! {
 }
 
 table! {
+    outputs (id) {
+        id -> Uuid,
+        created_in_block -> Text,
+        tx_output -> Text,
+    }
+}
+
+table! {
+    spends (id) {
+        id -> Uuid,
+        spent_in_block -> Text,
+        tx_output -> Text,
+    }
+}
+
+table! {
     tx_outputs (hash) {
         hash -> Text,
         features_flags -> Int2,
         features_maturity -> Int8,
         commitment -> Text,
         proof -> Nullable<Bytea>,
-        created_in_block -> Text,
-        spent -> Nullable<Text>,
     }
 }
 
 joinable!(kernels -> block_headers (block_hash));
+joinable!(outputs -> block_headers (created_in_block));
+joinable!(outputs -> tx_outputs (tx_output));
+joinable!(spends -> block_headers (spent_in_block));
+joinable!(spends -> tx_outputs (tx_output));
 
-allow_tables_to_appear_in_same_query!(block_headers, kernels, metadata, tx_outputs,);
+allow_tables_to_appear_in_same_query!(block_headers, kernels, metadata, outputs, spends, tx_outputs,);

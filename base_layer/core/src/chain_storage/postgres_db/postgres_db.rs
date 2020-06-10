@@ -117,11 +117,11 @@ impl BlockchainBackend for PostgresDatabase
                 Some(val) => Some(val.try_into_db_block_hash()?),
                 None => None,
             }),
-            DbKey::UnspentOutput(hash) => Ok(match models::TxOutput::fetch_unspent_output(hash, &conn)? {
+            DbKey::UnspentOutput(hash) => Ok(match models::Output::fetch_unspent_output(hash, &conn)? {
                 Some(val) => Some(val.try_into()?),
                 None => None,
             }),
-            DbKey::SpentOutput(hash) => Ok(match models::TxOutput::fetch_spent_output(hash, &conn)? {
+            DbKey::SpentOutput(hash) => Ok(match models::Spent::fetch_spent_output(hash, &conn)? {
                 Some(val) => Some(val.try_into()?),
                 None => None,
             }),

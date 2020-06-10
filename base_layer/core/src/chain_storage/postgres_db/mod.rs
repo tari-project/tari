@@ -24,3 +24,9 @@ pub mod error;
 pub mod models;
 pub mod postgres_db;
 pub mod schema;
+
+// When updating postgress tables use the following diesel commands.
+// diesel database reset --database-url <insert postgress url here> --migration-dir
+// base_layer/core/src/chain_storage/postgres_db/migrations diesel setup --database-url <insert postgress url here>
+// --migration-dir base_layer/core/src/chain_storage/postgres_db/migrations diesel migration run --database-url <insert
+// postgress url here> --migration-dir base_layer/core/src/chain_storage/postgres_db/migrations

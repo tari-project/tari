@@ -23,9 +23,13 @@
 pub mod block_headers;
 pub mod kernels;
 pub mod metadata;
+pub mod outputs;
+pub mod spent;
 pub mod tx_outputs;
 
 pub use block_headers::*;
 pub use kernels::*;
 pub use metadata::*;
+pub use outputs::*;
+pub use spent::*;
 pub use tx_outputs::*;
