@@ -50,6 +50,7 @@ use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
     sync::Arc,
+    time::Duration,
 };
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -67,9 +68,7 @@ use tari_core::{
 };
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
-#[cfg(feature = "test_harness")]
-use tokio::sync::broadcast;
-use tokio::task::JoinHandle;
+use tokio::{sync::broadcast, task::JoinHandle};
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
 
@@ -120,6 +119,8 @@ where TBackend: TransactionBackend + Clone + 'static
     send_transaction_cancellation_senders: HashMap<u64, oneshot::Sender<()>>,
     finalized_transaction_senders: HashMap<u64, Sender<(CommsPublicKey, TxId, Transaction)>>,
     receiver_transaction_cancellation_senders: HashMap<u64, oneshot::Sender<()>>,
+    timeout_update_publisher: broadcast::Sender<Duration>,
+    power_mode: PowerMode,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -163,6 +164,8 @@ where
             factories,
             config: config.clone(),
         };
+        let (timeout_update_publisher, _) = broadcast::channel(20);
+
         TransactionService {
             config,
             db,
@@ -183,6 +186,8 @@ where
             send_transaction_cancellation_senders: HashMap::new(),
             finalized_transaction_senders: HashMap::new(),
             receiver_transaction_cancellation_senders: HashMap::new(),
+            timeout_update_publisher,
+            power_mode: PowerMode::Normal,
         }
     }
 
@@ -495,6 +500,14 @@ where
             TransactionServiceRequest::MineTransaction(tx_id) => {
                 self.mine_transaction(tx_id).await?;
                 Ok(TransactionServiceResponse::TransactionMined)
+            },
+            TransactionServiceRequest::SetLowPowerMode => {
+                self.set_power_mode(PowerMode::Low).await?;
+                Ok(TransactionServiceResponse::LowPowerModeSet)
+            },
+            TransactionServiceRequest::SetNormalPowerMode => {
+                self.set_power_mode(PowerMode::Normal).await?;
+                Ok(TransactionServiceResponse::NormalPowerModeSet)
             },
         }
     }
@@ -952,20 +965,25 @@ where
         if completed_tx.status != TransactionStatus::Completed || completed_tx.transaction.body.kernels().is_empty() {
             return Err(TransactionServiceError::InvalidCompletedTransaction);
         }
+        let timeout = match self.power_mode {
+            PowerMode::Normal => self.config.base_node_monitoring_timeout,
+            PowerMode::Low => self.config.low_power_polling_timeout,
+        };
         match self.base_node_public_key.clone() {
             None => return Err(TransactionServiceError::NoBaseNodeKeysProvided),
             Some(pk) => {
-                let (mempool_response_sender, mempool_response_receiver) = mpsc::channel(100);
-                let (base_node_response_sender, base_node_response_receiver) = mpsc::channel(100);
+                let (mempool_response_sender, mempool_response_receiver) = mpsc::channel(500);
+                let (base_node_response_sender, base_node_response_receiver) = mpsc::channel(500);
                 self.mempool_response_senders.insert(tx_id, mempool_response_sender);
                 self.base_node_response_senders.insert(tx_id, base_node_response_sender);
                 let protocol = TransactionBroadcastProtocol::new(
                     tx_id,
                     self.service_resources.clone(),
-                    self.config.mempool_broadcast_timeout,
+                    timeout,
                     pk,
                     mempool_response_receiver,
                     base_node_response_receiver,
+                    self.timeout_update_publisher.subscribe(),
                 );
                 let join_handle = tokio::spawn(protocol.execute());
                 join_handles.push(join_handle);
@@ -1067,6 +1085,7 @@ where
             Err(TransactionServiceProtocolError { id, error }) => {
                 let _ = self.mempool_response_senders.remove(&id);
                 let _ = self.base_node_response_senders.remove(&id);
+
                 error!(
                     target: LOG_TARGET,
                     "Error completing Transaction Broadcast Protocol (Id: {}): {:?}", id, error
@@ -1091,7 +1110,10 @@ where
         if completed_tx.status != TransactionStatus::Broadcast || completed_tx.transaction.body.kernels().is_empty() {
             return Err(TransactionServiceError::InvalidCompletedTransaction);
         }
-
+        let timeout = match self.power_mode {
+            PowerMode::Normal => self.config.base_node_monitoring_timeout,
+            PowerMode::Low => self.config.low_power_polling_timeout,
+        };
         match self.base_node_public_key.clone() {
             None => return Err(TransactionServiceError::NoBaseNodeKeysProvided),
             Some(pk) => {
@@ -1107,10 +1129,11 @@ where
                     protocol_id,
                     completed_tx.tx_id,
                     self.service_resources.clone(),
-                    self.config.base_node_mined_timeout,
+                    timeout,
                     pk,
                     mempool_response_receiver,
                     base_node_response_receiver,
+                    self.timeout_update_publisher.subscribe(),
                 );
                 let join_handle = tokio::spawn(protocol.execute());
                 join_handles.push(join_handle);
@@ -1130,6 +1153,7 @@ where
                 // Cleanup any registered senders
                 let _ = self.mempool_response_senders.remove(&id);
                 let _ = self.base_node_response_senders.remove(&id);
+
                 trace!(
                     target: LOG_TARGET,
                     "Transaction chain monitoring Protocol for TxId: {} completed successfully",
@@ -1139,6 +1163,7 @@ where
             Err(TransactionServiceProtocolError { id, error }) => {
                 let _ = self.mempool_response_senders.remove(&id);
                 let _ = self.base_node_response_senders.remove(&id);
+
                 error!(
                     target: LOG_TARGET,
                     "Error completing Transaction chain monitoring Protocol (Id: {}): {:?}", id, error
@@ -1193,6 +1218,19 @@ where
                     .await?;
             }
         }
+
+        Ok(())
+    }
+
+    async fn set_power_mode(&mut self, mode: PowerMode) -> Result<(), TransactionServiceError> {
+        self.power_mode = mode;
+        let timeout = match mode {
+            PowerMode::Low => self.config.low_power_polling_timeout,
+            PowerMode::Normal => self.config.base_node_monitoring_timeout,
+        };
+        self.timeout_update_publisher
+            .send(timeout)
+            .map_err(|_| TransactionServiceError::ProtocolChannelError)?;
 
         Ok(())
     }
@@ -1511,4 +1549,10 @@ where TBackend: TransactionBackend + Clone + 'static
     pub node_identity: Arc<NodeIdentity>,
     pub factories: CryptoFactories,
     pub config: TransactionServiceConfig,
+}
+
+#[derive(Clone, Copy)]
+enum PowerMode {
+    Low,
+    Normal,
 }

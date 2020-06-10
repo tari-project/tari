@@ -40,7 +40,7 @@ use crate::{
 };
 use blake2::Digest;
 use log::*;
-use std::{marker::PhantomData, sync::Arc, time::Duration};
+use std::{marker::PhantomData, sync::Arc};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
@@ -62,10 +62,7 @@ use tari_crypto::{
 use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization::{initialize_comms, CommsConfig},
-    services::{
-        comms_outbound::CommsOutboundServiceInitializer,
-        liveness::{LivenessConfig, LivenessHandle, LivenessInitializer},
-    },
+    services::comms_outbound::CommsOutboundServiceInitializer,
 };
 use tari_service_framework::StackBuilder;
 use tokio::runtime::Runtime;
@@ -91,7 +88,6 @@ where
     pub comms: CommsNode,
     pub dht_service: Dht,
     pub store_and_forward_requester: StoreAndForwardRequester,
-    pub liveness_service: LivenessHandle,
     pub output_manager_service: OutputManagerHandle,
     pub transaction_service: TransactionServiceHandle,
     pub contacts_service: ContactsServiceHandle,
@@ -137,15 +133,6 @@ where
 
         let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
             .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
-            .add_initializer(LivenessInitializer::new(
-                LivenessConfig {
-                    auto_ping_interval: Some(Duration::from_secs(30)),
-                    useragent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
-                    ..Default::default()
-                },
-                Arc::clone(&subscription_factory),
-                dht.dht_requester(),
-            ))
             .add_initializer(OutputManagerServiceInitializer::new(
                 OutputManagerServiceConfig::default(),
                 subscription_factory.clone(),
@@ -154,7 +141,7 @@ where
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
-                subscription_factory.clone(),
+                subscription_factory,
                 transaction_backend,
                 comms.node_identity(),
                 factories.clone(),
@@ -170,9 +157,6 @@ where
         let mut transaction_service_handle = handles
             .get_handle::<TransactionServiceHandle>()
             .expect("Could not get Transaction Service Handle");
-        let liveness_handle = handles
-            .get_handle::<LivenessHandle>()
-            .expect("Could not get Liveness Service Handle");
         let contacts_handle = handles
             .get_handle::<ContactsServiceHandle>()
             .expect("Could not get Contacts Service Handle");
@@ -188,7 +172,6 @@ where
             comms,
             dht_service: dht,
             store_and_forward_requester,
-            liveness_service: liveness_handle,
             output_manager_service: output_manager_handle,
             transaction_service: transaction_service_handle,
             contacts_service: contacts_handle,

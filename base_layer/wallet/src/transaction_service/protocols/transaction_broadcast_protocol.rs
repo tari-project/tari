@@ -48,7 +48,7 @@ use tari_core::{
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_p2p::tari_message::TariMessageType;
-use tokio::time::delay_for;
+use tokio::{sync::broadcast, time::delay_for};
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::broadcast_protocol";
 
@@ -63,6 +63,7 @@ where TBackend: TransactionBackend + Clone + 'static
     base_node_public_key: CommsPublicKey,
     mempool_response_receiver: Option<Receiver<MempoolServiceResponse>>,
     base_node_response_receiver: Option<Receiver<BaseNodeProto::BaseNodeServiceResponse>>,
+    timeout_update_receiver: Option<broadcast::Receiver<Duration>>,
 }
 
 impl<TBackend> TransactionBroadcastProtocol<TBackend>
@@ -75,6 +76,7 @@ where TBackend: TransactionBackend + Clone + 'static
         base_node_public_key: CommsPublicKey,
         mempool_response_receiver: Receiver<MempoolServiceResponse>,
         base_node_response_receiver: Receiver<BaseNodeProto::BaseNodeServiceResponse>,
+        timeout_update_receiver: broadcast::Receiver<Duration>,
     ) -> Self
     {
         Self {
@@ -84,6 +86,7 @@ where TBackend: TransactionBackend + Clone + 'static
             base_node_public_key,
             mempool_response_receiver: Some(mempool_response_receiver),
             base_node_response_receiver: Some(base_node_response_receiver),
+            timeout_update_receiver: Some(timeout_update_receiver),
         }
     }
 
@@ -98,6 +101,12 @@ where TBackend: TransactionBackend + Clone + 'static
             .base_node_response_receiver
             .take()
             .ok_or_else(|| TransactionServiceProtocolError::new(self.id, TransactionServiceError::InvalidStateError))?;
+
+        let mut timeout_update_receiver = self
+            .timeout_update_receiver
+            .take()
+            .ok_or_else(|| TransactionServiceProtocolError::new(self.id, TransactionServiceError::InvalidStateError))?
+            .fuse();
 
         // This is the main loop of the protocol and following the following steps
         // 1) Check transaction being monitored is still in the Completed state and needs to be monitored
@@ -189,6 +198,15 @@ where TBackend: TransactionBackend + Clone + 'static
                 base_node_response = base_node_response_receiver.select_next_some() => {
                     if self.handle_base_node_response(base_node_response).await? {
                         break;
+                    }
+                },
+                updated_timeout = timeout_update_receiver.select_next_some() => {
+                    if let Ok(to) = updated_timeout {
+                        self.timeout = to;
+                        info!(
+                            target: LOG_TARGET,
+                            "Broadcast monitoring protocol (Id: {}) timeout updated to {:?}", self.id ,self.timeout
+                        );
                     }
                 },
                 () = delay => {

@@ -24,19 +24,20 @@ use std::time::Duration;
 
 #[derive(Clone)]
 pub struct TransactionServiceConfig {
-    pub mempool_broadcast_timeout: Duration,
-    pub base_node_mined_timeout: Duration,
+    pub base_node_monitoring_timeout: Duration,
     pub direct_send_timeout: Duration,
     pub broadcast_send_timeout: Duration,
+    pub low_power_polling_timeout: Duration, /* This is the timeout period that will be used when the wallet is in
+                                              * low_power mode */
 }
 
 impl Default for TransactionServiceConfig {
     fn default() -> Self {
         Self {
-            mempool_broadcast_timeout: Duration::from_secs(30),
-            base_node_mined_timeout: Duration::from_secs(30),
+            base_node_monitoring_timeout: Duration::from_secs(30),
             direct_send_timeout: Duration::from_secs(20),
             broadcast_send_timeout: Duration::from_secs(30),
+            low_power_polling_timeout: Duration::from_secs(300),
         }
     }
 }

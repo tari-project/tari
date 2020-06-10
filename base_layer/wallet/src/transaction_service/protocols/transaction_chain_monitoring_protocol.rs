@@ -51,12 +51,12 @@ use tari_core::{
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_p2p::tari_message::TariMessageType;
-use tokio::time::delay_for;
-
+use tokio::{sync::broadcast, time::delay_for};
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::chain_monitoring_protocol";
 
 /// This protocol defines the process of monitoring a mempool and base node to detect when a Broadcast transaction is
 /// Mined or leaves the mempool in which case it should be cancelled
+
 pub struct TransactionChainMonitoringProtocol<TBackend>
 where TBackend: TransactionBackend + Clone + 'static
 {
@@ -67,11 +67,13 @@ where TBackend: TransactionBackend + Clone + 'static
     base_node_public_key: CommsPublicKey,
     mempool_response_receiver: Option<Receiver<MempoolServiceResponse>>,
     base_node_response_receiver: Option<Receiver<BaseNodeProto::BaseNodeServiceResponse>>,
+    timeout_update_receiver: Option<broadcast::Receiver<Duration>>,
 }
 
 impl<TBackend> TransactionChainMonitoringProtocol<TBackend>
 where TBackend: TransactionBackend + Clone + 'static
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: u64,
         tx_id: TxId,
@@ -80,6 +82,7 @@ where TBackend: TransactionBackend + Clone + 'static
         base_node_public_key: CommsPublicKey,
         mempool_response_receiver: Receiver<MempoolServiceResponse>,
         base_node_response_receiver: Receiver<BaseNodeProto::BaseNodeServiceResponse>,
+        timeout_update_receiver: broadcast::Receiver<Duration>,
     ) -> Self
     {
         Self {
@@ -90,6 +93,7 @@ where TBackend: TransactionBackend + Clone + 'static
             base_node_public_key,
             mempool_response_receiver: Some(mempool_response_receiver),
             base_node_response_receiver: Some(base_node_response_receiver),
+            timeout_update_receiver: Some(timeout_update_receiver),
         }
     }
 
@@ -104,6 +108,12 @@ where TBackend: TransactionBackend + Clone + 'static
             .base_node_response_receiver
             .take()
             .ok_or_else(|| TransactionServiceProtocolError::new(self.id, TransactionServiceError::InvalidStateError))?;
+
+        let mut timeout_update_receiver = self
+            .timeout_update_receiver
+            .take()
+            .ok_or_else(|| TransactionServiceProtocolError::new(self.id, TransactionServiceError::InvalidStateError))?
+            .fuse();
 
         trace!(
             target: LOG_TARGET,
@@ -219,6 +229,16 @@ where TBackend: TransactionBackend + Clone + 'static
                             return Ok(self.id);
                         }
                         base_node_response_received = true;
+                    },
+                    updated_timeout = timeout_update_receiver.select_next_some() => {
+                        if let Ok(to) = updated_timeout {
+                            self.timeout = to;
+                             info!(
+                                target: LOG_TARGET,
+                                "Chain monitoring protocol (Id: {}) timeout updated to {:?}", self.id, self.timeout
+                            );
+                            break;
+                        }
                     },
                     () = delay => {
                         break;
