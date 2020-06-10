@@ -116,7 +116,7 @@ impl ChainMetadataService {
             BlockEvent::Verified((_, BlockAddResult::ChainReorg(_), _)) => {
                 self.update_liveness_chain_metadata().await?;
             },
-            BlockEvent::Verified(_) | BlockEvent::Invalid(_) => {},
+            _ => {},
         }
 
         Ok(())

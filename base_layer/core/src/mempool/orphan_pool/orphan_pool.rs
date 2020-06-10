@@ -58,9 +58,7 @@ impl Default for OrphanPoolConfig {
 /// The Orphan Pool contains all the received transactions that attempt to spend UTXOs that don't exist. These UTXOs
 /// might exist in the future if these transactions are from a series or set of transactions that need to be processed
 /// in a specific order. Some of these transactions might still be constrained by pending time-locks.
-pub struct OrphanPool<T>
-where T: BlockchainBackend
-{
+pub struct OrphanPool<T> {
     pool_storage: Arc<RwLock<OrphanPoolStorage<T>>>,
 }
 

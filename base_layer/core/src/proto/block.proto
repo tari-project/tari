@@ -51,6 +51,12 @@ message Block {
     tari.types.AggregateBody body = 2;
 }
 
+// A new block message. This is the message that is propagated around the network. It contains the
+// minimal information required to identify and optionally request the full block.
+message NewBlock {
+    bytes block_hash = 1;
+}
+
 // The representation of a historical block in the blockchain. It is essentially identical to a protocol-defined
 // block but contains some extra metadata that clients such as Block Explorers will find interesting.
 message HistoricalBlock {

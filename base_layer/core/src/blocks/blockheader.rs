@@ -59,6 +59,7 @@ use std::{
 };
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 
+pub const BLOCK_HASH_LENGTH: usize = 32;
 pub type BlockHash = Vec<u8>;
 
 #[derive(Clone, Debug, PartialEq, Error)]
@@ -116,11 +117,11 @@ impl BlockHeader {
         BlockHeader {
             version: blockchain_version,
             height: 0,
-            prev_hash: vec![0; 32],
+            prev_hash: vec![0; BLOCK_HASH_LENGTH],
             timestamp: EpochTime::now(),
-            output_mr: vec![0; 32],
-            range_proof_mr: vec![0; 32],
-            kernel_mr: vec![0; 32],
+            output_mr: vec![0; BLOCK_HASH_LENGTH],
+            range_proof_mr: vec![0; BLOCK_HASH_LENGTH],
+            kernel_mr: vec![0; BLOCK_HASH_LENGTH],
             total_kernel_offset: BlindingFactor::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
@@ -140,9 +141,9 @@ impl BlockHeader {
             height: prev.height + 1,
             prev_hash,
             timestamp: EpochTime::now(),
-            output_mr: vec![0; 32],
-            range_proof_mr: vec![0; 32],
-            kernel_mr: vec![0; 32],
+            output_mr: vec![0; BLOCK_HASH_LENGTH],
+            range_proof_mr: vec![0; BLOCK_HASH_LENGTH],
+            kernel_mr: vec![0; BLOCK_HASH_LENGTH],
             total_kernel_offset: BlindingFactor::default(),
             nonce: 0,
             pow,

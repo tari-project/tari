@@ -22,6 +22,7 @@
 
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
+use std::iter::repeat_with;
 use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError},
@@ -373,4 +374,22 @@ pub fn generate_block_with_coinbase<B: BlockchainBackend>(
         blocks.push(new_block);
     }
     result
+}
+
+pub fn construct_chained_blocks<B: BlockchainBackend>(
+    db: &BlockchainDatabase<B>,
+    block0: Block,
+    consensus_constants: &ConsensusConstants,
+    n: usize,
+) -> Vec<Block>
+{
+    let mut prev_block = block0;
+
+    repeat_with(|| {
+        let block = append_block(db, &prev_block, vec![], consensus_constants, 1.into()).unwrap();
+        prev_block = block.clone();
+        block
+    })
+    .take(n)
+    .collect()
 }

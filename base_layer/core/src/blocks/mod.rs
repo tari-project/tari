@@ -27,7 +27,7 @@ mod new_blockheader_template;
 
 pub mod genesis_block;
 
-pub use block::{Block, BlockBuilder, BlockValidationError};
+pub use block::{Block, BlockBuilder, BlockValidationError, NewBlock};
 pub use blockheader::{BlockHash, BlockHeader, BlockHeaderValidationError};
 pub use new_block_template::NewBlockTemplate;
 pub use new_blockheader_template::NewBlockHeaderTemplate;

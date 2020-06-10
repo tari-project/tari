@@ -62,9 +62,7 @@ impl<B: BlockchainBackend> MempoolValidators<B> {
 /// The Mempool consists of an Unconfirmed Transaction Pool, Pending Pool, Orphan Pool and Reorg Pool and is responsible
 /// for managing and maintaining all unconfirmed transactions have not yet been included in a block, and transactions
 /// that have recently been included in a block.
-pub struct Mempool<T>
-where T: BlockchainBackend
-{
+pub struct Mempool<T> {
     pool_storage: Arc<RwLock<MempoolStorage<T>>>,
 }
 
@@ -147,9 +145,7 @@ where T: BlockchainBackend
     }
 }
 
-impl<T> Clone for Mempool<T>
-where T: BlockchainBackend
-{
+impl<T> Clone for Mempool<T> {
     fn clone(&self) -> Self {
         Mempool {
             pool_storage: self.pool_storage.clone(),

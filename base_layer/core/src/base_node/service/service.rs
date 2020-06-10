@@ -36,9 +36,9 @@ use crate::{
         RequestKey,
         WaitingRequests,
     },
-    blocks::Block,
+    blocks::{Block, NewBlock},
     chain_storage::BlockchainBackend,
-    proto::core::Block as ProtoBlock,
+    proto as shared_protos,
 };
 use futures::{
     channel::{
@@ -59,7 +59,7 @@ use tari_comms_dht::{
     envelope::NodeDestination,
     outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageParams},
 };
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::RequestContext;
 use tokio::task;
@@ -86,12 +86,22 @@ impl Default for BaseNodeServiceConfig {
 
 /// A convenience struct to hold all the BaseNode streams
 pub struct BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock> {
+    /// `NodeCommsRequest` messages to send to a remote peer. If a specific peer is not provided, a random peer is
+    /// chosen.
     outbound_request_stream: SOutReq,
-    outbound_block_stream: UnboundedReceiver<(Block, Vec<NodeId>)>,
+    /// Blocks to be propagated out to the network. The second element of the tuple is a list of peers to exclude from
+    /// this round of propagation
+    outbound_block_stream: UnboundedReceiver<(NewBlock, Vec<NodeId>)>,
+    /// `BaseNodeRequest` messages received from external peers
     inbound_request_stream: SInReq,
+    /// `BaseNodeResponse` messages received from external peers
     inbound_response_stream: SInRes,
+    /// `NewBlock` messages received from external peers
     inbound_block_stream: SBlockIn,
+    /// Incoming local request messages from the LocalNodeCommsInterface and other local services
     local_request_stream: SLocalReq,
+    /// The stream of blocks sent from local services `LocalCommsNodeInterface::submit_block` e.g. block sync and
+    /// miner
     local_block_stream: SLocalBlock,
 }
 
@@ -103,13 +113,13 @@ where
     >,
     SInReq: Stream<Item = DomainMessage<proto::BaseNodeServiceRequest>>,
     SInRes: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
-    SBlockIn: Stream<Item = DomainMessage<Block>>,
+    SBlockIn: Stream<Item = DomainMessage<NewBlock>>,
     SLocalReq: Stream<Item = RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>>,
     SLocalBlock: Stream<Item = RequestContext<(Block, Broadcast), Result<(), CommsInterfaceError>>>,
 {
     pub fn new(
         outbound_request_stream: SOutReq,
-        outbound_block_stream: UnboundedReceiver<(Block, Vec<NodeId>)>,
+        outbound_block_stream: UnboundedReceiver<(NewBlock, Vec<NodeId>)>,
         inbound_request_stream: SInReq,
         inbound_response_stream: SInRes,
         inbound_block_stream: SBlockIn,
@@ -131,7 +141,7 @@ where
 
 /// The Base Node Service is responsible for handling inbound requests and responses and for sending new requests to
 /// remote Base Node Services.
-pub struct BaseNodeService<B: BlockchainBackend + 'static> {
+pub struct BaseNodeService<B> {
     outbound_message_service: OutboundMessageRequester,
     inbound_nch: InboundNodeCommsHandlers<B>,
     waiting_requests: WaitingRequests<Result<NodeCommsResponse, CommsInterfaceError>>,
@@ -170,7 +180,7 @@ where B: BlockchainBackend + 'static
         >,
         SInReq: Stream<Item = DomainMessage<proto::BaseNodeServiceRequest>>,
         SInRes: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
-        SBlockIn: Stream<Item = DomainMessage<Block>>,
+        SBlockIn: Stream<Item = DomainMessage<NewBlock>>,
         SLocalReq: Stream<Item = RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>>,
         SLocalBlock: Stream<Item = RequestContext<(Block, Broadcast), Result<(), CommsInterfaceError>>>,
     {
@@ -231,7 +241,7 @@ where B: BlockchainBackend + 'static
                     self.spawn_handle_local_request(local_request_context);
                 },
 
-                 // Incoming local block messages from the LocalNodeCommsInterface and other local services
+                // Incoming local block messages from the LocalNodeCommsInterface e.g. miner and block sync
                 local_block_context = local_block_stream.select_next_some() => {
                     self.spawn_handle_local_block(local_block_context);
                 },
@@ -279,10 +289,10 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_outbound_block(&self, block: Block, excluded_peers: Vec<NodeId>) {
+    fn spawn_handle_outbound_block(&self, new_block: NewBlock, excluded_peers: Vec<NodeId>) {
         let outbound_message_service = self.outbound_message_service.clone();
         task::spawn(async move {
-            let _ = handle_outbound_block(outbound_message_service, block, excluded_peers)
+            let _ = handle_outbound_block(outbound_message_service, new_block, excluded_peers)
                 .await
                 .or_else(|err| {
                     error!(target: LOG_TARGET, "Failed to handle outbound block message {:?}", err);
@@ -334,10 +344,10 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_incoming_block(&self, block_msg: DomainMessage<Block>) {
+    fn spawn_handle_incoming_block(&self, new_block: DomainMessage<NewBlock>) {
         let inbound_nch = self.inbound_nch.clone();
         task::spawn(async move {
-            let _ = handle_incoming_block(inbound_nch, block_msg).await.or_else(|err| {
+            let _ = handle_incoming_block(inbound_nch, new_block).await.or_else(|err| {
                 error!(target: LOG_TARGET, "Failed to handle incoming block message: {:?}", err);
                 Err(err)
             });
@@ -369,11 +379,11 @@ where B: BlockchainBackend + 'static
         block_context: RequestContext<(Block, Broadcast), Result<(), CommsInterfaceError>>,
     )
     {
-        let mut inbound_nch = self.inbound_nch.clone();
+        let inbound_nch = self.inbound_nch.clone();
         task::spawn(async move {
-            let (block, reply_tx) = block_context.split();
+            let ((block, broadcast), reply_tx) = block_context.split();
             let _ = reply_tx
-                .send(inbound_nch.handle_block(&block, None).await)
+                .send(inbound_nch.handle_block(block, broadcast, None).await)
                 .or_else(|err| {
                     error!(
                         target: LOG_TARGET,
@@ -419,41 +429,40 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
         )
         .await?;
 
+    // Wait for the response to be sent and log the result
     let request_key = inner_msg.request_key;
-    tokio::spawn(async move {
-        match send_message_response.resolve().await {
-            Err(err) => {
-                error!(
-                    target: LOG_TARGET,
-                    "Incoming request ({}) response failed to send: {}", request_key, err
-                );
-            },
-            Ok(send_states) => {
-                let msg_tag = send_states[0].tag;
+    match send_message_response.resolve().await {
+        Err(err) => {
+            error!(
+                target: LOG_TARGET,
+                "Incoming request ({}) response failed to send: {}", request_key, err
+            );
+        },
+        Ok(send_states) => {
+            let msg_tag = send_states[0].tag;
+            trace!(
+                target: LOG_TARGET,
+                "Incoming request ({}) response queued with {}",
+                request_key,
+                &msg_tag,
+            );
+            if send_states.wait_single().await {
                 trace!(
                     target: LOG_TARGET,
-                    "Incoming request ({}) response queued with {}",
+                    "Incoming request ({}) response Direct Send was successful {}",
                     request_key,
-                    &msg_tag,
+                    msg_tag
                 );
-                if send_states.wait_single().await {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Incoming request ({}) response Direct Send was successful {}",
-                        request_key,
-                        msg_tag
-                    );
-                } else {
-                    error!(
-                        target: LOG_TARGET,
-                        "Incoming request ({}) response Direct Send was unsuccessful and no message was sent {}",
-                        request_key,
-                        msg_tag
-                    );
-                }
-            },
-        };
-    });
+            } else {
+                error!(
+                    target: LOG_TARGET,
+                    "Incoming request ({}) response Direct Send was unsuccessful and no message was sent {}",
+                    request_key,
+                    msg_tag
+                );
+            }
+        },
+    };
 
     Ok(())
 }
@@ -526,7 +535,7 @@ async fn handle_outbound_request(
         },
         Ok(send_states) => {
             // Wait for matching responses to arrive
-            waiting_requests.insert(request_key, Some(reply_tx)).await;
+            waiting_requests.insert(request_key, reply_tx).await;
             // Spawn timeout for waiting_request
             spawn_request_timeout(timeout_sender, request_key, config.request_timeout);
             // Log messages
@@ -535,20 +544,18 @@ async fn handle_outbound_request(
                 target: LOG_TARGET,
                 "Outbound request ({}) response queued with {}", request_key, &msg_tag,
             );
-            tokio::spawn(async move {
-                if send_states.wait_single().await {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Outbound request ({}) response Direct Send was successful {}", request_key, msg_tag
-                    );
-                } else {
-                    error!(
-                        target: LOG_TARGET,
-                        "Outbound request ({}) response Direct Send was unsuccessful and no message was sent",
-                        request_key
-                    );
-                };
-            });
+
+            if send_states.wait_single().await {
+                debug!(
+                    target: LOG_TARGET,
+                    "Outbound request ({}) response Direct Send was successful {}", request_key, msg_tag
+                );
+            } else {
+                error!(
+                    target: LOG_TARGET,
+                    "Outbound request ({}) response Direct Send was unsuccessful and no message was sent", request_key
+                );
+            };
         },
         Err(err) => {
             debug!(target: LOG_TARGET, "Failed to send outbound request: {}", err);
@@ -568,7 +575,7 @@ async fn handle_outbound_request(
 
 async fn handle_outbound_block(
     mut outbound_message_service: OutboundMessageRequester,
-    block: Block,
+    new_block: NewBlock,
     exclude_peers: Vec<NodeId>,
 ) -> Result<(), CommsInterfaceError>
 {
@@ -577,7 +584,10 @@ async fn handle_outbound_block(
             NodeDestination::Unknown,
             OutboundEncryption::None,
             exclude_peers,
-            OutboundDomainMessage::new(TariMessageType::NewBlock, ProtoBlock::from(block)),
+            OutboundDomainMessage::new(
+                TariMessageType::NewBlock,
+                shared_protos::core::NewBlock::from(new_block),
+            ),
         )
         .await
         .map_err(|e| {
@@ -614,25 +624,24 @@ fn spawn_request_timeout(mut timeout_sender: Sender<RequestKey>, request_key: Re
 
 async fn handle_incoming_block<B: BlockchainBackend + 'static>(
     mut inbound_nch: InboundNodeCommsHandlers<B>,
-    domain_block_msg: DomainMessage<Block>,
+    domain_block_msg: DomainMessage<NewBlock>,
 ) -> Result<(), BaseNodeServiceError>
 {
-    let DomainMessage::<_> { source_peer, inner, .. } = domain_block_msg;
+    let DomainMessage::<_> {
+        source_peer,
+        inner: new_block,
+        ..
+    } = domain_block_msg;
 
     debug!(
-        "New candidate block #{} (accum_diff: {}, hash: ({})) received.",
-        inner.header.height,
-        inner.header.total_accumulated_difficulty_inclusive(),
-        inner.header.hash().to_hex(),
-    );
-    trace!(
         target: LOG_TARGET,
-        "New block:  {}, from: {}",
-        inner,
-        source_peer.public_key
+        "New candidate block with hash `{}` received from `{}`.",
+        new_block.block_hash.to_hex(),
+        source_peer.node_id.short_str()
     );
+
     inbound_nch
-        .handle_block(&(inner, true.into()), Some(source_peer.node_id))
+        .handle_new_block_message(new_block, source_peer.node_id)
         .await?;
 
     // TODO - retain peer info for stats and potential banning for sending invalid blocks

@@ -23,7 +23,7 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 use crate::{
-    blocks::BlockHeader,
+    blocks::{BlockHash, BlockHeader},
     consensus::ConsensusConstants,
     proof_of_work::ProofOfWork,
     transactions::{
@@ -261,6 +261,25 @@ impl Hashable for Block {
     fn hash(&self) -> Vec<u8> {
         // Note. If this changes, there will be a bug in chain_database::add_block_modifying_header
         self.header.hash()
+    }
+}
+
+//---------------------------------- NewBlock --------------------------------------------//
+pub struct NewBlock {
+    pub block_hash: BlockHash,
+}
+
+impl NewBlock {
+    pub fn new(block_hash: BlockHash) -> Self {
+        Self { block_hash }
+    }
+}
+
+impl From<&Block> for NewBlock {
+    fn from(block: &Block) -> Self {
+        Self {
+            block_hash: block.hash(),
+        }
     }
 }
 

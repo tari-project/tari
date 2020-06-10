@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{Block, BlockHeader, NewBlockTemplate},
+    blocks::{Block, BlockHash, BlockHeader, NewBlockTemplate},
     chain_storage::{
         blockchain_database::BlockAddResult,
         metadata::ChainMetadata,
@@ -109,5 +109,6 @@ make_async!(calculate_mmr_roots(template: NewBlockTemplate) -> Block, "calculate
 
 make_async!(fetch_block(height: u64) -> HistoricalBlock, "fetch_block");
 make_async!(fetch_block_with_hash(hash: HashOutput) -> Option<HistoricalBlock>, "fetch_block_with_hash");
+make_async!(block_exists(block_hash: BlockHash) -> bool, "block_exists");
 make_async!(rewind_to_height(height: u64) -> Vec<Block>, "rewind_to_height");
 make_async!(fetch_mmr_proof(tree: MmrTree, pos: usize) -> MerkleProof, "fetch_mmr_proof");
