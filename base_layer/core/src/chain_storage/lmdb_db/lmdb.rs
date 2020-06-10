@@ -29,7 +29,6 @@ use lmdb_zero::{
     CursorIter,
     Database,
     Environment,
-    Ignore,
     MaybeOwned,
     ReadTransaction,
     WriteTransaction,
