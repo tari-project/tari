@@ -432,6 +432,12 @@ unsigned long long wallet_import_utxo(struct TariWallet *wallet, unsigned long l
 // This function will tell the wallet to query the set base node to confirm the status of wallet data.
 unsigned long long wallet_sync_with_base_node(struct TariWallet *wallet, int* error_out);
 
+// Set the power mode of the wallet to Low Power mode which will reduce the amount of network operations the wallet performs to conserve power
+void wallet_set_low_power_mode(struct TariWallet *wallet, int* error_out);
+
+// Set the power mode of the wallet to Normal Power mode which will then use the standard level of network traffic
+void wallet_set_normal_power_mode(struct TariWallet *wallet, int* error_out);
+
 // Simulates the completion of a broadcasted TariPendingInboundTransaction
 bool wallet_test_broadcast_transaction(struct TariWallet *wallet, unsigned long long tx, int* error_out);
 

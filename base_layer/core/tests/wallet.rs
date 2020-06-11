@@ -158,9 +158,10 @@ fn wallet_base_node_integration_test() {
         comms_config: alice_comms_config,
         factories: factories.clone(),
         transaction_service_config: Some(TransactionServiceConfig {
-            mempool_broadcast_timeout: Duration::from_secs(10),
-            base_node_mined_timeout: Duration::from_secs(1),
-            ..Default::default()
+            base_node_monitoring_timeout: Duration::from_secs(1),
+            direct_send_timeout: Default::default(),
+            broadcast_send_timeout: Default::default(),
+            low_power_polling_timeout: Duration::from_secs(10),
         }),
     };
     let alice_runtime = create_runtime();
@@ -294,7 +295,9 @@ fn wallet_base_node_integration_test() {
             );
         });
     }
-
+    runtime
+        .block_on(alice_wallet.transaction_service.set_low_power_mode())
+        .unwrap();
     let transaction = transaction.expect("Transaction must be present");
 
     // Setup and start the miner

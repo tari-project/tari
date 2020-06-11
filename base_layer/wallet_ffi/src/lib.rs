@@ -4135,6 +4135,61 @@ pub unsafe extern "C" fn wallet_get_seed_words(wallet: *mut TariWallet, error_ou
     }
 }
 
+/// Set the power mode of the wallet to Low Power mode which will reduce the amount of network operations the wallet
+/// performs to conserve power
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_set_low_power_mode(wallet: *mut TariWallet, error_out: *mut c_int) {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    }
+
+    if let Err(e) = (*wallet)
+        .runtime
+        .block_on((*wallet).transaction_service.set_low_power_mode())
+    {
+        error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+}
+
+/// Set the power mode of the wallet to Normal Power mode which will then use the standard level of network traffic
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_set_normal_power_mode(wallet: *mut TariWallet, error_out: *mut c_int) {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    }
+
+    if let Err(e) = (*wallet)
+        .runtime
+        .block_on((*wallet).transaction_service.set_normal_power_mode())
+    {
+        error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+}
+
 /// Frees memory for a TariWallet
 ///
 /// ## Arguments
@@ -5016,6 +5071,11 @@ mod test {
             );
             assert_eq!(split_tx.is_ok(), true);
             string_destroy(split_msg_str as *mut c_char);
+
+            wallet_set_low_power_mode(alice_wallet, error_ptr);
+            assert_eq!((*error_ptr), 0);
+            wallet_set_normal_power_mode(alice_wallet, error_ptr);
+            assert_eq!((*error_ptr), 0);
 
             // Test seed words
             let seed_words = wallet_get_seed_words(alice_wallet, error_ptr);

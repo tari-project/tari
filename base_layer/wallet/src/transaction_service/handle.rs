@@ -49,6 +49,8 @@ pub enum TransactionServiceRequest {
     CancelTransaction(TxId),
     ImportUtxo(MicroTari, CommsPublicKey, String),
     SubmitTransaction((TxId, Transaction, MicroTari, MicroTari, String)),
+    SetLowPowerMode,
+    SetNormalPowerMode,
     #[cfg(feature = "test_harness")]
     CompletePendingOutboundTransaction(CompletedTransaction),
     #[cfg(feature = "test_harness")]
@@ -78,6 +80,8 @@ impl fmt::Display for TransactionServiceRequest {
             Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
             Self::ImportUtxo(v, k, msg) => f.write_str(&format!("ImportUtxo (from {}, {}, {})", k, v, msg)),
             Self::SubmitTransaction((id, _, _, _, _)) => f.write_str(&format!("SubmitTransaction ({})", id)),
+            Self::SetLowPowerMode => f.write_str("SetLowPowerMode "),
+            Self::SetNormalPowerMode => f.write_str("SetNormalPowerMode"),
             #[cfg(feature = "test_harness")]
             Self::CompletePendingOutboundTransaction(tx) => {
                 f.write_str(&format!("CompletePendingOutboundTransaction ({})", tx.tx_id))
@@ -108,6 +112,8 @@ pub enum TransactionServiceResponse {
     BaseNodePublicKeySet,
     UtxoImported(TxId),
     TransactionSubmitted,
+    LowPowerModeSet,
+    NormalPowerModeSet,
     #[cfg(feature = "test_harness")]
     CompletedPendingTransaction,
     #[cfg(feature = "test_harness")]
@@ -342,6 +348,24 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::TransactionSubmitted => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn set_low_power_mode(&mut self) -> Result<(), TransactionServiceError> {
+        match self.handle.call(TransactionServiceRequest::SetLowPowerMode).await?? {
+            TransactionServiceResponse::LowPowerModeSet => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn set_normal_power_mode(&mut self) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SetNormalPowerMode)
+            .await??
+        {
+            TransactionServiceResponse::NormalPowerModeSet => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
