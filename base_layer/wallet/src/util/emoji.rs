@@ -77,6 +77,11 @@ lazy_static! {
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct EmojiId(String);
 
+/// Returns the current emoji set as a vector of char
+pub const fn emoji_set() -> [char; 256] {
+    EMOJI
+}
+
 impl EmojiId {
     /// Construct an Emoji ID from the given pubkey.
     pub fn from_pubkey(key: &PublicKey) -> Self {

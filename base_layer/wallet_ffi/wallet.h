@@ -73,6 +73,8 @@ struct TariTransportType;
 
 struct TariSeedWords;
 
+struct EmojiSet;
+
 /// -------------------------------- Transport Types ----------------------------------------------- ///
 
 // Creates a memory transport type
@@ -464,6 +466,15 @@ void wallet_destroy(struct TariWallet *wallet);
 
 /// This function will log the provided string at debug level. To be used to have a client log messages to the LibWallet
 void log_debug_message(const char* msg);
+
+
+struct EmojiSet *get_emoji_set(void);
+
+void emoji_set_destroy(struct EmojiSet *emoji_set);
+
+struct ByteVector *emoji_set_get_at(struct EmojiSet *emoji_set, unsigned int position, int* error_out);
+
+unsigned int emoji_set_get_length(struct EmojiSet *emoji_set, int* error_out);
 
 #ifdef __cplusplus
 }
