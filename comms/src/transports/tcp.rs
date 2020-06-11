@@ -20,13 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::Transport;
-use crate::utils::multiaddr::{multiaddr_to_socketaddr, socketaddr_to_multiaddr};
-use futures::{future, io::Error, ready, AsyncRead, AsyncWrite, Future, Stream};
+use super::{dns::DnsResolver, Transport};
+use crate::{
+    transports::dns::{DnsResolverRef, SystemDnsResolver},
+    utils::multiaddr::socketaddr_to_multiaddr,
+};
+use futures::{future, io::Error, ready, AsyncRead, AsyncWrite, Future, Stream, TryFutureExt};
 use multiaddr::Multiaddr;
 use std::{
     io,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
     time::Duration,
 };
@@ -36,7 +40,7 @@ use tokio::{
 };
 
 /// Transport implementation for TCP
-#[derive(Debug, Clone, Default)]
+#[derive(Clone)]
 pub struct TcpTransport {
     recv_buffer_size: Option<usize>,
     send_buffer_size: Option<usize>,
@@ -44,6 +48,7 @@ pub struct TcpTransport {
     #[allow(clippy::option_option)]
     keepalive: Option<Option<Duration>>,
     nodelay: Option<bool>,
+    dns_resolver: DnsResolverRef,
 }
 
 impl TcpTransport {
@@ -65,6 +70,13 @@ impl TcpTransport {
     /// Create a new TcpTransport
     pub fn new() -> Self {
         Default::default()
+    }
+
+    /// Set the DnsResolver for this TcpTransport. The resolver will be used when converting DNS addresses to IP
+    /// addresses.
+    pub fn set_dns_resolver<T: DnsResolver>(&mut self, dns_resolver: T) -> &mut Self {
+        self.dns_resolver = Arc::new(dns_resolver);
+        self
     }
 
     /// Apply socket options to `TcpStream`.
@@ -93,6 +105,19 @@ impl TcpTransport {
     }
 }
 
+impl Default for TcpTransport {
+    fn default() -> Self {
+        Self {
+            recv_buffer_size: None,
+            send_buffer_size: None,
+            ttl: None,
+            keepalive: None,
+            nodelay: None,
+            dns_resolver: Arc::new(SystemDnsResolver),
+        }
+    }
+}
+
 impl Transport for TcpTransport {
     type Error = io::Error;
     type Inbound = future::Ready<io::Result<Self::Output>>;
@@ -104,10 +129,13 @@ impl Transport for TcpTransport {
 
     fn listen(&self, addr: Multiaddr) -> Result<Self::ListenFuture, Self::Error> {
         let config = self.clone();
-        // multiaddr_to_socketaddr is not used in the async block because of a rust ICE (internal compiler error)
-        let socket_addr = multiaddr_to_socketaddr(&addr)?;
+        let dns_resolver = self.dns_resolver.clone();
 
         Ok(Box::pin(async move {
+            let socket_addr = dns_resolver
+                .resolve(addr)
+                .await
+                .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("Failed to resolve address: {}", err)))?;
             let listener = TcpListener::bind(&socket_addr).await?;
             let local_addr = socketaddr_to_multiaddr(&listener.local_addr()?);
             Ok((TcpInbound::new(config, listener), local_addr))
@@ -115,11 +143,12 @@ impl Transport for TcpTransport {
     }
 
     fn dial(&self, addr: Multiaddr) -> Result<Self::DialFuture, Self::Error> {
-        let socket_addr = multiaddr_to_socketaddr(&addr)?;
-        Ok(TcpOutbound::new(
-            Box::pin(TcpStream::connect(socket_addr)),
-            self.clone(),
-        ))
+        let config = self.clone();
+        Ok(config
+            .dns_resolver
+            .resolve(addr)
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("Address resolution failed: {}", err)))
+            .and_then(|socket_addr| TcpOutbound::new(Box::pin(TcpStream::connect(socket_addr)), config)))
     }
 }
 

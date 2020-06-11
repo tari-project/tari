@@ -214,7 +214,9 @@ impl ChainMetadataService {
             let chain_metadata: ChainMetadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?.into();
             debug!(
                 target: LOG_TARGET,
-                "Received chain metadata from NodeId '{}' - #{:?}", node_id, chain_metadata.height_of_longest_chain
+                "Received chain metadata from NodeId '{}' #{}",
+                node_id,
+                chain_metadata.height_of_longest_chain.unwrap_or(0)
             );
 
             if let Some(pos) = self
@@ -244,7 +246,9 @@ impl ChainMetadataService {
         let chain_metadata: ChainMetadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?.into();
         debug!(
             target: LOG_TARGET,
-            "Received chain metadata from NodeId '{}' - #{:?}", node_id, chain_metadata.height_of_longest_chain
+            "Received chain metadata from NodeId '{}' - #{}",
+            node_id,
+            chain_metadata.height_of_longest_chain.unwrap_or(0)
         );
 
         if let Some(pos) = self

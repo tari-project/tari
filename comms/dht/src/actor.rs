@@ -572,35 +572,22 @@ impl DhtActor {
         let query = PeerQuery::new()
             .select_where(|peer| {
                 if peer.is_banned() {
-                    trace!(target: LOG_TARGET, "[{}] is banned", peer.node_id);
                     banned_count += 1;
                     return false;
                 }
 
                 if !peer.features.contains(features) {
-                    trace!(
-                        target: LOG_TARGET,
-                        "[{}] is does not have the required features {:?}",
-                        peer.node_id,
-                        features
-                    );
                     filtered_out_node_count += 1;
                     return false;
                 }
 
                 if peer.is_offline() {
-                    trace!(
-                        target: LOG_TARGET,
-                        "[{}] suffered too many connection attempt failures or is offline",
-                        peer.node_id
-                    );
                     connect_ineligable_count += 1;
                     return false;
                 }
 
                 let is_excluded = excluded_peers.contains(&peer.node_id);
                 if is_excluded {
-                    trace!(target: LOG_TARGET, "[{}] is explicitly excluded", peer.node_id);
                     excluded_count += 1;
                     return false;
                 }

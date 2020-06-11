@@ -475,7 +475,7 @@ pub enum CommsTransport {
         tor_socks_auth: Option<SocksAuthentication>,
     },
     /// Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
-    /// onion v2, onion v3 and dns addresses.
+    /// onion v2, onion v3 and DNS addresses.
     TorHiddenService {
         /// The address of the control server
         control_server_address: Multiaddr,

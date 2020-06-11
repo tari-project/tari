@@ -34,7 +34,7 @@ pub struct ChainMetadata {
     /// The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
     /// tracked (i.e. the database is in full archival mode).
     pub pruning_horizon: u64,
-    /// The geamotric mean of the proof of work of the longest chain, none if the chain is empty
+    /// The geometric mean of the proof of work of the longest chain, none if the chain is empty
     pub accumulated_difficulty: Option<Difficulty>,
 }
 

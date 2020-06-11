@@ -23,7 +23,8 @@
 // TODO: Remove #[allow(dead_code)] once tests are in place
 #[allow(dead_code)]
 mod client;
+pub use client::{Authentication, Socks5Client};
+
 #[allow(dead_code)]
 mod error;
-
-pub use client::{Authentication, Socks5Client};
+pub use error::SocksError;

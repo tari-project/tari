@@ -64,7 +64,7 @@ use crate::{
     peer_manager::{NodeIdentity, PeerManager},
     protocol::{messaging, messaging::MessagingProtocol, ProtocolNotification, Protocols},
     tor,
-    transports::{SocksTransport, TcpWithTorTransport, Transport},
+    transports::{SocksTransport, TcpTransport, Transport},
     types::CommsDatabase,
 };
 use futures::{channel::mpsc, AsyncRead, AsyncWrite};
@@ -89,20 +89,20 @@ pub struct CommsBuilder<TTransport> {
     shutdown: Shutdown,
 }
 
-impl CommsBuilder<TcpWithTorTransport> {
+impl CommsBuilder<TcpTransport> {
     /// Create a new CommsBuilder
     pub fn new() -> Self {
         Default::default()
     }
 
-    fn default_tcp_transport() -> TcpWithTorTransport {
-        let mut tcp_with_tor = TcpWithTorTransport::new();
-        tcp_with_tor.tcp_transport_mut().set_nodelay(true);
-        tcp_with_tor
+    fn default_tcp_transport() -> TcpTransport {
+        let mut transport = TcpTransport::new();
+        transport.set_nodelay(true);
+        transport
     }
 }
 
-impl Default for CommsBuilder<TcpWithTorTransport> {
+impl Default for CommsBuilder<TcpTransport> {
     fn default() -> Self {
         Self {
             peer_storage: None,
@@ -338,7 +338,10 @@ where
     /// Build the required comms services. Services will not be started.
     pub fn build(mut self) -> Result<BuiltCommsNode<TTransport>, CommsBuilderError> {
         debug!(target: LOG_TARGET, "Building comms");
-        let node_identity = self.node_identity.take().ok_or(CommsBuilderError::NodeIdentityNotSet)?;
+        let node_identity = self
+            .node_identity
+            .take()
+            .ok_or_else(|| CommsBuilderError::NodeIdentityNotSet)?;
 
         let peer_manager = self.make_peer_manager()?;
 

@@ -285,11 +285,9 @@ impl From<NodeIdentityError> for LibWalletError {
                 code: 701,
                 message: format!("{:?}", n),
             },
-            // 702 NodeIdError::OutOfBounds no longer occurs
-            NodeIdentityError::AddressLockPoisoned => Self {
-                code: 703,
-                message: format!("{:?}", n),
-            },
+            // No longer applicable:
+            // 702 NodeIdentityError::OutOfBounds
+            // 703 NodeIdentityError::AddressLockPoisoned
             NodeIdentityError::NodeIdError(NodeIdError::InvalidDigestOutputSize) => Self {
                 code: 704,
                 message: format!("{:?}", n),

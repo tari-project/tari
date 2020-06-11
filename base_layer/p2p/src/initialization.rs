@@ -46,7 +46,7 @@ use tari_comms_dht::{Dht, DhtBuilder, DhtConfig, DhtInitializationError};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tower::ServiceBuilder;
 
-const LOG_TARGET: &str = "b::p2p::initialization";
+const LOG_TARGET: &str = "p2p::initialization";
 
 #[derive(Debug, Error)]
 pub enum CommsInitializationError {
@@ -217,7 +217,11 @@ where
             listener_address,
             tor_socks_config,
         } => {
-            debug!(target: LOG_TARGET, "Building TCP comms stack");
+            debug!(
+                target: LOG_TARGET,
+                "Building TCP comms stack{}",
+                tor_socks_config.as_ref().map(|_| " with Tor support").unwrap_or("")
+            );
             let mut transport = TcpWithTorTransport::new();
             if let Some(config) = tor_socks_config {
                 transport.set_tor_socks_proxy(config.clone());
@@ -244,15 +248,12 @@ where
             let (comms, dht) = configure_comms_and_dht(comms, config, connector, seed_peers).await?;
             debug!(target: LOG_TARGET, "DHT configured");
             // Set the public address to the onion address that comms is using
-            comms
-                .node_identity()
-                .set_public_address(
-                    comms
-                        .hidden_service()
-                        .expect("hidden_service must be set because a tor hidden service is set")
-                        .get_onion_address(),
-                )
-                .expect("Poisoned NodeIdentity");
+            comms.node_identity().set_public_address(
+                comms
+                    .hidden_service()
+                    .expect("hidden_service must be set because a tor hidden service is set")
+                    .get_onion_address(),
+            );
             Ok((comms, dht))
         },
         TransportType::Socks {
