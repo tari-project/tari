@@ -1,12 +1,12 @@
 #FROM rust:1.42.0 as builder
-FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2020-01-08 as builder
+FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2020-06-10 as builder
 
 # Copy the dependency lists
 #ADD Cargo.toml ./
 ADD . /tari_base_node
 WORKDIR /tari_base_node
 
-RUN rustup component add rustfmt --toolchain nightly-2020-01-08-x86_64-unknown-linux-gnu
+RUN rustup component add rustfmt --toolchain nightly-2020-06-10-x86_64-unknown-linux-gnu
 RUN cargo build -p tari_base_node --release
 
 # Create a base minimal image for adding our executables to
