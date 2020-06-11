@@ -47,19 +47,19 @@ pub struct TcpTransport {
 }
 
 impl TcpTransport {
-    /// Sets `SO_RCVBUF` i.e the size of the receive buffer.
+    #[doc("Sets `SO_RCVBUF` i.e the size of the receive buffer.")]
     setter_mut!(set_recv_buffer_size, recv_buffer_size, Option<usize>);
 
-    /// Sets `SO_SNDBUF` i.e. the size of the send buffer.
+    #[doc("Sets `SO_SNDBUF` i.e. the size of the send buffer.")]
     setter_mut!(set_send_buffer_size, send_buffer_size, Option<usize>);
 
-    /// Sets `IP_TTL` i.e. the TTL of packets sent from this socket.
+    #[doc("Sets `IP_TTL` i.e. the TTL of packets sent from this socket.")]
     setter_mut!(set_ttl, ttl, Option<u32>);
 
-    /// Sets `SO_KEEPALIVE` i.e. the interval to send keepalive probes, or None to disable.
+    #[doc("Sets `SO_KEEPALIVE` i.e. the interval to send keepalive probes, or None to disable.")]
     setter_mut!(set_keepalive, keepalive, Option<Option<Duration>>);
 
-    /// Sets `TCP_NODELAY` i.e enable/disable Nagle's algorithm.
+    #[doc("Sets `TCP_NODELAY` i.e disable Nagle's algorithm if set to true.")]
     setter_mut!(set_nodelay, nodelay, Option<bool>);
 
     /// Create a new TcpTransport
