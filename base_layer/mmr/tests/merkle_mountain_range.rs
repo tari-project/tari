@@ -154,3 +154,27 @@ fn restore_from_leaf_hashes() {
     assert_eq!(mmr.get_leaf_hash(3), Ok(Some(h3)));
     assert_eq!(mmr.get_leaf_hash(4), Ok(None));
 }
+
+#[test]
+fn find_leaf_index() {
+    let mut mmr = MerkleMountainRange::<Hasher, _>::new(Vec::default());
+    let h0 = int_to_hash(0);
+    let h1 = int_to_hash(1);
+    let h2 = int_to_hash(2);
+    let h3 = int_to_hash(3);
+    let h4 = int_to_hash(4);
+    let h5 = int_to_hash(5);
+    assert!(mmr.push(&h0).is_ok());
+    assert!(mmr.push(&h1).is_ok());
+    assert!(mmr.push(&h2).is_ok());
+    assert!(mmr.push(&h3).is_ok());
+    assert!(mmr.push(&h4).is_ok());
+    assert_eq!(mmr.len(), Ok(8));
+
+    assert_eq!(mmr.find_leaf_index(&h0), Ok(Some(0)));
+    assert_eq!(mmr.find_leaf_index(&h1), Ok(Some(1)));
+    assert_eq!(mmr.find_leaf_index(&h2), Ok(Some(2)));
+    assert_eq!(mmr.find_leaf_index(&h3), Ok(Some(3)));
+    assert_eq!(mmr.find_leaf_index(&h4), Ok(Some(4)));
+    assert_eq!(mmr.find_leaf_index(&h5), Ok(None));
+}

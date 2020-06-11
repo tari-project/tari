@@ -105,7 +105,7 @@ fn index_to_key(offset: i64, index: usize) -> i64 {
 
 impl<T> ArrayLike for LMDBVec<T>
 where
-    T: serde::Serialize,
+    T: serde::Serialize + PartialEq,
     for<'t> T: serde::de::DeserializeOwned,
 {
     type Error = LMDBVecError;
@@ -153,11 +153,27 @@ where
         })?;
         Ok(())
     }
+
+    fn position(&self, item: &Self::Value) -> Result<Option<usize>, Self::Error> {
+        let num_elements = self.len()?;
+        let index_offset = self.fetch_index_offset()?;
+        for index in 0..num_elements {
+            let key = index_to_key(index_offset, index);
+            if let Some(stored_item) = lmdb_get::<i64, T>(&self.env, &self.db, &key)
+                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
+            {
+                if stored_item == *item {
+                    return Ok(Some(index));
+                }
+            }
+        }
+        Ok(None)
+    }
 }
 
 impl<T> ArrayLikeExt for LMDBVec<T>
 where
-    T: serde::Serialize,
+    T: serde::Serialize + PartialEq,
     for<'t> T: serde::de::DeserializeOwned,
 {
     type Value = T;
@@ -318,6 +334,11 @@ mod test {
             .iter()
             .enumerate()
             .for_each(|(i, val)| assert_eq!(lmdb_vec.get(i).unwrap(), Some(val.clone())));
+
+        for index in 0..lmdb_vec.len().unwrap() {
+            let item = lmdb_vec.get(index).unwrap().unwrap();
+            assert_eq!(lmdb_vec.position(&item).unwrap(), Some(index));
+        }
 
         assert!(lmdb_vec.clear().is_ok());
         assert_eq!(lmdb_vec.len().unwrap(), 0);

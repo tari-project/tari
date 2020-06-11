@@ -36,6 +36,11 @@ pub fn node_index(leaf_index: usize) -> usize {
     2 * leaf_index - leaf_index.count_ones() as usize
 }
 
+/// Returns the leaf index derived from the MMR node index.
+pub fn leaf_index(node_index: usize) -> u32 {
+    n_leaves(node_index) as u32
+}
+
 /// Is this position a leaf in the MMR?
 /// We know the positions of all leaves based on the postorder height of an MMR of any size (somewhat unintuitively
 /// but this is how the PMMR is "append only").

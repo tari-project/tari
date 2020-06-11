@@ -113,4 +113,15 @@ impl ArrayLike for PrunedHashSet {
         self.hashes.clear();
         Ok(())
     }
+
+    fn position(&self, item: &Self::Value) -> Result<Option<usize>, Self::Error> {
+        for index in 0..self.len()? {
+            if let Some(stored_item) = self.get(index)? {
+                if stored_item == *item {
+                    return Ok(Some(index));
+                }
+            }
+        }
+        Ok(None)
+    }
 }

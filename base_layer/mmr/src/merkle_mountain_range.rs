@@ -22,7 +22,7 @@
 
 use crate::{
     backend::ArrayLike,
-    common::{bintree_height, find_peaks, hash_together, n_leaves, node_index, peak_map_height},
+    common::{bintree_height, find_peaks, hash_together, is_leaf, leaf_index, n_leaves, node_index, peak_map_height},
     error::MerkleMountainRangeError,
     Hash,
 };
@@ -203,28 +203,23 @@ where
     /// it's better to cache the index of the hash when storing it rather than using this function, but it's here
     /// for completeness.
     pub fn find_node_index(&self, hash: &Hash) -> Result<Option<usize>, MerkleMountainRangeError> {
-        for i in 0..self
-            .hashes
-            .len()
-            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
-        {
-            if *hash == self.hashes.get_or_panic(i) {
-                return Ok(Some(i));
-            }
-        }
-        Ok(None)
+        self.hashes
+            .position(hash)
+            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))
     }
 
     /// Search for the leaf index of the given hash in the leaf nodes of the MMR.
-    pub fn find_leaf_index(&self, hash: &Hash) -> Result<Option<usize>, MerkleMountainRangeError> {
-        for index in 0..self.get_leaf_count()? {
-            if let Some(retrieved_hash) = self.get_leaf_hash(index)? {
-                if *hash == retrieved_hash {
-                    return Ok(Some(index));
+    pub fn find_leaf_index(&self, hash: &Hash) -> Result<Option<u32>, MerkleMountainRangeError> {
+        Ok(match self.find_node_index(hash)? {
+            Some(node_index) => {
+                if is_leaf(node_index) {
+                    Some(leaf_index(node_index))
+                } else {
+                    None
                 }
-            }
-        }
-        Ok(None)
+            },
+            None => None,
+        })
     }
 
     pub(crate) fn null_hash() -> Hash {

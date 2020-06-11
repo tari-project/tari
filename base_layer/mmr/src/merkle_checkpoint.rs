@@ -27,9 +27,9 @@ use serde::{
     de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor},
     ser::{Serialize, SerializeStruct, Serializer},
 };
-use std::fmt;
+use std::{fmt, hash::Hasher};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MerkleCheckPoint {
     nodes_added: Vec<Hash>,
     nodes_deleted: Bitmap,
@@ -114,6 +114,17 @@ impl MerkleCheckPoint {
     /// Break a checkpoint up into its constituent parts
     pub fn into_parts(self) -> (Vec<Hash>, Bitmap) {
         (self.nodes_added, self.nodes_deleted)
+    }
+}
+
+impl Eq for MerkleCheckPoint {}
+
+#[allow(clippy::derive_hash_xor_eq)]
+impl std::hash::Hash for MerkleCheckPoint {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.nodes_added.hash(state);
+        self.nodes_deleted.to_vec().hash(state);
+        self.prev_accumulated_nodes_added_count.hash(state);
     }
 }
 

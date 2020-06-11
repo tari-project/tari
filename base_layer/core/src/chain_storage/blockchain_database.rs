@@ -168,6 +168,8 @@ pub trait BlockchainBackend: Send + Sync {
     /// Fetches the set of leaf node hashes and their deletion status' for the nth to nth+count leaf node index in the
     /// given MMR tree.
     fn fetch_mmr_nodes(&self, tree: MmrTree, pos: u32, count: u32) -> Result<Vec<(Hash, bool)>, ChainStorageError>;
+    /// Fetches the leaf index of the provided leaf node hash in the given MMR tree.
+    fn fetch_mmr_leaf_index(&self, tree: MmrTree, hash: &Hash) -> Result<Option<u32>, ChainStorageError>;
     /// Performs the function F for each orphan block in the orphan pool.
     fn for_each_orphan<F>(&self, f: F) -> Result<(), ChainStorageError>
     where
@@ -647,8 +649,14 @@ pub fn is_utxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, C
 }
 
 pub fn is_stxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, ChainStorageError> {
-    let key = DbKey::SpentOutput(hash);
-    db.contains(&key)
+    // Check if the UTXO MMR contains the specified deleted UTXO hash, the backend stxo_db is not used for this task as
+    // archival nodes and pruning nodes might have different STXOs in their stxo_db as horizon state STXOs are
+    // discarded by pruned nodes.
+    if let Some(leaf_index) = db.fetch_mmr_leaf_index(MmrTree::Utxo, &hash)? {
+        let (_, deleted) = db.fetch_mmr_node(MmrTree::Utxo, leaf_index)?;
+        return Ok(deleted);
+    }
+    Ok(false)
 }
 
 fn fetch_mmr_root<T: BlockchainBackend>(db: &T, tree: MmrTree) -> Result<HashOutput, ChainStorageError> {

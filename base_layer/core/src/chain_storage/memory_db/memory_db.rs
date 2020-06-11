@@ -59,6 +59,7 @@ use tari_mmr::{
     ArrayLike,
     ArrayLikeExt,
     Hash as MmrHash,
+    Hash,
     MerkleCheckPoint,
     MerkleProof,
     MmrCache,
@@ -486,6 +487,15 @@ where D: Digest + Send + Sync
             f(Ok((key.clone(), val.clone())));
         }
         Ok(())
+    }
+
+    fn fetch_mmr_leaf_index(&self, tree: MmrTree, hash: &Hash) -> Result<Option<u32>, ChainStorageError> {
+        let db = self.db_access()?;
+        Ok(match tree {
+            MmrTree::Kernel => db.kernel_mmr.find_leaf_index(hash)?,
+            MmrTree::Utxo => db.utxo_mmr.find_leaf_index(hash)?,
+            MmrTree::RangeProof => db.range_proof_mmr.find_leaf_index(hash)?,
+        })
     }
 
     /// Returns the number of blocks in the block orphan pool.
