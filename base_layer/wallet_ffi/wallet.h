@@ -169,7 +169,7 @@ unsigned int seed_words_get_length(struct TariSeedWords *seed_words, int* error_
 char *seed_words_get_at(struct TariSeedWords *seed_words, unsigned int position, int* error_out);
 
 // Frees the memory for a TariSeedWords collection
-void seed_words_destroy(truct TariSeedWords *seed_words);
+void seed_words_destroy(struct TariSeedWords *seed_words);
 
 /// -------------------------------- Contact ------------------------------------------------------ ///
 
