@@ -13,7 +13,7 @@ jobs:
       # Step 2: Build and package the libraries
       - name: Build libwallet
         id: build-libwallet
-        uses: tari-project/action-buildlibs@v0.0.14
+        uses: tari-project/action-buildlibs@v0.1.1
         with:
           platforms: "x86_64-linux-android;aarch64-linux-android;i686-linux-android;armv7-linux-androideabi"
           level: "24"
