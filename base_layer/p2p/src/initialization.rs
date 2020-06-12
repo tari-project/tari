@@ -232,10 +232,7 @@ where
             configure_comms_and_dht(comms, config, connector, seed_peers).await
         },
         TransportType::Tor(tor_config) => {
-            debug!(
-                target: LOG_TARGET,
-                "Building TOR comms stack with configuration: {:?}", tor_config
-            );
+            debug!(target: LOG_TARGET, "Building TOR comms stack ({})", tor_config);
             let hidden_service = initialize_hidden_service(tor_config.clone()).await?;
             debug!(
                 target: LOG_TARGET,
