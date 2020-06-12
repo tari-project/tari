@@ -122,8 +122,8 @@ pub struct ConnectionManagerConfig {
     pub time_to_first_byte: Duration,
     /// The number of liveness check sessions to allow. Default: 0
     pub liveness_max_sessions: usize,
-    /// CIDR blocks that whitelist liveness checks. Default: Localhost only (127.0.0.1/32)
-    pub liveness_cidr_whitelist: Vec<cidr::AnyIpCidr>,
+    /// CIDR blocks that allowlist liveness checks. Default: Localhost only (127.0.0.1/32)
+    pub liveness_cidr_allowlist: Vec<cidr::AnyIpCidr>,
 }
 
 impl Default for ConnectionManagerConfig {
@@ -142,7 +142,7 @@ impl Default for ConnectionManagerConfig {
             allow_test_addresses: true,
             liveness_max_sessions: 0,
             time_to_first_byte: Duration::from_secs(7),
-            liveness_cidr_whitelist: vec![cidr::AnyIpCidr::V4("127.0.0.1/32".parse().unwrap())],
+            liveness_cidr_allowlist: vec![cidr::AnyIpCidr::V4("127.0.0.1/32".parse().unwrap())],
         }
     }
 }

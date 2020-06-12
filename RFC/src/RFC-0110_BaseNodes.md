@@ -158,7 +158,7 @@ validation service checks all transaction verification on the block as well.
 
 Base Nodes are not obliged to accept connections from any peer node on the network. In particular:
 
-* Base Nodes MAY refuse connections from peers that have been added to a blacklist.
+* Base Nodes MAY refuse connections from peers that have been added to a denylist.
 * Base Nodes MAY be configured to exclusively connect to a given set of peer nodes.
 
 `Validated` blocks are

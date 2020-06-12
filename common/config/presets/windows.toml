@@ -29,16 +29,16 @@
 # The peer database list is stored in a database file at this location
 #peer_database = "~/.tari/peers" # or "%USERPROFILE%\\.tari\peers"
 
-# If peer nodes spam you with messages, or are otherwise badly behaved, they will be added to your blacklist and banned
+# If peer nodes spam you with messages, or are otherwise badly behaved, they will be added to your denylist and banned
 # You can set a time limit to release that ban (in minutes), or otherwise ban them for life (-1). The default is to
 # ban them for 10 days.
-#blacklist_ban_period = 1440
+#denylist_ban_period = 1440
 
 # The number of liveness sessions to allow. Liveness sessions can be established by liveness monitors over TCP by
 # sending a 0x50 (P) as the first byte. Any messages sent must be followed by newline message no longer than
 # 50 characters. That message will be echoed back.
 # liveness_max_sessions = 0
-# liveness_whitelist_cidrs = ["127.0.0.1/32"]
+# liveness_allowlist_cidrs = ["127.0.0.1/32"]
 
 ########################################################################################################################
 #                                                                                                                      #
@@ -108,7 +108,7 @@ data_dir="rincewind"
 # When first logging onto the Tari network, you need to find a few peers to bootstrap the process. In the absence of
 # any servers, this is a little more challenging than usual. Our best strategy is just to try and connect to the peers
 # you knew about last time you ran the software. But what about when you run the software for the first time? That's
-# where this whitelist comes in. It's a list of known Tari nodes that are likely to be around for a long time and that
+# where this allowlist comes in. It's a list of known Tari nodes that are likely to be around for a long time and that
 # new nodes can use to introduce themselves to the network.
 # peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
 peer_seeds = [
@@ -226,7 +226,7 @@ wallet_tor_identity_file = ".\\config\\wallet-tor.json"
 # When first logging onto the Tari network, you need to find a few peers to bootstrap the process. In the absence of
 # any servers, this is a little more challenging than usual. Our best strategy is just to try and connect to the peers
 # you knew about last time you ran the software. But what about when you run the software for the first time? That's
-# where this whitelist comes in. It's a list of known Tari nodes that are likely to be around for a long time and that
+# where this allowlist comes in. It's a list of known Tari nodes that are likely to be around for a long time and that
 # new nodes can use to introduce themselves to the network.
 # peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
 peer_seeds = []

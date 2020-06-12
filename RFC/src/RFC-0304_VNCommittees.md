@@ -88,7 +88,7 @@ Once the AI has received a list of nominated VNs, it must make a selection, assu
 the committee. The AI will employ some [CommitteeSelectionStrategy] in order to select the committee from the candidate 
 VNs that have been nominated. This strategy might aim for a perfectly random selection, or perhaps it will consider some 
 metrics about the candidate VNs, such as the length of their VN registrations. These metrics might indicate that they are reliable 
-and have not been blacklisted for poor or malicious performance.
+and have not been denylisted for poor or malicious performance.
 
 A consideration when selecting a committee in `PUBLIC_NOMINATION` mode will be the size of the pool of nominated VNs. 
 The size of this pool relative to the size of the committee to be selected will be linked to a risk profile. If the pool 

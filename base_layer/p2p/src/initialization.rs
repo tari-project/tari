@@ -103,7 +103,7 @@ pub struct CommsConfig {
     /// A value of 0 will disallow any liveness sessions.
     pub listener_liveness_max_sessions: usize,
     /// CIDR for addresses allowed to enter into liveness check mode on the listener.
-    pub listener_liveness_whitelist_cidrs: Vec<String>,
+    pub listener_liveness_allowlist_cidrs: Vec<String>,
 }
 
 /// Initialize Tari Comms configured for tests
@@ -307,12 +307,12 @@ where
     let peer_database = datastore.get_handle(&config.peer_database_name).unwrap();
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
-    let listener_liveness_whitelist_cidrs = parse_cidrs(&config.listener_liveness_whitelist_cidrs)
+    let listener_liveness_allowlist_cidrs = parse_cidrs(&config.listener_liveness_allowlist_cidrs)
         .map_err(CommsInitializationError::InvalidLivenessCidrs)?;
 
     let comms = builder
         .with_listener_liveness_max_sessions(config.listener_liveness_max_sessions)
-        .with_listener_liveness_whitelist_cidrs(listener_liveness_whitelist_cidrs)
+        .with_listener_liveness_allowlist_cidrs(listener_liveness_allowlist_cidrs)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
         .with_peer_storage(peer_database)
         .build()?;

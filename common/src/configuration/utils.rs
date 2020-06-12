@@ -50,14 +50,14 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     // Common settings
     cfg.set_default("common.message_cache_size", 10).unwrap();
     cfg.set_default("common.message_cache_ttl", 1440).unwrap();
-    cfg.set_default("common.peer_whitelist", Vec::<String>::new()).unwrap();
+    cfg.set_default("common.peer_allowlist", Vec::<String>::new()).unwrap();
     cfg.set_default("common.liveness_max_sessions", 0).unwrap();
     cfg.set_default(
         "common.peer_database ",
         default_subdir("peers", Some(&bootstrap.base_path)),
     )
     .unwrap();
-    cfg.set_default("common.blacklist_ban_period ", 1440).unwrap();
+    cfg.set_default("common.denylist_ban_period ", 1440).unwrap();
 
     // Wallet settings
     cfg.set_default("wallet.grpc_enabled", false).unwrap();

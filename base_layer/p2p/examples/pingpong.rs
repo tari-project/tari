@@ -172,7 +172,7 @@ mod pingpong {
             outbound_buffer_size: 10,
             dht: Default::default(),
             allow_test_addresses: true,
-            listener_liveness_whitelist_cidrs: Vec::new(),
+            listener_liveness_allowlist_cidrs: Vec::new(),
             listener_liveness_max_sessions: 0,
         };
 

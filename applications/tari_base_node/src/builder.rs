@@ -996,7 +996,7 @@ async fn setup_base_node_comms(
         },
         // TODO: This should be false unless testing locally - make this configurable
         allow_test_addresses: true,
-        listener_liveness_whitelist_cidrs: config.listener_liveness_whitelist_cidrs.clone(),
+        listener_liveness_allowlist_cidrs: config.listener_liveness_allowlist_cidrs.clone(),
         listener_liveness_max_sessions: config.listnener_liveness_max_sessions,
     };
 
@@ -1048,7 +1048,7 @@ async fn setup_wallet_comms(
         },
         // TODO: This should be false unless testing locally - make this configurable
         allow_test_addresses: true,
-        listener_liveness_whitelist_cidrs: Vec::new(),
+        listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
     };
 
