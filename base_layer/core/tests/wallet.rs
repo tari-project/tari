@@ -151,7 +151,7 @@ fn wallet_base_node_integration_test() {
         outbound_buffer_size: 100,
         dht: DhtConfig::default_local_test(),
         allow_test_addresses: true,
-        listener_liveness_whitelist_cidrs: Vec::new(),
+        listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
     };
     let alice_wallet_config = WalletConfig {
@@ -203,7 +203,7 @@ fn wallet_base_node_integration_test() {
         outbound_buffer_size: 100,
         dht: DhtConfig::default_local_test(),
         allow_test_addresses: true,
-        listener_liveness_whitelist_cidrs: Vec::new(),
+        listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
     };
     let bob_wallet_config = WalletConfig {

@@ -61,9 +61,9 @@
       "default": "$BASE/peers",
       "type": "path"
     },
-    "blacklist_ban_period": {
+    "denylist_ban_period": {
       "name": "Blacklist period",
-      "description": "If peer nodes spam you with messages, or are otherwise badly behaved, they will be added to your blacklist and banned. You can set a time limit to release that ban (in minutes), or otherwise ban them for life (-1). The default is to ban them for 10 days.",
+      "description": "If peer nodes spam you with messages, or are otherwise badly behaved, they will be added to your denylist and banned. You can set a time limit to release that ban (in minutes), or otherwise ban them for life (-1). The default is to ban them for 10 days.",
       "type": "number",
       "default": 1440
     }

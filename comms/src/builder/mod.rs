@@ -160,8 +160,8 @@ where
         self
     }
 
-    pub fn with_listener_liveness_whitelist_cidrs(mut self, cidrs: Vec<cidr::AnyIpCidr>) -> Self {
-        self.connection_manager_config.liveness_cidr_whitelist = cidrs;
+    pub fn with_listener_liveness_allowlist_cidrs(mut self, cidrs: Vec<cidr::AnyIpCidr>) -> Self {
+        self.connection_manager_config.liveness_cidr_allowlist = cidrs;
         self
     }
 

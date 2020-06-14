@@ -160,9 +160,9 @@ where
         }
     }
 
-    fn is_address_in_liveness_cidr_range(addr: &Multiaddr, whitelist: &[cidr::AnyIpCidr]) -> bool {
+    fn is_address_in_liveness_cidr_range(addr: &Multiaddr, allowlist: &[cidr::AnyIpCidr]) -> bool {
         match multiaddr_to_socketaddr(addr) {
-            Ok(socket_addr) => whitelist.iter().any(|cidr| cidr.contains(&socket_addr.ip())),
+            Ok(socket_addr) => allowlist.iter().any(|cidr| cidr.contains(&socket_addr.ip())),
             Err(_) => {
                 warn!(
                     target: LOG_TARGET,
@@ -244,7 +244,7 @@ where
                 },
                 Some(WireMode::Liveness) => {
                     if liveness_session_count.load(Ordering::SeqCst) > 0 &&
-                        Self::is_address_in_liveness_cidr_range(&peer_addr, &config.liveness_cidr_whitelist)
+                        Self::is_address_in_liveness_cidr_range(&peer_addr, &config.liveness_cidr_allowlist)
                     {
                         debug!(
                             target: LOG_TARGET,

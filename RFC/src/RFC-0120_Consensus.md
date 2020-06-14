@@ -90,7 +90,7 @@ The [block header] MUST confirm to the following:
 * All the merkle roots must be valid for the states _after_ the [block] was applied to the local state.
 
 If the [block header] does not confirm to any of the above, the [block] MUST be rejected.
-If a peer rejects multiple blocks from a given peer, it MAY blacklist the peer and ignore further communication from it.
+If a peer rejects multiple blocks from a given peer, it MAY denylist the peer and ignore further communication from it.
 
 #### Version
 

@@ -2310,7 +2310,7 @@ pub unsafe extern "C" fn comms_config_create(
                         // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
                         //       docstring for more info.
                         allow_test_addresses: true,
-                        listener_liveness_whitelist_cidrs: Vec::new(),
+                        listener_liveness_allowlist_cidrs: Vec::new(),
                         listener_liveness_max_sessions: 0,
                     };
 

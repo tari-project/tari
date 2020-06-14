@@ -41,7 +41,7 @@ pub struct GlobalConfig {
     pub network: Network,
     pub comms_transport: CommsTransport,
     pub listnener_liveness_max_sessions: usize,
-    pub listener_liveness_whitelist_cidrs: Vec<String>,
+    pub listener_liveness_allowlist_cidrs: Vec<String>,
     pub data_dir: PathBuf,
     pub db_type: DatabaseType,
     pub orphan_storage_capacity: usize,
@@ -226,8 +226,8 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .try_into()
         .map_err(|e: TryFromIntError| ConfigurationError::new(&key, &e.to_string()))?;
 
-    let key = "common.liveness_whitelist_cidrs";
-    let liveness_whitelist_cidrs = cfg
+    let key = "common.liveness_allowlist_cidrs";
+    let liveness_allowlist_cidrs = cfg
         .get_array(key)
         .map(|values| values.iter().map(ToString::to_string).collect())
         .unwrap_or_else(|_| vec!["127.0.0.1/32".to_string()]);
@@ -236,7 +236,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         network,
         comms_transport,
         listnener_liveness_max_sessions: liveness_max_sessions,
-        listener_liveness_whitelist_cidrs: liveness_whitelist_cidrs,
+        listener_liveness_allowlist_cidrs: liveness_allowlist_cidrs,
         data_dir,
         db_type,
         orphan_storage_capacity,

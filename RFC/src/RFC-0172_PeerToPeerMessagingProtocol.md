@@ -532,7 +532,7 @@ The PeerManager can
 - delete a peer from the list;
 - persist the peer list using a storage backend;
 - restore the peer list from the storage backend;
-- maintain lightweight views of peers, using a filter criterion, e.g. a list of peers that have been banned, i.e. a blacklist; and
+- maintain lightweight views of peers, using a filter criterion, e.g. a list of peers that have been banned, i.e. a denylist; and
 - prune the routing table based on a filter criterion, e.g. last date seen.
 
 #### MessageDispatcher
@@ -646,7 +646,7 @@ is especially important for a modern chat/messaging application.
 The mechanism for this is proposed as follows:
 
 Each [communication node] MUST allocate some disk space for storage of messages for offline recipients.
-Only some whitelisted MessageTypes are permitted to be stored. A sender sends a message destined for a particular
+Only some allowlisted MessageTypes are permitted to be stored. A sender sends a message destined for a particular
 [node ID] to its closest peers, which forward the message to their closest peers, and so on.
 
 Eventually, the message will reach nodes that either know the destination or are very close to the destination.
