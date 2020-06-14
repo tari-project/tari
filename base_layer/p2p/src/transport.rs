@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt;
 use tari_comms::{multiaddr::Multiaddr, socks, tor, transports::SocksConfig};
 
 #[derive(Debug, Clone)]
@@ -57,4 +58,14 @@ pub struct TorConfig {
     pub socks_address_override: Option<Multiaddr>,
     /// Authentication for the Tor SOCKS5 proxy
     pub socks_auth: socks::Authentication,
+}
+
+impl fmt::Display for TorConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "control_server_addr = {}, control_server_auth = {}, {}, socks_address_override = {:?}",
+            self.control_server_addr, self.control_server_auth, self.port_mapping, self.socks_address_override
+        )
+    }
 }

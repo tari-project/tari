@@ -36,7 +36,7 @@ use crate::{
 };
 use futures::{channel::mpsc, AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
-use std::{borrow::Cow, fmt::Display, num::NonZeroU16};
+use std::{borrow::Cow, fmt, fmt::Display, num::NonZeroU16};
 use tokio::sync::broadcast;
 
 /// Client for the Tor control port.
@@ -257,9 +257,21 @@ pub enum Authentication {
     /// Cookie authentication. The contents of the cookie file encoded as hex
     Cookie(String),
 }
+
 impl Default for Authentication {
     fn default() -> Self {
         Authentication::None
+    }
+}
+
+impl fmt::Display for Authentication {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Authentication::*;
+        match self {
+            None => write!(f, "None"),
+            HashedPassword(_) => write!(f, "HashedPassword"),
+            Cookie(_) => write!(f, "Cookie"),
+        }
     }
 }
 
