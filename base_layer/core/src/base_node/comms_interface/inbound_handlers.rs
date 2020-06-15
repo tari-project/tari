@@ -316,11 +316,12 @@ where T: BlockchainBackend + 'static
     ) -> Result<(), CommsInterfaceError>
     {
         let (block, broadcast) = block_context;
+        let block_hash = block.hash();
         debug!(
             target: LOG_TARGET,
             "Block #{} ({}) received from {}",
             block.header.height,
-            block.hash().to_hex(),
+            block_hash.to_hex(),
             source_peer
                 .as_ref()
                 .map(|p| format!("remote peer: {}", p))
@@ -336,7 +337,13 @@ where T: BlockchainBackend + 'static
                 BlockEvent::Verified((Box::new(block.clone()), block_add_result, *broadcast))
             },
             Err(e) => {
-                warn!(target: LOG_TARGET, "Block validation failed: {:?}", e);
+                warn!(
+                    target: LOG_TARGET,
+                    "Block #{} ({}) validation failed: {:?}",
+                    block.header.height,
+                    block_hash.to_hex(),
+                    e
+                );
                 result = Err(CommsInterfaceError::ChainStorageError(e.clone()));
                 BlockEvent::Invalid((Box::new(block.clone()), e, *broadcast))
             },

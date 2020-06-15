@@ -53,7 +53,7 @@ use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable};
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 use tari_mmr::{
     functions::{prune_mutable_mmr, PrunedMutableMmr},
     ArrayLike,
@@ -198,32 +198,38 @@ where D: Digest + Send + Sync
                     },
                     DbKeyValuePair::BlockHeader(k, v) => {
                         if db.headers.contains_key(&k) {
-                            return Err(ChainStorageError::InvalidOperation("Duplicate key".to_string()));
+                            return Err(ChainStorageError::InvalidOperation(format!(
+                                "Duplicate `BlockHeader` key `{}`",
+                                k
+                            )));
                         }
                         db.block_hashes.insert(v.hash(), k);
                         db.headers.insert(k, *v);
                     },
-                    DbKeyValuePair::UnspentOutput(k, v, update_mmr) => {
+                    DbKeyValuePair::UnspentOutput(k, v) => {
                         if db.utxos.contains_key(&k) {
-                            return Err(ChainStorageError::InvalidOperation("Duplicate key".to_string()));
+                            return Err(ChainStorageError::InvalidOperation(format!(
+                                "Duplicate `UnspentOutput` key `{}`",
+                                k.to_hex()
+                            )));
                         }
-                        let proof_hash = v.proof().hash();
-                        if update_mmr {
-                            db.curr_utxo_checkpoint.push_addition(k.clone());
-                            db.curr_range_proof_checkpoint.push_addition(proof_hash.clone());
-                        }
-                        if let Some(index) = find_range_proof_leaf_index(&mut db, proof_hash)? {
-                            let v = MerkleNode { index, value: *v };
-                            db.utxos.insert(k, v);
-                        }
+                        db.curr_utxo_checkpoint.push_addition(k.clone());
+                        db.curr_range_proof_checkpoint.push_addition(v.proof().hash());
+                        let index = db.curr_range_proof_checkpoint.accumulated_nodes_added_count() - 1;
+                        let v = MerkleNode {
+                            index: index as usize,
+                            value: *v,
+                        };
+                        db.utxos.insert(k, v);
                     },
-                    DbKeyValuePair::TransactionKernel(k, v, update_mmr) => {
+                    DbKeyValuePair::TransactionKernel(k, v) => {
                         if db.kernels.contains_key(&k) {
-                            return Err(ChainStorageError::InvalidOperation("Duplicate key".to_string()));
+                            return Err(ChainStorageError::InvalidOperation(format!(
+                                "Duplicate `TransactionKernel` key `{}`",
+                                k.to_hex()
+                            )));
                         }
-                        if update_mmr {
-                            db.curr_kernel_checkpoint.push_addition(k.clone());
-                        }
+                        db.curr_kernel_checkpoint.push_addition(k.clone());
                         db.kernels.insert(k, *v);
                     },
                     DbKeyValuePair::OrphanBlock(k, v) => {
@@ -659,37 +665,6 @@ fn unspend_stxo<D: Digest>(db: &mut RwLockWriteGuard<InnerDatabase<D>>, hash: Ha
             true
         },
     }
-}
-
-// Returns the leaf index of the hash. If the hash is in the newly added hashes it returns the future MMR index for that
-// hash, this index is only valid if the change history is Committed.
-fn find_range_proof_leaf_index<D: Digest>(
-    db: &mut RwLockWriteGuard<InnerDatabase<D>>,
-    hash: HashOutput,
-) -> Result<Option<usize>, ChainStorageError>
-{
-    let mut accum_leaf_index = 0;
-    for cp_index in 0..db.range_proof_checkpoints.len()? {
-        if let Some(cp) = db
-            .range_proof_checkpoints
-            .get(cp_index)
-            .map_err(|e| ChainStorageError::AccessError(format!("Checkpoint error: {}", e.to_string())))?
-        {
-            if let Some(leaf_index) = cp.nodes_added().iter().position(|h| *h == hash) {
-                return Ok(Some(accum_leaf_index + leaf_index));
-            }
-            accum_leaf_index += cp.nodes_added().len();
-        }
-    }
-    if let Some(leaf_index) = db
-        .curr_range_proof_checkpoint
-        .nodes_added()
-        .iter()
-        .position(|h| *h == hash)
-    {
-        return Ok(Some(accum_leaf_index + leaf_index));
-    }
-    Ok(None)
 }
 
 // Construct a pruned mmr for the specified MMR tree based on the checkpoint state and new additions and deletions.

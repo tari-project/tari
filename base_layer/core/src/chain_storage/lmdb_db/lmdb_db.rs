@@ -332,130 +332,127 @@ where D: Digest + Send + Sync
     fn apply_mmr_and_storage_txs(&mut self, tx: &DbTransaction) -> Result<(), ChainStorageError> {
         let mut update_mem_metadata = false;
         let txn = WriteTransaction::new(self.env.clone()).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-        {
-            for op in tx.operations.iter() {
-                match op {
-                    WriteOperation::Insert(insert) => match insert {
-                        DbKeyValuePair::Metadata(k, v) => {
-                            lmdb_replace(&txn, &self.metadata_db, &(k.clone() as u32), &v)?;
-                            update_mem_metadata = true;
-                        },
-                        DbKeyValuePair::BlockHeader(k, v) => {
-                            if lmdb_exists(&self.env, &self.headers_db, &k)? {
-                                return Err(ChainStorageError::InvalidOperation("Duplicate key".to_string()));
-                            }
+        for op in tx.operations.iter() {
+            match op {
+                WriteOperation::Insert(insert) => match insert {
+                    DbKeyValuePair::Metadata(k, v) => {
+                        lmdb_replace(&txn, &self.metadata_db, &(k.clone() as u32), &v)?;
+                        update_mem_metadata = true;
+                    },
+                    DbKeyValuePair::BlockHeader(k, v) => {
+                        if lmdb_exists(&self.env, &self.headers_db, &k)? {
+                            return Err(ChainStorageError::InvalidOperation(format!(
+                                "Duplicate `BlockHeader` key `{}`",
+                                k
+                            )));
+                        }
+                        let hash = v.hash();
+                        lmdb_insert(&txn, &self.block_hashes_db, &hash, &k)?;
+                        lmdb_insert(&txn, &self.headers_db, &k, &v)?;
+                    },
+                    DbKeyValuePair::UnspentOutput(k, v) => {
+                        if lmdb_exists(&self.env, &self.utxos_db, &k)? {
+                            return Err(ChainStorageError::InvalidOperation(format!(
+                                "Duplicate `UnspentOutput` key `{}`",
+                                k.to_hex()
+                            )));
+                        }
+                        self.curr_utxo_checkpoint.push_addition(k.clone());
+                        self.curr_range_proof_checkpoint.push_addition(v.proof().hash());
+
+                        lmdb_insert(&txn, &self.utxos_db, &k, &v)?;
+                        let index = self.curr_range_proof_checkpoint.accumulated_nodes_added_count() - 1;
+                        lmdb_insert(&txn, &self.txos_hash_to_index_db, &k, &index)?;
+                    },
+                    DbKeyValuePair::TransactionKernel(k, v) => {
+                        if lmdb_exists(&self.env, &self.kernels_db, &k)? {
+                            return Err(ChainStorageError::InvalidOperation(format!(
+                                "Duplicate `TransactionKernel` key `{}`",
+                                k.to_hex()
+                            )));
+                        }
+                        self.curr_kernel_checkpoint.push_addition(k.clone());
+                        lmdb_insert(&txn, &self.kernels_db, &k, &v)?;
+                    },
+                    DbKeyValuePair::OrphanBlock(k, v) => {
+                        lmdb_replace(&txn, &self.orphans_db, &k, &v)?;
+                    },
+                },
+                WriteOperation::Delete(delete) => match delete {
+                    DbKey::Metadata(_) => {}, // no-op
+                    DbKey::BlockHeader(k) => {
+                        let val: Option<BlockHeader> = lmdb_get(&self.env, &self.headers_db, &k)?;
+                        if let Some(v) = val {
                             let hash = v.hash();
-                            lmdb_insert(&txn, &self.block_hashes_db, &hash, &k)?;
-                            lmdb_insert(&txn, &self.headers_db, &k, &v)?;
-                        },
-                        DbKeyValuePair::UnspentOutput(k, v, update_mmr) => {
-                            if lmdb_exists(&self.env, &self.utxos_db, &k)? {
-                                return Err(ChainStorageError::InvalidOperation("Duplicate key".to_string()));
-                            }
-                            let proof_hash = v.proof().hash();
-                            if *update_mmr {
-                                self.curr_utxo_checkpoint.push_addition(k.clone());
-                                self.curr_range_proof_checkpoint.push_addition(proof_hash.clone());
-                            }
+                            lmdb_delete(&txn, &self.block_hashes_db, &hash)?;
+                            lmdb_delete(&txn, &self.headers_db, &k)?;
+                        }
+                    },
+                    DbKey::BlockHash(hash) => {
+                        let result: Option<u64> = lmdb_get(&self.env, &self.block_hashes_db, &hash)?;
+                        if let Some(k) = result {
+                            lmdb_delete(&txn, &self.block_hashes_db, &hash)?;
+                            lmdb_delete(&txn, &self.headers_db, &k)?;
+                        }
+                    },
+                    DbKey::UnspentOutput(k) => {
+                        lmdb_delete(&txn, &self.utxos_db, &k)?;
+                        lmdb_delete(&txn, &self.txos_hash_to_index_db, &k)?;
+                    },
+                    DbKey::SpentOutput(k) => {
+                        lmdb_delete(&txn, &self.stxos_db, &k)?;
+                        lmdb_delete(&txn, &self.txos_hash_to_index_db, &k)?;
+                    },
+                    DbKey::TransactionKernel(k) => {
+                        lmdb_delete(&txn, &self.kernels_db, &k)?;
+                    },
+                    DbKey::OrphanBlock(k) => {
+                        lmdb_delete(&txn, &self.orphans_db, &k)?;
+                    },
+                },
+                WriteOperation::Spend(key) => match key {
+                    DbKey::UnspentOutput(hash) => {
+                        let utxo: TransactionOutput = lmdb_get(&self.env, &self.utxos_db, &hash)?.ok_or_else(|| {
+                            error!(
+                                target: LOG_TARGET,
+                                "Could spend UTXO: hash `{}` not found in UTXO db",
+                                hash.to_hex()
+                            );
+                            ChainStorageError::UnspendableInput
+                        })?;
 
-                            lmdb_insert(&txn, &self.utxos_db, &k, &v)?;
-                            let index = self.curr_range_proof_checkpoint.accumulated_nodes_added_count() - 1;
-                            lmdb_insert(&txn, &self.txos_hash_to_index_db, &k, &index)?;
-                        },
-                        DbKeyValuePair::TransactionKernel(k, v, update_mmr) => {
-                            if lmdb_exists(&self.env, &self.kernels_db, &k)? {
-                                return Err(ChainStorageError::InvalidOperation("Duplicate key".to_string()));
-                            }
-                            if *update_mmr {
-                                self.curr_kernel_checkpoint.push_addition(k.clone());
-                            }
-                            lmdb_insert(&txn, &self.kernels_db, &k, &v)?;
-                        },
-                        DbKeyValuePair::OrphanBlock(k, v) => {
-                            lmdb_replace(&txn, &self.orphans_db, &k, &v)?;
-                        },
-                    },
-                    WriteOperation::Delete(delete) => match delete {
-                        DbKey::Metadata(_) => {}, // no-op
-                        DbKey::BlockHeader(k) => {
-                            let val: Option<BlockHeader> = lmdb_get(&self.env, &self.headers_db, &k)?;
-                            if let Some(v) = val {
-                                let hash = v.hash();
-                                lmdb_delete(&txn, &self.block_hashes_db, &hash)?;
-                                lmdb_delete(&txn, &self.headers_db, &k)?;
-                            }
-                        },
-                        DbKey::BlockHash(hash) => {
-                            let result: Option<u64> = lmdb_get(&self.env, &self.block_hashes_db, &hash)?;
-                            if let Some(k) = result {
-                                lmdb_delete(&txn, &self.block_hashes_db, &hash)?;
-                                lmdb_delete(&txn, &self.headers_db, &k)?;
-                            }
-                        },
-                        DbKey::UnspentOutput(k) => {
-                            lmdb_delete(&txn, &self.utxos_db, &k)?;
-                            lmdb_delete(&txn, &self.txos_hash_to_index_db, &k)?;
-                        },
-                        DbKey::SpentOutput(k) => {
-                            lmdb_delete(&txn, &self.stxos_db, &k)?;
-                            lmdb_delete(&txn, &self.txos_hash_to_index_db, &k)?;
-                        },
-                        DbKey::TransactionKernel(k) => {
-                            lmdb_delete(&txn, &self.kernels_db, &k)?;
-                        },
-                        DbKey::OrphanBlock(k) => {
-                            lmdb_delete(&txn, &self.orphans_db, &k)?;
-                        },
-                    },
-                    WriteOperation::Spend(key) => match key {
-                        DbKey::UnspentOutput(hash) => {
-                            let index_result: Option<u32> = lmdb_get(&self.env, &self.txos_hash_to_index_db, &hash)?;
-                            match index_result {
-                                Some(index) => {
-                                    self.curr_utxo_checkpoint.push_deletion(index as u32);
-                                },
-                                None => {
-                                    trace!(
-                                        target: LOG_TARGET,
-                                        "could not find hash: {} in txos_hash_to_index db",
-                                        hash.to_hex()
-                                    );
-                                    return Err(ChainStorageError::UnspendableInput);
-                                },
-                            }
+                        let index = lmdb_get(&self.env, &self.txos_hash_to_index_db, &hash)?.ok_or_else(|| {
+                            error!(
+                                target: LOG_TARGET,
+                                "** Blockchain DB out of sync! ** Hash `{}` was found in utxo_db but could not be \
+                                 found in txos_hash_to_index db!",
+                                hash.to_hex()
+                            );
+                            ChainStorageError::UnspendableInput
+                        })?;
+                        self.curr_utxo_checkpoint.push_deletion(index);
 
-                            let utxo_result: Option<TransactionOutput> = lmdb_get(&self.env, &self.utxos_db, &hash)?;
-                            match utxo_result {
-                                Some(utxo) => {
-                                    lmdb_delete(&txn, &self.utxos_db, &hash)?;
-                                    lmdb_insert(&txn, &self.stxos_db, &hash, &utxo)?;
-                                },
-                                None => {
-                                    trace!(target: LOG_TARGET, "could not find hash: {} in utoxo db", hash.to_hex());
-                                    return Err(ChainStorageError::UnspendableInput);
-                                },
-                            }
-                        },
-                        _ => return Err(ChainStorageError::InvalidOperation("Only UTXOs can be spent".into())),
+                        lmdb_delete(&txn, &self.utxos_db, &hash)?;
+                        lmdb_insert(&txn, &self.stxos_db, &hash, &utxo)?;
                     },
-                    WriteOperation::UnSpend(key) => match key {
-                        DbKey::SpentOutput(hash) => {
-                            let stxo_result: Option<TransactionOutput> = lmdb_get(&self.env, &self.stxos_db, &hash)?;
-                            match stxo_result {
-                                Some(stxo) => {
-                                    lmdb_delete(&txn, &self.stxos_db, &hash)?;
-                                    lmdb_insert(&txn, &self.utxos_db, &hash, &stxo)?;
-                                },
-                                None => {
-                                    trace!(target: LOG_TARGET, "could not find hash: {} in stxo db", hash.to_hex());
-                                    return Err(ChainStorageError::UnspendError);
-                                },
-                            }
-                        },
-                        _ => return Err(ChainStorageError::InvalidOperation("Only STXOs can be unspent".into())),
+                    _ => return Err(ChainStorageError::InvalidOperation("Only UTXOs can be spent".into())),
+                },
+                WriteOperation::UnSpend(key) => match key {
+                    DbKey::SpentOutput(hash) => {
+                        let stxo: TransactionOutput = lmdb_get(&self.env, &self.stxos_db, &hash)?.ok_or_else(|| {
+                            error!(
+                                target: LOG_TARGET,
+                                "STXO could not be unspent: Hash `{}` not found in the STXO db",
+                                hash.to_hex()
+                            );
+                            ChainStorageError::UnspendError
+                        })?;
+                        lmdb_delete(&txn, &self.stxos_db, &hash)?;
+                        lmdb_insert(&txn, &self.utxos_db, &hash, &stxo)?;
                     },
-                    _ => {},
-                }
+                    _ => return Err(ChainStorageError::InvalidOperation("Only STXOs can be unspent".into())),
+                },
+                _ => {},
             }
         }
         txn.commit()
@@ -524,15 +521,15 @@ where D: Digest + Send + Sync
     }
 }
 
-pub fn create_lmdb_database(
-    path: &Path,
+pub fn create_lmdb_database<P: AsRef<Path>>(
+    path: P,
     mmr_cache_config: MmrCacheConfig,
 ) -> Result<LMDBDatabase<HashDigest>, ChainStorageError>
 {
     let flags = db::CREATE;
-    std::fs::create_dir_all(&path).unwrap_or_default();
+    let _ = std::fs::create_dir_all(&path);
     let lmdb_store = LMDBBuilder::new()
-        .set_path(path.to_str().unwrap())
+        .set_path(path)
         .set_environment_size(1_000)
         .set_max_number_of_databases(15)
         .add_database(LMDB_DB_METADATA, flags)

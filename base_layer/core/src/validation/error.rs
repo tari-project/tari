@@ -49,3 +49,9 @@ pub enum ValidationError {
     // The recorded chain accumulated difficulty was stronger
     WeakerAccumulatedDifficulty,
 }
+
+impl ValidationError {
+    pub fn custom_error<T: ToString>(err: T) -> Self {
+        ValidationError::CustomError(err.to_string())
+    }
+}

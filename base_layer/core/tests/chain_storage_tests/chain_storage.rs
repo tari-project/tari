@@ -62,11 +62,12 @@ use tari_core::{
         accum_difficulty_validators::MockAccumDifficultyValidator,
         block_validators::MockStatelessBlockValidator,
         mocks::MockValidator,
+        ValidationError,
     },
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_mmr::{MmrCacheConfig, MutableMmr};
-use tari_test_utils::paths::create_temporary_data_path;
+use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 
 fn init_log() {
     let _ = env_logger::builder().is_test(true).try_init();
@@ -93,7 +94,7 @@ fn insert_and_fetch_kernel() {
     let hash = kernel.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel.clone(), true);
+    txn.insert_kernel(kernel.clone());
     assert!(store.commit(txn).is_ok());
     assert_eq!(store.fetch_kernel(hash), Ok(kernel));
 }
@@ -138,7 +139,7 @@ fn insert_and_fetch_utxo() {
     let hash = utxo.hash();
     assert_eq!(store.is_utxo(hash.clone()).unwrap(), false);
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone(), true);
+    txn.insert_utxo(utxo.clone());
     assert!(store.commit(txn).is_ok());
     assert_eq!(store.is_utxo(hash.clone()).unwrap(), true);
     assert_eq!(store.fetch_utxo(hash), Ok(utxo));
@@ -172,7 +173,7 @@ fn multiple_threads() {
         let kernel = create_test_kernel(5.into(), 0);
         let hash = kernel.hash();
         let mut txn = DbTransaction::new();
-        txn.insert_kernel(kernel.clone(), true);
+        txn.insert_kernel(kernel.clone());
         assert!(store_a.commit(txn).is_ok());
         hash
     });
@@ -182,7 +183,7 @@ fn multiple_threads() {
         let kernel = create_test_kernel(10.into(), 0);
         let hash = kernel.hash();
         let mut txn = DbTransaction::new();
-        txn.insert_kernel(kernel.clone(), true);
+        txn.insert_kernel(kernel.clone());
         assert!(store_b.commit(txn).is_ok());
         hash
     });
@@ -217,8 +218,8 @@ fn utxo_and_rp_merkle_root() {
     assert_eq!(rp_mmr_check.push(&utxo2.proof.hash()).unwrap(), 3);
     // Store the UTXOs
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1, true);
-    txn.insert_utxo(utxo2, true);
+    txn.insert_utxo(utxo1);
+    txn.insert_utxo(utxo2);
     assert!(store.commit(txn).is_ok());
     let root = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
     let rp_root = store.fetch_mmr_root(MmrTree::RangeProof).unwrap();
@@ -245,9 +246,9 @@ fn kernel_merkle_root() {
     let hash2 = kernel2.hash();
     let hash3 = kernel3.hash();
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel1, true);
-    txn.insert_kernel(kernel2, true);
-    txn.insert_kernel(kernel3, true);
+    txn.insert_kernel(kernel1);
+    txn.insert_kernel(kernel2);
+    txn.insert_kernel(kernel3);
     assert!(store.commit(txn).is_ok());
     let root = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
     let mut mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
@@ -272,7 +273,7 @@ fn utxo_and_rp_future_merkle_root() {
     let rp_hash2 = utxo2.proof.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1, true);
+    txn.insert_utxo(utxo1);
     assert!(store.commit(txn).is_ok());
 
     let utxo_future_root = store
@@ -290,7 +291,7 @@ fn utxo_and_rp_future_merkle_root() {
     );
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo2, true);
+    txn.insert_utxo(utxo2);
     assert!(store.commit(txn).is_ok());
 
     assert_eq!(utxo_future_root, store.fetch_mmr_root(MmrTree::Utxo).unwrap().to_hex());
@@ -312,7 +313,7 @@ fn kernel_future_merkle_root() {
     let hash2 = kernel2.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel1, true);
+    txn.insert_kernel(kernel1);
     assert!(store.commit(txn).is_ok());
 
     let future_root = store
@@ -322,7 +323,7 @@ fn kernel_future_merkle_root() {
     assert_ne!(future_root, store.fetch_mmr_root(MmrTree::Kernel).unwrap().to_hex());
 
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel2, true);
+    txn.insert_kernel(kernel2);
     assert!(store.commit(txn).is_ok());
 
     assert_eq!(future_root, store.fetch_mmr_root(MmrTree::Kernel).unwrap().to_hex());
@@ -340,9 +341,9 @@ fn utxo_and_rp_mmr_proof() {
     let (utxo2, _) = create_utxo(MicroTari(10_000), &factories, None);
     let (utxo3, _) = create_utxo(MicroTari(15_000), &factories, None);
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1.clone(), true);
-    txn.insert_utxo(utxo2.clone(), true);
-    txn.insert_utxo(utxo3.clone(), true);
+    txn.insert_utxo(utxo1.clone());
+    txn.insert_utxo(utxo2.clone());
+    txn.insert_utxo(utxo3.clone());
     assert!(store.commit(txn).is_ok());
 
     let root = store.fetch_mmr_only_root(MmrTree::Utxo).unwrap();
@@ -367,9 +368,9 @@ fn kernel_mmr_proof() {
     let kernel2 = create_test_kernel(200.into(), 1);
     let kernel3 = create_test_kernel(300.into(), 2);
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel1.clone(), true);
-    txn.insert_kernel(kernel2.clone(), true);
-    txn.insert_kernel(kernel3.clone(), true);
+    txn.insert_kernel(kernel1.clone());
+    txn.insert_kernel(kernel2.clone());
+    txn.insert_kernel(kernel3.clone());
     assert!(store.commit(txn).is_ok());
 
     let root = store.fetch_mmr_only_root(MmrTree::Kernel).unwrap();
@@ -1257,6 +1258,48 @@ fn orphan_cleanup_on_reorg() {
     assert_eq!(store.fetch_orphan(blocks[2].hash()), Ok(blocks[2].clone()));
     assert_eq!(store.fetch_orphan(blocks[3].hash()), Ok(blocks[3].clone()));
     assert_eq!(store.fetch_orphan(blocks[4].hash()), Ok(blocks[4].clone()));
+}
+
+#[test]
+fn fails_validation() {
+    let network = Network::LocalNet;
+    let factories = CryptoFactories::default();
+    let consensus_constants = ConsensusConstantsBuilder::new(network).build();
+    let (block0, output) = create_genesis_block(&factories, &consensus_constants);
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants.clone())
+        .with_block(block0.clone())
+        .build();
+    let validators = Validators::new(
+        MockValidator::new(false),
+        MockValidator::new(true),
+        MockAccumDifficultyValidator,
+    );
+    let db = MemoryDatabase::<HashDigest>::default();
+    let config = BlockchainDatabaseConfig {
+        orphan_storage_capacity: 3,
+        pruning_horizon: 0,
+        pruned_mode_cleanup_interval: 50,
+    };
+    let mut store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
+    let mut blocks = vec![block0];
+    let mut outputs = vec![vec![]];
+
+    let schemas = vec![txn_schema!(from: vec![output.clone()], to: vec![2 * T, 500_000 * uT])];
+    let err = generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        schemas,
+        Difficulty::from(3),
+        &consensus_manager.consensus_constants(),
+    )
+    .unwrap_err();
+    unpack_enum!(ChainStorageError::ValidationError { source } = err);
+    unpack_enum!(ValidationError::CustomError(_s) = source);
+
+    let metadata = store.get_metadata().unwrap();
+    assert_eq!(metadata.height_of_longest_chain.unwrap(), 0);
 }
 
 #[test]

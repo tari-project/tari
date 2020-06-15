@@ -110,7 +110,7 @@ fn insert_contains_delete_and_fetch_utxo<T: BlockchainBackend>(mut db: T) {
     assert_eq!(db.contains(&DbKey::UnspentOutput(hash.clone())), Ok(false));
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone(), true);
+    txn.insert_utxo(utxo.clone());
     assert!(db.write(txn).is_ok());
     assert_eq!(db.contains(&DbKey::UnspentOutput(hash.clone())), Ok(true));
     if let Some(DbValue::UnspentOutput(retrieved_utxo)) = db.fetch(&DbKey::UnspentOutput(hash.clone())).unwrap() {
@@ -154,7 +154,7 @@ fn insert_contains_delete_and_fetch_kernel<T: BlockchainBackend>(mut db: T) {
     assert_eq!(db.contains(&DbKey::TransactionKernel(hash.clone())), Ok(false));
 
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel.clone(), true);
+    txn.insert_kernel(kernel.clone());
     assert!(db.write(txn).is_ok());
     assert_eq!(db.contains(&DbKey::TransactionKernel(hash.clone())), Ok(true));
     if let Some(DbValue::TransactionKernel(retrieved_kernel)) =
@@ -255,8 +255,8 @@ fn spend_utxo_and_unspend_stxo<T: BlockchainBackend>(mut db: T) {
     let hash2 = utxo2.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1.clone(), true);
-    txn.insert_utxo(utxo2.clone(), true);
+    txn.insert_utxo(utxo1.clone());
+    txn.insert_utxo(utxo2.clone());
     assert!(db.write(txn).is_ok());
 
     let mut txn = DbTransaction::new();
@@ -432,9 +432,9 @@ fn fetch_mmr_root_and_proof_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
     let rp_hash3 = utxo3.proof.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1.clone(), true);
-    txn.insert_utxo(utxo2.clone(), true);
-    txn.insert_utxo(utxo3.clone(), true);
+    txn.insert_utxo(utxo1.clone());
+    txn.insert_utxo(utxo2.clone());
+    txn.insert_utxo(utxo3.clone());
     assert!(db.write(txn).is_ok());
 
     let mut utxo_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
@@ -510,9 +510,9 @@ fn fetch_mmr_root_and_proof_for_kernel<T: BlockchainBackend>(mut db: T) {
     let hash3 = kernel3.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel1, true);
-    txn.insert_kernel(kernel2, true);
-    txn.insert_kernel(kernel3, true);
+    txn.insert_kernel(kernel1);
+    txn.insert_kernel(kernel2);
+    txn.insert_kernel(kernel3);
     assert!(db.write(txn).is_ok());
 
     let mut kernel_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
@@ -570,8 +570,8 @@ fn fetch_future_mmr_root_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
     let rp_hash4 = utxo4.proof.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1, true);
-    txn.insert_utxo(utxo2, true);
+    txn.insert_utxo(utxo1);
+    txn.insert_utxo(utxo2);
     assert!(db.write(txn).is_ok());
 
     let utxo_future_root = db
@@ -586,8 +586,8 @@ fn fetch_future_mmr_root_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
     assert_ne!(rp_future_root, db.fetch_mmr_root(MmrTree::RangeProof).unwrap().to_hex());
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo3, true);
-    txn.insert_utxo(utxo4, true);
+    txn.insert_utxo(utxo3);
+    txn.insert_utxo(utxo4);
     txn.spend_utxo(utxo_hash1);
     assert!(db.write(txn).is_ok());
 
@@ -627,8 +627,8 @@ fn fetch_future_mmr_root_for_for_kernel<T: BlockchainBackend>(mut db: T) {
     let hash4 = kernel4.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel1, true);
-    txn.insert_kernel(kernel2, true);
+    txn.insert_kernel(kernel1);
+    txn.insert_kernel(kernel2);
     assert!(db.write(txn).is_ok());
 
     let future_root = db
@@ -638,8 +638,8 @@ fn fetch_future_mmr_root_for_for_kernel<T: BlockchainBackend>(mut db: T) {
     assert_ne!(future_root, db.fetch_mmr_root(MmrTree::Kernel).unwrap().to_hex());
 
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel3, true);
-    txn.insert_kernel(kernel4, true);
+    txn.insert_kernel(kernel3);
+    txn.insert_kernel(kernel4);
     assert!(db.write(txn).is_ok());
 
     assert_eq!(future_root, db.fetch_mmr_root(MmrTree::Kernel).unwrap().to_hex());
@@ -678,8 +678,8 @@ fn commit_block_and_create_fetch_checkpoint_and_rewind_mmr<T: BlockchainBackend>
     let rp_hash1 = utxo1.proof.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1, true);
-    txn.insert_kernel(kernel1, true);
+    txn.insert_utxo(utxo1);
+    txn.insert_kernel(kernel1);
     txn.insert_header(header1.clone());
     txn.commit_block();
     assert!(db.write(txn).is_ok());
@@ -692,9 +692,9 @@ fn commit_block_and_create_fetch_checkpoint_and_rewind_mmr<T: BlockchainBackend>
     let rp_hash2 = utxo2.proof.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo2, true);
+    txn.insert_utxo(utxo2);
     txn.spend_utxo(utxo_hash1.clone());
-    txn.insert_kernel(kernel2, true);
+    txn.insert_kernel(kernel2);
     txn.insert_header(header2);
     txn.commit_block();
     assert!(db.write(txn).is_ok());
@@ -863,9 +863,9 @@ fn for_each_kernel<T: BlockchainBackend>(mut db: T) {
     let hash3 = kernel3.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel1.clone(), false);
-    txn.insert_kernel(kernel2.clone(), false);
-    txn.insert_kernel(kernel3.clone(), false);
+    txn.insert_kernel(kernel1.clone());
+    txn.insert_kernel(kernel2.clone());
+    txn.insert_kernel(kernel3.clone());
     assert!(db.write(txn).is_ok());
     assert_eq!(db.contains(&DbKey::TransactionKernel(hash1.clone())), Ok(true));
     assert_eq!(db.contains(&DbKey::TransactionKernel(hash2.clone())), Ok(true));
@@ -980,9 +980,9 @@ fn for_each_utxo<T: BlockchainBackend>(mut db: T) {
     let hash3 = utxo3.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1.clone(), true);
-    txn.insert_utxo(utxo2.clone(), true);
-    txn.insert_utxo(utxo3.clone(), true);
+    txn.insert_utxo(utxo1.clone());
+    txn.insert_utxo(utxo2.clone());
+    txn.insert_utxo(utxo3.clone());
     assert!(db.write(txn).is_ok());
     assert_eq!(db.contains(&DbKey::UnspentOutput(hash1.clone())), Ok(true));
     assert_eq!(db.contains(&DbKey::UnspentOutput(hash2.clone())), Ok(true));
@@ -1055,9 +1055,9 @@ fn lmdb_backend_restore() {
             let mut db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
             let mut txn = DbTransaction::new();
             txn.insert_orphan(orphan.clone());
-            txn.insert_utxo(utxo1, true);
-            txn.insert_utxo(utxo2, true);
-            txn.insert_kernel(kernel, true);
+            txn.insert_utxo(utxo1);
+            txn.insert_utxo(utxo2);
+            txn.insert_kernel(kernel);
             txn.insert_header(header.clone());
             txn.commit_block();
             db.write(txn).unwrap();
@@ -1112,8 +1112,8 @@ fn lmdb_mmr_reset_and_commit() {
         let header_hash1 = header1.hash();
 
         let mut txn = DbTransaction::new();
-        txn.insert_utxo(utxo1, true);
-        txn.insert_kernel(kernel1, true);
+        txn.insert_utxo(utxo1);
+        txn.insert_kernel(kernel1);
         txn.insert_header(header1);
         txn.commit_block();
         assert!(db.write(txn).is_ok());
@@ -1196,8 +1196,8 @@ fn fetch_checkpoint<T: BlockchainBackend>(mut db: T) {
     let rp_hash1 = utxo1.proof.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1, true);
-    txn.insert_kernel(kernel1, true);
+    txn.insert_utxo(utxo1);
+    txn.insert_kernel(kernel1);
     txn.insert_header(header1.clone());
     txn.commit_block();
     assert!(db.write(txn).is_ok());
@@ -1210,8 +1210,8 @@ fn fetch_checkpoint<T: BlockchainBackend>(mut db: T) {
     let rp_hash2 = utxo2.proof.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo2, true);
-    txn.insert_kernel(kernel2, true);
+    txn.insert_utxo(utxo2);
+    txn.insert_kernel(kernel2);
     txn.insert_header(header2.clone());
     txn.commit_block();
     assert!(db.write(txn).is_ok());
@@ -1243,10 +1243,10 @@ fn fetch_checkpoint<T: BlockchainBackend>(mut db: T) {
     let rp_hash4 = utxo4.proof.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo3, true);
-    txn.insert_utxo(utxo4, true);
-    txn.insert_kernel(kernel3, true);
-    txn.insert_kernel(kernel4, true);
+    txn.insert_utxo(utxo3);
+    txn.insert_utxo(utxo4);
+    txn.insert_kernel(kernel3);
+    txn.insert_kernel(kernel4);
     txn.insert_header(header3);
     txn.commit_block();
     assert!(db.write(txn).is_ok());
@@ -1331,23 +1331,23 @@ fn merging_and_fetch_checkpoints_and_stxo_discard<T: BlockchainBackend>(mut db: 
     let rp_hash3 = utxo3.proof.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1, true);
-    txn.insert_kernel(kernel1, true);
+    txn.insert_utxo(utxo1);
+    txn.insert_kernel(kernel1);
     txn.insert_header(header1.clone());
     txn.commit_block();
     assert!(db.write(txn).is_ok());
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo2, true);
-    txn.insert_kernel(kernel2, true);
+    txn.insert_utxo(utxo2);
+    txn.insert_kernel(kernel2);
     txn.insert_header(header2.clone());
     txn.spend_utxo(utxo_hash1.clone());
     txn.commit_block();
     assert!(db.write(txn).is_ok());
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo3, true);
-    txn.insert_kernel(kernel3, true);
+    txn.insert_utxo(utxo3);
+    txn.insert_kernel(kernel3);
     txn.insert_header(header3.clone());
     txn.spend_utxo(utxo_hash2.clone());
     txn.commit_block();
@@ -1462,7 +1462,7 @@ fn duplicate_utxo<T: BlockchainBackend>(mut db: T) {
     let hash1 = utxo1.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo_with_hash(hash1.clone(), utxo1.clone(), true);
+    txn.insert_utxo_with_hash(hash1.clone(), utxo1.clone());
     assert!(db.write(txn).is_ok());
     assert_eq!(db.contains(&DbKey::UnspentOutput(hash1.clone())), Ok(true));
     if let Some(DbValue::UnspentOutput(retrieved_utxo)) = db.fetch(&DbKey::UnspentOutput(hash1.clone())).unwrap() {
@@ -1471,7 +1471,7 @@ fn duplicate_utxo<T: BlockchainBackend>(mut db: T) {
         assert!(false);
     }
     let mut txn = DbTransaction::new();
-    txn.insert_utxo_with_hash(hash1.clone(), utxo2.clone(), true);
+    txn.insert_utxo_with_hash(hash1.clone(), utxo2.clone());
     assert!(db.write(txn).is_err()); // This should fail
     if let Some(DbValue::UnspentOutput(retrieved_utxo)) = db.fetch(&DbKey::UnspentOutput(hash1.clone())).unwrap() {
         assert_eq!(*retrieved_utxo, utxo1); // original data should still be there
@@ -1676,29 +1676,29 @@ fn fetch_utxo_rp_mmr_nodes_and_count<T: BlockchainBackend>(mut db: T) {
     ];
 
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1, true);
+    txn.insert_utxo(utxo1);
     txn.operations.push(WriteOperation::CreateMmrCheckpoint(MmrTree::Utxo));
     txn.operations
         .push(WriteOperation::CreateMmrCheckpoint(MmrTree::RangeProof));
     assert!(db.write(txn).is_ok());
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo2, true);
-    txn.insert_utxo(utxo3, true);
+    txn.insert_utxo(utxo2);
+    txn.insert_utxo(utxo3);
     txn.spend_utxo(utxo_hash1.clone());
     txn.operations.push(WriteOperation::CreateMmrCheckpoint(MmrTree::Utxo));
     txn.operations
         .push(WriteOperation::CreateMmrCheckpoint(MmrTree::RangeProof));
     assert!(db.write(txn).is_ok());
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo4, true);
-    txn.insert_utxo(utxo5, true);
+    txn.insert_utxo(utxo4);
+    txn.insert_utxo(utxo5);
     txn.spend_utxo(utxo_hash3.clone());
     txn.operations.push(WriteOperation::CreateMmrCheckpoint(MmrTree::Utxo));
     txn.operations
         .push(WriteOperation::CreateMmrCheckpoint(MmrTree::RangeProof));
     assert!(db.write(txn).is_ok());
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo6, true);
+    txn.insert_utxo(utxo6);
     txn.spend_utxo(utxo_hash4.clone());
     txn.operations.push(WriteOperation::CreateMmrCheckpoint(MmrTree::Utxo));
     txn.operations
@@ -1769,24 +1769,24 @@ fn fetch_kernel_mmr_nodes_and_count<T: BlockchainBackend>(mut db: T) {
     ];
 
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel1, true);
+    txn.insert_kernel(kernel1);
     txn.operations
         .push(WriteOperation::CreateMmrCheckpoint(MmrTree::Kernel));
     assert!(db.write(txn).is_ok());
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel2, true);
-    txn.insert_kernel(kernel3, true);
+    txn.insert_kernel(kernel2);
+    txn.insert_kernel(kernel3);
     txn.operations
         .push(WriteOperation::CreateMmrCheckpoint(MmrTree::Kernel));
     assert!(db.write(txn).is_ok());
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel4, true);
-    txn.insert_kernel(kernel5, true);
+    txn.insert_kernel(kernel4);
+    txn.insert_kernel(kernel5);
     txn.operations
         .push(WriteOperation::CreateMmrCheckpoint(MmrTree::Kernel));
     assert!(db.write(txn).is_ok());
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel6, true);
+    txn.insert_kernel(kernel6);
     txn.operations
         .push(WriteOperation::CreateMmrCheckpoint(MmrTree::Kernel));
     assert!(db.write(txn).is_ok());

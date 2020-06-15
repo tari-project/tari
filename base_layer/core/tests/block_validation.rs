@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_core::{
-    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
+    chain_storage::{BlockAddResult, BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
     consensus::{ConsensusManagerBuilder, Network},
     transactions::types::{CryptoFactories, HashDigest},
     validation::{
@@ -43,6 +43,6 @@ fn test_genesis_block() {
     );
     let db = BlockchainDatabase::new(backend, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
     let block = rules.get_genesis_block();
-    let result = db.add_block(block);
-    assert!(result.is_ok());
+    let result = db.add_block(block).unwrap();
+    assert_eq!(result, BlockAddResult::BlockExists);
 }

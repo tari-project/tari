@@ -172,7 +172,7 @@ fn inbound_fetch_kernels() {
     let kernel = create_test_kernel(5.into(), 0);
     let hash = kernel.hash();
     let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel.clone(), true);
+    txn.insert_kernel(kernel.clone());
     assert!(store.commit(txn).is_ok());
 
     test_async(move |rt| {
@@ -291,7 +291,7 @@ fn inbound_fetch_utxos() {
     let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
     let hash = utxo.hash();
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone(), true);
+    txn.insert_utxo(utxo.clone());
     assert!(store.commit(txn).is_ok());
 
     test_async(move |rt| {

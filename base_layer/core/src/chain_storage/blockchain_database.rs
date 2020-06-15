@@ -732,8 +732,8 @@ fn store_new_block<T: BlockchainBackend>(db: &mut RwLockWriteGuard<T>, block: Bl
     // Insert block
     txn.insert_header(header);
     txn.spend_inputs(&inputs);
-    outputs.iter().for_each(|utxo| txn.insert_utxo(utxo.clone(), true));
-    kernels.iter().for_each(|k| txn.insert_kernel(k.clone(), true));
+    outputs.iter().for_each(|utxo| txn.insert_utxo(utxo.clone()));
+    kernels.iter().for_each(|k| txn.insert_kernel(k.clone()));
     txn.commit_block();
     commit(db, txn)?;
     Ok(())
@@ -976,7 +976,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
 // with the newly un-orphaned blocks from the reorg chain.
 fn handle_reorg<T: BlockchainBackend>(
     db: &mut RwLockWriteGuard<T>,
-    block_validator: &Arc<Validator<Block, T>>,
+    block_validator: &Validator<Block, T>,
     accum_difficulty_validator: &Arc<Validator<Difficulty, T>>,
     new_block: Block,
 ) -> Result<BlockAddResult, ChainStorageError>
@@ -1029,64 +1029,87 @@ fn handle_reorg<T: BlockchainBackend>(
         );
     }
 
-    if accum_difficulty_validator.validate(&fork_accum_difficulty, db).is_ok() {
-        // We've built the strongest orphan chain we can by going backwards and forwards from the new orphan block
-        // that is linked with the main chain.
-        let fork_tip_block = fetch_orphan(&**db, fork_tip_hash.clone())?;
-        let fork_tip_header = fork_tip_block.header.clone();
-        if fork_tip_hash != new_block_hash {
-            // New block is not the tip, find complete chain from tip to main chain.
-            reorg_chain = try_construct_fork(db, fork_tip_block)?;
-        }
-        let added_blocks: Vec<Block> = reorg_chain.iter().map(Clone::clone).collect();
-        let fork_height = reorg_chain
-            .front()
-            .expect("The new orphan block should be in the queue")
-            .header
-            .height -
-            1;
-        let removed_blocks = reorganize_chain(db, block_validator, fork_height, reorg_chain)?;
-        if removed_blocks.is_empty() {
-            return Ok(BlockAddResult::Ok);
-        } else {
+    match accum_difficulty_validator.validate(&fork_accum_difficulty, db) {
+        Ok(_) => {
             debug!(
                 target: LOG_TARGET,
-                "Chain reorg processed from (accum_diff:{}, hash:{}) to (accum_diff:{}, hash:{})",
-                tip_header.pow,
-                tip_header.hash().to_hex(),
-                fork_tip_header.pow,
-                fork_tip_hash.to_hex()
+                "Accumulated difficulty validation PASSED for block #{} ({})",
+                new_block.header.height,
+                new_block_hash.to_hex()
             );
-            info!(
+        },
+        Err(ValidationError::WeakerAccumulatedDifficulty) => {
+            debug!(
                 target: LOG_TARGET,
-                "Reorg from ({}) to ({})", tip_header, fork_tip_header
+                "Fork chain (accum_diff:{}, hash:{}) with block {} ({}) has a weaker accumulated difficulty.",
+                fork_accum_difficulty,
+                fork_tip_hash.to_hex(),
+                new_block.header.height,
+                new_block_hash.to_hex(),
             );
-            return Ok(BlockAddResult::ChainReorg((
-                Box::new(removed_blocks),
-                Box::new(added_blocks),
-            )));
-        }
+            debug!(
+                target: LOG_TARGET,
+                "Orphan block received: #{}", new_block.header.height
+            );
+            return Ok(BlockAddResult::OrphanBlock);
+        },
+        Err(err) => {
+            error!(
+                target: LOG_TARGET,
+                "Failed to validate accumulated difficulty on forked chain (accum_diff:{}, hash:{}) with block {} \
+                 ({}): {:?}.",
+                fork_accum_difficulty,
+                fork_tip_hash.to_hex(),
+                new_block.header.height,
+                new_block_hash.to_hex(),
+                err
+            );
+            return Err(err.into());
+        },
+    }
+
+    // We've built the strongest orphan chain we can by going backwards and forwards from the new orphan block
+    // that is linked with the main chain.
+    let fork_tip_block = fetch_orphan(&**db, fork_tip_hash.clone())?;
+    let fork_tip_header = fork_tip_block.header.clone();
+    if fork_tip_hash != new_block_hash {
+        // New block is not the tip, find complete chain from tip to main chain.
+        reorg_chain = try_construct_fork(db, fork_tip_block)?;
+    }
+    let added_blocks: Vec<Block> = reorg_chain.iter().cloned().collect();
+    let fork_height = reorg_chain
+        .front()
+        .expect("The new orphan block should be in the queue")
+        .header
+        .height -
+        1;
+    let removed_blocks = reorganize_chain(db, block_validator, fork_height, reorg_chain)?;
+    if removed_blocks.is_empty() {
+        Ok(BlockAddResult::Ok)
     } else {
         debug!(
             target: LOG_TARGET,
-            "Fork chain (accum_diff:{}, hash:{}) with block {} ({}) has a weaker accumulated difficulty.",
-            fork_accum_difficulty,
-            fork_tip_hash.to_hex(),
-            new_block.header.height,
-            new_block_hash.to_hex(),
+            "Chain reorg processed from (accum_diff:{}, hash:{}) to (accum_diff:{}, hash:{})",
+            tip_header.pow,
+            tip_header.hash().to_hex(),
+            fork_tip_header.pow,
+            fork_tip_hash.to_hex()
         );
+        info!(
+            target: LOG_TARGET,
+            "Reorg from ({}) to ({})", tip_header, fork_tip_header
+        );
+        Ok(BlockAddResult::ChainReorg((
+            Box::new(removed_blocks),
+            Box::new(added_blocks),
+        )))
     }
-    debug!(
-        target: LOG_TARGET,
-        "Orphan block received: #{}", new_block.header.height
-    );
-    Ok(BlockAddResult::OrphanBlock)
 }
 
 // Reorganize the main chain with the provided fork chain, starting at the specified height.
 fn reorganize_chain<T: BlockchainBackend>(
     db: &mut RwLockWriteGuard<T>,
-    block_validator: &Arc<Validator<Block, T>>,
+    block_validator: &Validator<Block, T>,
     height: u64,
     chain: VecDeque<Block>,
 ) -> Result<Vec<Block>, ChainStorageError>
