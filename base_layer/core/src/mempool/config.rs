@@ -28,117 +28,40 @@ use crate::mempool::{
     unconfirmed_pool::UnconfirmedPoolConfig,
 };
 use bitflags::_core::time::Duration;
-use config::Config;
-use tari_common::{ConfigExtractor, ConfigurationError, Network};
+use serde::{Deserialize, Serialize};
+use tari_common::{configuration::seconds, Network, NetworkConfigPath};
 
 /// Configuration for the Mempool.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Deserialize, Serialize)]
 pub struct MempoolConfig {
-    pub unconfirmed_pool_config: UnconfirmedPoolConfig,
-    pub orphan_pool_config: OrphanPoolConfig,
-    pub pending_pool_config: PendingPoolConfig,
-    pub reorg_pool_config: ReorgPoolConfig,
+    pub unconfirmed_pool: UnconfirmedPoolConfig,
+    pub orphan_pool: OrphanPoolConfig,
+    pub pending_pool: PendingPoolConfig,
+    pub reorg_pool: ReorgPoolConfig,
 }
 
 impl Default for MempoolConfig {
     fn default() -> Self {
         Self {
-            unconfirmed_pool_config: UnconfirmedPoolConfig::default(),
-            orphan_pool_config: OrphanPoolConfig::default(),
-            pending_pool_config: PendingPoolConfig::default(),
-            reorg_pool_config: ReorgPoolConfig::default(),
+            unconfirmed_pool: UnconfirmedPoolConfig::default(),
+            orphan_pool: OrphanPoolConfig::default(),
+            pending_pool: PendingPoolConfig::default(),
+            reorg_pool: ReorgPoolConfig::default(),
         }
     }
 }
 
-impl ConfigExtractor for MempoolConfig {
-    fn set_default(cfg: &mut Config) {
-        let default = MempoolConfig::default();
-        for network in &["testnet", "mainnet"] {
-            cfg.set_default(
-                &format!("mempool.{}.unconfirmed_pool_storage_capacity", network),
-                default.unconfirmed_pool_config.storage_capacity as i64,
-            )
-            .unwrap();
-            cfg.set_default(
-                &format!("mempool.{}.weight_tx_skip_count", network),
-                default.unconfirmed_pool_config.weight_tx_skip_count as i64,
-            )
-            .unwrap();
-            cfg.set_default(
-                &format!("mempool.{}.orphan_pool_storage_capacity", network),
-                default.orphan_pool_config.storage_capacity as i64,
-            )
-            .unwrap();
-            cfg.set_default(
-                &format!("mempool.{}.orphan_tx_ttl", network),
-                default.orphan_pool_config.tx_ttl.as_secs() as i64,
-            )
-            .unwrap();
-            cfg.set_default(
-                &format!("mempool.{}.pending_pool_storage_capacity", network),
-                default.pending_pool_config.storage_capacity as i64,
-            )
-            .unwrap();
-            cfg.set_default(
-                &format!("mempool.{}.reorg_pool_storage_capacity", network),
-                default.reorg_pool_config.storage_capacity as i64,
-            )
-            .unwrap();
-            cfg.set_default(
-                &format!("mempool.{}.reorg_tx_ttl", network),
-                default.reorg_pool_config.tx_ttl.as_secs() as i64,
-            )
-            .unwrap();
-        }
-    }
-
-    fn extract_configuration(cfg: &Config, network: Network) -> Result<Self, ConfigurationError>
-    where Self: Sized {
-        let mut config = MempoolConfig::default();
-        let key = format!("mempool.{}.unconfirmed_pool_storage_capacity", network);
-        let val = cfg
-            .get_int(&key)
-            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
-        config.unconfirmed_pool_config.storage_capacity = val;
-        let key = format!("mempool.{}.weight_tx_skip_count", network);
-        let val = cfg
-            .get_int(&key)
-            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
-        config.unconfirmed_pool_config.weight_tx_skip_count = val;
-        let key = format!("mempool.{}.orphan_pool_storage_capacity", network);
-        let val = cfg
-            .get_int(&key)
-            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
-        config.orphan_pool_config.storage_capacity = val;
-        let key = format!("mempool.{}.orphan_tx_ttl", network);
-        let val = cfg
-            .get_int(&key)
-            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64;
-        config.orphan_pool_config.tx_ttl = Duration::from_secs(val);
-        let key = format!("mempool.{}.pending_pool_storage_capacity", network);
-        let val = cfg
-            .get_int(&key)
-            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
-        config.pending_pool_config.storage_capacity = val;
-        let key = format!("mempool.{}.reorg_pool_storage_capacity", network);
-        let val = cfg
-            .get_int(&key)
-            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
-        config.reorg_pool_config.storage_capacity = val;
-        let key = format!("mempool.{}.reorg_tx_ttl", network);
-        let val = cfg
-            .get_int(&key)
-            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64;
-        config.reorg_pool_config.tx_ttl = Duration::from_secs(val);
-        Ok(config)
+impl NetworkConfigPath for MempoolConfig {
+    fn main_key_prefix() -> &'static str {
+        "mempool"
     }
 }
 
 /// Configuration for the MempoolService.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Deserialize, Serialize)]
 pub struct MempoolServiceConfig {
     /// The allocated waiting time for a request waiting for service responses from the Mempools of remote Base nodes.
+    #[serde(with = "seconds")]
     pub request_timeout: Duration,
 }
 
@@ -150,28 +73,8 @@ impl Default for MempoolServiceConfig {
     }
 }
 
-impl ConfigExtractor for MempoolServiceConfig {
-    fn set_default(cfg: &mut Config) {
-        let service_default = MempoolServiceConfig::default();
-        for network in &["testnet", "mainnet"] {
-            let key = format!("mempool.{}.request_timeout", network);
-            cfg.set_default(&key, service_default.request_timeout.as_secs() as i64)
-                .unwrap();
-        }
+impl NetworkConfigPath for MempoolServiceConfig {
+    fn main_key_prefix() -> &'static str {
+        "mempool_service"
     }
-
-    fn extract_configuration(cfg: &Config, network: Network) -> Result<Self, ConfigurationError>
-    where Self: Sized {
-        let mut config = MempoolServiceConfig::default();
-        let key = config_string(network, "request_timeout");
-        let val = cfg
-            .get_int(&key)
-            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
-        config.request_timeout = Duration::from_secs(val as u64);
-        Ok(config)
-    }
-}
-
-fn config_string(network: Network, key: &str) -> String {
-    format!("mempool.{}.{}", network, key)
 }

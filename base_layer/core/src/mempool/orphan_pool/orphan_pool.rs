@@ -29,17 +29,20 @@ use crate::{
     transactions::{transaction::Transaction, types::Signature},
     validation::Validator,
 };
+use serde::{Deserialize, Serialize};
 use std::{
     sync::{Arc, RwLock},
     time::Duration,
 };
+use tari_common::configuration::seconds;
 
 /// Configuration for the OrphanPool
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Deserialize, Serialize)]
 pub struct OrphanPoolConfig {
     /// The maximum number of transactions that can be stored in the Orphan pool
     pub storage_capacity: usize,
     /// The Time-to-live for each stored transaction
+    #[serde(with = "seconds")]
     pub tx_ttl: Duration,
 }
 

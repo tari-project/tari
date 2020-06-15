@@ -30,6 +30,7 @@ use crate::{
     transactions::{transaction::Transaction, types::Signature},
 };
 use log::*;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
     convert::TryFrom,
@@ -40,7 +41,7 @@ use tari_crypto::tari_utilities::hex::Hex;
 pub const LOG_TARGET: &str = "c::mp::pending_pool::pending_pool_storage";
 
 /// Configuration for the PendingPool.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Deserialize, Serialize)]
 pub struct PendingPoolConfig {
     /// The maximum number of transactions that can be stored in the Pending pool.
     pub storage_capacity: usize,

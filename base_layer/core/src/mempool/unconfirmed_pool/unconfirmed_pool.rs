@@ -30,6 +30,7 @@ use crate::{
     transactions::{transaction::Transaction, types::Signature},
 };
 use log::*;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
     convert::TryFrom,
@@ -40,7 +41,7 @@ use tari_crypto::tari_utilities::hex::Hex;
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
 /// Configuration for the UnconfirmedPool
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct UnconfirmedPoolConfig {
     /// The maximum number of transactions that can be stored in the Unconfirmed Transaction pool
     pub storage_capacity: usize,

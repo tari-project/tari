@@ -105,10 +105,9 @@ pub trait ConfigExtractor {
 
 //-------------------------------------------    ConfigLoader trait    ------------------------------------------//
 
-/// Load struct from config's main section and subsecttion override
+/// Load struct from config's main section and subsection override
 ///
-/// Implementation of this trait along with Deserialize grants
-/// ConfigLoader implementation
+/// Implementation of this trait along with Deserialize grants `ConfigLoader` implementation
 pub trait ConfigPath {
     /// Main configuration section
     fn main_key_prefix() -> &'static str;
@@ -142,7 +141,7 @@ pub trait ConfigPath {
 
 /// Load struct from config's main section and network subsection override
 ///
-/// Network subsection will be choosen based on `use_network` key value
+/// Network subsection will be chosen based on `use_network` key value
 /// from the main section defined in this trait.
 ///
 /// Wrong network value will result in Error
@@ -151,10 +150,34 @@ pub trait NetworkConfigPath {
     fn main_key_prefix() -> &'static str;
 }
 impl<C: NetworkConfigPath> ConfigPath for C {
+    /// Returns the string representing the top level configuration category.
+    /// For example, in the following TOML file, options for `main_key_prefix` would be `MainKeyOne` or `MainKeyTwo`:
+    /// ```toml
+    /// [MainKeyOne]
+    ///   subkey1=1  
+    /// [MainKeyTwo]
+    ///   subkey2=1
+    /// ```
     fn main_key_prefix() -> &'static str {
         <Self as NetworkConfigPath>::main_key_prefix()
     }
 
+    /// Loads the desired subsection from the config file into the provided `config` and merges the results. The
+    /// subsection that is selected for merging is determined by the value of the `use_network` sub key of the "main"
+    /// section. For example, if a TOML configuration file contains the following:
+    ///
+    /// ```toml
+    /// [SectionA]
+    ///   use_network=foo  
+    ///   subkey=1
+    /// [SectionA.foo]
+    ///   subkey=2
+    /// [SectionA.baz]
+    ///   subkey=3
+    /// ```
+    ///
+    /// the result after calling `merge_config` would have the struct's `subkey` value set to 2. If `use_network`
+    /// were omitted, `subkey` would be 1, and if `use_network` were set to `baz`, `subkey` would be 3.
     fn overload_key_prefix(config: &Config) -> Result<Option<String>, ConfigurationError> {
         let main = <Self as NetworkConfigPath>::main_key_prefix();
         let network_key = format!("{}.use_network", main);

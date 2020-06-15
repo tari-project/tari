@@ -28,17 +28,20 @@ use crate::{
     },
     transactions::{transaction::Transaction, types::Signature},
 };
+use serde::{Deserialize, Serialize};
 use std::{
     sync::{Arc, RwLock},
     time::Duration,
 };
+use tari_common::configuration::seconds;
 
 /// Configuration for the ReorgPool
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Deserialize, Serialize)]
 pub struct ReorgPoolConfig {
     /// The maximum number of transactions that can be stored in the ReorgPool
     pub storage_capacity: usize,
     /// The Time-to-live for each stored transaction
+    #[serde(with = "seconds")]
     pub tx_ttl: Duration,
 }
 
