@@ -1228,9 +1228,13 @@ where
             PowerMode::Low => self.config.low_power_polling_timeout,
             PowerMode::Normal => self.config.base_node_monitoring_timeout,
         };
-        self.timeout_update_publisher
-            .send(timeout)
-            .map_err(|_| TransactionServiceError::ProtocolChannelError)?;
+        if let Err(e) = self.timeout_update_publisher.send(timeout) {
+            trace!(
+                target: LOG_TARGET,
+                "Could not send Timeout update, no subscribers to receive. (Err {:?})",
+                e
+            );
+        }
 
         Ok(())
     }
