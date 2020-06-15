@@ -1813,6 +1813,9 @@ fn transaction_base_node_monitoring() {
     let (_, _, bob_outbound_service, mut bob_tx_sender, _, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
 
+    runtime.block_on(alice_ts.set_low_power_mode()).unwrap();
+    runtime.block_on(alice_ts.set_normal_power_mode()).unwrap();
+
     let mut alice_total_available = 250000 * uT;
     let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment);
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
