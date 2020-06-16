@@ -149,6 +149,11 @@ pub trait ConfigPath {
 pub trait NetworkConfigPath {
     /// Main configuration section
     fn main_key_prefix() -> &'static str;
+    /// Path for `use_network` key in config
+    fn network_config_key() -> String {
+        let main = <Self as NetworkConfigPath>::main_key_prefix();
+        format!("{}.use_network", main)
+    }
 }
 impl<C: NetworkConfigPath> ConfigPath for C {
     fn main_key_prefix() -> &'static str {
@@ -156,12 +161,11 @@ impl<C: NetworkConfigPath> ConfigPath for C {
     }
 
     fn overload_key_prefix(config: &Config) -> Result<Option<String>, ConfigurationError> {
-        let main = <Self as NetworkConfigPath>::main_key_prefix();
-        let network_key = format!("{}.use_network", main);
+        let network_key = Self::network_config_key();
         let network_val: Option<String> = config.get_str(network_key.as_str()).ok();
         if let Some(s) = network_val {
             let network: Network = s.parse()?;
-            Ok(Some(format!("{}.{}", main, network)))
+            Ok(Some(format!("{}.{}", Self::main_key_prefix(), network)))
         } else {
             Ok(None)
         }

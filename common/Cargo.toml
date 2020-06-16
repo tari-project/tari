@@ -29,3 +29,4 @@ tempdir = "0.3.7"
 tari_test_utils = { version = "^0.0", path = "../infrastructure/test_utils"}
 serde = { version = "1.0.106", features = ["derive"] }
 anyhow = "1.0"
+toml = "0.5"

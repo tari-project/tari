@@ -39,6 +39,7 @@ pub mod error;
 pub mod global;
 pub mod loader;
 pub mod utils;
+pub mod writer;
 
 pub use bootstrap::ConfigBootstrap;
 pub use global::{CommsTransport, DatabaseType, GlobalConfig, Network, SocksAuthentication, TorControlAuthentication};
