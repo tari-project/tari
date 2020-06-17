@@ -80,7 +80,7 @@ pub mod dir_utils;
 pub use configuration::{
     bootstrap::{install_configuration, ConfigBootstrap},
     global::{CommsTransport, DatabaseType, GlobalConfig, Network, SocksAuthentication, TorControlAuthentication},
-    loader::{ConfigExtractor, ConfigLoader, ConfigPath, ConfigurationError, DefaultConfigLoader, NetworkConfigPath},
+    loader::{ConfigLoader, ConfigPath, ConfigurationError, DefaultConfigLoader, NetworkConfigPath},
     utils::{default_config, install_default_config_file, load_configuration},
 };
 pub use logging::initialize_logging;

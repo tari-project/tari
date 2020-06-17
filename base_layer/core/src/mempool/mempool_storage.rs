@@ -65,10 +65,10 @@ where T: BlockchainBackend
     pub fn new(blockchain_db: BlockchainDatabase<T>, config: MempoolConfig, validators: MempoolValidators<T>) -> Self {
         let (mempool_validator, orphan_validator) = validators.into_validators();
         Self {
-            unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool_config),
-            orphan_pool: OrphanPool::new(config.orphan_pool_config, orphan_validator, blockchain_db.clone()),
-            pending_pool: PendingPool::new(config.pending_pool_config),
-            reorg_pool: ReorgPool::new(config.reorg_pool_config),
+            unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool),
+            orphan_pool: OrphanPool::new(config.orphan_pool, orphan_validator, blockchain_db.clone()),
+            pending_pool: PendingPool::new(config.pending_pool),
+            reorg_pool: ReorgPool::new(config.reorg_pool),
             blockchain_db,
             validator: Arc::new(mempool_validator),
         }

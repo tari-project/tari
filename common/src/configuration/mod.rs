@@ -38,6 +38,7 @@ pub mod bootstrap;
 pub mod error;
 pub mod global;
 pub mod loader;
+pub mod seconds;
 pub mod utils;
 
 pub use bootstrap::ConfigBootstrap;
