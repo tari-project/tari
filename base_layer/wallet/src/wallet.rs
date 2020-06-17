@@ -109,7 +109,7 @@ where
     W: ContactsBackend + 'static,
 {
     pub fn new(
-        mut config: WalletConfig,
+        config: WalletConfig,
         mut runtime: Runtime,
         wallet_backend: T,
         transaction_backend: U,
@@ -127,8 +127,6 @@ where
         let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100);
         let subscription_factory = Arc::new(subscription_factory);
 
-        // Wallet should join the network
-        config.comms_config.dht.auto_join = true;
         let (comms, dht) = runtime.block_on(initialize_comms(config.comms_config.clone(), publisher, vec![]))?;
 
         let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())

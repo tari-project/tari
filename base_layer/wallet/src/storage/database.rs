@@ -26,7 +26,10 @@ use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
-use tari_comms::{peer_manager::Peer, types::CommsPublicKey};
+use tari_comms::{
+    peer_manager::Peer,
+    types::{CommsPublicKey, CommsSecretKey},
+};
 
 const LOG_TARGET: &str = "wallet::database";
 
@@ -42,15 +45,19 @@ pub trait WalletBackend: Send + Sync {
 pub enum DbKey {
     Peer(CommsPublicKey),
     Peers,
+    CommsSecretKey,
 }
 
 pub enum DbValue {
     Peer(Box<Peer>),
     Peers(Vec<Peer>),
+    CommsSecretKey(CommsSecretKey),
 }
 
+#[derive(Clone)]
 pub enum DbKeyValuePair {
     Peer(CommsPublicKey, Peer),
+    CommsSecretKey(CommsSecretKey),
 }
 
 pub enum WriteOperation {
@@ -106,7 +113,7 @@ where T: WalletBackend + 'static
             Err(e) => log_error(DbKey::Peers, e),
         })
         .await
-        .or_else(|err| Err(WalletStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(c)
     }
 
@@ -120,7 +127,7 @@ where T: WalletBackend + 'static
             )))
         })
         .await
-        .or_else(|err| Err(WalletStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
 
@@ -133,14 +140,39 @@ where T: WalletBackend + 'static
                 .ok_or_else(|| WalletStorageError::ValueNotFound(DbKey::Peer(pub_key.clone())))?
             {
                 DbValue::Peer(c) => Ok(*c),
-                DbValue::Peers(_) => Err(WalletStorageError::UnexpectedResult(
+                _ => Err(WalletStorageError::UnexpectedResult(
                     "Incorrect response from backend.".to_string(),
                 )),
             }
         })
         .await
-        .or_else(|err| Err(WalletStorageError::BlockingTaskSpawnError(err.to_string())))
+        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))
         .and_then(|inner_result| inner_result)
+    }
+
+    pub async fn get_comms_secret_key(&self) -> Result<Option<CommsSecretKey>, WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::CommsSecretKey) {
+            Ok(None) => Ok(None),
+            Ok(Some(DbValue::CommsSecretKey(k))) => Ok(Some(k)),
+            Ok(Some(other)) => unexpected_result(DbKey::CommsSecretKey, other),
+            Err(e) => log_error(DbKey::CommsSecretKey, e),
+        })
+        .await
+        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(c)
+    }
+
+    pub async fn set_comms_private_key(&self, key: CommsSecretKey) -> Result<(), WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || {
+            db_clone.write(WriteOperation::Insert(DbKeyValuePair::CommsSecretKey(key)))
+        })
+        .await
+        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
     }
 }
 
@@ -155,6 +187,7 @@ impl Display for DbKey {
         match self {
             DbKey::Peer(c) => f.write_str(&format!("Peer: {:?}", c)),
             DbKey::Peers => f.write_str(&"Peers".to_string()),
+            DbKey::CommsSecretKey => f.write_str(&"CommsSecretKey".to_string()),
         }
     }
 }
@@ -162,8 +195,9 @@ impl Display for DbKey {
 impl Display for DbValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbValue::Peer(_) => f.write_str(&"Peer".to_string()),
+            DbValue::Peer(p) => f.write_str(&format!("Peer: {:?}", p)),
             DbValue::Peers(_) => f.write_str(&"Peers".to_string()),
+            DbValue::CommsSecretKey(k) => f.write_str(&format!("CommsSecretKey: {:?}", k)),
         }
     }
 }
@@ -196,7 +230,7 @@ mod test {
         types::{CommsPublicKey, CommsSecretKey},
     };
     use tari_core::transactions::types::PublicKey;
-    use tari_crypto::keys::PublicKey as PublicKeyTrait;
+    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
     use tari_test_utils::random::string;
     use tempdir::TempDir;
     use tokio::runtime::Runtime;
@@ -251,6 +285,13 @@ mod test {
         let got_peers = runtime.block_on(db.get_peers()).unwrap();
 
         assert_eq!(peers, got_peers);
+
+        // Test wallet settings
+        assert!(runtime.block_on(db.get_comms_secret_key()).unwrap().is_none());
+        let secret_key = CommsSecretKey::random(&mut OsRng);
+        runtime.block_on(db.set_comms_private_key(secret_key.clone())).unwrap();
+        let stored_key = runtime.block_on(db.get_comms_secret_key()).unwrap().unwrap();
+        assert_eq!(secret_key, stored_key);
     }
 
     #[test]

@@ -22,18 +22,20 @@
 
 use crate::{
     error::WalletStorageError,
-    schema::peers,
+    schema::{peers, wallet_settings},
     storage::database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
 };
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
+
 use std::{
     convert::TryFrom,
     sync::{Arc, Mutex},
 };
-use tari_comms::peer_manager::Peer;
-use tari_crypto::tari_utilities::ByteArray;
+use tari_comms::{peer_manager::Peer, types::CommsSecretKey};
+use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
+#[derive(Clone)]
 pub struct WalletSqliteDatabase {
     database_connection: Arc<Mutex<SqliteConnection>>,
 }
@@ -59,6 +61,13 @@ impl WalletBackend for WalletSqliteDatabase {
                     .map(|c| Peer::try_from(c.clone()))
                     .collect::<Result<Vec<_>, _>>()?,
             )),
+            DbKey::CommsSecretKey => {
+                if let Some(key_str) = WalletSettingSql::get(format!("{}", key), &conn)? {
+                    Some(DbValue::CommsSecretKey(CommsSecretKey::from_hex(key_str.as_str())?))
+                } else {
+                    None
+                }
+            },
         };
 
         Ok(result)
@@ -75,6 +84,9 @@ impl WalletBackend for WalletSqliteDatabase {
                     }
                     PeerSql::try_from(p)?.commit(&conn)?;
                 },
+                DbKeyValuePair::CommsSecretKey(sk) => {
+                    WalletSettingSql::new(format!("{}", DbKey::CommsSecretKey), sk.to_hex()).set(&conn)?
+                },
             },
             WriteOperation::Remove(k) => match k {
                 DbKey::Peer(k) => match PeerSql::find(&k.to_vec(), &(*conn)) {
@@ -86,6 +98,7 @@ impl WalletBackend for WalletSqliteDatabase {
                     Err(e) => return Err(e),
                 },
                 DbKey::Peers => return Err(WalletStorageError::OperationNotSupported),
+                DbKey::CommsSecretKey => return Err(WalletStorageError::OperationNotSupported),
             },
         }
 
@@ -149,5 +162,38 @@ impl TryFrom<Peer> for PeerSql {
             public_key: p.public_key.to_vec(),
             peer: serde_json::to_string(&p)?,
         })
+    }
+}
+
+/// A Sql version of the wallet setting key-value table
+#[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
+#[table_name = "wallet_settings"]
+struct WalletSettingSql {
+    key: String,
+    value: String,
+}
+
+impl WalletSettingSql {
+    pub fn new(key: String, value: String) -> Self {
+        Self { key, value }
+    }
+
+    pub fn set(&self, conn: &SqliteConnection) -> Result<(), WalletStorageError> {
+        diesel::replace_into(wallet_settings::table)
+            .values(self)
+            .execute(conn)?;
+
+        Ok(())
+    }
+
+    pub fn get(key: String, conn: &SqliteConnection) -> Result<Option<String>, WalletStorageError> {
+        wallet_settings::table
+            .filter(wallet_settings::key.eq(key))
+            .first::<WalletSettingSql>(conn)
+            .map(|v: WalletSettingSql| Some(v.value))
+            .or_else(|err| match err {
+                diesel::result::Error::NotFound => Ok(None),
+                err => Err(err.into()),
+            })
     }
 }
