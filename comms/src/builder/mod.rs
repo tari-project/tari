@@ -57,12 +57,11 @@ use crate::{
         ConnectivityRequest,
         ConnectivityRequester,
     },
-    message::InboundMessage,
     multiaddr::Multiaddr,
     multiplexing::Substream,
     noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerManager},
-    protocol::{messaging, messaging::MessagingProtocol, ProtocolNotification, Protocols},
+    protocol::Protocols,
     tor,
     transports::{SocksTransport, TcpTransport, Transport},
     types::CommsDatabase,
@@ -249,37 +248,6 @@ where
         self
     }
 
-    fn make_messaging(
-        &self,
-        conn_man_requester: ConnectionManagerRequester,
-        peer_manager: Arc<PeerManager>,
-        node_identity: Arc<NodeIdentity>,
-    ) -> (
-        messaging::MessagingProtocol,
-        mpsc::Sender<ProtocolNotification<Substream>>,
-        mpsc::Sender<messaging::MessagingRequest>,
-        mpsc::Receiver<InboundMessage>,
-        messaging::MessagingEventSender,
-    )
-    {
-        let (proto_tx, proto_rx) = mpsc::channel(consts::MESSAGING_PROTOCOL_EVENTS_BUFFER_SIZE);
-        let (messaging_request_tx, messaging_request_rx) = mpsc::channel(consts::MESSAGING_REQUEST_BUFFER_SIZE);
-        let (inbound_message_tx, inbound_message_rx) = mpsc::channel(consts::INBOUND_MESSAGE_BUFFER_SIZE);
-        let (event_tx, _) = broadcast::channel(consts::MESSAGING_EVENTS_BUFFER_SIZE);
-        let messaging = MessagingProtocol::new(
-            conn_man_requester,
-            peer_manager,
-            node_identity,
-            proto_rx,
-            messaging_request_rx,
-            event_tx.clone(),
-            inbound_message_tx,
-            self.shutdown.to_signal(),
-        );
-
-        (messaging, proto_tx, messaging_request_tx, inbound_message_rx, event_tx)
-    }
-
     fn make_peer_manager(&mut self) -> Result<Arc<PeerManager>, CommsBuilderError> {
         match self.peer_storage.take() {
             Some(storage) => {
@@ -294,7 +262,6 @@ where
         &mut self,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
-        protocols: Protocols<Substream>,
         request_rx: mpsc::Receiver<ConnectionManagerRequest>,
         connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
     ) -> ConnectionManager<TTransport, BoxedBackoff>
@@ -311,7 +278,6 @@ where
             request_rx,
             node_identity,
             peer_manager,
-            protocols,
             connection_manager_events_tx,
             self.shutdown.to_signal(),
         )
@@ -352,20 +318,8 @@ where
         let connection_manager_requester =
             ConnectionManagerRequester::new(conn_man_tx, connection_manager_event_tx.clone());
 
-        let (messaging, messaging_proto_tx, messaging_request_tx, inbound_message_rx, messaging_event_tx) = self
-            .make_messaging(
-                connection_manager_requester.clone(),
-                peer_manager.clone(),
-                node_identity.clone(),
-            );
-
         //---------------------------------- Protocols --------------------------------------------//
-        let protocols = self
-            .protocols
-            .take()
-            .or_else(|| Some(Protocols::new()))
-            .map(move |protocols| protocols.add(&[messaging::MESSAGING_PROTOCOL.clone()], messaging_proto_tx))
-            .expect("cannot fail");
+        let protocols = self.protocols.take().unwrap_or_default();
 
         //---------------------------------- ConnectivityManager --------------------------------------------//
 
@@ -383,7 +337,6 @@ where
         let connection_manager = self.make_connection_manager(
             node_identity.clone(),
             peer_manager.clone(),
-            protocols,
             conn_man_rx,
             connection_manager_event_tx.clone(),
         );
@@ -394,13 +347,10 @@ where
             connection_manager_event_tx,
             connectivity_manager,
             connectivity_requester,
-            messaging_request_tx,
             messaging_pipeline: None,
-            messaging,
-            messaging_event_tx,
-            inbound_message_rx,
             node_identity,
             peer_manager,
+            protocols,
             hidden_service: self.hidden_service,
             shutdown: self.shutdown,
         })

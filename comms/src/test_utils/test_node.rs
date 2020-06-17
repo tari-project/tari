@@ -81,7 +81,7 @@ pub fn build_connection_manager(
 
     let requester = ConnectionManagerRequester::new(request_tx, event_tx.clone());
 
-    let connection_manager = ConnectionManager::new(
+    let mut connection_manager = ConnectionManager::new(
         config.connection_manager_config,
         config.transport,
         noise_config,
@@ -89,12 +89,12 @@ pub fn build_connection_manager(
         request_rx,
         config.node_identity,
         peer_manager.into(),
-        protocols,
         event_tx,
         shutdown,
     );
+    connection_manager.set_protocols(protocols);
 
-    runtime::current_executor().spawn(connection_manager.run());
+    runtime::current().spawn(connection_manager.run());
 
     requester
 }

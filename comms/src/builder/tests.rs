@@ -58,7 +58,7 @@ async fn spawn_node(
     let comms_node = CommsBuilder::new()
         // These calls are just to get rid of unused function warnings. 
         // <IrrelevantCalls>
-        .with_executor(runtime::current_executor())
+        .with_executor(runtime::current())
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
         .on_shutdown(|| {})
         // </IrrelevantCalls>
@@ -103,12 +103,14 @@ async fn peer_to_peer_custom_protocols() {
     // Setup test protocols
     let (test_sender, _test_protocol_rx1) = mpsc::channel(10);
     let (another_test_sender, mut another_test_protocol_rx1) = mpsc::channel(10);
-    let protocols1 = Protocols::new()
+    let mut protocols1 = Protocols::new();
+    protocols1
         .add(&[TEST_PROTOCOL], test_sender)
         .add(&[ANOTHER_TEST_PROTOCOL], another_test_sender);
     let (test_sender, mut test_protocol_rx2) = mpsc::channel(10);
     let (another_test_sender, _another_test_protocol_rx2) = mpsc::channel(10);
-    let protocols2 = Protocols::new()
+    let mut protocols2 = Protocols::new();
+    protocols2
         .add(&[TEST_PROTOCOL], test_sender)
         .add(&[ANOTHER_TEST_PROTOCOL], another_test_sender);
 
@@ -288,7 +290,7 @@ async fn peer_to_peer_messaging_simultaneous() {
         .unwrap();
 
     // Simultaneously send messages between the two nodes
-    let rt_handle = runtime::current_executor();
+    let rt_handle = runtime::current();
     let handle1 = rt_handle.spawn(async move {
         for i in 0..NUM_MSGS {
             let outbound_msg = OutboundMessage::new(

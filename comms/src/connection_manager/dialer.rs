@@ -84,7 +84,7 @@ pub struct Dialer<TTransport, TBackoff> {
     conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
     shutdown: Option<ShutdownSignal>,
     pending_dial_requests: HashMap<NodeId, Vec<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>>,
-    supported_protocols: Vec<ProtocolId>,
+    our_supported_protocols: Vec<ProtocolId>,
 }
 
 impl<TTransport, TBackoff> Dialer<TTransport, TBackoff>
@@ -103,7 +103,6 @@ where
         backoff: TBackoff,
         request_rx: mpsc::Receiver<DialerRequest>,
         conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
-        supported_protocols: Vec<ProtocolId>,
         shutdown: ShutdownSignal,
     ) -> Self
     {
@@ -119,8 +118,14 @@ where
             conn_man_notifier,
             shutdown: Some(shutdown),
             pending_dial_requests: Default::default(),
-            supported_protocols,
+            our_supported_protocols: Vec::new(),
         }
+    }
+
+    /// Set the supported protocols of this node to send to peers during the peer identity exchange
+    pub fn set_supported_protocols(&mut self, our_supported_protocols: Vec<ProtocolId>) -> &mut Self {
+        self.our_supported_protocols = our_supported_protocols;
+        self
     }
 
     pub async fn run(mut self) {
@@ -274,7 +279,7 @@ where
         let node_identity = Arc::clone(&self.node_identity);
         let peer_manager = self.peer_manager.clone();
         let conn_man_notifier = self.conn_man_notifier.clone();
-        let supported_protocols = self.supported_protocols.clone();
+        let supported_protocols = self.our_supported_protocols.clone();
         let noise_config = self.noise_config.clone();
         let allow_test_addresses = self.config.allow_test_addresses;
 

@@ -33,11 +33,6 @@ pub enum CommsBuilderError {
     NodeIdentityNotSet,
     #[error("The PeerStorage was not provided to the CommsBuilder. Use `with_peer_storage` to set it.")]
     PeerStorageNotProvided,
-    #[error(
-        "The messaging pipeline was not provided to the CommsBuilder. Use `with_messaging_pipeline` to set it's \
-         pipeline."
-    )]
-    MessagingPiplineNotProvided,
     #[error("Unable to receive a ConnectionManagerEvent within timeout")]
     ConnectionManagerEventStreamTimeout,
     #[error("ConnectionManagerEvent stream unexpectedly closed")]

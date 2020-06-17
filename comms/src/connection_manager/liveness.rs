@@ -57,7 +57,7 @@ mod test {
     async fn echos() {
         let (inbound, outbound) = MemorySocket::new_pair();
         let liveness = LivenessSession::new(inbound);
-        let join_handle = runtime::current_executor().spawn(liveness.run());
+        let join_handle = runtime::current().spawn(liveness.run());
         let mut outbound = Framed::new(IoCompat::new(outbound), LinesCodec::new());
         for _ in 0..10usize {
             outbound.send("ECHO".to_string()).await.unwrap()

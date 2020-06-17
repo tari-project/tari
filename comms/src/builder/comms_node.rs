@@ -24,14 +24,17 @@ use super::{placeholder::PlaceholderService, CommsBuilderError, CommsShutdown};
 use crate::{
     backoff::BoxedBackoff,
     bounded_executor::BoundedExecutor,
+    builder::consts,
     connection_manager::{ConnectionManager, ConnectionManagerEvent, ConnectionManagerRequester},
     connectivity::{ConnectivityManager, ConnectivityRequester},
     message::InboundMessage,
     multiaddr::Multiaddr,
+    multiplexing::Substream,
     peer_manager::{NodeIdentity, PeerManager},
     pipeline,
-    protocol::{messaging, messaging::MessagingProtocol},
+    protocol::{messaging, messaging::MessagingProtocol, ProtocolNotifier, Protocols},
     runtime,
+    runtime::task,
     tor,
     transports::Transport,
 };
@@ -58,13 +61,10 @@ pub struct BuiltCommsNode<
     pub connectivity_requester: ConnectivityRequester,
     pub messaging_pipeline: Option<pipeline::Config<TInPipe, TOutPipe, TOutReq>>,
     pub node_identity: Arc<NodeIdentity>,
-    pub messaging: MessagingProtocol,
-    pub messaging_event_tx: messaging::MessagingEventSender,
-    pub inbound_message_rx: mpsc::Receiver<InboundMessage>,
     pub hidden_service: Option<tor::HiddenService>,
-    pub messaging_request_tx: mpsc::Sender<messaging::MessagingRequest>,
-    pub shutdown: Shutdown,
     pub peer_manager: Arc<PeerManager>,
+    pub protocols: Protocols<Substream>,
+    pub shutdown: Shutdown,
 }
 
 impl<TTransport, TInPipe, TOutPipe, TOutReq> BuiltCommsNode<TTransport, TInPipe, TOutPipe, TOutReq>
@@ -100,11 +100,8 @@ where
             connectivity_manager: self.connectivity_manager,
             connectivity_requester: self.connectivity_requester,
             node_identity: self.node_identity,
-            messaging: self.messaging,
-            messaging_event_tx: self.messaging_event_tx,
-            inbound_message_rx: self.inbound_message_rx,
             shutdown: self.shutdown,
-            messaging_request_tx: self.messaging_request_tx,
+            protocols: self.protocols,
             hidden_service: self.hidden_service,
             peer_manager: self.peer_manager,
         }
@@ -131,19 +128,16 @@ where
 
     pub async fn spawn(self) -> Result<CommsNode, CommsBuilderError> {
         let BuiltCommsNode {
-            connection_manager,
+            mut connection_manager,
             connection_manager_requester,
             connection_manager_event_tx,
             connectivity_manager,
             connectivity_requester,
             messaging_pipeline,
-            messaging_request_tx,
-            inbound_message_rx,
             node_identity,
             shutdown,
             peer_manager,
-            messaging,
-            messaging_event_tx,
+            mut protocols,
             hidden_service,
         } = self;
 
@@ -163,34 +157,48 @@ where
             "Your node's public address is '{}'",
             node_identity.public_address()
         );
-        let messaging_pipeline = messaging_pipeline.ok_or(CommsBuilderError::MessagingPiplineNotProvided)?;
 
+        let mut complete_signals = Vec::new();
         let events_stream = connection_manager_event_tx.subscribe();
-        let conn_man_shutdown_signal = connection_manager.complete_signal();
-
-        let executor = runtime::current_executor();
+        complete_signals.push(connection_manager.complete_signal());
 
         // Connectivity manager
-        executor.spawn(connectivity_manager.create().run());
-        executor.spawn(connection_manager.run());
+        task::spawn(connectivity_manager.create().run());
 
-        // Spawn messaging protocol
-        let messaging_signal = messaging.complete_signal();
-        executor.spawn(messaging.run());
+        let mut messaging_event_tx = None;
+        if let Some(messaging_pipeline) = messaging_pipeline {
+            let (messaging, notifier, messaging_request_tx, inbound_message_rx, messaging_event_sender) =
+                initialize_messaging(
+                    node_identity.clone(),
+                    peer_manager.clone(),
+                    connection_manager_requester.clone(),
+                    shutdown.to_signal(),
+                );
+            messaging_event_tx = Some(messaging_event_sender);
+            protocols.add(&[messaging::MESSAGING_PROTOCOL.clone()], notifier);
+            // Spawn messaging protocol
+            complete_signals.push(messaging.complete_signal());
+            task::spawn(messaging.run());
 
-        // Spawn inbound pipeline
-        let bounded_executor = BoundedExecutor::new(executor.clone(), messaging_pipeline.max_concurrent_inbound_tasks);
-        let inbound = pipeline::Inbound::new(
-            bounded_executor,
-            inbound_message_rx,
-            messaging_pipeline.inbound,
-            shutdown.to_signal(),
-        );
-        executor.spawn(inbound.run());
+            // Spawn inbound pipeline
+            let bounded_executor =
+                BoundedExecutor::new(runtime::current(), messaging_pipeline.max_concurrent_inbound_tasks);
+            let inbound = pipeline::Inbound::new(
+                bounded_executor,
+                inbound_message_rx,
+                messaging_pipeline.inbound,
+                shutdown.to_signal(),
+            );
+            task::spawn(inbound.run());
 
-        // Spawn outbound pipeline
-        let outbound = pipeline::Outbound::new(executor.clone(), messaging_pipeline.outbound, messaging_request_tx);
-        executor.spawn(outbound.run());
+            // Spawn outbound pipeline
+            let outbound =
+                pipeline::Outbound::new(runtime::current(), messaging_pipeline.outbound, messaging_request_tx);
+            task::spawn(outbound.run());
+        }
+
+        connection_manager.set_protocols(protocols);
+        task::spawn(connection_manager.run());
 
         let listening_addr = Self::wait_listening(events_stream).await?;
 
@@ -202,9 +210,9 @@ where
             listening_addr,
             node_identity,
             peer_manager,
-            messaging_event_tx,
+            messaging_event_tx: messaging_event_tx.unwrap_or_else(|| broadcast::channel(1).0),
             hidden_service,
-            complete_signals: vec![conn_man_shutdown_signal, messaging_signal],
+            complete_signals,
         })
     }
 
@@ -216,11 +224,6 @@ where
     /// Return a cloned atomic reference of the NodeIdentity
     pub fn node_identity(&self) -> Arc<NodeIdentity> {
         Arc::clone(&self.node_identity)
-    }
-
-    /// Return a subscription to OMS events. This will emit events sent _after_ this subscription was created.
-    pub fn subscribe_messaging_events(&self) -> messaging::MessagingEventReceiver {
-        self.messaging_event_tx.subscribe()
     }
 
     /// Return an owned copy of a ConnectionManagerRequester. Used to initiate connections to peers.
@@ -298,11 +301,6 @@ impl CommsNode {
         self.messaging_event_tx.subscribe()
     }
 
-    /// Return a clone of the of the messaging event Sender to allow for other services to create subscriptions
-    pub fn message_event_sender(&self) -> messaging::MessagingEventSender {
-        self.messaging_event_tx.clone()
-    }
-
     /// Return an owned copy of a ConnectionManagerRequester. Used to initiate connections to peers.
     pub fn connection_manager(&self) -> ConnectionManagerRequester {
         self.connection_manager_requester.clone()
@@ -324,4 +322,35 @@ impl CommsNode {
         self.shutdown.trigger().expect("Shutdown failed to trigger signal");
         CommsShutdown::new(self.complete_signals)
     }
+}
+
+fn initialize_messaging(
+    node_identity: Arc<NodeIdentity>,
+    peer_manager: Arc<PeerManager>,
+    connection_manager_requester: ConnectionManagerRequester,
+    shutdown_signal: ShutdownSignal,
+) -> (
+    messaging::MessagingProtocol,
+    ProtocolNotifier<Substream>,
+    mpsc::Sender<messaging::MessagingRequest>,
+    mpsc::Receiver<InboundMessage>,
+    messaging::MessagingEventSender,
+)
+{
+    let (proto_tx, proto_rx) = mpsc::channel(consts::MESSAGING_PROTOCOL_EVENTS_BUFFER_SIZE);
+    let (messaging_request_tx, messaging_request_rx) = mpsc::channel(consts::MESSAGING_REQUEST_BUFFER_SIZE);
+    let (inbound_message_tx, inbound_message_rx) = mpsc::channel(consts::INBOUND_MESSAGE_BUFFER_SIZE);
+    let (event_tx, _) = broadcast::channel(consts::MESSAGING_EVENTS_BUFFER_SIZE);
+    let messaging = MessagingProtocol::new(
+        connection_manager_requester,
+        peer_manager,
+        node_identity,
+        proto_rx,
+        messaging_request_rx,
+        event_tx.clone(),
+        inbound_message_tx,
+        shutdown_signal,
+    );
+
+    (messaging, proto_tx, messaging_request_tx, inbound_message_rx, event_tx)
 }

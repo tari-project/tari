@@ -88,7 +88,7 @@ pub fn create(
         event_notifier,
         our_supported_protocols,
     );
-    runtime::current_executor().spawn(peer_actor.run());
+    runtime::current().spawn(peer_actor.run());
 
     Ok(peer_conn)
 }
