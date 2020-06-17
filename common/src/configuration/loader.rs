@@ -107,6 +107,11 @@ pub trait ConfigPath {
 pub trait NetworkConfigPath {
     /// Main configuration section
     fn main_key_prefix() -> &'static str;
+    /// Path for `use_network` key in config
+    fn network_config_key() -> String {
+        let main = <Self as NetworkConfigPath>::main_key_prefix();
+        format!("{}.use_network", main)
+    }
 }
 impl<C: NetworkConfigPath> ConfigPath for C {
     /// Returns the string representing the top level configuration category.
@@ -138,12 +143,11 @@ impl<C: NetworkConfigPath> ConfigPath for C {
     /// the result after calling `merge_config` would have the struct's `subkey` value set to 2. If `use_network`
     /// were omitted, `subkey` would be 1, and if `use_network` were set to `baz`, `subkey` would be 3.
     fn overload_key_prefix(config: &Config) -> Result<Option<String>, ConfigurationError> {
-        let main = <Self as NetworkConfigPath>::main_key_prefix();
-        let network_key = format!("{}.use_network", main);
+        let network_key = Self::network_config_key();
         let network_val: Option<String> = config.get_str(network_key.as_str()).ok();
         if let Some(s) = network_val {
             let network: Network = s.parse()?;
-            Ok(Some(format!("{}.{}", main, network)))
+            Ok(Some(format!("{}.{}", Self::main_key_prefix(), network)))
         } else {
             Ok(None)
         }
