@@ -141,6 +141,7 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     socks,
     tor,
+    types::CommsSecretKey,
 };
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
@@ -154,7 +155,11 @@ use tari_wallet::{
     contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
     error::WalletError,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
-    storage::{connection_manager::run_migration_and_create_sqlite_connection, sqlite_db::WalletSqliteDatabase},
+    storage::{
+        connection_manager::run_migration_and_create_sqlite_connection,
+        database::WalletDatabase,
+        sqlite_db::WalletSqliteDatabase,
+    },
     testnet_utils::{
         broadcast_transaction,
         complete_sent_transaction,
@@ -2225,14 +2230,14 @@ pub unsafe extern "C" fn transport_type_destroy(transport: *mut TariTransportTyp
 /// ## Arguments
 /// `public_address` - The public address char array pointer. This is the address that the wallet advertises publicly to
 /// peers
-/// `listener_address` - The listener address char array pointer. This is the address that inbound peer
+/// `transport_type` - TariTransportType that specifies the type of comms transport to be used.
 /// connections are moved to after initial connection. Default if null is 0.0.0.0:7898 which will accept connections
 /// from all IP address on port 7898
 /// `database_name` - The database name char array pointer. This is the unique name of this
-/// wallet's database `database_path` - The database path char array pointer which. This is the folder path where the
+/// wallet's database
+/// `database_path` - The database path char array pointer which. This is the folder path where the
 /// database files will be created and the application has write access to
-/// `secret_key` - The TariSecretKey pointer. This is the secret key corresponding to the Public key that represents
-/// this node on the Tari comms network
+/// `discovery_timeout_in_secs`: specify how long the Discovery Timeout for the wallet is.
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -2248,7 +2253,6 @@ pub unsafe extern "C" fn comms_config_create(
     transport_type: *const TariTransportType,
     database_name: *const c_char,
     datastore_path: *const c_char,
-    secret_key: *mut TariPrivateKey,
     discovery_timeout_in_secs: c_ulonglong,
     error_out: *mut c_int,
 ) -> *mut TariCommsConfig
@@ -2284,15 +2288,49 @@ pub unsafe extern "C" fn comms_config_create(
     let datastore_path = PathBuf::from(datastore_path_string);
 
     let dht_database_path = datastore_path.join("dht.db");
+
+    // Check to see if we have a comms private key stored in the Sqlite database. If not generate a new one.
+    let sql_database_path = datastore_path
+        .join(database_name_string.clone())
+        .with_extension("sqlite3");
+    let connection = run_migration_and_create_sqlite_connection(&sql_database_path)
+        .map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Error creating Sqlite Connection in Wallet: {:?}", e
+            );
+            e
+        })
+        .expect("Could not open Sqlite db");
+    let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection));
+
+    let comms_secret_key = match Runtime::new() {
+        Ok(mut rt) => {
+            let secret_key = match rt.block_on(wallet_backend.get_comms_secret_key()) {
+                Ok(sk) => sk,
+                Err(e) => {
+                    error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                    return ptr::null_mut();
+                },
+            };
+            match secret_key {
+                None => CommsSecretKey::random(&mut OsRng),
+                Some(sk) => sk,
+            }
+        },
+        Err(e) => {
+            error = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
     let public_address = public_address_str.parse::<Multiaddr>();
 
     match public_address {
         Ok(public_address) => {
-            let ni = NodeIdentity::new(
-                (*secret_key).clone(),
-                public_address,
-                PeerFeatures::COMMUNICATION_CLIENT,
-            );
+            let ni = NodeIdentity::new(comms_secret_key, public_address, PeerFeatures::COMMUNICATION_CLIENT);
             match ni {
                 Ok(ni) => {
                     let config = TariCommsConfig {
@@ -2305,6 +2343,7 @@ pub unsafe extern "C" fn comms_config_create(
                         dht: DhtConfig {
                             discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
                             database_url: DbConnectionUrl::File(dht_database_path),
+                            auto_join: true,
                             ..Default::default()
                         },
                         // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
@@ -2327,6 +2366,58 @@ pub unsafe extern "C" fn comms_config_create(
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
+        },
+    }
+}
+
+/// Set the Comms Secret Key for an existing TariCommsConfig. Usually this key is maintained by the backend but if it is
+/// required to set a specific new one this function can be used.
+///
+/// ## Arguments
+/// `comms_config` - TariCommsConfig to be updated
+/// `secret_key` - The TariSecretKey pointer. This is the secret key corresponding to the Public key that represents
+/// this node on the Tari comms network
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// None
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn comms_config_set_secret_key(
+    comms_config: *mut TariCommsConfig,
+    secret_key: *const TariPrivateKey,
+    error_out: *mut c_int,
+)
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if comms_config.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("comms_config".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    }
+
+    if secret_key.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("secret_key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    }
+
+    match NodeIdentity::new(
+        (*secret_key).clone(),
+        (*comms_config).node_identity.public_address(),
+        PeerFeatures::COMMUNICATION_CLIENT,
+    ) {
+        Ok(ni) => {
+            (*comms_config).node_identity = Arc::new(ni);
+        },
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
         },
     }
 }
@@ -2458,19 +2549,19 @@ pub unsafe extern "C" fn wallet_create(
                     comms_config: (*config).clone(),
                     factories,
                     transaction_service_config: Some(TransactionServiceConfig {
-                        direct_send_timeout: (*config).dht.discovery_request_timeout.clone(),
+                        direct_send_timeout: (*config).dht.discovery_request_timeout,
                         ..Default::default()
                     }),
                 },
                 runtime,
-                wallet_backend,
+                wallet_backend.clone(),
                 transaction_backend.clone(),
                 output_manager_backend,
                 contacts_backend,
             );
 
             match w {
-                Ok(w) => {
+                Ok(mut w) => {
                     // Start Callback Handler
                     let callback_handler = CallbackHandler::new(
                         TransactionDatabase::new(transaction_backend),
@@ -2490,6 +2581,18 @@ pub unsafe extern "C" fn wallet_create(
                     );
 
                     w.runtime.spawn(callback_handler.start());
+
+                    // Persist the Comms Private Key provided to this function
+                    let wallet_db = WalletDatabase::new(wallet_backend);
+                    if let Err(e) = w
+                        .runtime
+                        .block_on(wallet_db.set_comms_private_key((*config).node_identity.secret_key().clone()))
+                    {
+                        error!(
+                            target: LOG_TARGET,
+                            "Unable to store Comms Secret Key in Wallet Backend DB: {:?}", e
+                        );
+                    }
 
                     Box::into_raw(Box::new(w))
                 },
@@ -4129,7 +4232,7 @@ pub unsafe extern "C" fn wallet_get_seed_words(wallet: *mut TariWallet, error_ou
         .runtime
         .block_on((*wallet).output_manager_service.get_seed_words())
     {
-        Ok(sw) => Box::into_raw(Box::new(TariSeedWords(sw.clone()))),
+        Ok(sw) => Box::into_raw(Box::new(TariSeedWords(sw))),
         Err(e) => {
             error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
@@ -4335,10 +4438,12 @@ mod test {
     use libc::{c_char, c_uchar, c_uint};
     use std::{
         ffi::CString,
+        path::Path,
         str::{from_utf8, FromStr},
         sync::Mutex,
         thread,
     };
+    use tari_comms::types::CommsPublicKey;
     use tari_core::transactions::{tari_amount::uT, types::PrivateKey};
     use tari_key_manager::mnemonic::Mnemonic;
     use tari_wallet::{
@@ -4841,11 +4946,10 @@ mod test {
                 transport_type_alice,
                 db_name_alice_str,
                 db_path_alice_str,
-                secret_key_alice,
                 20,
                 error_ptr,
             );
-
+            comms_config_set_secret_key(alice_config, secret_key_alice, error_ptr);
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
@@ -4876,10 +4980,10 @@ mod test {
                 transport_type_bob,
                 db_name_bob_str,
                 db_path_bob_str,
-                secret_key_bob,
                 20,
                 error_ptr,
             );
+            comms_config_set_secret_key(bob_config, secret_key_bob, error_ptr);
             let bob_wallet = wallet_create(
                 bob_config,
                 ptr::null(),
@@ -5262,6 +5366,110 @@ mod test {
             transport_type_destroy(transport_type_alice);
             transport_type_destroy(transport_type_bob);
             seed_words_destroy(seed_words);
+        }
+    }
+
+    #[test]
+    fn test_comms_private_key_persistence() {
+        let _ = env_logger::try_init();
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            let secret_key_alice = private_key_generate();
+            let public_key_alice = public_key_from_private_key(secret_key_alice.clone(), error_ptr);
+            let db_name = random_string(8);
+            let db_name_alice = CString::new(db_name.as_str()).unwrap();
+            let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice.clone()) as *const c_char;
+            let alice_temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+            let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
+            let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice.clone()) as *const c_char;
+            let transport_type_alice = transport_memory_create();
+            let address_alice = transport_memory_get_address(transport_type_alice, error_ptr);
+            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
+            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
+
+            let sql_database_path = Path::new(alice_temp_dir.path().to_str().unwrap())
+                .join(db_name)
+                .with_extension("sqlite3");
+            let connection =
+                run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
+            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone()));
+
+            let alice_config = comms_config_create(
+                address_alice_str,
+                transport_type_alice,
+                db_name_alice_str,
+                db_path_alice_str,
+                20,
+                error_ptr,
+            );
+
+            let mut runtime = Runtime::new().unwrap();
+            let stored_key = runtime.block_on(wallet_backend.get_comms_secret_key()).unwrap();
+
+            assert!(stored_key.is_none(), "No key should be stored yet");
+            let generated_public_key1 = (*alice_config).node_identity.public_key().clone();
+
+            comms_config_set_secret_key(alice_config, secret_key_alice, error_ptr);
+            assert_eq!(*error_ptr, 0, "No error expected");
+
+            assert_eq!(&(*public_key_alice), (*alice_config).node_identity.public_key());
+
+            let alice_config2 = comms_config_create(
+                address_alice_str,
+                transport_type_alice,
+                db_name_alice_str,
+                db_path_alice_str,
+                20,
+                error_ptr,
+            );
+            assert_ne!(&generated_public_key1, (*alice_config2).node_identity.public_key());
+
+            let alice_wallet = wallet_create(
+                alice_config,
+                ptr::null(),
+                received_tx_callback,
+                received_tx_reply_callback,
+                received_tx_finalized_callback,
+                broadcast_callback,
+                mined_callback,
+                direct_send_callback,
+                store_and_forward_send_callback,
+                tx_cancellation_callback,
+                base_node_sync_process_complete_callback,
+                error_ptr,
+            );
+
+            let stored_key = (*alice_wallet)
+                .runtime
+                .block_on(wallet_backend.get_comms_secret_key())
+                .unwrap()
+                .unwrap();
+            let public_stored_key = CommsPublicKey::from_secret_key(&stored_key);
+            assert_eq!(public_stored_key, (*public_key_alice));
+
+            wallet_destroy(alice_wallet);
+
+            let alice_config3 = comms_config_create(
+                address_alice_str,
+                transport_type_alice,
+                db_name_alice_str,
+                db_path_alice_str,
+                20,
+                error_ptr,
+            );
+            assert_eq!((*alice_config3).node_identity.public_key(), &(*public_key_alice));
+
+            string_destroy(db_name_alice_str as *mut c_char);
+            string_destroy(db_path_alice_str as *mut c_char);
+            string_destroy(address_alice_str as *mut c_char);
+            private_key_destroy(secret_key_alice);
+            public_key_destroy(public_key_alice);
+            transport_type_destroy(transport_type_alice);
+            comms_config_destroy(alice_config);
+            comms_config_destroy(alice_config2);
+            comms_config_destroy(alice_config3);
         }
     }
 }

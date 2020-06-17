@@ -32,6 +32,7 @@ use log::SetLoggerError;
 use serde_json::Error as SerdeJsonError;
 use tari_comms::{connectivity::ConnectivityError, multiaddr, peer_manager::PeerManagerError};
 use tari_comms_dht::store_forward::StoreAndForwardError;
+use tari_crypto::tari_utilities::hex::HexError;
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
 
 #[derive(Debug, Error)]
@@ -75,4 +76,5 @@ pub enum WalletStorageError {
     BlockingTaskSpawnError(String),
     /// The storage path was invalid unicode or not supported by the host OS
     InvalidUnicodePath,
+    HexError(HexError),
 }

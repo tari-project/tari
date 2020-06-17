@@ -84,6 +84,13 @@ table! {
     }
 }
 
+table! {
+    wallet_settings (key) {
+        key -> Text,
+        value -> Text,
+    }
+}
+
 allow_tables_to_appear_in_same_query!(
     completed_transactions,
     contacts,
@@ -93,4 +100,5 @@ allow_tables_to_appear_in_same_query!(
     outputs,
     peers,
     pending_transaction_outputs,
+    wallet_settings,
 );
