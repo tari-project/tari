@@ -66,7 +66,6 @@ async fn listen() -> Result<(), Box<dyn Error>> {
         event_tx.clone(),
         peer_manager.into(),
         node_identity,
-        vec![],
         shutdown.to_signal(),
     );
 
@@ -98,7 +97,7 @@ async fn smoke() {
     let expected_proto = ProtocolId::from_static(b"/tari/test-proto");
     let supported_protocols = vec![expected_proto.clone()];
     let peer_manager1 = build_peer_manager();
-    let listener = PeerListener::new(
+    let mut listener = PeerListener::new(
         ConnectionManagerConfig {
             listener_address: "/memory/0".parse().unwrap(),
             ..Default::default()
@@ -108,9 +107,9 @@ async fn smoke() {
         event_tx.clone(),
         peer_manager1.clone().into(),
         node_identity1.clone(),
-        supported_protocols.clone(),
         shutdown.to_signal(),
     );
+    listener.set_supported_protocols(supported_protocols.clone());
 
     let listener_fut = rt_handle.spawn(listener.run());
 
@@ -118,7 +117,7 @@ async fn smoke() {
     let noise_config2 = NoiseConfig::new(node_identity2.clone());
     let (mut request_tx, request_rx) = mpsc::channel(1);
     let peer_manager2 = build_peer_manager();
-    let dialer = Dialer::new(
+    let mut dialer = Dialer::new(
         ConnectionManagerConfig::default(),
         node_identity2.clone(),
         peer_manager2.clone().into(),
@@ -127,9 +126,9 @@ async fn smoke() {
         ConstantBackoff::new(Duration::from_millis(100)),
         request_rx,
         event_tx,
-        supported_protocols,
         shutdown.to_signal(),
     );
+    dialer.set_supported_protocols(supported_protocols.clone());
 
     let dialer_fut = rt_handle.spawn(dialer.run());
 
@@ -200,7 +199,7 @@ async fn banned() {
     let expected_proto = ProtocolId::from_static(b"/tari/test-proto");
     let supported_protocols = vec![expected_proto.clone()];
     let peer_manager1 = build_peer_manager();
-    let listener = PeerListener::new(
+    let mut listener = PeerListener::new(
         ConnectionManagerConfig {
             listener_address: "/memory/0".parse().unwrap(),
             ..Default::default()
@@ -210,9 +209,9 @@ async fn banned() {
         event_tx.clone(),
         peer_manager1.clone().into(),
         node_identity1.clone(),
-        supported_protocols.clone(),
         shutdown.to_signal(),
     );
+    listener.set_supported_protocols(supported_protocols.clone());
 
     let listener_fut = rt_handle.spawn(listener.run());
 
@@ -225,7 +224,7 @@ async fn banned() {
     let noise_config2 = NoiseConfig::new(node_identity2.clone());
     let (mut request_tx, request_rx) = mpsc::channel(1);
     let peer_manager2 = build_peer_manager();
-    let dialer = Dialer::new(
+    let mut dialer = Dialer::new(
         ConnectionManagerConfig::default(),
         node_identity2.clone(),
         peer_manager2.clone().into(),
@@ -234,9 +233,9 @@ async fn banned() {
         ConstantBackoff::new(Duration::from_millis(100)),
         request_rx,
         event_tx,
-        supported_protocols,
         shutdown.to_signal(),
     );
+    dialer.set_supported_protocols(supported_protocols);
 
     let dialer_fut = rt_handle.spawn(dialer.run());
 

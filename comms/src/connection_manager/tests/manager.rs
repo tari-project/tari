@@ -65,7 +65,6 @@ async fn connect_to_nonexistent_peer() {
         request_rx,
         node_identity,
         peer_manager.into(),
-        Protocols::new(),
         event_tx,
         shutdown.to_signal(),
     );
@@ -98,26 +97,31 @@ async fn dial_success() {
 
     // Setup connection manager 1
     let peer_manager1 = build_peer_manager();
+
+    let mut protocols = Protocols::new();
+    protocols.add([TEST_PROTO], proto_tx1);
     let mut conn_man1 = build_connection_manager(
         TestNodeConfig {
             node_identity: node_identity1.clone(),
             ..Default::default()
         },
         peer_manager1.clone(),
-        Protocols::new().add([TEST_PROTO], proto_tx1),
+        protocols,
         shutdown.to_signal(),
     );
 
     conn_man1.wait_until_listening().await.unwrap();
 
     let peer_manager2 = build_peer_manager();
+    let mut protocols = Protocols::new();
+    protocols.add([TEST_PROTO], proto_tx2);
     let mut conn_man2 = build_connection_manager(
         TestNodeConfig {
             node_identity: node_identity2.clone(),
             ..Default::default()
         },
         peer_manager2.clone(),
-        Protocols::new().add([TEST_PROTO], proto_tx2),
+        protocols,
         shutdown.to_signal(),
     );
     let mut subscription2 = conn_man2.get_event_subscription();

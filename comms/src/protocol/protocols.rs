@@ -27,6 +27,8 @@ use crate::{
 use futures::{channel::mpsc, SinkExt};
 use std::collections::HashMap;
 
+pub type ProtocolNotifier<TSubStream> = mpsc::Sender<ProtocolNotification<TSubStream>>;
+
 #[derive(Debug, Clone)]
 pub enum ProtocolEvent<TSubstream> {
     NewInboundSubstream(Box<NodeId>, TSubstream),
@@ -45,7 +47,7 @@ impl<TSubstream> ProtocolNotification<TSubstream> {
 }
 
 pub struct Protocols<TSubstream> {
-    protocols: HashMap<ProtocolId, mpsc::Sender<ProtocolNotification<TSubstream>>>,
+    protocols: HashMap<ProtocolId, ProtocolNotifier<TSubstream>>,
 }
 
 impl<TSubstream> Clone for Protocols<TSubstream> {
@@ -69,12 +71,7 @@ impl<TSubstream> Protocols<TSubstream> {
         Default::default()
     }
 
-    pub fn add<I: AsRef<[ProtocolId]>>(
-        mut self,
-        protocols: I,
-        notifier: mpsc::Sender<ProtocolNotification<TSubstream>>,
-    ) -> Self
-    {
+    pub fn add<I: AsRef<[ProtocolId]>>(&mut self, protocols: I, notifier: ProtocolNotifier<TSubstream>) -> &mut Self {
         self.protocols
             .extend(protocols.as_ref().iter().map(|p| (p.clone(), notifier.clone())));
         self
@@ -120,7 +117,8 @@ mod test {
             ProtocolId::from_static(b"/tari/test/1"),
             ProtocolId::from_static(b"/tari/test/2"),
         ];
-        let protocols = Protocols::<()>::new().add(&protos, tx);
+        let mut protocols = Protocols::<()>::new();
+        protocols.add(&protos, tx);
 
         assert!(protocols.get_supported_protocols().iter().all(|p| protos.contains(p)));
     }
@@ -129,7 +127,8 @@ mod test {
     async fn notify() {
         let (tx, mut rx) = mpsc::channel(1);
         let protos = [ProtocolId::from_static(b"/tari/test/1")];
-        let mut protocols = Protocols::<()>::new().add(&protos, tx);
+        let mut protocols = Protocols::<()>::new();
+        protocols.add(&protos, tx);
 
         protocols
             .notify(

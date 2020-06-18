@@ -31,6 +31,6 @@ pub use tokio_macros::test_basic;
 
 /// Return the current tokio executor. Panics if the tokio runtime is not started.
 #[inline]
-pub fn current_executor() -> runtime::Handle {
+pub fn current() -> runtime::Handle {
     runtime::Handle::current()
 }

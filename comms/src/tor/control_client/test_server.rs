@@ -36,7 +36,7 @@ pub async fn spawn() -> (Multiaddr, State, MemorySocket) {
 
     let server = TorControlPortTestServer::new(socket_in);
     let state = server.get_shared_state();
-    runtime::current_executor().spawn(server.run());
+    runtime::current().spawn(server.run());
 
     (addr, state, socket_out)
 }

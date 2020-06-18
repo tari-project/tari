@@ -99,7 +99,7 @@ impl Yamux {
         let (incoming_tx, incoming_rx) = mpsc::channel(10);
         let stream = yamux::into_stream(connection).boxed();
         let incoming = IncomingWorker::new(stream, incoming_tx, shutdown.to_signal());
-        runtime::current_executor().spawn(incoming.run());
+        runtime::current().spawn(incoming.run());
         IncomingSubstreams::new(incoming_rx, counter, shutdown)
     }
 
