@@ -44,6 +44,7 @@ pub use blockchain_database::{
     fetch_header,
     fetch_headers,
     fetch_target_difficulties,
+    fetch_tip_header,
     is_stxo,
     is_utxo,
     BlockAddResult,

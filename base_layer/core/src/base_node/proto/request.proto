@@ -35,6 +35,8 @@ message BaseNodeServiceRequest {
         FetchMmrNodeCount fetch_mmr_node_count = 13;
         // Indicates a FetchMmrNodes request.
         FetchMmrNodes fetch_mmr_nodes = 14;
+        // Indicates a FetchTxos request.
+        HashOutputs fetch_txos = 15;
     }
 }
 
@@ -60,4 +62,5 @@ message FetchMmrNodes{
     MmrTree tree = 1;
     uint32 pos = 2;
     uint32 count = 3;
+    uint64 hist_height = 4;
 }

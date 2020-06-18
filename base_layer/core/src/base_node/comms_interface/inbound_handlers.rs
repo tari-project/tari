@@ -200,6 +200,15 @@ where T: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::TransactionOutputs(utxos))
             },
+            NodeCommsRequest::FetchTxos(txo_hashes) => {
+                let mut txos = Vec::<TransactionOutput>::new();
+                for hash in txo_hashes {
+                    if let Ok(Some(txo)) = async_db::fetch_txo(self.blockchain_db.clone(), hash.clone()).await {
+                        txos.push(txo);
+                    }
+                }
+                Ok(NodeCommsResponse::TransactionOutputs(txos))
+            },
             NodeCommsRequest::FetchBlocks(block_nums) => {
                 let mut blocks = Vec::<HistoricalBlock>::with_capacity(block_nums.len());
                 for block_num in block_nums {
@@ -288,10 +297,18 @@ where T: BlockchainBackend + 'static
                     async_db::fetch_mmr_node_count(self.blockchain_db.clone(), tree.clone(), *height).await?;
                 Ok(NodeCommsResponse::MmrNodeCount(node_count))
             },
-            NodeCommsRequest::FetchMmrNodes(tree, pos, count) => {
+            NodeCommsRequest::FetchMmrNodes(tree, pos, count, hist_height) => {
                 let mut added = Vec::<Vec<u8>>::with_capacity(*count as usize);
                 let mut deleted = Bitmap::create();
-                match async_db::fetch_mmr_nodes(self.blockchain_db.clone(), tree.clone(), *pos, *count).await {
+                match async_db::fetch_mmr_nodes(
+                    self.blockchain_db.clone(),
+                    tree.clone(),
+                    *pos,
+                    *count,
+                    Some(*hist_height),
+                )
+                .await
+                {
                     Ok(mmr_nodes) => {
                         for (index, (leaf_hash, deletion_status)) in mmr_nodes.into_iter().enumerate() {
                             added.push(leaf_hash);
