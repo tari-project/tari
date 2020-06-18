@@ -26,13 +26,13 @@ use crate::{
     bounded_executor::BoundedExecutor,
     builder::consts,
     connection_manager::{ConnectionManager, ConnectionManagerEvent, ConnectionManagerRequester},
-    connectivity::{ConnectivityManager, ConnectivityRequester},
+    connectivity::{ConnectivityEventRx, ConnectivityManager, ConnectivityRequester},
     message::InboundMessage,
     multiaddr::Multiaddr,
     multiplexing::Substream,
     peer_manager::{NodeIdentity, PeerManager},
     pipeline,
-    protocol::{messaging, messaging::MessagingProtocol, ProtocolNotifier, Protocols},
+    protocol::{messaging, messaging::MessagingProtocol, ProtocolNotificationTx, Protocols},
     runtime,
     runtime::task,
     tor,
@@ -272,8 +272,19 @@ pub struct CommsNode {
 }
 
 impl CommsNode {
+    /// Get a subscription to `ConnectionManagerEvent`s
     pub fn subscribe_connection_manager_events(&self) -> broadcast::Receiver<Arc<ConnectionManagerEvent>> {
         self.connection_manager_event_tx.subscribe()
+    }
+
+    /// Get a subscription to `ConnectivityEvent`s
+    pub fn subscribe_connectivity_events(&self) -> ConnectivityEventRx {
+        self.connectivity_requester.subscribe_event_stream()
+    }
+
+    /// Return a subscription to OMS events. This will emit events sent _after_ this subscription was created.
+    pub fn subscribe_messaging_events(&self) -> messaging::MessagingEventReceiver {
+        self.messaging_event_tx.subscribe()
     }
 
     /// Return a cloned atomic reference of the PeerManager
@@ -294,11 +305,6 @@ impl CommsNode {
     /// Return the Ip/Tcp address that this node is listening on
     pub fn hidden_service(&self) -> Option<&tor::HiddenService> {
         self.hidden_service.as_ref()
-    }
-
-    /// Return a subscription to OMS events. This will emit events sent _after_ this subscription was created.
-    pub fn subscribe_messaging_events(&self) -> messaging::MessagingEventReceiver {
-        self.messaging_event_tx.subscribe()
     }
 
     /// Return an owned copy of a ConnectionManagerRequester. Used to initiate connections to peers.
@@ -331,7 +337,7 @@ fn initialize_messaging(
     shutdown_signal: ShutdownSignal,
 ) -> (
     messaging::MessagingProtocol,
-    ProtocolNotifier<Substream>,
+    ProtocolNotificationTx<Substream>,
     mpsc::Sender<messaging::MessagingRequest>,
     mpsc::Receiver<InboundMessage>,
     messaging::MessagingEventSender,

@@ -34,6 +34,7 @@ use tari_comms::{
     peer_manager::{NodeIdentity, Peer, PeerManagerError},
     pipeline,
     pipeline::SinkService,
+    protocol::Protocols,
     tor,
     transports::{MemoryTransport, SocksTransport, TcpWithTorTransport, Transport},
     utils::cidr::parse_cidrs,
@@ -41,6 +42,7 @@ use tari_comms::{
     CommsBuilderError,
     CommsNode,
     PeerManager,
+    Substream,
 };
 use tari_comms_dht::{Dht, DhtBuilder, DhtConfig, DhtInitializationError};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
@@ -194,6 +196,7 @@ pub async fn initialize_comms<TSink>(
     config: CommsConfig,
     connector: InboundDomainConnector<TSink>,
     seed_peers: Vec<Peer>,
+    protocols: Protocols<Substream>,
 ) -> Result<(CommsNode, Dht), CommsInitializationError>
 where
     TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
@@ -209,6 +212,7 @@ where
         TransportType::Memory { listener_address } => {
             debug!(target: LOG_TARGET, "Building in-memory comms stack");
             let comms = builder
+                .with_protocols(protocols)
                 .with_transport(MemoryTransport)
                 .with_listener_address(listener_address.clone());
             configure_comms_and_dht(comms, config, connector, seed_peers).await

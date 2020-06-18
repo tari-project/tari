@@ -43,8 +43,9 @@ use tokio::{sync::broadcast, time};
 const LOG_TARGET: &str = "comms::connectivity::requester";
 
 pub type ConnectivityEventRx = broadcast::Receiver<Arc<ConnectivityEvent>>;
+pub type ConnectivityEventTx = broadcast::Sender<Arc<ConnectivityEvent>>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ConnectivityEvent {
     PeerDisconnected(NodeId),
     ManagedPeerDisconnected(NodeId),
@@ -108,11 +109,11 @@ impl ConnectivitySelection {
 #[derive(Clone)]
 pub struct ConnectivityRequester {
     sender: mpsc::Sender<ConnectivityRequest>,
-    event_tx: broadcast::Sender<Arc<ConnectivityEvent>>,
+    event_tx: ConnectivityEventTx,
 }
 
 impl ConnectivityRequester {
-    pub fn new(sender: mpsc::Sender<ConnectivityRequest>, event_tx: broadcast::Sender<Arc<ConnectivityEvent>>) -> Self {
+    pub fn new(sender: mpsc::Sender<ConnectivityRequest>, event_tx: ConnectivityEventTx) -> Self {
         Self { sender, event_tx }
     }
 

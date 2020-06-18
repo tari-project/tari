@@ -627,7 +627,6 @@ fn propagate_and_forward_invalid_block() {
             mock_accum_difficulty_validator.clone(),
         )
         .start(&mut runtime, temp_dir.path().join("bob").to_str().unwrap());
-    let mock_validator = MockValidator::new(true);
     let (alice_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity)
         .with_peers(vec![bob_node_identity.clone(), carol_node_identity.clone()])

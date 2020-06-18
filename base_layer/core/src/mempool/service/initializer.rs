@@ -32,14 +32,16 @@ use crate::{
             outbound_interface::OutboundMempoolServiceInterface,
             service::{MempoolService, MempoolStreams},
         },
+        sync_protocol::MempoolSyncProtocol,
         MempoolServiceConfig,
     },
     transactions::{proto::types::Transaction as ProtoTransaction, transaction::Transaction},
 };
-use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, future, Future, Stream, StreamExt};
+use futures::{channel::mpsc, future, Future, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
 use tari_broadcast_channel::bounded;
+use tari_comms::{connectivity::ConnectivityEventRx, protocol::ProtocolNotificationRx, Substream};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
@@ -64,6 +66,8 @@ pub struct MempoolServiceInitializer<T> {
     inbound_message_subscription_factory: Arc<SubscriptionFactory>,
     mempool: Mempool<T>,
     config: MempoolServiceConfig,
+    protocol_notifier: Option<ProtocolNotificationRx<Substream>>,
+    connectivity_events: Option<ConnectivityEventRx>,
 }
 
 impl<T> MempoolServiceInitializer<T>
@@ -74,12 +78,16 @@ where T: BlockchainBackend
         inbound_message_subscription_factory: Arc<SubscriptionFactory>,
         mempool: Mempool<T>,
         config: MempoolServiceConfig,
+        protocol_notifier: ProtocolNotificationRx<Substream>,
+        connectivity_events: ConnectivityEventRx,
     ) -> Self
     {
         Self {
             inbound_message_subscription_factory,
             mempool,
             config,
+            protocol_notifier: Some(protocol_notifier),
+            connectivity_events: Some(connectivity_events),
         }
     }
 
@@ -155,21 +163,37 @@ where T: BlockchainBackend + 'static
         let inbound_response_stream = self.inbound_response_stream();
         let inbound_transaction_stream = self.inbound_transaction_stream();
         // Connect MempoolOutboundServiceHandle to MempoolService
-        let (outbound_tx_sender_service, outbound_tx_stream) = futures_mpsc_channel_unbounded();
+        let (outbound_tx_sender, outbound_tx_stream) = mpsc::unbounded();
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
         let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
         let (mempool_state_event_publisher, mempool_state_event_subscriber) = bounded(100, 6);
         let outbound_mp_interface =
-            OutboundMempoolServiceInterface::new(outbound_request_sender_service, outbound_tx_sender_service);
+            OutboundMempoolServiceInterface::new(outbound_request_sender_service, outbound_tx_sender);
         let local_mp_interface = LocalMempoolService::new(local_request_sender_service, mempool_state_event_subscriber);
         let config = self.config;
-        let mempool = self.mempool.clone();
-        let inbound_handlers =
-            MempoolInboundHandlers::new(mempool_state_event_publisher, mempool, outbound_mp_interface.clone());
+        let inbound_handlers = MempoolInboundHandlers::new(
+            mempool_state_event_publisher,
+            self.mempool.clone(),
+            outbound_mp_interface.clone(),
+        );
 
         // Register handle to OutboundMempoolServiceInterface before waiting for handles to be ready
         handles_fut.register(outbound_mp_interface);
         handles_fut.register(local_mp_interface);
+
+        executor.spawn(
+            MempoolSyncProtocol::new(
+                config,
+                self.protocol_notifier
+                    .take()
+                    .expect("MempoolService initialized without a protocol_notifier"),
+                self.connectivity_events
+                    .take()
+                    .expect("MempoolService initialized without a connectivity_events"),
+                self.mempool.clone(),
+            )
+            .run(),
+        );
 
         executor.spawn(async move {
             let handles = handles_fut.await;

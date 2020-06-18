@@ -30,7 +30,7 @@ mod negotiation;
 pub use negotiation::ProtocolNegotiation;
 
 mod protocols;
-pub use protocols::{ProtocolEvent, ProtocolNotification, ProtocolNotifier, Protocols};
+pub use protocols::{ProtocolEvent, ProtocolNotification, ProtocolNotificationRx, ProtocolNotificationTx, Protocols};
 
 pub mod messaging;
 

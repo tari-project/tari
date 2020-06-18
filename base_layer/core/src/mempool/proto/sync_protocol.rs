@@ -20,26 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod connection_stats;
-
-mod config;
-pub use config::ConnectivityConfig;
-
-mod connection_pool;
-
-mod error;
-pub use error::ConnectivityError;
-
-mod manager;
-pub(crate) use manager::ConnectivityManager;
-pub use manager::ConnectivityStatus;
-
-mod requester;
-pub(crate) use requester::ConnectivityRequest;
-pub use requester::{ConnectivityEvent, ConnectivityEventRx, ConnectivityEventTx, ConnectivityRequester};
-
-mod selection;
-pub use selection::ConnectivitySelection;
-
-#[cfg(test)]
-mod test;
+impl super::TransactionItem {
+    pub fn empty() -> Self {
+        Self { transaction: None }
+    }
+}
