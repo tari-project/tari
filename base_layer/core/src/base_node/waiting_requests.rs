@@ -47,8 +47,8 @@ impl<T> WaitingRequests<T> {
     }
 
     /// Insert a new waiting request.
-    pub async fn insert(&self, key: RequestKey, reply_tx: Option<OneshotSender<T>>) {
-        self.requests.write().await.insert(key, reply_tx);
+    pub async fn insert(&self, key: RequestKey, reply_tx: OneshotSender<T>) {
+        self.requests.write().await.insert(key, Some(reply_tx));
     }
 
     /// Remove the waiting request corresponding to the provided key.

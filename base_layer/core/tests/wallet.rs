@@ -307,7 +307,7 @@ fn wallet_base_node_integration_test() {
     let (mut state_event_sender, state_event_receiver): (Publisher<_>, Subscriber<_>) = bounded(1, 113);
     miner.subscribe_to_node_state_events(state_event_receiver);
     miner.subscribe_to_mempool_state_events(base_node.local_mp_interface.get_mempool_state_event_stream());
-    let miner_utxo_stream = miner.get_utxo_receiver_channel().fuse();
+    let mut miner_utxo_stream = miner.get_utxo_receiver_channel().fuse();
     runtime.spawn(async move {
         miner.mine().await;
     });
@@ -316,7 +316,7 @@ fn wallet_base_node_integration_test() {
         // Simulate block sync
         assert!(state_event_sender.send(StateEvent::BlocksSynchronized).await.is_ok());
         // Wait for miner to finish mining block 1
-        assert!(event_stream_next(miner_utxo_stream, Duration::from_secs(20))
+        assert!(event_stream_next(&mut miner_utxo_stream, Duration::from_secs(20))
             .await
             .is_some());
         // Check that the mined block was submitted to the base node service and the block was added to the blockchain
@@ -333,7 +333,7 @@ fn wallet_base_node_integration_test() {
                 }
             }
         }
-        assert!(found_tx_outputs == transaction.body.outputs().len());
+        assert_eq!(found_tx_outputs, transaction.body.outputs().len());
     });
 
     runtime.block_on(async {

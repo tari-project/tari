@@ -60,9 +60,7 @@ const LOG_TARGET: &str = "c::bn::mempool_service::initializer";
 const SUBSCRIPTION_LABEL: &str = "Mempool";
 
 /// Initializer for the Mempool service and service future.
-pub struct MempoolServiceInitializer<T>
-where T: BlockchainBackend
-{
+pub struct MempoolServiceInitializer<T> {
     inbound_message_subscription_factory: Arc<SubscriptionFactory>,
     mempool: Mempool<T>,
     config: MempoolServiceConfig,

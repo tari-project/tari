@@ -26,7 +26,7 @@ use crate::{
         proto,
         service::service::{BaseNodeService, BaseNodeServiceConfig, BaseNodeStreams},
     },
-    blocks::Block,
+    blocks::NewBlock,
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
     mempool::Mempool,
@@ -55,9 +55,7 @@ const LOG_TARGET: &str = "c::bn::service::initializer";
 const SUBSCRIPTION_LABEL: &str = "Base Node";
 
 /// Initializer for the Base Node service handle and service future.
-pub struct BaseNodeServiceInitializer<T>
-where T: BlockchainBackend
-{
+pub struct BaseNodeServiceInitializer<T> {
     inbound_message_subscription_factory: Arc<SubscriptionFactory>,
     blockchain_db: BlockchainDatabase<T>,
     mempool: Mempool<T>,
@@ -103,15 +101,15 @@ where T: BlockchainBackend
     }
 
     /// Create a stream of 'New Block` messages
-    fn inbound_block_stream(&self) -> impl Stream<Item = DomainMessage<Block>> {
+    fn inbound_block_stream(&self) -> impl Stream<Item = DomainMessage<NewBlock>> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::NewBlock, SUBSCRIPTION_LABEL)
             .filter_map(extract_block)
     }
 }
 
-async fn extract_block(msg: Arc<PeerMessage>) -> Option<DomainMessage<Block>> {
-    match msg.decode_message::<shared_protos::core::Block>() {
+async fn extract_block(msg: Arc<PeerMessage>) -> Option<DomainMessage<NewBlock>> {
+    match msg.decode_message::<shared_protos::core::NewBlock>() {
         Err(e) => {
             warn!(
                 target: LOG_TARGET,
@@ -120,10 +118,10 @@ async fn extract_block(msg: Arc<PeerMessage>) -> Option<DomainMessage<Block>> {
             );
             None
         },
-        Ok(block) => {
-            let block = match Block::try_from(block) {
+        Ok(new_block) => {
+            let block = match NewBlock::try_from(new_block) {
                 Err(e) => {
-                    let origin = &msg.source_peer.public_key;
+                    let origin = &msg.source_peer.node_id;
                     warn!(
                         target: LOG_TARGET,
                         "Inbound block message from {} was ill-formed. {}", origin, e

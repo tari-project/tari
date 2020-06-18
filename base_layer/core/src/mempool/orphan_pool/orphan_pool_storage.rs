@@ -37,9 +37,7 @@ pub const LOG_TARGET: &str = "c::mp::orphan_pool::orphan_pool_storage";
 /// The Orphan Pool contains all the received transactions that attempt to spend UTXOs that don't exist. These UTXOs
 /// might exist in the future if these transactions are from a series or set of transactions that need to be processed
 /// in a specific order. Some of these transactions might still be constrained by pending time-locks.
-pub struct OrphanPoolStorage<T>
-where T: BlockchainBackend
-{
+pub struct OrphanPoolStorage<T> {
     config: OrphanPoolConfig,
     txs_by_signature: TtlCache<Signature, Arc<Transaction>>,
     validator: Validator<Transaction, T>,

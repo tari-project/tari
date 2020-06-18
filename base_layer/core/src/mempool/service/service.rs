@@ -433,7 +433,7 @@ async fn handle_outbound_request(
     match send_result {
         Ok(_) => {
             // Spawn timeout and wait for matching response to arrive
-            waiting_requests.insert(request_key, Some(reply_tx)).await;
+            waiting_requests.insert(request_key, reply_tx).await;
             // Spawn timeout for waiting_request
             spawn_request_timeout(timeout_sender, request_key, config.request_timeout);
             Ok(())

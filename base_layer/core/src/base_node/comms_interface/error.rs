@@ -40,4 +40,6 @@ pub enum CommsInterfaceError {
     /// Failure in broadcast DHT middleware
     BroadcastFailed,
     DifficultyAdjustmentManagerError(ConsensusManagerError),
+    #[error(msg_embedded, non_std, no_from)]
+    InvalidPeerResponse(String),
 }

@@ -22,8 +22,9 @@
 
 #[allow(dead_code)]
 mod helpers;
+use crate::helpers::block_builders::construct_chained_blocks;
 use croaring::Bitmap;
-use futures::join;
+use futures::{join, StreamExt};
 use helpers::{
     block_builders::{
         append_block,
@@ -44,13 +45,14 @@ use helpers::{
     },
 };
 use std::time::Duration;
+use tari_comms::protocol::messaging::MessagingEvent;
 use tari_core::{
     base_node::{
         comms_interface::{BlockEvent, Broadcast, CommsInterfaceError},
         consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
         service::BaseNodeServiceConfig,
     },
-    blocks::BlockHeader,
+    blocks::{BlockHeader, NewBlock},
     chain_storage::{BlockAddResult, DbTransaction, MmrTree},
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     mempool::MempoolServiceConfig,
@@ -70,7 +72,7 @@ use tari_core::{
 use tari_crypto::tari_utilities::hash::Hashable;
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::services::liveness::LivenessConfig;
-use tari_test_utils::random;
+use tari_test_utils::{random, unpack_enum};
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
@@ -381,13 +383,14 @@ fn request_and_response_fetch_blocks_with_hashes() {
 }
 
 #[test]
-fn propagate_and_forward_valid_block() {
+fn propagate_and_forward_many_valid_blocks() {
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
     let factories = CryptoFactories::default();
-    // Alice will propagate block to bob, bob will receive it, verify it and then propagate it to carol and dan. Dan and
-    // Carol will also try to propagate the block to each other, as they dont know that bob sent it to the other node.
-    // These duplicate blocks will be discarded and wont be propagated again.
+    // Alice will propagate a number of block hashes to bob, bob will receive it, request the full block, verify and
+    // then propagate the hash to carol and dan. Dan and Carol will also try to propagate the block hashes to each
+    // other, but the block should not be re-requested. These duplicate blocks will be discarded and wont be
+    // propagated again.
     //              /-> carol <-\
     //             /             |
     // alice -> bob              |
@@ -406,7 +409,7 @@ fn propagate_and_forward_valid_block() {
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let (mut alice_node, rules) = BaseNodeBuilder::new(network)
+    let (alice_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity.clone())
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("alice").to_str().unwrap());
@@ -428,11 +431,92 @@ fn propagate_and_forward_valid_block() {
 
     wait_until_online(&mut runtime, &[&alice_node, &bob_node, &carol_node, &dan_node]);
 
-    let bob_block_event_stream = bob_node.local_nci.get_block_event_stream_fused();
-    let carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
-    let dan_block_event_stream = dan_node.local_nci.get_block_event_stream_fused();
+    let mut bob_block_event_stream = bob_node.local_nci.get_block_event_stream_fused();
+    let mut carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
+    let mut dan_block_event_stream = dan_node.local_nci.get_block_event_stream_fused();
 
-    let block1 = append_block(
+    let blocks = construct_chained_blocks(&alice_node.blockchain_db, block0, &rules.consensus_constants(), 5);
+
+    runtime.block_on(async {
+        for block in &blocks {
+            alice_node
+                .outbound_nci
+                .propagate_block(NewBlock::from(block), vec![])
+                .await
+                .unwrap();
+
+            let bob_block_event_fut = event_stream_next(&mut bob_block_event_stream, Duration::from_millis(20000));
+            let carol_block_event_fut = event_stream_next(&mut carol_block_event_stream, Duration::from_millis(20000));
+            let dan_block_event_fut = event_stream_next(&mut dan_block_event_stream, Duration::from_millis(20000));
+            let (bob_block_event, carol_block_event, dan_block_event) =
+                join!(bob_block_event_fut, carol_block_event_fut, dan_block_event_fut);
+            let block_hash = block.hash();
+
+            if let BlockEvent::Verified((received_block, _, _)) = &*bob_block_event.unwrap().unwrap() {
+                assert_eq!(received_block.hash(), block_hash);
+            } else {
+                panic!("Bob's node did not receive and validate the expected block");
+            }
+            if let BlockEvent::Verified((received_block, _block_add_result, _)) = &*carol_block_event.unwrap().unwrap()
+            {
+                assert_eq!(received_block.hash(), block_hash);
+            } else {
+                panic!("Carol's node did not receive and validate the expected block");
+            }
+            if let BlockEvent::Verified((received_block, _block_add_result, _)) = &*dan_block_event.unwrap().unwrap() {
+                assert_eq!(received_block.hash(), block_hash);
+            } else {
+                panic!("Dan's node did not receive and validate the expected block");
+            }
+        }
+
+        alice_node.comms.shutdown().await;
+        bob_node.comms.shutdown().await;
+        carol_node.comms.shutdown().await;
+        dan_node.comms.shutdown().await;
+    });
+}
+
+#[test]
+fn propagate_and_forward_invalid_block_hash() {
+    // Alice will propagate a "made up" block hash to Bob, Bob will request the block from Alice. Alice will not be able
+    // to provide the block and so Bob will not propagate the hash further to Carol.
+    // alice -> bob -> carol
+
+    let mut runtime = Runtime::new().unwrap();
+    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let factories = CryptoFactories::default();
+
+    let alice_node_identity = random_node_identity();
+    let bob_node_identity = random_node_identity();
+    let carol_node_identity = random_node_identity();
+    let network = Network::LocalNet;
+    let consensus_constants = ConsensusConstantsBuilder::new(network)
+        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .build();
+    let (block0, _) = create_genesis_block(&factories, &consensus_constants);
+    let rules = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants)
+        .with_block(block0.clone())
+        .build();
+    let (alice_node, rules) = BaseNodeBuilder::new(network)
+        .with_node_identity(alice_node_identity.clone())
+        .with_consensus_manager(rules)
+        .start(&mut runtime, temp_dir.path().join("alice").to_str().unwrap());
+    let (bob_node, rules) = BaseNodeBuilder::new(network)
+        .with_node_identity(bob_node_identity.clone())
+        .with_peers(vec![alice_node_identity])
+        .with_consensus_manager(rules)
+        .start(&mut runtime, temp_dir.path().join("bob").to_str().unwrap());
+    let (carol_node, rules) = BaseNodeBuilder::new(network)
+        .with_node_identity(carol_node_identity.clone())
+        .with_peers(vec![bob_node_identity.clone()])
+        .with_consensus_manager(rules)
+        .start(&mut runtime, temp_dir.path().join("carol").to_str().unwrap());
+
+    wait_until_online(&mut runtime, &[&alice_node, &bob_node, &carol_node]);
+
+    let mut block1 = append_block(
         &alice_node.blockchain_db,
         &block0,
         vec![],
@@ -440,43 +524,53 @@ fn propagate_and_forward_valid_block() {
         1.into(),
     )
     .unwrap();
-    let block1_hash = block1.hash();
+    // Create unknown block hash
+    block1.header.height = 0;
+
+    let mut alice_message_events = alice_node.comms.subscribe_messaging_events().fuse();
+    let mut bob_message_events = bob_node.comms.subscribe_messaging_events().fuse();
+    let mut carol_message_events = carol_node.comms.subscribe_messaging_events().fuse();
 
     runtime.block_on(async {
-        // Alice will start the propagation. Bob, Carol and Dan will propagate based on the logic in their inbound
-        // handle_block handlers
-        assert!(alice_node
+        alice_node
             .outbound_nci
-            .propagate_block(block1.clone(), vec![])
+            .propagate_block(NewBlock::from(&block1), vec![])
             .await
-            .is_ok());
+            .unwrap();
 
-        let bob_block_event_fut = event_stream_next(bob_block_event_stream, Duration::from_millis(20000));
-        let carol_block_event_fut = event_stream_next(carol_block_event_stream, Duration::from_millis(20000));
-        let dan_block_event_fut = event_stream_next(dan_block_event_stream, Duration::from_millis(20000));
-        let (bob_block_event, carol_block_event, dan_block_event) =
-            join!(bob_block_event_fut, carol_block_event_fut, dan_block_event_fut);
-
-        if let BlockEvent::Verified((received_block, _, _)) = &*bob_block_event.unwrap().unwrap() {
-            assert_eq!(received_block.hash(), block1_hash);
-        } else {
-            panic!("Bob's node did not receive and validate the expected block");
-        }
-        if let BlockEvent::Verified((received_block, _block_add_result, _)) = &*carol_block_event.unwrap().unwrap() {
-            assert_eq!(received_block.hash(), block1_hash);
-        } else {
-            panic!("Carol's node did not receive and validate the expected block");
-        }
-        if let BlockEvent::Verified((received_block, _block_add_result, _)) = &*dan_block_event.unwrap().unwrap() {
-            assert_eq!(received_block.hash(), block1_hash);
-        } else {
-            panic!("Dan's node did not receive and validate the expected block");
-        }
+        // Alice propagated to Bob
+        let msg_event = event_stream_next(&mut alice_message_events, Duration::from_secs(10))
+            .await
+            .unwrap()
+            .unwrap();
+        unpack_enum!(MessagingEvent::MessageSent(_a) = &*msg_event);
+        // Bob received the invalid hash
+        let msg_event = event_stream_next(&mut bob_message_events, Duration::from_secs(10))
+            .await
+            .unwrap()
+            .unwrap();
+        unpack_enum!(MessagingEvent::MessageReceived(_a, _b) = &*msg_event);
+        // Sent the request for the block to Alice
+        let msg_event = event_stream_next(&mut bob_message_events, Duration::from_secs(10))
+            .await
+            .unwrap()
+            .unwrap();
+        unpack_enum!(MessagingEvent::MessageSent(_a) = &*msg_event);
+        // Bob received a response from Alice
+        let msg_event = event_stream_next(&mut bob_message_events, Duration::from_secs(10))
+            .await
+            .unwrap()
+            .unwrap();
+        unpack_enum!(MessagingEvent::MessageReceived(node_id, _a) = &*msg_event);
+        assert_eq!(&**node_id, alice_node.node_identity.node_id());
+        // Checking a negative: Bob should not have propagated this hash to Carol. If Bob does, this assertion will be
+        // flaky.
+        let msg_event = event_stream_next(&mut carol_message_events, Duration::from_millis(500)).await;
+        assert!(msg_event.is_none());
 
         alice_node.comms.shutdown().await;
         bob_node.comms.shutdown().await;
         carol_node.comms.shutdown().await;
-        dan_node.comms.shutdown().await;
     });
 }
 
@@ -506,9 +600,9 @@ fn propagate_and_forward_invalid_block() {
         .with_block(block0.clone())
         .build();
     let stateless_block_validator = StatelessBlockValidator::new(rules.clone(), factories.clone());
-    let mock_validator = MockValidator::new(true);
     let mock_accum_difficulty_validator = MockAccumDifficultyValidator {};
 
+    let mock_validator = MockValidator::new(false);
     let (dan_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(dan_node_identity.clone())
         .with_consensus_manager(rules)
@@ -533,7 +627,8 @@ fn propagate_and_forward_invalid_block() {
             mock_accum_difficulty_validator.clone(),
         )
         .start(&mut runtime, temp_dir.path().join("bob").to_str().unwrap());
-    let (mut alice_node, rules) = BaseNodeBuilder::new(network)
+    let mock_validator = MockValidator::new(true);
+    let (alice_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity)
         .with_peers(vec![bob_node_identity.clone(), carol_node_identity.clone()])
         .with_consensus_manager(rules)
@@ -541,8 +636,9 @@ fn propagate_and_forward_invalid_block() {
 
     wait_until_online(&mut runtime, &[&alice_node, &bob_node, &carol_node, &dan_node]);
 
-    // Make block 1 invalid
-    let mut block1 = append_block(
+    // This is a valid block, however Bob, Carol and Dan's block validator is set to always reject the block
+    // after fetching it.
+    let block1 = append_block(
         &alice_node.blockchain_db,
         &block0,
         vec![],
@@ -550,22 +646,22 @@ fn propagate_and_forward_invalid_block() {
         1.into(),
     )
     .unwrap();
-    block1.header.height = 0;
     let block1_hash = block1.hash();
+
     runtime.block_on(async {
-        let bob_block_event_stream = bob_node.local_nci.get_block_event_stream_fused();
-        let carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
-        let dan_block_event_stream = dan_node.local_nci.get_block_event_stream_fused();
+        let mut bob_block_event_stream = bob_node.local_nci.get_block_event_stream_fused();
+        let mut carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
+        let mut dan_block_event_stream = dan_node.local_nci.get_block_event_stream_fused();
 
         assert!(alice_node
             .outbound_nci
-            .propagate_block(block1.clone(), vec![])
+            .propagate_block(NewBlock::from(&block1), vec![])
             .await
             .is_ok());
 
-        let bob_block_event_fut = event_stream_next(bob_block_event_stream, Duration::from_millis(20000));
-        let carol_block_event_fut = event_stream_next(carol_block_event_stream, Duration::from_millis(20000));
-        let dan_block_event_fut = event_stream_next(dan_block_event_stream, Duration::from_millis(5000));
+        let bob_block_event_fut = event_stream_next(&mut bob_block_event_stream, Duration::from_millis(20000));
+        let carol_block_event_fut = event_stream_next(&mut carol_block_event_stream, Duration::from_millis(20000));
+        let dan_block_event_fut = event_stream_next(&mut dan_block_event_stream, Duration::from_millis(5000));
         let (bob_block_event, carol_block_event, dan_block_event) =
             join!(bob_block_event_fut, carol_block_event_fut, dan_block_event_fut);
 
@@ -739,7 +835,7 @@ fn local_submit_block() {
         BaseNodeBuilder::new(network).start(&mut runtime, temp_dir.path().to_str().unwrap());
 
     let db = &node.blockchain_db;
-    let event_stream = node.local_nci.get_block_event_stream_fused();
+    let mut event_stream = node.local_nci.get_block_event_stream_fused();
     let block0 = db.fetch_block(0).unwrap().block().clone();
     let block1 = db
         .calculate_mmr_roots(chain_block(&block0, vec![], &consensus_manager.consensus_constants()))
@@ -751,7 +847,7 @@ fn local_submit_block() {
             .await
             .is_ok());
 
-        let event = event_stream_next(event_stream, Duration::from_millis(20000)).await;
+        let event = event_stream_next(&mut event_stream, Duration::from_millis(20000)).await;
         if let BlockEvent::Verified((received_block, result, _)) = &*event.unwrap().unwrap() {
             assert_eq!(received_block.hash(), block1.hash());
             assert_eq!(*result, BlockAddResult::Ok);

@@ -22,7 +22,7 @@
 
 use super::core as proto;
 use crate::{
-    blocks::{Block, BlockHeader, NewBlockHeaderTemplate, NewBlockTemplate},
+    blocks::{blockheader::BLOCK_HASH_LENGTH, Block, BlockHeader, NewBlock, NewBlockHeaderTemplate, NewBlockTemplate},
     chain_storage::HistoricalBlock,
     proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
     proto::utils::try_convert_all,
@@ -243,6 +243,33 @@ impl From<NewBlockHeaderTemplate> for proto::NewBlockHeaderTemplate {
             prev_hash: header.prev_hash,
             total_kernel_offset: header.total_kernel_offset.to_vec(),
             pow: Some(proto::ProofOfWork::from(header.pow)),
+        }
+    }
+}
+
+//---------------------------------- NewBlock --------------------------------------------//
+
+impl TryFrom<proto::NewBlock> for NewBlock {
+    type Error = String;
+
+    fn try_from(new_block: proto::NewBlock) -> Result<Self, Self::Error> {
+        let block_hash = new_block.block_hash;
+        if block_hash.len() != BLOCK_HASH_LENGTH {
+            return Err(format!(
+                "Block hash has an incorrect length. (len={}, expected={})",
+                block_hash.len(),
+                BLOCK_HASH_LENGTH
+            ));
+        }
+
+        Ok(Self { block_hash })
+    }
+}
+
+impl From<NewBlock> for proto::NewBlock {
+    fn from(new_block: NewBlock) -> Self {
+        Self {
+            block_hash: new_block.block_hash,
         }
     }
 }

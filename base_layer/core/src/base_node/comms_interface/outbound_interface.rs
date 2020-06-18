@@ -22,7 +22,7 @@
 
 use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
-    blocks::{blockheader::BlockHeader, Block},
+    blocks::{blockheader::BlockHeader, NewBlock},
     chain_storage::{ChainMetadata, HistoricalBlock, MmrTree},
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
@@ -41,7 +41,7 @@ pub const LOG_TARGET: &str = "c::bn::comms_interface::outbound_interface";
 #[derive(Clone)]
 pub struct OutboundNodeCommsInterface {
     request_sender: SenderService<(NodeCommsRequest, Option<NodeId>), Result<NodeCommsResponse, CommsInterfaceError>>,
-    block_sender: UnboundedSender<(Block, Vec<NodeId>)>,
+    block_sender: UnboundedSender<(NewBlock, Vec<NodeId>)>,
 }
 
 impl OutboundNodeCommsInterface {
@@ -51,7 +51,7 @@ impl OutboundNodeCommsInterface {
             (NodeCommsRequest, Option<NodeId>),
             Result<NodeCommsResponse, CommsInterfaceError>,
         >,
-        block_sender: UnboundedSender<(Block, Vec<NodeId>)>,
+        block_sender: UnboundedSender<(NewBlock, Vec<NodeId>)>,
     ) -> Self
     {
         Self {
@@ -268,13 +268,13 @@ impl OutboundNodeCommsInterface {
 
     /// Transmit a block to remote base nodes, excluding the provided peers.
     pub async fn propagate_block(
-        &mut self,
-        block: Block,
+        &self,
+        new_block: NewBlock,
         exclude_peers: Vec<NodeId>,
     ) -> Result<(), CommsInterfaceError>
     {
         self.block_sender
-            .unbounded_send((block, exclude_peers))
+            .unbounded_send((new_block, exclude_peers))
             .map_err(|_| CommsInterfaceError::BroadcastFailed)
     }
 

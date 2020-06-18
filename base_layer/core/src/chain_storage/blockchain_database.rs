@@ -93,7 +93,7 @@ pub struct MutableMmrState {
 /// for example.
 /// The `GenesisBlockValidator` is used to check that the chain builds on the correct genesis block.
 /// The `ChainTipValidator` is used to check that the accounting balance and MMR states of the chain state is valid.
-pub struct Validators<B: BlockchainBackend> {
+pub struct Validators<B> {
     block: Arc<Validator<Block, B>>,
     orphan: Arc<StatelessValidator<Block>>,
     accum_difficulty: Arc<Validator<Difficulty, B>>,
@@ -114,7 +114,7 @@ impl<B: BlockchainBackend> Validators<B> {
     }
 }
 
-impl<B: BlockchainBackend> Clone for Validators<B> {
+impl<B> Clone for Validators<B> {
     fn clone(&self) -> Self {
         Validators {
             block: Arc::clone(&self.block),
@@ -246,9 +246,7 @@ macro_rules! fetch {
 /// let db = BlockchainDatabase::new(db_backend, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
 /// // Do stuff with db
 /// ```
-pub struct BlockchainDatabase<T>
-where T: BlockchainBackend
-{
+pub struct BlockchainDatabase<T> {
     db: Arc<RwLock<T>>,
     validators: Validators<T>,
     config: BlockchainDatabaseConfig,
@@ -556,9 +554,15 @@ where T: BlockchainBackend
 
     /// Attempt to fetch the block corresponding to the provided hash from the main chain, if it cannot be found then
     /// the block will be searched in the orphan block pool.
-    pub fn fetch_block_with_hash(&self, hash: HashOutput) -> Result<Option<HistoricalBlock>, ChainStorageError> {
+    pub fn fetch_block_with_hash(&self, hash: BlockHash) -> Result<Option<HistoricalBlock>, ChainStorageError> {
         let db = self.db_read_access()?;
         fetch_block_with_hash(&*db, hash)
+    }
+
+    /// Returns true if this block exists in the chain, or is orphaned.
+    pub fn block_exists(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
+        let db = self.db_read_access()?;
+        block_exists(&*db, hash)
     }
 
     /// Atomically commit the provided transaction to the database backend. This function does not update the metadata.
@@ -606,7 +610,7 @@ pub fn fetch_headers<T: BlockchainBackend>(
 
 fn fetch_header_with_block_hash<T: BlockchainBackend>(
     db: &T,
-    hash: HashOutput,
+    hash: BlockHash,
 ) -> Result<BlockHeader, ChainStorageError>
 {
     fetch!(db, hash, BlockHash)
@@ -629,7 +633,7 @@ fn fetch_stxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<Transact
     fetch!(db, hash, SpentOutput)
 }
 
-fn fetch_orphan<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<Block, ChainStorageError> {
+fn fetch_orphan<T: BlockchainBackend>(db: &T, hash: BlockHash) -> Result<Block, ChainStorageError> {
     fetch!(db, hash, OrphanBlock)
 }
 
@@ -773,7 +777,7 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBl
 
 fn fetch_block_with_hash<T: BlockchainBackend>(
     db: &T,
-    hash: HashOutput,
+    hash: BlockHash,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError>
 {
     if let Ok(header) = fetch_header_with_block_hash(db, hash.clone()) {
@@ -783,6 +787,11 @@ fn fetch_block_with_hash<T: BlockchainBackend>(
         return Ok(Some(HistoricalBlock::new(block, 0, vec![])));
     }
     Ok(None)
+}
+
+fn block_exists<T: BlockchainBackend>(db: &T, hash: BlockHash) -> Result<bool, ChainStorageError> {
+    let exists = db.contains(&DbKey::BlockHash(hash.clone()))? || db.contains(&DbKey::OrphanBlock(hash))?;
+    Ok(exists)
 }
 
 fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<u64, ChainStorageError> {
@@ -1409,9 +1418,7 @@ fn log_error<T>(req: DbKey, err: ChainStorageError) -> Result<T, ChainStorageErr
     Err(err)
 }
 
-impl<T> Clone for BlockchainDatabase<T>
-where T: BlockchainBackend
-{
+impl<T> Clone for BlockchainDatabase<T> {
     fn clone(&self) -> Self {
         BlockchainDatabase {
             db: self.db.clone(),

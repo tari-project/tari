@@ -47,9 +47,7 @@ pub const LOG_TARGET: &str = "c::mp::mempool";
 /// The Mempool consists of an Unconfirmed Transaction Pool, Pending Pool, Orphan Pool and Reorg Pool and is responsible
 /// for managing and maintaining all unconfirmed transactions have not yet been included in a block, and transactions
 /// that have recently been included in a block.
-pub struct MempoolStorage<T>
-where T: BlockchainBackend
-{
+pub struct MempoolStorage<T> {
     blockchain_db: BlockchainDatabase<T>,
     unconfirmed_pool: UnconfirmedPool,
     orphan_pool: OrphanPool<T>,
