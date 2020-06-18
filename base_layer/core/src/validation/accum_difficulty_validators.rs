@@ -47,7 +47,7 @@ impl<B: BlockchainBackend> Validation<Difficulty, B> for AccumDifficultyValidato
 /// stronger than the chain tip. This will simplify testing where small testing blockchains need to be constructed as
 /// the accumulated difficulty of preceding blocks don't have to have an increasing accumulated difficulty.
 #[derive(Clone)]
-pub struct MockAccumDifficultyValidator {}
+pub struct MockAccumDifficultyValidator;
 
 impl<B: BlockchainBackend> Validation<Difficulty, B> for MockAccumDifficultyValidator {
     fn validate(&self, accum_difficulty: &Difficulty, db: &B) -> Result<(), ValidationError> {

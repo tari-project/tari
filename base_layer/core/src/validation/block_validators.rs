@@ -261,9 +261,11 @@ fn check_duplicate_transactions_inputs(block: &Block) -> Result<(), ValidationEr
 /// This function checks that all inputs in the blocks are valid UTXO's to be spend
 fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
     for utxo in block.body.inputs() {
-        if !(utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT)) &&
-            !(is_utxo(db, utxo.hash())).map_err(|e| ValidationError::CustomError(e.to_string()))?
-        {
+        if utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT) {
+            continue;
+        }
+
+        if !is_utxo(db, utxo.hash()).map_err(ValidationError::custom_error)? {
             warn!(
                 target: LOG_TARGET,
                 "Block validation failed because the block has invalid input: {}", utxo
@@ -277,7 +279,7 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result
 // This function checks that the inputs and outputs do not exist in the STxO set.
 fn check_not_stxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
     for input in block.body.inputs() {
-        if is_stxo(db, input.hash()).map_err(|e| ValidationError::CustomError(e.to_string()))? {
+        if is_stxo(db, input.hash()).map_err(ValidationError::custom_error)? {
             // we dont want to log this as a node or wallet might retransmit a transaction
             debug!(
                 target: LOG_TARGET,

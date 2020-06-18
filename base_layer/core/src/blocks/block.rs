@@ -113,7 +113,8 @@ impl Block {
         if coinbase_counter != 1 {
             warn!(
                 target: LOG_TARGET,
-                "More then one coinbase found in block {}",
+                "{} coinbases found in block {}. Only a single coinbase is permitted.",
+                coinbase_counter,
                 self.hash().to_hex()
             );
             return Err(BlockValidationError::InvalidCoinbase);
