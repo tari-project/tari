@@ -59,6 +59,8 @@
 mod block_sync;
 mod events_and_states;
 mod forward_block_sync;
+mod helpers;
+mod horizon_state_sync;
 mod listening;
 mod shutdown_state;
 mod starting_state;
@@ -67,6 +69,8 @@ mod waiting;
 pub use block_sync::{BestChainMetadataBlockSyncInfo, BlockSyncConfig, BlockSyncInfo, BlockSyncStrategy};
 pub use events_and_states::{BaseNodeState, StateEvent, StatusInfo, SyncStatus};
 pub use forward_block_sync::ForwardBlockSyncInfo;
+pub use helpers::SyncPeerConfig;
+pub use horizon_state_sync::{synchronize_horizon_state, HorizonSyncConfig};
 pub use listening::{ListeningData, ListeningInfo};
 pub use shutdown_state::Shutdown;
 pub use starting_state::Starting;

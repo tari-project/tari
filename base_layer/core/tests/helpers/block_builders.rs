@@ -232,6 +232,38 @@ pub fn append_block<B: BlockchainBackend>(
     Ok(block)
 }
 
+/// Create a new block with the provided transactions and add a coinbase output. The new MMR roots are calculated, and
+/// then the new block is added to the database. The newly created block is returned as the result.
+pub fn append_block_with_coinbase<B: BlockchainBackend>(
+    factories: &CryptoFactories,
+    db: &BlockchainDatabase<B>,
+    prev_block: &Block,
+    txns: Vec<Transaction>,
+    consensus_manager: &ConsensusManager,
+    achieved_difficulty: Difficulty,
+) -> Result<Block, ChainStorageError>
+{
+    let height = prev_block.header.height + 1;
+    let coinbase_value = consensus_manager.emission_schedule().block_reward(height);
+    let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
+        &factories,
+        coinbase_value,
+        height + consensus_manager.consensus_constants().coinbase_lock_height(),
+    );
+    let template = chain_block_with_coinbase(
+        prev_block,
+        txns,
+        coinbase_utxo,
+        coinbase_kernel,
+        consensus_manager.consensus_constants(),
+    );
+    let mut block = db.calculate_mmr_roots(template)?;
+    block.header.nonce = OsRng.next_u64();
+    find_header_with_achieved_difficulty(&mut block.header, achieved_difficulty);
+    db.add_block(block.clone())?;
+    Ok(block)
+}
+
 /// Generate a new block using the given transaction schema and add it to the provided database.
 /// The blocks and UTXO vectors are also updated with the info from the new block.
 pub fn generate_new_block<B: BlockchainBackend>(
