@@ -2393,7 +2393,6 @@ fn transaction_cancellation_when_not_in_mempool() {
 
     let _ = alice_outbound_service.wait_call_count(1, Duration::from_secs(60));
     let _ = alice_outbound_service.pop_call().unwrap(); // Burn finalize messageSAF message
-
     runtime.block_on(async {
         let mut delay = delay_for(Duration::from_secs(60)).fuse();
         loop {
@@ -2530,6 +2529,7 @@ fn transaction_cancellation_when_not_in_mempool() {
                 event = alice_event_stream.select_next_some() => {
                     if let TransactionEvent::TransactionCancelled(_) = &*event.unwrap() {
                         cancelled = true;
+                        break;
                     }
                 },
                 () = delay => {
@@ -2785,10 +2785,8 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         .try_into()
         .unwrap();
 
-    for _ in 0..3 {
-        assert_eq!(bob_outbound_service.call_count(), 0, "Should be no more calls");
-        runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
-    }
+    runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+    assert_eq!(bob_outbound_service.call_count(), 0, "Should be no more calls");
 
     let (_bob2_ts, _, bob2_outbound_service, mut bob2_tx_sender, _, _, _, _) = setup_transaction_service_no_comms(
         &mut runtime,
@@ -2821,10 +2819,8 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         .try_into()
         .unwrap();
 
-    for _ in 0..3 {
-        assert_eq!(bob2_outbound_service.call_count(), 0, "Should be no more calls");
-        runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
-    }
+    runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+    assert_eq!(bob2_outbound_service.call_count(), 0, "Should be no more calls");
 
     // Test finalize is sent Direct Only.
     alice_outbound_service.set_behaviour(MockBehaviour {
@@ -2841,10 +2837,9 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
 
     let _ = alice_outbound_service.wait_call_count(1, Duration::from_secs(60));
     let _ = alice_outbound_service.pop_call().unwrap();
-    for _ in 0..3 {
-        assert_eq!(alice_outbound_service.call_count(), 0, "Should be no more calls");
-        runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
-    }
+
+    runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+    assert_eq!(alice_outbound_service.call_count(), 0, "Should be no more calls");
 
     // Now to repeat sending so we can test the SAF send of the finalize message
     let alice_total_available = 250000 * uT;
@@ -2897,7 +2892,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         .unwrap();
 
     alice_outbound_service.set_behaviour(MockBehaviour {
-        direct: ResponseType::Queued,
+        direct: ResponseType::Failed,
         broadcast: ResponseType::Queued,
     });
 
@@ -2908,8 +2903,12 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         )))
         .unwrap();
 
-    // Should be 2 messages sent, Direct and SAF
-    let _ = alice_outbound_service.wait_call_count(2, Duration::from_secs(60));
+    // Should be 1 SAF message
+    let _ = alice_outbound_service.wait_call_count(1, Duration::from_secs(60));
+    assert_eq!(alice_outbound_service.call_count(), 1);
+    let _ = alice_outbound_service.pop_call();
+    runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
+    assert_eq!(alice_outbound_service.call_count(), 0, "Should be no more calls2");
 }
 
 #[test]
