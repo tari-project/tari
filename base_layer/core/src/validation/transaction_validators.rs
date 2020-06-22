@@ -164,7 +164,7 @@ fn verify_not_stxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<()
 fn verify_inputs_are_utxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<(), ValidationError> {
     for input in tx.body.inputs() {
         if !(is_utxo(db, input.hash())).map_err(|e| ValidationError::CustomError(e.to_string()))? {
-            warn!(
+            debug!(
                 target: LOG_TARGET,
                 "Transaction validation failed due to unknown input: {}", input
             );
