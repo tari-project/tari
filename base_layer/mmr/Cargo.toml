@@ -13,7 +13,7 @@ derive-error = "0.0.4"
 digest = "0.8.0"
 log = "0.4"
 serde = { version = "1.0.97", features = ["derive"] }
-croaring =  "=0.3.9"
+croaring =  "=0.4.5"
 tari_storage = { path = "../../infrastructure/storage", version = "^0.1" }
 
 [dev-dependencies]
