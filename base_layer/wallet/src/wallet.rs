@@ -26,6 +26,7 @@ use crate::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
+        protocols::utxo_validation_protocol::UtxoValidationRetry,
         storage::database::OutputManagerBackend,
         OutputManagerServiceInitializer,
         TxId,
@@ -82,7 +83,7 @@ pub struct Wallet<T, U, V, W>
 where
     T: WalletBackend + 'static,
     U: TransactionBackend + Clone + 'static,
-    V: OutputManagerBackend + 'static,
+    V: OutputManagerBackend + Clone + 'static,
     W: ContactsBackend + 'static,
 {
     pub comms: CommsNode,
@@ -105,7 +106,7 @@ impl<T, U, V, W> Wallet<T, U, V, W>
 where
     T: WalletBackend + 'static,
     U: TransactionBackend + Clone + 'static,
-    V: OutputManagerBackend + 'static,
+    V: OutputManagerBackend + Clone + 'static,
     W: ContactsBackend + 'static,
 {
     pub fn new(
@@ -284,13 +285,13 @@ where
 
     /// Have all the wallet components that need to start a sync process with the set base node to confirm the wallets
     /// state is accurately reflected on the blockchain
-    pub fn sync_with_base_node(&mut self) -> Result<u64, WalletError> {
+    pub fn validate_utxos(&mut self, retries: UtxoValidationRetry) -> Result<u64, WalletError> {
         self.runtime
             .block_on(self.store_and_forward_requester.request_saf_messages_from_neighbours())?;
 
         let request_key = self
             .runtime
-            .block_on(self.output_manager_service.sync_with_base_node())?;
+            .block_on(self.output_manager_service.validate_utxos(retries))?;
         Ok(request_key)
     }
 

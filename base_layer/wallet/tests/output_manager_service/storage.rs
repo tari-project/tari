@@ -45,7 +45,7 @@ use tari_wallet::{
 use tempdir::TempDir;
 use tokio::runtime::Runtime;
 
-pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
+pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
     let mut runtime = Runtime::new().unwrap();
     let db = OutputManagerDatabase::new(backend);
     let factories = CryptoFactories::default();
@@ -349,7 +349,7 @@ pub fn test_output_manager_sqlite_db() {
     test_db_backend(OutputManagerSqliteDatabase::new(connection));
 }
 
-pub fn test_key_manager_crud<T: OutputManagerBackend + 'static>(backend: T) {
+pub fn test_key_manager_crud<T: OutputManagerBackend + Clone + 'static>(backend: T) {
     let mut runtime = Runtime::new().unwrap();
 
     let db = OutputManagerDatabase::new(backend);
@@ -400,7 +400,7 @@ pub fn test_key_manager_crud_sqlite_db() {
     test_key_manager_crud(OutputManagerSqliteDatabase::new(connection));
 }
 
-pub async fn test_short_term_encumberance<T: OutputManagerBackend + 'static>(backend: T) {
+pub async fn test_short_term_encumberance<T: OutputManagerBackend + Clone + 'static>(backend: T) {
     let factories = CryptoFactories::default();
 
     let db = OutputManagerDatabase::new(backend);

@@ -104,6 +104,7 @@ use tari_wallet::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
+        protocols::utxo_validation_protocol::UtxoValidationRetry,
         storage::sqlite_db::OutputManagerSqliteDatabase,
         OutputManagerServiceInitializer,
     },
@@ -225,7 +226,7 @@ impl NodeContainer {
                         let mut oms_handle_clone = wallet_output_handle.clone();
                         tokio::spawn(async move {
                             delay_for(Duration::from_secs(240)).await;
-                            let _ = oms_handle_clone.sync_with_base_node().await;
+                            let _ = oms_handle_clone.validate_utxos(UtxoValidationRetry::UntilSuccess).await;
                         });
                     },
                     Err(e) => warn!(target: LOG_TARGET, "Error adding output: {}", e),
@@ -559,12 +560,18 @@ where
         .set_base_node_public_key(base_node_public_key.clone())
         .await
         .expect("Problem setting local base node public key for transaction service.");
-    wallet_handles
+    let mut oms_handle = wallet_handles
         .get_handle::<OutputManagerHandle>()
-        .expect("OutputManagerService is not registered")
+        .expect("OutputManagerService is not registered");
+    oms_handle
         .set_base_node_public_key(base_node_public_key)
         .await
         .expect("Problem setting local base node public key for output manager service.");
+    // Start the Output Manager UTXO Validation
+    oms_handle
+        .validate_utxos(UtxoValidationRetry::UntilSuccess)
+        .await
+        .expect("Problem starting the Output Manager Service Utxo Valdation process");
 
     //---------------------------------- Base Node State Machine --------------------------------------------//
     let outbound_interface = base_node_handles
@@ -1158,7 +1165,7 @@ async fn register_wallet_services(
     ))
         // Wallet services
         .add_initializer(OutputManagerServiceInitializer::new(
-            OutputManagerServiceConfig::default(),
+            OutputManagerServiceConfig{ base_node_query_timeout: Duration::from_secs(120), ..Default::default() },
             subscription_factory.clone(),
             OutputManagerSqliteDatabase::new(wallet_db_conn.clone()),
             factories.clone(),

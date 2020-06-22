@@ -40,7 +40,6 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tari_broadcast_channel::bounded;
 use tari_comms::{
     message::EnvelopeBody,
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -120,7 +119,7 @@ use tempdir::TempDir;
 use tokio::{
     runtime,
     runtime::{Builder, Runtime},
-    sync::broadcast::channel,
+    sync::{broadcast, broadcast::channel},
     time::delay_for,
 };
 
@@ -202,7 +201,7 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
 {
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
 
-    let (oms_event_publisher, oms_event_subscriber) = bounded(100, 116);
+    let (oms_event_publisher, _) = broadcast::channel(200);
     let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock(100);
 
     let (ts_request_sender, ts_request_receiver) = reply_channel::unbounded();
@@ -225,12 +224,12 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
             oms_request_receiver,
             stream::empty(),
             OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
-            oms_event_publisher,
+            oms_event_publisher.clone(),
             factories.clone(),
         ))
         .unwrap();
 
-    let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_subscriber);
+    let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
 
     let ts_service = TransactionService::new(
         TransactionServiceConfig {

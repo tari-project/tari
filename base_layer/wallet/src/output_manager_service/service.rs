@@ -23,8 +23,9 @@
 use crate::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
-        error::OutputManagerError,
-        handle::{OutputManagerEvent, OutputManagerRequest, OutputManagerResponse},
+        error::{OutputManagerError, OutputManagerProtocolError},
+        handle::{OutputManagerEvent, OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse},
+        protocols::utxo_validation_protocol::{UtxoValidationProtocol, UtxoValidationRetry, UtxoValidationType},
         storage::{
             database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
             models::DbUnblindedOutput,
@@ -33,23 +34,15 @@ use crate::{
     },
     transaction_service::handle::TransactionServiceHandle,
     types::{HashDigest, KeyDigest},
-    util::futures::StateDelay,
 };
-use futures::{future::BoxFuture, pin_mut, stream::FuturesUnordered, FutureExt, SinkExt, Stream, StreamExt};
+use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{cmp, cmp::Ordering, collections::HashMap, convert::TryFrom, fmt, sync::Mutex, time::Duration};
-use tari_broadcast_channel::Publisher;
+use std::{cmp::Ordering, collections::HashMap, fmt, sync::Arc, time::Duration};
 use tari_comms::types::CommsPublicKey;
-use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
+use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
-    base_node::proto::{
-        base_node as BaseNodeProto,
-        base_node::{
-            base_node_service_request::Request as BaseNodeRequestProto,
-            base_node_service_response::Response as BaseNodeResponseProto,
-        },
-    },
+    base_node::proto::base_node as BaseNodeProto,
     transactions::{
         fee::Fee,
         tari_amount::MicroTari,
@@ -65,16 +58,17 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::{
-    keys::SecretKey as SecretKeyTrait,
-    tari_utilities::{hash::Hashable, hex::Hex},
-};
+use tari_crypto::keys::SecretKey as SecretKeyTrait;
 use tari_key_manager::{
     key_manager::KeyManager,
     mnemonic::{from_secret_key, MnemonicLanguage},
 };
-use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
+use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::reply_channel;
+use tokio::{
+    sync::{broadcast, Mutex},
+    task::JoinHandle,
+};
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
 
@@ -83,26 +77,19 @@ const LOG_TARGET: &str = "wallet::output_manager_service";
 /// outputs. When the outputs are detected on the blockchain the Transaction service will call this Service to confirm
 /// them to be moved to the spent and unspent output lists respectively.
 pub struct OutputManagerService<TBackend, BNResponseStream>
-where TBackend: OutputManagerBackend + 'static
+where TBackend: OutputManagerBackend + Clone + 'static
 {
-    config: OutputManagerServiceConfig,
+    resources: OutputManagerResources<TBackend>,
     key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
-    db: OutputManagerDatabase<TBackend>,
-    outbound_message_service: OutboundMessageRequester,
-    transaction_service: TransactionServiceHandle,
     request_stream:
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_response_stream: Option<BNResponseStream>,
-    factories: CryptoFactories,
-    base_node_public_key: Option<CommsPublicKey>,
-    pending_utxo_query_keys: HashMap<u64, Vec<Vec<u8>>>,
-    pending_revalidation_query_keys: HashMap<u64, Vec<Vec<u8>>>,
-    event_publisher: Publisher<OutputManagerEvent>,
+    base_node_response_publisher: broadcast::Sender<Arc<BaseNodeProto::BaseNodeServiceResponse>>,
 }
 
 impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream>
 where
-    TBackend: OutputManagerBackend,
+    TBackend: OutputManagerBackend + Clone + 'static,
     BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>,
 {
     #[allow(clippy::too_many_arguments)]
@@ -116,7 +103,7 @@ where
         >,
         base_node_response_stream: BNResponseStream,
         db: OutputManagerDatabase<TBackend>,
-        event_publisher: Publisher<OutputManagerEvent>,
+        event_publisher: OutputManagerEventSender,
         factories: CryptoFactories,
     ) -> Result<OutputManagerService<TBackend, BNResponseStream>, OutputManagerError>
     {
@@ -138,23 +125,28 @@ where
         // Pending Transactions.
         db.clear_short_term_encumberances().await?;
 
-        Ok(OutputManagerService {
+        let resources = OutputManagerResources {
             config,
+            db,
             outbound_message_service,
             transaction_service,
+            factories,
+            base_node_public_key: None,
+            event_publisher,
+        };
+
+        let (base_node_response_publisher, _) = broadcast::channel(50);
+
+        Ok(OutputManagerService {
+            resources,
             key_manager: Mutex::new(KeyManager::<PrivateKey, KeyDigest>::from(
                 key_manager_state.master_seed,
                 key_manager_state.branch_seed,
                 key_manager_state.primary_key_index,
             )),
-            db,
             request_stream: Some(request_stream),
             base_node_response_stream: Some(base_node_response_stream),
-            factories,
-            base_node_public_key: None,
-            pending_utxo_query_keys: HashMap::new(),
-            pending_revalidation_query_keys: HashMap::new(),
-            event_publisher,
+            base_node_response_publisher,
         })
     }
 
@@ -173,7 +165,8 @@ where
             .fuse();
         pin_mut!(base_node_response_stream);
 
-        let mut utxo_query_timeout_futures: FuturesUnordered<BoxFuture<'static, u64>> = FuturesUnordered::new();
+        let mut utxo_validation_handles: FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>> =
+            FuturesUnordered::new();
 
         info!(target: LOG_TARGET, "Output Manager Service started");
         loop {
@@ -181,7 +174,7 @@ where
                 request_context = request_stream.select_next_some() => {
                 trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
-                    let _ = reply_tx.send(self.handle_request(request, &mut utxo_query_timeout_futures).await.or_else(|resp| {
+                    let _ = reply_tx.send(self.handle_request(request, &mut utxo_validation_handles).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling request: {:?}", resp);
                         Err(resp)
                     })).or_else(|resp| {
@@ -199,19 +192,19 @@ where
                     });
 
                     if result.is_err() {
-                        let _ = self.event_publisher
+                        let _ = self.resources.event_publisher
                                 .send(OutputManagerEvent::Error(
                                     "Error handling Base Node Response message".to_string(),
                                 ))
-                                .await;
+                                ;
                     }
                 }
-                utxo_hash = utxo_query_timeout_futures.select_next_some() => {
-                    trace!(target: LOG_TARGET, "Handling Base Node Sync Timeout");
-                    let _ = self.handle_utxo_query_timeout(utxo_hash, &mut  utxo_query_timeout_futures).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling UTXO query timeout : {:?}", resp);
-                        Err(resp)
-                    });
+                join_result = utxo_validation_handles.select_next_some() => {
+                   trace!(target: LOG_TARGET, "UTXO Validation protocol has ended with result {:?}", join_result);
+                   match join_result {
+                        Ok(join_result_inner) => self.complete_utxo_validation_protocol(join_result_inner).await,
+                        Err(e) => error!(target: LOG_TARGET, "Error resolving UTXO Validation protocol: {:?}", e),
+                    };
                 }
                 complete => {
                     info!(target: LOG_TARGET, "Output manager service shutting down");
@@ -228,7 +221,7 @@ where
     async fn handle_request(
         &mut self,
         request: OutputManagerRequest,
-        utxo_query_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, u64>>,
+        utxo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
     ) -> Result<OutputManagerResponse, OutputManagerError>
     {
         trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
@@ -283,15 +276,14 @@ where
                     .collect();
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
             },
-            OutputManagerRequest::GetSeedWords => self.get_seed_words().map(OutputManagerResponse::SeedWords),
+            OutputManagerRequest::GetSeedWords => self.get_seed_words().await.map(OutputManagerResponse::SeedWords),
             OutputManagerRequest::SetBaseNodePublicKey(pk) => self
-                .set_base_node_public_key(pk, utxo_query_timeout_futures)
+                .set_base_node_public_key(pk, utxo_validation_handles)
                 .await
                 .map(|_| OutputManagerResponse::BaseNodePublicKeySet),
-            OutputManagerRequest::SyncWithBaseNode => self
-                .query_unspent_outputs_status(utxo_query_timeout_futures)
-                .await
-                .map(OutputManagerResponse::StartedBaseNodeSync),
+            OutputManagerRequest::ValidateUtxos(retries) => self
+                .validate_outputs(UtxoValidationType::Unspent, retries, utxo_validation_handles)
+                .map(OutputManagerResponse::UtxoValidationStarted),
             OutputManagerRequest::GetInvalidOutputs => {
                 let outputs = self
                     .fetch_invalid_outputs()
@@ -314,344 +306,86 @@ where
         response: BaseNodeProto::BaseNodeServiceResponse,
     ) -> Result<(), OutputManagerError>
     {
-        let request_key = response.request_key;
-
-        let response: Vec<tari_core::transactions::proto::types::TransactionOutput> = match response.response {
-            Some(BaseNodeResponseProto::TransactionOutputs(outputs)) => outputs.outputs,
-            _ => {
-                return Ok(());
-            },
-        };
-
-        let mut unspent_query_handled = false;
-        let mut invalid_query_handled = false;
-
-        // Check if the received key is in the pending UTXO query list to be handled
-        if let Some(queried_hashes) = self.pending_utxo_query_keys.remove(&request_key) {
+        // Publish this response to any protocols that are subscribed
+        if let Err(e) = self.base_node_response_publisher.send(Arc::new(response)) {
             trace!(
                 target: LOG_TARGET,
-                "Handling a Base Node Response for a Unspent Outputs request ({})",
-                request_key
-            );
-
-            // Construct a HashMap of all the unspent outputs
-            let unspent_outputs: Vec<DbUnblindedOutput> = self.db.get_unspent_outputs().await?;
-
-            let mut output_hashes = HashMap::new();
-            for uo in unspent_outputs.iter() {
-                let hash = uo.hash.clone();
-                if queried_hashes.iter().any(|h| &hash == h) {
-                    output_hashes.insert(hash.clone(), uo.clone());
-                }
-            }
-
-            // Go through all the returned UTXOs and if they are in the hashmap remove them
-            for output in response.iter() {
-                let response_hash = TransactionOutput::try_from(output.clone())
-                    .map_err(OutputManagerError::ConversionError)?
-                    .hash();
-
-                let _ = output_hashes.remove(&response_hash);
-            }
-
-            // If there are any remaining Unspent Outputs we will move them to the invalid collection
-            for (_k, v) in output_hashes {
-                // Get the transaction these belonged to so we can display the kernel signature of the transaction
-                // this output belonged to.
-
-                warn!(
-                    target: LOG_TARGET,
-                    "Output with value {} not returned from Base Node query and is thus being invalidated",
-                    v.unblinded_output.value
-                );
-                // If the output that is being invalidated has an associated TxId then get the kernel signature of
-                // the transaction and display for easier debugging
-                if let Some(tx_id) = self.db.invalidate_output(v).await? {
-                    if let Ok(transaction) = self.transaction_service.get_completed_transaction(tx_id).await {
-                        info!(
-                            target: LOG_TARGET,
-                            "Invalidated Output is from Transaction (TxId: {}) with message: {} and Kernel Signature: \
-                             {}",
-                            transaction.tx_id,
-                            transaction.message,
-                            transaction.transaction.body.kernels()[0]
-                                .excess_sig
-                                .get_signature()
-                                .to_hex()
-                        )
-                    }
-                } else {
-                    info!(
-                        target: LOG_TARGET,
-                        "Invalidated Output does not have an associated TxId so it is likely a Coinbase output lost \
-                         to a Re-Org"
-                    );
-                }
-            }
-            unspent_query_handled = true;
-            debug!(
-                target: LOG_TARGET,
-                "Handled Base Node response for Unspent Outputs Query {}", request_key
-            );
-        };
-
-        // Check if the received key is in the Invalid UTXO query list waiting to be handled
-        if self.pending_revalidation_query_keys.remove(&request_key).is_some() {
-            trace!(
-                target: LOG_TARGET,
-                "Handling a Base Node Response for a Invalid Outputs request ({})",
-                request_key
-            );
-            let invalid_outputs = self.db.get_invalid_outputs().await?;
-
-            for output in response.iter() {
-                let response_hash = TransactionOutput::try_from(output.clone())
-                    .map_err(OutputManagerError::ConversionError)?
-                    .hash();
-
-                if let Some(output) = invalid_outputs.iter().find(|o| o.hash == response_hash) {
-                    if self
-                        .db
-                        .revalidate_output(output.unblinded_output.spending_key.clone())
-                        .await
-                        .is_ok()
-                    {
-                        trace!(
-                            target: LOG_TARGET,
-                            "Output with value {} has been restored to a valid spendable output",
-                            output.unblinded_output.value
-                        );
-                    }
-                }
-            }
-            invalid_query_handled = true;
-            debug!(
-                target: LOG_TARGET,
-                "Handled Base Node response for Invalid Outputs Query {}", request_key
-            );
-        }
-
-        if unspent_query_handled || invalid_query_handled {
-            let _ = self
-                .event_publisher
-                .send(OutputManagerEvent::ReceiveBaseNodeResponse(request_key))
-                .await
-                .map_err(|e| {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Error sending event, usually because there are no subscribers: {:?}",
-                        e
-                    );
-                    e
-                });
-        }
-
-        Ok(())
-    }
-
-    /// Handle the timeout of a pending UTXO query.
-    pub async fn handle_utxo_query_timeout(
-        &mut self,
-        query_key: u64,
-        utxo_query_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, u64>>,
-    ) -> Result<(), OutputManagerError>
-    {
-        if let Some(hashes) = self.pending_utxo_query_keys.remove(&query_key) {
-            warn!(target: LOG_TARGET, "UTXO Unspent Outputs Query {} timed out", query_key);
-            self.query_outputs_status(utxo_query_timeout_futures, hashes, UtxoQueryType::UnspentOutputs)
-                .await?;
-        }
-
-        if let Some(hashes) = self.pending_revalidation_query_keys.remove(&query_key) {
-            warn!(target: LOG_TARGET, "UTXO Invalid Outputs Query {} timed out", query_key);
-            self.query_outputs_status(utxo_query_timeout_futures, hashes, UtxoQueryType::InvalidOutputs)
-                .await?;
-        }
-
-        let _ = self
-            .event_publisher
-            .send(OutputManagerEvent::BaseNodeSyncRequestTimedOut(query_key))
-            .await
-            .map_err(|e| {
-                trace!(
-                    target: LOG_TARGET,
-                    "Error sending event, usually because there are no subscribers: {:?}",
-                    e
-                );
+                "Could not publish Base Node Response, no subscribers to receive. (Err {:?})",
                 e
-            });
+            );
+        }
+
         Ok(())
     }
 
-    pub async fn query_unspent_outputs_status(
+    fn validate_outputs(
         &mut self,
-        utxo_query_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, u64>>,
+        validation_type: UtxoValidationType,
+        retry_strategy: UtxoValidationRetry,
+        utxo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
     ) -> Result<u64, OutputManagerError>
     {
-        let unspent_output_hashes = self
-            .db
-            .get_unspent_outputs()
-            .await?
-            .iter()
-            .map(|uo| uo.hash.clone())
-            .collect();
-
-        let key = self
-            .query_outputs_status(
-                utxo_query_timeout_futures,
-                unspent_output_hashes,
-                UtxoQueryType::UnspentOutputs,
-            )
-            .await?;
-
-        Ok(key)
-    }
-
-    pub async fn query_invalid_outputs_status(
-        &mut self,
-        utxo_query_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, u64>>,
-    ) -> Result<u64, OutputManagerError>
-    {
-        let invalid_output_hashes: Vec<_> = self
-            .db
-            .get_invalid_outputs()
-            .await?
-            .into_iter()
-            .map(|uo| uo.hash)
-            .collect();
-
-        let key = if !invalid_output_hashes.is_empty() {
-            self.query_outputs_status(
-                utxo_query_timeout_futures,
-                invalid_output_hashes,
-                UtxoQueryType::InvalidOutputs,
-            )
-            .await?
-        } else {
-            0
-        };
-
-        Ok(key)
-    }
-
-    /// Send queries to the base node to check the status of all specified outputs.
-    async fn query_outputs_status(
-        &mut self,
-        utxo_query_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, u64>>,
-        mut outputs_to_query: Vec<Vec<u8>>,
-        query_type: UtxoQueryType,
-    ) -> Result<u64, OutputManagerError>
-    {
-        match self.base_node_public_key.as_ref() {
+        match self.resources.base_node_public_key.as_ref() {
             None => Err(OutputManagerError::NoBaseNodeKeysProvided),
             Some(pk) => {
-                let mut first_request_key = 0;
+                let id = OsRng.next_u64();
 
-                // Determine how many rounds of base node request we need to query all the outputs in batches of
-                // max_utxo_query_size
-                let rounds =
-                    ((outputs_to_query.len() as f32) / (self.config.max_utxo_query_size as f32 + 0.1)) as usize + 1;
+                let utxo_validation_protocol = UtxoValidationProtocol::new(
+                    id,
+                    validation_type,
+                    retry_strategy,
+                    self.resources.clone(),
+                    pk.clone(),
+                    self.resources.config.base_node_query_timeout,
+                    self.base_node_response_publisher.subscribe(),
+                );
 
-                for r in 0..rounds {
-                    let mut output_hashes = Vec::new();
-                    for uo_hash in
-                        outputs_to_query.drain(..cmp::min(self.config.max_utxo_query_size, outputs_to_query.len()))
-                    {
-                        output_hashes.push(uo_hash);
-                    }
-                    let request_key = OsRng.next_u64();
-                    if first_request_key == 0 {
-                        first_request_key = request_key;
-                    }
+                let join_handle = tokio::spawn(utxo_validation_protocol.execute());
+                utxo_validation_handles.push(join_handle);
 
-                    let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs {
-                        outputs: output_hashes.clone(),
+                Ok(id)
+            },
+        }
+    }
+
+    async fn complete_utxo_validation_protocol(&mut self, join_result: Result<u64, OutputManagerProtocolError>) {
+        match join_result {
+            Ok(id) => {
+                trace!(
+                    target: LOG_TARGET,
+                    "UTXO Validation Protocol (Id: {}) completed successfully",
+                    id
+                );
+            },
+            Err(OutputManagerProtocolError { id, error }) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
+                );
+                let _ = self
+                    .resources
+                    .event_publisher
+                    .send(OutputManagerEvent::UtxoValidationFailure(id))
+                    .map_err(|e| {
+                        trace!(
+                            target: LOG_TARGET,
+                            "Error sending event, usually because there are no subscribers: {:?}",
+                            e
+                        );
+                        e
                     });
-
-                    let service_request = BaseNodeProto::BaseNodeServiceRequest {
-                        request_key,
-                        request: Some(request),
-                    };
-
-                    let send_message_response = self
-                        .outbound_message_service
-                        .send_direct(
-                            pk.clone(),
-                            OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request),
-                        )
-                        .await?;
-
-                    // Here we are going to spawn a non-blocking task that will monitor and log the progress of the
-                    // send process.
-                    tokio::spawn(async move {
-                        match send_message_response.resolve().await {
-                            Err(err) => warn!(
-                                target: LOG_TARGET,
-                                "Failed to send Output Manager UTXO query ({}) to Base Node: {}", request_key, err
-                            ),
-                            Ok(send_states) => {
-                                trace!(
-                                    target: LOG_TARGET,
-                                    "Output Manager UTXO query ({}) queued for sending with Message {}",
-                                    request_key,
-                                    send_states[0].tag,
-                                );
-                                let message_tag = send_states[0].tag;
-                                if send_states.wait_single().await {
-                                    trace!(
-                                        target: LOG_TARGET,
-                                        "Output Manager UTXO query ({}) successfully sent to Base Node with Message {}",
-                                        request_key,
-                                        message_tag,
-                                    )
-                                } else {
-                                    trace!(
-                                        target: LOG_TARGET,
-                                        "Failed to send Output Manager UTXO query ({}) to Base Node with Message {}",
-                                        request_key,
-                                        message_tag,
-                                    );
-                                }
-                            },
-                        }
-                    });
-
-                    match query_type {
-                        UtxoQueryType::UnspentOutputs => {
-                            self.pending_utxo_query_keys.insert(request_key, output_hashes);
-                        },
-                        UtxoQueryType::InvalidOutputs => {
-                            self.pending_revalidation_query_keys.insert(request_key, output_hashes);
-                        },
-                    }
-
-                    let state_timeout = StateDelay::new(self.config.base_node_query_timeout, request_key);
-                    utxo_query_timeout_futures.push(state_timeout.delay().boxed());
-
-                    debug!(
-                        target: LOG_TARGET,
-                        "Output Manager {} query ({}) sent to Base Node, part {} of {} requests",
-                        query_type,
-                        request_key,
-                        r + 1,
-                        rounds
-                    );
-                }
-                // We are just going to return the first request key for use by the front end. It is very unlikely that
-                // a mobile wallet will ever have this query split up
-                Ok(first_request_key)
             },
         }
     }
 
     /// Add an unblinded output to the unspent outputs list
     pub async fn add_output(&mut self, output: UnblindedOutput) -> Result<(), OutputManagerError> {
-        let output = DbUnblindedOutput::from_unblinded_output(output, &self.factories)?;
-        Ok(self.db.add_unspent_output(output).await?)
+        let output = DbUnblindedOutput::from_unblinded_output(output, &self.resources.factories)?;
+        Ok(self.resources.db.add_unspent_output(output).await?)
     }
 
     async fn get_balance(&self) -> Result<Balance, OutputManagerError> {
-        let balance = self.db.get_balance().await?;
+        let balance = self.resources.db.get_balance().await?;
         trace!(target: LOG_TARGET, "Balance: {:?}", balance);
         Ok(balance)
     }
@@ -665,13 +399,20 @@ where
     {
         let mut key = PrivateKey::default();
         {
-            let mut km = acquire_lock!(self.key_manager);
+            let mut km = self.key_manager.lock().await;
             key = km.next_key()?.k;
         }
 
-        self.db.increment_key_index().await?;
-        self.db
-            .accept_incoming_pending_transaction(tx_id, amount, key.clone(), OutputFeatures::default(), &self.factories)
+        self.resources.db.increment_key_index().await?;
+        self.resources
+            .db
+            .accept_incoming_pending_transaction(
+                tx_id,
+                amount,
+                key.clone(),
+                OutputFeatures::default(),
+                &self.resources.factories,
+            )
             .await?;
 
         self.confirm_encumberance(tx_id).await?;
@@ -686,20 +427,21 @@ where
         received_output: &TransactionOutput,
     ) -> Result<(), OutputManagerError>
     {
-        let pending_transaction = self.db.fetch_pending_transaction_outputs(tx_id).await?;
+        let pending_transaction = self.resources.db.fetch_pending_transaction_outputs(tx_id).await?;
 
         // Assumption: We are only allowing a single output per receiver in the current transaction protocols.
         if pending_transaction.outputs_to_be_received.len() != 1 ||
             pending_transaction.outputs_to_be_received[0]
                 .unblinded_output
-                .as_transaction_input(&self.factories.commitment, OutputFeatures::default())
+                .as_transaction_input(&self.resources.factories.commitment, OutputFeatures::default())
                 .commitment !=
                 received_output.commitment
         {
             return Err(OutputManagerError::IncompleteTransaction);
         }
 
-        self.db
+        self.resources
+            .db
             .confirm_pending_transaction_outputs(pending_transaction.tx_id)
             .await?;
 
@@ -735,8 +477,10 @@ where
 
         for uo in outputs.iter() {
             builder.with_input(
-                uo.unblinded_output
-                    .as_transaction_input(&self.factories.commitment, uo.unblinded_output.clone().features),
+                uo.unblinded_output.as_transaction_input(
+                    &self.resources.factories.commitment,
+                    uo.unblinded_output.clone().features,
+                ),
                 uo.unblinded_output.clone(),
             );
         }
@@ -748,16 +492,16 @@ where
         if total > amount + fee_without_change {
             let mut key = PrivateKey::default();
             {
-                let mut km = acquire_lock!(self.key_manager);
+                let mut km = self.key_manager.lock().await;
                 key = km.next_key()?.k;
             }
-            self.db.increment_key_index().await?;
+            self.resources.db.increment_key_index().await?;
             change_key = Some(key.clone());
             builder.with_change_secret(key);
         }
 
         let stp = builder
-            .build::<HashDigest>(&self.factories)
+            .build::<HashDigest>(&self.resources.factories)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         // If a change output was created add it to the pending_outputs list.
@@ -769,13 +513,14 @@ where
                     spending_key: key,
                     features: OutputFeatures::default(),
                 },
-                &self.factories,
+                &self.resources.factories,
             )?);
         }
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
-        self.db
+        self.resources
+            .db
             .encumber_outputs(stp.get_tx_id()?, outputs, change_output)
             .await?;
 
@@ -785,7 +530,7 @@ where
     /// Confirm that a transaction has finished being negotiated between parties so the short-term encumberance can be
     /// made official
     async fn confirm_encumberance(&mut self, tx_id: u64) -> Result<(), OutputManagerError> {
-        self.db.confirm_encumbered_outputs(tx_id).await?;
+        self.resources.db.confirm_encumbered_outputs(tx_id).await?;
 
         Ok(())
     }
@@ -800,7 +545,7 @@ where
         outputs: &[TransactionOutput],
     ) -> Result<(), OutputManagerError>
     {
-        let pending_transaction = self.db.fetch_pending_transaction_outputs(tx_id).await?;
+        let pending_transaction = self.resources.db.fetch_pending_transaction_outputs(tx_id).await?;
 
         // Check that outputs to be spent can all be found in the provided transaction inputs
         let mut inputs_confirmed = true;
@@ -808,7 +553,7 @@ where
             let input_to_check = output_to_spend
                 .unblinded_output
                 .clone()
-                .as_transaction_input(&self.factories.commitment, OutputFeatures::default());
+                .as_transaction_input(&self.resources.factories.commitment, OutputFeatures::default());
             inputs_confirmed =
                 inputs_confirmed && inputs.iter().any(|input| input.commitment == input_to_check.commitment);
         }
@@ -819,7 +564,7 @@ where
             let output_to_check = output_to_receive
                 .unblinded_output
                 .clone()
-                .as_transaction_input(&self.factories.commitment, OutputFeatures::default());
+                .as_transaction_input(&self.resources.factories.commitment, OutputFeatures::default());
             outputs_confirmed = outputs_confirmed &&
                 outputs
                     .iter()
@@ -830,7 +575,8 @@ where
             return Err(OutputManagerError::IncompleteTransaction);
         }
 
-        self.db
+        self.resources
+            .db
             .confirm_pending_transaction_outputs(pending_transaction.tx_id)
             .await?;
 
@@ -844,12 +590,12 @@ where
             "Cancelling pending transaction outputs for TxId: {}",
             tx_id
         );
-        Ok(self.db.cancel_pending_transaction_outputs(tx_id).await?)
+        Ok(self.resources.db.cancel_pending_transaction_outputs(tx_id).await?)
     }
 
     /// Go through the pending transaction and if any have existed longer than the specified duration, cancel them
     async fn timeout_pending_transactions(&mut self, period: Duration) -> Result<(), OutputManagerError> {
-        Ok(self.db.timeout_pending_transaction_outputs(period).await?)
+        Ok(self.resources.db.timeout_pending_transaction_outputs(period).await?)
     }
 
     /// Select which unspent transaction outputs to use to send a transaction of the specified amount. Use the specified
@@ -867,7 +613,7 @@ where
         let mut fee_without_change = MicroTari::from(0);
         let mut fee_with_change = MicroTari::from(0);
 
-        let uo = self.db.fetch_sorted_unspent_outputs().await?;
+        let uo = self.resources.db.fetch_sorted_unspent_outputs().await?;
 
         // Heuristic for selecting strategy: Default to MaturityThenSmallest, but if amount >
         // alpha * largest UTXO, use Largest
@@ -935,16 +681,21 @@ where
     async fn set_base_node_public_key(
         &mut self,
         base_node_public_key: CommsPublicKey,
-        utxo_query_timeout_futures: &mut FuturesUnordered<BoxFuture<'static, u64>>,
+        utxo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
     ) -> Result<(), OutputManagerError>
     {
-        let startup_query = self.base_node_public_key.is_none();
+        let startup_query = self.resources.base_node_public_key.is_none();
 
-        self.base_node_public_key = Some(base_node_public_key);
+        self.resources.base_node_public_key = Some(base_node_public_key);
 
         if startup_query {
-            self.query_unspent_outputs_status(utxo_query_timeout_futures).await?;
-            self.query_invalid_outputs_status(utxo_query_timeout_futures).await?;
+            // This validation is not critical so if the Base node is not reachable we will wait until the next restart
+            // after 5 attempts
+            self.validate_outputs(
+                UtxoValidationType::Invalid,
+                UtxoValidationRetry::Limited(5),
+                utxo_validation_handles,
+            )?;
         }
         Ok(())
     }
@@ -952,19 +703,19 @@ where
     pub async fn fetch_pending_transaction_outputs(
         &self,
     ) -> Result<HashMap<u64, PendingTransactionOutputs>, OutputManagerError> {
-        Ok(self.db.fetch_all_pending_transaction_outputs().await?)
+        Ok(self.resources.db.fetch_all_pending_transaction_outputs().await?)
     }
 
     pub async fn fetch_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
-        Ok(self.db.fetch_spent_outputs().await?)
+        Ok(self.resources.db.fetch_spent_outputs().await?)
     }
 
     pub async fn fetch_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
-        Ok(self.db.fetch_sorted_unspent_outputs().await?)
+        Ok(self.resources.db.fetch_sorted_unspent_outputs().await?)
     }
 
     pub async fn fetch_invalid_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
-        Ok(self.db.get_invalid_outputs().await?)
+        Ok(self.resources.db.get_invalid_outputs().await?)
     }
 
     async fn create_coin_split(
@@ -1010,8 +761,10 @@ where
         trace!(target: LOG_TARGET, "Add inputs to coin split transaction.");
         for uo in inputs.iter() {
             builder.with_input(
-                uo.unblinded_output
-                    .as_transaction_input(&self.factories.commitment, uo.unblinded_output.clone().features),
+                uo.unblinded_output.as_transaction_input(
+                    &self.resources.factories.commitment,
+                    uo.unblinded_output.clone().features,
+                ),
                 uo.unblinded_output.clone(),
             );
         }
@@ -1031,13 +784,13 @@ where
 
             let mut spend_key = PrivateKey::default();
             {
-                let mut km = acquire_lock!(self.key_manager);
+                let mut km = self.key_manager.lock().await;
                 spend_key = km.next_key()?.k;
             }
-            self.db.increment_key_index().await?;
+            self.resources.db.increment_key_index().await?;
             let utxo = DbUnblindedOutput::from_unblinded_output(
                 UnblindedOutput::new(output_amount, spend_key, None),
-                &self.factories,
+                &self.resources.factories,
             )?;
             outputs.push(utxo.clone());
             builder.with_output(utxo.unblinded_output);
@@ -1045,7 +798,7 @@ where
         trace!(target: LOG_TARGET, "Build coin split transaction.");
         let factories = CryptoFactories::default();
         let mut stp = builder
-            .build::<HashDigest>(&self.factories)
+            .build::<HashDigest>(&self.resources.factories)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
@@ -1055,7 +808,7 @@ where
             "Encumber coin split transaction ({}) outputs.",
             tx_id
         );
-        self.db.encumber_outputs(tx_id, inputs, outputs).await?;
+        self.resources.db.encumber_outputs(tx_id, inputs, outputs).await?;
         self.confirm_encumberance(tx_id).await?;
         trace!(target: LOG_TARGET, "Finalize coin split transaction ({}).", tx_id);
         stp.finalize(KernelFeatures::empty(), &factories)?;
@@ -1064,9 +817,9 @@ where
     }
 
     /// Return the Seed words for the current Master Key set in the Key Manager
-    pub fn get_seed_words(&self) -> Result<Vec<String>, OutputManagerError> {
+    pub async fn get_seed_words(&self) -> Result<Vec<String>, OutputManagerError> {
         Ok(from_secret_key(
-            &acquire_lock!(self.key_manager).master_key,
+            &self.key_manager.lock().await.master_key,
             &MnemonicLanguage::English,
         )?)
     }
@@ -1104,16 +857,16 @@ impl fmt::Display for Balance {
     }
 }
 
-enum UtxoQueryType {
-    UnspentOutputs,
-    InvalidOutputs,
-}
-
-impl fmt::Display for UtxoQueryType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            UtxoQueryType::UnspentOutputs => write!(f, "Unspent Outputs"),
-            UtxoQueryType::InvalidOutputs => write!(f, "Invalid Outputs"),
-        }
-    }
+/// This struct is a collection of the common resources that a async task in the service requires.
+#[derive(Clone)]
+pub struct OutputManagerResources<TBackend>
+where TBackend: OutputManagerBackend + Clone + 'static
+{
+    pub config: OutputManagerServiceConfig,
+    pub db: OutputManagerDatabase<TBackend>,
+    pub outbound_message_service: OutboundMessageRequester,
+    pub transaction_service: TransactionServiceHandle,
+    pub factories: CryptoFactories,
+    pub base_node_public_key: Option<CommsPublicKey>,
+    pub event_publisher: OutputManagerEventSender,
 }
