@@ -80,13 +80,12 @@ impl StatelessValidation<Block> for StatelessBlockValidator {
         trace!(target: LOG_TARGET, "SV - Output constraints are ok for {} ", &block_id);
         check_cut_through(block)?;
         trace!(target: LOG_TARGET, "SV - Cut-through is ok for {} ", &block_id);
+        check_accounting_balance(block, self.rules.clone(), &self.factories)?;
+        trace!(target: LOG_TARGET, "SV - accounting balance correct for {}", &block_id);
         debug!(
             target: LOG_TARGET,
             "{} has PASSED stateless VALIDATION check.", &block_id
         );
-
-        check_accounting_balance(block, self.rules.clone(), &self.factories)?;
-        trace!(target: LOG_TARGET, "SV - accounting balance correct for {}", &block_id);
         Ok(())
     }
 }
