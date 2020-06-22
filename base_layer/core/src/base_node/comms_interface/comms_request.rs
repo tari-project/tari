@@ -46,13 +46,14 @@ pub enum NodeCommsRequest {
     FetchHeadersWithHashes(Vec<HashOutput>),
     FetchHeadersAfter(Vec<HashOutput>, HashOutput),
     FetchUtxos(Vec<HashOutput>),
+    FetchTxos(Vec<HashOutput>),
     FetchBlocks(Vec<u64>),
     FetchBlocksWithHashes(Vec<HashOutput>),
     GetNewBlockTemplate(PowAlgorithm),
     GetNewBlock(NewBlockTemplate),
     GetTargetDifficulty(PowAlgorithm),
     FetchMmrNodeCount(MmrTree, u64),
-    FetchMmrNodes(MmrTree, u32, u32),
+    FetchMmrNodes(MmrTree, u32, u32, u64),
 }
 
 impl Display for NodeCommsRequest {
@@ -64,6 +65,7 @@ impl Display for NodeCommsRequest {
             NodeCommsRequest::FetchHeadersWithHashes(v) => f.write_str(&format!("FetchHeaders (n={})", v.len())),
             NodeCommsRequest::FetchHeadersAfter(v, _hash) => f.write_str(&format!("FetchHeadersAfter (n={})", v.len())),
             NodeCommsRequest::FetchUtxos(v) => f.write_str(&format!("FetchUtxos (n={})", v.len())),
+            NodeCommsRequest::FetchTxos(v) => f.write_str(&format!("FetchTxos (n={})", v.len())),
             NodeCommsRequest::FetchBlocks(v) => f.write_str(&format!("FetchBlocks (n={})", v.len())),
             NodeCommsRequest::FetchBlocksWithHashes(v) => f.write_str(&format!("FetchBlocks (n={})", v.len())),
             NodeCommsRequest::GetNewBlockTemplate(algo) => f.write_str(&format!("GetNewBlockTemplate ({})", algo)),
@@ -72,9 +74,9 @@ impl Display for NodeCommsRequest {
             NodeCommsRequest::FetchMmrNodeCount(tree, height) => {
                 f.write_str(&format!("FetchMmrNodeCount (tree={},Block Height={})", tree, height))
             },
-            NodeCommsRequest::FetchMmrNodes(tree, pos, count) => f.write_str(&format!(
-                "FetchMmrNodeCount (tree={},pos={},count={})",
-                tree, pos, count
+            NodeCommsRequest::FetchMmrNodes(tree, pos, count, hist_height) => f.write_str(&format!(
+                "FetchMmrNodeCount (tree={},pos={},count={},hist_height={})",
+                tree, pos, count, hist_height
             )),
         }
     }

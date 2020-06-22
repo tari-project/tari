@@ -96,6 +96,7 @@ make_async!(fetch_header_with_block_hash(hash: HashOutput) -> BlockHeader, "fetc
 make_async!(fetch_header(block_num: u64) -> BlockHeader, "fetch_header");
 make_async!(fetch_utxo(hash: HashOutput) -> TransactionOutput, "fetch_utxo");
 make_async!(fetch_stxo(hash: HashOutput) -> TransactionOutput, "fetch_stxo");
+make_async!(fetch_txo(hash: HashOutput) -> Option<TransactionOutput>, "fetch_txo");
 make_async!(fetch_orphan(hash: HashOutput) -> Block, "fetch_orphan");
 make_async!(is_utxo(hash: HashOutput) -> bool, "is_utxo");
 make_async!(is_stxo(hash: HashOutput) -> bool, "is_stxo");
@@ -103,7 +104,7 @@ make_async!(fetch_mmr_root(tree: MmrTree) -> HashOutput, "fetch_mmr_root");
 make_async!(fetch_mmr_only_root(tree: MmrTree) -> HashOutput, "fetch_mmr_only_root");
 make_async!(calculate_mmr_root(tree: MmrTree,additions: Vec<HashOutput>,deletions: Vec<HashOutput>) -> HashOutput, "calculate_mmr_root");
 make_async!(fetch_mmr_node_count(tree: MmrTree, height: u64) -> u32, "fetch_mmr_node_count");
-make_async!(fetch_mmr_nodes(tree: MmrTree, pos: u32, count: u32) -> Vec<(Vec<u8>, bool)>, "fetch_mmr_nodes");
+make_async!(fetch_mmr_nodes(tree: MmrTree, pos: u32, count: u32, hist_height:Option<u64>) -> Vec<(Vec<u8>, bool)>, "fetch_mmr_nodes");
 make_async!(add_block(block: Block) -> BlockAddResult, "add_block");
 make_async!(calculate_mmr_roots(template: NewBlockTemplate) -> Block, "calculate_mmr_roots");
 

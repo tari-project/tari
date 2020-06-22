@@ -47,6 +47,7 @@ impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
                 ci::NodeCommsRequest::FetchHeadersAfter(request.hashes, request.stopping_hash)
             },
             FetchUtxos(hash_outputs) => ci::NodeCommsRequest::FetchUtxos(hash_outputs.outputs),
+            FetchTxos(hash_outputs) => ci::NodeCommsRequest::FetchTxos(hash_outputs.outputs),
             FetchBlocks(block_heights) => ci::NodeCommsRequest::FetchBlocks(block_heights.heights),
             FetchBlocksWithHashes(block_hashes) => ci::NodeCommsRequest::FetchBlocksWithHashes(block_hashes.outputs),
             GetNewBlockTemplate(pow_algo) => {
@@ -59,9 +60,12 @@ impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchMmrNodeCount(request) => {
                 ci::NodeCommsRequest::FetchMmrNodeCount(request.tree.try_into()?, request.height)
             },
-            FetchMmrNodes(request) => {
-                ci::NodeCommsRequest::FetchMmrNodes(request.tree.try_into()?, request.pos, request.count)
-            },
+            FetchMmrNodes(request) => ci::NodeCommsRequest::FetchMmrNodes(
+                request.tree.try_into()?,
+                request.pos,
+                request.count,
+                request.hist_height,
+            ),
         };
         Ok(request)
     }
@@ -79,6 +83,7 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
                 ProtoNodeCommsRequest::FetchHeadersAfter(ProtoFetchHeadersAfter { hashes, stopping_hash })
             },
             FetchUtxos(hash_outputs) => ProtoNodeCommsRequest::FetchUtxos(hash_outputs.into()),
+            FetchTxos(hash_outputs) => ProtoNodeCommsRequest::FetchTxos(hash_outputs.into()),
             FetchBlocks(block_heights) => ProtoNodeCommsRequest::FetchBlocks(block_heights.into()),
             FetchBlocksWithHashes(block_hashes) => ProtoNodeCommsRequest::FetchBlocksWithHashes(block_hashes.into()),
             GetNewBlockTemplate(pow_algo) => ProtoNodeCommsRequest::GetNewBlockTemplate(pow_algo as u64),
@@ -88,10 +93,11 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
                 tree: tree as i32,
                 height,
             }),
-            FetchMmrNodes(tree, pos, count) => ProtoNodeCommsRequest::FetchMmrNodes(ProtoFetchMmrNodes {
+            FetchMmrNodes(tree, pos, count, hist_height) => ProtoNodeCommsRequest::FetchMmrNodes(ProtoFetchMmrNodes {
                 tree: tree as i32,
                 pos,
                 count,
+                hist_height,
             }),
         }
     }

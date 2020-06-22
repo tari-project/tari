@@ -41,6 +41,7 @@ use tari_core::{
         BlockchainBackend,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
+        ChainMetadata,
         ChainStorageError,
         DbKey,
         DbTransaction,
@@ -74,6 +75,30 @@ fn init_log() {
 }
 
 #[test]
+fn write_and_fetch_metadata() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let store = create_mem_db(&consensus_manager);
+    let metadata = store.get_metadata().unwrap();
+    assert_eq!(metadata.height_of_longest_chain, Some(0));
+    assert!(metadata.best_block.is_some());
+    assert!(metadata.accumulated_difficulty.is_some());
+
+    let height = 10;
+    let accumulated_difficulty = Difficulty::from(20);
+    let mut metadata = ChainMetadata::default();
+    metadata.height_of_longest_chain = Some(height);
+    metadata.best_block = None;
+    metadata.accumulated_difficulty = Some(accumulated_difficulty);
+    assert!(store.write_metadata(metadata).is_ok());
+
+    let metadata = store.get_metadata().unwrap();
+    assert_eq!(metadata.height_of_longest_chain, Some(height));
+    assert_eq!(metadata.best_block, None);
+    assert_eq!(metadata.accumulated_difficulty, Some(accumulated_difficulty));
+}
+
+#[test]
 fn fetch_nonexistent_kernel() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
@@ -90,13 +115,14 @@ fn insert_and_fetch_kernel() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_mem_db(&consensus_manager);
-    let kernel = create_test_kernel(5.into(), 0);
-    let hash = kernel.hash();
+    let kernel1 = create_test_kernel(5.into(), 0);
+    let kernel2 = create_test_kernel(10.into(), 0);
+    let hash1 = kernel1.hash();
+    let hash2 = kernel2.hash();
 
-    let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel.clone());
-    assert!(store.commit(txn).is_ok());
-    assert_eq!(store.fetch_kernel(hash), Ok(kernel));
+    assert!(store.insert_kernels(vec![kernel1.clone(), kernel2.clone()]).is_ok());
+    assert_eq!(store.fetch_kernel(hash1), Ok(kernel1));
+    assert_eq!(store.fetch_kernel(hash2), Ok(kernel2));
 }
 
 #[test]
@@ -115,18 +141,18 @@ fn insert_and_fetch_header() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_mem_db(&consensus_manager);
-    let mut header = BlockHeader::new(0);
-    header.height = 42;
+    let mut header1 = BlockHeader::new(0);
+    header1.height = 42;
+    let header2 = BlockHeader::from_previous(&header1);
 
-    let mut txn = DbTransaction::new();
-    txn.insert_header(header.clone());
-    assert!(store.commit(txn).is_ok());
+    assert!(store.insert_headers(vec![header1.clone(), header2.clone()]).is_ok());
     assert!(store.fetch_header(0).is_ok());
     assert_eq!(
         store.fetch_header(1),
         Err(ChainStorageError::ValueNotFound(DbKey::BlockHeader(1)))
     );
-    assert_eq!(store.fetch_header(42), Ok(header));
+    assert_eq!(store.fetch_header(42), Ok(header1));
+    assert_eq!(store.fetch_header(43), Ok(header2));
 }
 
 #[test]
@@ -138,9 +164,7 @@ fn insert_and_fetch_utxo() {
     let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
     let hash = utxo.hash();
     assert_eq!(store.is_utxo(hash.clone()).unwrap(), false);
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone());
-    assert!(store.commit(txn).is_ok());
+    assert!(store.insert_utxo(utxo.clone()).is_ok());
     assert_eq!(store.is_utxo(hash.clone()).unwrap(), true);
     assert_eq!(store.fetch_utxo(hash), Ok(utxo));
 }
@@ -1511,4 +1535,242 @@ fn pruned_mode_is_stxo() {
     assert!(store.is_utxo(txo_hash11.clone()).unwrap());
     assert!(store.is_utxo(txo_hash12.clone()).unwrap());
     assert!(store.is_utxo(txo_hash13.clone()).unwrap());
+}
+
+#[test]
+fn pruned_mode_fetch_insert_and_commit() {
+    // This test demonstrates the basic steps involved in horizon syncing without any of the comms requests.
+    let network = Network::LocalNet;
+    // Create an archival chain for Alice
+    let (mut alice_store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
+    // Block1
+    let txs = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![10 * T, 10 * T, 10 * T, 10 * T]
+    )];
+    assert!(generate_new_block(
+        &mut alice_store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        &consensus_manager.consensus_constants()
+    )
+    .is_ok());
+    // Block2
+    let txs = vec![txn_schema!(from: vec![outputs[1][3].clone()], to: vec![6 * T])];
+    assert!(generate_new_block(
+        &mut alice_store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        &consensus_manager.consensus_constants()
+    )
+    .is_ok());
+    // Block3
+    let txs = vec![txn_schema!(from: vec![outputs[2][0].clone()], to: vec![2 * T])];
+    assert!(generate_new_block(
+        &mut alice_store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        &consensus_manager.consensus_constants()
+    )
+    .is_ok());
+    // Block4
+    let txs = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![2 * T])];
+    assert!(generate_new_block(
+        &mut alice_store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        &consensus_manager.consensus_constants()
+    )
+    .is_ok());
+
+    // Perform a manual horizon state sync between Alice and Bob
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockAccumDifficultyValidator {},
+    );
+    let config = BlockchainDatabaseConfig {
+        orphan_storage_capacity: 3,
+        pruning_horizon: 2,
+        pruned_mode_cleanup_interval: 2,
+    };
+    let bob_store = BlockchainDatabase::new(
+        MemoryDatabase::<HashDigest>::default(),
+        &consensus_manager,
+        validators,
+        config,
+    )
+    .unwrap();
+    let network_tip_height = alice_store.get_metadata().unwrap().height_of_longest_chain.unwrap();
+    let bob_metadata = bob_store.get_metadata().unwrap();
+    let sync_horizon_height = bob_metadata.horizon_block(network_tip_height) + 1;
+
+    // Sync headers
+    let bob_height = bob_metadata.height_of_longest_chain.unwrap();
+    let block_nums = (bob_height + 1..=sync_horizon_height).collect::<Vec<u64>>();
+    let headers = alice_store.fetch_headers(block_nums).unwrap();
+    assert!(bob_store.insert_headers(headers).is_ok());
+
+    // Sync kernels
+    let alice_num_kernels = alice_store
+        .fetch_mmr_node_count(MmrTree::Kernel, sync_horizon_height)
+        .unwrap();
+    let bob_num_kernels = bob_store
+        .fetch_mmr_node_count(MmrTree::Kernel, sync_horizon_height)
+        .unwrap();
+    let kernel_hashes = alice_store
+        .fetch_mmr_nodes(
+            MmrTree::Kernel,
+            bob_num_kernels,
+            alice_num_kernels - bob_num_kernels,
+            Some(sync_horizon_height),
+        )
+        .unwrap()
+        .iter()
+        .map(|n| n.0.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(kernel_hashes.len(), 3);
+    let kernels = alice_store.fetch_kernels(kernel_hashes).unwrap();
+    assert_eq!(kernels.len(), 3);
+    assert!(bob_store.insert_kernels(kernels).is_ok());
+
+    // Sync Utxos and RangeProofs
+    let alice_num_utxos = alice_store
+        .fetch_mmr_node_count(MmrTree::Utxo, sync_horizon_height)
+        .unwrap();
+    let bob_num_utxos = bob_store
+        .fetch_mmr_node_count(MmrTree::Utxo, sync_horizon_height)
+        .unwrap();
+    let alice_num_rps = alice_store
+        .fetch_mmr_node_count(MmrTree::RangeProof, sync_horizon_height)
+        .unwrap();
+    let bob_num_rps = bob_store
+        .fetch_mmr_node_count(MmrTree::RangeProof, sync_horizon_height)
+        .unwrap();
+    assert_eq!(alice_num_utxos, alice_num_rps);
+    assert_eq!(bob_num_utxos, bob_num_rps);
+    // Check if some of the existing UTXOs need to be marked as deleted.
+    let alice_utxo_nodes = alice_store
+        .fetch_mmr_nodes(MmrTree::Utxo, 0, bob_num_utxos, Some(sync_horizon_height))
+        .unwrap();
+    let bob_utxo_nodes = bob_store
+        .fetch_mmr_nodes(MmrTree::Utxo, 0, bob_num_utxos, Some(sync_horizon_height))
+        .unwrap();
+    assert_eq!(alice_utxo_nodes.len(), bob_utxo_nodes.len());
+    for index in 0..alice_utxo_nodes.len() {
+        let (alice_utxo_hash, alice_utxo_deleted) = alice_utxo_nodes[index].clone();
+        let (bob_utxo_hash, bob_utxo_deleted) = bob_utxo_nodes[index].clone();
+        assert_eq!(alice_utxo_hash, bob_utxo_hash);
+        if alice_utxo_deleted && !bob_utxo_deleted {
+            assert!(bob_store.delete_mmr_node(MmrTree::Utxo, &bob_utxo_hash).is_ok());
+        }
+    }
+
+    // Continue with syncing of missing MMR nodes
+    let utxo_mmr_nodes = alice_store
+        .fetch_mmr_nodes(
+            MmrTree::Utxo,
+            bob_num_utxos,
+            alice_num_utxos - bob_num_utxos,
+            Some(sync_horizon_height),
+        )
+        .unwrap();
+    let rp_hashes = alice_store
+        .fetch_mmr_nodes(
+            MmrTree::RangeProof,
+            bob_num_rps,
+            alice_num_rps - bob_num_rps,
+            Some(sync_horizon_height),
+        )
+        .unwrap()
+        .iter()
+        .map(|n| n.0.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(utxo_mmr_nodes.len(), 9);
+    assert_eq!(rp_hashes.len(), 9);
+    for (index, (utxo_hash, is_stxo)) in utxo_mmr_nodes.into_iter().enumerate() {
+        if is_stxo {
+            assert!(bob_store.insert_mmr_node(MmrTree::Utxo, utxo_hash, is_stxo).is_ok());
+            assert!(bob_store
+                .insert_mmr_node(MmrTree::RangeProof, rp_hashes[index].clone(), false)
+                .is_ok());
+        } else {
+            let txo = alice_store.fetch_txo(utxo_hash).unwrap().unwrap();
+            assert!(bob_store.insert_utxo(txo).is_ok());
+        }
+    }
+    // Finalize horizon state sync
+    assert!(bob_store.commit_horizon_state().is_ok());
+
+    // Check Metadata
+    let bob_metadata = bob_store.get_metadata().unwrap();
+    let sync_height_header = blocks[sync_horizon_height as usize].header.clone();
+    assert_eq!(bob_metadata.height_of_longest_chain, Some(sync_horizon_height));
+    assert_eq!(bob_metadata.best_block, Some(sync_height_header.hash()));
+    assert_eq!(
+        bob_metadata.accumulated_difficulty,
+        Some(sync_height_header.total_accumulated_difficulty_inclusive())
+    );
+    // Check headers
+    let block_nums = (0..=bob_metadata.height_of_longest_chain.unwrap()).collect::<Vec<u64>>();
+    let alice_headers = alice_store.fetch_headers(block_nums.clone()).unwrap();
+    let bob_headers = bob_store.fetch_headers(block_nums).unwrap();
+    assert_eq!(alice_headers, bob_headers);
+    // Check Kernel MMR nodes
+    let alice_num_kernels = alice_store
+        .fetch_mmr_node_count(MmrTree::Kernel, sync_horizon_height)
+        .unwrap();
+    let bob_num_kernels = bob_store
+        .fetch_mmr_node_count(MmrTree::Kernel, sync_horizon_height)
+        .unwrap();
+    assert_eq!(alice_num_kernels, bob_num_kernels);
+    let alice_kernel_nodes = alice_store
+        .fetch_mmr_nodes(MmrTree::Kernel, 0, alice_num_kernels, Some(sync_horizon_height))
+        .unwrap();
+    let bob_kernel_nodes = bob_store
+        .fetch_mmr_nodes(MmrTree::Kernel, 0, bob_num_kernels, Some(sync_horizon_height))
+        .unwrap();
+    assert_eq!(alice_kernel_nodes, bob_kernel_nodes);
+    // Check Kernels
+    let alice_kernels = alice_kernel_nodes.iter().map(|n| n.0.clone()).collect::<Vec<_>>();
+    let bob_kernels = bob_kernel_nodes.iter().map(|n| n.0.clone()).collect::<Vec<_>>();
+    assert_eq!(alice_kernels, bob_kernels);
+    // Check UTXO MMR nodes
+    let alice_num_utxos = alice_store
+        .fetch_mmr_node_count(MmrTree::Utxo, sync_horizon_height)
+        .unwrap();
+    let bob_num_utxos = bob_store
+        .fetch_mmr_node_count(MmrTree::Utxo, sync_horizon_height)
+        .unwrap();
+    assert_eq!(alice_num_utxos, bob_num_utxos);
+    let alice_utxo_nodes = alice_store
+        .fetch_mmr_nodes(MmrTree::Utxo, 0, alice_num_utxos, Some(sync_horizon_height))
+        .unwrap();
+    let bob_utxo_nodes = bob_store
+        .fetch_mmr_nodes(MmrTree::Utxo, 0, bob_num_utxos, Some(sync_horizon_height))
+        .unwrap();
+    assert_eq!(alice_utxo_nodes, bob_utxo_nodes);
+    // Check RangeProof MMR nodes
+    let alice_num_rps = alice_store
+        .fetch_mmr_node_count(MmrTree::RangeProof, sync_horizon_height)
+        .unwrap();
+    let bob_num_rps = bob_store
+        .fetch_mmr_node_count(MmrTree::RangeProof, sync_horizon_height)
+        .unwrap();
+    assert_eq!(alice_num_rps, bob_num_rps);
+    let alice_rps_nodes = alice_store
+        .fetch_mmr_nodes(MmrTree::RangeProof, 0, alice_num_rps, Some(sync_horizon_height))
+        .unwrap();
+    let bob_rps_nodes = bob_store
+        .fetch_mmr_nodes(MmrTree::RangeProof, 0, bob_num_rps, Some(sync_horizon_height))
+        .unwrap();
+    assert_eq!(alice_rps_nodes, bob_rps_nodes);
+
+    // Check if chain can be extending using blocks after horizon state
+    let height = sync_horizon_height as usize + 1;
+    assert_eq!(bob_store.add_block(blocks[height].clone()), Ok(BlockAddResult::Ok));
 }

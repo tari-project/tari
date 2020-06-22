@@ -1706,27 +1706,27 @@ fn fetch_utxo_rp_mmr_nodes_and_count<T: BlockchainBackend>(mut db: T) {
     assert!(db.write(txn).is_ok());
 
     for i in 0..=3 {
-        let mmr_node = db.fetch_mmr_node(MmrTree::Utxo, i).unwrap();
+        let mmr_node = db.fetch_mmr_node(MmrTree::Utxo, i, None).unwrap();
         assert_eq!(mmr_node, utxo_leaf_nodes[i as usize]);
-        let mmr_node = db.fetch_mmr_node(MmrTree::RangeProof, i).unwrap();
+        let mmr_node = db.fetch_mmr_node(MmrTree::RangeProof, i, None).unwrap();
         assert_eq!(mmr_node, rp_leaf_nodes[i as usize]);
 
-        let mmr_node = db.fetch_mmr_nodes(MmrTree::Utxo, i, 3).unwrap();
+        let mmr_node = db.fetch_mmr_nodes(MmrTree::Utxo, i, 3, None).unwrap();
         assert_eq!(mmr_node.len(), 3);
         assert_eq!(mmr_node[0], utxo_leaf_nodes[i as usize]);
         assert_eq!(mmr_node[1], utxo_leaf_nodes[(i + 1) as usize]);
         assert_eq!(mmr_node[2], utxo_leaf_nodes[(i + 2) as usize]);
-        let mmr_node = db.fetch_mmr_nodes(MmrTree::RangeProof, i, 3).unwrap();
+        let mmr_node = db.fetch_mmr_nodes(MmrTree::RangeProof, i, 3, None).unwrap();
         assert_eq!(mmr_node.len(), 3);
         assert_eq!(mmr_node[0], rp_leaf_nodes[i as usize]);
         assert_eq!(mmr_node[1], rp_leaf_nodes[(i + 1) as usize]);
         assert_eq!(mmr_node[2], rp_leaf_nodes[(i + 2) as usize]);
     }
 
-    assert!(db.fetch_mmr_node(MmrTree::Utxo, 7).is_err());
-    assert!(db.fetch_mmr_nodes(MmrTree::Utxo, 5, 4).is_err());
-    assert!(db.fetch_mmr_node(MmrTree::RangeProof, 7).is_err());
-    assert!(db.fetch_mmr_nodes(MmrTree::RangeProof, 5, 4).is_err());
+    assert!(db.fetch_mmr_node(MmrTree::Utxo, 7, None).is_err());
+    assert!(db.fetch_mmr_nodes(MmrTree::Utxo, 5, 4, None).is_err());
+    assert!(db.fetch_mmr_node(MmrTree::RangeProof, 7, None).is_err());
+    assert!(db.fetch_mmr_nodes(MmrTree::RangeProof, 5, 4, None).is_err());
 }
 
 #[test]
@@ -1792,18 +1792,18 @@ fn fetch_kernel_mmr_nodes_and_count<T: BlockchainBackend>(mut db: T) {
     assert!(db.write(txn).is_ok());
 
     for i in 0..=3 {
-        let mmr_node = db.fetch_mmr_node(MmrTree::Kernel, i).unwrap();
+        let mmr_node = db.fetch_mmr_node(MmrTree::Kernel, i, None).unwrap();
         assert_eq!(mmr_node, leaf_nodes[i as usize]);
 
-        let mmr_node = db.fetch_mmr_nodes(MmrTree::Kernel, i, 3).unwrap();
+        let mmr_node = db.fetch_mmr_nodes(MmrTree::Kernel, i, 3, None).unwrap();
         assert_eq!(mmr_node.len(), 3);
         assert_eq!(mmr_node[0], leaf_nodes[i as usize]);
         assert_eq!(mmr_node[1], leaf_nodes[(i + 1) as usize]);
         assert_eq!(mmr_node[2], leaf_nodes[(i + 2) as usize]);
     }
 
-    assert!(db.fetch_mmr_node(MmrTree::Kernel, 7).is_err());
-    assert!(db.fetch_mmr_nodes(MmrTree::Kernel, 5, 4).is_err());
+    assert!(db.fetch_mmr_node(MmrTree::Kernel, 7, None).is_err());
+    assert!(db.fetch_mmr_nodes(MmrTree::Kernel, 5, 4, None).is_err());
 }
 
 #[test]
@@ -1821,6 +1821,98 @@ fn lmdb_fetch_kernel_nodes_and_count() {
     {
         let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
         fetch_kernel_mmr_nodes_and_count(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
+}
+
+fn insert_mmr_node_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
+    let factories = CryptoFactories::default();
+    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
+    let (utxo3, _) = create_utxo(MicroTari(20_000), &factories, None);
+    let (utxo4, _) = create_utxo(MicroTari(25_000), &factories, None);
+    let utxo_hash1 = utxo1.hash();
+    let utxo_hash2 = utxo2.hash();
+    let utxo_hash3 = utxo3.hash();
+    let utxo_hash4 = utxo4.hash();
+    let rp_hash1 = utxo1.proof.hash();
+    let rp_hash2 = utxo2.proof.hash();
+    let rp_hash3 = utxo3.proof.hash();
+    let rp_hash4 = utxo4.proof.hash();
+
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo1.clone());
+    assert!(db.write(txn).is_ok());
+    assert!(db.insert_mmr_node(MmrTree::Utxo, utxo_hash2.clone(), true).is_ok());
+    assert!(db.insert_mmr_node(MmrTree::RangeProof, rp_hash2.clone(), false).is_ok());
+    assert!(db.insert_mmr_node(MmrTree::Utxo, utxo_hash3.clone(), false).is_ok());
+    assert!(db.insert_mmr_node(MmrTree::RangeProof, rp_hash3.clone(), false).is_ok());
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo4.clone());
+    assert!(db.write(txn).is_ok());
+
+    let mut utxo_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
+    assert!(utxo_mmr_check.push(&utxo_hash1).is_ok());
+    assert!(utxo_mmr_check.push(&utxo_hash2).is_ok());
+    assert!(utxo_mmr_check.push(&utxo_hash3).is_ok());
+    assert!(utxo_mmr_check.push(&utxo_hash4).is_ok());
+    let leaf_index = utxo_mmr_check.find_leaf_index(&utxo_hash2).unwrap().unwrap();
+    assert!(utxo_mmr_check.delete(leaf_index));
+    assert_eq!(
+        db.fetch_mmr_root(MmrTree::Utxo).unwrap().to_hex(),
+        utxo_mmr_check.get_merkle_root().unwrap().to_hex()
+    );
+
+    let mmr_only_root = db.fetch_mmr_only_root(MmrTree::Utxo).unwrap();
+    let proof1 = db.fetch_mmr_proof(MmrTree::Utxo, 0).unwrap();
+    let proof2 = db.fetch_mmr_proof(MmrTree::Utxo, 1).unwrap();
+    let proof3 = db.fetch_mmr_proof(MmrTree::Utxo, 2).unwrap();
+    let proof4 = db.fetch_mmr_proof(MmrTree::Utxo, 3).unwrap();
+    assert!(proof1.verify_leaf::<HashDigest>(&mmr_only_root, &utxo_hash1, 0).is_ok());
+    assert!(proof2.verify_leaf::<HashDigest>(&mmr_only_root, &utxo_hash2, 1).is_ok());
+    assert!(proof3.verify_leaf::<HashDigest>(&mmr_only_root, &utxo_hash3, 2).is_ok());
+    assert!(proof4.verify_leaf::<HashDigest>(&mmr_only_root, &utxo_hash4, 3).is_ok());
+
+    let mut rp_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
+    assert_eq!(rp_mmr_check.push(&rp_hash1), Ok(1));
+    assert_eq!(rp_mmr_check.push(&rp_hash2), Ok(2));
+    assert_eq!(rp_mmr_check.push(&rp_hash3), Ok(3));
+    assert_eq!(rp_mmr_check.push(&rp_hash4), Ok(4));
+    assert_eq!(
+        db.fetch_mmr_root(MmrTree::RangeProof).unwrap().to_hex(),
+        rp_mmr_check.get_merkle_root().unwrap().to_hex()
+    );
+
+    let mmr_only_root = db.fetch_mmr_only_root(MmrTree::RangeProof).unwrap();
+    let proof1 = db.fetch_mmr_proof(MmrTree::RangeProof, 0).unwrap();
+    let proof2 = db.fetch_mmr_proof(MmrTree::RangeProof, 1).unwrap();
+    let proof3 = db.fetch_mmr_proof(MmrTree::RangeProof, 2).unwrap();
+    let proof4 = db.fetch_mmr_proof(MmrTree::RangeProof, 3).unwrap();
+    assert!(proof1.verify_leaf::<HashDigest>(&mmr_only_root, &rp_hash1, 0).is_ok());
+    assert!(proof2.verify_leaf::<HashDigest>(&mmr_only_root, &rp_hash2, 1).is_ok());
+    assert!(proof3.verify_leaf::<HashDigest>(&mmr_only_root, &rp_hash3, 2).is_ok());
+    assert!(proof4.verify_leaf::<HashDigest>(&mmr_only_root, &rp_hash4, 3).is_ok());
+}
+
+#[test]
+fn memory_insert_mmr_node_for_utxo_and_rp() {
+    let db = MemoryDatabase::<HashDigest>::default();
+    insert_mmr_node_for_utxo_and_rp(db);
+}
+
+#[test]
+fn lmdb_insert_mmr_node_for_utxo_and_rp() {
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        insert_mmr_node_for_utxo_and_rp(db);
     }
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files

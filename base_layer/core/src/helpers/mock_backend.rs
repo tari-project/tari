@@ -79,7 +79,13 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
-    fn fetch_mmr_node(&self, _tree: MmrTree, _pos: u32) -> Result<(Hash, bool), ChainStorageError> {
+    fn fetch_mmr_node(
+        &self,
+        _tree: MmrTree,
+        _pos: u32,
+        _hist_height: Option<u64>,
+    ) -> Result<(Hash, bool), ChainStorageError>
+    {
         unimplemented!()
     }
 
@@ -88,8 +94,17 @@ impl BlockchainBackend for MockBackend {
         _tree: MmrTree,
         _pos: u32,
         _count: u32,
+        _hist_height: Option<u64>,
     ) -> Result<Vec<(Vec<u8>, bool)>, ChainStorageError>
     {
+        unimplemented!()
+    }
+
+    fn insert_mmr_node(&mut self, _tree: MmrTree, _hash: Hash, _deleted: bool) -> Result<(), ChainStorageError> {
+        unimplemented!()
+    }
+
+    fn delete_mmr_node(&mut self, _tree: MmrTree, _hash: &Hash) -> Result<(), ChainStorageError> {
         unimplemented!()
     }
 

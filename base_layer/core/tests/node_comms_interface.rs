@@ -310,6 +310,79 @@ fn inbound_fetch_utxos() {
 }
 
 #[test]
+fn outbound_fetch_txos() {
+    let factories = CryptoFactories::default();
+    let (request_sender, mut request_receiver) = reply_channel::unbounded();
+    let (block_sender, _) = futures_mpsc_channel_unbounded();
+    let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
+
+    block_on(async {
+        let (txo1, _) = create_utxo(MicroTari(10_000), &factories, None);
+        let (txo2, _) = create_utxo(MicroTari(15_000), &factories, None);
+        let hash1 = txo1.hash();
+        let hash2 = txo2.hash();
+        let txo_response = NodeCommsResponse::TransactionOutputs(vec![txo1.clone(), txo2.clone()]);
+        let (received_txos, _) = futures::join!(
+            outbound_nci.fetch_txos(vec![hash1, hash2]),
+            test_request_responder(&mut request_receiver, txo_response)
+        );
+        let received_txos = received_txos.unwrap();
+        assert_eq!(received_txos.len(), 2);
+        assert_eq!(received_txos[0], txo1);
+        assert_eq!(received_txos[1], txo2);
+    });
+}
+
+#[test]
+fn inbound_fetch_txos() {
+    let factories = CryptoFactories::default();
+    let (mempool, store) = new_mempool();
+    let (block_event_sender, _) = broadcast::channel(50);
+    let network = Network::LocalNet;
+    let consensus_constants = network.create_consensus_constants();
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants)
+        .build();
+    let (request_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = futures_mpsc_channel_unbounded();
+    let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
+    let inbound_nch = InboundNodeCommsHandlers::new(
+        block_event_sender,
+        store.clone(),
+        mempool,
+        consensus_manager,
+        outbound_nci,
+    );
+
+    let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (stxo, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let utxo_hash = utxo.hash();
+    let stxo_hash = stxo.hash();
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo.clone());
+    txn.insert_utxo(stxo.clone());
+    assert!(store.commit(txn).is_ok());
+    let mut txn = DbTransaction::new();
+    txn.spend_utxo(stxo_hash.clone());
+    assert!(store.commit(txn).is_ok());
+
+    test_async(move |rt| {
+        rt.spawn(async move {
+            if let Ok(NodeCommsResponse::TransactionOutputs(received_txos)) = inbound_nch
+                .handle_request(&NodeCommsRequest::FetchTxos(vec![utxo_hash, stxo_hash]))
+                .await
+            {
+                assert_eq!(received_txos.len(), 2);
+                assert_eq!(received_txos[0], utxo);
+                assert_eq!(received_txos[1], stxo);
+            } else {
+                assert!(false);
+            }
+        });
+    });
+}
+
+#[test]
 fn outbound_fetch_blocks() {
     let (request_sender, mut request_receiver) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();

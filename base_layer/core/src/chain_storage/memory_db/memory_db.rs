@@ -464,11 +464,33 @@ where D: Digest + Send + Sync
         }
     }
 
-    fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Vec<u8>, bool), ChainStorageError> {
+    fn fetch_mmr_node(
+        &self,
+        tree: MmrTree,
+        pos: u32,
+        hist_height: Option<u64>,
+    ) -> Result<(Vec<u8>, bool), ChainStorageError>
+    {
         let db = self.db_access()?;
         let (hash, deleted) = match tree {
             MmrTree::Kernel => db.kernel_mmr.fetch_mmr_node(pos)?,
-            MmrTree::Utxo => db.utxo_mmr.fetch_mmr_node(pos)?,
+            MmrTree::Utxo => {
+                let (hash, mut deleted) = db.utxo_mmr.fetch_mmr_node(pos)?;
+                // Check if the MMR node was deleted after the historic height then its deletion status should change.
+                // TODO: Find a more efficient way to query the historic deletion status of an MMR node.
+                if deleted {
+                    if let Some(hist_height) = hist_height {
+                        let tip_height = db.headers.len().saturating_sub(1) as u64;
+                        for height in hist_height + 1..=tip_height {
+                            let cp = self.fetch_checkpoint(MmrTree::Utxo, height)?;
+                            if cp.nodes_deleted().contains(pos) {
+                                deleted = false;
+                            }
+                        }
+                    }
+                }
+                (hash, deleted)
+            },
             MmrTree::RangeProof => db.range_proof_mmr.fetch_mmr_node(pos)?,
         };
         let hash = hash.ok_or_else(|| {
@@ -477,12 +499,57 @@ where D: Digest + Send + Sync
         Ok((hash, deleted))
     }
 
-    fn fetch_mmr_nodes(&self, tree: MmrTree, pos: u32, count: u32) -> Result<Vec<(Vec<u8>, bool)>, ChainStorageError> {
+    fn fetch_mmr_nodes(
+        &self,
+        tree: MmrTree,
+        pos: u32,
+        count: u32,
+        hist_height: Option<u64>,
+    ) -> Result<Vec<(Vec<u8>, bool)>, ChainStorageError>
+    {
         let mut leaf_nodes = Vec::<(Vec<u8>, bool)>::with_capacity(count as usize);
         for pos in pos..pos + count {
-            leaf_nodes.push(self.fetch_mmr_node(tree.clone(), pos)?);
+            leaf_nodes.push(self.fetch_mmr_node(tree.clone(), pos, hist_height)?);
         }
         Ok(leaf_nodes)
+    }
+
+    fn insert_mmr_node(&mut self, tree: MmrTree, hash: Hash, deleted: bool) -> Result<(), ChainStorageError> {
+        let mut db = self
+            .db
+            .write()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+        match tree {
+            MmrTree::Kernel => db.curr_kernel_checkpoint.push_addition(hash),
+            MmrTree::Utxo => {
+                db.curr_utxo_checkpoint.push_addition(hash);
+                if deleted {
+                    let leaf_index = db
+                        .curr_utxo_checkpoint
+                        .accumulated_nodes_added_count()
+                        .saturating_sub(1);
+                    db.curr_utxo_checkpoint.push_deletion(leaf_index);
+                }
+            },
+            MmrTree::RangeProof => db.curr_range_proof_checkpoint.push_addition(hash),
+        };
+        Ok(())
+    }
+
+    fn delete_mmr_node(&mut self, tree: MmrTree, hash: &Hash) -> Result<(), ChainStorageError> {
+        let mut db = self
+            .db
+            .write()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+        match tree {
+            MmrTree::Kernel | MmrTree::RangeProof => {},
+            MmrTree::Utxo => {
+                if let Some(leaf_index) = db.utxo_mmr.find_leaf_index(&hash)? {
+                    db.curr_utxo_checkpoint.push_deletion(leaf_index);
+                }
+            },
+        };
+        Ok(())
     }
 
     /// Iterate over all the stored orphan blocks and execute the function `f` for each block.

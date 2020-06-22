@@ -627,7 +627,6 @@ fn propagate_and_forward_invalid_block() {
             mock_accum_difficulty_validator.clone(),
         )
         .start(&mut runtime, temp_dir.path().join("bob").to_str().unwrap());
-    let mock_validator = MockValidator::new(true);
     let (alice_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity)
         .with_peers(vec![bob_node_identity.clone(), carol_node_identity.clone()])
@@ -942,7 +941,7 @@ fn request_and_response_fetch_mmr_node_and_count() {
 
         let (added, deleted) = alice_node
             .outbound_nci
-            .fetch_mmr_nodes(MmrTree::Utxo, 1, 4, None)
+            .fetch_mmr_nodes(MmrTree::Utxo, 1, 4, 5, None)
             .await
             .unwrap();
         let deleted = Bitmap::deserialize(&deleted).to_vec();
@@ -950,7 +949,7 @@ fn request_and_response_fetch_mmr_node_and_count() {
         assert_eq!(deleted, vec![1, 3]);
         let (added, deleted) = alice_node
             .outbound_nci
-            .fetch_mmr_nodes(MmrTree::Kernel, 2, 2, None)
+            .fetch_mmr_nodes(MmrTree::Kernel, 2, 2, 5, None)
             .await
             .unwrap();
         let deleted = Bitmap::deserialize(&deleted).to_vec();
@@ -958,7 +957,7 @@ fn request_and_response_fetch_mmr_node_and_count() {
         assert_eq!(deleted.len(), 0);
         let (added, deleted) = alice_node
             .outbound_nci
-            .fetch_mmr_nodes(MmrTree::RangeProof, 2, 2, None)
+            .fetch_mmr_nodes(MmrTree::RangeProof, 2, 2, 5, None)
             .await
             .unwrap();
         let deleted = Bitmap::deserialize(&deleted).to_vec();
@@ -987,7 +986,7 @@ fn request_and_response_fetch_mmr_node_and_count() {
 
         let (added, deleted) = alice_node
             .outbound_nci
-            .fetch_mmr_nodes(MmrTree::Utxo, 4, 5, None)
+            .fetch_mmr_nodes(MmrTree::Utxo, 4, 5, 5, None)
             .await
             .unwrap();
         let deleted = Bitmap::deserialize(&deleted).to_vec();
@@ -995,7 +994,7 @@ fn request_and_response_fetch_mmr_node_and_count() {
         assert_eq!(deleted.len(), 0);
         let (added, deleted) = alice_node
             .outbound_nci
-            .fetch_mmr_nodes(MmrTree::Kernel, 4, 5, None)
+            .fetch_mmr_nodes(MmrTree::Kernel, 4, 5, 5, None)
             .await
             .unwrap();
         let deleted = Bitmap::deserialize(&deleted).to_vec();
@@ -1003,7 +1002,7 @@ fn request_and_response_fetch_mmr_node_and_count() {
         assert_eq!(deleted.len(), 0);
         let (added, deleted) = alice_node
             .outbound_nci
-            .fetch_mmr_nodes(MmrTree::RangeProof, 4, 5, None)
+            .fetch_mmr_nodes(MmrTree::RangeProof, 4, 5, 5, None)
             .await
             .unwrap();
         let deleted = Bitmap::deserialize(&deleted).to_vec();
