@@ -703,6 +703,7 @@ fn service_request_timeout() {
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let mempool_service_config = MempoolServiceConfig {
         request_timeout: Duration::from_millis(1),
+        ..Default::default()
     };
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let (mut alice_node, bob_node, _consensus_manager) = create_network_with_2_base_nodes_with_config(

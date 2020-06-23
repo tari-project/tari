@@ -24,6 +24,7 @@ use super::error::MessagingProtocolError;
 use crate::{
     compat::IoCompat,
     connection_manager::{ConnectionManagerEvent, ConnectionManagerRequester},
+    framing,
     message::{InboundMessage, MessageTag, OutboundMessage},
     multiplexing::Substream,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManagerError},
@@ -206,10 +207,7 @@ impl MessagingProtocol {
 
     pub fn framed<TSubstream>(socket: TSubstream) -> Framed<IoCompat<TSubstream>, LengthDelimitedCodec>
     where TSubstream: AsyncRead + AsyncWrite + Unpin {
-        let codec = LengthDelimitedCodec::builder()
-            .max_frame_length(MAX_FRAME_LENGTH)
-            .new_codec();
-        Framed::new(IoCompat::new(socket), codec)
+        framing::canonical(socket, MAX_FRAME_LENGTH)
     }
 
     async fn handle_internal_messaging_event(&mut self, event: MessagingEvent) {

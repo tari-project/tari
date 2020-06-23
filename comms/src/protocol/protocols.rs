@@ -27,7 +27,8 @@ use crate::{
 use futures::{channel::mpsc, SinkExt};
 use std::collections::HashMap;
 
-pub type ProtocolNotifier<TSubStream> = mpsc::Sender<ProtocolNotification<TSubStream>>;
+pub type ProtocolNotificationTx<TSubstream> = mpsc::Sender<ProtocolNotification<TSubstream>>;
+pub type ProtocolNotificationRx<TSubstream> = mpsc::Receiver<ProtocolNotification<TSubstream>>;
 
 #[derive(Debug, Clone)]
 pub enum ProtocolEvent<TSubstream> {
@@ -47,7 +48,7 @@ impl<TSubstream> ProtocolNotification<TSubstream> {
 }
 
 pub struct Protocols<TSubstream> {
-    protocols: HashMap<ProtocolId, ProtocolNotifier<TSubstream>>,
+    protocols: HashMap<ProtocolId, ProtocolNotificationTx<TSubstream>>,
 }
 
 impl<TSubstream> Clone for Protocols<TSubstream> {
@@ -71,7 +72,16 @@ impl<TSubstream> Protocols<TSubstream> {
         Default::default()
     }
 
-    pub fn add<I: AsRef<[ProtocolId]>>(&mut self, protocols: I, notifier: ProtocolNotifier<TSubstream>) -> &mut Self {
+    pub fn empty() -> Self {
+        Default::default()
+    }
+
+    pub fn add<I: AsRef<[ProtocolId]>>(
+        &mut self,
+        protocols: I,
+        notifier: ProtocolNotificationTx<TSubstream>,
+    ) -> &mut Self
+    {
         self.protocols
             .extend(protocols.as_ref().iter().map(|p| (p.clone(), notifier.clone())));
         self

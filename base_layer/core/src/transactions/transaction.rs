@@ -680,6 +680,10 @@ impl Transaction {
         self.body.add_kernels(&mut kernels);
         self
     }
+
+    pub fn first_kernel_excess_sig(&self) -> Option<&Signature> {
+        Some(&self.body.kernels().first()?.excess_sig)
+    }
 }
 
 impl Add for Transaction {

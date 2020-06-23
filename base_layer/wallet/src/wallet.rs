@@ -128,7 +128,12 @@ where
         let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100);
         let subscription_factory = Arc::new(subscription_factory);
 
-        let (comms, dht) = runtime.block_on(initialize_comms(config.comms_config.clone(), publisher, vec![]))?;
+        let (comms, dht) = runtime.block_on(initialize_comms(
+            config.comms_config.clone(),
+            publisher,
+            vec![],
+            Default::default(),
+        ))?;
 
         let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
             .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
