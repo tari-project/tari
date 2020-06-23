@@ -22,12 +22,12 @@
 
 use crate::output_manager_service::{
     error::OutputManagerError,
+    protocols::utxo_validation_protocol::UtxoValidationRetry,
     service::Balance,
     storage::database::PendingTransactionOutputs,
 };
 use futures::{stream::Fuse, StreamExt};
 use std::{collections::HashMap, fmt, time::Duration};
-use tari_broadcast_channel::Subscriber;
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
@@ -36,6 +36,7 @@ use tari_core::transactions::{
     SenderTransactionProtocol,
 };
 use tari_service_framework::reply_channel::SenderService;
+use tokio::sync::broadcast;
 use tower::Service;
 
 /// API Request enum
@@ -55,7 +56,7 @@ pub enum OutputManagerRequest {
     GetInvalidOutputs,
     GetSeedWords,
     SetBaseNodePublicKey(CommsPublicKey),
-    SyncWithBaseNode,
+    ValidateUtxos(UtxoValidationRetry),
     CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
 }
 
@@ -78,7 +79,7 @@ impl fmt::Display for OutputManagerRequest {
             Self::GetInvalidOutputs => f.write_str("GetInvalidOutputs"),
             Self::GetSeedWords => f.write_str("GetSeedWords"),
             Self::SetBaseNodePublicKey(k) => f.write_str(&format!("SetBaseNodePublicKey ({})", k)),
-            Self::SyncWithBaseNode => f.write_str("SyncWithBaseNode"),
+            Self::ValidateUtxos(retry) => f.write_str(&format!("ValidateUtxos ({:?})", retry)),
             Self::CreateCoinSplit(v) => f.write_str(&format!("CreateCoinSplit ({})", v.0)),
         }
     }
@@ -101,35 +102,42 @@ pub enum OutputManagerResponse {
     InvalidOutputs(Vec<UnblindedOutput>),
     SeedWords(Vec<String>),
     BaseNodePublicKeySet,
-    StartedBaseNodeSync(u64),
+    UtxoValidationStarted(u64),
     Transaction((u64, Transaction, MicroTari, MicroTari)),
 }
+
+pub type OutputManagerEventSender = broadcast::Sender<OutputManagerEvent>;
+pub type OutputManagerEventReceiver = broadcast::Receiver<OutputManagerEvent>;
 
 /// Events that can be published on the Text Message Service Event Stream
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum OutputManagerEvent {
-    BaseNodeSyncRequestTimedOut(u64),
-    ReceiveBaseNodeResponse(u64),
+    UtxoValidationTimedOut(u64),
+    UtxoValidationSuccess(u64),
+    UtxoValidationFailure(u64),
     Error(String),
 }
 
 #[derive(Clone)]
 pub struct OutputManagerHandle {
     handle: SenderService<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>,
-    event_stream: Subscriber<OutputManagerEvent>,
+    event_stream_sender: OutputManagerEventSender,
 }
 
 impl OutputManagerHandle {
     pub fn new(
         handle: SenderService<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>,
-        event_stream: Subscriber<OutputManagerEvent>,
+        event_stream_sender: OutputManagerEventSender,
     ) -> Self
     {
-        OutputManagerHandle { handle, event_stream }
+        OutputManagerHandle {
+            handle,
+            event_stream_sender,
+        }
     }
 
-    pub fn get_event_stream_fused(&self) -> Fuse<Subscriber<OutputManagerEvent>> {
-        self.event_stream.clone().fuse()
+    pub fn get_event_stream_fused(&self) -> Fuse<OutputManagerEventReceiver> {
+        self.event_stream_sender.subscribe().fuse()
     }
 
     pub async fn add_output(&mut self, output: UnblindedOutput) -> Result<(), OutputManagerError> {
@@ -287,9 +295,9 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn sync_with_base_node(&mut self) -> Result<u64, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::SyncWithBaseNode).await?? {
-            OutputManagerResponse::StartedBaseNodeSync(request_key) => Ok(request_key),
+    pub async fn validate_utxos(&mut self, retries: UtxoValidationRetry) -> Result<u64, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::ValidateUtxos(retries)).await?? {
+            OutputManagerResponse::UtxoValidationStarted(request_key) => Ok(request_key),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

@@ -160,7 +160,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
                 let mut result = HashMap::new();
                 for (k, v) in db.completed_transactions.iter() {
                     if v.cancelled {
-                        result.insert(k.clone(), v.clone());
+                        result.insert(*k, v.clone());
                     }
                 }
                 Some(DbValue::CompletedTransactions(result))

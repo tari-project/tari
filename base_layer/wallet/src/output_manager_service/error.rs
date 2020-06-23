@@ -66,6 +66,11 @@ pub enum OutputManagerError {
     NoBaseNodeKeysProvided,
     /// An error occured sending an event out on the event stream
     EventStreamError,
+    /// Maximum Attempts Exceeded
+    MaximumAttemptsExceeded,
+    /// An error has been experienced in the service
+    #[error(msg_embedded, non_std, no_from)]
+    ServiceError(String),
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -88,6 +93,7 @@ pub enum OutputManagerStorageError {
     OutputAlreadySpent,
     /// Key Manager not initialized
     KeyManagerNotInitialized,
+
     OutOfRangeError(OutOfRangeError),
     R2d2Error,
     TransactionError(TransactionError),
@@ -97,4 +103,24 @@ pub enum OutputManagerStorageError {
     DatabaseMigrationError(String),
     #[error(msg_embedded, non_std, no_from)]
     BlockingTaskSpawnError(String),
+}
+
+/// This error type is used to return OutputManagerError from inside a Output Manager Service protocol but also
+/// include the ID of the protocol
+#[derive(Debug)]
+pub struct OutputManagerProtocolError {
+    pub id: u64,
+    pub error: OutputManagerError,
+}
+
+impl OutputManagerProtocolError {
+    pub fn new(id: u64, error: OutputManagerError) -> Self {
+        Self { id, error }
+    }
+}
+
+impl From<OutputManagerProtocolError> for OutputManagerError {
+    fn from(tspe: OutputManagerProtocolError) -> Self {
+        tspe.error
+    }
 }

@@ -11,7 +11,6 @@ test_harness = ["tari_test_utils"]
 c_integration = []
 
 [dependencies]
-tari_broadcast_channel = "^0.2"
 tari_comms = { path = "../../comms", version = "^0.1"}
 tari_comms_dht = { path = "../../comms/dht", version = "^0.1"}
 tari_crypto = { version = "^0.3" }

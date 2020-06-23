@@ -50,11 +50,13 @@
 
 use futures::{stream::Fuse, StreamExt};
 use log::*;
-use tari_broadcast_channel::Subscriber;
 use tari_comms::types::CommsPublicKey;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
-    output_manager_service::{handle::OutputManagerEvent, TxId},
+    output_manager_service::{
+        handle::{OutputManagerEvent, OutputManagerEventReceiver},
+        TxId,
+    },
     transaction_service::{
         handle::{TransactionEvent, TransactionEventReceiver},
         storage::database::{CompletedTransaction, InboundTransaction, TransactionBackend, TransactionDatabase},
@@ -77,7 +79,7 @@ where TBackend: TransactionBackend + 'static
     callback_base_node_sync_complete: unsafe extern "C" fn(TxId, bool),
     db: TransactionDatabase<TBackend>,
     transaction_service_event_stream: Fuse<TransactionEventReceiver>,
-    output_manager_service_event_stream: Fuse<Subscriber<OutputManagerEvent>>,
+    output_manager_service_event_stream: Fuse<OutputManagerEventReceiver>,
     shutdown_signal: Option<ShutdownSignal>,
     comms_public_key: CommsPublicKey,
 }
@@ -89,7 +91,7 @@ where TBackend: TransactionBackend + 'static
     pub fn new(
         db: TransactionDatabase<TBackend>,
         transaction_service_event_stream: Fuse<TransactionEventReceiver>,
-        output_manager_service_event_stream: Fuse<Subscriber<OutputManagerEvent>>,
+        output_manager_service_event_stream: Fuse<OutputManagerEventReceiver>,
         shutdown_signal: ShutdownSignal,
         comms_public_key: CommsPublicKey,
         callback_received_transaction: unsafe extern "C" fn(*mut InboundTransaction),
@@ -204,17 +206,25 @@ where TBackend: TransactionBackend + 'static
                         Err(e) => error!(target: LOG_TARGET, "Error reading from Transaction Service event broadcast channel"),
                     }
                 },
-                msg = self.output_manager_service_event_stream.select_next_some() => {
-                    trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
-                    match (*msg).clone() {
-                        OutputManagerEvent::ReceiveBaseNodeResponse(request_key) => {
-                            self.receive_sync_process_result(request_key, true);
+                result = self.output_manager_service_event_stream.select_next_some() => {
+                    match result {
+                        Ok(msg) => {
+                            trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
+                            match msg {
+                                OutputManagerEvent::UtxoValidationSuccess(request_key) => {
+                                    self.receive_sync_process_result(request_key, true);
+                                },
+                                OutputManagerEvent::UtxoValidationTimedOut(request_key) => {
+                                    self.receive_sync_process_result(request_key, false);
+                                }
+                                OutputManagerEvent::UtxoValidationFailure(request_key) => {
+                                    self.receive_sync_process_result(request_key, false);
+                                }
+                                /// Only the above variants are mapped to callbacks
+                                _ => (),
+                            }
                         },
-                        OutputManagerEvent::BaseNodeSyncRequestTimedOut(request_key) => {
-                            self.receive_sync_process_result(request_key, false);
-                        }
-                        /// Only the above variants are mapped to callbacks
-                        _ => (),
+                        Err(e) => error!(target: LOG_TARGET, "Error reading from Output Manager Service event broadcast channel"),
                     }
                 },
                 complete => {
@@ -376,5 +386,303 @@ where TBackend: TransactionBackend + 'static
         unsafe {
             (self.callback_base_node_sync_complete)(request_key, result);
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::callback_handler::CallbackHandler;
+    use chrono::Utc;
+    use futures::StreamExt;
+    use rand::rngs::OsRng;
+    use std::{
+        sync::{Arc, Mutex},
+        thread,
+        time::Duration,
+    };
+    use tari_core::transactions::{
+        tari_amount::{uT, MicroTari},
+        transaction::Transaction,
+        types::{BlindingFactor, PrivateKey, PublicKey},
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
+    };
+    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
+    use tari_shutdown::Shutdown;
+    use tari_wallet::{
+        output_manager_service::handle::OutputManagerEvent,
+        transaction_service::{
+            handle::TransactionEvent,
+            storage::{
+                database::{
+                    CompletedTransaction,
+                    InboundTransaction,
+                    OutboundTransaction,
+                    TransactionDatabase,
+                    TransactionStatus,
+                },
+                memory_db::TransactionMemoryDatabase,
+            },
+        },
+    };
+    use tokio::{runtime::Runtime, sync::broadcast};
+
+    struct CallbackState {
+        pub received_tx_callback_called: bool,
+        pub received_tx_reply_callback_called: bool,
+        pub received_finalized_tx_callback_called: bool,
+        pub broadcast_tx_callback_called: bool,
+        pub mined_tx_callback_called: bool,
+        pub direct_send_callback_called: bool,
+        pub store_and_forward_send_callback_called: bool,
+        pub tx_cancellation_callback_called_completed: bool,
+        pub tx_cancellation_callback_called_inbound: bool,
+        pub tx_cancellation_callback_called_outbound: bool,
+        pub base_node_sync_callback_called_true: bool,
+        pub base_node_sync_callback_called_false: bool,
+    }
+
+    impl CallbackState {
+        fn new() -> Self {
+            Self {
+                received_tx_callback_called: false,
+                received_tx_reply_callback_called: false,
+                received_finalized_tx_callback_called: false,
+                broadcast_tx_callback_called: false,
+                mined_tx_callback_called: false,
+                direct_send_callback_called: false,
+                store_and_forward_send_callback_called: false,
+                base_node_sync_callback_called_true: false,
+                base_node_sync_callback_called_false: false,
+                tx_cancellation_callback_called_completed: false,
+                tx_cancellation_callback_called_inbound: false,
+                tx_cancellation_callback_called_outbound: false,
+            }
+        }
+    }
+
+    lazy_static! {
+        static ref CALLBACK_STATE: Mutex<CallbackState> = {
+            let c = Mutex::new(CallbackState::new());
+            c
+        };
+    }
+
+    unsafe extern "C" fn received_tx_callback(tx: *mut InboundTransaction) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+        lock.received_tx_callback_called = true;
+        drop(lock);
+        Box::from_raw(tx);
+    }
+
+    unsafe extern "C" fn received_tx_reply_callback(tx: *mut CompletedTransaction) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+        lock.received_tx_reply_callback_called = true;
+        drop(lock);
+        Box::from_raw(tx);
+    }
+
+    unsafe extern "C" fn received_tx_finalized_callback(tx: *mut CompletedTransaction) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+        lock.received_finalized_tx_callback_called = true;
+        drop(lock);
+        Box::from_raw(tx);
+    }
+
+    unsafe extern "C" fn broadcast_callback(tx: *mut CompletedTransaction) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+        lock.broadcast_tx_callback_called = true;
+        drop(lock);
+        Box::from_raw(tx);
+    }
+
+    unsafe extern "C" fn mined_callback(tx: *mut CompletedTransaction) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+        lock.mined_tx_callback_called = true;
+        drop(lock);
+        Box::from_raw(tx);
+    }
+
+    unsafe extern "C" fn direct_send_callback(_tx_id: u64, _result: bool) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+        lock.direct_send_callback_called = true;
+        drop(lock);
+    }
+
+    unsafe extern "C" fn store_and_forward_send_callback(_tx_id: u64, _result: bool) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+        lock.store_and_forward_send_callback_called = true;
+        drop(lock);
+    }
+
+    unsafe extern "C" fn tx_cancellation_callback(tx: *mut CompletedTransaction) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+        match (*tx).tx_id {
+            3 => lock.tx_cancellation_callback_called_inbound = true,
+            4 => lock.tx_cancellation_callback_called_completed = true,
+            5 => lock.tx_cancellation_callback_called_outbound = true,
+            _ => (),
+        }
+
+        drop(lock);
+        Box::from_raw(tx);
+    }
+
+    unsafe extern "C" fn base_node_sync_process_complete_callback(_tx_id: u64, result: bool) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+
+        if result {
+            lock.base_node_sync_callback_called_true = true;
+        } else {
+            lock.base_node_sync_callback_called_false = true;
+        }
+        drop(lock);
+    }
+
+    #[test]
+    fn test_callback_handler() {
+        let mut runtime = Runtime::new().unwrap();
+
+        let db = TransactionDatabase::new(TransactionMemoryDatabase::new());
+        let rtp = ReceiverTransactionProtocol::new_placeholder();
+        let inbound_tx = InboundTransaction::new(
+            1u64,
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            22 * uT,
+            rtp,
+            TransactionStatus::Pending,
+            "1".to_string(),
+            Utc::now().naive_utc(),
+        );
+        let completed_tx = CompletedTransaction::new(
+            2u64,
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            MicroTari::from(100),
+            MicroTari::from(2000),
+            Transaction::new(Vec::new(), Vec::new(), Vec::new(), BlindingFactor::default()),
+            TransactionStatus::Completed,
+            "2".to_string(),
+            Utc::now().naive_utc(),
+        );
+        let stp = SenderTransactionProtocol::new_placeholder();
+        let outbound_tx = OutboundTransaction::new(
+            3u64,
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            22 * uT,
+            23 * uT,
+            stp,
+            TransactionStatus::Pending,
+            "3".to_string(),
+            Utc::now().naive_utc(),
+            false,
+        );
+        let inbound_tx_cancelled = InboundTransaction {
+            tx_id: 4u64,
+            ..inbound_tx.clone()
+        };
+        let completed_tx_cancelled = CompletedTransaction {
+            tx_id: 5u64,
+            ..completed_tx.clone()
+        };
+
+        runtime
+            .block_on(db.add_pending_inbound_transaction(1u64, inbound_tx))
+            .unwrap();
+        runtime
+            .block_on(db.insert_completed_transaction(2u64, completed_tx))
+            .unwrap();
+        runtime
+            .block_on(db.add_pending_inbound_transaction(4u64, inbound_tx_cancelled))
+            .unwrap();
+        runtime.block_on(db.cancel_pending_transaction(4u64)).unwrap();
+        runtime
+            .block_on(db.insert_completed_transaction(5u64, completed_tx_cancelled))
+            .unwrap();
+        runtime.block_on(db.cancel_completed_transaction(5u64)).unwrap();
+        runtime
+            .block_on(db.add_pending_outbound_transaction(3u64, outbound_tx))
+            .unwrap();
+        runtime.block_on(db.cancel_pending_transaction(3u64)).unwrap();
+
+        let (tx_sender, tx_receiver) = broadcast::channel(20);
+        let (oms_sender, oms_receiver) = broadcast::channel(20);
+
+        let shutdown_signal = Shutdown::new();
+        let callback_handler = CallbackHandler::new(
+            db,
+            tx_receiver.fuse(),
+            oms_receiver.fuse(),
+            shutdown_signal.to_signal(),
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            received_tx_callback,
+            received_tx_reply_callback,
+            received_tx_finalized_callback,
+            broadcast_callback,
+            mined_callback,
+            direct_send_callback,
+            store_and_forward_send_callback,
+            tx_cancellation_callback,
+            base_node_sync_process_complete_callback,
+        );
+
+        runtime.spawn(callback_handler.start());
+
+        tx_sender
+            .send(Arc::new(TransactionEvent::ReceivedTransaction(1u64)))
+            .unwrap();
+        tx_sender
+            .send(Arc::new(TransactionEvent::ReceivedTransactionReply(2u64)))
+            .unwrap();
+        tx_sender
+            .send(Arc::new(TransactionEvent::ReceivedFinalizedTransaction(2u64)))
+            .unwrap();
+        tx_sender
+            .send(Arc::new(TransactionEvent::TransactionBroadcast(2u64)))
+            .unwrap();
+        tx_sender
+            .send(Arc::new(TransactionEvent::TransactionMined(2u64)))
+            .unwrap();
+        tx_sender
+            .send(Arc::new(TransactionEvent::TransactionDirectSendResult(2u64, true)))
+            .unwrap();
+        tx_sender
+            .send(Arc::new(TransactionEvent::TransactionStoreForwardSendResult(
+                2u64, true,
+            )))
+            .unwrap();
+        tx_sender
+            .send(Arc::new(TransactionEvent::TransactionCancelled(3u64)))
+            .unwrap();
+        tx_sender
+            .send(Arc::new(TransactionEvent::TransactionCancelled(4u64)))
+            .unwrap();
+        tx_sender
+            .send(Arc::new(TransactionEvent::TransactionCancelled(5u64)))
+            .unwrap();
+
+        oms_sender
+            .send(OutputManagerEvent::UtxoValidationSuccess(1u64))
+            .unwrap();
+        oms_sender
+            .send(OutputManagerEvent::UtxoValidationTimedOut(1u64))
+            .unwrap();
+
+        thread::sleep(Duration::from_secs(10));
+
+        let lock = CALLBACK_STATE.lock().unwrap();
+        assert!(lock.received_tx_callback_called);
+        assert!(lock.received_tx_reply_callback_called);
+        assert!(lock.received_finalized_tx_callback_called);
+        assert!(lock.broadcast_tx_callback_called);
+        assert!(lock.mined_tx_callback_called);
+        assert!(lock.direct_send_callback_called);
+        assert!(lock.store_and_forward_send_callback_called);
+        assert!(lock.tx_cancellation_callback_called_inbound);
+        assert!(lock.tx_cancellation_callback_called_completed);
+        assert!(lock.tx_cancellation_callback_called_outbound);
+        assert!(lock.base_node_sync_callback_called_true);
+        assert!(lock.base_node_sync_callback_called_false);
+        drop(lock);
     }
 }

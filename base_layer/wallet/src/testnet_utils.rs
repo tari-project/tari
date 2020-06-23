@@ -168,7 +168,7 @@ pub fn get_next_memory_address() -> Multiaddr {
 pub fn generate_wallet_test_data<
     T: WalletBackend,
     U: TransactionBackend + Clone,
-    V: OutputManagerBackend,
+    V: OutputManagerBackend + Clone,
     W: ContactsBackend,
     P: AsRef<Path>,
 >(
@@ -691,7 +691,7 @@ pub fn generate_wallet_test_data<
 pub fn complete_sent_transaction<
     T: WalletBackend,
     U: TransactionBackend + Clone,
-    V: OutputManagerBackend,
+    V: OutputManagerBackend + Clone,
     W: ContactsBackend,
 >(
     wallet: &mut Wallet<T, U, V, W>,
@@ -735,7 +735,7 @@ pub fn complete_sent_transaction<
 pub fn receive_test_transaction<
     T: WalletBackend,
     U: TransactionBackend + Clone,
-    V: OutputManagerBackend,
+    V: OutputManagerBackend + Clone,
     W: ContactsBackend,
 >(
     wallet: &mut Wallet<T, U, V, W>,
@@ -765,7 +765,7 @@ pub fn receive_test_transaction<
 pub fn finalize_received_transaction<
     T: WalletBackend,
     U: TransactionBackend + Clone,
-    V: OutputManagerBackend,
+    V: OutputManagerBackend + Clone,
     W: ContactsBackend,
 >(
     wallet: &mut Wallet<T, U, V, W>,
@@ -786,7 +786,7 @@ pub fn finalize_received_transaction<
 pub fn broadcast_transaction<
     T: WalletBackend,
     U: TransactionBackend + Clone,
-    V: OutputManagerBackend,
+    V: OutputManagerBackend + Clone,
     W: ContactsBackend,
 >(
     wallet: &mut Wallet<T, U, V, W>,
@@ -807,7 +807,7 @@ pub fn broadcast_transaction<
 pub fn mine_transaction<
     T: WalletBackend,
     U: TransactionBackend + Clone,
-    V: OutputManagerBackend,
+    V: OutputManagerBackend + Clone,
     W: ContactsBackend,
 >(
     wallet: &mut Wallet<T, U, V, W>,

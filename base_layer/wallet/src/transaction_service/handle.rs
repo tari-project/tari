@@ -108,7 +108,7 @@ pub enum TransactionServiceResponse {
     PendingInboundTransactions(HashMap<u64, InboundTransaction>),
     PendingOutboundTransactions(HashMap<u64, OutboundTransaction>),
     CompletedTransactions(HashMap<u64, CompletedTransaction>),
-    CompletedTransaction(CompletedTransaction),
+    CompletedTransaction(Box<CompletedTransaction>),
     BaseNodePublicKeySet,
     UtxoImported(TxId),
     TransactionSubmitted,
@@ -290,7 +290,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::GetCompletedTransaction(tx_id))
             .await??
         {
-            TransactionServiceResponse::CompletedTransaction(t) => Ok(t),
+            TransactionServiceResponse::CompletedTransaction(t) => Ok(*t),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

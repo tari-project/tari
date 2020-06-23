@@ -20,11 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::output_manager_service::{handle::OutputManagerHandle, service::OutputManagerService};
-
 use crate::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
+        handle::OutputManagerHandle,
+        service::OutputManagerService,
         storage::database::{OutputManagerBackend, OutputManagerDatabase},
     },
     transaction_service::handle::TransactionServiceHandle,
@@ -32,7 +32,6 @@ use crate::{
 use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
-use tari_broadcast_channel::bounded;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{base_node::proto::base_node as BaseNodeProto, transactions::types::CryptoFactories};
 use tari_p2p::{
@@ -48,11 +47,12 @@ use tari_service_framework::{
     ServiceInitializer,
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
+use tokio::{runtime, sync::broadcast};
 
 pub mod config;
 pub mod error;
 pub mod handle;
+pub mod protocols;
 #[allow(unused_assignments)]
 pub mod service;
 pub mod storage;
@@ -72,7 +72,7 @@ where T: OutputManagerBackend
 }
 
 impl<T> OutputManagerServiceInitializer<T>
-where T: OutputManagerBackend
+where T: OutputManagerBackend + Clone + 'static
 {
     pub fn new(
         config: OutputManagerServiceConfig,
@@ -98,7 +98,7 @@ where T: OutputManagerBackend
 }
 
 impl<T> ServiceInitializer for OutputManagerServiceInitializer<T>
-where T: OutputManagerBackend + 'static
+where T: OutputManagerBackend + Clone + 'static
 {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
@@ -112,9 +112,9 @@ where T: OutputManagerBackend + 'static
         let base_node_response_stream = self.base_node_response_stream();
 
         let (sender, receiver) = reply_channel::unbounded();
-        let (publisher, subscriber) = bounded(100, 7);
+        let (publisher, _) = broadcast::channel(200);
 
-        let oms_handle = OutputManagerHandle::new(sender, subscriber);
+        let oms_handle = OutputManagerHandle::new(sender, publisher.clone());
 
         // Register handle before waiting for handles to be ready
         handles_fut.register(oms_handle);

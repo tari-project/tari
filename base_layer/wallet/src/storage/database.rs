@@ -96,7 +96,7 @@ where T: WalletBackend + 'static
 
         tokio::task::spawn_blocking(move || fetch!(db_clone, pub_key.clone(), Peer))
             .await
-            .or_else(|err| Err(WalletStorageError::BlockingTaskSpawnError(err.to_string())))
+            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
     }
 

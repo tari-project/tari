@@ -154,7 +154,10 @@ use tari_utilities::{hex, hex::Hex, message_format::MessageFormat};
 use tari_wallet::{
     contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
     error::WalletError,
-    output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
+    output_manager_service::{
+        protocols::utxo_validation_protocol::UtxoValidationRetry,
+        storage::sqlite_db::OutputManagerSqliteDatabase,
+    },
     storage::{
         connection_manager::run_migration_and_create_sqlite_connection,
         database::WalletDatabase,
@@ -4138,7 +4141,7 @@ pub unsafe extern "C" fn wallet_sync_with_base_node(wallet: *mut TariWallet, err
         return 0;
     }
 
-    match (*wallet).sync_with_base_node() {
+    match (*wallet).validate_utxos(UtxoValidationRetry::Limited(1)) {
         Ok(request_key) => request_key,
         Err(e) => {
             error = LibWalletError::from(e).code;
