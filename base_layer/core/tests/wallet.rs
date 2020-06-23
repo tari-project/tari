@@ -129,7 +129,6 @@ fn wallet_base_node_integration_test() {
         .build();
     let (base_node, _consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(base_node_identity.clone())
-        .with_peers(vec![bob_node_identity.clone(), alice_node_identity.clone()])
         .with_base_node_service_config(BaseNodeServiceConfig::default())
         .with_mmr_cache_config(MmrCacheConfig { rewind_hist_len: 10 })
         .with_mempool_service_config(MempoolServiceConfig::default())
@@ -159,9 +158,8 @@ fn wallet_base_node_integration_test() {
         factories: factories.clone(),
         transaction_service_config: Some(TransactionServiceConfig {
             base_node_monitoring_timeout: Duration::from_secs(1),
-            direct_send_timeout: Default::default(),
-            broadcast_send_timeout: Default::default(),
             low_power_polling_timeout: Duration::from_secs(10),
+            ..Default::default()
         }),
     };
     let alice_runtime = create_runtime();
