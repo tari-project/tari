@@ -202,8 +202,9 @@ where
     TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
-    let mut builder = CommsBuilder::new().with_node_identity(config.node_identity.clone());
-
+    let mut builder = CommsBuilder::new()
+        .with_protocols(protocols)
+        .with_node_identity(config.node_identity.clone());
     if config.allow_test_addresses {
         builder = builder.allow_test_addresses();
     }
@@ -212,7 +213,6 @@ where
         TransportType::Memory { listener_address } => {
             debug!(target: LOG_TARGET, "Building in-memory comms stack");
             let comms = builder
-                .with_protocols(protocols)
                 .with_transport(MemoryTransport)
                 .with_listener_address(listener_address.clone());
             configure_comms_and_dht(comms, config, connector, seed_peers).await
