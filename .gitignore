@@ -27,7 +27,6 @@ book
 report
 
 # On development branch only. This should be removed for point releases
-Cargo.lock
 *.log
 
 # Ignore DataStore, Database and Log files
