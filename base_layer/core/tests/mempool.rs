@@ -39,6 +39,7 @@ use std::{ops::Deref, sync::Arc, time::Duration};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::{comms_interface::Broadcast, service::BaseNodeServiceConfig},
+    chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     helpers::create_mem_db,
     mempool::{
@@ -487,6 +488,7 @@ fn request_response_get_stats() {
         .build();
     let (mut alice, bob, _consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
+        BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
         MmrCacheConfig { rewind_hist_len: 10 },
         MempoolServiceConfig::default(),
@@ -549,6 +551,7 @@ fn request_response_get_tx_state_with_excess_sig() {
         .build();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
         &mut runtime,
+        BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
         MmrCacheConfig { rewind_hist_len: 10 },
         MempoolServiceConfig::default(),
@@ -622,6 +625,7 @@ fn receive_and_propagate_transaction() {
         .build();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
         &mut runtime,
+        BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
         MmrCacheConfig { rewind_hist_len: 10 },
         MempoolServiceConfig::default(),
@@ -708,6 +712,7 @@ fn service_request_timeout() {
     let temp_dir = TempDir::new(string(8).as_str()).unwrap();
     let (mut alice_node, bob_node, _consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
+        BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
         MmrCacheConfig::default(),
         mempool_service_config,
@@ -744,6 +749,7 @@ fn block_event_and_reorg_event_handling() {
         .build();
     let (alice, mut bob, consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
+        BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
         MmrCacheConfig { rewind_hist_len: 10 },
         MempoolServiceConfig::default(),

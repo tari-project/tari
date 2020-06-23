@@ -49,7 +49,6 @@ use crate::{
 use croaring::Bitmap;
 use digest::Digest;
 use std::{
-    cmp::min,
     collections::{HashMap, VecDeque},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
@@ -457,10 +456,11 @@ where D: Digest + Send + Sync
 
     fn fetch_mmr_node_count(&self, tree: MmrTree, height: u64) -> Result<u32, ChainStorageError> {
         let db = self.db_access()?;
+        let tip_height = db.headers.len().saturating_sub(1) as u64;
         match tree {
-            MmrTree::Kernel => fetch_mmr_nodes_added_count(&db.kernel_checkpoints, height),
-            MmrTree::Utxo => fetch_mmr_nodes_added_count(&db.utxo_checkpoints, height),
-            MmrTree::RangeProof => fetch_mmr_nodes_added_count(&db.range_proof_checkpoints, height),
+            MmrTree::Kernel => fetch_mmr_nodes_added_count(&db.kernel_checkpoints, tip_height, height),
+            MmrTree::Utxo => fetch_mmr_nodes_added_count(&db.utxo_checkpoints, tip_height, height),
+            MmrTree::RangeProof => fetch_mmr_nodes_added_count(&db.range_proof_checkpoints, tip_height, height),
         }
     }
 
@@ -809,6 +809,7 @@ fn fetch_checkpoint(
 // Calculate the total leaf node count upto a specified height.
 fn fetch_mmr_nodes_added_count(
     checkpoints: &MemDbVec<MerkleCheckPoint>,
+    tip_height: u64,
     height: u64,
 ) -> Result<u32, ChainStorageError>
 {
@@ -817,7 +818,7 @@ fn fetch_mmr_nodes_added_count(
         .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
     Ok(match cp_count.checked_sub(1) {
         Some(last_index) => {
-            let index = min(last_index, height as usize);
+            let index = last_index.saturating_sub(tip_height.saturating_sub(height) as usize);
             checkpoints
                 .get(index)
                 .map_err(|e| ChainStorageError::AccessError(format!("Checkpoint error: {}", e.to_string())))?
