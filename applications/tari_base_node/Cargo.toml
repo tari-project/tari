@@ -20,7 +20,7 @@ tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0" }
 tari_mmr = { path = "../../base_layer/mmr", version = "^0.1" }
 tari_wallet = { path = "../../base_layer/wallet", version = "^0.1" }
 tari_broadcast_channel = "^0.2"
-tari_crypto = { version = "^0.3" }
+tari_crypto = { version = "^0.4" }
 
 structopt = { version = "0.3.13", default_features = false }
 config = { version = "0.9.3" }

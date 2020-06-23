@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 tari_comms = { path = "../../comms", version = "^0.1"}
 tari_comms_dht = { path = "../../comms/dht", version = "^0.1"}
-tari_crypto = { version = "^0.3" }
+tari_crypto = { version = "^0.4" }
 tari_p2p = {path = "../p2p", version = "^0.1"}
 tari_wallet = { path = "../wallet", version = "^0.1", features = ["test_harness", "c_integration"]}
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0"}
