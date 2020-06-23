@@ -10,7 +10,7 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { version = "^0.3" }
+tari_crypto = { version = "^0.4" }
 tari_storage = { version="^0.1", path = "../infrastructure/storage" }
 tari_shutdown = { version="^0.0",  path = "../infrastructure/shutdown" }
 
