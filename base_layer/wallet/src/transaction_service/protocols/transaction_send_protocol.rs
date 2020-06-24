@@ -296,6 +296,8 @@ where TBackend: TransactionBackend + Clone + 'static
             "Transaction Recipient Reply for TX_ID = {} received", tx_id,
         );
 
+        self.send_transaction_finalized_message(tx.clone()).await?;
+
         let _ = self
             .resources
             .event_publisher
@@ -308,8 +310,6 @@ where TBackend: TransactionBackend + Clone + 'static
                 );
                 e
             });
-
-        self.send_transaction_finalized_message(tx.clone()).await?;
 
         Ok(())
     }

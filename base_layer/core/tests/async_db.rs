@@ -232,7 +232,6 @@ fn fetch_async_mmr_roots() {
 
 #[test]
 fn async_add_block_fetch_orphan() {
-    env_logger::init();
     let network = Network::LocalNet;
     let consensus: ConsensusManager = ConsensusManagerBuilder::new(network).build();
     let (db, _, _, _) = create_blockchain_db_no_cut_through();
