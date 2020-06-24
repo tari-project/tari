@@ -5374,7 +5374,6 @@ mod test {
 
     #[test]
     fn test_comms_private_key_persistence() {
-        let _ = env_logger::try_init();
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;

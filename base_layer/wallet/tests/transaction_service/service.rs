@@ -1972,12 +1972,18 @@ fn transaction_base_node_monitoring() {
 
     assert_eq!(alice_completed_tx2.status, TransactionStatus::Completed);
 
+    let _ = alice_outbound_service.wait_call_count(2, Duration::from_secs(60));
+    for _ in 0..2 {
+        let _ = alice_outbound_service.pop_call().unwrap(); // burn Finalize Messages
+    }
+
     runtime
         .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
         .unwrap();
 
-    let _ = alice_outbound_service.wait_call_count(6, Duration::from_secs(60));
-    for _ in 0..6 {
+    // Wait for 2 pairs of BN and Mempool requests from the two transactions and burn them
+    let _ = alice_outbound_service.wait_call_count(4, Duration::from_secs(60));
+    for _ in 0..4 {
         let _ = alice_outbound_service.pop_call().unwrap(); // burn SAF message
     }
 
@@ -2023,16 +2029,17 @@ fn transaction_base_node_monitoring() {
 
     runtime.block_on(async {
         let mut delay = delay_for(Duration::from_secs(60)).fuse();
-        let mut mined_request_timeout_count = 0;
+        let mut timeout_count = 0;
         loop {
             futures::select! {
                 event = alice_event_stream.select_next_some() => {
-                     if let TransactionEvent::TransactionMinedRequestTimedOut(_) = &*event.unwrap(){
-                        mined_request_timeout_count +=1;
-                        if mined_request_timeout_count >= 2 {
-                            break;
-                        }
-
+                   match &*event.unwrap() {
+                       TransactionEvent::TransactionMinedRequestTimedOut(_) => timeout_count +=1,
+                       TransactionEvent::MempoolBroadcastTimedOut(_) => timeout_count +=1,
+                       _ => (),
+                   }
+                    if timeout_count >= 2 {
+                        break;
                     }
                 },
                 () = delay => {
@@ -2040,11 +2047,8 @@ fn transaction_base_node_monitoring() {
                 },
             }
         }
-        assert!(mined_request_timeout_count >= 2);
+        assert!(timeout_count >= 2);
     });
-
-    runtime.block_on(alice_ts.set_low_power_mode()).unwrap();
-    runtime.block_on(alice_ts.set_normal_power_mode()).unwrap();
 
     // Test that receiving a base node response with the wrong outputs does not result in a TX being mined
     let wrong_outputs = vec![completed_tx_outputs[0].clone(), TransactionOutput::default().into()];
@@ -2067,16 +2071,17 @@ fn transaction_base_node_monitoring() {
 
     runtime.block_on(async {
         let mut delay = delay_for(Duration::from_secs(60)).fuse();
-        let mut mined_request_timeout_count = 0;
+        let mut timeout_count = 0;
         loop {
             futures::select! {
                 event = alice_event_stream.select_next_some() => {
-                     if let TransactionEvent::TransactionMinedRequestTimedOut(_) = &*event.unwrap(){
-                        mined_request_timeout_count +=1;
-                        if mined_request_timeout_count >= 2 {
-                            break;
-                        }
-
+                     match &*event.unwrap() {
+                       TransactionEvent::TransactionMinedRequestTimedOut(_) => timeout_count +=1,
+                       TransactionEvent::MempoolBroadcastTimedOut(_) => timeout_count +=1,
+                       _ => (),
+                   }
+                    if timeout_count >= 2 {
+                        break;
                     }
                 },
                 () = delay => {
@@ -2084,7 +2089,7 @@ fn transaction_base_node_monitoring() {
                 },
             }
         }
-        assert!(mined_request_timeout_count >= 2);
+        assert!(timeout_count >= 2);
     });
 
     let broadcast_tx = runtime
