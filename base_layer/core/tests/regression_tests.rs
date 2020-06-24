@@ -64,7 +64,7 @@ fn test_block_30335() {
     assert!(block.header.achieved_difficulty() > Difficulty::from(151763817));
 }
 
-/// Commit df95cee73812689bbae77bfb547c1d73a49635d4 introduced a bug in Windows builds that resulted in Block 33924
+/// Commit df95cee73812689bbae77bfb547c1d73a49635d4 introduced a bug in Windows builds that resulted in Block 33923
 /// failing validation tests. This test checks to see that this issue has been resolved.
 #[test]
 fn test_block_33924() {
