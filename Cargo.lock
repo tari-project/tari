@@ -471,9 +471,9 @@ dependencies = [
 
 [[package]]
 name = "clear_on_drop"
-version = "0.2.4"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9cc5db465b294c3fa986d5bbb0f3017cd850bff6dd6c52f9ccff8b4d21b7b08"
+checksum = "97276801e127ffb46b66ce23f35cc96bd454fa311294bced4bbace7baa8b1d17"
 dependencies = [
  "cc",
 ]
@@ -3312,7 +3312,7 @@ dependencies = [
 
 [[package]]
 name = "tari_base_node"
-version = "0.3.0"
+version = "0.4.2"
 dependencies = [
  "chrono",
  "chrono-english",
@@ -3525,9 +3525,9 @@ dependencies = [
 
 [[package]]
 name = "tari_crypto"
-version = "0.4.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b18fb51209654df1a6f8e6c8aa96ffb87cd17111c76ac1dfdc688884dd964d64"
+checksum = "f3f96f4d8994e0db8776e8f19415bb9be3d2adf3b2d462d86fdc0adf602bcdc4"
 dependencies = [
  "base64 0.10.1",
  "blake2",
