@@ -82,8 +82,6 @@ use tari_wallet::{
 };
 use tokio::{runtime, time};
 
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
-
 /// Enum representing commands used by the basenode
 #[derive(Clone, PartialEq, Debug, Display, EnumIter, EnumString)]
 #[strum(serialize_all = "kebab_case")]
@@ -142,6 +140,9 @@ pub struct Parser {
     miner_thread_count: u64,
     state_machine_info: Subscriber<StatusInfo>,
 }
+
+// Import the auto-generated const values from the Manifest and Git
+include!(concat!(env!("OUT_DIR"), "/consts.rs"));
 
 const MAKE_IT_RAIN_USAGE: &str = "\nmake-it-rain [Txs/s] [duration (s)] [start amount (uT)] [increment (uT)/Tx] \
                                   [\"start time (UTC)\" / 'now' for immediate start] [public key or emoji id to send \
@@ -467,6 +468,7 @@ impl Parser {
     /// Function process the version command
     fn print_version(&mut self) {
         println!("Version: {}", VERSION);
+        println!("Author: {}", AUTHOR);
     }
 
     /// Function to process the get-state-info command
