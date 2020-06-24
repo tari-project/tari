@@ -497,7 +497,7 @@ where
 
     //---------------------------------- Base Node --------------------------------------------//
 
-    let (publisher, base_node_subscriptions) = pubsub_connector(handle.clone(), 100);
+    let (publisher, base_node_subscriptions) = pubsub_connector(handle.clone(), 1500);
     let base_node_subscriptions = Arc::new(base_node_subscriptions);
     create_peer_db_folder(&config.peer_db_path)?;
 
@@ -527,7 +527,7 @@ where
     debug!(target: LOG_TARGET, "Base node service registration complete.");
 
     //---------------------------------- Wallet --------------------------------------------//
-    let (publisher, wallet_subscriptions) = pubsub_connector(handle.clone(), 1000);
+    let (publisher, wallet_subscriptions) = pubsub_connector(handle.clone(), 15000);
     let wallet_subscriptions = Arc::new(wallet_subscriptions);
     create_peer_db_folder(&config.wallet_peer_db_path)?;
     let (wallet_comms, wallet_dht) = setup_wallet_comms(

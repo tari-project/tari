@@ -3312,7 +3312,7 @@ dependencies = [
 
 [[package]]
 name = "tari_base_node"
-version = "0.3.0"
+version = "0.4.2"
 dependencies = [
  "chrono",
  "chrono-english",
