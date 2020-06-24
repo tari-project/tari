@@ -125,7 +125,7 @@ where
         let transaction_backend_handle = transaction_backend.clone();
 
         let factories = config.factories;
-        let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100);
+        let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 1500);
         let subscription_factory = Arc::new(subscription_factory);
 
         let (comms, dht) = runtime.block_on(initialize_comms(
