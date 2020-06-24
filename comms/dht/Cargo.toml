@@ -9,9 +9,6 @@ readme = "README.md"
 license = "BSD-3-Clause"
 edition = "2018"
 
-[features]
-test-mocks = []
-
 [dependencies]
 tari_comms = { version = "^0.1", path = "../"}
 tari_crypto = { version = "^0.4" }
@@ -60,3 +57,7 @@ lazy_static = "1.4.0"
 
 [build-dependencies]
 tari_common = { version = "^0.1", path="../../common"}
+
+[features]
+test-mocks = []
+avx2 = ["tari_crypto/avx2"]

@@ -1,0 +1,59 @@
+# Build a new set of libraries when a new tag containing 'libwallet' is pushed
+name: Build binaries
+on:
+  push:
+    tags:
+      - "v[0-9].[0-9]+.[0-9]+"
+jobs:
+  ubuntu_binaries:
+    name: Build and deploy tari_base_node for Ubuntu
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features: ["avx2", "safe"]
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          apt-get update && \
+          apt-get -y install \
+          openssl \
+          libssl-dev \
+          pkg-config \
+          libsqlite3-dev \
+          clang \
+          git \
+          cmake \
+          libc++-dev \
+          libc++abi-dev \
+          libprotobuf-dev \
+          protobuf-compiler
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+      - name: Build ubuntu binaries, hash and zip them
+        run: |
+          cd applications/tari_base_node
+          cargo build --release --bin tari_base_node --features ${{ matrix.features }}
+          mkdir -p $GITHUB_WORKSPACE/binaries/ubuntu
+          cd $GITHUB_WORKSPACE/binaries/ubuntu
+          VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/[\"]/, "", $2); printf("%s",$2) }' $GITHUB_WORKSPACE/applications/tari_base_node/Cargo.toml)
+          BINFILE=tari_base_node-ubuntu-${{ matrix.features }}-$VERSION
+          cp $GITHUB_WORKSPACE/target/release/tari_base_node ./$BINFILE
+          sha256sum $BINFILE >> $BINFILE.sha256
+          bzip2 -f $BINFILE
+      - name: Sync to S3
+        uses: jakejarvis/s3-sync-action@v0.5.1
+        with:
+          args: --acl public-read --follow-symlinks
+        env:
+          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION:  '${{ secrets.AWS_REGION }}'
+          SOURCE_DIR: '$GITHUB_WORKSPACE/binaries/ubuntu'
+          DEST_DIR: 'ubuntu'
+
