@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+import "transaction.proto";
+
+package tari.mempool;
+
+message TransactionInventory {
+    // A list of kernel excess sigs used to identify transactions
+    repeated bytes items = 1;
+}
+
+message TransactionItem {
+    tari.types.Transaction transaction = 1;
+}
+
+message InventoryIndexes {
+    repeated uint32 indexes = 1;
+}

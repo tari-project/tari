@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::Sink;
+use futures::{channel::mpsc, Sink};
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::{error::Error, iter, path::Path, sync::Arc, time::Duration};
 use tari_comms::{
@@ -68,7 +68,7 @@ use tari_p2p::{
     },
 };
 use tari_service_framework::StackBuilder;
-use tokio::runtime::Runtime;
+use tokio::{runtime::Runtime, sync::broadcast};
 
 /// The NodeInterfaces is used as a container for providing access to all the services and interfaces of a single node.
 pub struct NodeInterfaces {
@@ -90,6 +90,7 @@ pub struct NodeInterfaces {
 pub struct BaseNodeBuilder {
     node_identity: Option<Arc<NodeIdentity>>,
     peers: Option<Vec<Arc<NodeIdentity>>>,
+    blockchain_db_config: Option<BlockchainDatabaseConfig>,
     base_node_service_config: Option<BaseNodeServiceConfig>,
     mmr_cache_config: Option<MmrCacheConfig>,
     mempool_config: Option<MempoolConfig>,
@@ -106,6 +107,7 @@ impl BaseNodeBuilder {
         Self {
             node_identity: None,
             peers: None,
+            blockchain_db_config: None,
             base_node_service_config: None,
             mmr_cache_config: None,
             mempool_config: None,
@@ -126,6 +128,12 @@ impl BaseNodeBuilder {
     /// Set the initial peers that will be available in the peer manager.
     pub fn with_peers(mut self, peers: Vec<Arc<NodeIdentity>>) -> Self {
         self.peers = Some(peers);
+        self
+    }
+
+    /// Set the configuration of the Blockchain db
+    pub fn with_blockchain_db_config(mut self, config: BlockchainDatabaseConfig) -> Self {
+        self.blockchain_db_config = Some(config);
         self
     }
 
@@ -189,8 +197,8 @@ impl BaseNodeBuilder {
             .consensus_manager
             .unwrap_or(ConsensusManagerBuilder::new(self.network).build());
         let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
-        let blockchain_db =
-            BlockchainDatabase::new(db, &consensus_manager, validators, BlockchainDatabaseConfig::default()).unwrap();
+        let blockchain_db_config = self.blockchain_db_config.unwrap_or(BlockchainDatabaseConfig::default());
+        let blockchain_db = BlockchainDatabase::new(db, &consensus_manager, validators, blockchain_db_config).unwrap();
         let mempool_validator = MempoolValidators::new(TxInputAndMaturityValidator {}, TxInputAndMaturityValidator {});
         let mempool = Mempool::new(
             blockchain_db.clone(),
@@ -277,6 +285,7 @@ pub fn create_network_with_2_base_nodes(
 // Creates a network with two Base Nodes where each node in the network knows the other nodes in the network.
 pub fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
     runtime: &mut Runtime,
+    blockchain_db_config: BlockchainDatabaseConfig,
     base_node_service_config: BaseNodeServiceConfig,
     mmr_cache_config: MmrCacheConfig,
     mempool_service_config: MempoolServiceConfig,
@@ -290,6 +299,7 @@ pub fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
     let network = Network::LocalNet;
     let (alice_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity.clone())
+        .with_blockchain_db_config(blockchain_db_config)
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
@@ -298,6 +308,7 @@ pub fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
         .start(runtime, data_path.as_ref().join("alice").as_os_str().to_str().unwrap());
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity)
+        .with_blockchain_db_config(blockchain_db_config)
         .with_peers(vec![alice_node_identity])
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
@@ -322,6 +333,7 @@ pub fn create_network_with_3_base_nodes(
     let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 10 };
     create_network_with_3_base_nodes_with_config(
         runtime,
+        BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
         mmr_cache_config,
         MempoolServiceConfig::default(),
@@ -334,6 +346,7 @@ pub fn create_network_with_3_base_nodes(
 // Creates a network with three Base Nodes where each node in the network knows the other nodes in the network.
 pub fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
     runtime: &mut Runtime,
+    blockchain_db_config: BlockchainDatabaseConfig,
     base_node_service_config: BaseNodeServiceConfig,
     mmr_cache_config: MmrCacheConfig,
     mempool_service_config: MempoolServiceConfig,
@@ -355,6 +368,7 @@ pub fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
     );
     let (carol_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(carol_node_identity.clone())
+        .with_blockchain_db_config(blockchain_db_config)
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
@@ -364,6 +378,7 @@ pub fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![carol_node_identity.clone()])
+        .with_blockchain_db_config(blockchain_db_config)
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
@@ -373,6 +388,7 @@ pub fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
     let (alice_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone(), carol_node_identity.clone()])
+        .with_blockchain_db_config(blockchain_db_config)
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
@@ -467,6 +483,16 @@ fn setup_base_node_services(
             subscription_factory,
             mempool,
             mempool_service_config,
+            // TODO: These should be settable from the outside - once an RPC-type protocol is available, this style of
+            //       service initialization may eventually be replaced
+            {
+                let (_, mempool_proto_rx) = mpsc::channel(0);
+                mempool_proto_rx
+            },
+            {
+                let (_, event_rx) = broadcast::channel(1);
+                event_rx
+            },
         ))
         .add_initializer(ChainMetadataServiceInitializer)
         .finish();

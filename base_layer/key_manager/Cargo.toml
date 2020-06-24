@@ -8,7 +8,7 @@ version = "0.0.10"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { version = "^0.3" }
+tari_crypto = { version = "^0.4" }
 rand = "0.7.2"
 digest = "0.8.0"
 sha2 = "0.8.0"

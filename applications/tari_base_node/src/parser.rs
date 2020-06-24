@@ -67,7 +67,7 @@ use tari_core::{
     base_node::{states::StatusInfo, LocalNodeCommsInterface},
     blocks::BlockHeader,
     mempool::service::LocalMempoolService,
-    tari_utilities::{hex::Hex, Hashable},
+    tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable},
     transactions::{
         tari_amount::{uT, MicroTari},
         transaction::OutputFeatures,
@@ -81,8 +81,6 @@ use tari_wallet::{
     util::emoji::EmojiId,
 };
 use tokio::{runtime, time};
-
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 /// Enum representing commands used by the basenode
 #[derive(Clone, PartialEq, Debug, Display, EnumIter, EnumString)]
@@ -142,6 +140,9 @@ pub struct Parser {
     miner_thread_count: u64,
     state_machine_info: Subscriber<StatusInfo>,
 }
+
+// Import the auto-generated const values from the Manifest and Git
+include!(concat!(env!("OUT_DIR"), "/consts.rs"));
 
 const MAKE_IT_RAIN_USAGE: &str = "\nmake-it-rain [Txs/s] [duration (s)] [start amount (uT)] [increment (uT)/Tx] \
                                   [\"start time (UTC)\" / 'now' for immediate start] [public key or emoji id to send \
@@ -415,7 +416,14 @@ impl Parser {
             ),
             GetBlock => {
                 println!("View a block of a height, call this command via:");
-                println!("get-block [height of the block]");
+                println!("get-block [height of the block] [format]");
+                println!(
+                    "[height of the block] The height of the block to fetch from the main chain. The genesis block \
+                     has height zero."
+                );
+                println!(
+                    "[format] Optional. Supported options are 'json' and 'text'. 'text' is the default if omitted."
+                );
             },
             GetMempoolStats => {
                 println!("Retrieves your mempools stats");
@@ -460,6 +468,7 @@ impl Parser {
     /// Function process the version command
     fn print_version(&mut self) {
         println!("Version: {}", VERSION);
+        println!("Author: {}", AUTHOR);
     }
 
     /// Function to process the get-state-info command
@@ -707,21 +716,34 @@ impl Parser {
     }
 
     /// Function to process the get-block command
-    fn process_get_block<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
-        let command_arg = args.take(4).collect::<Vec<&str>>();
-        let height = if command_arg.len() == 1 {
-            match command_arg[0].parse::<u64>().ok() {
-                Some(height) => height,
-                None => {
-                    println!("Invalid block height provided. Height must be an integer.");
-                    return;
-                },
-            }
-        } else {
-            println!("Invalid command, please enter as follows:");
-            println!("get-block [height of the block]");
-            println!("e.g. get-block 10");
+    fn process_get_block<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+        // let command_arg = args.take(4).collect::<Vec<&str>>();
+        let height = args.next();
+        if height.is_none() {
+            self.print_help("get-block".split(" "));
             return;
+        }
+        let height = match height.unwrap().parse::<u64>().ok() {
+            Some(height) => height,
+            None => {
+                println!("Invalid block height provided. Height must be an integer.");
+                self.print_help("get-block".split(" "));
+                return;
+            },
+        };
+        enum Format {
+            Json,
+            Text,
+        }
+        let format = match args.next() {
+            Some(v) if v.to_ascii_lowercase() == "json" => Format::Json,
+            Some(v) if v.to_ascii_lowercase() == "text" => Format::Text,
+            None => Format::Text,
+            Some(_) => {
+                println!("Unrecognized format sspecifier");
+                self.print_help("get-block".split(" "));
+                return;
+            },
         };
         let mut handler = self.node_service.clone();
         self.executor.spawn(async move {
@@ -734,9 +756,16 @@ impl Parser {
                     );
                     return;
                 },
-                Ok(mut data) => match data.pop() {
-                    Some(historical_block) => println!("{}", historical_block.block),
-                    None => println!("Block not found at height {}", height),
+                Ok(mut data) => match (data.pop(), format) {
+                    (Some(historical_block), Format::Text) => println!("{}", historical_block.block),
+                    (Some(historical_block), Format::Json) => println!(
+                        "{}",
+                        historical_block
+                            .block
+                            .to_json()
+                            .unwrap_or("Error deserializing block".into())
+                    ),
+                    (None, _) => println!("Block not found at height {}", height),
                 },
             };
         });

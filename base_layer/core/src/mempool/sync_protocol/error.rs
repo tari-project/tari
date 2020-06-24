@@ -20,26 +20,23 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod connection_stats;
+use crate::mempool::MempoolError;
+use futures::io;
+use tari_comms::peer_manager::NodeId;
+use thiserror::Error;
 
-mod config;
-pub use config::ConnectivityConfig;
-
-mod connection_pool;
-
-mod error;
-pub use error::ConnectivityError;
-
-mod manager;
-pub(crate) use manager::ConnectivityManager;
-pub use manager::ConnectivityStatus;
-
-mod requester;
-pub(crate) use requester::ConnectivityRequest;
-pub use requester::{ConnectivityEvent, ConnectivityEventRx, ConnectivityEventTx, ConnectivityRequester};
-
-mod selection;
-pub use selection::ConnectivitySelection;
-
-#[cfg(test)]
-mod test;
+#[derive(Debug, Error)]
+pub enum MempoolProtocolError {
+    #[error("Transaction from peer `{0}` did not contain a kernel excess signature")]
+    ExcessSignatureMissing(NodeId),
+    #[error("Peer `{0}` unexpectedly closed the substream")]
+    SubstreamClosed(NodeId),
+    #[error("Mempool database error: {0:?}")]
+    MempoolError(#[from] MempoolError),
+    #[error("IO error: {0}")]
+    IoError(#[from] io::Error),
+    #[error("Failed to decode message from peer `{peer}`: {source}")]
+    DecodeFailed { peer: NodeId, source: prost::DecodeError },
+    #[error("Wire message from `{peer}` failed to convert to local type: {message}")]
+    MessageConversionFailed { peer: NodeId, message: String },
+}

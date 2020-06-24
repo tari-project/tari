@@ -454,9 +454,11 @@ where
                     self.db.get_cancelled_completed_transactions().await?,
                 ))
             },
-            TransactionServiceRequest::GetCompletedTransaction(tx_id) => Ok(
-                TransactionServiceResponse::CompletedTransaction(self.db.get_completed_transaction(tx_id).await?),
-            ),
+            TransactionServiceRequest::GetCompletedTransaction(tx_id) => {
+                Ok(TransactionServiceResponse::CompletedTransaction(Box::new(
+                    self.db.get_completed_transaction(tx_id).await?,
+                )))
+            },
             TransactionServiceRequest::SetBaseNodePublicKey(public_key) => self
                 .set_base_node_public_key(
                     public_key,
@@ -601,12 +603,12 @@ where
                 let _ = self
                     .broadcast_completed_transaction_to_mempool(id, transaction_broadcast_join_handles)
                     .await
-                    .or_else(|resp| {
+                    .map_err(|resp| {
                         error!(
                             target: LOG_TARGET,
                             "Error starting Broadcast Protocol after completed Send Transaction Protocol : {:?}", resp
                         );
-                        Err(resp)
+                        resp
                     });
                 trace!(
                     target: LOG_TARGET,
@@ -907,45 +909,45 @@ where
             let _ = self
                 .broadcast_all_completed_transactions_to_mempool(broadcast_join_handles)
                 .await
-                .or_else(|resp| {
+                .map_err(|resp| {
                     error!(
                         target: LOG_TARGET,
                         "Error broadcasting all completed transactions: {:?}", resp
                     );
-                    Err(resp)
+                    resp
                 });
 
             let _ = self
                 .start_chain_monitoring_for_all_broadcast_transactions(chain_monitoring_join_handles)
                 .await
-                .or_else(|resp| {
+                .map_err(|resp| {
                     error!(
                         target: LOG_TARGET,
                         "Error querying base_node for all completed transactions: {:?}", resp
                     );
-                    Err(resp)
+                    resp
                 });
 
             let _ = self
                 .restart_all_send_transaction_protocols(send_transaction_join_handles)
                 .await
-                .or_else(|resp| {
+                .map_err(|resp| {
                     error!(
                         target: LOG_TARGET,
                         "Error restarting protocols for all pending outbound transactions: {:?}", resp
                     );
-                    Err(resp)
+                    resp
                 });
 
             let _ = self
                 .restart_all_receive_transaction_protocols(receive_transaction_join_handles)
                 .await
-                .or_else(|resp| {
+                .map_err(|resp| {
                     error!(
                         target: LOG_TARGET,
                         "Error restarting protocols for all pending inbound transactions: {:?}", resp
                     );
-                    Err(resp)
+                    resp
                 });
         }
         Ok(())
@@ -1066,7 +1068,7 @@ where
                 let _ = self
                     .start_transaction_chain_monitoring_protocol(id, transaction_chain_monitoring_join_handles)
                     .await
-                    .or_else(|resp| {
+                    .map_err(|resp| {
                         match resp {
                             TransactionServiceError::InvalidCompletedTransaction => trace!(
                                 target: LOG_TARGET,
@@ -1079,7 +1081,7 @@ where
                                 resp
                             ),
                         }
-                        Err(resp)
+                        resp
                     });
             },
             Err(TransactionServiceProtocolError { id, error }) => {
@@ -1421,13 +1423,12 @@ where
             transaction_service::{handle::TransactionServiceHandle, storage::database::InboundTransaction},
         };
         use futures::stream;
-        use tari_broadcast_channel::bounded;
         use tari_core::transactions::{transaction::OutputFeatures, ReceiverTransactionProtocol};
         use tari_crypto::keys::SecretKey;
 
         let (_sender, receiver) = reply_channel::unbounded();
         let (tx, _rx) = mpsc::channel(20);
-        let (oms_event_publisher, _oms_event_subscriber) = bounded(100, 118);
+        let (oms_event_publisher, _oms_event_subscriber) = broadcast::channel(100);
         let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
         let (event_publisher, _) = broadcast::channel(100);
         let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());

@@ -63,12 +63,19 @@ pub struct MempoolServiceConfig {
     /// The allocated waiting time for a request waiting for service responses from the Mempools of remote Base nodes.
     #[serde(with = "seconds")]
     pub request_timeout: Duration,
+    /// Number of peers from which to initiate a sync. Once this many peers have successfully synced, this node will
+    /// not initiate any more mempool syncs. Default: 2
+    pub initial_sync_num_peers: usize,
+    /// The maximum number of transactions to sync in a single sync session Default: 10_000
+    pub initial_sync_max_transactions: usize,
 }
 
 impl Default for MempoolServiceConfig {
     fn default() -> Self {
         Self {
             request_timeout: consts::MEMPOOL_SERVICE_REQUEST_TIMEOUT,
+            initial_sync_num_peers: 2,
+            initial_sync_max_transactions: 10_000,
         }
     }
 }

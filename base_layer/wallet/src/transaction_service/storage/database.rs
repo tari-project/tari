@@ -32,7 +32,7 @@ use std::{
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
-    tari_amount::{uT, MicroTari},
+    tari_amount::MicroTari,
     transaction::Transaction,
     types::{BlindingFactor, PrivateKey},
     ReceiverTransactionProtocol,
@@ -393,7 +393,7 @@ where T: TransactionBackend + 'static
             )))
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
 
         Ok(())
     }
@@ -412,7 +412,7 @@ where T: TransactionBackend + 'static
             )))
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
 
@@ -422,7 +422,7 @@ where T: TransactionBackend + 'static
             db_clone.write(WriteOperation::Remove(DbKey::PendingOutboundTransaction(tx_id)))
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
 
@@ -432,7 +432,7 @@ where T: TransactionBackend + 'static
         let tx_id_clone = tx_id;
         tokio::task::spawn_blocking(move || db_clone.transaction_exists(tx_id_clone))
             .await
-            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
     }
 
@@ -451,7 +451,7 @@ where T: TransactionBackend + 'static
             )))
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+        .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))
         .and_then(|inner_result| inner_result)
     }
 
@@ -490,7 +490,7 @@ where T: TransactionBackend + 'static
             Err(e) => log_error(key, e),
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(*t)
     }
 
@@ -529,7 +529,7 @@ where T: TransactionBackend + 'static
             Err(e) => log_error(key, e),
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(*t)
     }
 
@@ -568,7 +568,7 @@ where T: TransactionBackend + 'static
             Err(e) => log_error(key, e),
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(*t)
     }
 
@@ -609,7 +609,7 @@ where T: TransactionBackend + 'static
             Err(e) => log_error(key, e),
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(t)
     }
 
@@ -650,7 +650,7 @@ where T: TransactionBackend + 'static
             Err(e) => log_error(key, e),
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(t)
     }
 
@@ -663,7 +663,7 @@ where T: TransactionBackend + 'static
         let pub_key =
             tokio::task::spawn_blocking(move || db_clone.get_pending_transaction_counterparty_pub_key_by_tx_id(tx_id))
                 .await
-                .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+                .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(pub_key)
     }
 
@@ -702,7 +702,7 @@ where T: TransactionBackend + 'static
             Err(e) => log_error(key, e),
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(t)
     }
 
@@ -717,7 +717,7 @@ where T: TransactionBackend + 'static
 
         tokio::task::spawn_blocking(move || db_clone.complete_outbound_transaction(tx_id, transaction))
             .await
-            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
     }
 
@@ -732,57 +732,56 @@ where T: TransactionBackend + 'static
 
         tokio::task::spawn_blocking(move || db_clone.complete_inbound_transaction(tx_id, transaction))
             .await
-            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
     }
 
-    pub async fn cancel_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+    pub async fn cancel_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.cancel_completed_transaction(tx_id))
             .await
-            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
 
-    pub async fn cancel_pending_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+    pub async fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.cancel_pending_transaction(tx_id))
             .await
-            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
 
-    pub async fn mark_direct_send_success(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+    pub async fn mark_direct_send_success(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.mark_direct_send_success(tx_id))
             .await
-            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
 
     /// Indicated that the specified completed transaction has been broadcast into the mempool
-    pub async fn broadcast_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+    pub async fn broadcast_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
 
         tokio::task::spawn_blocking(move || db_clone.broadcast_completed_transaction(tx_id))
             .await
-            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
     }
 
     /// Indicated that the specified completed transaction has been detected as mined on the base layer
-    pub async fn mine_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+    pub async fn mine_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
 
         tokio::task::spawn_blocking(move || db_clone.mine_completed_transaction(tx_id))
             .await
-            .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
     }
 
-    #[allow(clippy::erasing_op)] // this is for 0 * uT
     pub async fn add_utxo_import_transaction(
-        &mut self,
+        &self,
         tx_id: TxId,
         amount: MicroTari,
         source_public_key: CommsPublicKey,
@@ -795,7 +794,7 @@ where T: TransactionBackend + 'static
             source_public_key.clone(),
             comms_public_key.clone(),
             amount,
-            0 * uT,
+            MicroTari::from(0),
             Transaction::new(Vec::new(), Vec::new(), Vec::new(), BlindingFactor::default()),
             TransactionStatus::Imported,
             message,
@@ -810,7 +809,7 @@ where T: TransactionBackend + 'static
             )))
         })
         .await
-        .or_else(|err| Err(TransactionStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
 }

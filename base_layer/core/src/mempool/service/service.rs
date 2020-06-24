@@ -77,14 +77,7 @@ pub struct MempoolStreams<SOutReq, SInReq, SInRes, STxIn, SLocalReq> {
     block_event_stream: BlockEventReceiver,
 }
 
-impl<SOutReq, SInReq, SInRes, STxIn, SLocalReq> MempoolStreams<SOutReq, SInReq, SInRes, STxIn, SLocalReq>
-where
-    SOutReq: Stream<Item = RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>>,
-    SInReq: Stream<Item = DomainMessage<proto::MempoolServiceRequest>>,
-    SInRes: Stream<Item = DomainMessage<proto::MempoolServiceResponse>>,
-    STxIn: Stream<Item = DomainMessage<Transaction>>,
-    SLocalReq: Stream<Item = RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>>,
-{
+impl<SOutReq, SInReq, SInRes, STxIn, SLocalReq> MempoolStreams<SOutReq, SInReq, SInRes, STxIn, SLocalReq> {
     pub fn new(
         outbound_request_stream: SOutReq,
         outbound_tx_stream: UnboundedReceiver<(Transaction, Vec<NodeId>)>,
@@ -169,6 +162,7 @@ where B: BlockchainBackend + 'static
             .expect("Mempool Service initialized without timeout_receiver_stream")
             .fuse();
         pin_mut!(timeout_receiver_stream);
+
         loop {
             futures::select! {
                 // Outbound request messages from the OutboundMempoolServiceInterface
@@ -317,7 +311,7 @@ where B: BlockchainBackend + 'static
         task::spawn(async move {
             let (request, reply_tx) = request_context.split();
             let _ = reply_tx
-                .send(inbound_handlers.handle_request(&request).await)
+                .send(inbound_handlers.handle_request(request).await)
                 .or_else(|err| {
                     error!(
                         target: LOG_TARGET,
@@ -365,7 +359,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
         .ok_or_else(|| MempoolServiceError::InvalidRequest("Received invalid mempool service request".to_string()))?;
 
     let response = inbound_handlers
-        .handle_request(&request.try_into().map_err(MempoolServiceError::InvalidRequest)?)
+        .handle_request(request.try_into().map_err(MempoolServiceError::InvalidRequest)?)
         .await?;
 
     let message = proto::MempoolServiceResponse {
@@ -475,7 +469,7 @@ async fn handle_incoming_tx<B: BlockchainBackend + 'static>(
         source_peer.public_key
     );
     inbound_handlers
-        .handle_transaction(&inner, Some(source_peer.node_id))
+        .handle_transaction(inner, Some(source_peer.node_id))
         .await?;
 
     Ok(())

@@ -34,6 +34,7 @@ use tari_broadcast_channel::{bounded, Publisher, Subscriber};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::{service::BaseNodeServiceConfig, states::StateEvent},
+    chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusManagerBuilder, Network},
     mempool::{MempoolServiceConfig, TxStorageResponse},
     mining::Miner,
@@ -62,6 +63,7 @@ fn mining() {
         .build();
     let (alice_node, mut bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
+        BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
         MmrCacheConfig { rewind_hist_len: 10 },
         MempoolServiceConfig::default(),

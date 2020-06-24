@@ -55,6 +55,7 @@ use tari_core::{
     transactions::{
         helpers::{create_test_kernel, create_utxo, spend_utxos},
         tari_amount::{uT, MicroTari, T},
+        transaction::TransactionOutput,
         types::{CryptoFactories, HashDigest},
     },
     tx,
@@ -1736,8 +1737,10 @@ fn pruned_mode_fetch_insert_and_commit() {
         .unwrap();
     assert_eq!(alice_kernel_nodes, bob_kernel_nodes);
     // Check Kernels
-    let alice_kernels = alice_kernel_nodes.iter().map(|n| n.0.clone()).collect::<Vec<_>>();
-    let bob_kernels = bob_kernel_nodes.iter().map(|n| n.0.clone()).collect::<Vec<_>>();
+    let alice_kernel_hashes = alice_kernel_nodes.iter().map(|n| n.0.clone()).collect::<Vec<_>>();
+    let bob_kernels_hashes = bob_kernel_nodes.iter().map(|n| n.0.clone()).collect::<Vec<_>>();
+    let alice_kernels = alice_store.fetch_kernels(alice_kernel_hashes).unwrap();
+    let bob_kernels = bob_store.fetch_kernels(bob_kernels_hashes).unwrap();
     assert_eq!(alice_kernels, bob_kernels);
     // Check UTXO MMR nodes
     let alice_num_utxos = alice_store
@@ -1769,6 +1772,20 @@ fn pruned_mode_fetch_insert_and_commit() {
         .fetch_mmr_nodes(MmrTree::RangeProof, 0, bob_num_rps, Some(sync_horizon_height))
         .unwrap();
     assert_eq!(alice_rps_nodes, bob_rps_nodes);
+    // Check UTXOs
+    let mut alice_utxos = Vec::<TransactionOutput>::new();
+    for (hash, deleted) in alice_utxo_nodes {
+        if !deleted {
+            alice_utxos.push(alice_store.fetch_txo(hash).unwrap().unwrap());
+        }
+    }
+    let mut bob_utxos = Vec::<TransactionOutput>::new();
+    for (hash, deleted) in bob_utxo_nodes {
+        if !deleted {
+            bob_utxos.push(bob_store.fetch_utxo(hash).unwrap());
+        }
+    }
+    assert_eq!(alice_utxos, bob_utxos);
 
     // Check if chain can be extending using blocks after horizon state
     let height = sync_horizon_height as usize + 1;

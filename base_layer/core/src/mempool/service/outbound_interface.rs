@@ -33,6 +33,7 @@ use log::*;
 use tari_comms::peer_manager::NodeId;
 use tari_service_framework::reply_channel::SenderService;
 use tower_service::Service;
+
 pub const LOG_TARGET: &str = "c::mp::service::outbound_interface";
 
 /// The OutboundMempoolServiceInterface provides an interface to request information from the Mempools of remote Base

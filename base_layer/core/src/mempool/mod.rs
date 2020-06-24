@@ -61,6 +61,11 @@ pub mod proto;
 #[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod service;
 
+#[cfg(feature = "base_node")]
+mod sync_protocol;
+#[cfg(feature = "base_node")]
+pub use sync_protocol::MEMPOOL_SYNC_PROTOCOL;
+
 use crate::transactions::types::Signature;
 use core::fmt::{Display, Error, Formatter};
 use serde::{Deserialize, Serialize};
@@ -130,6 +135,15 @@ pub enum TxStorageResponse {
     PendingPool,
     ReorgPool,
     NotStored,
+}
+
+impl TxStorageResponse {
+    pub fn is_stored(&self) -> bool {
+        match self {
+            TxStorageResponse::NotStored => false,
+            _ => true,
+        }
+    }
 }
 
 impl Display for TxStorageResponse {

@@ -24,7 +24,7 @@ use crate::{
         chain_metadata_service::ChainMetadataEvent,
         comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface},
         states,
-        states::{BaseNodeState, BlockSyncConfig, StateEvent, StatusInfo},
+        states::{BaseNodeState, BlockSyncConfig, HorizonSyncConfig, StateEvent, StatusInfo, SyncPeerConfig},
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
 };
@@ -41,12 +41,16 @@ const LOG_TARGET: &str = "c::bn::base_node";
 #[derive(Clone, Copy)]
 pub struct BaseNodeStateMachineConfig {
     pub block_sync_config: BlockSyncConfig,
+    pub horizon_sync_config: HorizonSyncConfig,
+    pub sync_peer_config: SyncPeerConfig,
 }
 
 impl Default for BaseNodeStateMachineConfig {
     fn default() -> Self {
         Self {
             block_sync_config: BlockSyncConfig::default(),
+            horizon_sync_config: HorizonSyncConfig::default(),
+            sync_peer_config: SyncPeerConfig::default(),
         }
     }
 }

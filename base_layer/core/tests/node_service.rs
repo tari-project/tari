@@ -53,7 +53,7 @@ use tari_core::{
         service::BaseNodeServiceConfig,
     },
     blocks::{BlockHeader, NewBlock},
-    chain_storage::{BlockAddResult, DbTransaction, MmrTree},
+    chain_storage::{BlockAddResult, BlockchainDatabaseConfig, DbTransaction, MmrTree},
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     mempool::MempoolServiceConfig,
     proof_of_work::{Difficulty, PowAlgorithm},
@@ -92,6 +92,7 @@ fn request_response_get_metadata() {
         .build();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
         &mut runtime,
+        BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
         MmrCacheConfig { rewind_hist_len: 10 },
         MempoolServiceConfig::default(),
@@ -288,6 +289,7 @@ fn request_and_response_fetch_blocks() {
         .build();
     let (mut alice_node, mut bob_node, carol_node, _) = create_network_with_3_base_nodes_with_config(
         &mut runtime,
+        BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
         MmrCacheConfig { rewind_hist_len: 10 },
         MempoolServiceConfig::default(),
@@ -338,6 +340,7 @@ fn request_and_response_fetch_blocks_with_hashes() {
         .build();
     let (mut alice_node, mut bob_node, carol_node, _) = create_network_with_3_base_nodes_with_config(
         &mut runtime,
+        BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
         MmrCacheConfig { rewind_hist_len: 10 },
         MempoolServiceConfig::default(),
@@ -695,6 +698,7 @@ fn service_request_timeout() {
     let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
     let (mut alice_node, bob_node, _consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
+        BlockchainDatabaseConfig::default(),
         base_node_service_config,
         MmrCacheConfig::default(),
         MempoolServiceConfig::default(),
@@ -872,6 +876,7 @@ fn request_and_response_fetch_mmr_node_and_count() {
         .build();
     let (mut alice_node, mut bob_node, _) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
+        BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
         MmrCacheConfig::default(),
         MempoolServiceConfig::default(),

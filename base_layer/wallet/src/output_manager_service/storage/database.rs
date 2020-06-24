@@ -155,14 +155,15 @@ macro_rules! fetch {
 
 /// This structure holds an inner type that implements the `OutputManagerBackend` trait and contains the more complex
 /// data access logic required by the module built onto the functionality defined by the trait
+#[derive(Clone)]
 pub struct OutputManagerDatabase<T>
-where T: OutputManagerBackend + 'static
+where T: OutputManagerBackend + Clone + 'static
 {
     db: Arc<T>,
 }
 
 impl<T> OutputManagerDatabase<T>
-where T: OutputManagerBackend + 'static
+where T: OutputManagerBackend + Clone + 'static
 {
     pub fn new(db: T) -> Self {
         Self { db: Arc::new(db) }
@@ -177,7 +178,7 @@ where T: OutputManagerBackend + 'static
             Err(e) => log_error(DbKey::KeyManagerState, e),
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
         .and_then(|inner_result| inner_result)
     }
 
@@ -187,7 +188,7 @@ where T: OutputManagerBackend + 'static
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::KeyManagerState(state)))
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
 
         Ok(())
     }
@@ -196,7 +197,7 @@ where T: OutputManagerBackend + 'static
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.increment_key_index())
             .await
-            .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
 
@@ -209,7 +210,7 @@ where T: OutputManagerBackend + 'static
             )))
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
 
         Ok(())
     }
@@ -226,7 +227,7 @@ where T: OutputManagerBackend + 'static
             })
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
 
         let unspent_outputs = tokio::task::spawn_blocking(move || {
             db_clone2.fetch(&DbKey::UnspentOutputs)?.ok_or_else(|| {
@@ -234,7 +235,7 @@ where T: OutputManagerBackend + 'static
             })
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         if let DbValue::UnspentOutputs(uo) = unspent_outputs {
             if let DbValue::AllPendingTransactionOutputs(pto) = pending_txs {
                 let available_balance = uo
@@ -280,7 +281,7 @@ where T: OutputManagerBackend + 'static
             )))
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
 
         Ok(())
     }
@@ -293,7 +294,7 @@ where T: OutputManagerBackend + 'static
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || fetch!(db_clone, tx_id, PendingTransactionOutputs))
             .await
-            .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
     }
 
@@ -304,7 +305,7 @@ where T: OutputManagerBackend + 'static
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.confirm_transaction(tx_id))
             .await
-            .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
     }
 
@@ -340,7 +341,7 @@ where T: OutputManagerBackend + 'static
             )))
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
 
@@ -358,7 +359,7 @@ where T: OutputManagerBackend + 'static
             db_clone.short_term_encumber_outputs(tx_id, &outputs_to_send, &outputs_to_receive)
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
         .and_then(|inner_result| inner_result)
     }
 
@@ -368,7 +369,7 @@ where T: OutputManagerBackend + 'static
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.confirm_encumbered_outputs(tx_id))
             .await
-            .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
     }
 
@@ -378,7 +379,7 @@ where T: OutputManagerBackend + 'static
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.clear_short_term_encumberances())
             .await
-            .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
     }
 
@@ -388,7 +389,7 @@ where T: OutputManagerBackend + 'static
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.cancel_pending_transaction(tx_id))
             .await
-            .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
     }
 
@@ -398,7 +399,7 @@ where T: OutputManagerBackend + 'static
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.timeout_pending_transactions(period))
             .await
-            .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
     }
 
@@ -415,7 +416,7 @@ where T: OutputManagerBackend + 'static
             Err(e) => log_error(DbKey::UnspentOutputs, e),
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
 
         uo.sort();
         Ok(uo)
@@ -434,7 +435,7 @@ where T: OutputManagerBackend + 'static
             Err(e) => log_error(DbKey::SpentOutputs, e),
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(uo)
     }
 
@@ -455,7 +456,7 @@ where T: OutputManagerBackend + 'static
             Err(e) => log_error(DbKey::AllPendingTransactionOutputs, e),
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(uo)
     }
 
@@ -472,7 +473,7 @@ where T: OutputManagerBackend + 'static
             Err(e) => log_error(DbKey::UnspentOutputs, e),
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(uo)
     }
 
@@ -489,7 +490,7 @@ where T: OutputManagerBackend + 'static
             Err(e) => log_error(DbKey::InvalidOutputs, e),
         })
         .await
-        .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(uo)
     }
 
@@ -501,7 +502,7 @@ where T: OutputManagerBackend + 'static
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.invalidate_unspent_output(&output))
             .await
-            .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
     }
 
@@ -509,7 +510,7 @@ where T: OutputManagerBackend + 'static
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.revalidate_unspent_output(&spending_key))
             .await
-            .or_else(|err| Err(OutputManagerStorageError::BlockingTaskSpawnError(err.to_string())))
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
     }
 }

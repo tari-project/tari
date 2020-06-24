@@ -257,12 +257,7 @@ where TBackend: TransactionBackend + Clone + 'static
                 error!(target: LOG_TARGET, "Invalid Mempool response variant");
             },
             MempoolResponse::TxStorage(ts) => {
-                let completed_tx = match self
-                    .resources
-                    .db
-                    .get_completed_transaction(response.request_key.clone())
-                    .await
-                {
+                let completed_tx = match self.resources.db.get_completed_transaction(response.request_key).await {
                     Ok(tx) => tx,
                     Err(e) => {
                         error!(

@@ -176,7 +176,9 @@ mod pingpong {
             listener_liveness_max_sessions: 0,
         };
 
-        let (comms, dht) = rt.block_on(initialize_comms(comms_config, publisher, vec![])).unwrap();
+        let (comms, dht) = rt
+            .block_on(initialize_comms(comms_config, publisher, vec![], Default::default()))
+            .unwrap();
 
         println!("Comms listening on {}", comms.listening_address());
 

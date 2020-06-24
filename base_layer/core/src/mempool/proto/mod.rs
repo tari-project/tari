@@ -22,9 +22,18 @@
 
 pub use crate::proto::generated::mempool;
 
+mod sync_protocol;
+// TODO: Clean up
 pub mod mempool_request;
 pub mod mempool_response;
 pub mod state_response;
 pub mod stats_response;
 pub mod tx_storage_response;
-pub use mempool::{MempoolServiceRequest, MempoolServiceResponse};
+pub use crate::transactions::proto::Transaction;
+pub use mempool::{
+    InventoryIndexes,
+    MempoolServiceRequest,
+    MempoolServiceResponse,
+    TransactionInventory,
+    TransactionItem,
+};

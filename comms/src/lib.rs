@@ -26,9 +26,14 @@ pub mod connectivity;
 pub mod peer_manager;
 pub use peer_manager::{NodeIdentity, PeerManager};
 
+pub mod framing;
+
 mod common;
 mod consts;
+
 mod multiplexing;
+pub use multiplexing::Substream;
+
 mod noise;
 mod proto;
 mod runtime;
@@ -52,14 +57,16 @@ pub mod utils;
 mod builder;
 pub use builder::{BuiltCommsNode, CommsBuilder, CommsBuilderError, CommsNode};
 
-// Re-exports
-pub use bytes::Bytes;
-
 // TODO: Test utils should be part of a `tari_comms_test` crate
 // #[cfg(test)]
 pub mod test_utils;
+
+//---------------------------------- Re-exports --------------------------------------------//
+// Rather than requiring dependant crates to import dependencies for use with `tari_comms` we re-export them here.
 
 pub mod multiaddr {
     // Re-export so that client code does not have to have multiaddr as a dependency
     pub use ::multiaddr::{Error, Multiaddr, Protocol};
 }
+
+pub use bytes::{Bytes, BytesMut};

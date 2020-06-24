@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::miner;
-use futures::future;
+use futures::{channel::mpsc, future};
 use log::*;
 use rand::rngs::OsRng;
 use std::{
@@ -38,6 +38,7 @@ use tari_common::{CommsTransport, DatabaseType, GlobalConfig, Network, SocksAuth
 use tari_comms::{
     multiaddr::{Multiaddr, Protocol},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    protocol::{ProtocolNotificationRx, Protocols},
     socks,
     tor,
     tor::TorIdentity,
@@ -46,6 +47,7 @@ use tari_comms::{
     CommsNode,
     ConnectionManagerEvent,
     PeerManager,
+    Substream,
 };
 use tari_comms_dht::{DbConnectionUrl, Dht, DhtConfig};
 use tari_core::{
@@ -75,6 +77,7 @@ use tari_core::{
         MempoolServiceConfig,
         MempoolServiceInitializer,
         MempoolValidators,
+        MEMPOOL_SYNC_PROTOCOL,
     },
     mining::Miner,
     tari_utilities::{hex::Hex, message_format::MessageFormat},
@@ -104,6 +107,7 @@ use tari_wallet::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
+        protocols::utxo_validation_protocol::UtxoValidationRetry,
         storage::sqlite_db::OutputManagerSqliteDatabase,
         OutputManagerServiceInitializer,
     },
@@ -225,7 +229,7 @@ impl NodeContainer {
                         let mut oms_handle_clone = wallet_output_handle.clone();
                         tokio::spawn(async move {
                             delay_for(Duration::from_secs(240)).await;
-                            let _ = oms_handle_clone.sync_with_base_node().await;
+                            let _ = oms_handle_clone.validate_utxos(UtxoValidationRetry::UntilSuccess).await;
                         });
                     },
                     Err(e) => warn!(target: LOG_TARGET, "Error adding output: {}", e),
@@ -496,7 +500,13 @@ where
     let (publisher, base_node_subscriptions) = pubsub_connector(handle.clone(), 100);
     let base_node_subscriptions = Arc::new(base_node_subscriptions);
     create_peer_db_folder(&config.peer_db_path)?;
-    let (base_node_comms, base_node_dht) = setup_base_node_comms(base_node_identity, config, publisher).await?;
+
+    let mut protocols = Protocols::new();
+    let (mempool_protocol_tx, mempool_protocol_notif) = mpsc::channel(10);
+    protocols.add(&[MEMPOOL_SYNC_PROTOCOL.clone()], mempool_protocol_tx);
+
+    let (base_node_comms, base_node_dht) =
+        setup_base_node_comms(base_node_identity, config, publisher, protocols).await?;
     base_node_comms
         .connectivity()
         .add_managed_peers(vec![wallet_node_identity.node_id().clone()])
@@ -511,6 +521,7 @@ where
         base_node_subscriptions.clone(),
         mempool,
         rules.clone(),
+        mempool_protocol_notif,
     )
     .await;
     debug!(target: LOG_TARGET, "Base node service registration complete.");
@@ -559,12 +570,18 @@ where
         .set_base_node_public_key(base_node_public_key.clone())
         .await
         .expect("Problem setting local base node public key for transaction service.");
-    wallet_handles
+    let mut oms_handle = wallet_handles
         .get_handle::<OutputManagerHandle>()
-        .expect("OutputManagerService is not registered")
+        .expect("OutputManagerService is not registered");
+    oms_handle
         .set_base_node_public_key(base_node_public_key)
         .await
         .expect("Problem setting local base node public key for output manager service.");
+    // Start the Output Manager UTXO Validation
+    oms_handle
+        .validate_utxos(UtxoValidationRetry::UntilSuccess)
+        .await
+        .expect("Problem starting the Output Manager Service Utxo Valdation process");
 
     //---------------------------------- Base Node State Machine --------------------------------------------//
     let outbound_interface = base_node_handles
@@ -977,6 +994,7 @@ async fn setup_base_node_comms(
     node_identity: Arc<NodeIdentity>,
     config: &GlobalConfig,
     publisher: PubsubDomainConnector,
+    protocols: Protocols<Substream>,
 ) -> Result<(CommsNode, Dht), String>
 {
     // Ensure that the node identity has the correct public address
@@ -1001,7 +1019,7 @@ async fn setup_base_node_comms(
     };
 
     let seed_peers = parse_peer_seeds(&config.peer_seeds);
-    let (comms, dht) = initialize_comms(comms_config, publisher, seed_peers)
+    let (comms, dht) = initialize_comms(comms_config, publisher, seed_peers, protocols)
         .await
         .map_err(|e| e.to_friendly_string())?;
 
@@ -1054,7 +1072,7 @@ async fn setup_wallet_comms(
 
     let mut seed_peers = parse_peer_seeds(&config.peer_seeds);
     seed_peers.push(base_node_peer);
-    let (comms, dht) = initialize_comms(comms_config, publisher, seed_peers)
+    let (comms, dht) = initialize_comms(comms_config, publisher, seed_peers, Default::default())
         .await
         .map_err(|e| format!("Could not create comms layer: {:?}", e))?;
 
@@ -1090,6 +1108,7 @@ async fn register_base_node_services<B>(
     subscription_factory: Arc<SubscriptionFactory>,
     mempool: Mempool<B>,
     consensus_manager: ConsensusManager,
+    mempool_protocol_notif: ProtocolNotificationRx<Substream>,
 ) -> Arc<ServiceHandles>
 where
     B: BlockchainBackend + 'static,
@@ -1109,6 +1128,8 @@ where
             subscription_factory.clone(),
             mempool,
             mempool_config,
+            mempool_protocol_notif,
+            comms.subscribe_connectivity_events(),
         ))
         .add_initializer(LivenessInitializer::new(
             LivenessConfig {
@@ -1158,7 +1179,7 @@ async fn register_wallet_services(
     ))
         // Wallet services
         .add_initializer(OutputManagerServiceInitializer::new(
-            OutputManagerServiceConfig::default(),
+            OutputManagerServiceConfig{ base_node_query_timeout: Duration::from_secs(120), ..Default::default() },
             subscription_factory.clone(),
             OutputManagerSqliteDatabase::new(wallet_db_conn.clone()),
             factories.clone(),

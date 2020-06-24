@@ -29,8 +29,9 @@ use crate::{
         NodeCommsResponse,
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::{ChainMetadata, HistoricalBlock},
+    chain_storage::{ChainMetadata, HistoricalBlock, MmrTree},
     proof_of_work::{Difficulty, PowAlgorithm},
+    transactions::types::HashOutput,
 };
 use futures::{stream::Fuse, StreamExt};
 use std::sync::Arc;
@@ -152,5 +153,25 @@ impl LocalNodeCommsInterface {
     /// Submit a block to the base node service. Internal_only flag will prevent propagation.
     pub async fn submit_block(&mut self, block: Block, propagate: Broadcast) -> Result<(), CommsInterfaceError> {
         self.block_sender.call((block, propagate)).await?
+    }
+
+    /// Fetches the set of leaf node hashes and their deletion status' for the nth to nth+count leaf node index in the
+    /// given MMR tree.
+    pub async fn fetch_mmr_nodes(
+        &mut self,
+        tree: MmrTree,
+        pos: u32,
+        count: u32,
+        hist_height: u64,
+    ) -> Result<(Vec<HashOutput>, Vec<u8>), CommsInterfaceError>
+    {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchMmrNodes(tree, pos, count, hist_height))
+            .await??
+        {
+            NodeCommsResponse::MmrNodes(added, deleted) => Ok((added, deleted)),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
     }
 }

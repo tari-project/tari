@@ -34,6 +34,7 @@ use tari_comms::{
     peer_manager::{NodeIdentity, Peer, PeerManagerError},
     pipeline,
     pipeline::SinkService,
+    protocol::Protocols,
     tor,
     transports::{MemoryTransport, SocksTransport, TcpWithTorTransport, Transport},
     utils::cidr::parse_cidrs,
@@ -41,6 +42,7 @@ use tari_comms::{
     CommsBuilderError,
     CommsNode,
     PeerManager,
+    Substream,
 };
 use tari_comms_dht::{Dht, DhtBuilder, DhtConfig, DhtInitializationError};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
@@ -194,13 +196,15 @@ pub async fn initialize_comms<TSink>(
     config: CommsConfig,
     connector: InboundDomainConnector<TSink>,
     seed_peers: Vec<Peer>,
+    protocols: Protocols<Substream>,
 ) -> Result<(CommsNode, Dht), CommsInitializationError>
 where
     TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
-    let mut builder = CommsBuilder::new().with_node_identity(config.node_identity.clone());
-
+    let mut builder = CommsBuilder::new()
+        .with_protocols(protocols)
+        .with_node_identity(config.node_identity.clone());
     if config.allow_test_addresses {
         builder = builder.allow_test_addresses();
     }

@@ -26,6 +26,8 @@ use super::{
     types::ConnectionDirection,
 };
 use crate::{
+    framing,
+    framing::CanonicalFraming,
     multiplexing::{Control, IncomingSubstreams, Substream, SubstreamCounter, Yamux},
     peer_manager::{NodeId, PeerFeatures},
     protocol::{ProtocolId, ProtocolNegotiation},
@@ -186,6 +188,16 @@ impl PeerConnection {
         reply_rx
             .await
             .map_err(|_| PeerConnectionError::InternalReplyCancelled)?
+    }
+
+    pub async fn open_framed_substream(
+        &mut self,
+        protocol_id: &ProtocolId,
+        max_frame_size: usize,
+    ) -> Result<CanonicalFraming<Substream>, PeerConnectionError>
+    {
+        let substream = self.open_substream(protocol_id).await?;
+        Ok(framing::canonical(substream.stream, max_frame_size))
     }
 
     /// Immediately disconnects the peer connection. This can only fail if the peer connection worker
