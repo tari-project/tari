@@ -11,6 +11,10 @@ jobs:
     strategy:
       matrix:
         features: ["avx2", "safe"]
+        target_cpu: ["x86-64","skylake", "skylake-avx512"]
+        exclude:
+          - target_cpu: "x86-64"
+            features: "avx2"
 
     steps:
       - name: Checkout source code
@@ -36,12 +40,14 @@ jobs:
           toolchain: nightly
       - name: Build ubuntu binaries, hash and zip them
         run: |
+          export ROARING_ARCH=${{ matrix.target_cpu }}
+          export RUSTFLAGS="-C target_cpu=${{ matrix.target_cpu }}"
           cd applications/tari_base_node
           cargo build --release --bin tari_base_node --features ${{ matrix.features }}
           mkdir -p $GITHUB_WORKSPACE/binaries/ubuntu
           cd $GITHUB_WORKSPACE/binaries/ubuntu
           VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/[\"]/, "", $2); printf("%s",$2) }' $GITHUB_WORKSPACE/applications/tari_base_node/Cargo.toml)
-          BINFILE=tari_base_node-ubuntu-${{ matrix.features }}-$VERSION
+          BINFILE=tari_base_node-ubuntu-${{ target_cpu }}-${{ matrix.features }}-$VERSION
           cp $GITHUB_WORKSPACE/target/release/tari_base_node ./$BINFILE
           sha256sum $BINFILE >> $BINFILE.sha256
           bzip2 -f $BINFILE
