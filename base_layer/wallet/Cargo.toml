@@ -6,10 +6,6 @@ license = "BSD-3-Clause"
 version = "0.1.0"
 edition = "2018"
 
-[features]
-test_harness = ["tari_test_utils"]
-c_integration = []
-
 [dependencies]
 tari_comms = { path = "../../comms", version = "^0.1"}
 tari_comms_dht = { path = "../../comms/dht", version = "^0.1"}
@@ -55,3 +51,8 @@ lazy_static = "1.3.0"
 env_logger = "0.7.1"
 prost = "0.6.1"
 tokio-macros = "0.2.4"
+
+[features]
+test_harness = ["tari_test_utils"]
+c_integration = []
+avx2 = ["tari_crypto/avx2", "tari_core/avx2"]
