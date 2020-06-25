@@ -86,7 +86,9 @@ impl WalletBackend for WalletMemoryDatabase {
                     }
                     db.peers.push(p)
                 },
-                DbKeyValuePair::CommsSecretKey(key) => db.comms_private_key = Some(key),
+                DbKeyValuePair::CommsSecretKey(secret) => {
+                    db.comms_private_key = Some(secret);
+                },
             },
             WriteOperation::Remove(k) => match k {
                 DbKey::Peer(pk) => match db.peers.iter().position(|p| p.public_key == pk) {
@@ -97,7 +99,7 @@ impl WalletBackend for WalletMemoryDatabase {
                     return Err(WalletStorageError::OperationNotSupported);
                 },
                 DbKey::CommsSecretKey => {
-                    return Err(WalletStorageError::OperationNotSupported);
+                    db.comms_private_key = None;
                 },
             },
         }

@@ -30,7 +30,13 @@ use crate::transaction_service::{
     error::{TransactionServiceError, TransactionServiceProtocolError},
     handle::TransactionEvent,
     service::TransactionServiceResources,
-    storage::database::{CompletedTransaction, OutboundTransaction, TransactionBackend, TransactionStatus},
+    storage::database::{
+        CompletedTransaction,
+        OutboundTransaction,
+        TransactionBackend,
+        TransactionDirection,
+        TransactionStatus,
+    },
 };
 use futures::channel::oneshot;
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
@@ -284,6 +290,7 @@ where TBackend: TransactionBackend + Clone + 'static
             TransactionStatus::Completed,
             outbound_tx.message.clone(),
             Utc::now().naive_utc(),
+            TransactionDirection::Outbound,
         );
 
         self.resources

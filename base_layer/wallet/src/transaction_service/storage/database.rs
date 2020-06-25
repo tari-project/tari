@@ -228,6 +228,7 @@ pub struct CompletedTransaction {
     pub message: String,
     pub timestamp: NaiveDateTime,
     pub cancelled: bool,
+    pub direction: TransactionDirection,
 }
 
 impl CompletedTransaction {
@@ -242,6 +243,7 @@ impl CompletedTransaction {
         status: TransactionStatus,
         message: String,
         timestamp: NaiveDateTime,
+        direction: TransactionDirection,
     ) -> Self
     {
         Self {
@@ -255,6 +257,26 @@ impl CompletedTransaction {
             message,
             timestamp,
             cancelled: false,
+            direction,
+        }
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum TransactionDirection {
+    Inbound,
+    Outbound,
+    Unknown,
+}
+
+impl TryFrom<i32> for TransactionDirection {
+    type Error = TransactionStorageError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(TransactionDirection::Inbound),
+            1 => Ok(TransactionDirection::Outbound),
+            2 => Ok(TransactionDirection::Unknown),
+            _ => Err(TransactionStorageError::ConversionError),
         }
     }
 }
@@ -342,6 +364,7 @@ impl From<OutboundTransaction> for CompletedTransaction {
             timestamp: tx.timestamp,
             cancelled: tx.cancelled,
             transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default()),
+            direction: TransactionDirection::Outbound,
         }
     }
 }
@@ -359,6 +382,7 @@ impl From<InboundTransaction> for CompletedTransaction {
             timestamp: tx.timestamp,
             cancelled: tx.cancelled,
             transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default()),
+            direction: TransactionDirection::Inbound,
         }
     }
 }
@@ -799,6 +823,7 @@ where T: TransactionBackend + 'static
             TransactionStatus::Imported,
             message,
             Utc::now().naive_utc(),
+            TransactionDirection::Inbound,
         );
 
         let db_clone = self.db.clone();

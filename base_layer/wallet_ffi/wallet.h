@@ -230,6 +230,10 @@ unsigned long long completed_transaction_get_transaction_id(struct TariCompleted
 // Gets the timestamp of a TariCompletedTransaction
 unsigned long long completed_transaction_get_timestamp(struct TariCompletedTransaction *transaction,int* error_out);
 
+// Checks if a TariCompletedTransaction was originally a TariPendingOutboundTransaction,
+// i.e the transaction was originally sent from the wallet
+bool completed_transaction_is_outbound(struct TariCompletedTransaction *tx,int* error_out);
+
 // Frees memory for a TariCompletedTransaction
 void completed_transaction_destroy(struct TariCompletedTransaction *transaction);
 
@@ -426,10 +430,6 @@ struct TariCompletedTransaction *wallet_get_cancelled_transaction_by_id(struct T
 // Simulates completion of a TariPendingOutboundTransaction
 bool wallet_test_complete_sent_transaction(struct TariWallet *wallet, struct TariPendingOutboundTransaction *tx,int* error_out);
 
-// Checks if a TariCompletedTransaction was originally a TariPendingOutboundTransaction,
-// i.e the transaction was originally sent from the wallet
-bool wallet_is_completed_transaction_outbound(struct TariWallet *wallet, struct TariCompletedTransaction *tx,int* error_out);
-
 // Import a UTXO into the wallet. This will add a spendable UTXO and create a faux completed transaction to record the
 // event.
 unsigned long long wallet_import_utxo(struct TariWallet *wallet, unsigned long long amount, struct TariPrivateKey *spending_key, struct TariPublicKey *source_public_key, const char *message, int* error_out);
@@ -464,12 +464,14 @@ unsigned long long wallet_coin_split(struct TariWallet *wallet, unsigned long lo
 /// Get the seed words representing the seed private key of the provided TariWallet
 struct TariSeedWords *wallet_get_seed_words(struct TariWallet *wallet, int* error_out);
 
+// This function will produce a partial backup of the wallet at the location specified but with the sensitive data cleared.
+void wallet_partial_backup(struct TariWallet *wallet, const char *backup_file_path, int* error_out);
+
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);
 
 /// This function will log the provided string at debug level. To be used to have a client log messages to the LibWallet
 void log_debug_message(const char* msg);
-
 
 struct EmojiSet *get_emoji_set(void);
 

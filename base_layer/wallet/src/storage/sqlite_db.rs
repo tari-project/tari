@@ -85,7 +85,7 @@ impl WalletBackend for WalletSqliteDatabase {
                     PeerSql::try_from(p)?.commit(&conn)?;
                 },
                 DbKeyValuePair::CommsSecretKey(sk) => {
-                    WalletSettingSql::new(format!("{}", DbKey::CommsSecretKey), sk.to_hex()).set(&conn)?
+                    WalletSettingSql::new(format!("{}", DbKey::CommsSecretKey), sk.to_hex()).set(&conn)?;
                 },
             },
             WriteOperation::Remove(k) => match k {
@@ -98,7 +98,9 @@ impl WalletBackend for WalletSqliteDatabase {
                     Err(e) => return Err(e),
                 },
                 DbKey::Peers => return Err(WalletStorageError::OperationNotSupported),
-                DbKey::CommsSecretKey => return Err(WalletStorageError::OperationNotSupported),
+                DbKey::CommsSecretKey => {
+                    let _ = WalletSettingSql::clear(format!("{}", DbKey::CommsSecretKey), &conn)?;
+                },
             },
         }
 
@@ -195,5 +197,10 @@ impl WalletSettingSql {
                 diesel::result::Error::NotFound => Ok(None),
                 err => Err(err.into()),
             })
+    }
+
+    pub fn clear(key: String, conn: &SqliteConnection) -> Result<bool, WalletStorageError> {
+        let num_deleted = diesel::delete(wallet_settings::table.filter(wallet_settings::key.eq(key))).execute(conn)?;
+        Ok(num_deleted > 0)
     }
 }

@@ -33,6 +33,7 @@ use crate::{
             InboundTransaction,
             OutboundTransaction,
             TransactionBackend,
+            TransactionDirection,
             TransactionStatus,
             WriteOperation,
         },
@@ -55,7 +56,17 @@ pub struct TransactionServiceSqliteDatabase {
     database_connection: Arc<Mutex<SqliteConnection>>,
 }
 impl TransactionServiceSqliteDatabase {
-    pub fn new(database_connection: Arc<Mutex<SqliteConnection>>) -> Self {
+    pub fn new(
+        database_connection: Arc<Mutex<SqliteConnection>>,
+        comms_public_key_migration: Option<CommsPublicKey>,
+    ) -> Self
+    {
+        // TODO Remove this after the next TestNet
+        if let Some(pk) = comms_public_key_migration {
+            let conn = acquire_lock!(database_connection);
+            let _ = CompletedTransactionSql::migrate(pk, &(*conn));
+        }
+
         Self { database_connection }
     }
 
@@ -403,6 +414,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                             status: Some(TransactionStatus::Broadcast),
                             timestamp: None,
                             cancelled: None,
+                            direction: None,
                         },
                         &(*conn),
                     )?;
@@ -428,6 +440,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                         status: Some(TransactionStatus::Mined),
                         timestamp: None,
                         cancelled: None,
+                        direction: None,
                     },
                     &(*conn),
                 )?;
@@ -527,6 +540,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     status: None,
                     timestamp: Some(timestamp),
                     cancelled: None,
+                    direction: None,
                 },
                 &(*conn),
             );
@@ -812,6 +826,7 @@ struct CompletedTransactionSql {
     message: String,
     timestamp: NaiveDateTime,
     cancelled: i32,
+    direction: Option<i32>,
 }
 
 impl CompletedTransactionSql {
@@ -883,6 +898,7 @@ impl CompletedTransactionSql {
                     status: None,
                     timestamp: None,
                     cancelled: Some(1i32),
+                    direction: None,
                 })
                 .execute(conn)?;
 
@@ -892,6 +908,38 @@ impl CompletedTransactionSql {
             ));
         }
 
+        Ok(())
+    }
+
+    pub fn migrate(comms_public_key: CommsPublicKey, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+        let mut txs = completed_transactions::table
+            .filter(completed_transactions::direction.is_null())
+            .load::<CompletedTransactionSql>(conn)?;
+        let public_key_vec = comms_public_key.to_vec();
+
+        for tx in txs.drain(..) {
+            if tx.source_public_key == public_key_vec {
+                let _ = tx.update(
+                    UpdateCompletedTransaction {
+                        status: None,
+                        timestamp: None,
+                        cancelled: None,
+                        direction: Some(TransactionDirection::Outbound),
+                    },
+                    conn,
+                )?;
+            } else {
+                let _ = tx.update(
+                    UpdateCompletedTransaction {
+                        status: None,
+                        timestamp: None,
+                        cancelled: None,
+                        direction: Some(TransactionDirection::Inbound),
+                    },
+                    conn,
+                )?;
+            }
+        }
         Ok(())
     }
 }
@@ -911,6 +959,7 @@ impl TryFrom<CompletedTransaction> for CompletedTransactionSql {
             message: c.message,
             timestamp: c.timestamp,
             cancelled: c.cancelled as i32,
+            direction: Some(c.direction as i32),
         })
     }
 }
@@ -932,6 +981,7 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
             message: c.message,
             timestamp: c.timestamp,
             cancelled: c.cancelled != 0,
+            direction: TransactionDirection::try_from(c.direction.unwrap_or(2i32))?,
         })
     }
 }
@@ -941,6 +991,7 @@ pub struct UpdateCompletedTransaction {
     status: Option<TransactionStatus>,
     timestamp: Option<NaiveDateTime>,
     cancelled: Option<bool>,
+    direction: Option<TransactionDirection>,
 }
 
 #[derive(AsChangeset)]
@@ -949,6 +1000,7 @@ pub struct UpdateCompletedTransactionSql {
     status: Option<i32>,
     timestamp: Option<NaiveDateTime>,
     cancelled: Option<i32>,
+    direction: Option<i32>,
 }
 
 /// Map a Rust friendly UpdateCompletedTransaction to the Sql data type form
@@ -958,6 +1010,7 @@ impl From<UpdateCompletedTransaction> for UpdateCompletedTransactionSql {
             status: u.status.map(|s| s as i32),
             timestamp: u.timestamp,
             cancelled: u.cancelled.map(|c| c as i32),
+            direction: u.direction.map(|d| d as i32),
         }
     }
 }
@@ -967,7 +1020,13 @@ mod test {
     #[cfg(feature = "test_harness")]
     use crate::transaction_service::storage::sqlite_db::UpdateCompletedTransaction;
     use crate::transaction_service::storage::{
-        database::{CompletedTransaction, InboundTransaction, OutboundTransaction, TransactionStatus},
+        database::{
+            CompletedTransaction,
+            InboundTransaction,
+            OutboundTransaction,
+            TransactionDirection,
+            TransactionStatus,
+        },
         sqlite_db::{CompletedTransactionSql, InboundTransactionSql, OutboundTransactionSql},
     };
     use chrono::Utc;
@@ -1126,6 +1185,7 @@ mod test {
             message: "Yo!".to_string(),
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
+            direction: TransactionDirection::Unknown,
         };
         let completed_tx2 = CompletedTransaction {
             tx_id: 3,
@@ -1138,6 +1198,7 @@ mod test {
             message: "Hey!".to_string(),
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
+            direction: TransactionDirection::Unknown,
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone())
@@ -1243,11 +1304,80 @@ mod test {
                     status: Some(TransactionStatus::Mined),
                     timestamp: None,
                     cancelled: None,
+                    direction: None,
                 },
                 &conn,
             )
             .unwrap();
         #[cfg(feature = "test_harness")]
         assert_eq!(updated_tx.status, 2);
+    }
+
+    #[test]
+    pub fn test_migration() {
+        let db_name = format!("{}.sqlite3", string(8).as_str());
+        let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+        let db_folder = temp_dir.path().to_str().unwrap().to_string();
+        let db_path = format!("{}{}", db_folder, db_name);
+
+        embed_migrations!("./migrations");
+        let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+
+        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+
+        conn.execute("PRAGMA foreign_keys = ON").unwrap();
+
+        let source_pubkey = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
+
+        let mut completed_tx1 = CompletedTransactionSql::try_from(CompletedTransaction {
+            tx_id: 1,
+            source_public_key: source_pubkey.clone(),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            amount: MicroTari::from(100),
+            fee: MicroTari::from(100),
+            transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default()),
+            status: TransactionStatus::Mined,
+            message: "Yo!".to_string(),
+            timestamp: Utc::now().naive_utc(),
+            cancelled: false,
+            direction: TransactionDirection::Unknown,
+        })
+        .unwrap();
+        completed_tx1.direction = None;
+        completed_tx1.commit(&conn).unwrap();
+
+        let mut completed_tx2 = CompletedTransactionSql::try_from(CompletedTransaction {
+            tx_id: 2,
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            destination_public_key: source_pubkey.clone(),
+            amount: MicroTari::from(100),
+            fee: MicroTari::from(100),
+            transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default()),
+            status: TransactionStatus::Mined,
+            message: "Yo!".to_string(),
+            timestamp: Utc::now().naive_utc(),
+            cancelled: false,
+            direction: TransactionDirection::Unknown,
+        })
+        .unwrap();
+        completed_tx2.direction = None;
+        completed_tx2.commit(&conn).unwrap();
+
+        let txs = CompletedTransactionSql::index(&conn, false).unwrap();
+        assert!(txs[0].direction.is_none());
+        assert!(txs[1].direction.is_none());
+
+        CompletedTransactionSql::migrate(source_pubkey, &conn).unwrap();
+
+        let txs = CompletedTransactionSql::index(&conn, false).unwrap();
+        assert!(txs[0].direction.is_some());
+        assert!(txs[1].direction.is_some());
+        if txs[0].tx_id == 1 {
+            assert_eq!(txs[0].direction, Some(1));
+            assert_eq!(txs[1].direction, Some(0));
+        } else {
+            assert_eq!(txs[0].direction, Some(0));
+            assert_eq!(txs[1].direction, Some(1));
+        }
     }
 }

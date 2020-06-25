@@ -41,6 +41,7 @@ use tari_wallet::{
             OutboundTransaction,
             TransactionBackend,
             TransactionDatabase,
+            TransactionDirection,
             TransactionStatus,
         },
         memory_db::TransactionMemoryDatabase,
@@ -195,6 +196,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             message: messages[i].clone(),
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
+            direction: TransactionDirection::Outbound,
         });
         runtime
             .block_on(db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone()))
@@ -437,5 +439,5 @@ pub fn test_transaction_service_sqlite_db() {
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
-    test_db_backend(TransactionServiceSqliteDatabase::new(connection));
+    test_db_backend(TransactionServiceSqliteDatabase::new(connection, None));
 }

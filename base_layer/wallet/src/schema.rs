@@ -10,6 +10,7 @@ table! {
         message -> Text,
         timestamp -> Timestamp,
         cancelled -> Integer,
+        direction -> Nullable<Integer>,
     }
 }
 
