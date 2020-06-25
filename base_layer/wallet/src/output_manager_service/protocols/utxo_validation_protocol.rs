@@ -100,11 +100,9 @@ where TBackend: OutputManagerBackend + Clone + 'static
             })?
             .fuse();
 
-        trace!(
+        debug!(
             target: LOG_TARGET,
-            "Starting UTXO validation protocol (Id: {}) for {}",
-            self.id,
-            self.validation_type,
+            "Starting UTXO validation protocol (Id: {}) for {}", self.id, self.validation_type,
         );
 
         let outputs_to_query: Vec<Vec<u8>> = match self.validation_type {
@@ -133,10 +131,9 @@ where TBackend: OutputManagerBackend + Clone + 'static
         };
 
         if outputs_to_query.is_empty() {
-            trace!(
+            debug!(
                 target: LOG_TARGET,
-                "UTXO validation protocol (Id: {}) has no outputs to validate",
-                self.id,
+                "UTXO validation protocol (Id: {}) has no outputs to validate", self.id,
             );
             return Ok(self.id);
         }
@@ -157,7 +154,7 @@ where TBackend: OutputManagerBackend + Clone + 'static
                     base_node_response = base_node_response_receiver.select_next_some() => {
                         match base_node_response {
                             Ok(response) => if self.handle_base_node_response(response).await? {
-                            error!(target: LOG_TARGET, "Response handled with success for {} and pending_queries len: {}", self.id, self.pending_queries.len());
+                                trace!(target: LOG_TARGET, "Response handled with success for {} and pending_queries len: {}", self.id, self.pending_queries.len());
                                 if self.pending_queries.is_empty() {
                                     let _ = self
                                         .resources
