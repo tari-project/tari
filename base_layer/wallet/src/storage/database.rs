@@ -24,6 +24,7 @@ use crate::error::WalletStorageError;
 use log::*;
 use std::{
     fmt::{Display, Error, Formatter},
+    path::PathBuf,
     sync::Arc,
 };
 use tari_comms::{
@@ -82,13 +83,14 @@ pub struct WalletDatabase<T>
 where T: WalletBackend + 'static
 {
     db: Arc<T>,
+    pub path: Option<PathBuf>,
 }
 
 impl<T> WalletDatabase<T>
 where T: WalletBackend + 'static
 {
-    pub fn new(db: T) -> Self {
-        Self { db: Arc::new(db) }
+    pub fn new(db: T, path: Option<PathBuf>) -> Self {
+        Self { db: Arc::new(db), path }
     }
 
     pub async fn get_peer(&self, pub_key: CommsPublicKey) -> Result<Peer, WalletStorageError> {
@@ -164,7 +166,7 @@ where T: WalletBackend + 'static
         Ok(c)
     }
 
-    pub async fn set_comms_private_key(&self, key: CommsSecretKey) -> Result<(), WalletStorageError> {
+    pub async fn set_comms_secret_key(&self, key: CommsSecretKey) -> Result<(), WalletStorageError> {
         let db_clone = self.db.clone();
 
         tokio::task::spawn_blocking(move || {
@@ -172,6 +174,14 @@ where T: WalletBackend + 'static
         })
         .await
         .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
+    }
+
+    pub async fn clear_comms_secret_key(&self) -> Result<(), WalletStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.write(WriteOperation::Remove(DbKey::CommsSecretKey)))
+            .await
+            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
 }
@@ -238,7 +248,8 @@ mod test {
     pub fn test_database_crud<T: WalletBackend + 'static>(backend: T) {
         let mut runtime = Runtime::new().unwrap();
 
-        let db = WalletDatabase::new(backend);
+        let db = WalletDatabase::new(backend, None);
+
         let mut peers = Vec::new();
         for i in 0..5 {
             let (_secret_key, public_key): (CommsSecretKey, CommsPublicKey) = PublicKey::random_keypair(&mut OsRng);
@@ -289,9 +300,11 @@ mod test {
         // Test wallet settings
         assert!(runtime.block_on(db.get_comms_secret_key()).unwrap().is_none());
         let secret_key = CommsSecretKey::random(&mut OsRng);
-        runtime.block_on(db.set_comms_private_key(secret_key.clone())).unwrap();
+        runtime.block_on(db.set_comms_secret_key(secret_key.clone())).unwrap();
         let stored_key = runtime.block_on(db.get_comms_secret_key()).unwrap().unwrap();
         assert_eq!(secret_key, stored_key);
+        runtime.block_on(db.clear_comms_secret_key()).unwrap();
+        assert!(runtime.block_on(db.get_comms_secret_key()).unwrap().is_none());
     }
 
     #[test]

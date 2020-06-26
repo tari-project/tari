@@ -33,7 +33,7 @@ use crate::{
     transaction_service::{
         handle::TransactionEvent,
         storage::{
-            database::{CompletedTransaction, TransactionBackend, TransactionStatus},
+            database::{CompletedTransaction, TransactionBackend, TransactionDirection, TransactionStatus},
             memory_db::TransactionMemoryDatabase,
         },
     },
@@ -651,8 +651,7 @@ pub fn generate_wallet_test_data<
     let mut timestamp_index = 0;
 
     for k in txs.keys() {
-        let _ = transaction_service_backend
-            .update_completed_transaction_timestamp((*k).clone(), timestamps[timestamp_index].clone());
+        let _ = transaction_service_backend.update_completed_transaction_timestamp(*k, timestamps[timestamp_index]);
         timestamp_index = (timestamp_index + 1) % timestamps.len();
     }
 
@@ -713,6 +712,7 @@ pub fn complete_sent_transaction<
                 TransactionStatus::Completed,
                 p.message.clone(),
                 Utc::now().naive_utc(),
+                TransactionDirection::Outbound,
             );
             wallet.runtime.block_on(
                 wallet

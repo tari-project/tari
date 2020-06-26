@@ -32,7 +32,13 @@ use crate::{
             transaction_receive_protocol::{TransactionReceiveProtocol, TransactionReceiveProtocolStage},
             transaction_send_protocol::{TransactionSendProtocol, TransactionSendProtocolStage},
         },
-        storage::database::{CompletedTransaction, TransactionBackend, TransactionDatabase, TransactionStatus},
+        storage::database::{
+            CompletedTransaction,
+            TransactionBackend,
+            TransactionDatabase,
+            TransactionDirection,
+            TransactionStatus,
+        },
     },
 };
 use chrono::Utc;
@@ -1289,6 +1295,7 @@ where
                     TransactionStatus::Completed,
                     message,
                     Utc::now().naive_utc(),
+                    TransactionDirection::Inbound,
                 ),
             )
             .await?;
@@ -1522,6 +1529,7 @@ where
             TransactionStatus::Completed,
             found_tx.message.clone(),
             found_tx.timestamp,
+            TransactionDirection::Inbound,
         );
 
         self.db

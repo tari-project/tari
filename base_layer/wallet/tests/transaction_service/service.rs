@@ -105,6 +105,7 @@ use tari_wallet::{
                 OutboundTransaction,
                 TransactionBackend,
                 TransactionDatabase,
+                TransactionDirection,
                 TransactionStatus,
                 WriteOperation,
             },
@@ -444,8 +445,8 @@ fn manage_single_transaction_sqlite_db() {
     let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
 
     manage_single_transaction(
-        TransactionServiceSqliteDatabase::new(connection_alice),
-        TransactionServiceSqliteDatabase::new(connection_bob),
+        TransactionServiceSqliteDatabase::new(connection_alice, None),
+        TransactionServiceSqliteDatabase::new(connection_bob, None),
         temp_dir.path().to_str().unwrap().to_string(),
     );
 }
@@ -717,9 +718,9 @@ fn manage_multiple_transactions_sqlite_db() {
     let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
     let connection_carol = run_migration_and_create_sqlite_connection(&carol_db_path).unwrap();
     manage_multiple_transactions(
-        TransactionServiceSqliteDatabase::new(connection_alice),
-        TransactionServiceSqliteDatabase::new(connection_bob),
-        TransactionServiceSqliteDatabase::new(connection_carol),
+        TransactionServiceSqliteDatabase::new(connection_alice, None),
+        TransactionServiceSqliteDatabase::new(connection_bob, None),
+        TransactionServiceSqliteDatabase::new(connection_carol, None),
         path_string,
     );
 }
@@ -828,7 +829,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply_sqlite_db() {
         let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
         let alice_db_path = format!("{}/{}", path_string, alice_db_name);
         let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
-        test_accepting_unknown_tx_id_and_malformed_reply(TransactionServiceSqliteDatabase::new(connection_alice));
+        test_accepting_unknown_tx_id_and_malformed_reply(TransactionServiceSqliteDatabase::new(connection_alice, None));
     });
 }
 
@@ -940,8 +941,8 @@ fn finalize_tx_with_incorrect_pubkey_sqlite_db() {
         let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
         let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
         finalize_tx_with_incorrect_pubkey(
-            TransactionServiceSqliteDatabase::new(connection_alice),
-            TransactionServiceSqliteDatabase::new(connection_bob),
+            TransactionServiceSqliteDatabase::new(connection_alice, None),
+            TransactionServiceSqliteDatabase::new(connection_bob, None),
         );
     });
 }
@@ -1053,8 +1054,8 @@ fn finalize_tx_with_missing_output_sqlite_db() {
         let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
         let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
         finalize_tx_with_missing_output(
-            TransactionServiceSqliteDatabase::new(connection_alice),
-            TransactionServiceSqliteDatabase::new(connection_bob),
+            TransactionServiceSqliteDatabase::new(connection_alice, None),
+            TransactionServiceSqliteDatabase::new(connection_bob, None),
         );
     });
 }
@@ -1631,6 +1632,7 @@ fn test_power_mode_updates() {
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
         cancelled: false,
+        direction: TransactionDirection::Outbound,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -1644,6 +1646,7 @@ fn test_power_mode_updates() {
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
         cancelled: false,
+        direction: TransactionDirection::Outbound,
     };
 
     backend
@@ -1712,6 +1715,7 @@ fn broadcast_all_completed_transactions_on_startup() {
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
         cancelled: false,
+        direction: TransactionDirection::Outbound,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -2227,6 +2231,7 @@ fn query_all_completed_transactions_on_startup() {
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
         cancelled: false,
+        direction: TransactionDirection::Outbound,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -2690,7 +2695,7 @@ fn test_transaction_cancellation_sqlite_db() {
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
     let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
 
-    test_transaction_cancellation(TransactionServiceSqliteDatabase::new(connection));
+    test_transaction_cancellation(TransactionServiceSqliteDatabase::new(connection, None));
 }
 
 #[test]

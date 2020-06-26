@@ -26,7 +26,13 @@ use crate::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::TransactionEvent,
         service::TransactionServiceResources,
-        storage::database::{CompletedTransaction, InboundTransaction, TransactionBackend, TransactionStatus},
+        storage::database::{
+            CompletedTransaction,
+            InboundTransaction,
+            TransactionBackend,
+            TransactionDirection,
+            TransactionStatus,
+        },
     },
 };
 use chrono::Utc;
@@ -467,6 +473,7 @@ where TBackend: TransactionBackend + Clone + 'static
                 TransactionStatus::Completed,
                 inbound_tx.message.clone(),
                 inbound_tx.timestamp,
+                TransactionDirection::Inbound,
             );
 
             self.resources

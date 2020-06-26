@@ -118,7 +118,12 @@ where
         contacts_backend: W,
     ) -> Result<Wallet<T, U, V, W>, WalletError>
     {
-        let db = WalletDatabase::new(wallet_backend);
+        let database_path = config
+            .comms_config
+            .datastore_path
+            .join(config.comms_config.peer_database_name.clone())
+            .with_extension("sqlite3");
+        let db = WalletDatabase::new(wallet_backend, Some(database_path));
         let base_node_peers = runtime.block_on(db.get_peers())?;
 
         #[cfg(feature = "test_harness")]

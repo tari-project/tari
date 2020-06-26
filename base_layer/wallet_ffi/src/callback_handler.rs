@@ -314,19 +314,15 @@ where TBackend: TransactionBackend + 'static
         let mut transaction = None;
         if let Ok(tx) = self.db.get_cancelled_completed_transaction(tx_id).await {
             transaction = Some(tx);
-        } else {
-            if let Ok(tx) = self.db.get_cancelled_pending_outbound_transaction(tx_id).await {
-                let mut outbound_tx = CompletedTransaction::from(tx);
-                outbound_tx.source_public_key = self.comms_public_key.clone();
-                transaction = Some(outbound_tx);
-            } else {
-                if let Ok(tx) = self.db.get_cancelled_pending_inbound_transaction(tx_id).await {
-                    let mut inbound_tx = CompletedTransaction::from(tx);
-                    inbound_tx.destination_public_key = self.comms_public_key.clone();
-                    transaction = Some(inbound_tx);
-                }
-            }
-        }
+        } else if let Ok(tx) = self.db.get_cancelled_pending_outbound_transaction(tx_id).await {
+            let mut outbound_tx = CompletedTransaction::from(tx);
+            outbound_tx.source_public_key = self.comms_public_key.clone();
+            transaction = Some(outbound_tx);
+        } else if let Ok(tx) = self.db.get_cancelled_pending_inbound_transaction(tx_id).await {
+            let mut inbound_tx = CompletedTransaction::from(tx);
+            inbound_tx.destination_public_key = self.comms_public_key.clone();
+            transaction = Some(inbound_tx);
+        };
 
         match transaction {
             None => error!(
@@ -419,6 +415,7 @@ mod test {
                     InboundTransaction,
                     OutboundTransaction,
                     TransactionDatabase,
+                    TransactionDirection,
                     TransactionStatus,
                 },
                 memory_db::TransactionMemoryDatabase,
@@ -564,6 +561,7 @@ mod test {
             TransactionStatus::Completed,
             "2".to_string(),
             Utc::now().naive_utc(),
+            TransactionDirection::Inbound,
         );
         let stp = SenderTransactionProtocol::new_placeholder();
         let outbound_tx = OutboundTransaction::new(
