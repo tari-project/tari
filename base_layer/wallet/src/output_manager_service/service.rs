@@ -351,10 +351,9 @@ where
     async fn complete_utxo_validation_protocol(&mut self, join_result: Result<u64, OutputManagerProtocolError>) {
         match join_result {
             Ok(id) => {
-                trace!(
+                info!(
                     target: LOG_TARGET,
-                    "UTXO Validation Protocol (Id: {}) completed successfully",
-                    id
+                    "UTXO Validation Protocol (Id: {}) completed successfully", id
                 );
             },
             Err(OutputManagerProtocolError { id, error }) => {
@@ -362,24 +361,35 @@ where
                     target: LOG_TARGET,
                     "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
                 );
-                let _ = self
-                    .resources
-                    .event_publisher
-                    .send(OutputManagerEvent::UtxoValidationFailure(id))
-                    .map_err(|e| {
-                        trace!(
-                            target: LOG_TARGET,
-                            "Error sending event, usually because there are no subscribers: {:?}",
-                            e
-                        );
-                        e
-                    });
+                match error {
+                    // This is the only error where we do not want to send this event as it was sent as a Timeout event
+                    // in the protocol
+                    OutputManagerError::MaximumAttemptsExceeded => (),
+                    _ => {
+                        let _ = self
+                            .resources
+                            .event_publisher
+                            .send(OutputManagerEvent::UtxoValidationFailure(id))
+                            .map_err(|e| {
+                                trace!(
+                                    target: LOG_TARGET,
+                                    "Error sending event, usually because there are no subscribers: {:?}",
+                                    e
+                                );
+                                e
+                            });
+                    },
+                }
             },
         }
     }
 
     /// Add an unblinded output to the unspent outputs list
     pub async fn add_output(&mut self, output: UnblindedOutput) -> Result<(), OutputManagerError> {
+        debug!(
+            target: LOG_TARGET,
+            "Add output of value {} to Output Manager", output.value
+        );
         let output = DbUnblindedOutput::from_unblinded_output(output, &self.resources.factories)?;
         Ok(self.resources.db.add_unspent_output(output).await?)
     }
@@ -444,6 +454,11 @@ where
             .db
             .confirm_pending_transaction_outputs(pending_transaction.tx_id)
             .await?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Confirm received transaction outputs for TxId: {}", tx_id
+        );
 
         Ok(())
     }
@@ -524,6 +539,12 @@ where
             .encumber_outputs(stp.get_tx_id()?, outputs, change_output)
             .await?;
 
+        debug!(
+            target: LOG_TARGET,
+            "Prepared transaction (TxId: {}) to send",
+            stp.get_tx_id()?
+        );
+
         Ok(stp)
     }
 
@@ -580,15 +601,16 @@ where
             .confirm_pending_transaction_outputs(pending_transaction.tx_id)
             .await?;
 
+        trace!(target: LOG_TARGET, "Confirm transaction (TxId: {})", tx_id);
+
         Ok(())
     }
 
     /// Cancel a pending transaction and place the encumbered outputs back into the unspent pool
     pub async fn cancel_transaction(&mut self, tx_id: u64) -> Result<(), OutputManagerError> {
-        trace!(
+        debug!(
             target: LOG_TARGET,
-            "Cancelling pending transaction outputs for TxId: {}",
-            tx_id
+            "Cancelling pending transaction outputs for TxId: {}", tx_id
         );
         Ok(self.resources.db.cancel_pending_transaction_outputs(tx_id).await?)
     }
