@@ -39,7 +39,7 @@ jobs:
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: nightly-2020-06-10
           components: rustfmt
       - name: Build ubuntu binaries, hash and zip them
         env:
@@ -77,23 +77,19 @@ jobs:
     steps:
       - name: Checkout source code
         uses: actions/checkout@v2
-      - name: Install dependencies
-        run: |
-          brew install cmake
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: nightly-2020-06-10
           target: x86_64-apple-darwin
           components: rustfmt
       - name: Build MacOs binaries, hash and zip them
         env:
           ROARING_ARCH: "${{ matrix.target_cpu }}"
           RUSTFLAGS: "-C target_cpu=${{ matrix.target_cpu }}"
-          CC: gcc
         run: |
           cd applications/tari_base_node
-          cargo build --release --bin tari_base_node
+          cargo build --release --bin tari_base_node --target x86_64-apple-darwin
           mkdir -p $GITHUB_WORKSPACE/binaries/osx
           cd $GITHUB_WORKSPACE/binaries/osx
           VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/[\"]/, "", $2); printf("%s",$2) }' $GITHUB_WORKSPACE/applications/tari_base_node/Cargo.toml)
