@@ -40,6 +40,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
+          components: rustfmt
       - name: Build ubuntu binaries, hash and zip them
         env:
           ROARING_ARCH: "${{ matrix.target_cpu }}"
@@ -72,7 +73,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        features: ["avx2"]
         target_cpu: ["skylake"]
     steps:
       - name: Checkout source code
@@ -85,6 +85,7 @@ jobs:
         with:
           toolchain: nightly
           target: x86_64-apple-darwin
+          components: rustfmt
       - name: Build MacOs binaries, hash and zip them
         env:
           ROARING_ARCH: "${{ matrix.target_cpu }}"
@@ -92,7 +93,7 @@ jobs:
           CC: gcc
         run: |
           cd applications/tari_base_node
-          cargo build --release --bin tari_base_node --features ${{ matrix.features }}
+          cargo build --release --bin tari_base_node
           mkdir -p $GITHUB_WORKSPACE/binaries/osx
           cd $GITHUB_WORKSPACE/binaries/osx
           VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/[\"]/, "", $2); printf("%s",$2) }' $GITHUB_WORKSPACE/applications/tari_base_node/Cargo.toml)
