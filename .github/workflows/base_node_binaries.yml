@@ -66,7 +66,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION:  '${{ secrets.AWS_REGION }}'
           SOURCE_DIR: '$GITHUB_WORKSPACE/binaries/ubuntu'
-          DEST_DIR: 'ubuntu'
+          DEST_DIR: 'linux'
   osx_binaries:
     name: Build and deploy tari_base_node for MacOs
     runs-on: macos-latest
@@ -93,8 +93,8 @@ jobs:
           mkdir -p $GITHUB_WORKSPACE/binaries/osx
           cd $GITHUB_WORKSPACE/binaries/osx
           VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/[\"]/, "", $2); printf("%s",$2) }' $GITHUB_WORKSPACE/applications/tari_base_node/Cargo.toml)
-          BINFILE=tari_base_node-osx-${{ matrix.target_cpu }}-${{ matrix.features }}-$VERSION
-          cp $GITHUB_WORKSPACE/target/release/tari_base_node ./$BINFILE
+          BINFILE=tari_base_node-osx-${{ matrix.target_cpu }}-$VERSION
+          cp $GITHUB_WORKSPACE/target/x86_64-apple-darwin/release/tari_base_node ./$BINFILE
           bzip2 -f $BINFILE
           sha256sum $BINFILE.bz2 >> $BINFILE.bz2.sha256
       - name: Sync to S3
