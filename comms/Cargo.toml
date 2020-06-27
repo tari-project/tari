@@ -50,3 +50,6 @@ tempdir = "0.3.7"
 
 [build-dependencies]
 tari_common = { version = "^0.1", path="../common"}
+
+[features]
+avx2 = ["tari_crypto/avx2"]
