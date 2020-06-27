@@ -22,8 +22,8 @@ jobs:
         uses: actions/checkout@v2
       - name: Install dependencies
         run: |
-          apt-get update && \
-          apt-get -y install \
+          sudo apt-get update && \
+          sudo apt-get -y install \
           openssl \
           libssl-dev \
           pkg-config \
