@@ -98,13 +98,9 @@ jobs:
           bzip2 -f $BINFILE
           shasum -a 256 $BINFILE.bz2 >> $BINFILE.bz2.sha256
       - name: Sync to S3
-        uses: jakejarvis/s3-sync-action@v0.5.1
-        with:
-          args: --acl public-read --follow-symlinks
         env:
-          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION:  '${{ secrets.AWS_REGION }}'
-          SOURCE_DIR: '$GITHUB_WORKSPACE/binaries/osx'
-          DEST_DIR: 'osx'
+        run: |
+          aws s3 cp --recursive $GITHUB_WORKSPACE/binaries/osx s3://${{ secrets.AWS_S3_BUCKET }} --acl public-read
