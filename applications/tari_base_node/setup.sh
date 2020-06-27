@@ -1,4 +1,4 @@
-#!/bin/bash
+  #!/bin/bash
 #
 # Script to download, configure and run base node
 #

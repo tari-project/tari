@@ -16,14 +16,16 @@ jobs:
         exclude:
           - target_cpu: "x86-64"
             features: "avx2"
+          - target_cpu: "ivybridge"
+            features: "avx2"
 
     steps:
       - name: Checkout source code
         uses: actions/checkout@v2
       - name: Install dependencies
         run: |
-          apt-get update && \
-          apt-get -y install \
+          sudo apt-get update && \
+          sudo apt-get -y install \
           openssl \
           libssl-dev \
           pkg-config \
@@ -33,13 +35,12 @@ jobs:
           libc++-dev \
           libc++abi-dev \
           libprotobuf-dev \
-          protobuf-compiler \
-          clang \
-          libclang-dev
+          protobuf-compiler
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: nightly-2020-06-10
+          components: rustfmt
       - name: Build ubuntu binaries, hash and zip them
         env:
           ROARING_ARCH: "${{ matrix.target_cpu }}"
@@ -65,39 +66,35 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION:  '${{ secrets.AWS_REGION }}'
           SOURCE_DIR: '$GITHUB_WORKSPACE/binaries/ubuntu'
-          DEST_DIR: 'ubuntu'
+          DEST_DIR: 'linux'
   osx_binaries:
     name: Build and deploy tari_base_node for MacOs
     runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
-        features: ["avx2"]
         target_cpu: ["skylake"]
     steps:
       - name: Checkout source code
         uses: actions/checkout@v2
-      - name: Install dependencies
-        run: |
-          brew install cmake
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: nightly-2020-06-10
           target: x86_64-apple-darwin
+          components: rustfmt
       - name: Build MacOs binaries, hash and zip them
         env:
           ROARING_ARCH: "${{ matrix.target_cpu }}"
           RUSTFLAGS: "-C target_cpu=${{ matrix.target_cpu }}"
-          CC: gcc
         run: |
           cd applications/tari_base_node
-          cargo build --release --bin tari_base_node --features ${{ matrix.features }}
+          cargo build --release --bin tari_base_node --target x86_64-apple-darwin
           mkdir -p $GITHUB_WORKSPACE/binaries/osx
           cd $GITHUB_WORKSPACE/binaries/osx
           VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/[\"]/, "", $2); printf("%s",$2) }' $GITHUB_WORKSPACE/applications/tari_base_node/Cargo.toml)
-          BINFILE=tari_base_node-osx-${{ matrix.target_cpu }}-${{ matrix.features }}-$VERSION
-          cp $GITHUB_WORKSPACE/target/release/tari_base_node ./$BINFILE
+          BINFILE=tari_base_node-osx-${{ matrix.target_cpu }}-$VERSION
+          cp $GITHUB_WORKSPACE/target/x86_64-apple-darwin/release/tari_base_node ./$BINFILE
           bzip2 -f $BINFILE
           sha256sum $BINFILE.bz2 >> $BINFILE.bz2.sha256
       - name: Sync to S3
