@@ -16,6 +16,8 @@ jobs:
         exclude:
           - target_cpu: "x86-64"
             features: "avx2"
+          - target_cpu: "ivybridge"
+              features: "avx2"
 
     steps:
       - name: Checkout source code
@@ -33,9 +35,7 @@ jobs:
           libc++-dev \
           libc++abi-dev \
           libprotobuf-dev \
-          protobuf-compiler \
-          clang \
-          libclang-dev
+          protobuf-compiler
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
