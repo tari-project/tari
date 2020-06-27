@@ -66,4 +66,48 @@ jobs:
           AWS_REGION:  '${{ secrets.AWS_REGION }}'
           SOURCE_DIR: '$GITHUB_WORKSPACE/binaries/ubuntu'
           DEST_DIR: 'ubuntu'
-
+  osx_binaries:
+    name: Build and deploy tari_base_node for MacOs
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        features: ["avx2"]
+        target_cpu: ["skylake"]
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          brew install cmake
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: x86_64-apple-darwin
+      - name: Build MacOs binaries, hash and zip them
+        env:
+          ROARING_ARCH: "${{ matrix.target_cpu }}"
+          RUSTFLAGS: "-C target_cpu=${{ matrix.target_cpu }}"
+          CC: gcc
+        run: |
+          cd applications/tari_base_node
+          cargo build --release --bin tari_base_node --features ${{ matrix.features }}
+          mkdir -p $GITHUB_WORKSPACE/binaries/osx
+          cd $GITHUB_WORKSPACE/binaries/osx
+          VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/[\"]/, "", $2); printf("%s",$2) }' $GITHUB_WORKSPACE/applications/tari_base_node/Cargo.toml)
+          BINFILE=tari_base_node-osx-${{ matrix.target_cpu }}-${{ matrix.features }}-$VERSION
+          cp $GITHUB_WORKSPACE/target/release/tari_base_node ./$BINFILE
+          bzip2 -f $BINFILE
+          sha256sum $BINFILE.bz2 >> $BINFILE.bz2.sha256
+      - name: Sync to S3
+        uses: jakejarvis/s3-sync-action@v0.5.1
+        with:
+          args: --acl public-read --follow-symlinks
+        env:
+          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION:  '${{ secrets.AWS_REGION }}'
+          SOURCE_DIR: '$GITHUB_WORKSPACE/binaries/osx'
+          DEST_DIR: 'osx'
