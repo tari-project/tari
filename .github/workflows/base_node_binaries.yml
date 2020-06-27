@@ -96,7 +96,7 @@ jobs:
           BINFILE=tari_base_node-osx-${{ matrix.target_cpu }}-$VERSION
           cp $GITHUB_WORKSPACE/target/x86_64-apple-darwin/release/tari_base_node ./$BINFILE
           bzip2 -f $BINFILE
-          sha256sum $BINFILE.bz2 >> $BINFILE.bz2.sha256
+          shasum -a 256 $BINFILE.bz2 >> $BINFILE.bz2.sha256
       - name: Sync to S3
         uses: jakejarvis/s3-sync-action@v0.5.1
         with:
