@@ -79,7 +79,7 @@ use tari_mmr::MmrCacheConfig;
 use tari_p2p::services::liveness::LivenessConfig;
 use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_stream, random::string};
-use tempdir::TempDir;
+use tempfile::tempdir;
 use tokio::{runtime::Runtime, time};
 
 #[test]
@@ -87,7 +87,7 @@ fn test_listening_lagging() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
     let network = Network::LocalNet;
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
         .build();
@@ -168,7 +168,7 @@ fn test_listening_lagging() {
 
 #[test]
 fn test_event_channel() {
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let mut runtime = Runtime::new().unwrap();
     let (node, consensus_manager) =
         BaseNodeBuilder::new(Network::Rincewind).start(&mut runtime, temp_dir.path().to_str().unwrap());
@@ -220,7 +220,7 @@ fn test_event_channel() {
 fn test_block_sync() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
@@ -301,7 +301,7 @@ fn test_block_sync() {
 fn test_lagging_block_sync() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
@@ -399,7 +399,7 @@ fn test_lagging_block_sync() {
 fn test_block_sync_recovery() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
@@ -497,7 +497,7 @@ fn test_block_sync_recovery() {
 fn test_forked_block_sync() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
@@ -610,7 +610,7 @@ fn test_forked_block_sync() {
 fn test_sync_peer_banning() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
@@ -775,7 +775,7 @@ fn test_sync_peer_banning() {
 fn test_pruned_mode_sync_with_future_horizon_sync_height() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
@@ -919,7 +919,7 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
 fn test_pruned_mode_sync_with_spent_utxos() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), 0.999, 100.into())

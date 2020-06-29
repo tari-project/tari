@@ -73,14 +73,14 @@ use tari_crypto::tari_utilities::hash::Hashable;
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::services::liveness::LivenessConfig;
 use tari_test_utils::{random, unpack_enum};
-use tempdir::TempDir;
+use tempfile::tempdir;
 use tokio::runtime::Runtime;
 
 #[test]
 fn request_response_get_metadata() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
@@ -114,7 +114,7 @@ fn request_response_get_metadata() {
 #[test]
 fn request_and_response_fetch_headers() {
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) =
         create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
 
@@ -158,7 +158,7 @@ fn request_and_response_fetch_headers() {
 #[test]
 fn request_and_response_fetch_headers_with_hashes() {
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let (mut alice_node, bob_node, _consensus_manager) =
         create_network_with_2_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
 
@@ -197,7 +197,7 @@ fn request_and_response_fetch_headers_with_hashes() {
 #[test]
 fn request_and_response_fetch_kernels() {
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) =
         create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
 
@@ -239,7 +239,7 @@ fn request_and_response_fetch_kernels() {
 fn request_and_response_fetch_utxos() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) =
         create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
 
@@ -277,7 +277,7 @@ fn request_and_response_fetch_utxos() {
 fn request_and_response_fetch_blocks() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
@@ -328,7 +328,7 @@ fn request_and_response_fetch_blocks() {
 fn request_and_response_fetch_blocks_with_hashes() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
@@ -388,7 +388,7 @@ fn request_and_response_fetch_blocks_with_hashes() {
 #[test]
 fn propagate_and_forward_many_valid_blocks() {
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let factories = CryptoFactories::default();
     // Alice will propagate a number of block hashes to bob, bob will receive it, request the full block, verify and
     // then propagate the hash to carol and dan. Dan and Carol will also try to propagate the block hashes to each
@@ -487,7 +487,7 @@ fn propagate_and_forward_invalid_block_hash() {
     // alice -> bob -> carol
 
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let factories = CryptoFactories::default();
 
     let alice_node_identity = random_node_identity();
@@ -580,7 +580,7 @@ fn propagate_and_forward_invalid_block_hash() {
 #[test]
 fn propagate_and_forward_invalid_block() {
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let factories = CryptoFactories::default();
     // Alice will propagate an invalid block to Carol and Bob, they will check the received block and not propagate the
     // block to dan.
@@ -695,7 +695,7 @@ fn service_request_timeout() {
         request_timeout: Duration::from_millis(1),
         desired_response_fraction: BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
     };
-    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let (mut alice_node, bob_node, _consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
         BlockchainDatabaseConfig::default(),
@@ -723,7 +723,7 @@ fn service_request_timeout() {
 #[test]
 fn local_get_metadata() {
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let (mut node, consensus_manager) =
         BaseNodeBuilder::new(network).start(&mut runtime, temp_dir.path().to_str().unwrap());
@@ -745,7 +745,7 @@ fn local_get_metadata() {
 fn local_get_new_block_template_and_get_new_block() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
     let (block0, outputs) = create_genesis_block_with_utxos(&factories, &[T, T], &consensus_constants);
@@ -789,7 +789,7 @@ fn local_get_new_block_template_and_get_new_block() {
 fn local_get_target_difficulty() {
     let network = Network::LocalNet;
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let (mut node, consensus_manager) =
         BaseNodeBuilder::new(network).start(&mut runtime, temp_dir.path().to_str().unwrap());
 
@@ -832,7 +832,7 @@ fn local_get_target_difficulty() {
 #[test]
 fn local_submit_block() {
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let (mut node, consensus_manager) =
         BaseNodeBuilder::new(network).start(&mut runtime, temp_dir.path().to_str().unwrap());
@@ -866,7 +866,7 @@ fn local_submit_block() {
 fn request_and_response_fetch_mmr_node_and_count() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-    let temp_dir = TempDir::new(random::string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);

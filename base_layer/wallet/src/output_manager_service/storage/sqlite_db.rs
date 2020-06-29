@@ -956,7 +956,7 @@ mod test {
         types::{CommitmentFactory, CryptoFactories, PrivateKey},
     };
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
-    use tempdir::TempDir;
+    use tempfile::tempdir;
 
     pub fn random_string(len: usize) -> String {
         iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
@@ -974,7 +974,7 @@ mod test {
     #[test]
     fn test_crud() {
         let db_name = format!("{}.sqlite3", random_string(8).as_str());
-        let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+        let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
 
@@ -1103,7 +1103,7 @@ mod test {
     #[test]
     fn test_key_manager_crud() {
         let db_name = format!("{}.sqlite3", random_string(8).as_str());
-        let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+        let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
 

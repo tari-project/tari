@@ -45,7 +45,7 @@ use tari_mmr::MmrCacheConfig;
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
 use tari_shutdown::Shutdown;
 use tari_test_utils::{async_assert_eventually, random::string};
-use tempdir::TempDir;
+use tempfile::tempdir;
 use tokio::runtime::Runtime;
 
 #[test]
@@ -54,7 +54,7 @@ fn mining() {
     let factories = CryptoFactories::default();
     let consensus_constants = network.create_consensus_constants();
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let (block0, utxos0) =
         create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)

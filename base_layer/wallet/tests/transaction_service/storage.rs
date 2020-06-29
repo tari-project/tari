@@ -48,7 +48,7 @@ use tari_wallet::{
         sqlite_db::TransactionServiceSqliteDatabase,
     },
 };
-use tempdir::TempDir;
+use tempfile::tempdir;
 use tokio::runtime::Runtime;
 
 pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
@@ -434,7 +434,7 @@ pub fn test_transaction_service_memory_db() {
 #[test]
 pub fn test_transaction_service_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();

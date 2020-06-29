@@ -81,7 +81,7 @@ use tari_wallet::{
     storage::connection_manager::run_migration_and_create_sqlite_connection,
     transaction_service::handle::TransactionServiceHandle,
 };
-use tempdir::TempDir;
+use tempfile::tempdir;
 use tokio::{
     runtime::Runtime,
     sync::{broadcast, broadcast::channel},
@@ -238,7 +238,7 @@ fn sending_transaction_and_confirmation_memory_db() {
 #[test]
 fn sending_transaction_and_confirmation_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
@@ -281,7 +281,7 @@ fn send_not_enough_funds_memory_db() {
 #[test]
 fn send_not_enough_funds_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
@@ -357,7 +357,7 @@ fn send_no_change_memory_db() {
 #[test]
 fn send_no_change_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
@@ -402,7 +402,7 @@ fn send_not_enough_for_change_memory_db() {
 #[test]
 fn send_not_enough_for_change_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
@@ -446,7 +446,7 @@ fn receiving_and_confirmation_memory_db() {
 #[test]
 fn receiving_and_confirmation_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
@@ -496,7 +496,7 @@ fn cancel_transaction_memory_db() {
 #[test]
 fn cancel_transaction_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
@@ -551,7 +551,7 @@ fn timeout_transaction_memory_db() {
 #[test]
 fn timeout_transaction_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
@@ -604,7 +604,7 @@ fn test_get_balance_memory_db() {
 #[test]
 fn test_get_balance_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
@@ -643,7 +643,7 @@ fn test_confirming_received_output_memory_db() {
 #[test]
 fn test_confirming_received_output_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
@@ -1134,7 +1134,7 @@ fn sending_transaction_with_short_term_clear_memory_db() {
 #[test]
 fn sending_transaction_with_short_term_clear_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
@@ -1176,7 +1176,7 @@ fn coin_split_with_change_memory_db() {
 #[test]
 fn coin_split_with_change_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
@@ -1219,7 +1219,7 @@ fn coin_split_no_change_memory_db() {
 #[test]
 fn coin_split_no_change_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();

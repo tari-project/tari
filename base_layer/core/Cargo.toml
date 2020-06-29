@@ -68,7 +68,7 @@ strum_macros = "0.17.1"
 tari_p2p = {path = "../../base_layer/p2p", version = "^0.1", features=["test-mocks"]}
 tari_test_utils = { path = "../../infrastructure/test_utils", version = "^0.0" }
 env_logger = "0.7.0"
-tempdir = "0.3.7"
+tempfile = "3.1.0"
 tokio-macros = "0.2.4"
 tari_wallet = { path = "../../base_layer/wallet", version = "^0.1" }
 tokio-test = "0.2.0"

@@ -58,7 +58,7 @@ use tari_wallet::{
     wallet::WalletConfig,
     Wallet,
 };
-use tempdir::TempDir;
+use tempfile::tempdir;
 use tokio::{runtime::Runtime, time::delay_for};
 
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
@@ -137,7 +137,7 @@ fn create_wallet(
 
 #[test]
 fn test_wallet() {
-    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_tempdir = tempdir().unwrap();
 
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
@@ -270,7 +270,7 @@ fn test_wallet() {
 #[test]
 fn test_store_and_forward_send_tx() {
     let factories = CryptoFactories::default();
-    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_tempdir = tempdir().unwrap();
 
     let alice_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
@@ -398,7 +398,7 @@ fn test_import_utxo() {
         PeerFeatures::COMMUNICATION_NODE,
     )
     .unwrap();
-    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let comms_config = CommsConfig {
         node_identity: Arc::new(alice_identity.clone()),
         transport_type: TransportType::Tcp {
@@ -466,7 +466,7 @@ fn test_data_generation() {
     let factories = CryptoFactories::default();
     let node_id =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
-    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let comms_config = CommsConfig {
         node_identity: Arc::new(node_id.clone()),
         transport_type: TransportType::Memory {

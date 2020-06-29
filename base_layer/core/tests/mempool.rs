@@ -65,7 +65,7 @@ use tari_core::{
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
 use tari_test_utils::{async_assert_eventually, random::string};
-use tempdir::TempDir;
+use tempfile::tempdir;
 use tokio::runtime::Runtime;
 
 #[test]
@@ -475,7 +475,7 @@ fn test_orphaned_mempool_transactions() {
 fn request_response_get_stats() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_coinbase_lockheight(100)
@@ -538,7 +538,7 @@ fn request_response_get_stats() {
 fn request_response_get_tx_state_with_excess_sig() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_coinbase_lockheight(100)
@@ -612,7 +612,7 @@ fn request_response_get_tx_state_with_excess_sig() {
 fn receive_and_propagate_transaction() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_coinbase_lockheight(100)
@@ -709,7 +709,7 @@ fn service_request_timeout() {
         request_timeout: Duration::from_millis(1),
         ..Default::default()
     };
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let (mut alice_node, bob_node, _consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
         BlockchainDatabaseConfig::default(),
@@ -740,7 +740,7 @@ fn block_event_and_reorg_event_handling() {
     let consensus_constants = network.create_consensus_constants();
 
     let mut runtime = Runtime::new().unwrap();
-    let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let (block0, utxos0) =
         create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)

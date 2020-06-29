@@ -20,7 +20,7 @@ use tari_comms::{
 };
 use tari_crypto::tari_utilities::message_format::MessageFormat;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
-use tempdir::TempDir;
+use tempfile::Builder;
 use thiserror::Error;
 use tokio::{runtime, task};
 
@@ -75,11 +75,11 @@ async fn run() -> Result<(), Error> {
 
     println!("Starting comms nodes...",);
 
-    let temp_dir1 = TempDir::new("tor-example1").unwrap();
+    let temp_dir1 = Builder::new().prefix("tor-example1").tempdir().unwrap();
     let (comms_node1, inbound_rx1, mut outbound_tx1) =
         setup_node_with_tor(control_port_addr.clone(), temp_dir1.as_ref(), 9098, tor_identity1).await?;
 
-    let temp_dir2 = TempDir::new("tor-example2").unwrap();
+    let temp_dir2 = Builder::new().prefix("tor-example2").tempdir().unwrap();
     let (comms_node2, inbound_rx2, outbound_tx2) =
         setup_node_with_tor(control_port_addr, temp_dir2.as_ref(), 9099, tor_identity2).await?;
 

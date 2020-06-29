@@ -26,7 +26,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-use tempdir::TempDir;
+use tempfile::Builder;
 
 pub const RELATIVE_TARI_PATH: &str = "tari-tests/";
 
@@ -38,7 +38,7 @@ pub fn create_temporary_data_path() -> PathBuf {
 
 pub fn with_temp_dir<F, R>(f: F) -> R
 where F: FnOnce(&Path) -> R {
-    let tmp = TempDir::new("tari-test").unwrap();
+    let tmp = Builder::new().prefix("tari-test").tempdir().unwrap();
     let r = f(&tmp.path());
     drop(tmp);
     r

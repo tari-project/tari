@@ -38,7 +38,7 @@ use tari_p2p::{
 };
 use tari_service_framework::StackBuilder;
 use tari_test_utils::{collect_stream, random::string};
-use tempdir::TempDir;
+use tempfile::tempdir;
 use tokio::runtime;
 
 pub async fn setup_liveness_service(
@@ -85,14 +85,14 @@ async fn end_to_end() {
     let node_1_identity = make_node_identity();
     let node_2_identity = make_node_identity();
 
-    let alice_temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let alice_temp_dir = tempdir().unwrap();
     let (mut liveness1, comms_1, _dht_1) = setup_liveness_service(
         node_1_identity.clone(),
         vec![node_2_identity.clone()],
         alice_temp_dir.path().to_str().unwrap(),
     )
     .await;
-    let bob_temp_dir = TempDir::new(string(8).as_str()).unwrap();
+    let bob_temp_dir = tempdir().unwrap();
     let (mut liveness2, comms_2, _dht_2) = setup_liveness_service(
         node_2_identity.clone(),
         vec![node_1_identity.clone()],
