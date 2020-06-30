@@ -43,7 +43,7 @@ pub fn create_test_pow_blockchain<T: BlockchainBackend>(
 {
     // Remove the first as it will be replaced by the genesis block
     pow_algos.remove(0);
-    let block0 = db.fetch_block(0).unwrap().block().clone();
+    let block0 = db.fetch_block_with_height(0).unwrap().block().clone();
     append_to_pow_blockchain(db, block0, pow_algos, consensus_manager);
 }
 

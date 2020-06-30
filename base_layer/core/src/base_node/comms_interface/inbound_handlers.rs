@@ -213,7 +213,7 @@ where T: BlockchainBackend + 'static
                 let mut blocks = Vec::<HistoricalBlock>::with_capacity(block_nums.len());
                 for block_num in block_nums {
                     debug!(target: LOG_TARGET, "A peer has requested block {}", block_num);
-                    match async_db::fetch_block(self.blockchain_db.clone(), *block_num).await {
+                    match async_db::fetch_block_with_height(self.blockchain_db.clone(), *block_num).await {
                         Ok(block) => blocks.push(block),
                         // We need to suppress the error as another node might ask for a block we dont have, so we
                         // return ok([])

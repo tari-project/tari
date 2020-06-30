@@ -289,7 +289,10 @@ fn test_block_sync() {
         assert_eq!(alice_db.get_height(), bob_db.get_height());
 
         for height in 1..=network_tip.height_of_longest_chain.unwrap() {
-            assert_eq!(alice_db.fetch_block(height), bob_db.fetch_block(height));
+            assert_eq!(
+                alice_db.fetch_block_with_height(height),
+                bob_db.fetch_block_with_height(height)
+            );
         }
 
         alice_node.comms.shutdown().await;
@@ -385,8 +388,8 @@ fn test_lagging_block_sync() {
 
         for height in 0..=network_tip.height_of_longest_chain.unwrap() {
             assert_eq!(
-                alice_node.blockchain_db.fetch_block(height),
-                bob_node.blockchain_db.fetch_block(height)
+                alice_node.blockchain_db.fetch_block_with_height(height),
+                bob_node.blockchain_db.fetch_block_with_height(height)
             );
         }
 
@@ -482,8 +485,8 @@ fn test_block_sync_recovery() {
 
         for height in 1..=network_tip.height_of_longest_chain.unwrap() {
             assert_eq!(
-                alice_db.fetch_block(height).unwrap().block(),
-                bob_db.fetch_block(height).unwrap().block()
+                alice_db.fetch_block_with_height(height).unwrap().block(),
+                bob_db.fetch_block_with_height(height).unwrap().block()
             );
         }
 
@@ -598,7 +601,10 @@ fn test_forked_block_sync() {
         assert_eq!(alice_db.get_height(), bob_db.get_height());
 
         for height in 0..=network_tip.height_of_longest_chain.unwrap() {
-            assert_eq!(alice_db.fetch_block(height), bob_db.fetch_block(height));
+            assert_eq!(
+                alice_db.fetch_block_with_height(height),
+                bob_db.fetch_block_with_height(height)
+            );
         }
 
         alice_node.comms.shutdown().await;

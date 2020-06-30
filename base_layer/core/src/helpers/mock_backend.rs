@@ -19,10 +19,9 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::{
-    blocks::{Block, BlockHeader},
-    chain_storage::{BlockchainBackend, ChainMetadata, ChainStorageError, DbKey, DbTransaction, DbValue, MmrTree},
+    blocks::{blockheader::BlockHash, Block, BlockHeader},
+    chain_storage::{BlockchainBackend, ChainMetadata, ChainStorageError, DbKey, DbValue, MmrTree},
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
@@ -30,14 +29,14 @@ use crate::{
     },
 };
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
-use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof};
+use tari_mmr::Hash;
 
 // This is a test backend. This is used so that the ConsensusManager can be called without actually having a backend.
 // Calling this backend will result in a panic.
 pub struct MockBackend;
 
 impl BlockchainBackend for MockBackend {
-    fn write(&mut self, _tx: DbTransaction) -> Result<(), ChainStorageError> {
+    fn accept_block(&mut self, block_hash: HashOutput) -> Result<(), ChainStorageError> {
         unimplemented!()
     }
 
@@ -49,11 +48,7 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
-    fn fetch_mmr_root(&self, _tree: MmrTree) -> Result<HashOutput, ChainStorageError> {
-        unimplemented!()
-    }
-
-    fn fetch_mmr_only_root(&self, _tree: MmrTree) -> Result<HashOutput, ChainStorageError> {
+    fn remove_orphan_blocks(&mut self, block_hashes: Vec<BlockHash>) -> Result<bool, ChainStorageError> {
         unimplemented!()
     }
 
@@ -67,25 +62,7 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
-    fn fetch_mmr_proof(&self, _tree: MmrTree, _pos: usize) -> Result<MerkleProof, ChainStorageError> {
-        unimplemented!()
-    }
-
-    fn fetch_checkpoint(&self, _tree: MmrTree, _index: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
-        unimplemented!()
-    }
-
     fn fetch_mmr_node_count(&self, _tree: MmrTree, _height: u64) -> Result<u32, ChainStorageError> {
-        unimplemented!()
-    }
-
-    fn fetch_mmr_node(
-        &self,
-        _tree: MmrTree,
-        _pos: u32,
-        _hist_height: Option<u64>,
-    ) -> Result<(Hash, bool), ChainStorageError>
-    {
         unimplemented!()
     }
 
@@ -112,11 +89,7 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
-    fn for_each_orphan<F>(&self, _f: F) -> Result<(), ChainStorageError>
-    where
-        Self: Sized,
-        F: FnMut(Result<(HashOutput, Block), ChainStorageError>),
-    {
+    fn fetch_all_orphan_headers(&self) -> Result<Vec<BlockHeader>, ChainStorageError> {
         unimplemented!()
     }
 
@@ -124,27 +97,20 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
-    fn for_each_kernel<F>(&self, _f: F) -> Result<(), ChainStorageError>
-    where
-        Self: Sized,
-        F: FnMut(Result<(HashOutput, TransactionKernel), ChainStorageError>),
+    fn rewind_to_height(&mut self, height: u64) -> Result<Vec<BlockHeader>, ChainStorageError> {
+        unimplemented!()
+    }
+
+    fn fetch_parent_orphan_headers(
+        &self,
+        hash: HashOutput,
+        height: u64,
+    ) -> Result<Vec<BlockHeader>, ChainStorageError>
     {
         unimplemented!()
     }
 
-    fn for_each_header<F>(&self, _f: F) -> Result<(), ChainStorageError>
-    where
-        Self: Sized,
-        F: FnMut(Result<(u64, BlockHeader), ChainStorageError>),
-    {
-        unimplemented!()
-    }
-
-    fn for_each_utxo<F>(&self, _f: F) -> Result<(), ChainStorageError>
-    where
-        Self: Sized,
-        F: FnMut(Result<(HashOutput, TransactionOutput), ChainStorageError>),
-    {
+    fn add_orphan_block(&mut self, block: Block) -> Result<(), ChainStorageError> {
         unimplemented!()
     }
 
@@ -163,6 +129,22 @@ impl BlockchainBackend for MockBackend {
         _block_window: usize,
     ) -> Result<Vec<(EpochTime, Difficulty)>, ChainStorageError>
     {
+        unimplemented!()
+    }
+
+    fn add_block_headers(&mut self, headers: Vec<BlockHeader>) -> Result<(), ChainStorageError> {
+        unimplemented!()
+    }
+
+    fn add_kernels(&mut self, kernels: Vec<TransactionKernel>) -> Result<(), ChainStorageError> {
+        unimplemented!()
+    }
+
+    fn add_utxos(&mut self, utxos: Vec<TransactionOutput>) -> Result<(), ChainStorageError> {
+        unimplemented!()
+    }
+
+    fn add_mmr(&mut self, tree: MmrTree, hashes: Vec<HashOutput>) -> Result<(), ChainStorageError> {
         unimplemented!()
     }
 }

@@ -318,7 +318,12 @@ fn wallet_base_node_integration_test() {
             .await
             .is_some());
         // Check that the mined block was submitted to the base node service and the block was added to the blockchain
-        let block1 = base_node.blockchain_db.fetch_block(1).unwrap().block().clone();
+        let block1 = base_node
+            .blockchain_db
+            .fetch_block_with_height(1)
+            .unwrap()
+            .block()
+            .clone();
         assert_eq!(block1.body.outputs().len(), 3);
 
         // Check if the outputs of tx1 appeared as outputs in block1

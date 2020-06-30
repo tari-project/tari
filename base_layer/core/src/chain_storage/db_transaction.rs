@@ -59,128 +59,128 @@ impl Default for DbTransaction {
     }
 }
 
-impl DbTransaction {
-    /// Creates a new Database transaction. To commit the transactions call [BlockchainDatabase::execute] with the
-    /// transaction as a parameter.
-    pub fn new() -> Self {
-        DbTransaction::default()
-    }
+// impl DbTransaction {
+//     /// Creates a new Database transaction. To commit the transactions call [BlockchainDatabase::execute] with the
+//     /// transaction as a parameter.
+//     pub fn new() -> Self {
+//         DbTransaction::default()
+//     }
 
-    /// A general insert request. There are convenience functions for specific insert queries.
-    pub fn insert(&mut self, insert: DbKeyValuePair) {
-        self.operations.push(WriteOperation::Insert(insert));
-    }
+//     /// A general insert request. There are convenience functions for specific insert queries.
+//     // pub fn insert(&mut self, insert: DbKeyValuePair) {
+//     //     self.operations.push(WriteOperation::Insert(insert));
+//     // }
 
-    /// A general insert request. There are convenience functions for specific delete queries.
-    pub fn delete(&mut self, delete: DbKey) {
-        self.operations.push(WriteOperation::Delete(delete));
-    }
+//     // /// A general insert request. There are convenience functions for specific delete queries.
+//     // pub fn delete(&mut self, delete: DbKey) {
+//     //     self.operations.push(WriteOperation::Delete(delete));
+//     // }
 
-    /// Inserts a transaction kernel into the current transaction.
-    pub fn insert_kernel(&mut self, kernel: TransactionKernel) {
-        let hash = kernel.hash();
-        self.insert(DbKeyValuePair::TransactionKernel(hash, Box::new(kernel)));
-    }
+//     /// Inserts a transaction kernel into the current transaction.
+//     // pub fn insert_kernel(&mut self, kernel: TransactionKernel) {
+//     //     let hash = kernel.hash();
+//     //     self.insert(DbKeyValuePair::TransactionKernel(hash, Box::new(kernel)));
+//     // }
 
-    /// Inserts a block header into the current transaction.
-    pub fn insert_header(&mut self, header: BlockHeader) {
-        let height = header.height;
-        self.insert(DbKeyValuePair::BlockHeader(height, Box::new(header)));
-    }
+//     // /// Inserts a block header into the current transaction.
+//     // pub fn insert_header(&mut self, header: BlockHeader) {
+//     //     let height = header.height;
+//     //     self.insert(DbKeyValuePair::BlockHeader(height, Box::new(header)));
+//     // }
 
-    /// Adds a UTXO into the current transaction and update the TXO MMR.
-    pub fn insert_utxo(&mut self, utxo: TransactionOutput) {
-        let hash = utxo.hash();
-        self.insert(DbKeyValuePair::UnspentOutput(hash, Box::new(utxo)));
-    }
+//     // /// Adds a UTXO into the current transaction and update the TXO MMR.
+//     // pub fn insert_utxo(&mut self, utxo: TransactionOutput) {
+//     //     let hash = utxo.hash();
+//     //     self.insert(DbKeyValuePair::UnspentOutput(hash, Box::new(utxo)));
+//     // }
 
-    /// Adds a UTXO into the current transaction and update the TXO MMR. This is a test only function used to ensure we
-    /// block duplicate entries. This function does not calculate the hash function but accepts one as a variable.
-    pub fn insert_utxo_with_hash(&mut self, hash: Vec<u8>, utxo: TransactionOutput) {
-        self.insert(DbKeyValuePair::UnspentOutput(hash, Box::new(utxo)));
-    }
+//     // /// Adds a UTXO into the current transaction and update the TXO MMR. This is a test only function used to
+// ensure     // we /// block duplicate entries. This function does not calculate the hash function but accepts one as a
+//     // variable. pub fn insert_utxo_with_hash(&mut self, hash: Vec<u8>, utxo: TransactionOutput) {
+//     //     self.insert(DbKeyValuePair::UnspentOutput(hash, Box::new(utxo)));
+//     // }
 
-    /// Stores an orphan block. No checks are made as to whether this is actually an orphan. That responsibility lies
-    /// with the calling function.
-    pub fn insert_orphan(&mut self, orphan: Block) {
-        let hash = orphan.hash();
-        self.insert(DbKeyValuePair::OrphanBlock(hash, Box::new(orphan)));
-    }
+//     // /// Stores an orphan block. No checks are made as to whether this is actually an orphan. That responsibility
+// lies     // /// with the calling function.
+//     // pub fn insert_orphan(&mut self, orphan: Block) {
+//     //     let hash = orphan.hash();
+//     //     self.insert(DbKeyValuePair::OrphanBlock(hash, Box::new(orphan)));
+//     // }
 
-    /// Moves a UTXO to the STXO set and mark it as spent on the MRR. If the UTXO is not in the UTXO set, the
-    /// transaction will fail with an `UnspendableOutput` error.
-    pub fn spend_utxo(&mut self, utxo_hash: HashOutput) {
-        self.operations
-            .push(WriteOperation::Spend(DbKey::UnspentOutput(utxo_hash)));
-    }
+//     /// Moves a UTXO to the STXO set and mark it as spent on the MRR. If the UTXO is not in the UTXO set, the
+//     /// transaction will fail with an `UnspendableOutput` error.
+//     pub fn spend_utxo(&mut self, utxo_hash: HashOutput) {
+//         self.operations
+//             .push(WriteOperation::Spend(DbKey::UnspentOutput(utxo_hash)));
+//     }
 
-    /// Moves a STXO to the UTXO set.  If the STXO is not in the STXO set, the transaction will fail with an
-    /// `UnspendError`.
-    // TODO: unspend_utxo in memory_db doesn't unmark the node in the roaring bitmap.0
-    pub fn unspend_stxo(&mut self, stxo_hash: HashOutput) {
-        self.operations
-            .push(WriteOperation::UnSpend(DbKey::SpentOutput(stxo_hash)));
-    }
+//     /// Moves a STXO to the UTXO set.  If the STXO is not in the STXO set, the transaction will fail with an
+//     /// `UnspendError`.
+//     // TODO: unspend_utxo in memory_db doesn't unmark the node in the roaring bitmap.0
+//     pub fn unspend_stxo(&mut self, stxo_hash: HashOutput) {
+//         self.operations
+//             .push(WriteOperation::UnSpend(DbKey::SpentOutput(stxo_hash)));
+//     }
 
-    /// Moves the given set of transaction inputs from the UTXO set to the STXO set. All the inputs *must* currently
-    /// exist in the UTXO set, or the transaction will error with `ChainStorageError::UnspendableOutput`
-    pub fn spend_inputs(&mut self, inputs: &[TransactionInput]) {
-        for input in inputs {
-            let input_hash = input.hash();
-            self.spend_utxo(input_hash);
-        }
-    }
+//     /// Moves the given set of transaction inputs from the UTXO set to the STXO set. All the inputs *must* currently
+//     /// exist in the UTXO set, or the transaction will error with `ChainStorageError::UnspendableOutput`
+//     pub fn spend_inputs(&mut self, inputs: &[TransactionInput]) {
+//         for input in inputs {
+//             let input_hash = input.hash();
+//             self.spend_utxo(input_hash);
+//         }
+//     }
 
-    /// Adds a marker operation that allows the database to perform any additional work after adding a new block to
-    /// the database.
-    pub fn commit_block(&mut self) {
-        self.operations
-            .push(WriteOperation::CreateMmrCheckpoint(MmrTree::Kernel));
-        self.operations.push(WriteOperation::CreateMmrCheckpoint(MmrTree::Utxo));
-        self.operations
-            .push(WriteOperation::CreateMmrCheckpoint(MmrTree::RangeProof));
-    }
+//     /// Adds a marker operation that allows the database to perform any additional work after adding a new block to
+//     /// the database.
+//     pub fn commit_block(&mut self) {
+//         self.operations
+//             .push(WriteOperation::CreateMmrCheckpoint(MmrTree::Kernel));
+//         self.operations.push(WriteOperation::CreateMmrCheckpoint(MmrTree::Utxo));
+//         self.operations
+//             .push(WriteOperation::CreateMmrCheckpoint(MmrTree::RangeProof));
+//     }
 
-    /// Set the horizon beyond which we cannot be guaranteed provide detailed blockchain information anymore.
-    /// A value of zero indicates that no pruning should be carried out at all. That is, this state should act as a
-    /// archival node.
-    ///
-    /// This operation just sets the new horizon value. No pruning is done at this point.
-    pub fn set_pruning_horizon(&mut self, new_pruning_horizon: u64) {
-        self.operations.push(WriteOperation::Insert(DbKeyValuePair::Metadata(
-            MetadataKey::PruningHorizon,
-            MetadataValue::PruningHorizon(new_pruning_horizon),
-        )));
-    }
+//     /// Set the horizon beyond which we cannot be guaranteed provide detailed blockchain information anymore.
+//     /// A value of zero indicates that no pruning should be carried out at all. That is, this state should act as a
+//     /// archival node.
+//     ///
+//     /// This operation just sets the new horizon value. No pruning is done at this point.
+//     pub fn set_pruning_horizon(&mut self, new_pruning_horizon: u64) {
+//         self.operations.push(WriteOperation::Insert(DbKeyValuePair::Metadata(
+//             MetadataKey::PruningHorizon,
+//             MetadataValue::PruningHorizon(new_pruning_horizon),
+//         )));
+//     }
 
-    /// Rewinds the Kernel MMR state by the given number of Checkpoints.
-    pub fn rewind_kernel_mmr(&mut self, steps_back: usize) {
-        self.operations
-            .push(WriteOperation::RewindMmr(MmrTree::Kernel, steps_back));
-    }
+//     /// Rewinds the Kernel MMR state by the given number of Checkpoints.
+//     pub fn rewind_kernel_mmr(&mut self, steps_back: usize) {
+//         self.operations
+//             .push(WriteOperation::RewindMmr(MmrTree::Kernel, steps_back));
+//     }
 
-    /// Rewinds the UTXO MMR state by the given number of Checkpoints.
-    pub fn rewind_utxo_mmr(&mut self, steps_back: usize) {
-        self.operations
-            .push(WriteOperation::RewindMmr(MmrTree::Utxo, steps_back));
-    }
+//     /// Rewinds the UTXO MMR state by the given number of Checkpoints.
+//     pub fn rewind_utxo_mmr(&mut self, steps_back: usize) {
+//         self.operations
+//             .push(WriteOperation::RewindMmr(MmrTree::Utxo, steps_back));
+//     }
 
-    /// Rewinds the RangeProof MMR state by the given number of Checkpoints.
-    pub fn rewind_rp_mmr(&mut self, steps_back: usize) {
-        self.operations
-            .push(WriteOperation::RewindMmr(MmrTree::RangeProof, steps_back));
-    }
+//     /// Rewinds the RangeProof MMR state by the given number of Checkpoints.
+//     pub fn rewind_rp_mmr(&mut self, steps_back: usize) {
+//         self.operations
+//             .push(WriteOperation::RewindMmr(MmrTree::RangeProof, steps_back));
+//     }
 
-    /// Merge checkpoints to ensure that only a specific number of checkpoints remain.
-    pub fn merge_checkpoints(&mut self, max_cp_count: usize) {
-        self.operations
-            .push(WriteOperation::MergeMmrCheckpoints(MmrTree::Kernel, max_cp_count));
-        self.operations
-            .push(WriteOperation::MergeMmrCheckpoints(MmrTree::Utxo, max_cp_count));
-        self.operations
-            .push(WriteOperation::MergeMmrCheckpoints(MmrTree::RangeProof, max_cp_count));
-    }
-}
+//     /// Merge checkpoints to ensure that only a specific number of checkpoints remain.
+//     pub fn merge_checkpoints(&mut self, max_cp_count: usize) {
+//         self.operations
+//             .push(WriteOperation::MergeMmrCheckpoints(MmrTree::Kernel, max_cp_count));
+//         self.operations
+//             .push(WriteOperation::MergeMmrCheckpoints(MmrTree::Utxo, max_cp_count));
+//         self.operations
+//             .push(WriteOperation::MergeMmrCheckpoints(MmrTree::RangeProof, max_cp_count));
+//     }
+// }
 
 #[derive(Debug, Display)]
 pub enum WriteOperation {
@@ -230,6 +230,7 @@ pub enum MetadataValue {
 pub enum DbKey {
     Metadata(MetadataKey),
     BlockHeader(u64),
+    Block(u64),
     BlockHash(BlockHash),
     UnspentOutput(HashOutput),
     SpentOutput(HashOutput),
@@ -241,6 +242,7 @@ pub enum DbKey {
 pub enum DbValue {
     Metadata(MetadataValue),
     BlockHeader(Box<BlockHeader>),
+    Block(Box<Block>),
     BlockHash(Box<BlockHeader>),
     UnspentOutput(Box<TransactionOutput>),
     SpentOutput(Box<TransactionOutput>),
@@ -256,6 +258,7 @@ impl Display for DbValue {
             DbValue::Metadata(MetadataValue::PruningHorizon(_)) => f.write_str("Pruning horizon"),
             DbValue::Metadata(MetadataValue::BestBlock(_)) => f.write_str("Chain tip block hash"),
             DbValue::BlockHeader(_) => f.write_str("Block header"),
+            DbValue::Block(_) => f.write_str("Block"),
             DbValue::BlockHash(_) => f.write_str("Block hash"),
             DbValue::UnspentOutput(_) => f.write_str("Unspent output"),
             DbValue::SpentOutput(_) => f.write_str("Spent output"),
@@ -273,6 +276,7 @@ impl Display for DbKey {
             DbKey::Metadata(MetadataKey::PruningHorizon) => f.write_str("Pruning horizon"),
             DbKey::Metadata(MetadataKey::BestBlock) => f.write_str("Chain tip block hash"),
             DbKey::BlockHeader(v) => f.write_str(&format!("Block header (#{})", v)),
+            DbKey::Block(v) => f.write_str(&format!("Block (#{})", v)),
             DbKey::BlockHash(v) => f.write_str(&format!("Block hash (#{})", to_hex(v))),
             DbKey::UnspentOutput(v) => f.write_str(&format!("Unspent output ({})", to_hex(v))),
             DbKey::SpentOutput(v) => f.write_str(&format!("Spent output ({})", to_hex(v))),
