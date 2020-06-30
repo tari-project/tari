@@ -946,7 +946,7 @@ where D: Digest + Send + Sync
             },
             DbKey::Block(k) => {
                 let block = self.reconstruct_block(*k)?;
-                Some(DbValue::OrphanBlock(Box::new(block)))
+                Some(DbValue::Block(Box::new(block)))
             },
         })
     }

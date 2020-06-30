@@ -455,10 +455,10 @@ where D: Digest + Send + Sync
         // lets get the block
         let block = db
             .orphans
-            .get(&block_hash)
+            .remove(&block_hash)
             .ok_or_else(|| ChainStorageError::ValueNotFound(DbKey::OrphanBlock(block_hash)))?;
 
-        let (header, inputs, outputs, kernels) = block.clone().dissolve();
+        let (header, inputs, outputs, kernels) = block.dissolve();
         // insert headers
         let k = header.height;
         if db.headers.contains_key(&k) {
@@ -580,12 +580,12 @@ where D: Digest + Send + Sync
 
     // rewinds the database to the specified height. It will move every block that was rewound to the orphan pool
     fn rewind_to_height(&mut self, height: u64) -> Result<Vec<BlockHeader>, ChainStorageError> {
+        let chain_height = self.fetch_chain_height()?.unwrap_or(0);
         let mut headers: Vec<BlockHeader> = Vec::new();
         let mut db = self
             .db
             .write()
             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-        let chain_height = self.fetch_chain_height()?.unwrap_or(0);
         let steps_back = (chain_height - height) as usize;
         let mut removed_blocks = Vec::new();
         for rewind_height in ((height + 1)..=chain_height).rev() {
@@ -738,7 +738,7 @@ where D: Digest + Send + Sync
             DbKey::OrphanBlock(k) => db.orphans.get(k).map(|v| DbValue::OrphanBlock(Box::new(v.clone()))),
             DbKey::Block(k) => {
                 let block = self.reconstruct_block(*k)?;
-                Some(DbValue::OrphanBlock(Box::new(block)))
+                Some(DbValue::Block(Box::new(block)))
             },
         };
         Ok(result)
