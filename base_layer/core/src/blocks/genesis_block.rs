@@ -140,12 +140,23 @@ pub fn get_rincewind_gen_header() -> BlockHeader {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::{
+        consensus::{ConsensusManagerBuilder, Network},
+        transactions::types::CryptoFactories,
+    };
 
     #[test]
-    fn load_rincewind() {
+    fn rincewind_genesis_sanity_check() {
         let block = get_rincewind_genesis_block();
-
         assert_eq!(block.body.outputs().len(), 4001);
+
+        let factories = CryptoFactories::default();
+        let coinbase = block.body.outputs().first().unwrap();
+        assert!(coinbase.is_coinbase());
+        coinbase.verify_range_proof(&factories.range_proof).unwrap();
+        for kernel in block.body.kernels() {
+            kernel.verify_signature().unwrap();
+        }
     }
 
     #[test]
