@@ -63,6 +63,7 @@ croaring = { version = "=0.4.5", optional = true }
 config = { version = "0.9.3" }
 strum = "0.17.1"
 strum_macros = "0.17.1"
+num = "0.3"
 
 [dev-dependencies]
 tari_p2p = {path = "../../base_layer/p2p", version = "^0.1", features=["test-mocks"]}
