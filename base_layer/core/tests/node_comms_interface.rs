@@ -352,13 +352,7 @@ fn inbound_fetch_txos() {
     let (stxo, _) = create_utxo(MicroTari(10_000), &factories, None);
     let utxo_hash = utxo.hash();
     let stxo_hash = stxo.hash();
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone());
-    txn.insert_utxo(stxo.clone());
-    assert!(store.commit(txn).is_ok());
-    let mut txn = DbTransaction::new();
-    txn.spend_utxo(stxo_hash.clone());
-    assert!(store.commit(txn).is_ok());
+    assert!(store.add_utxos(vec![utxo.clone(), stxo.clone()]).is_ok());
 
     test_async(move |rt| {
         rt.spawn(async move {

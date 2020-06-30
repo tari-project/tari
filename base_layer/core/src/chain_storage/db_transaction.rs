@@ -24,7 +24,7 @@ use crate::{
     blocks::{blockheader::BlockHash, Block, BlockHeader},
     proof_of_work::Difficulty,
     transactions::{
-        transaction::{TransactionInput, TransactionKernel, TransactionOutput},
+        transaction::{TransactionKernel, TransactionOutput},
         types::HashOutput,
     },
 };
@@ -34,7 +34,7 @@ use std::{
     fmt::{Display, Error, Formatter},
 };
 use strum_macros::Display;
-use tari_crypto::tari_utilities::{hex::to_hex, Hashable};
+use tari_crypto::tari_utilities::hex::to_hex;
 
 #[derive(Debug)]
 pub struct DbTransaction {

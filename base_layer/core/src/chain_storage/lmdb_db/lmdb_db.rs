@@ -860,11 +860,6 @@ where D: Digest + Send + Sync
         Ok(())
     }
 
-    /// This is used when synchronising. Adds in the mmrs provided to the main chain
-    fn add_mmr(&mut self, tree: MmrTree, hashes: Vec<HashOutput>) -> Result<(), ChainStorageError> {
-        Ok(())
-    }
-
     /// This function is used to remove orphan blocks
     /// This function will return ok if it did not encounter an error. If a orphan block was not found, it should return
     /// Ok(false)
@@ -1345,3 +1340,79 @@ fn merge_checkpoints(
     }
     Ok((0, stxo_leaf_indices))
 }
+// #[cfg(test)]
+// mod test {
+//     use super::*;
+//     use tari_test_utils::paths::create_temporary_data_path;
+// use crate::transactions::{
+//     helpers::create_utxo,
+//     tari_amount::MicroTari,
+//     types::{CryptoFactories},
+// };
+
+//     #[test]
+//     fn lmdb_spend_utxo_and_unspend_stxo() {
+//         // Create temporary test folder
+//         let temp_path = create_temporary_data_path();
+
+//         // Perform test
+//         {
+//             let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+//             spend_utxo_and_unspend_stxo(db);
+//         }
+
+//         // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse
+//         // files
+//         if std::path::Path::new(&temp_path).exists() {
+//             std::fs::remove_dir_all(&temp_path).unwrap();
+//         }
+//     }
+//     fn spend_utxo_and_unspend_stxo<T: BlockchainBackend>(mut db: T) {
+//         let factories = CryptoFactories::default();
+//         let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
+//         let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
+//         let hash1 = utxo1.hash();
+//         let hash2 = utxo2.hash();
+
+//         let mut txn = DbTransaction::new();
+//         txn.insert_utxo(utxo1.clone());
+//         txn.insert_utxo(utxo2.clone());
+//         assert!(db.write(txn).is_ok());
+
+//         let mut txn = DbTransaction::new();
+//         txn.spend_utxo(hash1.clone());
+//         assert!(db.write(txn).is_ok());
+//         assert_eq!(db.contains(&DbKey::UnspentOutput(hash1.clone())), Ok(false));
+//         assert_eq!(db.contains(&DbKey::UnspentOutput(hash2.clone())), Ok(true));
+//         assert_eq!(db.contains(&DbKey::SpentOutput(hash1.clone())), Ok(true));
+//         assert_eq!(db.contains(&DbKey::SpentOutput(hash2.clone())), Ok(false));
+
+//         let mut txn = DbTransaction::new();
+//         txn.spend_utxo(hash2.clone());
+//         txn.unspend_stxo(hash1.clone());
+//         assert!(db.write(txn).is_ok());
+//         assert_eq!(db.contains(&DbKey::UnspentOutput(hash1.clone())), Ok(true));
+//         assert_eq!(db.contains(&DbKey::UnspentOutput(hash2.clone())), Ok(false));
+//         assert_eq!(db.contains(&DbKey::SpentOutput(hash1.clone())), Ok(false));
+//         assert_eq!(db.contains(&DbKey::SpentOutput(hash2.clone())), Ok(true));
+
+//         if let Some(DbValue::UnspentOutput(retrieved_utxo)) = db.fetch(&DbKey::UnspentOutput(hash1.clone())).unwrap()
+// {             assert_eq!(*retrieved_utxo, utxo1);
+//         } else {
+//             assert!(false);
+//         }
+//         if let Some(DbValue::SpentOutput(retrieved_utxo)) = db.fetch(&DbKey::SpentOutput(hash2.clone())).unwrap() {
+//             assert_eq!(*retrieved_utxo, utxo2);
+//         } else {
+//             assert!(false);
+//         }
+
+//         let mut txn = DbTransaction::new();
+//         txn.delete(DbKey::SpentOutput(hash2.clone()));
+//         assert!(db.write(txn).is_ok());
+//         assert_eq!(db.contains(&DbKey::UnspentOutput(hash1.clone())), Ok(true));
+//         assert_eq!(db.contains(&DbKey::UnspentOutput(hash2.clone())), Ok(false));
+//         assert_eq!(db.contains(&DbKey::SpentOutput(hash1)), Ok(false));
+//         assert_eq!(db.contains(&DbKey::SpentOutput(hash2)), Ok(false));
+//     }
+// }

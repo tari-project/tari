@@ -36,7 +36,7 @@ use tari_mmr::Hash;
 pub struct MockBackend;
 
 impl BlockchainBackend for MockBackend {
-    fn accept_block(&mut self, block_hash: HashOutput) -> Result<(), ChainStorageError> {
+    fn accept_block(&mut self, _block_hash: HashOutput) -> Result<(), ChainStorageError> {
         unimplemented!()
     }
 
@@ -44,7 +44,7 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
-    fn force_meta_data(&mut self, metadata: ChainMetadata) -> Result<(), ChainStorageError> {
+    fn force_meta_data(&mut self, _metadata: ChainMetadata) -> Result<(), ChainStorageError> {
         unimplemented!()
     }
 
@@ -52,7 +52,7 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
-    fn remove_orphan_blocks(&mut self, block_hashes: Vec<BlockHash>) -> Result<bool, ChainStorageError> {
+    fn remove_orphan_blocks(&mut self, _block_hashes: Vec<BlockHash>) -> Result<bool, ChainStorageError> {
         unimplemented!()
     }
 
@@ -101,20 +101,20 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
-    fn rewind_to_height(&mut self, height: u64) -> Result<Vec<BlockHeader>, ChainStorageError> {
+    fn rewind_to_height(&mut self, _height: u64) -> Result<Vec<BlockHeader>, ChainStorageError> {
         unimplemented!()
     }
 
     fn fetch_parent_orphan_headers(
         &self,
-        hash: HashOutput,
-        height: u64,
+        _hash: HashOutput,
+        _height: u64,
     ) -> Result<Vec<BlockHeader>, ChainStorageError>
     {
         unimplemented!()
     }
 
-    fn add_orphan_block(&mut self, block: Block) -> Result<(), ChainStorageError> {
+    fn add_orphan_block(&mut self, _block: Block) -> Result<(), ChainStorageError> {
         unimplemented!()
     }
 
@@ -136,19 +136,15 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
-    fn add_block_headers(&mut self, headers: Vec<BlockHeader>) -> Result<(), ChainStorageError> {
+    fn add_block_headers(&mut self, _headers: Vec<BlockHeader>) -> Result<(), ChainStorageError> {
         unimplemented!()
     }
 
-    fn add_kernels(&mut self, kernels: Vec<TransactionKernel>) -> Result<(), ChainStorageError> {
+    fn add_kernels(&mut self, _kernels: Vec<TransactionKernel>) -> Result<(), ChainStorageError> {
         unimplemented!()
     }
 
-    fn add_utxos(&mut self, utxos: Vec<TransactionOutput>) -> Result<(), ChainStorageError> {
-        unimplemented!()
-    }
-
-    fn add_mmr(&mut self, tree: MmrTree, hashes: Vec<HashOutput>) -> Result<(), ChainStorageError> {
+    fn add_utxos(&mut self, _utxos: Vec<TransactionOutput>) -> Result<(), ChainStorageError> {
         unimplemented!()
     }
 }

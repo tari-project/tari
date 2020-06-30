@@ -91,65 +91,65 @@ pub fn create_blockchain_db_no_cut_through() -> (
         &consensus_manager.consensus_constants()
     )
     .is_ok());
-    // Block 2
-    let txs = vec![
-        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![20*T, 5*T, 1*T], fee: 120*uT),
-        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![15*T], fee: 75*uT),
-    ];
-    assert!(generate_new_block(
-        &mut db,
-        &mut blocks,
-        &mut outputs,
-        txs,
-        &consensus_manager.consensus_constants()
-    )
-    .is_ok());
-    // Block 3
-    let txs = vec![
-        txn_schema!(from: vec![outputs[2][1].clone(), outputs[2][2].clone()], to: vec![]),
-        txn_schema!(from: vec![outputs[2][4].clone(), outputs[2][3].clone()], to: vec![40*T], fee: 100*uT),
-    ];
-    assert!(generate_new_block(
-        &mut db,
-        &mut blocks,
-        &mut outputs,
-        txs,
-        &consensus_manager.consensus_constants()
-    )
-    .is_ok());
-    // Block 4
-    let txs = vec![txn_schema!(
-        from: vec![outputs[2][0].clone()],
-        to: vec![1 * T, 2 * T, 3 * T, 4 * T]
-    )];
-    assert!(generate_new_block(
-        &mut db,
-        &mut blocks,
-        &mut outputs,
-        txs,
-        &consensus_manager.consensus_constants()
-    )
-    .is_ok());
-    // Block 5
-    let txs = vec![
-        txn_schema!(
-            from: vec![outputs[4][3].clone(), outputs[3][1].clone()],
-            to: vec![20 * T, 21 * T]
-        ),
-        txn_schema!(
-            from: vec![outputs[4][1].clone()],
-            to: vec![500_000 * uT, 1_300_000 * uT]
-        ),
-        txn_schema!(from: vec![outputs[3][2].clone()], to: vec![500_000 * uT]),
-    ];
-    assert!(generate_new_block(
-        &mut db,
-        &mut blocks,
-        &mut outputs,
-        txs,
-        &consensus_manager.consensus_constants()
-    )
-    .is_ok());
+    // // Block 2
+    // let txs = vec![
+    //     txn_schema!(from: vec![outputs[1][0].clone()], to: vec![20*T, 5*T, 1*T], fee: 120*uT),
+    //     txn_schema!(from: vec![outputs[1][1].clone()], to: vec![15*T], fee: 75*uT),
+    // ];
+    // assert!(generate_new_block(
+    //     &mut db,
+    //     &mut blocks,
+    //     &mut outputs,
+    //     txs,
+    //     &consensus_manager.consensus_constants()
+    // )
+    // .is_ok());
+    // // Block 3
+    // let txs = vec![
+    //     txn_schema!(from: vec![outputs[2][1].clone(), outputs[2][2].clone()], to: vec![]),
+    //     txn_schema!(from: vec![outputs[2][4].clone(), outputs[2][3].clone()], to: vec![40*T], fee: 100*uT),
+    // ];
+    // assert!(generate_new_block(
+    //     &mut db,
+    //     &mut blocks,
+    //     &mut outputs,
+    //     txs,
+    //     &consensus_manager.consensus_constants()
+    // )
+    // .is_ok());
+    // // Block 4
+    // let txs = vec![txn_schema!(
+    //     from: vec![outputs[2][0].clone()],
+    //     to: vec![1 * T, 2 * T, 3 * T, 4 * T]
+    // )];
+    // assert!(generate_new_block(
+    //     &mut db,
+    //     &mut blocks,
+    //     &mut outputs,
+    //     txs,
+    //     &consensus_manager.consensus_constants()
+    // )
+    // .is_ok());
+    // // Block 5
+    // let txs = vec![
+    //     txn_schema!(
+    //         from: vec![outputs[4][3].clone(), outputs[3][1].clone()],
+    //         to: vec![20 * T, 21 * T]
+    //     ),
+    //     txn_schema!(
+    //         from: vec![outputs[4][1].clone()],
+    //         to: vec![500_000 * uT, 1_300_000 * uT]
+    //     ),
+    //     txn_schema!(from: vec![outputs[3][2].clone()], to: vec![500_000 * uT]),
+    // ];
+    // assert!(generate_new_block(
+    //     &mut db,
+    //     &mut blocks,
+    //     &mut outputs,
+    //     txs,
+    //     &consensus_manager.consensus_constants()
+    // )
+    // .is_ok());
     (db, blocks, outputs, consensus_manager)
 }
 

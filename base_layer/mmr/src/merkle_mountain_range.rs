@@ -32,8 +32,6 @@ use std::{
     marker::PhantomData,
 };
 
-const LOG_TARGET: &str = "mmr::merkle_mountain_range";
-
 /// An implementation of a Merkle Mountain Range (MMR). The MMR is append-only and immutable. Only the hashes are
 /// stored in this data structure. The data itself can be stored anywhere as long as you can maintain a 1:1 mapping
 /// of the hash of that data to the leaf nodes in the MMR.

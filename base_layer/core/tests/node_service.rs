@@ -53,7 +53,7 @@ use tari_core::{
         service::BaseNodeServiceConfig,
     },
     blocks::{BlockHeader, NewBlock},
-    chain_storage::{BlockAddResult, BlockchainDatabaseConfig, DbTransaction, MmrTree},
+    chain_storage::{BlockAddResult, BlockchainDatabaseConfig, MmrTree},
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     mempool::MempoolServiceConfig,
     proof_of_work::{Difficulty, PowAlgorithm},
@@ -124,7 +124,7 @@ fn request_and_response_fetch_headers() {
     headerb2.height = 2;
     assert!(bob_node
         .blockchain_db
-        .add_block_headers(vec![headerb1, headerb2])
+        .add_block_headers(vec![headerb1.clone(), headerb2.clone()])
         .is_ok());
 
     let mut headerc1 = BlockHeader::new(0);
@@ -133,7 +133,7 @@ fn request_and_response_fetch_headers() {
     headerc2.height = 2;
     assert!(carol_node
         .blockchain_db
-        .add_block_headers(vec![headerc1, headerc2])
+        .add_block_headers(vec![headerc1.clone(), headerc2.clone()])
         .is_ok());
 
     // The request is sent to a random remote base node so the returned headers can be from bob or carol
@@ -167,7 +167,10 @@ fn request_and_response_fetch_headers_with_hashes() {
     let header2 = BlockHeader::from_previous(&header1);
     let hash1 = header1.hash();
     let hash2 = header2.hash();
-    assert!(bob_node.blockchain_db.add_block_headers(vec![header1, header2]).is_ok());
+    assert!(bob_node
+        .blockchain_db
+        .add_block_headers(vec![header1.clone(), header2.clone()])
+        .is_ok());
 
     runtime.block_on(async {
         let received_headers = alice_node
@@ -835,7 +838,7 @@ fn local_submit_block() {
         BaseNodeBuilder::new(network).start(&mut runtime, temp_dir.path().to_str().unwrap());
 
     let db = &node.blockchain_db;
-    let event_stream = node.local_nci.get_block_event_stream_fused();
+    let mut event_stream = node.local_nci.get_block_event_stream_fused();
     let block0 = db.fetch_block_with_height(0).unwrap().block().clone();
     let block1 = db
         .calculate_mmr_roots(chain_block(&block0, vec![], &consensus_manager.consensus_constants()))
@@ -900,18 +903,15 @@ fn request_and_response_fetch_mmr_node_and_count() {
 
     let mut blocks = vec![block0];
     let db = &mut bob_node.blockchain_db;
-    txn.insert_kernel(kernel1.clone());
-    assert!(db.commit(txn).is_ok());
+    assert!(db.add_kernels(vec![kernel1.clone()]).is_ok());
     generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
 
-    txn.spend_utxo(utxo_hash1.clone());
-    txn.insert_kernel(kernel2.clone());
-    assert!(db.commit(txn).is_ok());
+    // txn.spend_utxo(utxo_hash1.clone());
+    assert!(db.add_kernels(vec![kernel2.clone()]).is_ok());
     generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
 
-    txn.spend_utxo(utxo_hash3.clone());
-    txn.insert_kernel(kernel3.clone());
-    assert!(db.commit(txn).is_ok());
+    // txn.spend_utxo(utxo_hash3.clone());
+    assert!(db.add_kernels(vec![kernel3.clone()]).is_ok());
     generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
 
     runtime.block_on(async {

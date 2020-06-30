@@ -698,11 +698,6 @@ where D: Digest + Send + Sync
         Ok(())
     }
 
-    /// This is used when synchronising. Adds in the list of mmr leafs provided to the main chain
-    fn add_mmr(&mut self, tree: MmrTree, hashes: Vec<HashOutput>) -> Result<(), ChainStorageError> {
-        Ok(())
-    }
-
     fn remove_orphan_blocks(&mut self, block_hashes: Vec<BlockHash>) -> Result<bool, ChainStorageError> {
         let mut db = self
             .db
@@ -1268,4 +1263,57 @@ fn discard_stxos<D: Digest>(
         }
     }
     Ok(num_removed)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::transactions::{
+        helpers::create_utxo,
+        tari_amount::MicroTari,
+        types::{CryptoFactories, HashDigest},
+    };
+
+    #[test]
+    fn memory_spend_utxo_and_unspend_stxo() {
+        let mut db = MemoryDatabase::<HashDigest>::default();
+
+        let factories = CryptoFactories::default();
+        let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
+        let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
+        let hash1 = utxo1.hash();
+        let hash2 = utxo2.hash();
+
+        assert!(db.add_utxos(vec![utxo1.clone(), utxo2.clone()]).is_ok());
+
+        {
+            let mut db_access = db.db.write().unwrap();
+            assert!(spend_utxo(&mut db_access, hash1.clone()));
+        }
+        assert_eq!(db.contains(&DbKey::UnspentOutput(hash1.clone())), Ok(false));
+        assert_eq!(db.contains(&DbKey::UnspentOutput(hash2.clone())), Ok(true));
+        assert_eq!(db.contains(&DbKey::SpentOutput(hash1.clone())), Ok(true));
+        assert_eq!(db.contains(&DbKey::SpentOutput(hash2.clone())), Ok(false));
+
+        {
+            let mut db_access = db.db.write().unwrap();
+            assert!(spend_utxo(&mut db_access, hash2.clone()));
+            assert!(unspend_stxo(&mut db_access, hash1.clone()));
+        }
+        assert_eq!(db.contains(&DbKey::UnspentOutput(hash1.clone())), Ok(true));
+        assert_eq!(db.contains(&DbKey::UnspentOutput(hash2.clone())), Ok(false));
+        assert_eq!(db.contains(&DbKey::SpentOutput(hash1.clone())), Ok(false));
+        assert_eq!(db.contains(&DbKey::SpentOutput(hash2.clone())), Ok(true));
+
+        if let Some(DbValue::UnspentOutput(retrieved_utxo)) = db.fetch(&DbKey::UnspentOutput(hash1.clone())).unwrap() {
+            assert_eq!(*retrieved_utxo, utxo1);
+        } else {
+            assert!(false);
+        }
+        if let Some(DbValue::SpentOutput(retrieved_utxo)) = db.fetch(&DbKey::SpentOutput(hash2.clone())).unwrap() {
+            assert_eq!(*retrieved_utxo, utxo2);
+        } else {
+            assert!(false);
+        }
+    }
 }
