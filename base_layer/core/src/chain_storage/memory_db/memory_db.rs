@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //! This is a memory-based blockchain database, generally only useful for testing purposes
-
 use crate::{
     blocks::{blockheader::BlockHash, Block, BlockHeader},
     chain_storage::{
@@ -31,7 +30,7 @@ use crate::{
         memory_db::MemDbVec,
         ChainMetadata,
     },
-    proof_of_work::{Difficulty, PowAlgorithm},
+    proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::HashOutput,
@@ -136,7 +135,7 @@ where D: Digest + Send + Sync
         let inputs: Result<Vec<TransactionInput>, ChainStorageError> = deleted_nodes
             .iter()
             .map(|pos| {
-                self.fetch_mmr_nodes(MmrTree::Utxo, pos, 1).and_then(|node| {
+                self.fetch_mmr_nodes(MmrTree::Utxo, pos, 1, None).and_then(|node| {
                     let (hash, deleted) = &node[0];
                     assert!(deleted);
                     let val: TransactionOutput = db
@@ -179,11 +178,33 @@ where D: Digest + Send + Sync
         Ok(block)
     }
 
-    fn fetch_mmr_node(&self, tree: MmrTree, pos: u32) -> Result<(Vec<u8>, bool), ChainStorageError> {
+    fn fetch_mmr_node(
+        &self,
+        tree: MmrTree,
+        pos: u32,
+        hist_height: Option<u64>,
+    ) -> Result<(Vec<u8>, bool), ChainStorageError>
+    {
         let db = self.db_access()?;
         let (hash, deleted) = match tree {
             MmrTree::Kernel => db.kernel_mmr.fetch_mmr_node(pos)?,
-            MmrTree::Utxo => db.utxo_mmr.fetch_mmr_node(pos)?,
+            MmrTree::Utxo => {
+                let (hash, mut deleted) = db.utxo_mmr.fetch_mmr_node(pos)?;
+                // Check if the MMR node was deleted after the historic height then its deletion status should change.
+                // TODO: Find a more efficient way to query the historic deletion status of an MMR node.
+                if deleted {
+                    if let Some(hist_height) = hist_height {
+                        let tip_height = db.headers.len().saturating_sub(1) as u64;
+                        for height in hist_height + 1..=tip_height {
+                            let cp = self.fetch_checkpoint(MmrTree::Utxo, height)?;
+                            if cp.nodes_deleted().contains(pos) {
+                                deleted = false;
+                            }
+                        }
+                    }
+                }
+                (hash, deleted)
+            },
             MmrTree::RangeProof => db.range_proof_mmr.fetch_mmr_node(pos)?,
         };
         let hash = hash.ok_or_else(|| {
@@ -447,6 +468,12 @@ where D: Digest + Send + Sync
             )));
         };
         db.block_hashes.insert(header.hash(), k);
+        let accumulated_difficulty = Some(
+            ProofOfWork::new_from_difficulty(&header.pow, ProofOfWork::achieved_difficulty(&header))
+                .total_accumulated_difficulty(),
+        );
+        let height = Some(header.height);
+        let hash = Some(header.hash());
         db.headers.insert(k, header);
 
         // lets add the kernels
@@ -487,6 +514,16 @@ where D: Digest + Send + Sync
                 return Err(ChainStorageError::UnspendableInput);
             }
         }
+        // lets update the metadata
+        db.metadata
+            .insert(MetadataKey::ChainHeight as u32, MetadataValue::ChainHeight(height));
+        db.metadata
+            .insert(MetadataKey::BestBlock as u32, MetadataValue::BestBlock(hash));
+        db.metadata.insert(
+            MetadataKey::AccumulatedWork as u32,
+            MetadataValue::AccumulatedWork(accumulated_difficulty),
+        );
+
         // lets update the checkpoints of and the mmrs
         // kernels
         let curr_checkpoint = db.curr_kernel_checkpoint.clone();
@@ -514,6 +551,30 @@ where D: Digest + Send + Sync
             .update()
             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
 
+        Ok(())
+    }
+
+    fn force_meta_data(&mut self, metadata: ChainMetadata) -> Result<(), ChainStorageError> {
+        let mut db = self
+            .db
+            .write()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+        db.metadata.insert(
+            MetadataKey::ChainHeight as u32,
+            MetadataValue::ChainHeight(metadata.height_of_longest_chain),
+        );
+        db.metadata.insert(
+            MetadataKey::BestBlock as u32,
+            MetadataValue::BestBlock(metadata.best_block),
+        );
+        db.metadata.insert(
+            MetadataKey::AccumulatedWork as u32,
+            MetadataValue::AccumulatedWork(metadata.accumulated_difficulty),
+        );
+        db.metadata.insert(
+            MetadataKey::PruningHorizon as u32,
+            MetadataValue::PruningHorizon(metadata.pruning_horizon),
+        );
         Ok(())
     }
 
@@ -558,7 +619,7 @@ where D: Digest + Send + Sync
             }
             // lets unspend utxos
             for pos in nodes_deleted.iter() {
-                self.fetch_mmr_nodes(MmrTree::Utxo, pos, 1).and_then(|nodes| {
+                self.fetch_mmr_nodes(MmrTree::Utxo, pos, 1, None).and_then(|nodes| {
                     let (stxo_hash, deleted) = &nodes[0];
                     assert!(deleted);
 
@@ -771,41 +832,6 @@ where D: Digest + Send + Sync
             MmrTree::Utxo => fetch_mmr_nodes_added_count(&db.utxo_checkpoints, tip_height, height),
             MmrTree::RangeProof => fetch_mmr_nodes_added_count(&db.range_proof_checkpoints, tip_height, height),
         }
-    }
-
-    fn fetch_mmr_node(
-        &self,
-        tree: MmrTree,
-        pos: u32,
-        hist_height: Option<u64>,
-    ) -> Result<(Vec<u8>, bool), ChainStorageError>
-    {
-        let db = self.db_access()?;
-        let (hash, deleted) = match tree {
-            MmrTree::Kernel => db.kernel_mmr.fetch_mmr_node(pos)?,
-            MmrTree::Utxo => {
-                let (hash, mut deleted) = db.utxo_mmr.fetch_mmr_node(pos)?;
-                // Check if the MMR node was deleted after the historic height then its deletion status should change.
-                // TODO: Find a more efficient way to query the historic deletion status of an MMR node.
-                if deleted {
-                    if let Some(hist_height) = hist_height {
-                        let tip_height = db.headers.len().saturating_sub(1) as u64;
-                        for height in hist_height + 1..=tip_height {
-                            let cp = self.fetch_checkpoint(MmrTree::Utxo, height)?;
-                            if cp.nodes_deleted().contains(pos) {
-                                deleted = false;
-                            }
-                        }
-                    }
-                }
-                (hash, deleted)
-            },
-            MmrTree::RangeProof => db.range_proof_mmr.fetch_mmr_node(pos)?,
-        };
-        let hash = hash.ok_or_else(|| {
-            ChainStorageError::UnexpectedResult(format!("A leaf node hash in the {} MMR tree was not found", tree))
-        })?;
-        Ok((hash, deleted))
     }
 
     fn fetch_mmr_nodes(

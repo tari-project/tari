@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::{
     blocks::{blockheader::BlockHash, Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
@@ -32,9 +31,10 @@ use crate::{
         error::ChainStorageError,
         ChainMetadata,
         HistoricalBlock,
+        MetadataKey,
     },
     consensus::ConsensusManager,
-    proof_of_work::{Difficulty, PowAlgorithm},
+    proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::{Commitment, HashOutput},
@@ -150,6 +150,8 @@ pub trait BlockchainBackend: Send + Sync {
     fn add_utxos(&mut self, utxos: Vec<TransactionOutput>) -> Result<(), ChainStorageError>;
     /// This is used when synchronising. Adds in the list of mmr leafs provided to the main chain
     fn add_mmr(&mut self, tree: MmrTree, hashes: Vec<HashOutput>) -> Result<(), ChainStorageError>;
+    /// This function will force the chain_meta_data inside the database to a certain value
+    fn force_meta_data(&mut self, metadata: ChainMetadata) -> Result<(), ChainStorageError>;
     /// This function is used to remove orphan blocks
     /// This function will return ok if it did not encounter an error. If a orphan block was not found, it should return
     /// Ok(false)
@@ -376,22 +378,10 @@ where T: BlockchainBackend
         fetch_kernels(&*db, hashes)
     }
 
-    /// Store the provided set of kernels.
-    pub fn insert_kernels(&self, kernels: Vec<TransactionKernel>) -> Result<(), ChainStorageError> {
-        let mut db = self.db_write_access()?;
-        insert_kernels(&mut db, kernels)
-    }
-
     /// Returns the block header at the given block height.
     pub fn fetch_header(&self, block_num: u64) -> Result<BlockHeader, ChainStorageError> {
         let db = self.db_read_access()?;
         fetch_header(&*db, block_num)
-    }
-
-    /// Store the provided set of headers.
-    pub fn insert_headers(&self, headers: Vec<BlockHeader>) -> Result<(), ChainStorageError> {
-        let mut db = self.db_write_access()?;
-        insert_headers(&mut db, headers)
     }
 
     /// Returns the set of block headers specified by the block numbers.
@@ -415,12 +405,6 @@ where T: BlockchainBackend
     pub fn fetch_utxo(&self, hash: HashOutput) -> Result<TransactionOutput, ChainStorageError> {
         let db = self.db_read_access()?;
         fetch_utxo(&*db, hash)
-    }
-
-    /// Store the provided UTXO.
-    pub fn insert_utxo(&self, utxo: TransactionOutput) -> Result<(), ChainStorageError> {
-        let mut db = self.db_write_access()?;
-        insert_utxo(&mut db, utxo)
     }
 
     /// Returns the STXO with the given hash.
@@ -713,20 +697,7 @@ fn write_metadata<T: BlockchainBackend>(
     metadata: ChainMetadata,
 ) -> Result<(), ChainStorageError>
 {
-    let mut txn = DbTransaction::new();
-    txn.insert(DbKeyValuePair::Metadata(
-        MetadataKey::ChainHeight,
-        MetadataValue::ChainHeight(metadata.height_of_longest_chain),
-    ));
-    txn.insert(DbKeyValuePair::Metadata(
-        MetadataKey::BestBlock,
-        MetadataValue::BestBlock(metadata.best_block),
-    ));
-    txn.insert(DbKeyValuePair::Metadata(
-        MetadataKey::AccumulatedWork,
-        MetadataValue::AccumulatedWork(metadata.accumulated_difficulty),
-    ));
-    commit(db, txn)
+    db.force_meta_data(metadata)
 }
 
 fn fetch_kernel<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<TransactionKernel, ChainStorageError> {
@@ -753,16 +724,6 @@ pub fn fetch_headers<T: BlockchainBackend>(
     Ok(headers)
 }
 
-fn insert_headers<T: BlockchainBackend>(
-    db: &mut RwLockWriteGuard<T>,
-    headers: Vec<BlockHeader>,
-) -> Result<(), ChainStorageError>
-{
-    let mut txn = DbTransaction::new();
-    headers.into_iter().for_each(|header| txn.insert_header(header));
-    commit(db, txn)
-}
-
 fn fetch_header_with_block_hash<T: BlockchainBackend>(
     db: &T,
     hash: BlockHash,
@@ -782,16 +743,6 @@ pub fn fetch_tip_header<T: BlockchainBackend>(db: &T) -> Result<BlockHeader, Cha
 
 fn fetch_utxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<TransactionOutput, ChainStorageError> {
     fetch!(db, hash, UnspentOutput)
-}
-
-fn insert_utxo<T: BlockchainBackend>(
-    db: &mut RwLockWriteGuard<T>,
-    utxo: TransactionOutput,
-) -> Result<(), ChainStorageError>
-{
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo);
-    commit(db, txn)
 }
 
 fn fetch_stxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<TransactionOutput, ChainStorageError> {
@@ -834,7 +785,7 @@ pub fn is_stxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, C
     // archival nodes and pruning nodes might have different STXOs in their stxo_db as horizon state STXOs are
     // discarded by pruned nodes.
     if let Some(leaf_index) = db.fetch_mmr_leaf_index(MmrTree::Utxo, &hash)? {
-        let (_, deleted) = db.fetch_mmr_nodes(MmrTree::Utxo, leaf_index, 1)?[0];
+        let (_, deleted) = db.fetch_mmr_nodes(MmrTree::Utxo, leaf_index, 1, None)?[0];
         return Ok(deleted);
     }
     Ok(false)
@@ -1002,16 +953,6 @@ fn fetch_kernels<T: BlockchainBackend>(db: &T, hashes: Vec<Hash>) -> Result<Vec<
     hashes.into_iter().map(|hash| fetch_kernel(db, hash)).collect()
 }
 
-fn insert_kernels<T: BlockchainBackend>(
-    db: &mut RwLockWriteGuard<T>,
-    kernels: Vec<TransactionKernel>,
-) -> Result<(), ChainStorageError>
-{
-    let mut txn = DbTransaction::new();
-    kernels.into_iter().for_each(|kernel| txn.insert_kernel(kernel));
-    commit(db, txn)
-}
-
 fn fetch_inputs<T: BlockchainBackend>(
     db: &T,
     deleted_nodes: Bitmap,
@@ -1021,7 +962,7 @@ fn fetch_inputs<T: BlockchainBackend>(
     let inputs: Result<Vec<TransactionInput>, ChainStorageError> = deleted_nodes
         .iter()
         .map(|pos| {
-            db.fetch_mmr_nodes(MmrTree::Utxo, pos, 1)
+            db.fetch_mmr_nodes(MmrTree::Utxo, pos, 1, None)
                 .and_then(|node| {
                     let (hash, deleted) = &node[0];
                     assert!(deleted);
@@ -1554,30 +1495,17 @@ fn cleanup_pruned_mode<T: BlockchainBackend>(
 }
 
 fn commit_horizon_state<T: BlockchainBackend>(db: &mut RwLockWriteGuard<T>) -> Result<(), ChainStorageError> {
+    let mut metadata = db.fetch_metadata()?;
     let tip_header = db
         .fetch_last_header()?
         .ok_or_else(|| ChainStorageError::InvalidQuery("Cannot retrieve header. Blockchain DB is empty".into()))?;
-    let best_block = tip_header.hash();
-    let accumulated_difficulty =
+    metadata.best_block = Some(tip_header.hash());
+    metadata.accumulated_difficulty = Some(
         ProofOfWork::new_from_difficulty(&tip_header.pow, ProofOfWork::achieved_difficulty(&tip_header))
-            .total_accumulated_difficulty();
-    let mut txn = DbTransaction::new();
-    // Update metadata
-    txn.insert(DbKeyValuePair::Metadata(
-        MetadataKey::ChainHeight,
-        MetadataValue::ChainHeight(Some(tip_header.height)),
-    ));
-    txn.insert(DbKeyValuePair::Metadata(
-        MetadataKey::BestBlock,
-        MetadataValue::BestBlock(Some(best_block)),
-    ));
-    txn.insert(DbKeyValuePair::Metadata(
-        MetadataKey::AccumulatedWork,
-        MetadataValue::AccumulatedWork(Some(accumulated_difficulty)),
-    ));
-    // Create horizon state checkpoint
-    txn.commit_block();
-    commit(db, txn)
+            .total_accumulated_difficulty(),
+    );
+    metadata.height_of_longest_chain = Some(tip_header.height);
+    db.force_meta_data(metadata)
 }
 
 fn log_error<T>(req: DbKey, err: ChainStorageError) -> Result<T, ChainStorageError> {

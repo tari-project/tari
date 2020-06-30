@@ -44,6 +44,10 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
+    fn force_meta_data(&mut self, metadata: ChainMetadata) -> Result<(), ChainStorageError> {
+        unimplemented!()
+    }
+
     fn contains(&self, _key: &DbKey) -> Result<bool, ChainStorageError> {
         unimplemented!()
     }

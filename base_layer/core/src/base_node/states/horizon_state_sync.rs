@@ -253,7 +253,7 @@ async fn synchronize_headers<B: BlockchainBackend + 'static>(
             .await?;
             match validate_headers(&shared.db, block_nums, &headers).await {
                 Ok(_) => {
-                    async_db::insert_headers(shared.db.clone(), headers).await?;
+                    async_db::add_block_headers(shared.db.clone(), headers).await?;
                     trace!(
                         target: LOG_TARGET,
                         "Headers successfully added to database: {:?}",
@@ -359,7 +359,7 @@ async fn synchronize_kernels<B: BlockchainBackend + 'static>(
 
             match validate_kernels(&kernel_hashes, &kernels) {
                 Ok(_) => {
-                    async_db::insert_kernels(shared.db.clone(), kernels).await?;
+                    async_db::add_kernels(shared.db.clone(), kernels).await?;
                     trace!(
                         target: LOG_TARGET,
                         "Kernels successfully added to database: {:?}",
@@ -608,7 +608,7 @@ async fn synchronize_utxos_and_rangeproofs<B: BlockchainBackend + 'static>(
                                 .insert_mmr_node(MmrTree::RangeProof, rp_hashes[index].clone(), false)?;
                         } else {
                             // Inserting the UTXO will also insert the corresponding UTXO and RangeProof MMR Nodes.
-                            shared.db.insert_utxo(utxos[utxos_index].clone())?;
+                            shared.db.add_utxos(vec![utxos[utxos_index].clone()])?;
                             utxos_index += 1;
                         }
                     }
