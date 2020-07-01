@@ -637,8 +637,11 @@ where T: BlockchainBackend
     /// * The block height is in the future
     /// * The block height is before the horizon block height determined by the pruning horizon
     pub fn rewind_to_height(&self, height: u64) -> Result<Vec<BlockHeader>, ChainStorageError> {
+        dbg!("hi backend");
         let mut db = self.db_write_access()?;
-        db.rewind_to_height(height)
+        let result = db.rewind_to_height(height);
+        dbg!("done with backend");
+        result
     }
 
     /// Commit the current synced horizon state.

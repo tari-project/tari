@@ -98,9 +98,13 @@ fn fetch_async_headers() {
 #[test]
 fn async_rewind_to_height() {
     let (db, blocks, _, _) = create_blockchain_db_no_cut_through();
+    dbg!("done create blockchain");
     test_async(move |rt| {
+        dbg!("cloning");
         let dbc = db.clone();
+        dbg!("done cloning");
         rt.spawn(async move {
+            dbg!("asking for rewind");
             async_db::rewind_to_height(dbc.clone(), 2).await.unwrap();
             let result = async_db::fetch_block_with_height(dbc.clone(), 3).await;
             assert!(result.is_err());
