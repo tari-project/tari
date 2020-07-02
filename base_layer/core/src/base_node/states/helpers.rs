@@ -158,7 +158,12 @@ pub async fn request_headers<B: BlockchainBackend + 'static>(
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
         let sync_peer = select_sync_peer(&config, sync_peers)?;
-        debug!(target: log_target, "Requesting headers from {}.", sync_peer);
+        debug!(
+            target: log_target,
+            "Requesting {} headers from {}.",
+            block_nums.len(),
+            sync_peer
+        );
         match shared
             .comms
             .request_headers_from_peer(block_nums.to_vec(), Some(sync_peer.clone()))
@@ -322,7 +327,7 @@ pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
         let sync_peer = select_sync_peer(&config, sync_peers)?;
-        debug!(target: log_target, "Requesting mmr nodes from {}.", sync_peer);
+        debug!(target: log_target, "Requesting {} mmr nodes from {}.", count, sync_peer);
         match shared
             .comms
             .fetch_mmr_nodes(tree.clone(), pos, count, height, Some(sync_peer.clone()))
@@ -381,7 +386,12 @@ pub async fn request_kernels<B: BlockchainBackend + 'static>(
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
         let sync_peer = select_sync_peer(&config, sync_peers)?;
-        debug!(target: log_target, "Requesting kernels from {}.", sync_peer);
+        debug!(
+            target: log_target,
+            "Requesting {} kernels from {}.",
+            hashes.len(),
+            sync_peer
+        );
         match shared
             .comms
             .request_kernels_from_peer(hashes.clone(), Some(sync_peer.clone()))
@@ -433,7 +443,7 @@ pub async fn request_txos<B: BlockchainBackend + 'static>(
     log_target: &str,
     shared: &mut BaseNodeStateMachine<B>,
     sync_peers: &mut Vec<NodeId>,
-    hashes: Vec<HashOutput>,
+    hashes: &[HashOutput],
     request_retry_attempts: usize,
 ) -> Result<(Vec<TransactionOutput>, NodeId), BlockSyncError>
 {
@@ -443,7 +453,7 @@ pub async fn request_txos<B: BlockchainBackend + 'static>(
         debug!(target: log_target, "Requesting kernels from {}.", sync_peer);
         match shared
             .comms
-            .request_txos_from_peer(hashes.clone(), Some(sync_peer.clone()))
+            .request_txos_from_peer(hashes.to_vec(), Some(sync_peer.clone()))
             .await
         {
             Ok(utxos) => {

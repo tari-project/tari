@@ -128,30 +128,46 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator {
             "Block validation: MMR roots are valid for {}",
             &block_id
         );
-        check_timestamp_ftl(&block.header, &self.rules)?;
+        // Validate the block header (PoW etc.)
+        self.validate(&block.header, db)?;
+        debug!(target: LOG_TARGET, "Block validation: Block is VALID for {}", &block_id);
+        Ok(())
+    }
+}
+
+impl<B: BlockchainBackend> Validation<BlockHeader, B> for FullConsensusValidator {
+    /// The consensus checks that are done (in order of cheapest to verify to most expensive):
+    /// 1. Is the Proof of Work valid?
+    /// 1. Is the achieved difficulty of this block >= the target difficulty for this block?
+    fn validate(&self, header: &BlockHeader, db: &B) -> Result<(), ValidationError> {
+        let header_id = format!("header #{} ({})", header.height, header.hash().to_hex());
+        check_timestamp_ftl(&header, &self.rules)?;
         trace!(
             target: LOG_TARGET,
-            "Block validation: FTL timestamp is ok for {} ",
-            &block_id
+            "BlockHeader validation: FTL timestamp is ok for {} ",
+            &header_id
         );
         let tip_height = db
             .fetch_metadata()
             .map_err(|e| ValidationError::CustomError(e.to_string()))?
             .height_of_longest_chain
             .unwrap_or(0);
-        check_median_timestamp(db, &block.header, tip_height, self.rules.clone())?;
+        check_median_timestamp(db, header, tip_height, self.rules.clone())?;
         trace!(
             target: LOG_TARGET,
-            "Block validation: Median timestamp is ok for {} ",
-            &block_id
+            "BlockHeader validation: Median timestamp is ok for {} ",
+            &header_id
         );
-        check_achieved_and_target_difficulty(db, &block.header, tip_height, self.rules.clone())?;
+        check_achieved_and_target_difficulty(db, header, tip_height, self.rules.clone())?;
         trace!(
             target: LOG_TARGET,
-            "Block validation: Achieved difficulty is ok for {} ",
-            &block_id
+            "BlockHeader validation: Achieved difficulty is ok for {} ",
+            &header_id
         );
-        debug!(target: LOG_TARGET, "Block validation: Block is VALID for {}", &block_id);
+        debug!(
+            target: LOG_TARGET,
+            "Block header validation: BlockHeader is VALID for {}", &header_id
+        );
         Ok(())
     }
 }
@@ -299,7 +315,7 @@ fn check_not_stxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), Va
     Ok(())
 }
 
-/// This function tests that the block timestamp is less than the ftl.
+/// This function tests that the block timestamp is less than the FTL
 fn check_timestamp_ftl(
     block_header: &BlockHeader,
     consensus_manager: &ConsensusManager,

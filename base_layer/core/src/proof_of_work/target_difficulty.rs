@@ -36,8 +36,8 @@ pub fn get_target_difficulty(
 ) -> Result<Difficulty, ConsensusManagerError>
 {
     let mut lwma = LinearWeightedMovingAverage::new(block_window, target_time, initial_difficulty, max_block_time);
-    for target_difficulty in target_difficulties {
-        lwma.add(target_difficulty.0, target_difficulty.1)?
+    for (epoch, difficulty) in target_difficulties {
+        lwma.add(epoch, difficulty)?;
     }
     let target_difficulty = lwma.get_difficulty();
     Ok(target_difficulty)

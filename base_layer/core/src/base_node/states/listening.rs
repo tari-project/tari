@@ -26,7 +26,7 @@ use crate::{
         states::{StateEvent, StateEvent::FatalError, StatusInfo, SyncStatus},
         BaseNodeStateMachine,
     },
-    chain_storage::{BlockchainBackend, ChainMetadata},
+    chain_storage::{async_db, BlockchainBackend, ChainMetadata},
     proof_of_work::Difficulty,
 };
 use futures::stream::StreamExt;
@@ -61,8 +61,11 @@ impl ListeningInfo {
 pub struct ListeningData;
 
 impl ListeningData {
-    pub async fn next_event<B: BlockchainBackend>(&mut self, shared: &mut BaseNodeStateMachine<B>) -> StateEvent
-    where B: 'static {
+    pub async fn next_event<B: BlockchainBackend + 'static>(
+        &mut self,
+        shared: &mut BaseNodeStateMachine<B>,
+    ) -> StateEvent
+    {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
         shared.info = StatusInfo::Listening(ListeningInfo::new());
         shared.publish_event_info().await;
@@ -71,7 +74,7 @@ impl ListeningData {
                 ChainMetadataEvent::PeerChainMetadataReceived(ref peer_metadata_list) => {
                     if !peer_metadata_list.is_empty() {
                         debug!(target: LOG_TARGET, "Loading local blockchain metadata.");
-                        let local = match shared.db.get_metadata() {
+                        let local = match async_db::get_metadata(shared.db.clone()).await {
                             Ok(m) => m,
                             Err(e) => {
                                 let msg = format!("Could not get local blockchain metadata. {}", e.to_string());
@@ -82,10 +85,10 @@ impl ListeningData {
                         let best_metadata = best_metadata(peer_metadata_list.as_slice());
                         let local_tip_height = local.height_of_longest_chain.unwrap_or(0);
                         let sync_peers = select_sync_peers(local_tip_height, &best_metadata, &peer_metadata_list);
-                        if let SyncStatus::Lagging(network_tip, sync_peers) =
-                            determine_sync_mode(&local, best_metadata, sync_peers)
-                        {
-                            return StateEvent::FallenBehind(SyncStatus::Lagging(network_tip, sync_peers));
+
+                        let sync_mode = determine_sync_mode(&local, best_metadata, sync_peers);
+                        if sync_mode.is_lagging() {
+                            return StateEvent::FallenBehind(sync_mode);
                         }
                     }
                 },
@@ -153,17 +156,25 @@ fn determine_sync_mode(local: &ChainMetadata, network: ChainMetadata, sync_peers
         Some(network_tip_accum_difficulty) => {
             let local_tip_accum_difficulty = local.accumulated_difficulty.unwrap_or_else(|| 0.into());
             if local_tip_accum_difficulty < network_tip_accum_difficulty {
+                let local_tip_height = local.height_of_longest_chain.unwrap_or(0);
+                let network_tip_height = network.height_of_longest_chain.unwrap_or(0);
                 info!(
                     target: LOG_TARGET,
                     "Our local blockchain accumulated difficulty is a little behind that of the network. We're at \
                      block #{} with an accumulated difficulty of {}, and the network chain tip is at #{} with an \
                      accumulated difficulty of {}",
-                    local.height_of_longest_chain.unwrap_or(0),
+                    local_tip_height,
                     local_tip_accum_difficulty,
-                    network.height_of_longest_chain.unwrap_or(0),
+                    network_tip_height,
                     network_tip_accum_difficulty,
                 );
-                Lagging(network, sync_peers)
+
+                let network_horizon_block = local.horizon_block(network_tip_height);
+                if local_tip_height < network_horizon_block {
+                    LaggingBehindHorizon(network, sync_peers)
+                } else {
+                    Lagging(network, sync_peers)
+                }
             } else {
                 info!(
                     target: LOG_TARGET,
@@ -257,24 +268,53 @@ mod test {
     fn sync_mode_selection() {
         let mut local = ChainMetadata::default();
         local.accumulated_difficulty = Some(Difficulty::from(500000));
-        let mut network1 = ChainMetadata::default();
-        network1.accumulated_difficulty = Some(Difficulty::from(499999));
-        let mut network2 = ChainMetadata::default();
-        network2.accumulated_difficulty = Some(Difficulty::from(500001));
-
         match determine_sync_mode(&local, local.clone(), vec![]) {
-            SyncStatus::Lagging(_, _) => assert!(false),
             SyncStatus::UpToDate => assert!(true),
+            _ => assert!(false),
         }
 
-        match determine_sync_mode(&local, network1, vec![]) {
-            SyncStatus::Lagging(_, _) => assert!(false),
+        let mut network = ChainMetadata::default();
+        network.accumulated_difficulty = Some(Difficulty::from(499999));
+        match determine_sync_mode(&local, network, vec![]) {
             SyncStatus::UpToDate => assert!(true),
+            _ => assert!(false),
         }
 
-        match determine_sync_mode(&local, network2.clone(), vec![]) {
-            SyncStatus::Lagging(network, _) => assert_eq!(network, network2),
-            SyncStatus::UpToDate => assert!(false),
+        let mut network = ChainMetadata::default();
+        network.accumulated_difficulty = Some(Difficulty::from(500001));
+        match determine_sync_mode(&local, network.clone(), vec![]) {
+            SyncStatus::Lagging(n, _) => assert_eq!(n, network),
+            _ => assert!(false),
+        }
+
+        local.pruning_horizon = 50;
+        local.height_of_longest_chain = Some(100);
+        let mut network = ChainMetadata::default();
+        network.accumulated_difficulty = Some(Difficulty::from(500001));
+        network.height_of_longest_chain = Some(150);
+        match determine_sync_mode(&local, network.clone(), vec![]) {
+            SyncStatus::Lagging(n, _) => assert_eq!(n, network),
+            _ => assert!(false),
+        }
+
+        local.pruning_horizon = 50;
+        local.height_of_longest_chain = None;
+        let mut network = ChainMetadata::default();
+        network.accumulated_difficulty = Some(Difficulty::from(500001));
+        network.height_of_longest_chain = Some(100);
+        match determine_sync_mode(&local, network.clone(), vec![]) {
+            SyncStatus::LaggingBehindHorizon(n, _) => assert_eq!(n, network),
+            _ => assert!(false),
+        }
+
+        local.pruning_horizon = 50;
+        local.height_of_longest_chain = Some(99);
+        let mut network = ChainMetadata::default();
+        network.accumulated_difficulty = Some(Difficulty::from(500001));
+        network.height_of_longest_chain = Some(150);
+        match determine_sync_mode(&local, network.clone(), vec![]) {
+            SyncStatus::LaggingBehindHorizon(n, _) => assert_eq!(n, network),
+            _ => assert!(false),
         }
     }
 }

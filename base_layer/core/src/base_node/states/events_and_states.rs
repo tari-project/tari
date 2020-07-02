@@ -21,7 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::states::{BlockSyncInfo, BlockSyncStrategy, ListeningData, ListeningInfo, Shutdown, Starting, Waiting},
+    base_node::states::{
+        BlockSyncInfo,
+        BlockSyncStrategy,
+        HorizonStateSync,
+        ListeningData,
+        ListeningInfo,
+        Shutdown,
+        Starting,
+        Waiting,
+    },
     chain_storage::ChainMetadata,
     proof_of_work::Difficulty,
 };
@@ -31,6 +40,7 @@ use tari_comms::peer_manager::NodeId;
 #[derive(Clone, Debug, PartialEq)]
 pub enum BaseNodeState {
     Starting(Starting),
+    HorizonStateSync(HorizonStateSync),
     BlockSync(BlockSyncStrategy, ChainMetadata, Vec<NodeId>),
     // The best network chain metadata
     Listening(ListeningData),
@@ -43,6 +53,8 @@ pub enum BaseNodeState {
 pub enum StateEvent {
     Initialized,
     MetadataSynced(SyncStatus),
+    HorizonStateSynchronized,
+    HorizonStateSyncFailure,
     BlocksSynchronized,
     BlockSyncFailure,
     FallenBehind(SyncStatus),
@@ -60,7 +72,17 @@ pub enum StateEvent {
 pub enum SyncStatus {
     // We are behind the chain tip.
     Lagging(ChainMetadata, Vec<NodeId>),
+    LaggingBehindHorizon(ChainMetadata, Vec<NodeId>),
     UpToDate,
+}
+
+impl SyncStatus {
+    pub fn is_lagging(&self) -> bool {
+        match self {
+            SyncStatus::Lagging(_, _) | SyncStatus::LaggingBehindHorizon(_, _) => true,
+            SyncStatus::UpToDate => false,
+        }
+    }
 }
 
 impl Display for SyncStatus {
@@ -70,6 +92,13 @@ impl Display for SyncStatus {
             Lagging(m, v) => write!(
                 f,
                 "Lagging behind {} peers (#{}, Difficulty: {})",
+                v.len(),
+                m.height_of_longest_chain.unwrap_or(0),
+                m.accumulated_difficulty.unwrap_or_else(Difficulty::min)
+            ),
+            LaggingBehindHorizon(m, v) => write!(
+                f,
+                "Pruning horizon lagging behind {} peers (#{}, Difficulty: {})",
                 v.len(),
                 m.height_of_longest_chain.unwrap_or(0),
                 m.accumulated_difficulty.unwrap_or_else(Difficulty::min)
@@ -86,6 +115,8 @@ impl Display for StateEvent {
             Initialized => f.write_str("Initialized"),
             MetadataSynced(s) => write!(f, "Synchronized metadata - {}", s),
             BlocksSynchronized => f.write_str("Synchronised Blocks"),
+            HorizonStateSynchronized => f.write_str("Horizon State Synchronized"),
+            HorizonStateSyncFailure => f.write_str("Horizon State Synchronization Failure"),
             BlockSyncFailure => f.write_str("Block Synchronization Failure"),
             FallenBehind(s) => write!(f, "Fallen behind main chain - {}", s),
             NetworkSilence => f.write_str("Network Silence"),
@@ -98,12 +129,14 @@ impl Display for StateEvent {
 
 impl Display for BaseNodeState {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        use BaseNodeState::*;
         let s = match self {
-            Self::Starting(_) => "Initializing",
-            Self::BlockSync(_, _, _) => "Synchronizing blocks",
-            Self::Listening(_) => "Listening",
-            Self::Shutdown(_) => "Shutting down",
-            Self::Waiting(_) => "Waiting",
+            Starting(_) => "Initializing",
+            HorizonStateSync(_) => "Synchronizing horizon state",
+            BlockSync(_, _, _) => "Synchronizing blocks",
+            Listening(_) => "Listening",
+            Shutdown(_) => "Shutting down",
+            Waiting(_) => "Waiting",
         };
         f.write_str(s)
     }
@@ -113,6 +146,7 @@ impl Display for BaseNodeState {
 /// This enum will display all info inside of the state engine
 pub enum StatusInfo {
     StartUp,
+    HorizonSync(BlockSyncInfo),
     BlockSync(BlockSyncInfo),
     Listening(ListeningInfo),
 }
@@ -121,6 +155,7 @@ impl Display for StatusInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         match self {
             Self::StartUp => write!(f, "Node starting up"),
+            Self::HorizonSync(info) => write!(f, "Synchronizing horizon state: {}", info),
             Self::BlockSync(info) => write!(f, "Synchronizing blocks: {}", info),
             Self::Listening(info) => write!(f, "Listening: {}", info),
         }

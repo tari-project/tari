@@ -24,7 +24,16 @@ use crate::{
         chain_metadata_service::ChainMetadataEvent,
         comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface},
         states,
-        states::{BaseNodeState, BlockSyncConfig, HorizonSyncConfig, StateEvent, StatusInfo, SyncPeerConfig},
+        states::{
+            BaseNodeState,
+            BlockSyncConfig,
+            HorizonSyncConfig,
+            HorizonSyncValidators,
+            StateEvent,
+            StatusInfo,
+            SyncPeerConfig,
+            SyncStatus,
+        },
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
 };
@@ -62,7 +71,7 @@ impl Default for BaseNodeStateMachineConfig {
 ///
 /// This struct holds fields that will be used by all the various FSM state instances, including the local blockchain
 /// database and hooks to the p2p network
-pub struct BaseNodeStateMachine<B: BlockchainBackend> {
+pub struct BaseNodeStateMachine<B> {
     pub(super) db: BlockchainDatabase<B>,
     pub(super) local_node_interface: LocalNodeCommsInterface,
     pub(super) comms: OutboundNodeCommsInterface,
@@ -71,6 +80,7 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) metadata_event_stream: Subscriber<ChainMetadataEvent>,
     pub(super) config: BaseNodeStateMachineConfig,
     pub(super) info: StatusInfo,
+    pub(super) horizon_sync_validators: HorizonSyncValidators,
     status_event_publisher: Publisher<StatusInfo>,
     status_event_subscriber: Subscriber<StatusInfo>,
     event_sender: Publisher<StateEvent>,
@@ -80,6 +90,7 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
 
 impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     /// Instantiate a new Base Node.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: &BlockchainDatabase<B>,
         local_node_interface: &LocalNodeCommsInterface,
@@ -88,6 +99,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         connectivity: ConnectivityRequester,
         metadata_event_stream: Subscriber<ChainMetadataEvent>,
         config: BaseNodeStateMachineConfig,
+        horizon_sync_validators: HorizonSyncValidators,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
@@ -107,19 +119,30 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             event_receiver,
             status_event_publisher,
             status_event_subscriber,
+            horizon_sync_validators,
         }
     }
 
     /// Describe the Finite State Machine for the base node. This function describes _every possible_ state
     /// transition for the node given its current state and an event that gets triggered.
     pub fn transition(&self, state: BaseNodeState, event: StateEvent) -> BaseNodeState {
-        use crate::base_node::states::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
+        use self::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
         match (state, event) {
             (Starting(s), Initialized) => Listening(s.into()),
+            // TODO: Simplify block sync and implement From<HorizonStateSync>
+            (HorizonStateSync(s), HorizonStateSynchronized) => BlockSync(
+                self.config.block_sync_config.sync_strategy,
+                s.network_metadata().clone(),
+                s.sync_peers().to_vec(),
+            ),
+            (HorizonStateSync(s), HorizonStateSyncFailure) => Waiting(s.into()),
             (BlockSync(s, _, _), BlocksSynchronized) => Listening(s.into()),
             (BlockSync(s, _, _), BlockSyncFailure) => Waiting(s.into()),
             (Listening(_), FallenBehind(Lagging(network_tip, sync_peers))) => {
                 BlockSync(self.config.block_sync_config.sync_strategy, network_tip, sync_peers)
+            },
+            (Listening(_), FallenBehind(LaggingBehindHorizon(network_tip, sync_peers))) => {
+                HorizonStateSync(states::HorizonStateSync::new(network_tip, sync_peers))
             },
             (Waiting(s), Continue) => Listening(s.into()),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
@@ -151,6 +174,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     /// This function will publish the current StatusInfo to the channel
     pub async fn publish_event_info(&mut self) {
         let _ = self.status_event_publisher.send(self.info.clone()).await;
+    }
+
+    /// Sets the StatusInfo.
+    pub async fn set_status_info(&mut self, info: StatusInfo) {
+        self.info = info;
+        self.publish_event_info().await;
     }
 
     /// Start the base node runtime.
@@ -189,6 +218,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         let shared_state = self;
         match state {
             Starting(s) => s.next_event(shared_state).await,
+            HorizonStateSync(s) => s.next_event(shared_state).await,
             BlockSync(s, network_tip, sync_peers) => s.next_event(shared_state, network_tip, sync_peers).await,
             Listening(s) => s.next_event(shared_state).await,
             Waiting(s) => s.next_event().await,

@@ -36,11 +36,7 @@ const LOG_TARGET: &str = "c::bn::states::starting_state";
 pub struct Starting;
 
 impl Starting {
-    pub async fn next_event<B: BlockchainBackend + 'static>(
-        &mut self,
-        _shared: &BaseNodeStateMachine<B>,
-    ) -> StateEvent
-    {
+    pub async fn next_event<B: BlockchainBackend>(&mut self, _shared: &BaseNodeStateMachine<B>) -> StateEvent {
         info!(target: LOG_TARGET, "Starting node.");
         StateEvent::Initialized
     }

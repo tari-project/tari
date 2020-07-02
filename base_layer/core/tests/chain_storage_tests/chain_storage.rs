@@ -146,8 +146,10 @@ fn insert_and_fetch_header() {
     header1.height = 42;
     let header2 = BlockHeader::from_previous(&header1);
 
-    assert!(store.insert_headers(vec![header1.clone(), header2.clone()]).is_ok());
-    assert!(store.fetch_header(0).is_ok());
+    store
+        .insert_valid_headers(vec![header1.clone(), header2.clone()])
+        .unwrap();
+    store.fetch_header(0).unwrap();
     assert_eq!(
         store.fetch_header(1),
         Err(ChainStorageError::ValueNotFound(DbKey::BlockHeader(1)))
@@ -1614,7 +1616,7 @@ fn pruned_mode_fetch_insert_and_commit() {
     let bob_height = bob_metadata.height_of_longest_chain.unwrap();
     let block_nums = (bob_height + 1..=sync_horizon_height).collect::<Vec<u64>>();
     let headers = alice_store.fetch_headers(block_nums).unwrap();
-    assert!(bob_store.insert_headers(headers).is_ok());
+    assert!(bob_store.insert_valid_headers(headers).is_ok());
 
     // Sync kernels
     let alice_num_kernels = alice_store

@@ -54,7 +54,7 @@ use tari_core::{
     base_node::{
         chain_metadata_service::{ChainMetadataHandle, ChainMetadataServiceInitializer},
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
-        states::StatusInfo,
+        states::{HorizonHeadersValidator, HorizonSyncValidators, StatusInfo},
         BaseNodeStateMachine,
         BaseNodeStateMachineConfig,
         LocalNodeCommsInterface,
@@ -607,9 +607,13 @@ where
         .block_sync_strategy
         .parse()
         .expect("Problem reading block sync strategy from config");
+
+    state_machine_config.horizon_sync_config.horizon_sync_height_offset =
+        rules.consensus_constants().coinbase_lock_height() + 20;
     let node_local_interface = base_node_handles
         .get_handle::<LocalNodeCommsInterface>()
         .expect("Problem getting node local interface handle.");
+    let horizon_sync_validators = HorizonSyncValidators::new(HorizonHeadersValidator::new(db.clone(), rules.clone()));
     let node = BaseNodeStateMachine::new(
         &db,
         &node_local_interface,
@@ -618,6 +622,7 @@ where
         base_node_comms.connectivity(),
         chain_metadata_service.get_event_stream(),
         state_machine_config,
+        horizon_sync_validators,
         interrupt_signal,
     );
 
