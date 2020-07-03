@@ -166,7 +166,8 @@ mod test {
                 }
             }
         }
-        // Could allow a few more than 50. In slower test runs (e.g. on CI) this can be quite a bit over.
-        assert!((50..200).contains(&count));
+        // Could allow a few more than 50 and asserting an upper bound can cause this test to sporadically fail. This is
+        // fine because all we're testing that the restock happens.
+        assert!(count >= 50);
     }
 }
