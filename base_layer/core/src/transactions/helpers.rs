@@ -41,6 +41,7 @@ use crate::transactions::{
     types::{Commitment, CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, Signature},
     SenderTransactionProtocol,
 };
+use num::pow;
 use rand::{rngs::OsRng, CryptoRng, Rng};
 use std::sync::Arc;
 use tari_crypto::{
@@ -383,7 +384,7 @@ pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction
 /// ```
 pub fn display_currency(value: f64, precision: usize, separator: &str) -> String {
     let whole = value as usize;
-    let decimal = ((value - whole as f64) * 10_f64.powf(precision as f64)).round() as usize;
+    let decimal = ((value - whole as f64) * pow(10_f64, precision)).round() as usize;
     let formatted_whole_value = whole
         .to_string()
         .chars()

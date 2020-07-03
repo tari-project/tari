@@ -47,6 +47,57 @@ fn test_block_9182() {
     assert!(block.header.achieved_difficulty() > Difficulty::from(53193415));
 }
 
+/// Commit df95cee73812689bbae77bfb547c1d73a49635d4 introduced a bug in Windows builds that resulted in Block 9430
+/// failing validation tests. This test checks to see that this issue has been resolved.
+#[test]
+fn test_block_9430() {
+    let _ = env_logger::try_init();
+    let block_str = r#"
+    {"header":{"version":1,"height":9430,"prev_hash":"adb95b8df024fa7416936f793e547e9a2594548a86634d64ae73f46e17f0f0fc","timestamp":1589198340,"output_mr":"20c2bbe511c726b8ee93cb1ad668ed4616d041de76163d47dbeaf92530a5ae02","range_proof_mr":"6e776c9e74b10653497578d949d5c936e7dcfbfee61490991eb16a95530d38c4","kernel_mr":"a798a98c3a0b011c64e0c64a87df7cfc5035aec52911de29ffbc25b383f893de","total_kernel_offset":"0000000000000000000000000000000000000000000000000000000000000000","nonce":12558657073957944672,"pow":{"accumulated_monero_difficulty":1,"accumulated_blake_difficulty":40737626009318,"target_difficulty":72373773,"pow_algo":"Blake","pow_data":[]}},"body":{"sorted":true,"inputs":[],"outputs":[{"features":{"flags":{"bits":1},"maturity":9490},"commitment":"be25030d7c3f94be52ceba78043296e86e09b51c506ba7aa373c1ab8894c2369","proof":"4c38b294e4d5e8b6f377806f4552b3e73cfbc25c19d174f300a1f7a4c5bed60672338c76887966c2c35ad9829da1e1acd33148e159f2dc1cb999884503a71a7e12842b1115c8ecd7ea8f964e6e9576e317394f08667849dbb35385c5c0df63446852c1dd2d12efff3294e31c4abbbf3b4a3f9b7edc6a4579263a63afd244293d8b4b3dc458bf12e0c637d9678ba0e4f3fa5bca54455448c05a277197b7fba007bc7cc446e5842ef8ce3077edf236b7cafc3c3533a604a46c0ac3b00968abd006939651763d3396b4ee610d5dd75fd525a98ec8d6e5249bb37d7d69d9a605800fbaa619c07961aed2fe44035ed7eebde292b4d77a23566226618752e710f1737eb6657361305e3fe887debeca3c8beb80f04a5cb7ead57728a43d1935511a0c3ad6dc385bba0b20c636102605f2dfafa5716b7bcdbfc24134e5581d9c3cca52746a7b975c8c05ea43fb77c20f0947372200ab5b70ee0a886dcfc08419a33d492bea8bd0d0343c1540cab014719a8f6be63535b5cc5e6e679837e5b0dab67e6d555a8b26f2a38a1e2d73936a09d3ec1ee1522e3229bcc86efc70cbd5ee00ebb06c00c67b1a4cade2426aa3279c7596ec2a918415690084831f03b9ca5551895f3c14aef638625235eeda34c625b8978d47f2b60e1a1108a21e8f931f866de514288ecc6c7a738740c5dd1c277a0c8bc7f3379f890e0e1469dd62082852138b3177e8c3a14fd9acc3ba10b1efebe2a57b9e699c22aa16869db8314635255a71dd381408af5665f678939949941cb4542ca734bf0e2facb075f0e9c911b607c16f3dd0666c5196464e9e484dd5f7052231bb7c93fe6627986a70ffbd360c7a31493993aa622d0bf7db06cb5653dfde72a48e63b293167c43f21426a958468854dc0817be7d271338b252fb6c6dd478fdba4f928ec01a0ee25eeb4837d7f862830307"}],"kernels":[{"features":{"bits":1},"fee":0,"lock_height":0,"meta_info":null,"linked_kernel":null,"excess":"bac85dc24639f472c703e7639812400ee1b1d10a08932151a5a661f83d65ef22","excess_sig":{"public_nonce":"acd0417afe2dcc611a9a05db9308153ddd618abf5ec1647fc627099852dbb701","signature":"b271f7c439f28825da43cc76623620eb75d0c92d74c8202977b1e8c9be87c500"}}]}}
+    "#;
+    let block = Block::from_json(block_str).unwrap();
+    let rules = ConsensusManagerBuilder::new(Network::Rincewind).build();
+    let factories = CryptoFactories::default();
+    println!("{}", block);
+    let validator = StatelessBlockValidator::new(rules, factories);
+    assert!(validator.validate(&block).is_ok());
+    assert!(block.header.achieved_difficulty() > Difficulty::from(53193415));
+}
+
+/// Commit df95cee73812689bbae77bfb547c1d73a49635d4 introduced a bug in Windows builds that resulted in Block 10856
+/// failing validation tests. This test checks to see that this issue has been resolved.
+#[test]
+fn test_block_10856() {
+    let _ = env_logger::try_init();
+    let block_str = r#"
+    {"header":{"version":1,"height":10856,"prev_hash":"f51026f9ee73772f3d35028947e5938c878e0de476e6756569b1c4b93072ee77","timestamp":1589370699,"output_mr":"27aaa81b85550d44f75a464caabc9451e859ba3f732ac29417fcca80d4621e07","range_proof_mr":"17c69e41cb222136624478eaa3e732164cd39e03f5a2f462b3d9b50277e39f15","kernel_mr":"1f5e00dff70440fefbd4029a042ee0a5b439c4a851411a57ac84924412373004","total_kernel_offset":"0000000000000000000000000000000000000000000000000000000000000000","nonce":10171711902839592350,"pow":{"accumulated_monero_difficulty":1,"accumulated_blake_difficulty":42121484020544,"target_difficulty":87321441,"pow_algo":"Blake","pow_data":[]}},"body":{"sorted":true,"inputs":[],"outputs":[{"features":{"flags":{"bits":1},"maturity":10916},"commitment":"7c4f17ffed87a67aac9005859ae48cef9c187cf2a4b33df253cb3e0f02ff5c43","proof":"fcb92dcf552616869bb334cfb1cac4828efb4eaa4a52e5cdd7757c2cf81fe14d18cc2927ee1c072223cd38760c07528af4ccde9ad55829351f1b067711eda54122ad366eaa33ac065ac9734a5013e8355721179b462522600b2f46d18b8ce96c4e2f0a12e4585cc2c89af1ba1b058aba5743c30357dd13e15eb7e6f27e25697109154a0b3ec321dab4a6d2eb66861108866d020938d891478bbd7d65f96c1a0cfa31e48c974e174b181d49013e2620cf1d2538ed680e0cb22c7b70fecf68710c47978c156f1852457c8869dbc104c242ad6c4d21a76c7c2d17aa9dd9f9b48f043485da8f6d2e41bd8d407bdbb213f5e5242e2c4b2df3992661c86c4fa5bda1282286ff0dd4236c65dae074e75ae6cff94c53577ef157b096e15f53c7bd3bbf744c1a617d46c9686e3dc8f0effd829c089e237d7b2a73690b1f0eba941cd33b4caa36e0144319b1a51ea91bc60f6d5099e48111b6897b8a6a42de93217bc0e94e708b0437a2ece17923b0f08df9fdca3c1eecaf75df3defc9e1a847220c80c8597c02ef3c0712ce6162d6e49cf67a81bda76b9877ba31e6fe913ac188452c704da074dad7a2b4a2bcbef6abf05b381754ee2519bd9342c6b3915736a5a5ddcd677ee5555413e93f7ed10ce35d0edb47287b8232a803f11dee1dbda68548adf86288c407bc6eb3aa3407ebb2d176c908bf84305f54d19eaa8f943a09f153a5d258a6f9d9c476c797b9cbc695e2482aef1a950ac22378e88aaeca92389febc48109b87ba3e41bdc9f475bc5c891d4ef30784bcf38cea39c1ebf8f7d18326e4f7b415870a13857814d96ba111c9bf1b80e77ee42b32e035b4e8a70c5b314b960f26f90cebc03754895dd4dc0e0e38b8d8ecdb957e557344ccd2402fecf4378055e08b43f848b3f07ca205ee2c7f0bcc08f018cb5e7f58213f028ed97ab98dd60cb01"}],"kernels":[{"features":{"bits":1},"fee":0,"lock_height":0,"meta_info":null,"linked_kernel":null,"excess":"42c85a5910cbf3a7aa9f3e0463523d2680a6896b30b569e9f4d95592ac8c4661","excess_sig":{"public_nonce":"b234797842e9018199475bd6e965565e70fa62f9f9b10bba852f9a0fb309b64b","signature":"528429bff34f46a960434c3a50da7409c76f225142be79a72fcf93306d8d7c0a"}}]}}
+    "#;
+    let block = Block::from_json(block_str).unwrap();
+    let rules = ConsensusManagerBuilder::new(Network::Rincewind).build();
+    let factories = CryptoFactories::default();
+    println!("{}", block);
+    let validator = StatelessBlockValidator::new(rules, factories);
+    assert!(validator.validate(&block).is_ok());
+    assert!(block.header.achieved_difficulty() > Difficulty::from(53193415));
+}
+
+/// Commit df95cee73812689bbae77bfb547c1d73a49635d4 introduced a bug in Windows builds that resulted in Block 11708
+/// failing validation tests. This test checks to see that this issue has been resolved.
+#[test]
+fn test_block_11708() {
+    let _ = env_logger::try_init();
+    let block_str = r#"
+    {"header":{"version":1,"height":11708,"prev_hash":"b0cefac87af2978469d816f9b17857bf98d1229913412b7deb05e58219b44a38","timestamp":1589484682,"output_mr":"01ddf5ea2c7c2e0b4f59d1afe9f6b49df65d1a48fb21c7f7bd18e7eee224bd73","range_proof_mr":"97568ec5753e0f59cea8a98b5156e7ea5f5477f86b4ab12175d98692d8c39ae3","kernel_mr":"c7ca0f317bd55d72659871dde925e36881317b4bdad81102c4074f2049dfcfee","total_kernel_offset":"0000000000000000000000000000000000000000000000000000000000000000","nonce":14528220554652063826,"pow":{"accumulated_monero_difficulty":1,"accumulated_blake_difficulty":43814444759341,"target_difficulty":144466012,"pow_algo":"Blake","pow_data":[]}},"body":{"sorted":true,"inputs":[],"outputs":[{"features":{"flags":{"bits":1},"maturity":11768},"commitment":"5eae3b3a881b4f9189fb03a43f7b4a26340b9687ecd0b174cd8d3366f053be7e","proof":"9ac939e5da4bb12cdce31fdd8b075427dc94b9e6c91f527371646d00001ba95c8e717ea865c55b6cd21f6be82b018f17339bb9e16560f06db0eed4c69c2e1d5d929881660f1d3b7ae78a52a04324174e56290b8f617a1347dc226fb469ab8f5dd0ef20ca2670917a7d243bd4c50d6bdd181b67a101c8235844eb93d3ddb935336b9457c7ce83574cf9a5041fbc32af2a87b46a7b7dc1b159c9ee147ec2840e0394bc4b1e1c2cc5ff2961f0d73da1e057aa7d5dbe89210193c50fa3c801c23c0a601f792931f173805429cf48194e08493116237cf9757aaa5460f16710695503e8439c1d61780613ea520c321d1c36a7fe5e9dd24ed7f63d862429e4260faa7646ae930291dbd1f461a84809f5e144aeca66633e3cc971f2eebf46378834ee349a65e304e8a2039f6e49313d47e5be608b377d9502505f8ed0853b1b9dbddd4c96ceff19323fb6a654cf559367aaa9bfef2449be5ae33baffc2c68e65e12c9543e09e9a708a6029e3616a8f2ce7e2dcc3f43d4308f082013e91119fd9a9f8848985336c72fa2b75e868b5040c3b3c47be58e78e842f2aacca4a15c28450a4c4820f3d1a8d86f28a741f2ff26156978d37b56dc3bd7220e397ab7fd12d5a5d756609cda1e2b942229d441787d40b8a488081d27d9de45f1ca28f5bebf76b1435bfa9b33d727f9810097e2abd59956c537ff1fbb1eab693043b156f851c7af206c083abf0a6f6407666ae6a6f2dad3c220bd2e5fd0eda86af3a7a1106b36d5270ea4880a5331ae2c9613a2543a77589f3c09aef055c58fbe0033dbf4339977d818ac340ee78b9f856907c69fb3d633dd396dd31b3fab60551846ce19a4b4cb4c6b5c3969d68ef098be66ba8190991eac61ae29c05069c6f7549f47db33ec379a034d7f1b6d204dc520d8ddd76f665df70109741a62568e33bc7996732236172a0d"}],"kernels":[{"features":{"bits":1},"fee":0,"lock_height":0,"meta_info":null,"linked_kernel":null,"excess":"5811e5d3a6a5ceb500161c8b24335b1c621fa23c601d9abeda2b85151a5f3568","excess_sig":{"public_nonce":"4a4d729c05657fec05b5e3aa2633f739cd65b657ae87a930510c6c44a4b30529","signature":"ec0f50bf5ee0a9bc02e9bfee46ad95db712faf0f658d81298ef2f684f1cdcd03"}}]}}
+    "#;
+    let block = Block::from_json(block_str).unwrap();
+    let rules = ConsensusManagerBuilder::new(Network::Rincewind).build();
+    let factories = CryptoFactories::default();
+    println!("{}", block);
+    let validator = StatelessBlockValidator::new(rules, factories);
+    assert!(validator.validate(&block).is_ok());
+    assert!(block.header.achieved_difficulty() > Difficulty::from(53193415));
+}
+
 /// Commit df95cee73812689bbae77bfb547c1d73a49635d4 introduced a bug in Windows builds that resulted in Block 30335
 /// failing validation tests. This test checks to see that this issue has been resolved.
 #[test]
