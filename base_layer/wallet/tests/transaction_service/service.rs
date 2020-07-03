@@ -143,7 +143,7 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static, P: AsR
     discovery_request_timeout: Duration,
 ) -> (TransactionServiceHandle, OutputManagerHandle, CommsNode)
 {
-    let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100);
+    let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100, 20);
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht) = runtime.block_on(setup_comms_services(
         node_identity,

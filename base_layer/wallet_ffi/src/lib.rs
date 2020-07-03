@@ -2586,14 +2586,14 @@ pub unsafe extern "C" fn wallet_create(
             debug!(target: LOG_TARGET, "Databases Initialized");
 
             w = TariWallet::new(
-                WalletConfig {
-                    comms_config: (*config).clone(),
+                WalletConfig::new(
+                    (*config).clone(),
                     factories,
-                    transaction_service_config: Some(TransactionServiceConfig {
+                    Some(TransactionServiceConfig {
                         direct_send_timeout: (*config).dht.discovery_request_timeout,
                         ..Default::default()
                     }),
-                },
+                ),
                 runtime,
                 wallet_backend.clone(),
                 transaction_backend.clone(),

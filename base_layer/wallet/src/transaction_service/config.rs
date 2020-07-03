@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
 use std::time::Duration;
+
+const LOG_TARGET: &str = "wallet::transaction_service::config";
 
 #[derive(Clone)]
 pub struct TransactionServiceConfig {
@@ -38,6 +41,29 @@ impl Default for TransactionServiceConfig {
             direct_send_timeout: Duration::from_secs(20),
             broadcast_send_timeout: Duration::from_secs(30),
             low_power_polling_timeout: Duration::from_secs(300),
+        }
+    }
+}
+
+impl TransactionServiceConfig {
+    pub fn new(
+        base_node_monitoring_timeout: Duration,
+        direct_send_timeout: Duration,
+        broadcast_send_timeout: Duration,
+    ) -> Self
+    {
+        trace!(
+            target: LOG_TARGET,
+            "Timeouts - Base node monitoring: {}s, Direct send: {}s, Broadcast send: {}s",
+            base_node_monitoring_timeout.as_secs(),
+            direct_send_timeout.as_secs(),
+            broadcast_send_timeout.as_secs(),
+        );
+        Self {
+            base_node_monitoring_timeout,
+            direct_send_timeout,
+            broadcast_send_timeout,
+            ..Default::default()
         }
     }
 }

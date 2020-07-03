@@ -122,6 +122,10 @@ use tari_wallet::{
 use tokio::{runtime, stream::StreamExt, sync::broadcast, task, time::delay_for};
 
 const LOG_TARGET: &str = "c::bn::initialization";
+/// The minimum buffer size for the base node pubsub_connector channel
+const BASE_NODE_BUFFER_MIN_SIZE: usize = 30;
+/// The minimum buffer size for the base node wallet pubsub_connector channel
+const BASE_NODE_WALLET_BUFFER_MIN_SIZE: usize = 300;
 
 #[macro_export]
 macro_rules! using_backend {
@@ -497,7 +501,9 @@ where
 
     //---------------------------------- Base Node --------------------------------------------//
 
-    let (publisher, base_node_subscriptions) = pubsub_connector(handle.clone(), 1500);
+    let buf_size = std::cmp::max(BASE_NODE_BUFFER_MIN_SIZE, config.buffer_size_base_node);
+    let (publisher, base_node_subscriptions) =
+        pubsub_connector(handle.clone(), buf_size, config.buffer_rate_limit_base_node);
     let base_node_subscriptions = Arc::new(base_node_subscriptions);
     create_peer_db_folder(&config.peer_db_path)?;
 
@@ -527,7 +533,9 @@ where
     debug!(target: LOG_TARGET, "Base node service registration complete.");
 
     //---------------------------------- Wallet --------------------------------------------//
-    let (publisher, wallet_subscriptions) = pubsub_connector(handle.clone(), 15000);
+    let buf_size = std::cmp::max(BASE_NODE_WALLET_BUFFER_MIN_SIZE, config.buffer_size_base_node_wallet);
+    let (publisher, wallet_subscriptions) =
+        pubsub_connector(handle.clone(), buf_size, config.buffer_rate_limit_base_node_wallet);
     let wallet_subscriptions = Arc::new(wallet_subscriptions);
     create_peer_db_folder(&config.wallet_peer_db_path)?;
     let (wallet_comms, wallet_dht) = setup_wallet_comms(
@@ -559,6 +567,9 @@ where
         &wallet_conn,
         wallet_subscriptions,
         factories,
+        config.transaction_base_node_monitoring_timeout,
+        config.transaction_direct_send_timeout,
+        config.transaction_broadcast_send_timeout,
     )
     .await;
 
@@ -1164,6 +1175,9 @@ async fn register_wallet_services(
     wallet_db_conn: &WalletDbConnection,
     subscription_factory: Arc<SubscriptionFactory>,
     factories: CryptoFactories,
+    base_node_monitoring_timeout: Duration,
+    direct_send_timeout: Duration,
+    broadcast_send_timeout: Duration,
 ) -> Arc<ServiceHandles>
 {
     StackBuilder::new(runtime::Handle::current(), wallet_comms.shutdown_signal())
@@ -1185,7 +1199,9 @@ async fn register_wallet_services(
             factories.clone(),
         ))
         .add_initializer(TransactionServiceInitializer::new(
-            TransactionServiceConfig::default(),
+            TransactionServiceConfig::new(base_node_monitoring_timeout,
+                                          direct_send_timeout,
+                                          broadcast_send_timeout,),
             subscription_factory,
             TransactionServiceSqliteDatabase::new(wallet_db_conn.clone(), Some(wallet_comms.node_identity().public_key().clone())),
             wallet_comms.node_identity(),

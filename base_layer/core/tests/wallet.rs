@@ -153,15 +153,15 @@ fn wallet_base_node_integration_test() {
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
     };
-    let alice_wallet_config = WalletConfig {
-        comms_config: alice_comms_config,
-        factories: factories.clone(),
-        transaction_service_config: Some(TransactionServiceConfig {
+    let alice_wallet_config = WalletConfig::new(
+        alice_comms_config,
+        factories.clone(),
+        Some(TransactionServiceConfig {
             base_node_monitoring_timeout: Duration::from_secs(1),
             low_power_polling_timeout: Duration::from_secs(10),
             ..Default::default()
         }),
-    };
+    );
     let alice_runtime = create_runtime();
     let mut alice_wallet = Wallet::new(
         alice_wallet_config,
@@ -204,11 +204,7 @@ fn wallet_base_node_integration_test() {
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
     };
-    let bob_wallet_config = WalletConfig {
-        comms_config: bob_comms_config,
-        factories: factories.clone(),
-        transaction_service_config: None,
-    };
+    let bob_wallet_config = WalletConfig::new(bob_comms_config, factories.clone(), None);
     let bob_runtime = create_runtime();
     let mut bob_wallet = Wallet::new(
         bob_wallet_config,

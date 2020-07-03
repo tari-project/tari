@@ -24,56 +24,74 @@ use super::peer_message::PeerMessage;
 use crate::{comms_connector::InboundDomainConnector, tari_message::TariMessageType};
 use futures::{channel::mpsc, future, stream::Fuse, Stream, StreamExt};
 use log::*;
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, sync::Arc, time::Duration};
+use tari_comms::rate_limit::RateLimit;
 use tokio::{runtime::Handle, sync::broadcast};
 
 const LOG_TARGET: &str = "comms::middleware::pubsub";
+
+/// The minimum amount of inbound messages to accept within the `RATE_LIMIT_RESTOCK_INTERVAL` window
+const RATE_LIMIT_MIN_CAPACITY: usize = 5;
+const RATE_LIMIT_RESTOCK_INTERVAL: Duration = Duration::from_millis(1000);
 
 /// Alias for a pubsub-type domain connector
 pub type PubsubDomainConnector = InboundDomainConnector<mpsc::Sender<Arc<PeerMessage>>>;
 pub type SubscriptionFactory = TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>;
 
 /// Connects `InboundDomainConnector` to a `tari_pubsub::TopicPublisher` through a buffered broadcast channel
-pub fn pubsub_connector(executor: Handle, buf_size: usize) -> (PubsubDomainConnector, SubscriptionFactory) {
+pub fn pubsub_connector(
+    executor: Handle,
+    buf_size: usize,
+    rate_limit: usize,
+) -> (PubsubDomainConnector, SubscriptionFactory)
+{
     let (publisher, subscription_factory) = pubsub_channel(buf_size);
     let (sender, receiver) = mpsc::channel(buf_size);
+    trace!(
+        target: LOG_TARGET,
+        "Created pubsub_connector with buf_size '{}' and rate_limit '{}'.",
+        buf_size,
+        rate_limit
+    );
 
     // Spawn a task which forwards messages from the pubsub service to the TopicPublisher
-    let forwarder = receiver
-        // Map DomainMessage into a TopicPayload
-        .filter_map(|msg: Arc<PeerMessage>| {
-            let opt = match TariMessageType::from_i32(msg.message_header.message_type) {
-                Some(msg_type) => {
-                    let message_tag_trace = msg.dht_header.message_tag;
-                    let payload = TopicPayload::new(msg_type, msg);
-                    trace!(
+    executor.spawn(async move {
+        let forwarder = receiver
+            // Rate limit the receiver; the sender will adhere to the limit
+            .rate_limit(std::cmp::max(rate_limit, RATE_LIMIT_MIN_CAPACITY), RATE_LIMIT_RESTOCK_INTERVAL)
+            // Map DomainMessage into a TopicPayload
+            .filter_map(move |msg: Arc<PeerMessage>| {
+                let opt = match TariMessageType::from_i32(msg.message_header.message_type) {
+                    Some(msg_type) => {
+                        let message_tag_trace = msg.dht_header.message_tag;
+                        let payload = TopicPayload::new(msg_type, msg);
+                        trace!(
+                            target: LOG_TARGET,
+                            "Created topic payload message {:?}, Trace: {}. [n={}, r={}/s]",
+                            &payload.topic(), message_tag_trace, buf_size.to_owned(), rate_limit.to_owned(),
+                        );
+                        Some(payload)
+                    }
+                    None => {
+                        warn!(target: LOG_TARGET, "Invalid or unrecognised Tari message type '{}'", msg.message_header.message_type);
+                        None
+                    }
+                };
+                future::ready(opt)
+            })
+            // Forward TopicPayloads to the publisher
+            .for_each(move |item| {
+                if let Err(err) = publisher.send(item).map_err(|_| "No subscribers when sending message".to_string())
+                {
+                    warn!(
                         target: LOG_TARGET,
-                        "Created topic payload message {:?}, Trace: {}",
-                        &payload.topic(), message_tag_trace
+                        "Error forwarding pubsub messages to publisher: {}", err
                     );
-                    Some(payload)
                 }
-                None => {
-                    warn!(target: LOG_TARGET, "Invalid or unrecognised Tari message type '{}'", msg.message_header.message_type);
-                    None
-                }
-            };
-            future::ready(opt)
-        })
-        // Forward TopicPayloads to the publisher
-        .for_each(move |item| {
-            if let Err(err) = publisher.send(item).map_err(|_| "No subscribers when sending message".to_string())
-            {
-                warn!(
-                    target: LOG_TARGET,
-                    "Error forwarding pubsub messages to publisher: {}", err
-                );
-            }
-            future::ready(())
-        });
-
-    executor.spawn(forwarder);
-
+                future::ready(())
+            });
+        forwarder.await;
+    });
     (InboundDomainConnector::new(sender), subscription_factory)
 }
 
