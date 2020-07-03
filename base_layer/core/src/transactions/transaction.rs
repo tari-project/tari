@@ -56,9 +56,9 @@ use tari_crypto::{
     tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
 
-// These are set fairly arbitrarily at the moment. We'll need to do some modelling / testing to tune these values.
-pub const MAX_TRANSACTION_INPUTS: usize = 500;
-pub const MAX_TRANSACTION_OUTPUTS: usize = 100;
+// Tx_weight(inputs(12,500), outputs(500), kernels(1)) = 19,003, still well enough below block weight of 19,500
+pub const MAX_TRANSACTION_INPUTS: usize = 12_500;
+pub const MAX_TRANSACTION_OUTPUTS: usize = 500;
 pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
 pub const MINIMUM_TRANSACTION_FEE: MicroTari = MicroTari(100);
 
