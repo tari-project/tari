@@ -1,7 +1,7 @@
 //! Future types
 
 use futures::ready;
-use pin_project::{pin_project, project};
+use pin_project::pin_project;
 use std::{
     future::Future,
     pin::Pin,
@@ -28,7 +28,7 @@ where S: Service<Request>
     service: S,
 }
 
-#[pin_project]
+#[pin_project(project = StateProj)]
 #[derive(Debug)]
 enum State<Request, U> {
     Check(Option<Request>),
@@ -56,14 +56,12 @@ where
 {
     type Output = Result<S::Response, PipelineError>;
 
-    #[project]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
 
         loop {
-            #[project]
             match this.state.as_mut().project() {
-                State::Check(request) => {
+                StateProj::Check(request) => {
                     let request = request
                         .take()
                         .expect("we either give it back or leave State::Check once we take");
@@ -80,7 +78,7 @@ where
                         },
                     }
                 },
-                State::WaitResponse(response) => {
+                StateProj::WaitResponse(response) => {
                     return Poll::Ready(ready!(response.poll(cx)));
                 },
             }
