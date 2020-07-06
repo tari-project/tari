@@ -29,18 +29,15 @@ use crate::{
 use digest::Digest;
 use std::{
     cmp::{max, min},
+    iter::IntoIterator,
     marker::PhantomData,
 };
-
-const LOG_TARGET: &str = "mmr::merkle_mountain_range";
 
 /// An implementation of a Merkle Mountain Range (MMR). The MMR is append-only and immutable. Only the hashes are
 /// stored in this data structure. The data itself can be stored anywhere as long as you can maintain a 1:1 mapping
 /// of the hash of that data to the leaf nodes in the MMR.
 #[derive(Debug)]
-pub struct MerkleMountainRange<D, B>
-where B: ArrayLike
-{
+pub struct MerkleMountainRange<D, B> {
     pub(crate) hashes: B,
     pub(crate) _hasher: PhantomData<D>,
 }
@@ -60,10 +57,15 @@ where
 
     /// Clears the MMR and assigns its state from the list of leaf hashes given in `leaf_hashes`.
     pub fn assign(&mut self, leaf_hashes: Vec<Hash>) -> Result<(), MerkleMountainRangeError> {
+        self.assign_iter(leaf_hashes)
+    }
+
+    /// Clears the MMR and assigns its state from the provided iterator, which must produce a finite number of Hashes.
+    pub fn assign_iter<I: IntoIterator<Item = Hash>>(&mut self, hash_iter: I) -> Result<(), MerkleMountainRangeError> {
         self.hashes
             .clear()
             .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
-        for hash in leaf_hashes {
+        for hash in hash_iter.into_iter() {
             self.push(&hash)?;
         }
         Ok(())
